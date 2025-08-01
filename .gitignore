@@ -1,0 +1,24 @@
+# Xmake cache
+.xmake/
+build/
+
+# VS Code
+.vscode/
+
+# JetBrains IDEs
+.idea/
+cmake-build*/
+
+# VS
+.vs/
+out/
+
+# Engine
+*.log
+
+# CMake
+CMakeLists.txt
+
+# VS
+vs20*/
+vsxmake*/

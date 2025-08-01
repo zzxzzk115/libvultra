@@ -1,0 +1,4 @@
+# https://github.com/clangd/clangd/discussions/1984
+If:                               # Apply this config conditionally
+  PathMatch: src/.*               # only for files under src/
+  PathExclude: external/.*        # but not for files under external/

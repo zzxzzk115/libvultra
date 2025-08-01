@@ -1,0 +1,102 @@
+-- workaround for only linking vulkan library rather than glslang, spirv-cross, etc.
+-- https://github.com/xmake-io/xmake-repo/issues/3962#issuecomment-2096205856
+rule("vulkansdk")
+    on_config(function (target)
+        import("lib.detect.find_library")
+        import("detect.sdks.find_vulkansdk")
+
+        local vulkansdk = find_vulkansdk()
+        if vulkansdk then
+            target:add("runevs", "PATH", vulkansdk.bindir)
+
+            -- We don't need to add the include directories for vulkan headers
+            -- Instead, we rely on Vulkan-Headers
+            -- target:add("includedirs", vulkansdk.includedirs)
+
+            local suffix
+            if target:is_plat("windows") then
+                suffix = ".lib"
+            elseif target:is_plat("macosx") then
+                suffix = ".dylib"
+            else
+                suffix = ".so"
+            end
+
+            local utils = {}
+            table.insert(utils, target:is_plat("windows") and "vulkan-1" or "vulkan")
+    
+            for _, util in ipairs(utils) do
+                if not find_library(util, vulkansdk.linkdirs) then
+                    wprint(format("The library %s for %s is not found!", util, target:arch()))
+                    return
+                end
+                -- add vulkan library
+                lib_name = target:is_plat("windows") and util or "lib" .. util
+                target:add("links", path.join(vulkansdk.linkdirs[1], lib_name .. suffix), { public = true })
+            end
+        end
+    end)
+rule_end()
+
+-- add requirements
+add_requires("fmt", { system = false })
+add_requires("spdlog", "magic_enum", "entt", "glm", "stb", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace")
+add_requires("tracy 0.11.1", {configs = {on_demand = true}})
+add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, sdl3 = true, wchar32 = true}})
+add_requires("assimp", {configs = {shared = true, debug = is_mode("debug"), draco = true}})
+add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
+-- note: spirv-cross & glslang must require the same vulkan sdk version
+add_requires("spirv-cross vulkan-sdk-1.4.309", {configs = { shared = true, debug = is_mode("debug") }})
+add_requires("glslang 1.4.309+0", {configs = { debug = is_mode("debug")}, system = false})
+
+-- target defination, name: vultra
+target("vultra")
+    -- set target kind: static library
+    set_kind("static")
+
+    -- add include dir
+    add_includedirs("include", {public = true}) -- public: let other targets to auto include
+
+    -- add header files
+    add_headerfiles("include/(vultra/**.hpp)")
+
+    -- add source files
+    add_files("src/**.cpp")
+
+    -- add deps
+    add_deps("dds-ktx", "renderdoc")
+
+    -- add rules
+    add_rules("vulkansdk")
+
+    -- add packages
+    add_packages("fmt", "spdlog", "magic_enum", "entt", "glm", "stb", "vulkan-headers", "vulkan-memory-allocator-hpp", "fg", "cpptrace", { public = true })
+    add_packages("tracy", "imgui", "libsdl3", "assimp", "spirv-cross", "glslang", "openxr", { public = true })
+
+    -- vulkan dynamic loader
+    add_defines("VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1", { public = true })
+
+    -- tracy & tracky required defines
+    -- default: tracy enabled, tracky enabled
+    add_defines("TRACY_ENABLE=1", { public = true })
+    add_defines("TRACKY_ENABLE=1", { public = true })
+    add_defines("TRACKY_VULKAN", { public = true })
+
+    -- fmt fix
+    add_defines("FMT_UNICODE=0", { public = true })
+
+    if is_mode("debug") then
+        add_defines("_DEBUG", { public = true })
+        -- If it runs OpenXR apps with Monado, then disable RenderDoc, since Monado XRT already has RenderDoc support by default.
+        local xr_runtime = os.getenv("XR_RUNTIME_JSON")
+        if xr_runtime and xr_runtime:find("monado") then
+            print("Disabling RenderDoc support due to Monado runtime detected.")
+        else
+            add_defines("VULTRA_ENABLE_RENDERDOC", { public = true })
+        end
+    else
+        add_defines("NDEBUG", { public = true })
+    end
+
+    -- set target directory
+    set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra")
