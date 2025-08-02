@@ -78,7 +78,6 @@ Step-by-Step:
   - [ ] KTX2
   - [x] DDS
 - [ ] ECS-based scene management with EnTT
-- [ ] Modern Render Paths
 - [ ] Raytracing Pipeline
 - [ ] Mesh Shading Pipeline
 - [ ] Resource Pipeline
