@@ -84,5 +84,10 @@ Step-by-Step:
 - [ ] Lua or C# Scripting System
 - [ ] (Maybe?) AR support
 
+## Create your own graphics or game project
+You can simply create a project by using this [template](https://github.com/zzxzzk115/libvultra-starter-template).
+
+Have fun!
+
 ## License
 This project is under the [MIT](LICENSE) license.
