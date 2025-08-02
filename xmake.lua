@@ -32,6 +32,19 @@ else
     add_cxxflags("-fexceptions")
 end
 
+-- add rules
+rule("linux.sdl.driver")
+    before_run(function (target)
+        if is_plat("linux") then
+            if has_config("wayland") then
+                os.setenv("SDL_VIDEODRIVER", "wayland")
+            else
+                os.setenv("SDL_VIDEODRIVER", "x11")
+            end
+        end
+    end)
+rule_end()
+
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.vsxmake.autoupdate")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode", lsp = "clangd"})
