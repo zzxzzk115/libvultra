@@ -43,10 +43,11 @@ add_requires("fmt", { system = false })
 add_requires("spdlog", "magic_enum", "entt", "glm", "stb", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace")
 add_requires("tracy 0.11.1", {configs = {on_demand = true}})
 add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, sdl3 = true, wchar32 = true}})
+add_requireconfs("imgui.libsdl3", {system = false}) -- we don't use system's SDL3 to avoid version conflicts
 add_requires("assimp", {configs = {shared = true, debug = is_mode("debug"), draco = true}})
 add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
 -- note: spirv-cross & glslang must require the same vulkan sdk version
-add_requires("spirv-cross vulkan-sdk-1.4.309", {configs = { shared = true, debug = is_mode("debug") }})
+add_requires("spirv-cross vulkan-sdk-1.4.309", {configs = { shared = true, debug = is_mode("debug")}, system = false})
 add_requires("glslang 1.4.309+0", {configs = { debug = is_mode("debug")}, system = false})
 
 -- target defination, name: vultra
