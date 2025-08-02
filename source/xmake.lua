@@ -38,6 +38,25 @@ rule("vulkansdk")
     end)
 rule_end()
 
+-- options
+option("tracy")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Enable tracy profiler")
+option_end()
+
+option("tracky")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Enable tracky profiler")
+option_end()
+
+option("renderdoc")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Enable renderdoc support")
+option_end()
+
 -- add requirements
 add_requires("fmt", { system = false })
 add_requires("spdlog", "magic_enum", "entt", "glm", "stb", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace")
@@ -78,9 +97,12 @@ target("vultra")
     add_defines("VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1", { public = true })
 
     -- tracy & tracky required defines
-    -- default: tracy enabled, tracky enabled
-    add_defines("TRACY_ENABLE=1", { public = true })
-    add_defines("TRACKY_ENABLE=1", { public = true })
+    if has_config("tracy") then
+        add_defines("TRACY_ENABLE=1", { public = true })
+    end
+    if has_config("tracky") then
+        add_defines("TRACKY_ENABLE=1", { public = true })
+    end
     add_defines("TRACKY_VULKAN", { public = true })
 
     -- fmt fix
@@ -88,11 +110,7 @@ target("vultra")
 
     if is_mode("debug") then
         add_defines("_DEBUG", { public = true })
-        -- If it runs OpenXR apps with Monado, then disable RenderDoc, since Monado XRT already has RenderDoc support by default.
-        local xr_runtime = os.getenv("XR_RUNTIME_JSON")
-        if xr_runtime and xr_runtime:find("monado") then
-            print("Disabling RenderDoc support due to Monado runtime detected.")
-        else
+        if has_config("renderdoc") then
             add_defines("VULTRA_ENABLE_RENDERDOC", { public = true })
         end
     else

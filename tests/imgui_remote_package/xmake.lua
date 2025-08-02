@@ -1,4 +1,4 @@
-add_requires("libvultra")
+add_requires("libvultra", {configs = {debug = is_mode("debug")}})
 
 target("example-imgui-remote")
     set_kind("binary")
