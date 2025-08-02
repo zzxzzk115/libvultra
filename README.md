@@ -14,6 +14,7 @@
     <a href="https://github.com/zzxzzk115/libvultra/issues" alt="GitHub Issues">
         <img src="https://img.shields.io/github/issues/zzxzzk115/libvultra">
     </a>
+    <a href="https://www.codefactor.io/repository/github/zzxzzk115/libvultra"><img src="https://www.codefactor.io/repository/github/zzxzzk115/libvultra/badge" alt="CodeFactor" /></a>
     <a href="https://github.com/zzxzzk115/libvultra/blob/master/LICENSE" alt="GitHub">
         <img src="https://img.shields.io/github/license/zzxzzk115/libvultra">
     </a>
