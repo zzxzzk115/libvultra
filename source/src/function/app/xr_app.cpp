@@ -59,38 +59,6 @@ namespace vultra
 
             {
                 ZoneScopedN("[App] Update");
-
-                //  Xr Update Example
-                // TODO: Move to client app.
-                {
-                    for (size_t controllerIndex = 0u; controllerIndex < 2u; ++controllerIndex)
-                    {
-                        const float     flySpeed = m_CommonAction.getControllers()->getFlySpeed(controllerIndex);
-                        const glm::vec3 forward =
-                            glm::normalize(m_CommonAction.getControllers()->getPose(controllerIndex)[2]);
-                        VULTRA_CORE_TRACE("[App] Controller {} Fly Speed: {}, Forward: ({}, {}, {})",
-                                          controllerIndex,
-                                          flySpeed,
-                                          forward.x,
-                                          forward.y,
-                                          forward.z);
-                    }
-                    const auto* eyeTracker = m_CommonAction.getEyeTracker();
-                    if (eyeTracker)
-                    {
-                        XrPosef gazePose = eyeTracker->getGazePose();
-                        VULTRA_CORE_TRACE(
-                            "[App] Eye Tracker Gaze Pose: Position: ({}, {}, {}), Orientation: ({}, {}, {}, {})",
-                            gazePose.position.x,
-                            gazePose.position.y,
-                            gazePose.position.z,
-                            gazePose.orientation.x,
-                            gazePose.orientation.y,
-                            gazePose.orientation.z,
-                            gazePose.orientation.w);
-                    }
-                }
-
                 onUpdate(deltaTime);
             }
             {
