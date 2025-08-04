@@ -198,17 +198,17 @@ namespace vultra
             {
                 if (eyeGazeProps.supportsEyeGazeInteraction)
                 {
-                    spdlog::info("Eye gaze interaction is supported.");
+                    VULTRA_CORE_INFO("Eye gaze interaction is supported.");
                     m_Properties.supportEyeTracking = true;
                 }
                 else
                 {
-                    spdlog::info("Eye gaze interaction is not supported.");
+                    VULTRA_CORE_INFO("Eye gaze interaction is not supported.");
                 }
             }
             else
             {
-                spdlog::error("Failed to get eye gaze interaction properties.");
+                VULTRA_CORE_ERROR("Failed to get eye gaze interaction properties.");
             }
 
             auto runtimeInfo = fmt::format("[OpenXR] OpenXR Runtime: {} - {}.{}.{}",
@@ -217,7 +217,7 @@ namespace vultra
                                            XR_VERSION_MINOR(m_XrInstanceProperties.runtimeVersion),
                                            XR_VERSION_PATCH(m_XrInstanceProperties.runtimeVersion));
 
-            spdlog::info(runtimeInfo);
+            VULTRA_CORE_INFO(runtimeInfo);
         }
 
         void XRDevice::getEnvironmentBlendModes()
@@ -249,8 +249,8 @@ namespace vultra
             }
             if (m_EnvironmentBlendMode == XR_ENVIRONMENT_BLEND_MODE_MAX_ENUM)
             {
-                spdlog::error("[Context][OpenXR] Failed to find a compatible blend mode. Defaulting to "
-                              "XR_ENVIRONMENT_BLEND_MODE_OPAQUE.");
+                VULTRA_CORE_ERROR("[Context][OpenXR] Failed to find a compatible blend mode. Defaulting to "
+                                  "XR_ENVIRONMENT_BLEND_MODE_OPAQUE.");
                 m_EnvironmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
             }
         }

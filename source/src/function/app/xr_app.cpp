@@ -1,10 +1,16 @@
 #include "vultra/function/app/xr_app.hpp"
+#include "vultra/function/openxr/ext/xr_eyetracker.hpp"
+#include "vultra/function/openxr/xr_controller.hpp"
+#include "vultra/function/openxr/xr_device.hpp"
 #include "vultra/function/service/services.hpp"
 
 namespace vultra
 {
     XRApp::XRApp(std::span<char*> args, const AppConfig& appConfig, const XRConfig& xrConfig) :
-        ImGuiApp(args, appConfig, xrConfig.imguiConfig, xrConfig.clearColor), m_Headset(*m_RenderDevice)
+        ImGuiApp(args, appConfig, xrConfig.imguiConfig, xrConfig.clearColor), m_Headset(*m_RenderDevice),
+        m_CommonAction(m_RenderDevice->getXRDevice()->getXrInstance(),
+                       m_Headset.getXrSession(),
+                       m_RenderDevice->getXRDevice()->getProperties().supportEyeTracking)
     {}
 
     void XRApp::run()
@@ -45,8 +51,46 @@ namespace vultra
                 continue;
             }
 
+            // Sync controllers & eye tracker
+            if (!m_CommonAction.sync(m_Headset.getXrSpace(), m_Headset.getXrFrameState().predictedDisplayTime))
+            {
+                break;
+            }
+
             {
                 ZoneScopedN("[App] Update");
+
+                //  Xr Update Example
+                // TODO: Move to client app.
+                {
+                    for (size_t controllerIndex = 0u; controllerIndex < 2u; ++controllerIndex)
+                    {
+                        const float     flySpeed = m_CommonAction.getControllers()->getFlySpeed(controllerIndex);
+                        const glm::vec3 forward =
+                            glm::normalize(m_CommonAction.getControllers()->getPose(controllerIndex)[2]);
+                        VULTRA_CORE_TRACE("[App] Controller {} Fly Speed: {}, Forward: ({}, {}, {})",
+                                          controllerIndex,
+                                          flySpeed,
+                                          forward.x,
+                                          forward.y,
+                                          forward.z);
+                    }
+                    const auto* eyeTracker = m_CommonAction.getEyeTracker();
+                    if (eyeTracker)
+                    {
+                        XrPosef gazePose = eyeTracker->getGazePose();
+                        VULTRA_CORE_TRACE(
+                            "[App] Eye Tracker Gaze Pose: Position: ({}, {}, {}), Orientation: ({}, {}, {}, {})",
+                            gazePose.position.x,
+                            gazePose.position.y,
+                            gazePose.position.z,
+                            gazePose.orientation.x,
+                            gazePose.orientation.y,
+                            gazePose.orientation.z,
+                            gazePose.orientation.w);
+                    }
+                }
+
                 onUpdate(deltaTime);
             }
             {

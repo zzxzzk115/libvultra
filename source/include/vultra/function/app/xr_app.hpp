@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/function/app/imgui_app.hpp"
+#include "vultra/function/openxr/xr_common_action.hpp"
 #include "vultra/function/openxr/xr_headset.hpp"
 
 namespace vultra
@@ -27,6 +28,7 @@ namespace vultra
         void onRender(rhi::CommandBuffer&, const rhi::RenderTargetView, const fsec dt) override;
 
     protected:
-        openxr::XRHeadset m_Headset;
+        openxr::XRHeadset      m_Headset;
+        openxr::XRCommonAction m_CommonAction;
     };
 } // namespace vultra

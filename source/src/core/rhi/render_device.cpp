@@ -1093,7 +1093,7 @@ namespace vultra
 
                 if (!ok)
                 {
-                    spdlog::error("[RenderDevice] Failed to create Vulkan device from OpenXR");
+                    VULTRA_CORE_ERROR("[RenderDevice] Failed to create Vulkan device from OpenXR");
                     throw std::runtime_error("Failed to create Vulkan device from OpenXR");
                 }
 

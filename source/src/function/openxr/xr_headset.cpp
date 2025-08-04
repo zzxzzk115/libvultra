@@ -107,7 +107,7 @@ namespace vultra
 
                 if (!formatFound)
                 {
-                    spdlog::error("[Headset] Invalid swapchain format!");
+                    VULTRA_CORE_ERROR("[Headset] Invalid swapchain format!");
                     return;
                 }
             }
