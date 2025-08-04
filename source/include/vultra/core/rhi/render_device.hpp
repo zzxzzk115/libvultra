@@ -4,6 +4,7 @@
 #include "vultra/core/base/scoped_enum_flags.hpp"
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/compute_pipeline.hpp"
+#include "vultra/core/rhi/image_aspect.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/raytracing/acceleration_structure.hpp"
@@ -180,6 +181,10 @@ namespace vultra
             RenderDevice& reset(const vk::Fence);
 
             RenderDevice& waitIdle();
+
+            bool saveTextureToFile(const Texture&         texture,
+                                   const std::string&     filePath,
+                                   const rhi::ImageAspect imageAspect = rhi::ImageAspect::eColor);
 
             // For the raytracing
             uint64_t getBufferDeviceAddress(const Buffer&) const;

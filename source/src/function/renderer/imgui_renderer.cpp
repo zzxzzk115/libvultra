@@ -315,11 +315,84 @@ namespace vultra
                 texture.getSampler(), texture.getImageView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         }
 
+        ImGuiTextureID addTexture(const rhi::Texture& texture, const vk::Sampler& sampler)
+        {
+            return ImGui_ImplVulkan_AddTexture(
+                sampler, texture.getImageView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        }
+
         void removeTexture(rhi::RenderDevice& rd, ImGuiTextureID& textureID)
         {
             rd.waitIdle();
             ImGui_ImplVulkan_RemoveTexture(textureID);
             textureID = nullptr;
+        }
+
+        void textureViewer(const std::string_view title,
+                           ImGuiTextureID         textureID,
+                           const rhi::Texture&    texture,
+                           const ImVec2&          textureSize,
+                           const std::string_view filePath,
+                           rhi::RenderDevice&     rd,
+                           bool                   open)
+        {
+            // Always center this window when appearing
+            ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+            ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+            // Show the full image in a popup
+            if (open)
+            {
+                ImGui::OpenPopup(title.data());
+            }
+            if (ImGui::BeginPopupModal(title.data(), nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                static float scale = 1.0f;
+                ImGui::SliderFloat("Scale", &scale, 0.1f, 2.0f, "%.1fx");
+
+                ImGui::Image(reinterpret_cast<ImTextureID>(textureID),
+                             ImVec2(textureSize.x * scale, textureSize.y * scale));
+
+                ImGui::Text(
+                    "Image Size: %ux%u", static_cast<uint32_t>(textureSize.x), static_cast<uint32_t>(textureSize.y));
+
+                static bool imageSaved             = false;
+                bool        saveImageButtonClicked = false;
+                if (ImGui::Button("Save Image"))
+                {
+                    imageSaved             = rd.saveTextureToFile(texture, filePath.data());
+                    saveImageButtonClicked = true;
+                }
+
+                if (ImGui::Button("Close"))
+                {
+                    ImGui::CloseCurrentPopup();
+                }
+
+                if (saveImageButtonClicked)
+                {
+                    ImGui::OpenPopup("Save Image Result");
+                }
+
+                if (ImGui::BeginPopupModal("Save Image Result", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+                {
+                    if (!imageSaved)
+                    {
+                        ImGui::Text("Failed to save image to file: %s", filePath.data());
+                    }
+                    else
+                    {
+                        ImGui::Text("Image saved successfully! Path: %s", filePath.data());
+                    }
+                    if (ImGui::Button("Close"))
+                    {
+                        ImGui::CloseCurrentPopup();
+                    }
+                    ImGui::EndPopup();
+                }
+
+                ImGui::EndPopup();
+            }
         }
     } // namespace imgui
 } // namespace vultra

@@ -9,6 +9,8 @@
 #include <SDL3/SDL_vulkan.h>
 #include <cpptrace/cpptrace.hpp>
 #include <glm/common.hpp>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 
 #include <set>
 
@@ -1341,6 +1343,80 @@ namespace vultra
             assert(m_Device);
             m_Device.waitIdle();
             return *this;
+        }
+
+        bool RenderDevice::saveTextureToFile(const Texture&         texture,
+                                             const std::string&     filePath,
+                                             const rhi::ImageAspect imageAspect)
+        {
+            auto cb = createCommandBuffer();
+            cb.begin();
+
+            cb.getBarrierBuilder().imageBarrier(
+                {
+                    .image     = texture,
+                    .newLayout = rhi::ImageLayout::eGeneral,
+                },
+                {
+                    .stageMask  = rhi::PipelineStages::eTransfer,
+                    .accessMask = rhi::Access::eTransferRead,
+                });
+
+            auto stagingBuffer = createStagingBuffer(texture.getSize());
+
+            cb.copyImage(texture, stagingBuffer, imageAspect);
+
+            // Wait for the copy to complete
+            cb.getBarrierBuilder().bufferBarrier({.buffer = stagingBuffer},
+                                                 {
+                                                     .stageMask  = rhi::PipelineStages::eTransfer,
+                                                     .accessMask = rhi::Access::eTransferRead,
+                                                 });
+
+            execute(cb, JobInfo {});
+            m_GenericQueue.waitIdle();
+
+            // map the staging buffer
+            std::byte* data      = new std::byte[texture.getSize()];
+            auto*      mappedPtr = stagingBuffer.map();
+            if (!mappedPtr)
+            {
+                VULTRA_CORE_ERROR("[RenderDevice] Failed to map staging buffer for texture saving");
+                return false;
+            }
+
+            // copy the data from the mapped staging buffer to the data pointer
+            std::memcpy(data, mappedPtr, texture.getSize());
+
+            // if it's BGRA, convert it to RGBA
+            // normally for the swapchain
+            if (texture.getPixelFormat() == rhi::PixelFormat::eBGRA8_UNorm)
+            {
+                for (size_t i = 0; i < texture.getSize(); i += 4)
+                {
+                    std::swap(data[i], data[i + 2]);
+                }
+            }
+
+            // use stb_image to save the texture to a file
+            if (!stbi_write_png(filePath.c_str(),
+                                texture.getExtent().width,
+                                texture.getExtent().height,
+                                getBytesPerPixel(texture.getPixelFormat()),
+                                data,
+                                getBytesPerPixel(texture.getPixelFormat()) * texture.getExtent().width))
+            {
+                VULTRA_CORE_ERROR("[RenderDevice] Failed to save texture to file: {}", filePath);
+                return false;
+            }
+
+            // unmap the staging buffer
+            stagingBuffer.unmap();
+
+            // delete data
+            delete[] static_cast<std::byte*>(data);
+
+            return true;
         }
 
         uint64_t RenderDevice::getBufferDeviceAddress(const Buffer& buffer) const

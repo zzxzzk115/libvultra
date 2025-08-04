@@ -41,8 +41,17 @@ namespace vultra
         using ImGuiTextureID = VkDescriptorSet;
 
         ImGuiTextureID addTexture(const rhi::Texture& texture);
+        ImGuiTextureID addTexture(const rhi::Texture& texture, const vk::Sampler& sampler);
 
         void removeTexture(rhi::RenderDevice& rd, ImGuiTextureID& textureID);
+
+        void textureViewer(const std::string_view title,
+                           ImGuiTextureID         textureID,
+                           const rhi::Texture&    texture,
+                           const ImVec2&          textureSize,
+                           const std::string_view filePath,
+                           rhi::RenderDevice&     rd,
+                           bool                   open);
     } // namespace imgui
 
     namespace ImGuiExt

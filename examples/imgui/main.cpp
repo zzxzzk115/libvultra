@@ -2,6 +2,7 @@
 #include <vultra/core/rhi/graphics_pipeline.hpp>
 #include <vultra/core/rhi/vertex_buffer.hpp>
 #include <vultra/function/app/imgui_app.hpp>
+#include <vultra/function/renderer/imgui_renderer.hpp>
 
 #include <imgui.h>
 
@@ -86,6 +87,12 @@ public:
                                  .build(*m_RenderDevice);
     }
 
+    ~ImGuiExampleApp() override
+    {
+        if (m_TextureID != nullptr)
+            imgui::removeTexture(*m_RenderDevice, m_TextureID);
+    }
+
     void onImGui() override
     {
         ImGui::ShowDemoWindow();
@@ -98,21 +105,53 @@ public:
             m_WantCaptureFrame = true;
         }
 #endif
+        if (m_TextureID != nullptr)
+        {
+            bool open = false;
+            if (ImGui::Button("Show Render Target"))
+            {
+                open = true;
+            }
+            imgui::textureViewer("Render Target Viewer",
+                                 m_TextureID,
+                                 m_Texture,
+                                 m_TextureSize,
+                                 "rendertarget.png",
+                                 *m_RenderDevice,
+                                 open);
+        }
+
         ImGui::End();
     }
 
     void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
     {
         const auto& [frameIndex, target] = rtv;
-        rhi::prepareForAttachment(cb, target, false);
+        // rhi::prepareForAttachment(cb, target, false);
+        // Add to imgui texture
+        if (m_TextureID == nullptr)
+        {
+            m_Texture = rhi::Texture::Builder {}
+                            .setExtent(target.getExtent())
+                            .setPixelFormat(target.getPixelFormat())
+                            .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                           rhi::ImageUsage::eTransfer)
+                            .setupOptimalSampler(true)
+                            .build(*m_RenderDevice);
+
+            m_TextureID = imgui::addTexture(m_Texture);
+            m_TextureSize =
+                ImVec2 {static_cast<float>(target.getExtent().width), static_cast<float>(target.getExtent().height)};
+        }
+        rhi::prepareForAttachment(cb, m_Texture, false);
         {
             RHI_GPU_ZONE(cb, "RHI Triangle");
             cb.beginRendering({
-                                  .area = {.extent = target.getExtent()},
+                                  .area = {.extent = m_Texture.getExtent()},
                                   .colorAttachments =
                                       {
                                           {
-                                              .target     = &target,
+                                              .target     = &m_Texture,
                                               .clearValue = glm::vec4 {0.0f, 0.0f, 0.0f, 1.0f},
                                           },
                                       },
@@ -123,6 +162,9 @@ public:
                     .numVertices  = static_cast<uint32_t>(kTriangle.size()),
                 })
                 .endRendering();
+            rhi::prepareForReading(cb, m_Texture);
+            cb.blit(m_Texture, rtv.texture, vk::Filter::eLinear);
+            rhi::prepareForReading(cb, m_Texture);
         }
         ImGuiApp::onRender(cb, rtv, dt);
     }
@@ -130,6 +172,10 @@ public:
 private:
     rhi::VertexBuffer     m_VertexBuffer;
     rhi::GraphicsPipeline m_GraphicsPipeline;
+
+    rhi::Texture          m_Texture;
+    imgui::ImGuiTextureID m_TextureID {nullptr};
+    ImVec2                m_TextureSize {0.0f, 0.0f};
 };
 
 CONFIG_MAIN(ImGuiExampleApp)

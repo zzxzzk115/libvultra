@@ -231,7 +231,7 @@ namespace vultra
 
         vk::DeviceSize Texture::getSize() const
         {
-            if (auto* allocatedImage = std::get_if<AllocatedImage>(&m_Image); allocatedImage)
+            if (const auto* allocatedImage = std::get_if<AllocatedImage>(&m_Image); allocatedImage)
             {
                 const auto          allocator = std::get<vma::Allocator>(m_DeviceOrAllocator);
                 vma::AllocationInfo allocationInfo {};
@@ -500,7 +500,7 @@ namespace vultra
                 }
             }
 
-            if (const auto allocatedImage = std::get_if<AllocatedImage>(&m_Image); allocatedImage)
+            if (auto* const allocatedImage = std::get_if<AllocatedImage>(&m_Image); allocatedImage)
             {
                 std::get<vma::Allocator>(m_DeviceOrAllocator)
                     .destroyImage(allocatedImage->handle, allocatedImage->allocation);
