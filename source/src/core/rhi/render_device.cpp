@@ -104,7 +104,9 @@ namespace
 
             case vk::DebugUtilsMessageSeverityFlagBitsEXT::eError:
                 VULTRA_CORE_ERROR("{} {}", vk::to_string(messageType), pCallbackData->pMessage);
+#ifdef VULTRA_ENABLE_VK_VALIDATION_STACK_TRACE
                 cpptrace::generate_trace().print();
+#endif
                 break;
         }
 

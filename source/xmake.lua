@@ -57,6 +57,12 @@ option("renderdoc")
     set_description("Enable renderdoc support")
 option_end()
 
+option("vk_validation_stack_trace")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable Vulkan validation stack trace")
+option_end()
+
 -- add requirements
 add_requires("fmt", { system = false })
 add_requires("spdlog", "magic_enum", "entt", "glm", "stb", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace")
@@ -112,6 +118,9 @@ target("vultra")
         add_defines("_DEBUG", { public = true })
         if has_config("renderdoc") then
             add_defines("VULTRA_ENABLE_RENDERDOC", { public = true })
+        end
+        if has_config("vk_validation_stack_trace") then
+            add_defines("VULTRA_ENABLE_VK_VALIDATION_STACK_TRACE", { public = true })
         end
     else
         add_defines("NDEBUG", { public = true })
