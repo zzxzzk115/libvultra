@@ -67,6 +67,7 @@ namespace vultra
 
             eR16F    = VK_FORMAT_R16_SFLOAT,
             eRG16F   = VK_FORMAT_R16G16_SFLOAT,
+            eRGB16F  = VK_FORMAT_R16G16B16_SFLOAT,
             eRGBA16F = VK_FORMAT_R16G16B16A16_SFLOAT,
 
             // -- Integer:
