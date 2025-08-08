@@ -23,6 +23,11 @@ namespace vultra
                                   .type   = rhi::VertexAttribute::Type::eFloat2,
                                   .offset = offsetof(SimpleVertex, texCoord),
                               })
+                .setAttribute(AttributeLocation::eTangent,
+                              {
+                                  .type   = rhi::VertexAttribute::Type::eFloat4,
+                                  .offset = offsetof(SimpleVertex, tangent),
+                              })
                 .build();
         }
     } // namespace gfx

@@ -77,14 +77,27 @@ namespace vultra
                 {
                     SimpleVertex vertex {};
                     vertex.position = {aiMesh->mVertices[v].x, aiMesh->mVertices[v].y, aiMesh->mVertices[v].z};
+
                     if (aiMesh->HasNormals())
                     {
                         vertex.normal = {aiMesh->mNormals[v].x, aiMesh->mNormals[v].y, aiMesh->mNormals[v].z};
                     }
+
                     if (aiMesh->HasTextureCoords(0))
                     {
                         vertex.texCoord = {aiMesh->mTextureCoords[0][v].x, aiMesh->mTextureCoords[0][v].y};
                     }
+
+                    if (aiMesh->HasTangentsAndBitangents())
+                    {
+                        glm::vec3 tangent   = {aiMesh->mTangents[v].x, aiMesh->mTangents[v].y, aiMesh->mTangents[v].z};
+                        glm::vec3 bitangent = {
+                            aiMesh->mBitangents[v].x, aiMesh->mBitangents[v].y, aiMesh->mBitangents[v].z};
+                        glm::vec4 tangentWithHandness = glm::vec4(
+                            tangent, glm::dot(glm::cross(vertex.normal, bitangent), tangent) < 0.0f ? -1.0f : 1.0f);
+                        vertex.tangent = tangentWithHandness;
+                    }
+
                     mesh.vertices.push_back(vertex);
                 }
 
