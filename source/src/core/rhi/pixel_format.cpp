@@ -54,6 +54,9 @@ namespace vultra
                 case eRG16I:
                     return 4;
 
+                case eRGB16F:
+                    return 6;
+
                 case eRGBA16_UNorm:
                 case eRGBA16_SNorm:
                 case eRGBA16F:
