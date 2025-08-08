@@ -330,6 +330,7 @@ namespace vultra
         {
             if (!isFormatSupported(rd, m_PixelFormat, m_UsageFlags))
             {
+                VULTRA_CORE_ERROR("[Texture] Unsupported format: {}", toString(m_PixelFormat));
                 return {};
             }
 
