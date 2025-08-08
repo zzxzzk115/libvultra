@@ -56,7 +56,7 @@ namespace vultra
                     material->GetTexture(type, 0, &path);
                     return resource::loadResource<TextureManager>((p.parent_path() / path.data).generic_string());
                 }
-                else if (type == aiTextureType_EMISSION_COLOR)
+                else if (type == aiTextureType_EMISSIVE || type == aiTextureType_EMISSION_COLOR)
                 {
                     return m_DefaultBlack1x1;
                 }
