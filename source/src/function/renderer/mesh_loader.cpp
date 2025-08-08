@@ -17,23 +17,17 @@ namespace vultra
         {
             if (m_DefaultWhite1x1 == nullptr)
             {
-                m_DefaultWhite1x1 = createRef<rhi::Texture>(
-                    rhi::Texture::Builder {}
-                        .setExtent({1, 1})
-                        .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
-                        .setNumMipLevels(1)
-                        .setNumLayers(std::nullopt)
-                        .setUsageFlags(rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled)
-                        .setupOptimalSampler(true)
-                        .build(rd));
+                m_DefaultWhite1x1 = createDefaultTexture(255, 255, 255, 255, rd);
+            }
 
-                constexpr uint8_t whitePixel[4] = {255, 255, 255, 255};
-                constexpr auto    pixelSize     = sizeof(uint8_t);
-                constexpr auto    uploadSize    = 1 * 1 * 4 * pixelSize;
+            if (m_DefaultBlack1x1 == nullptr)
+            {
+                m_DefaultBlack1x1 = createDefaultTexture(0, 0, 0, 255, rd);
+            }
 
-                const auto srcStagingBuffer = rd.createStagingBuffer(uploadSize, whitePixel);
-
-                rhi::upload(rd, srcStagingBuffer, {}, *m_DefaultWhite1x1, false);
+            if (m_DefaultNormal1x1 == nullptr)
+            {
+                m_DefaultNormal1x1 = createDefaultTexture(127, 127, 255, 255, rd);
             }
 
             Assimp::Importer importer;
@@ -61,6 +55,14 @@ namespace vultra
                     aiString path {};
                     material->GetTexture(type, 0, &path);
                     return resource::loadResource<TextureManager>((p.parent_path() / path.data).generic_string());
+                }
+                else if (type == aiTextureType_EMISSION_COLOR)
+                {
+                    return m_DefaultBlack1x1;
+                }
+                else if (type == aiTextureType_NORMALS)
+                {
+                    return m_DefaultNormal1x1;
                 }
 
                 return m_DefaultWhite1x1;
@@ -120,7 +122,8 @@ namespace vultra
             };
 
             std::function<void(const aiNode*, const aiScene*)> processNode;
-            processNode = [&processMesh, &processNode, &vertexOffset, &indexOffset](const aiNode* aiNode, const aiScene* aiScene) {
+            processNode = [&processMesh, &processNode, &vertexOffset, &indexOffset](const aiNode*  aiNode,
+                                                                                    const aiScene* aiScene) {
                 for (uint32_t i = 0; i < aiNode->mNumMeshes; ++i)
                 {
                     aiMesh* aiMesh = aiScene->mMeshes[aiNode->mMeshes[i]];
@@ -166,6 +169,30 @@ namespace vultra
                                                                                 DefaultMesh&&          mesh) const
         {
             return createRef<MeshResource>(std::move(mesh), name);
+        }
+
+        Ref<rhi::Texture>
+        MeshLoader::createDefaultTexture(uint8_t r, uint8_t g, uint8_t b, uint8_t a, rhi::RenderDevice& rd)
+        {
+            auto texture =
+                createRef<rhi::Texture>(rhi::Texture::Builder {}
+                                            .setExtent({1, 1})
+                                            .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
+                                            .setNumMipLevels(1)
+                                            .setNumLayers(std::nullopt)
+                                            .setUsageFlags(rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled)
+                                            .setupOptimalSampler(true)
+                                            .build(rd));
+
+            const uint8_t pixelData[4] = {r, g, b, a};
+            const auto    pixelSize    = sizeof(uint8_t);
+            const auto    uploadSize   = 1 * 1 * 4 * pixelSize;
+
+            const auto srcStagingBuffer = rd.createStagingBuffer(uploadSize, pixelData);
+
+            rhi::upload(rd, srcStagingBuffer, {}, *texture, false);
+
+            return texture;
         }
     } // namespace gfx
 } // namespace vultra
