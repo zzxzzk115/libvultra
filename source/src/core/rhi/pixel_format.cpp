@@ -28,6 +28,9 @@ namespace vultra
                 case eRG8I:
                     return 2;
 
+                case eRGB8_UNorm:
+                    return 3;
+
                 case eRGBA8_UNorm:
                 case eRGBA8_sRGB:
                 case eBGRA8_UNorm:
