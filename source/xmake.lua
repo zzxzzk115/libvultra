@@ -32,7 +32,9 @@ rule("vulkansdk")
                 end
                 -- add vulkan library
                 lib_name = target:is_plat("windows") and util or "lib" .. util
-                target:add("links", path.join(vulkansdk.linkdirs[1], lib_name .. suffix), { public = true })
+                lib_path = path.join(vulkansdk.linkdirs[1], lib_name .. suffix)
+                print("Linking Vulkan library: " .. lib_path .. " for target: " .. target:name())
+                target:add("links", lib_path, { public = true })
             end
         end
     end)
