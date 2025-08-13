@@ -31,6 +31,9 @@ namespace vultra
             eOpaqueWhite,
             eTransparentBlack,
             eTransparentWhite,
+
+            eFakeSky,
+
             eUIntMax,
         };
 
