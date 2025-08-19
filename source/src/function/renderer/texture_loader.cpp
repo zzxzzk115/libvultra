@@ -33,6 +33,9 @@ namespace vultra
                     case ".pic"_hs:
                         return resource::loadTextureSTB(p, rd);
 
+                    case ".exr"_hs:
+                        return resource::loadTextureEXR(p, rd);
+
                     case ".ktx"_hs:
                     case ".dds"_hs:
                         return resource::loadTextureKTX_DDS(p, rd);

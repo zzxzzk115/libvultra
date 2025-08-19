@@ -67,7 +67,7 @@ option_end()
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "glm", "stb", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace")
+add_requires("spdlog", "magic_enum", "entt", "glm", "stb", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr")
 add_requires("tracy 0.11.1", {configs = {on_demand = true}})
 add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, sdl3 = true, wchar32 = true}})
 add_requireconfs("imgui.libsdl3", {system = false}) -- we don't use system's SDL3 to avoid version conflicts
@@ -98,7 +98,7 @@ target("vultra")
     add_rules("vulkansdk")
 
     -- add packages
-    add_packages("fmt", "spdlog", "magic_enum", "entt", "glm", "stb", "vulkan-headers", "vulkan-memory-allocator-hpp", "fg", "cpptrace", { public = true })
+    add_packages("fmt", "spdlog", "magic_enum", "entt", "glm", "stb", "vulkan-headers", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr", { public = true })
     add_packages("tracy", "imgui", "libsdl3", "assimp", "spirv-cross", "glslang", "openxr", { public = true })
 
     -- vulkan dynamic loader
