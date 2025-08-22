@@ -8,6 +8,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+#include <magic_enum.hpp>
 namespace vultra
 {
     namespace gfx
@@ -18,16 +19,6 @@ namespace vultra
             if (m_DefaultWhite1x1 == nullptr)
             {
                 m_DefaultWhite1x1 = createDefaultTexture(255, 255, 255, 255, rd);
-            }
-
-            if (m_DefaultBlack1x1 == nullptr)
-            {
-                m_DefaultBlack1x1 = createDefaultTexture(0, 0, 0, 255, rd);
-            }
-
-            if (m_DefaultNormal1x1 == nullptr)
-            {
-                m_DefaultNormal1x1 = createDefaultTexture(127, 127, 255, 255, rd);
             }
 
             Assimp::Importer importer;
@@ -56,27 +47,28 @@ namespace vultra
                     material->GetTexture(type, 0, &path);
                     return resource::loadResource<TextureManager>((p.parent_path() / path.data).generic_string());
                 }
-                else if (type == aiTextureType_EMISSIVE || type == aiTextureType_EMISSION_COLOR)
-                {
-                    return m_DefaultBlack1x1;
-                }
-                else if (type == aiTextureType_NORMALS)
-                {
-                    return m_DefaultNormal1x1;
-                }
 
-                return m_DefaultWhite1x1;
+                return nullptr;
             };
 
-            const auto processMesh = [&mesh, loadTexture](const aiMesh*  aiMesh,
-                                                          const aiScene* aiScene,
-                                                          uint32_t&      vertexOffset,
-                                                          uint32_t&      indexOffset) {
+            const auto processMesh = [this, &mesh, loadTexture](const aiMesh*  aiMesh,
+                                                                const aiScene* aiScene,
+                                                                uint32_t&      vertexOffset,
+                                                                uint32_t&      indexOffset) {
                 // Copy vertices
                 for (unsigned int v = 0; v < aiMesh->mNumVertices; ++v)
                 {
                     SimpleVertex vertex {};
                     vertex.position = {aiMesh->mVertices[v].x, aiMesh->mVertices[v].y, aiMesh->mVertices[v].z};
+
+                    if (aiMesh->HasVertexColors(0))
+                    {
+                        vertex.color = {aiMesh->mColors[0][v].r, aiMesh->mColors[0][v].g, aiMesh->mColors[0][v].b};
+                    }
+                    else
+                    {
+                        vertex.color = {1.0f, 1.0f, 1.0f};
+                    }
 
                     if (aiMesh->HasNormals())
                     {
@@ -121,12 +113,82 @@ namespace vultra
                 // Handle materials
                 if (aiMesh->mMaterialIndex >= 0)
                 {
-                    const aiMaterial* material         = aiScene->mMaterials[aiMesh->mMaterialIndex];
-                    subMesh.material.albedo            = loadTexture(material, aiTextureType_DIFFUSE);
-                    subMesh.material.metallicRoughness = loadTexture(material, aiTextureType_METALNESS);
-                    subMesh.material.normal            = loadTexture(material, aiTextureType_NORMALS);
-                    subMesh.material.ao                = loadTexture(material, aiTextureType_AMBIENT_OCCLUSION);
-                    subMesh.material.emissive          = loadTexture(material, aiTextureType_EMISSIVE);
+                    const aiMaterial* material = aiScene->mMaterials[aiMesh->mMaterialIndex];
+
+                    // Log material properties
+                    aiString materialName;
+                    auto     result = material->Get(AI_MATKEY_NAME, materialName);
+                    if (result != aiReturn_SUCCESS)
+                    {
+                        VULTRA_CORE_WARN("[MeshLoader] Failed to get material name");
+                    }
+                    VULTRA_CORE_TRACE("[MeshLoader] Loading material: {}", materialName.C_Str());
+
+                    // Traverse material properties
+                    for (unsigned int i = 0; i < material->mNumProperties; ++i)
+                    {
+                        aiMaterialProperty* prop = material->mProperties[i];
+                        VULTRA_CORE_TRACE(
+                            "[MeshLoader] MaterialProperty {}: key='{}', semantic={}, index={}, type={}, dataLength={}",
+                            i,
+                            prop->mKey.C_Str(),
+                            prop->mSemantic,
+                            prop->mIndex,
+                            magic_enum::enum_name(prop->mType).data(),
+                            prop->mDataLength);
+                    }
+
+                    auto albedoTexture      = loadTexture(material, aiTextureType_DIFFUSE);
+                    subMesh.material.albedo = albedoTexture == nullptr ? m_DefaultWhite1x1 : albedoTexture;
+                    aiColor4D baseColor;
+                    result = material->Get(AI_MATKEY_BASE_COLOR, baseColor);
+                    if (result != aiReturn_SUCCESS)
+                    {
+                        VULTRA_CORE_WARN("[MeshLoader] Failed to get base color");
+                        subMesh.material.baseColor = glm::vec4(1, 1, 1, 1);
+                    }
+                    else
+                    {
+                        subMesh.material.baseColor = glm::vec4(baseColor.r, baseColor.g, baseColor.b, baseColor.a);
+                    }
+                    subMesh.material.useAlbedoTexture = (albedoTexture != nullptr);
+
+                    auto metallicTexture      = loadTexture(material, aiTextureType_METALNESS);
+                    subMesh.material.metallic = metallicTexture == nullptr ? m_DefaultWhite1x1 : metallicTexture;
+                    result = material->Get(AI_MATKEY_METALLIC_FACTOR, subMesh.material.metallicFactor);
+                    if (result != aiReturn_SUCCESS)
+                    {
+                        VULTRA_CORE_WARN("[MeshLoader] Failed to get metallic factor");
+                        subMesh.material.metallicFactor = 0.0f;
+                    }
+                    subMesh.material.useMetallicTexture = (metallicTexture != nullptr);
+
+                    auto roughnessTexture      = loadTexture(material, aiTextureType_DIFFUSE);
+                    subMesh.material.roughness = roughnessTexture == nullptr ? m_DefaultWhite1x1 : roughnessTexture;
+                    result = material->Get(AI_MATKEY_ROUGHNESS_FACTOR, subMesh.material.roughnessFactor);
+                    if (result != aiReturn_SUCCESS)
+                    {
+                        VULTRA_CORE_WARN("[MeshLoader] Failed to get roughness factor");
+                        subMesh.material.roughnessFactor = 0.5f;
+                    }
+                    subMesh.material.useRoughnessTexture = (roughnessTexture != nullptr);
+
+                    auto normalTexture                = loadTexture(material, aiTextureType_NORMALS);
+                    subMesh.material.normal           = normalTexture == nullptr ? m_DefaultWhite1x1 : normalTexture;
+                    subMesh.material.useNormalTexture = (normalTexture != nullptr);
+
+                    auto aoTexture                = loadTexture(material, aiTextureType_AMBIENT_OCCLUSION);
+                    subMesh.material.ao           = aoTexture == nullptr ? m_DefaultWhite1x1 : aoTexture;
+                    subMesh.material.useAOTexture = (aoTexture != nullptr);
+
+                    auto emissiveTexture      = loadTexture(material, aiTextureType_EMISSIVE);
+                    subMesh.material.emissive = emissiveTexture == nullptr ? m_DefaultWhite1x1 : emissiveTexture;
+                    subMesh.material.useEmissiveTexture = (emissiveTexture != nullptr);
+
+                    auto metallicRoughnessTexture = loadTexture(material, aiTextureType_GLTF_METALLIC_ROUGHNESS);
+                    subMesh.material.metallicRoughness =
+                        metallicRoughnessTexture == nullptr ? m_DefaultWhite1x1 : metallicRoughnessTexture;
+                    subMesh.material.useMetallicRoughnessTexture = (metallicRoughnessTexture != nullptr);
                 }
                 mesh.subMeshes.push_back(subMesh);
 
@@ -167,11 +229,11 @@ namespace vultra
 
             rd.execute([&](rhi::CommandBuffer& cb) {
                 cb.copyBuffer(
-                    stagingVertexBuffer, *mesh.vertexBuffer, vk::BufferCopy {0, 0, mesh.vertexBuffer->getSize()});
+                    stagingVertexBuffer, *mesh.vertexBuffer, vk::BufferCopy {0, 0, stagingVertexBuffer.getSize()});
                 if (stagingIndexBuffer)
                 {
                     cb.copyBuffer(
-                        stagingIndexBuffer, *mesh.indexBuffer, vk::BufferCopy {0, 0, mesh.indexBuffer->getSize()});
+                        stagingIndexBuffer, *mesh.indexBuffer, vk::BufferCopy {0, 0, stagingIndexBuffer.getSize()});
                 }
             });
 

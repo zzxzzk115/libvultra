@@ -2,6 +2,8 @@
 
 #include "vultra/core/rhi/texture.hpp"
 
+#include <glm/glm.hpp>
+
 namespace vultra
 {
     namespace gfx
@@ -9,10 +11,29 @@ namespace vultra
         struct PBRMaterial
         {
             Ref<rhi::Texture> albedo {nullptr};
-            Ref<rhi::Texture> metallicRoughness {nullptr};
+            glm::vec4         baseColor {1.0f, 1.0f, 1.0f, 1.0f};
+            bool              useAlbedoTexture {false};
+
+            Ref<rhi::Texture> metallic {nullptr};
+            float             metallicFactor {0.0f};
+            bool              useMetallicTexture {false};
+
+            Ref<rhi::Texture> roughness {nullptr};
+            float             roughnessFactor {0.0f};
+            bool              useRoughnessTexture {false};
+
             Ref<rhi::Texture> normal {nullptr};
+            bool              useNormalTexture {false};
+
             Ref<rhi::Texture> ao {nullptr};
+            bool              useAOTexture {false};
+
             Ref<rhi::Texture> emissive {nullptr};
+            bool              useEmissiveTexture {false};
+
+            // GLTF
+            Ref<rhi::Texture> metallicRoughness {nullptr};
+            bool              useMetallicRoughnessTexture {false};
         };
     } // namespace gfx
 } // namespace vultra
