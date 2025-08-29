@@ -9,6 +9,9 @@
 #define DDSKTX_IMPLEMENT
 #include <dds-ktx.h>
 
+#define TINYEXR_IMPLEMENTATION
+#include <tinyexr.h>
+
 #include <magic_enum/magic_enum.hpp>
 
 namespace
@@ -190,6 +193,47 @@ namespace vultra
             return texture;
         }
 
+        std::expected<rhi::Texture, std::string> loadTextureEXR(const std::filesystem::path& p, rhi::RenderDevice& rd)
+        {
+            const char* err = nullptr;
+            int         width, height;
+            float*      data = nullptr;
+
+            if (LoadEXR(&data, &width, &height, p.string().c_str(), &err) != TINYEXR_SUCCESS)
+            {
+                return std::unexpected {std::string(err)};
+            }
+
+            const auto extent       = rhi::Extent2D {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+            const auto numMipLevels = rhi::calcMipLevels(extent);
+
+            auto usageFlags = rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled;
+            if (numMipLevels > 1)
+                usageFlags |= rhi::ImageUsage::eTransferSrc;
+
+            auto texture = rhi::Texture::Builder {}
+                               .setExtent(extent)
+                               .setPixelFormat(rhi::PixelFormat::eRGBA32F)
+                               .setNumMipLevels(numMipLevels)
+                               .setNumLayers(std::nullopt)
+                               .setUsageFlags(usageFlags)
+                               .setupOptimalSampler(true)
+                               .build(rd);
+            if (!texture)
+            {
+                free(data);
+                return std::unexpected {"Failed to create texture."};
+            }
+
+            const auto uploadSize       = width * height * 4 * sizeof(float);
+            const auto srcStagingBuffer = rd.createStagingBuffer(uploadSize, data);
+            free(data);
+
+            rhi::upload(rd, srcStagingBuffer, {}, texture, numMipLevels > 1);
+
+            return texture;
+        }
+
         std::expected<rhi::Texture, std::string> loadTextureKTX_DDS(const std::filesystem::path& p,
                                                                     rhi::RenderDevice&           rd)
         {
@@ -225,7 +269,8 @@ namespace vultra
 
             if (tc.num_layers > 1)
             {
-                VULTRA_CORE_WARN("[TextureLoader] KTX/DDS texture with multiple layers is not supported yet. Fallback to single layer.");
+                VULTRA_CORE_WARN("[TextureLoader] KTX/DDS texture with multiple layers is not supported yet. Fallback "
+                                 "to single layer.");
             }
 
             // Create the texture from the parsed information

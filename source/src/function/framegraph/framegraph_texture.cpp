@@ -45,6 +45,9 @@ namespace vultra
                     case eTransparentWhite:
                         return glm::vec4 {1.0f, 1.0f, 1.0f, 0.0f};
 
+                    case eFakeSky:
+                        return glm::vec4 {0.529, 0.808, 0.922, 1.0};
+
                     case eUIntMax:
                         return glm::uvec4 {UINT_MAX};
                 }

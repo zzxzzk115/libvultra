@@ -13,6 +13,11 @@ namespace vultra
                                   .type   = rhi::VertexAttribute::Type::eFloat3,
                                   .offset = 0,
                               })
+                .setAttribute(AttributeLocation::eColor,
+                              {
+                                  .type   = rhi::VertexAttribute::Type::eFloat3,
+                                  .offset = offsetof(SimpleVertex, color),
+                              })
                 .setAttribute(AttributeLocation::eNormal,
                               {
                                   .type   = rhi::VertexAttribute::Type::eFloat3,

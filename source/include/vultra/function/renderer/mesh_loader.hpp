@@ -17,8 +17,6 @@ namespace vultra
 
         private:
             Ref<rhi::Texture> m_DefaultWhite1x1 {nullptr};
-            Ref<rhi::Texture> m_DefaultBlack1x1 {nullptr};
-            Ref<rhi::Texture> m_DefaultNormal1x1 {nullptr};
         };
     } // namespace gfx
 } // namespace vultra
