@@ -22,3 +22,6 @@ CMakeLists.txt
 # VS
 vs20*/
 vsxmake*/
+
+# clangd
+*.clangd

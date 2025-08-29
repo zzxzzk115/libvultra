@@ -45,9 +45,20 @@ rule("linux.sdl.driver")
     end)
 rule_end()
 
+rule("clangd.config")
+    on_config(function (target)
+        if is_host("windows") then
+            os.cp(".clangd.win", ".clangd")
+        else
+            os.cp(".clangd.nowin", ".clangd")
+        end
+    end)
+rule_end()
+
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.vsxmake.autoupdate")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode", lsp = "clangd"})
+add_rules("clangd.config")
 
 -- add repositories
 add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git backup")

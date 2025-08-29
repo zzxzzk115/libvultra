@@ -3,4 +3,4 @@ If:                               # Apply this config conditionally
   PathMatch: source/.*               # only for files under source/
   PathExclude: external/.*        # but not for files under external/
 CompileFlags:
-  Add: ['-std:c++latest']
+  Add: ['-std:c++23']
