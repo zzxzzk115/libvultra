@@ -61,8 +61,8 @@ namespace vultra
                 using Entries     = std::vector<Entry>;
                 using EntryGroups = std::unordered_map<HashType, Entries>;
 
-                std::vector<std::unique_ptr<T>> resources;
-                EntryGroups                     entryGroups;
+                std::vector<Scope<T>> resources;
+                EntryGroups           entryGroups;
             };
             Pool<rhi::Texture> m_Textures;
             Pool<rhi::Buffer>  m_Buffers;

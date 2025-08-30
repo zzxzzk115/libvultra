@@ -56,7 +56,7 @@ namespace vultra
             return *this;
         }
 
-        std::shared_ptr<VertexFormat> Builder::build()
+        Ref<VertexFormat> Builder::build()
         {
             Hash hash {0};
 

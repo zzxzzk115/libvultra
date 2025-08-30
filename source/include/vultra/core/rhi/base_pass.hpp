@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/base/base.hpp"
 #include "vultra/core/base/hash.hpp"
 #include "vultra/core/rhi/base_pipeline.hpp"
 
@@ -52,7 +53,7 @@ namespace vultra
             RenderDevice& m_RenderDevice;
 
             // Key = Hashed args passed to _createPipeline.
-            using PipelineCache = std::unordered_map<std::size_t, std::unique_ptr<PipelineType>>;
+            using PipelineCache = std::unordered_map<std::size_t, Scope<PipelineType>>;
             PipelineCache m_Pipelines;
         };
     } // namespace rhi

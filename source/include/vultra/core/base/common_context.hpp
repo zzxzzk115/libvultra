@@ -24,4 +24,14 @@ namespace vultra
 #define VULTRA_CLIENT_WARN(...) ::vultra::commonContext.logger.warn(false, __VA_ARGS__);
 #define VULTRA_CLIENT_ERROR(...) ::vultra::commonContext.logger.error(false, __VA_ARGS__);
 #define VULTRA_CLIENT_CRITICAL(...) ::vultra::commonContext.logger.critical(false, __VA_ARGS__);
+
+#define VULTRA_CORE_ASSERT(x, ...) \
+    { \
+        if (!(x)) \
+        { \
+            VULTRA_CORE_ERROR("Assertion Failed: {0}", __VA_ARGS__); \
+            DEBUG_BREAK(); \
+            assert(x); \
+        } \
+    }
 } // namespace vultra

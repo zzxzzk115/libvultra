@@ -44,6 +44,9 @@ namespace vultra
     template<typename T>
     using Scope = std::unique_ptr<T>;
 
+    template<typename T, typename Deleter>
+    using ScopeWithDeleter = std::unique_ptr<T, Deleter>;
+
     template<typename T, typename... Args>
     constexpr Scope<T> createScope(Args&&... args)
     {

@@ -165,7 +165,7 @@ namespace vultra
             {
                 ZoneScopedN("CreateBuffer");
 
-                std::unique_ptr<rhi::Buffer> buffer;
+                Scope<rhi::Buffer> buffer;
                 switch (desc.type)
                 {
                     using enum BufferType;

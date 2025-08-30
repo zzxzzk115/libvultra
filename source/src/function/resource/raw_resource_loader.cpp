@@ -147,7 +147,7 @@ namespace vultra
             {
                 void operator()(void* pixels) const { stbi_image_free(pixels); }
             };
-            std::unique_ptr<void, Deleter> pixels;
+            ScopeWithDeleter<void, Deleter> pixels;
             {
                 auto* ptr =
                     hdr ? static_cast<void*>(stbi_loadf_from_file(file, &width, &height, nullptr, STBI_rgb_alpha)) :

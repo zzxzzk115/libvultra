@@ -8,8 +8,8 @@ namespace vultra
     {
         struct TextureInfo
         {
-            rhi::TextureType              type {rhi::TextureType::eUndefined};
-            std::shared_ptr<rhi::Texture> texture;
+            rhi::TextureType  type {rhi::TextureType::eUndefined};
+            Ref<rhi::Texture> texture;
 
             [[nodiscard]] auto isValid() const { return type != rhi::TextureType::eUndefined && texture && *texture; }
 

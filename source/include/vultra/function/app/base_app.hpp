@@ -66,11 +66,11 @@ namespace vultra
         bool     m_WantCaptureFrame {false};
         uint64_t m_FrameCounter {0};
 
-        std::unique_ptr<RenderDocAPI>      m_RenderDocAPI {nullptr};
-        os::Window                         m_Window;
-        std::unique_ptr<rhi::RenderDevice> m_RenderDevice {nullptr};
-        rhi::Swapchain                     m_Swapchain;
-        rhi::FrameController               m_FrameController;
+        Scope<RenderDocAPI>      m_RenderDocAPI {nullptr};
+        os::Window               m_Window;
+        Scope<rhi::RenderDevice> m_RenderDevice {nullptr};
+        rhi::Swapchain           m_Swapchain;
+        rhi::FrameController     m_FrameController;
     };
 
     class FPSMonitor final
@@ -109,7 +109,7 @@ namespace vultra
             AppClass app {std::span {argv, std::size_t(argc)}}; \
             app.run(); \
         } \
-        CPPTRACE_CATCH (const std::exception& e) \
+        CPPTRACE_CATCH(const std::exception& e) \
         { \
             VULTRA_CLIENT_CRITICAL(e.what()); \
             cpptrace::from_current_exception().print(); \

@@ -45,7 +45,7 @@ namespace vultra
         [[nodiscard]] std::optional<std::string> serialize(const Resource&);
 
         template<typename T>
-        std::optional<std::string> serialize(const std::shared_ptr<T>& sp)
+        std::optional<std::string> serialize(const Ref<T>& sp)
         {
             auto r = std::dynamic_pointer_cast<const Resource>(sp);
             return r ? serialize(*r) : std::nullopt;
