@@ -12,6 +12,8 @@
 #define TINYEXR_IMPLEMENTATION
 #include <tinyexr.h>
 
+#include <basisu/transcoder/basisu_transcoder.h>
+
 #include <magic_enum/magic_enum.hpp>
 
 namespace
@@ -332,6 +334,15 @@ namespace vultra
             }
 
             return texture;
+        }
+
+        using namespace basist;
+
+        std::expected<rhi::Texture, std::string> loadTextureBasisU(const std::filesystem::path& path,
+                                                                   rhi::RenderDevice&           rd)
+        {
+            // TODO: Auto select targetFmt, implement texture loading
+            return {};
         }
     } // namespace resource
 } // namespace vultra
