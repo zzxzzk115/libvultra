@@ -13,3 +13,10 @@ target("renderdoc")
     add_includedirs("renderdoc", {public = true}) -- public: let other targets to auto include
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
+
+target("libktx")
+    set_kind("static")
+    add_includedirs("KTX-Software/$(plat)/$(arch)/include", {public = true})
+
+	add_links("ktx", {public = true})
+	add_linkdirs("KTX-Software/$(plat)/$(arch)/lib", {public = true})

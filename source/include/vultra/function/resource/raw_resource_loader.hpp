@@ -18,12 +18,12 @@ namespace vultra
                                                                               rhi::RenderDevice&);
 
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureEXR(const std::filesystem::path&,
-                                                                               rhi::RenderDevice&);
+                                                                              rhi::RenderDevice&);
 
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureKTX_DDS(const std::filesystem::path&,
                                                                                   rhi::RenderDevice&);
 
-        [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureBasisU(const std::filesystem::path&,
-                                                                                  rhi::RenderDevice&);
+        [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureKTX2(const std::filesystem::path&,
+                                                                               rhi::RenderDevice&);
     } // namespace resource
 } // namespace vultra

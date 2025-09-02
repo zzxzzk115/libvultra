@@ -5,6 +5,8 @@ namespace vultra
 {
     namespace gfx
     {
+        MeshLoadingSettings MeshManager::s_GlobalLoadingSettings {};
+
         MeshManager::MeshManager(rhi::RenderDevice& rd) : m_RenderDevice(rd) {}
 
         MeshResourceHandle MeshManager::load(const std::filesystem::path& p)
@@ -16,5 +18,12 @@ namespace vultra
         {
             MeshCache::load(entt::hashed_string {name.data()}.value(), name, std::move(mesh));
         }
+
+        void MeshManager::setGlobalLoadingSettings(const MeshLoadingSettings& settings)
+        {
+            s_GlobalLoadingSettings = settings;
+        }
+
+        const MeshLoadingSettings& MeshManager::getGlobalLoadingSettings() { return s_GlobalLoadingSettings; }
     } // namespace gfx
 } // namespace vultra

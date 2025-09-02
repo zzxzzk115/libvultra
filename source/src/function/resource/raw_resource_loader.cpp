@@ -12,9 +12,17 @@
 #define TINYEXR_IMPLEMENTATION
 #include <tinyexr.h>
 
-#include <basisu/transcoder/basisu_transcoder.h>
+#include <ktx.h>
+#include <ktxvulkan.h>
 
 #include <magic_enum/magic_enum.hpp>
+
+#include <expected>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <string>
+#include <vector>
 
 namespace
 {
@@ -104,25 +112,30 @@ namespace
                 return rhi::PixelFormat::eRG8_UNorm;
             case DDSKTX_FORMAT_RG8S:
                 return rhi::PixelFormat::eRG8_SNorm;
-            case _DDSKTX_FORMAT_COUNT:
-                break;
-
             case _DDSKTX_FORMAT_COMPRESSED:
                 throw std::runtime_error {"Undefined compressed format."};
-
             case DDSKTX_FORMAT_ETC1:
                 throw std::runtime_error {"ETC1 format is not supported."};
-
             case DDSKTX_FORMAT_ATC:
             case DDSKTX_FORMAT_ATCE:
             case DDSKTX_FORMAT_ATCI:
                 throw std::runtime_error {"ATC formats are not supported."};
-
             default:
                 return rhi::PixelFormat::eUndefined;
         }
+    }
 
-        return rhi::PixelFormat::eUndefined;
+    std::expected<std::vector<uint8_t>, std::string> readAll(const std::filesystem::path& p)
+    {
+        std::ifstream f(p, std::ios::binary | std::ios::ate);
+        if (!f)
+            return std::unexpected {"Could not open the file."};
+        const size_t         sz = static_cast<size_t>(f.tellg());
+        std::vector<uint8_t> data(sz);
+        f.seekg(0);
+        if (!f.read(reinterpret_cast<char*>(data.data()), sz))
+            return std::unexpected {"Failed to read the file."};
+        return data;
     }
 } // namespace
 
@@ -151,7 +164,7 @@ namespace vultra
             };
             ScopeWithDeleter<void, Deleter> pixels;
             {
-                auto* ptr =
+                void* ptr =
                     hdr ? static_cast<void*>(stbi_loadf_from_file(file, &width, &height, nullptr, STBI_rgb_alpha)) :
                           static_cast<void*>(stbi_load_from_file(file, &width, &height, nullptr, STBI_rgb_alpha));
                 pixels.reset(ptr);
@@ -197,13 +210,13 @@ namespace vultra
 
         std::expected<rhi::Texture, std::string> loadTextureEXR(const std::filesystem::path& p, rhi::RenderDevice& rd)
         {
-            const char* err = nullptr;
-            int         width, height;
+            const char* err   = nullptr;
+            int         width = 0, height = 0;
             float*      data = nullptr;
 
             if (LoadEXR(&data, &width, &height, p.string().c_str(), &err) != TINYEXR_SUCCESS)
             {
-                return std::unexpected {std::string(err)};
+                return std::unexpected {std::string(err ? err : "Failed to load EXR.")};
             }
 
             const auto extent       = rhi::Extent2D {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
@@ -249,20 +262,14 @@ namespace vultra
 
             auto path = std::filesystem::path {pathStr};
 
-            auto* file = fopen(path.string().c_str(), "rb");
-            if (!file)
-            {
-                return std::unexpected {"Could not open the file."};
-            }
-
-            const auto           size = static_cast<int>(std::filesystem::file_size(path));
-            std::vector<uint8_t> fileData(size);
-            fread(fileData.data(), 1, size, file);
-            fclose(file);
+            // C++ file I/O
+            auto fileBytes = readAll(path);
+            if (!fileBytes)
+                return std::unexpected {fileBytes.error()};
 
             ddsktx_texture_info tc {0};
 
-            if (!ddsktx_parse(&tc, fileData.data(), size, nullptr))
+            if (!ddsktx_parse(&tc, fileBytes->data(), static_cast<int>(fileBytes->size()), nullptr))
             {
                 return std::unexpected {"Failed to parse texture file."};
             }
@@ -275,7 +282,6 @@ namespace vultra
                                  "to single layer.");
             }
 
-            // Create the texture from the parsed information
             rhi::Texture texture = rhi::Texture::Builder {}
                                        .setExtent(extent)
                                        .setPixelFormat(toRHI(tc.format))
@@ -289,7 +295,6 @@ namespace vultra
                 return std::unexpected {"Failed to create texture."};
             }
 
-            // For each mip level, array layer, and cube face (if applicable)
             for (int mip = 0; mip < tc.num_mips; ++mip)
             {
                 for (int layer = 0; layer < tc.num_layers; ++layer)
@@ -297,15 +302,14 @@ namespace vultra
                     for (int face = 0; face < (tc.flags & DDSKTX_TEXTURE_FLAG_CUBEMAP ? DDSKTX_CUBE_FACE_COUNT : 1);
                          ++face)
                     {
-                        // Read the texture data
                         ddsktx_sub_data subData;
-                        ddsktx_get_sub(&tc, &subData, fileData.data(), size, layer, face, mip);
+                        ddsktx_get_sub(
+                            &tc, &subData, fileBytes->data(), static_cast<int>(fileBytes->size()), layer, face, mip);
                         if (!subData.buff)
                         {
                             return std::unexpected {"Failed to get texture sub-data."};
                         }
 
-                        // Allocate staging buffer for the texture data
                         const auto uploadSize       = subData.size_bytes;
                         const auto srcStagingBuffer = rd.createStagingBuffer(uploadSize, subData.buff);
                         if (!srcStagingBuffer)
@@ -313,8 +317,7 @@ namespace vultra
                             return std::unexpected {"Failed to create staging buffer."};
                         }
 
-                        // Upload the texture data to the GPU
-                        std::array<vk::BufferImageCopy, 1> copyRegions;
+                        std::array<vk::BufferImageCopy, 1> copyRegions {};
                         copyRegions[0].bufferOffset                    = 0;
                         copyRegions[0].bufferRowLength                 = 0;
                         copyRegions[0].bufferImageHeight               = 0;
@@ -336,13 +339,120 @@ namespace vultra
             return texture;
         }
 
-        using namespace basist;
-
-        std::expected<rhi::Texture, std::string> loadTextureBasisU(const std::filesystem::path& path,
-                                                                   rhi::RenderDevice&           rd)
+        // https://docs.vulkan.org/samples/latest/samples/performance/texture_compression_basisu/README.html
+        std::expected<rhi::Texture, std::string> loadTextureKTX2(const std::filesystem::path& path,
+                                                                 rhi::RenderDevice&           rd)
         {
-            // TODO: Auto select targetFmt, implement texture loading
-            return {};
+            // Load from file using libktx
+            ktxTexture2*   kTexture  = nullptr;
+            KTX_error_code ktxResult = ktxTexture2_CreateFromNamedFile(
+                path.string().c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &kTexture);
+
+            if (ktxResult != KTX_SUCCESS || !kTexture)
+            {
+                return std::unexpected {"ktxTexture2_CreateFromNamedFile failed: " +
+                                        std::string(ktxErrorString(ktxResult))};
+            }
+
+            if (ktxTexture2_NeedsTranscoding(kTexture))
+            {
+                ktxResult = ktxTexture2_TranscodeBasis(kTexture, KTX_TTF_BC7_RGBA, 0);
+                if (ktxResult != KTX_SUCCESS)
+                {
+                    return std::unexpected {"Could not transcode the input texture to the selected target format: " +
+                                            std::string(ktxErrorString(ktxResult))};
+                }
+            }
+
+            // Get texture info
+            uint32_t width     = kTexture->baseWidth;
+            uint32_t height    = kTexture->baseHeight;
+            uint32_t levels    = kTexture->numLevels > 0 ? kTexture->numLevels : 1;
+            uint32_t layers    = kTexture->numLayers > 0 ? kTexture->numLayers : 1;
+            bool     isCubemap = (kTexture->numFaces == 6);
+
+            // Translate KTX format to RHI format
+            VkFormat         vkFormat    = ktxTexture_GetVkFormat(reinterpret_cast<ktxTexture*>(kTexture));
+            rhi::PixelFormat pixelFormat = static_cast<rhi::PixelFormat>(vkFormat);
+            if (pixelFormat == rhi::PixelFormat::eUndefined)
+            {
+                ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(kTexture));
+                return std::unexpected {"Unsupported pixel format: " +
+                                        std::string(magic_enum::enum_name(pixelFormat).data())};
+            }
+
+            // Build RHI texture
+            std::optional<uint32_t> numLayers = std::nullopt;
+            if (isCubemap)
+            {
+                numLayers = layers * 6;
+            }
+            else if (layers > 1)
+            {
+                numLayers = layers;
+            }
+            auto tex = rhi::Texture::Builder {}
+                           .setExtent({width, height})
+                           .setPixelFormat(pixelFormat)
+                           .setNumMipLevels(levels)
+                           .setNumLayers(numLayers)
+                           .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst)
+                           .setupOptimalSampler(true)
+                           .build(rd);
+
+            if (!tex)
+            {
+                ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(kTexture));
+                return std::unexpected {"Failed to create RHI texture."};
+            }
+
+            // Upload each subresource
+            for (uint32_t level = 0; level < levels; ++level)
+            {
+                for (uint32_t layer = 0; layer < layers; ++layer)
+                {
+                    for (uint32_t face = 0; face < (isCubemap ? 6u : 1u); ++face)
+                    {
+                        ktx_size_t offset;
+                        ktxResult = ktxTexture_GetImageOffset(
+                            reinterpret_cast<ktxTexture*>(kTexture), level, layer, face, &offset);
+                        if (ktxResult != KTX_SUCCESS)
+                        {
+                            ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(kTexture));
+                            return std::unexpected {"ktxTexture_GetImageOffset failed."};
+                        }
+
+                        const uint8_t* src  = kTexture->pData + offset;
+                        ktx_size_t     size = ktxTexture_GetImageSize(reinterpret_cast<ktxTexture*>(kTexture), level);
+
+                        auto staging = rd.createStagingBuffer(size, src);
+                        if (!staging)
+                        {
+                            ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(kTexture));
+                            return std::unexpected {"Failed to create staging buffer."};
+                        }
+
+                        vk::BufferImageCopy copy {};
+                        copy.bufferOffset                    = 0;
+                        copy.bufferRowLength                 = 0;
+                        copy.bufferImageHeight               = 0;
+                        copy.imageSubresource.aspectMask     = rhi::getAspectMask(pixelFormat);
+                        copy.imageSubresource.mipLevel       = level;
+                        copy.imageSubresource.baseArrayLayer = layer * (isCubemap ? 6 : 1) + face;
+                        copy.imageSubresource.layerCount     = 1;
+                        copy.imageOffset                     = vk::Offset3D {0, 0, 0};
+                        copy.imageExtent                     = vk::Extent3D {std::max(1u, kTexture->baseWidth >> level),
+                                                         std::max(1u, kTexture->baseHeight >> level),
+                                                         1u};
+
+                        std::array<vk::BufferImageCopy, 1> regions {copy};
+                        rhi::upload(rd, staging, regions, tex, false);
+                    }
+                }
+            }
+
+            ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(kTexture));
+            return tex;
         }
     } // namespace resource
 } // namespace vultra

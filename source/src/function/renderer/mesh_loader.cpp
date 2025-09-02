@@ -2,6 +2,7 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/util.hpp"
+#include "vultra/function/renderer/mesh_manager.hpp"
 #include "vultra/function/renderer/texture_manager.hpp"
 
 #include <assimp/Importer.hpp>
@@ -45,6 +46,15 @@ namespace vultra
                 {
                     aiString path {};
                     material->GetTexture(type, 0, &path);
+                    // If using optimized textures, try to load .ktx2 first
+                    if (MeshManager::getGlobalLoadingSettings().useOptimizedTextures)
+                    {
+                        auto basisPath = ("imported" / p.parent_path() / path.data).replace_extension(".ktx2");
+                        if (std::filesystem::exists(basisPath))
+                        {
+                            return resource::loadResource<TextureManager>(basisPath.generic_string());
+                        }
+                    }
                     return resource::loadResource<TextureManager>((p.parent_path() / path.data).generic_string());
                 }
 
