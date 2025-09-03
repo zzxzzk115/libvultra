@@ -58,6 +58,7 @@ namespace vultra
                     return resource::loadResource<TextureManager>((p.parent_path() / path.data).generic_string());
                 }
 
+                VULTRA_CORE_WARN("[MeshLoader] Material has no texture of type {}", magic_enum::enum_name(type).data());
                 return nullptr;
             };
 
@@ -134,6 +135,7 @@ namespace vultra
                     }
                     VULTRA_CORE_TRACE("[MeshLoader] Loading material: {}", materialName.C_Str());
 
+#if DEBUG
                     // Traverse material properties
                     for (unsigned int i = 0; i < material->mNumProperties; ++i)
                     {
@@ -147,6 +149,7 @@ namespace vultra
                             magic_enum::enum_name(prop->mType).data(),
                             prop->mDataLength);
                     }
+#endif
 
                     // Albedo
                     auto albedoTexture      = loadTexture(material, aiTextureType_DIFFUSE);
@@ -176,7 +179,7 @@ namespace vultra
                     subMesh.material.useMetallicTexture = (metallicTexture != nullptr);
 
                     // Roughness
-                    auto roughnessTexture      = loadTexture(material, aiTextureType_DIFFUSE);
+                    auto roughnessTexture      = loadTexture(material, aiTextureType_DIFFUSE_ROUGHNESS);
                     subMesh.material.roughness = roughnessTexture == nullptr ? m_DefaultWhite1x1 : roughnessTexture;
                     result = material->Get(AI_MATKEY_ROUGHNESS_FACTOR, subMesh.material.roughnessFactor);
                     if (result != aiReturn_SUCCESS)
@@ -185,6 +188,11 @@ namespace vultra
                         subMesh.material.roughnessFactor = 0.5f;
                     }
                     subMesh.material.useRoughnessTexture = (roughnessTexture != nullptr);
+
+                    // Specular
+                    auto specularTexture      = loadTexture(material, aiTextureType_SPECULAR);
+                    subMesh.material.specular = specularTexture == nullptr ? m_DefaultWhite1x1 : specularTexture;
+                    subMesh.material.useSpecularTexture = (specularTexture != nullptr);
 
                     // Normal
                     auto normalTexture                = loadTexture(material, aiTextureType_NORMALS);

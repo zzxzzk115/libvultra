@@ -22,6 +22,9 @@ namespace vultra
             float             roughnessFactor {0.0f};
             bool              useRoughnessTexture {false};
 
+            Ref<rhi::Texture> specular {nullptr};
+            bool              useSpecularTexture {false};
+
             Ref<rhi::Texture> normal {nullptr};
             bool              useNormalTexture {false};
 
