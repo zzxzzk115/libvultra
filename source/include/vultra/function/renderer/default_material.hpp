@@ -34,6 +34,7 @@ namespace vultra
             // GLTF
             Ref<rhi::Texture> metallicRoughness {nullptr};
             bool              useMetallicRoughnessTexture {false};
+            bool              doubleSided {false};
         };
     } // namespace gfx
 } // namespace vultra

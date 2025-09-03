@@ -148,6 +148,7 @@ namespace vultra
                             prop->mDataLength);
                     }
 
+                    // Albedo
                     auto albedoTexture      = loadTexture(material, aiTextureType_DIFFUSE);
                     subMesh.material.albedo = albedoTexture == nullptr ? m_DefaultWhite1x1 : albedoTexture;
                     aiColor4D baseColor;
@@ -163,6 +164,7 @@ namespace vultra
                     }
                     subMesh.material.useAlbedoTexture = (albedoTexture != nullptr);
 
+                    // Metallic
                     auto metallicTexture      = loadTexture(material, aiTextureType_METALNESS);
                     subMesh.material.metallic = metallicTexture == nullptr ? m_DefaultWhite1x1 : metallicTexture;
                     result = material->Get(AI_MATKEY_METALLIC_FACTOR, subMesh.material.metallicFactor);
@@ -173,6 +175,7 @@ namespace vultra
                     }
                     subMesh.material.useMetallicTexture = (metallicTexture != nullptr);
 
+                    // Roughness
                     auto roughnessTexture      = loadTexture(material, aiTextureType_DIFFUSE);
                     subMesh.material.roughness = roughnessTexture == nullptr ? m_DefaultWhite1x1 : roughnessTexture;
                     result = material->Get(AI_MATKEY_ROUGHNESS_FACTOR, subMesh.material.roughnessFactor);
@@ -183,22 +186,34 @@ namespace vultra
                     }
                     subMesh.material.useRoughnessTexture = (roughnessTexture != nullptr);
 
+                    // Normal
                     auto normalTexture                = loadTexture(material, aiTextureType_NORMALS);
                     subMesh.material.normal           = normalTexture == nullptr ? m_DefaultWhite1x1 : normalTexture;
                     subMesh.material.useNormalTexture = (normalTexture != nullptr);
 
+                    // Ambient Occlusion
                     auto aoTexture                = loadTexture(material, aiTextureType_AMBIENT_OCCLUSION);
                     subMesh.material.ao           = aoTexture == nullptr ? m_DefaultWhite1x1 : aoTexture;
                     subMesh.material.useAOTexture = (aoTexture != nullptr);
 
+                    // Emissive
                     auto emissiveTexture      = loadTexture(material, aiTextureType_EMISSIVE);
                     subMesh.material.emissive = emissiveTexture == nullptr ? m_DefaultWhite1x1 : emissiveTexture;
                     subMesh.material.useEmissiveTexture = (emissiveTexture != nullptr);
 
+                    // Metallic Roughness
                     auto metallicRoughnessTexture = loadTexture(material, aiTextureType_GLTF_METALLIC_ROUGHNESS);
                     subMesh.material.metallicRoughness =
                         metallicRoughnessTexture == nullptr ? m_DefaultWhite1x1 : metallicRoughnessTexture;
                     subMesh.material.useMetallicRoughnessTexture = (metallicRoughnessTexture != nullptr);
+
+                    // Double Sided
+                    result = material->Get(AI_MATKEY_TWOSIDED, subMesh.material.doubleSided);
+                    if (result != aiReturn_SUCCESS)
+                    {
+                        VULTRA_CORE_WARN("[MeshLoader] Failed to get double sided");
+                        subMesh.material.doubleSided = true;
+                    }
                 }
                 mesh.subMeshes.push_back(subMesh);
 
