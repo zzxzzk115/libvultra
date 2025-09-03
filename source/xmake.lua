@@ -77,6 +77,9 @@ add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
 -- note: spirv-cross & glslang must require the same vulkan sdk version
 add_requires("spirv-cross vulkan-sdk-1.4.309", {configs = { shared = true, debug = is_mode("debug")}, system = false})
 add_requires("glslang 1.4.309+0", {configs = { debug = is_mode("debug")}, system = false})
+if not is_plat("windows") then
+    add_requires("ktx", {configs = {decoder = true, vulkan = true}})
+end
 
 -- target defination, name: vultra
 target("vultra")
@@ -93,7 +96,10 @@ target("vultra")
     add_files("src/**.cpp")
 
     -- add deps
-    add_deps("dds-ktx", "renderdoc", "libktx")
+    add_deps("dds-ktx", "renderdoc")
+    if is_plat("windows") then
+        add_deps("libktx")
+    end
 
     -- add rules
     add_rules("vulkansdk")
@@ -101,6 +107,9 @@ target("vultra")
     -- add packages
     add_packages("fmt", "spdlog", "stduuid", "cereal", "magic_enum", "entt", "glm", "stb", "vulkan-headers", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr", { public = true })
     add_packages("tracy", "imgui", "libsdl3", "assimp", "spirv-cross", "glslang", "openxr", { public = true })
+    if not is_plat("windows") then
+        add_packages("ktx", { public = true })
+    end
 
     -- vulkan dynamic loader
     add_defines("VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1", { public = true })
