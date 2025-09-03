@@ -1,5 +1,7 @@
 #include "vultra/core/base/uuid.hpp"
 
+#include <algorithm>
+
 namespace vultra
 {
     Ref<uuids::uuid_name_generator> CoreUUIDHelper::s_NameUUIDGenerator =
