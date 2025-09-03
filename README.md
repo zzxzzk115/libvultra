@@ -74,10 +74,11 @@ Step-by-Step:
 
 ## Future Work
 - [x] Wayland support
-- [ ] More powerful texture loader that supports KTX, KTX2, DDS and more
+- [x] More powerful texture loader that supports KTX, KTX2, DDS and more
   - [x] KTX
-  - [ ] KTX2
+  - [x] KTX2
   - [x] DDS
+  - [x] EXR
 - [ ] ECS-based scene management with EnTT
 - [ ] Raytracing Pipeline
 - [ ] Mesh Shading Pipeline
