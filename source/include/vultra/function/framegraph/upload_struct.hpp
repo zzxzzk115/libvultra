@@ -18,6 +18,7 @@ namespace vultra
             ZoneTransientN(__tracy_zone, passName.data(), true);
 
             constexpr auto kDataSize = static_cast<uint32_t>(sizeof(T));
+            auto           payload   = std::make_shared<T>(std::move(s.data));
 
             struct Data
             {
@@ -36,10 +37,10 @@ namespace vultra
                                                                    });
                     data.buffer = builder.write(data.buffer, BindingInfo {.pipelineStage = PipelineStage::eTransfer});
                 },
-                [passName, s = std::move(s.data)](const Data& data, FrameGraphPassResources& resources, void* ctx) {
+                [passName, payload](const Data& data, FrameGraphPassResources& resources, void* ctx) {
                     auto& cb = static_cast<RenderContext*>(ctx)->commandBuffer;
                     RHI_GPU_ZONE(cb, passName.data());
-                    cb.update(*resources.get<FrameGraphBuffer>(data.buffer).buffer, 0, kDataSize, &s);
+                    cb.update(*resources.get<FrameGraphBuffer>(data.buffer).buffer, 0, kDataSize, payload.get());
                 });
 
             return buffer;
