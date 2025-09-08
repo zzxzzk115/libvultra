@@ -1,5 +1,6 @@
 #include "vultra/function/renderer/mesh_loader.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/graphics_pipeline.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/function/renderer/mesh_manager.hpp"
@@ -10,6 +11,49 @@
 #include <assimp/scene.h>
 
 #include <magic_enum.hpp>
+
+namespace
+{
+    const vultra::rhi::BlendState kNoBlend = {
+        .enabled = false,
+    };
+
+    const vultra::rhi::BlendState kAlphaBlend = {
+        .enabled  = true,
+        .srcColor = vultra::rhi::BlendFactor::eSrcAlpha,
+        .dstColor = vultra::rhi::BlendFactor::eOneMinusSrcAlpha,
+        .colorOp  = vultra::rhi::BlendOp::eAdd,
+        .srcAlpha = vultra::rhi::BlendFactor::eOne,
+        .dstAlpha = vultra::rhi::BlendFactor::eZero,
+        .alphaOp  = vultra::rhi::BlendOp::eAdd,
+    };
+
+    const vultra::rhi::BlendState kAdditiveBlend = {
+        .enabled  = true,
+        .srcColor = vultra::rhi::BlendFactor::eOne,
+        .dstColor = vultra::rhi::BlendFactor::eOne,
+        .colorOp  = vultra::rhi::BlendOp::eAdd,
+        .srcAlpha = vultra::rhi::BlendFactor::eOne,
+        .dstAlpha = vultra::rhi::BlendFactor::eZero,
+        .alphaOp  = vultra::rhi::BlendOp::eAdd,
+    };
+
+    vultra::rhi::BlendState toBlendState(aiBlendMode mode)
+    {
+        switch (mode)
+        {
+            case aiBlendMode_Default:
+                return kAlphaBlend;
+            case aiBlendMode_Additive:
+                return kAdditiveBlend;
+            default:
+                VULTRA_CORE_WARN("[MeshLoader] Unknown aiBlendMode {}, using default blend state",
+                                 magic_enum::enum_name(mode).data());
+                return toBlendState(aiBlendMode::aiBlendMode_Default);
+        }
+    }
+} // namespace
+
 namespace vultra
 {
     namespace gfx
@@ -166,6 +210,35 @@ namespace vultra
                         subMesh.material.baseColor = glm::vec4(baseColor.r, baseColor.g, baseColor.b, baseColor.a);
                     }
                     subMesh.material.useAlbedoTexture = (albedoTexture != nullptr);
+
+                    // Opacity
+                    float opacity = 1.0f;
+                    result        = material->Get(AI_MATKEY_OPACITY, opacity);
+                    if (result != aiReturn_SUCCESS)
+                    {
+                        VULTRA_CORE_WARN("[MeshLoader] Failed to get opacity");
+                    }
+                    else
+                    {
+                        subMesh.material.opacity    = opacity;
+                        subMesh.material.blendState = (opacity < 1.0f) ? kAlphaBlend : kNoBlend;
+                        if (opacity < 1.0f)
+                        {
+                            VULTRA_CORE_TRACE("[MeshLoader] Material is not opaque, opacity: {}", opacity);
+                        }
+                    }
+
+                    // Alpha blend mode
+                    aiBlendMode blendMode {aiBlendMode_Default};
+                    result = material->Get(AI_MATKEY_BLEND_FUNC, blendMode);
+                    if (result != aiReturn_SUCCESS)
+                    {
+                        VULTRA_CORE_WARN("[MeshLoader] Failed to get blend mode");
+                    }
+                    else
+                    {
+                        subMesh.material.blendState = toBlendState(blendMode);
+                    }
 
                     // Metallic
                     auto metallicTexture      = loadTexture(material, aiTextureType_METALNESS);

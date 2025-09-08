@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/rhi/graphics_pipeline.hpp"
 #include "vultra/core/rhi/texture.hpp"
 
 #include <glm/glm.hpp>
@@ -13,6 +14,9 @@ namespace vultra
             Ref<rhi::Texture> albedo {nullptr};
             glm::vec4         baseColor {1.0f, 1.0f, 1.0f, 1.0f};
             bool              useAlbedoTexture {false};
+
+            float           opacity {1.0f};
+            rhi::BlendState blendState {.enabled = false};
 
             Ref<rhi::Texture> metallic {nullptr};
             float             metallicFactor {0.0f};
