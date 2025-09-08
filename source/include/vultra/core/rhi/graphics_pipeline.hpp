@@ -202,6 +202,7 @@ namespace vultra
 
                 // PixelFormat can contain stencil bits (might also be Undefined).
                 Builder& setDepthFormat(const PixelFormat);
+                Builder& setDepthBias(const DepthBias&);
                 // @param Can be empty
                 Builder& setColorFormats(std::initializer_list<PixelFormat>);
                 Builder& setColorFormats(std::span<const PixelFormat>);
@@ -246,3 +247,33 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
+
+namespace std
+{
+    template<>
+    struct hash<vultra::rhi::BlendState>
+    {
+        size_t operator()(const vultra::rhi::BlendState& b) const noexcept
+        {
+            return (std::hash<bool> {}(b.enabled) ^
+                    (std::hash<std::underlying_type_t<vultra::rhi::BlendFactor>> {}(
+                         static_cast<std::underlying_type_t<vultra::rhi::BlendFactor>>(b.srcColor))
+                     << 1) ^
+                    (std::hash<std::underlying_type_t<vultra::rhi::BlendFactor>> {}(
+                         static_cast<std::underlying_type_t<vultra::rhi::BlendFactor>>(b.dstColor))
+                     << 2) ^
+                    (std::hash<std::underlying_type_t<vultra::rhi::BlendOp>> {}(
+                         static_cast<std::underlying_type_t<vultra::rhi::BlendOp>>(b.colorOp))
+                     << 3) ^
+                    (std::hash<std::underlying_type_t<vultra::rhi::BlendFactor>> {}(
+                         static_cast<std::underlying_type_t<vultra::rhi::BlendFactor>>(b.srcAlpha))
+                     << 4) ^
+                    (std::hash<std::underlying_type_t<vultra::rhi::BlendFactor>> {}(
+                         static_cast<std::underlying_type_t<vultra::rhi::BlendFactor>>(b.dstAlpha))
+                     << 5) ^
+                    (std::hash<std::underlying_type_t<vultra::rhi::BlendOp>> {}(
+                         static_cast<std::underlying_type_t<vultra::rhi::BlendOp>>(b.alphaOp))
+                     << 6));
+        }
+    };
+} // namespace std

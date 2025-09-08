@@ -177,7 +177,11 @@ namespace vultra
                     {
                         VULTRA_CORE_WARN("[MeshLoader] Failed to get material name");
                     }
-                    VULTRA_CORE_TRACE("[MeshLoader] Loading material: {}", materialName.C_Str());
+                    else
+                    {
+                        VULTRA_CORE_TRACE("[MeshLoader] Loading material: {}", materialName.C_Str());
+                        subMesh.material.name = materialName.C_Str();
+                    }
 
 #if DEBUG
                     // Traverse material properties
@@ -210,6 +214,15 @@ namespace vultra
                         subMesh.material.baseColor = glm::vec4(baseColor.r, baseColor.g, baseColor.b, baseColor.a);
                     }
                     subMesh.material.useAlbedoTexture = (albedoTexture != nullptr);
+
+                    // Alpha Mask
+                    auto alphaMaskTexture      = loadTexture(material, aiTextureType_OPACITY);
+                    subMesh.material.alphaMask = alphaMaskTexture == nullptr ? m_DefaultWhite1x1 : alphaMaskTexture;
+                    subMesh.material.useAlphaMaskTexture = (alphaMaskTexture != nullptr);
+                    if (alphaMaskTexture != nullptr)
+                    {
+                        VULTRA_CORE_TRACE("[MeshLoader] Material uses alpha mask texture");
+                    }
 
                     // Opacity
                     float opacity = 1.0f;

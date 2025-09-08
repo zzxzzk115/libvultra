@@ -1,5 +1,6 @@
 #include "vultra/core/base/string_util.hpp"
 
+#include <algorithm>
 #include <array>
 #include <format>
 
@@ -23,6 +24,14 @@ namespace vultra
                 }
             }
             return std::format("{:.2f} {}", size, kUnits[i]);
+        }
+
+        std::string toupper_str(const std::string& str)
+        {
+            std::string result = str;
+            std::transform(
+                result.begin(), result.end(), result.begin(), [](unsigned char c) { return std::toupper(c); });
+            return result;
         }
 
     } // namespace util

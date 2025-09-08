@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/base/string_util.hpp"
 #include "vultra/core/rhi/graphics_pipeline.hpp"
 #include "vultra/core/rhi/texture.hpp"
 
@@ -11,9 +12,14 @@ namespace vultra
     {
         struct PBRMaterial
         {
+            std::string name;
+
             Ref<rhi::Texture> albedo {nullptr};
             glm::vec4         baseColor {1.0f, 1.0f, 1.0f, 1.0f};
             bool              useAlbedoTexture {false};
+
+            Ref<rhi::Texture> alphaMask {nullptr};
+            bool              useAlphaMaskTexture {false};
 
             float           opacity {1.0f};
             rhi::BlendState blendState {.enabled = false};
@@ -42,6 +48,12 @@ namespace vultra
             Ref<rhi::Texture> metallicRoughness {nullptr};
             bool              useMetallicRoughnessTexture {false};
             bool              doubleSided {false};
+
+            bool isDecal() const
+            {
+                auto upperCaseName = util::toupper_str(name);
+                return blendState.enabled && upperCaseName.find("DECAL") != std::string::npos;
+            }
         };
     } // namespace gfx
 } // namespace vultra

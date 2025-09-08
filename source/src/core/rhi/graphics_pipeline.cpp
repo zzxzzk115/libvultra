@@ -127,6 +127,14 @@ namespace vultra
             return *this;
         }
 
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthBias(const DepthBias& desc)
+        {
+            m_RasterizerState.depthBiasEnable         = VK_TRUE;
+            m_RasterizerState.depthBiasConstantFactor = desc.constantFactor;
+            m_RasterizerState.depthBiasSlopeFactor    = desc.slopeFactor;
+            return *this;
+        }
+
         GraphicsPipeline::Builder&
         GraphicsPipeline::Builder::setColorFormats(std::initializer_list<PixelFormat> formats)
         {
