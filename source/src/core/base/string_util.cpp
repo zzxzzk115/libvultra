@@ -34,5 +34,33 @@ namespace vultra
             return result;
         }
 
+        std::vector<std::string> split_str(const std::string& str, char delimiter)
+        {
+            std::vector<std::string> parts;
+            std::string              currentPart;
+
+            for (char ch : str)
+            {
+                if (ch == delimiter)
+                {
+                    if (!currentPart.empty())
+                    {
+                        parts.push_back(currentPart);
+                        currentPart.clear();
+                    }
+                }
+                else
+                {
+                    currentPart += ch;
+                }
+            }
+
+            if (!currentPart.empty())
+            {
+                parts.push_back(currentPart);
+            }
+
+            return parts;
+        }
     } // namespace util
 } // namespace vultra
