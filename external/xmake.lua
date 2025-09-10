@@ -13,5 +13,3 @@ target("renderdoc")
     add_includedirs("renderdoc", {public = true}) -- public: let other targets to auto include
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
-
-includes("KTX-Software")
