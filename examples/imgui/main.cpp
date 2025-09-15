@@ -52,7 +52,9 @@ class ImGuiExampleApp final : public ImGuiApp
 {
 public:
     explicit ImGuiExampleApp(const std::span<char*>& args) :
-        ImGuiApp(args, {.title = "RHI Triangle with ImGui"}, {.enableDocking = false})
+        ImGuiApp(args,
+                 {.title = "RHI Triangle with ImGui", .vSyncConfig = rhi::VerticalSync::eEnabled},
+                 {.enableDocking = false})
     {
         m_VertexBuffer = m_RenderDevice->createVertexBuffer(sizeof(SimpleVertex), 3);
 
@@ -129,7 +131,7 @@ public:
         const auto& [frameIndex, target] = rtv;
         // rhi::prepareForAttachment(cb, target, false);
         // Add to imgui texture
-        if (m_TextureID == nullptr)
+        if (m_TextureID == nullptr || m_Texture.getExtent() != target.getExtent())
         {
             m_Texture = rhi::Texture::Builder {}
                             .setExtent(target.getExtent())

@@ -82,13 +82,14 @@ namespace vultra
 
                     renderDocCaptureBegin();
 
-                    auto& cb    = m_FrameController.beginFrame();
-                    bool  valid = m_FrameController.acquireNextFrame();
+                    bool valid = m_FrameController.acquireNextFrame();
                     if (!valid)
                     {
-                        // If the command buffer is not valid, skip this frame.
+                        // If we failed to acquire the next frame, skip rendering and presenting
                         continue;
                     }
+
+                    auto& cb = m_FrameController.beginFrame();
 
                     onRender(cb, m_FrameController.getCurrentTarget(), deltaTime);
 

@@ -120,12 +120,13 @@ void main() {
             continue;
 
         auto& backBuffer        = frameController.getCurrentTarget().texture;
-        auto& cb                = frameController.beginFrame();
         bool  acquiredNextFrame = frameController.acquireNextFrame();
         if (!acquiredNextFrame)
         {
             continue;
         }
+
+        auto& cb = frameController.beginFrame();
 
         rhi::prepareForAttachment(cb, backBuffer, false);
         const rhi::FramebufferInfo framebufferInfo {.area             = rhi::Rect2D {.extent = backBuffer.getExtent()},

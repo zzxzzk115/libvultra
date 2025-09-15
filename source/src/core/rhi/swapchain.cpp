@@ -149,8 +149,7 @@ namespace vultra
             {
                 case vk::Result::eErrorOutOfDateKHR:
                     recreate();
-                    return false;
-
+                    [[fallthrough]];
                 case vk::Result::eSuboptimalKHR:
                 case vk::Result::eSuccess:
                     return true;
@@ -269,9 +268,9 @@ namespace vultra
             m_Device.waitIdle();
 
             VULTRA_CORE_TRACE("[Swapchain] Created, extent: ({}, {}), present mode: {}",
-                             extent.width,
-                             extent.height,
-                             magic_enum::enum_name(presentMode));
+                              extent.width,
+                              extent.height,
+                              magic_enum::enum_name(presentMode));
         }
 
         void Swapchain::buildBuffers(Extent2D extent, PixelFormat pixelFormat)

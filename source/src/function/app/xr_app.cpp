@@ -77,6 +77,8 @@ namespace vultra
 
             renderDocCaptureBegin();
 
+            bool acquiredNextFrame = m_FrameController.acquireNextFrame();
+
             // Begin frame
             auto& cb = m_FrameController.beginFrame();
 
@@ -89,7 +91,6 @@ namespace vultra
                 }
             }
 
-            bool acquiredNextFrame = false;
             if (m_Swapchain)
             {
                 {
@@ -100,8 +101,6 @@ namespace vultra
                 // Normal Rendering (ImGui, Mirror View, etc.)
                 {
                     ZoneScopedN("[App] Render");
-
-                    acquiredNextFrame = m_FrameController.acquireNextFrame();
 
                     // Only render if we successfully acquired the next frame
                     if (acquiredNextFrame)
