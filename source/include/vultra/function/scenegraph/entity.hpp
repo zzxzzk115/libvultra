@@ -60,7 +60,8 @@ namespace vultra
         operator uint32_t() const { return static_cast<uint32_t>(m_EntityHandle); }
 
         // helper functions (getters)
-        CoreUUID getCoreUUID() { return getComponent<IDComponent>().id; }
+        CoreUUID    getCoreUUID() { return getComponent<IDComponent>().id; }
+        std::string getName() { return getComponent<NameComponent>().name; }
 
         // TODO: helper functions (setters)
 

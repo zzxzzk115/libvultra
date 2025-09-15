@@ -70,8 +70,10 @@ namespace vultra
         }
         LogicSceneSimulationStatus getSimulationStatus() const { return m_SimulationStatus; }
 
-        const std::string&    getName() { return m_Name; }
-        std::filesystem::path getPath() { return m_Path; }
+        void               setName(const std::string& name) { m_Name = name; }
+        const std::string& getName() const { return m_Name; }
+
+        std::filesystem::path getPath() const { return m_Path; }
 
         entt::registry& getRegistry() { return m_Registry; }
 
