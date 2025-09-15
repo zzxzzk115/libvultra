@@ -66,6 +66,9 @@ add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git back
 -- include external libraries
 includes("external")
 
+-- bulitin tasks and targets
+includes("builtin")
+
 -- include source
 includes("source")
 

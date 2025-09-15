@@ -206,6 +206,12 @@ namespace vultra
             return *this;
         }
 
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::addBuiltinShader(const ShaderType type, const SPIRV& spv)
+        {
+            m_BuiltinShaderStages.emplace(type, spv);
+            return *this;
+        }
+
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthStencil(const DepthStencilState& desc)
         {
             m_DepthStencilState.depthTestEnable  = desc.depthTest;
@@ -288,16 +294,33 @@ namespace vultra
             m_RasterizerState.lineWidth = glm::clamp(m_RasterizerState.lineWidth, lineWidthRange[0], lineWidthRange[1]);
 
             // -- Shader stages:
-
-            const auto numShaderStages = m_ShaderStages.size();
+            auto       reflection      = m_PipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
+            const auto numShaderStages = m_ShaderStages.size() + m_BuiltinShaderStages.size();
             assert(numShaderStages > 0);
-
-            auto reflection = m_PipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
 
             std::vector<ShaderModule> shaderModules; // For delayed destruction only.
             shaderModules.reserve(numShaderStages);
             std::vector<vk::PipelineShaderStageCreateInfo> shaderStages;
             shaderStages.reserve(numShaderStages);
+
+            // -- Builtin stages:
+            for (const auto& [shaderType, spv] : m_BuiltinShaderStages)
+            {
+                auto shaderModule =
+                    rd.createShaderModule(spv, reflection ? std::addressof(reflection.value()) : nullptr);
+                if (!shaderModule)
+                    continue;
+
+                vk::PipelineShaderStageCreateInfo shaderStageCreateInfo {};
+                shaderStageCreateInfo.stage  = toVk(shaderType);
+                shaderStageCreateInfo.module = vk::ShaderModule {shaderModule};
+                shaderStageCreateInfo.pName  = "main";
+
+                shaderStages.push_back(shaderStageCreateInfo);
+                shaderModules.emplace_back(std::move(shaderModule));
+            }
+
+            // -- Shader stages:
             for (const auto& [shaderType, shaderStageInfo] : m_ShaderStages)
             {
                 auto shaderModule = rd.createShaderModule(shaderType,

@@ -216,6 +216,7 @@ namespace vultra
                 // If a shader of a given type is already specified, then its content will
                 // be overwritten with the given code.
                 Builder& addShader(const ShaderType, const ShaderStageInfo&);
+                Builder& addBuiltinShader(const ShaderType, const SPIRV&);
 
                 Builder& setDepthStencil(const DepthStencilState&);
                 Builder& setRasterizer(const RasterizerState&);
@@ -234,6 +235,7 @@ namespace vultra
                 vk::PrimitiveTopology m_PrimitiveTopology {vk::PrimitiveTopology::eTriangleList};
 
                 std::unordered_map<ShaderType, ShaderStageInfo> m_ShaderStages;
+                std::unordered_map<ShaderType, SPIRV>           m_BuiltinShaderStages;
                 PipelineLayout                                  m_PipelineLayout;
 
                 vk::PipelineDepthStencilStateCreateInfo            m_DepthStencilState;
