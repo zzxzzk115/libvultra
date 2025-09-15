@@ -78,16 +78,3 @@ end
 if has_config("examples") then
     includes("examples")
 end
-
--- phony target for install external libraries
-target("install-externals")
-    set_kind("phony")
-    -- on install, copy external prebuilt library to install directory
-    on_install(function (target)
-        if is_plat("windows") then
-            print("Copying KTX-Software files to install directory...")
-            os.cp(path.join(os.projectdir(), "external", "KTX-Software", os.host(), os.arch(), "lib", "*.lib"), path.join(target:installdir(), "lib"))
-            os.cp(path.join(os.projectdir(), "external", "KTX-Software", os.host(), os.arch(), "bin", "*.dll"), path.join(target:installdir(), "bin"))
-            os.cp(path.join(os.projectdir(), "external", "KTX-Software", os.host(), os.arch(), "include", "**"), path.join(target:installdir(), "include"))
-        end
-    end)
