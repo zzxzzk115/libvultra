@@ -4,12 +4,15 @@
 
 namespace vultra
 {
-    struct GBufferData
+    namespace gfx
     {
-        FrameGraphResource albedo;
-        FrameGraphResource normal;
-        FrameGraphResource emissive;
-        FrameGraphResource metallicRoughnessAO;
-        FrameGraphResource depth;
-    };
+        struct GBufferData
+        {
+            FrameGraphResource albedo;
+            FrameGraphResource normal;
+            FrameGraphResource emissive;
+            FrameGraphResource metallicRoughnessAO;
+            FrameGraphResource depth;
+        };
+    } // namespace gfx
 } // namespace vultra

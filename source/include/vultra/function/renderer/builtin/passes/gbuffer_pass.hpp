@@ -9,27 +9,30 @@
 
 namespace vultra
 {
-    class GBufferPass final : public rhi::RenderPass<GBufferPass>
+    namespace gfx
     {
-        friend class BasePass;
+        class GBufferPass final : public rhi::RenderPass<GBufferPass>
+        {
+            friend class BasePass;
 
-    public:
-        explicit GBufferPass(rhi::RenderDevice&);
+        public:
+            explicit GBufferPass(rhi::RenderDevice&);
 
-        void addPass(FrameGraph&,
-                     FrameGraphBlackboard&,
-                     const rhi::Extent2D&        resolution,
-                     const RenderPrimitiveGroup& renderPrimitiveGroup,
-                     bool                        enableAreaLight);
+            void addPass(FrameGraph&,
+                         FrameGraphBlackboard&,
+                         const rhi::Extent2D&        resolution,
+                         const RenderPrimitiveGroup& renderPrimitiveGroup,
+                         bool                        enableAreaLight);
 
-    private:
-        rhi::GraphicsPipeline
-        createPipeline(const gfx::BaseGeometryPassInfo&, bool doubleSided, bool alphaMasking) const;
+        private:
+            rhi::GraphicsPipeline
+            createPipeline(const gfx::BaseGeometryPassInfo&, bool doubleSided, bool alphaMasking) const;
 
-        rhi::GraphicsPipeline m_AreaLightDebugPipeline;
-        bool                  m_AreaLightDebugCreated {false};
+            rhi::GraphicsPipeline m_AreaLightDebugPipeline;
+            bool                  m_AreaLightDebugCreated {false};
 
-        rhi::GraphicsPipeline m_DecalPipeline;
-        bool                  m_DecalPipelineCreated {false};
-    };
+            rhi::GraphicsPipeline m_DecalPipeline;
+            bool                  m_DecalPipelineCreated {false};
+        };
+    } // namespace gfx
 } // namespace vultra

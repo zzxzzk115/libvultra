@@ -63,9 +63,9 @@ Step-by-Step:
   xmake run example-window
   xmake run example-rhi-triangle
   xmake run example-imgui
-  xmake run example-imgui-remote # use add_requires + add_packages
   xmake run example-framegraph-triangle
   xmake run example-openxr-triangle
+  xmake run example-gltf-viewer
   ```
 
   > **Tips:**

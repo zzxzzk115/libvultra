@@ -41,30 +41,47 @@ task("shader_task")
 					"-P#define DEPTH_ZERO_TO_ONE 1", -- for Vulkan Depth
                     f
                 })
+
+                -- read spv binary and write to header file
+                local spv_data = io.readfile(out_spv, {encoding = "binary"})
+
+                -- magic number check
+                if #spv_data < 4 then
+                    raise("spv file too small: %s", out_spv)
+                end
+
+                local b1, b2, b3, b4 = spv_data:byte(1, 4)
+                local magic = b1 | (b2 << 8) | (b3 << 16) | (b4 << 24)
+
+                if magic ~= 0x07230203 then
+                    raise("invalid SPIR-V magic number in %s: got 0x%08X, expected 0x07230203", out_spv, magic)
+                end
+
+                local header_path = path.join(shader_header_root, rel .. ".spv.h")
+                os.mkdir(path.directory(header_path))
+
+                -- base name + extension -> unique symbol
+                local base = path.basename(rel):gsub("%.", "_")
+                local ext  = path.extension(rel):sub(2)
+                local symbol = base .. "_" .. ext -- e.g. pbr_vert
+
+                local header_file = io.open(header_path, "w")
+                header_file:write("// Auto-generated from " .. rel .. "\n")
+                header_file:write("#pragma once\n\n")
+                header_file:write("#include <cstdint>\n")
+                header_file:write("#include <vector>\n\n")
+                header_file:write("const std::vector<uint32_t> " .. symbol .. "_spv = {\n    ")
+
+                for i = 1, #spv_data, 4 do
+                    if i > 1 then header_file:write(",\n    ") end
+                    local w1, w2, w3, w4 = spv_data:byte(i, i + 3)
+                    local word = w1 | (w2 << 8) | (w3 << 16) | (w4 << 24)
+                    header_file:write(string.format("0x%08X", word))
+                end
+
+                header_file:write("\n};\n")
+                header_file:close()
             end
-
-            -- read spv binary and write to header file
-            local spv_data = io.readfile(out_spv, "rb")
-            local header_path = path.join(shader_header_root, rel .. ".spv.h")
-            os.mkdir(path.directory(header_path))
-
-            -- base name + extension -> unique symbol
-            local base = path.basename(rel):gsub("%.", "_")
-            local ext  = path.extension(rel):sub(2)
-            local symbol = base .. "_" .. ext -- e.g. pbr_vert
-
-            local header_file = io.open(header_path, "w")
-            header_file:write("// Auto-generated from " .. rel .. "\n")
-            header_file:write("#pragma once\n\n")
-            header_file:write("#include <cstdint>\n")
-            header_file:write("#include <vector>\n\n")
-            header_file:write("const std::vector<uint32_t> " .. symbol .. "_spv = {\n    ")
-            for i = 1, #spv_data do
-                if i > 1 then header_file:write(",\n    ") end
-                header_file:write("0x" .. string.format("%08X", spv_data:byte(i)))
-            end
-            header_file:write("\n};\n")
-            header_file:close()
 		end
 	end)
 task_end()
@@ -75,7 +92,7 @@ target("vultra_shaders")
     set_kind("headeronly")
 
 	add_headerfiles("shader_headers/**.h")
-    add_includedirs("shader_headers", {public = true}) -- public: let other targets to auto include
+    add_includedirs(".", {public = true}) -- public: let other targets to auto include
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
 

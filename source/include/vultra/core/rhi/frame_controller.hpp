@@ -53,7 +53,7 @@ namespace vultra
             std::vector<PerFrameData> m_Frames;
             FrameIndex                m_FrameIndex;
 
-            bool m_AcquireCalled {false};
+            bool m_ImageAcquired {false};
         };
     } // namespace rhi
 } // namespace vultra

@@ -1,14 +1,14 @@
 #pragma once
 
-#include <fg/FrameGraphResource.hpp>
-
 namespace vultra
 {
     namespace gfx
     {
-        struct CameraData
+        // NOLINTBEGIN
+        enum class PassOutputMode
         {
-            FrameGraphResource cameraBlock;
+            GBuffer_Albedo
         };
+        // NOLINTEND
     } // namespace gfx
 } // namespace vultra

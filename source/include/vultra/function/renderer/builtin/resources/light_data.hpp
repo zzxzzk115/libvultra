@@ -4,8 +4,11 @@
 
 namespace vultra
 {
-    struct LightData
+    namespace gfx
     {
-        FrameGraphResource lightBlock;
-    };
+        struct LightData
+        {
+            FrameGraphResource lightBlock;
+        };
+    } // namespace gfx
 } // namespace vultra

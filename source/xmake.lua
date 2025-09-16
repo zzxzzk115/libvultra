@@ -76,7 +76,7 @@ add_requires("assimp", {configs = {shared = true, debug = is_mode("debug"), drac
 add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
 -- note: spirv-cross & glslang must require the same vulkan sdk version
 add_requires("spirv-cross vulkan-sdk-1.4.309", {configs = { shared = true, debug = is_mode("debug")}, system = false})
-add_requires("glslang 1.4.309+0", {configs = { binaryonly = false, debug = is_mode("debug")}, system = false})
+add_requires("glslang 1.4.309+0", {configs = {debug = is_mode("debug")}, system = false})
 if is_plat("windows") then
     add_requires("ktx-windows")
 else

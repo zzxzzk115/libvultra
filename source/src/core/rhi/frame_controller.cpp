@@ -62,7 +62,7 @@ namespace vultra
         CommandBuffer& FrameController::beginFrame()
         {
             assert(m_Swapchain);
-            assert(m_AcquireCalled);
+            assert(m_ImageAcquired);
             ZoneScopedN("RHI::BeginFrame");
 
             auto& [cb, _1, _2] = m_Frames[m_FrameIndex];
@@ -84,10 +84,8 @@ namespace vultra
             auto& [cb, imageAcquired, _] = m_Frames[m_FrameIndex];
             cb.reset();
 
-            bool result     = m_Swapchain->acquireNextImage(imageAcquired);
-            m_AcquireCalled = true;
-
-            return result;
+            m_ImageAcquired = m_Swapchain->acquireNextImage(imageAcquired);
+            return m_ImageAcquired;
         }
 
         FrameController& FrameController::endFrame()
@@ -114,7 +112,7 @@ namespace vultra
                                         .signal    = renderCompleted,
                                     });
 
-            m_AcquireCalled = false;
+            m_ImageAcquired = false;
             return *this;
         }
 
