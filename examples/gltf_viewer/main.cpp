@@ -22,19 +22,19 @@ public:
         renderables.push_back({.mesh = m_MeshResource});
         m_Renderer.setRenderables(renderables);
 
-        m_Renderer.getCameraInfo().zNear = 0.1f;
-        m_Renderer.getCameraInfo().zFar  = 100.0f;
-        m_Renderer.getCameraInfo().view =
+        auto& camInfo = m_Renderer.getCameraInfo();
+        camInfo.zNear = 0.1f;
+        camInfo.zFar  = 100.0f;
+        camInfo.view =
             glm::lookAt(glm::vec3(0.0f, 0.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        m_Renderer.getCameraInfo().projection = glm::perspectiveFov(45.0f,
-                                                                    static_cast<float>(m_Window.getExtent().x),
-                                                                    static_cast<float>(m_Window.getExtent().y),
-                                                                    m_Renderer.getCameraInfo().zNear,
-                                                                    m_Renderer.getCameraInfo().zFar);
-        m_Renderer.getCameraInfo().projection[1][1] *= -1; // Flip Y for Vulkan
-        m_Renderer.getCameraInfo().viewProjection =
-            m_Renderer.getCameraInfo().projection * m_Renderer.getCameraInfo().view;
-        m_Renderer.getCameraInfo().inverseOriginalProjection = glm::inverse(m_Renderer.getCameraInfo().projection);
+        camInfo.projection = glm::perspectiveFov(45.0f,
+                                                 static_cast<float>(m_Window.getExtent().x),
+                                                 static_cast<float>(m_Window.getExtent().y),
+                                                 camInfo.zNear,
+                                                 camInfo.zFar);
+        camInfo.projection[1][1] *= -1; // Flip Y for Vulkan
+        camInfo.viewProjection            = camInfo.projection * camInfo.view;
+        camInfo.inverseOriginalProjection = glm::inverse(camInfo.projection);
     }
 
     void onImGui() override
