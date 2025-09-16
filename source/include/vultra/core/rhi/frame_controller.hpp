@@ -54,6 +54,7 @@ namespace vultra
             FrameIndex                m_FrameIndex;
 
             bool m_ImageAcquired {false};
+            bool m_ImageAcquireAttempted {false};
         };
     } // namespace rhi
 } // namespace vultra
