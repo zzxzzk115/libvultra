@@ -18,8 +18,7 @@
 #include "vultra/core/rhi/uniform_buffer.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
-#include <tracy/Tracy.hpp>
-#include <tracy/TracyVulkan.hpp>
+#include "vultra/core/profiling/tracy_wrapper.hpp"
 
 #include <functional>
 #include <string>

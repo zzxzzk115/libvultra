@@ -15,10 +15,8 @@
 
 #include <glm/ext/vector_uint3.hpp>
 
-#include <tracy/Tracy.hpp>
-#include <tracy/TracyVulkan.hpp>
-
 #include "vultra/core/profiling/tracky.hpp"
+#include "vultra/core/profiling/tracy_wrapper.hpp"
 
 namespace vultra
 {

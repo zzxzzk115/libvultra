@@ -2,8 +2,9 @@
 #include "vultra/core/os/window.hpp"
 #include "vultra/core/rhi/vk/macro.hpp"
 
+#include "vultra/core/profiling/tracy_wrapper.hpp"
+
 #include <magic_enum/magic_enum.hpp>
-#include <tracy/Tracy.hpp>
 
 namespace vultra
 {
