@@ -42,13 +42,13 @@ rule_end()
 
 -- options
 option("tracy")
-    set_default(true)
+    set_default(false)
     set_showmenu(true)
     set_description("Enable tracy profiler")
 option_end()
 
 option("tracky")
-    set_default(true)
+    set_default(false)
     set_showmenu(true)
     set_description("Enable tracky profiler")
 option_end()

@@ -10,16 +10,16 @@
 
 #pragma once
 
+// NOLINTBEGIN
+// clang-format off
 #ifdef TRACKY_VULKAN
 #include <vulkan/vulkan.hpp>
 #endif
 
-// NOLINTBEGIN
-// clang-format off
-
-// Configuration
-#if !defined(TRACKY_ENABLE)
-#	define TRACKY_ENABLE 1
+#if TRACKY_ENABLE
+#if !defined (TRACKY_VULKAN) && !defined(TRACKY_OPENGL)
+#	error "TRACKY_ENABLE is defined, but neither TRACKY_VULKAN nor TRACKY_OPENGL is defined"
+#endif
 #endif
 
 #if !defined(TRACKY_DEFAULT_HARD_LEVEL)
