@@ -40,7 +40,9 @@ public:
 
     void onImGui() override
     {
-        ImGui::Begin("GLTF Viewer Settings");
+        ImGui::Begin("GLTF Viewer");
+        m_EnableOrbitCamera = !ImGui::IsItemHovered() && !ImGui::IsAnyItemActive() &&
+                              !ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");
         if (ImGui::IsItemClicked())
@@ -62,51 +64,60 @@ public:
         // Mouse orbit camera
         static glm::vec2 lastMousePos = Input::getMousePosition();
 
-        // Left button drag to rotate mesh
-        if (Input::getMouseButton(MouseCode::eLeft))
+        if (m_EnableOrbitCamera)
         {
-            const auto mousePos = Input::getMousePosition();
-            const auto delta    = mousePos - lastMousePos;
-            lastMousePos        = mousePos;
-
-            auto& meshTransform = m_LogicScene.getEntityWithName(MODEL_ENTITY_NAME).getComponent<TransformComponent>();
-            auto  euler         = meshTransform.getRotationEuler();
-            euler.x += delta.y * 0.1f;
-            euler.y += delta.x * 0.1f;
-            euler.x = glm::clamp(euler.x, -89.0f, 89.0f);
-            meshTransform.setRotationEuler(euler);
-        }
-        else
-        {
-            // Reset last mouse position when not dragging
-            if (Input::getMouseButtonDown(MouseCode::eLeft))
+            // Left button drag to rotate mesh
+            if (Input::getMouseButton(MouseCode::eLeft))
             {
-                lastMousePos = Input::getMousePosition();
-            }
-        }
+                const auto mousePos = Input::getMousePosition();
+                const auto delta    = mousePos - lastMousePos;
+                lastMousePos        = mousePos;
 
-        // Right button drag to zoom in/out
-        static bool wasPressed = false;
-        if (Input::getMouseButton(MouseCode::eRight))
-        {
-            const auto mousePos = Input::getMousePosition();
-            const auto delta    = lastMousePos - mousePos;
-            lastMousePos        = mousePos;
-
-            auto& camTransform = m_LogicScene.getMainCamera().getComponent<TransformComponent>();
-            camTransform.position += camTransform.forward() * (delta.y * 0.01f);
-        }
-        else
-        {
-            // Reset last mouse position when not dragging
-            if (wasPressed)
-            {
-                wasPressed = false;
+                auto& meshTransform =
+                    m_LogicScene.getEntityWithName(MODEL_ENTITY_NAME).getComponent<TransformComponent>();
+                auto euler = meshTransform.getRotationEuler();
+                euler.x += delta.y * 0.1f;
+                euler.y += delta.x * 0.1f;
+                euler.x = glm::clamp(euler.x, -89.0f, 89.0f);
+                meshTransform.setRotationEuler(euler);
             }
             else
             {
-                lastMousePos = Input::getMousePosition();
+                // Reset last mouse position when not dragging
+                if (Input::getMouseButtonDown(MouseCode::eLeft))
+                {
+                    lastMousePos = Input::getMousePosition();
+                }
             }
+
+            // Right button drag to zoom in/out
+            static bool wasPressed = false;
+            if (Input::getMouseButton(MouseCode::eRight))
+            {
+                const auto mousePos = Input::getMousePosition();
+                const auto delta    = lastMousePos - mousePos;
+                lastMousePos        = mousePos;
+
+                auto& camTransform = m_LogicScene.getMainCamera().getComponent<TransformComponent>();
+                camTransform.position += camTransform.forward() * (delta.y * 0.01f);
+            }
+            else
+            {
+                // Reset last mouse position when not dragging
+                if (wasPressed)
+                {
+                    wasPressed = false;
+                }
+                else
+                {
+                    lastMousePos = Input::getMousePosition();
+                }
+            }
+        }
+        else
+        {
+            // Sync mouse position when not orbiting
+            lastMousePos = Input::getMousePosition();
         }
 
         m_Renderer.setScene(&m_LogicScene);
@@ -124,6 +135,8 @@ public:
 private:
     gfx::BuiltinRenderer m_Renderer;
     LogicScene           m_LogicScene {"GLTF Viewer Scene"};
+
+    bool m_EnableOrbitCamera {true};
 };
 
 CONFIG_MAIN(GLTFViewerApp)
