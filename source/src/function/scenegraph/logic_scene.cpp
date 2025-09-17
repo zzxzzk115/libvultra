@@ -1,5 +1,6 @@
 #include "vultra/function/scenegraph/logic_scene.hpp"
 #include "vultra/function/io/serialization.hpp"
+#include "vultra/function/renderer/mesh_manager.hpp"
 #include "vultra/function/scenegraph/components.hpp"
 #include "vultra/function/scenegraph/entity.hpp"
 
@@ -168,6 +169,80 @@ namespace vultra
         return {};
     }
 
+    Entity LogicScene::createMainCamera()
+    {
+        Entity cameraEntity = createEntity("Main Camera");
+        cameraEntity.addComponent<TransformComponent>();
+        cameraEntity.addComponent<CameraComponent>();
+        return cameraEntity;
+    }
+
+    Entity LogicScene::getMainCamera() const
+    {
+        // Find the entity with CameraComponent and isPrimary == true
+        auto view = m_Registry.view<CameraComponent>();
+        for (auto entity : view)
+        {
+            const auto& cameraComponent = view.get<CameraComponent>(entity);
+            if (cameraComponent.isPrimary)
+            {
+                return {entity, const_cast<LogicScene*>(this)};
+            }
+        }
+
+        return {};
+    }
+
+    Entity LogicScene::createDirectionalLight()
+    {
+        Entity lightEntity = createEntity("Directional Light");
+        lightEntity.addComponent<TransformComponent>();
+        lightEntity.addComponent<DirectionalLightComponent>();
+        return lightEntity;
+    }
+
+    Entity LogicScene::getDirectionalLight() const
+    {
+        // Find the entity with DirectionalLightComponent
+        auto view = m_Registry.view<DirectionalLightComponent>();
+        for (auto entity : view)
+        {
+            return {entity, const_cast<LogicScene*>(this)};
+        }
+
+        return {};
+    }
+
+    Entity LogicScene::createMeshEntity(const std::string& name, const std::string& meshPath)
+    {
+        Entity meshEntity = createEntity(name);
+        meshEntity.addComponent<TransformComponent>();
+        meshEntity.addComponent<RawMeshComponent>(meshPath);
+        return meshEntity;
+    }
+
+    std::vector<gfx::Renderable> LogicScene::cookRenderables()
+    {
+        std::vector<gfx::Renderable> renderables;
+
+        auto view = m_Registry.view<RawMeshComponent, TransformComponent>();
+        for (auto entity : view)
+        {
+            const auto& meshComponent      = view.get<RawMeshComponent>(entity);
+            const auto& transformComponent = view.get<TransformComponent>(entity);
+
+            if (meshComponent.mesh)
+            {
+                gfx::Renderable renderable;
+                renderable.mesh        = meshComponent.mesh;
+                renderable.modelMatrix = transformComponent.getTransform();
+                renderables.push_back(renderable);
+            }
+        }
+
+        return renderables;
+    }
+
     void LogicScene::onLoad()
     {
         // TODO
@@ -310,4 +385,15 @@ namespace vultra
 
     ON_COMPONENT_ADDED(IDComponent) {}
     ON_COMPONENT_ADDED(NameComponent) {}
+    ON_COMPONENT_ADDED(TransformComponent) {}
+    ON_COMPONENT_ADDED(CameraComponent) {}
+    ON_COMPONENT_ADDED(DirectionalLightComponent) {}
+    ON_COMPONENT_ADDED(RawMeshComponent)
+    {
+        (void)entity; // Unused, avoid warning
+        if (!component.meshPath.empty())
+        {
+            component.mesh = resource::loadResource<gfx::MeshManager>(component.meshPath);
+        }
+    }
 } // namespace vultra

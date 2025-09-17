@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/base/uuid.hpp"
+#include "vultra/function/renderer/renderable.hpp"
 
 #include <entt/entt.hpp>
 
@@ -82,6 +83,16 @@ namespace vultra
         void   destroyEntity(Entity entity);
         Entity getEntityWithCoreUUID(CoreUUID uuid) const;
         Entity getEntityWithName(const std::string& name);
+
+        // Helpers to create common entities
+        Entity createMainCamera();
+        Entity getMainCamera() const;
+        Entity createDirectionalLight();
+        Entity getDirectionalLight() const;
+        Entity createMeshEntity(const std::string& name, const std::string& meshPath);
+
+        // Cook renderables for rendering
+        std::vector<gfx::Renderable> cookRenderables();
 
         void onLoad();
         void onTick(float deltaTime);

@@ -4,6 +4,8 @@
 
 namespace vultra
 {
+    class LogicScene;
+
     namespace gfx
     {
         class BaseRenderer
@@ -27,6 +29,8 @@ namespace vultra
             void removeRenderable(const Renderable& renderable);
 
             virtual void render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) = 0;
+
+            virtual void setScene(LogicScene* scene) {}
 
         protected:
             rhi::RenderDevice&   m_RenderDevice;

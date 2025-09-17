@@ -5,11 +5,12 @@
 #include "vultra/function/renderer/builtin/passes/final_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
+#include "vultra/function/scenegraph/entity.hpp"
+#include "vultra/function/scenegraph/logic_scene.hpp"
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
 
-#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/type_ptr.hpp>
 
 #if _DEBUG
@@ -88,6 +89,87 @@ namespace vultra
 
                 m_FrameInfo.deltaTime = dt.count();
                 m_FrameInfo.time += m_FrameInfo.deltaTime;
+            }
+        }
+
+        void BuiltinRenderer::setScene(LogicScene* scene)
+        {
+            if (scene)
+            {
+                // Cameras
+                auto mainCamera = scene->getMainCamera();
+                if (mainCamera)
+                {
+                    auto& camTransform = mainCamera.getComponent<TransformComponent>();
+                    auto& camComponent = mainCamera.getComponent<CameraComponent>();
+
+                    auto eulerAngles = camTransform.getRotationEuler();
+
+                    // Calculate forward (Yaw - 90 to adjust)
+                    glm::vec3 forward;
+                    forward.x = cos(glm::radians(eulerAngles.y - 90)) * cos(glm::radians(eulerAngles.x));
+                    forward.y = sin(glm::radians(eulerAngles.x));
+                    forward.z = sin(glm::radians(eulerAngles.y - 90)) * cos(glm::radians(eulerAngles.x));
+                    forward   = glm::normalize(forward);
+
+                    // Calculate up
+                    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0, 1, 0)));
+                    glm::vec3 up    = glm::normalize(glm::cross(right, forward));
+
+                    m_CameraInfo.view = glm::lookAt(camTransform.position, camTransform.position + forward, up);
+
+                    if (camComponent.projection == CameraProjection::ePerspective)
+                    {
+                        m_CameraInfo.projection = glm::perspective(glm::radians(camComponent.fov),
+                                                                   static_cast<float>(camComponent.viewPortWidth) /
+                                                                       static_cast<float>(camComponent.viewPortHeight),
+                                                                   camComponent.zNear,
+                                                                   camComponent.zFar);
+                    }
+                    else
+                    {
+                        m_CameraInfo.projection = glm::ortho(0.0f,
+                                                             static_cast<float>(camComponent.viewPortWidth),
+                                                             static_cast<float>(camComponent.viewPortHeight),
+                                                             0.0f,
+                                                             camComponent.zNear,
+                                                             camComponent.zFar);
+                    }
+
+                    // Vulkan projection correction
+                    m_CameraInfo.projection[1][1] *= -1;
+
+                    m_CameraInfo.zNear                     = camComponent.zNear;
+                    m_CameraInfo.zFar                      = camComponent.zFar;
+                    m_CameraInfo.viewProjection            = m_CameraInfo.projection * m_CameraInfo.view;
+                    m_CameraInfo.inverseOriginalProjection = glm::inverse(m_CameraInfo.projection);
+                }
+                else
+                {
+                    m_CameraInfo = CameraInfo {};
+                }
+
+                // Lights
+                auto directionalLight = scene->getDirectionalLight();
+                if (directionalLight)
+                {
+                    auto& lightComponent  = directionalLight.getComponent<DirectionalLightComponent>();
+                    m_LightInfo.direction = glm::normalize(lightComponent.direction);
+                    m_LightInfo.color     = lightComponent.color;
+                    m_LightInfo.intensity = lightComponent.intensity;
+                }
+                else
+                {
+                    m_LightInfo = LightInfo {};
+                }
+
+                // Renderables
+                auto renderables = scene->cookRenderables();
+                setRenderables(renderables);
+            }
+            else
+            {
+                m_RenderPrimitiveGroup.clear();
             }
         }
 

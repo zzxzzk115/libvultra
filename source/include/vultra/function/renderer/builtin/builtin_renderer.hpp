@@ -23,6 +23,8 @@ namespace vultra
             CameraInfo& getCameraInfo() { return m_CameraInfo; }
             LightInfo&  getLightInfo() { return m_LightInfo; }
 
+            void setScene(LogicScene* scene) override;
+
         private:
             void setupSamplers();
 

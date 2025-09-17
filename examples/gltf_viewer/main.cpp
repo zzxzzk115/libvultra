@@ -1,7 +1,8 @@
-#include "vultra/function/renderer/mesh_manager.hpp"
+#include "vultra/function/scenegraph/logic_scene.hpp"
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/function/app/imgui_app.hpp>
 #include <vultra/function/renderer/builtin/builtin_renderer.hpp>
+#include <vultra/function/scenegraph/entity.hpp>
 
 #include <imgui.h>
 
@@ -16,25 +17,15 @@ public:
         ImGuiApp(args, {.title = "GLTF Viewer", .vSyncConfig = rhi::VerticalSync::eEnabled}, {.enableDocking = false}),
         m_Renderer(*m_RenderDevice)
     {
-        m_MeshResource = resource::loadResource<gfx::MeshManager>("resources/models/DamagedHelmet/DamagedHelmet.gltf");
+        auto  camera                = m_LogicScene.createMainCamera();
+        auto& camTransform          = camera.getComponent<TransformComponent>();
+        auto& camComponent          = camera.getComponent<CameraComponent>();
+        camTransform.position       = glm::vec3(0.0f, 0.0f, 5.0f);
+        camComponent.viewPortWidth  = m_Window.getExtent().x;
+        camComponent.viewPortHeight = m_Window.getExtent().y;
 
-        std::vector<gfx::Renderable> renderables;
-        renderables.push_back({.mesh = m_MeshResource});
-        m_Renderer.setRenderables(renderables);
-
-        auto& camInfo = m_Renderer.getCameraInfo();
-        camInfo.zNear = 0.1f;
-        camInfo.zFar  = 100.0f;
-        camInfo.view =
-            glm::lookAt(glm::vec3(0.0f, 0.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        camInfo.projection = glm::perspectiveFov(45.0f,
-                                                 static_cast<float>(m_Window.getExtent().x),
-                                                 static_cast<float>(m_Window.getExtent().y),
-                                                 camInfo.zNear,
-                                                 camInfo.zFar);
-        camInfo.projection[1][1] *= -1; // Flip Y for Vulkan
-        camInfo.viewProjection            = camInfo.projection * camInfo.view;
-        camInfo.inverseOriginalProjection = glm::inverse(camInfo.projection);
+        m_LogicScene.createMeshEntity("Damaged Helmet", "resources/models/DamagedHelmet/DamagedHelmet.gltf");
+        m_Renderer.setScene(&m_LogicScene);
     }
 
     void onImGui() override
@@ -58,8 +49,8 @@ public:
     }
 
 private:
-    gfx::BuiltinRenderer   m_Renderer;
-    Ref<gfx::MeshResource> m_MeshResource {nullptr};
+    gfx::BuiltinRenderer m_Renderer;
+    LogicScene           m_LogicScene {"GLTF Viewer Scene"};
 };
 
 CONFIG_MAIN(GLTFViewerApp)

@@ -144,5 +144,11 @@ target("vultra")
         add_defines("NDEBUG", { public = true })
     end
 
+    -- GLM force settings
+    add_defines("GLM_FORCE_DEPTH_ZERO_TO_ONE", { public = true }) -- for vulkan depth range [0, 1]
+    -- add_defines("GLM_FORCE_LEFT_HANDED", { public = true }) -- for left-handed coordinate system
+    add_defines("GLM_ENABLE_EXPERIMENTAL", { public = true }) -- for experimental features
+    add_defines("GLM_FORCE_RADIANS", { public = true }) -- force radians
+
     -- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra")

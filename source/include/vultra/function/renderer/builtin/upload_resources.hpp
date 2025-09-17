@@ -35,6 +35,7 @@ namespace vultra
         {
             glm::vec3 direction;
             glm::vec3 color {1.0f, 1.0f, 1.0f};
+            float     intensity {1.0f};
             glm::mat4 view;
             glm::mat4 projection;
             // Area light array (limited size for UBO); each area light uses 4 vec4 slots

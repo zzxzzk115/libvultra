@@ -33,7 +33,7 @@ task("shader_task")
                 cprint("${green}[BUILD]${clear} %s", rel)
                 os.execv("glslangValidator", {
                     "-V",
-					"--target-env", "vulkan1.3", "--target-spv", "1.5",
+					"--target-env", "vulkan1.3",
                     "-I" .. shader_root,
                     "-o", out_spv,
 					"-P#extension GL_ARB_shading_language_include : enable", -- https://github.com/KhronosGroup/glslang/issues/1691#issuecomment-2282322200

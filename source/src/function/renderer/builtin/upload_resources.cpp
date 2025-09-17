@@ -101,7 +101,7 @@ namespace vultra
         struct alignas(16) GPULightBlock
         {
             explicit GPULightBlock(const LightInfo& lightInfo) :
-                direction {lightInfo.direction}, color {lightInfo.color},
+                direction {lightInfo.direction}, color {lightInfo.color}, intensity {lightInfo.intensity},
                 lightSpaceMatrix(lightInfo.projection * lightInfo.view), areaLightCount {lightInfo.areaLightCount}
             {
                 for (int i = 0; i < lightInfo.areaLightCount && i < LIGHTINFO_MAX_AREA_LIGHTS; ++i)
@@ -116,7 +116,7 @@ namespace vultra
             glm::vec3    direction {0.0f};
             float        padding0 {0.0f};
             glm::vec3    color {1.0f};
-            float        padding1 {0.0f};
+            float        intensity {1.0f};
             glm::mat4    lightSpaceMatrix {1.0f};
             int          areaLightCount {0};                       // implicit padding to 16-byte alignment before array
             GPUAreaLight areaLights[LIGHTINFO_MAX_AREA_LIGHTS] {}; // value-init to zero

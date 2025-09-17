@@ -91,7 +91,7 @@ void main() {
     DirectionalLight light;
     light.direction = getLightDirection();
     light.color = getLightColor();
-    light.intensity = 1.0;
+    light.intensity = getLightIntensity();
 
     // Calculate view direction
     vec3 viewDir = normalize(getCameraPosition() - fragPos);
