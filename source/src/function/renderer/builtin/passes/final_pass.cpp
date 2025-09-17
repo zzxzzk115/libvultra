@@ -4,6 +4,7 @@
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
 #include "vultra/function/renderer/builtin/resources/camera_data.hpp"
 #include "vultra/function/renderer/builtin/resources/gbuffer_data.hpp"
+#include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
 
 #include <shader_headers/final_pass.frag.spv.h>
@@ -43,6 +44,25 @@ namespace vultra
 
                     case GBuffer_Albedo:
                         input = blackboard.get<GBufferData>().albedo;
+                        break;
+                    case GBuffer_Normal:
+                        input = blackboard.get<GBufferData>().normal;
+                        break;
+                    case GBuffer_Emissive:
+                        input = blackboard.get<GBufferData>().emissive;
+                        break;
+                    case GBuffer_MetallicRoughnessAO:
+                        input = blackboard.get<GBufferData>().metallicRoughnessAO;
+                        break;
+                    case GBuffer_Depth:
+                        input = blackboard.get<GBufferData>().depth;
+                        break;
+
+                    case SceneColor_HDR:
+                        input = blackboard.get<SceneColorData>().hdr;
+                        break;
+                    case SceneColor_LDR:
+                        input = blackboard.get<SceneColorData>().ldr;
                         break;
 
                     default:

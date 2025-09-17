@@ -70,5 +70,5 @@ void main() {
             FragColor.rgb = source.rgb;
             break;
     }
-    FragColor.a = 1.0;
+    FragColor.a = source.a;
 }

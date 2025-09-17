@@ -27,26 +27,13 @@ layout (set = 3, binding = 3) uniform sampler2D t_GMetallicRoughnessAO;
 // Depth
 layout (set = 3, binding = 4) uniform sampler2D t_GDepth;
 
-// Shadow map
-layout (set = 3, binding = 5) uniform sampler2D t_ShadowMap;
-
-#if ENABLE_HBAO
-// HBAO map
-layout (set = 3, binding = 6) uniform sampler2D t_HBAO;
-#endif
-
-#if ENABLE_AREA_LIGHT
 // LTC LUTs
-layout (set = 3, binding = 7) uniform sampler2D t_LTCMat; // ltc_1
-layout (set = 3, binding = 8) uniform sampler2D t_LTCMag; // ltc_2
-#endif
+layout (set = 3, binding = 5) uniform sampler2D t_LTCMat; // ltc_1
+layout (set = 3, binding = 6) uniform sampler2D t_LTCMag; // ltc_2
 
-const mat4 biasMat = mat4(
-    0.5, 0.0, 0.0, 0.0,
-    0.0, 0.5, 0.0, 0.0,
-    0.0, 0.0, 1.0, 0.0,
-    0.5, 0.5, 0.0, 1.0
-);
+layout(push_constant) uniform PushConstants {
+    int enableAreaLight;
+} pc;
 
 void main() {
 	// Retrieve depth from the scene's depth texture at the current fragment
@@ -75,9 +62,6 @@ void main() {
 	float metallic = metallicRoughnessAO.r;
 	float roughness = metallicRoughnessAO.g;
     float ao = metallicRoughnessAO.b;
-#if ENABLE_HBAO
-    ao = ao * texture(t_HBAO, v_TexCoord).r;
-#endif
 
 	// Pack material properties
     PBRMaterial material;
@@ -104,53 +88,48 @@ void main() {
 
     Lo_dir += calDirectionalLight(light, F0, normal, viewDir, material);
 
-#if ENABLE_AREA_LIGHT
-    int areaCount = getAreaLightCount();
-    for (int i = 0; i < areaCount; ++i) {
-        AreaLight al = getAreaLight(i);
-        vec3 center    = al.posIntensity.xyz;
-        float intensity = al.posIntensity.w;
-        vec3 U         = al.uTwoSided.xyz; // half-extent vector
-        vec3 V         = al.vPadding.xyz;  // half-extent vector
-        vec3 color     = al.color.rgb;
-        bool twoSided  = (al.uTwoSided.w > 0.5);
+    if (pc.enableAreaLight == 1) {
+        int areaCount = getAreaLightCount();
+        for (int i = 0; i < areaCount; ++i) {
+            AreaLight al = getAreaLight(i);
+            vec3 center    = al.posIntensity.xyz;
+            float intensity = al.posIntensity.w;
+            vec3 U         = al.uTwoSided.xyz; // half-extent vector
+            vec3 V         = al.vPadding.xyz;  // half-extent vector
+            vec3 color     = al.color.rgb;
+            bool twoSided  = (al.uTwoSided.w > 0.5);
 
-        vec3 points[4];
-        points[0] = center - U - V;
-        points[1] = center + U - V;
-        points[2] = center + U + V;
-        points[3] = center - U + V;
+            vec3 points[4];
+            points[0] = center - U - V;
+            points[1] = center + U - V;
+            points[2] = center + U + V;
+            points[3] = center - U + V;
 
-        // Evaluate LTC
-        LTCResult ltc = LTC_EvalRect(
-            normal,        // N
-            viewDir,       // V
-            fragPos,       // P
-            points,        // quad corners
-            material.roughness,
-            material.albedo,
-            F0,            // specular F0
-            twoSided,
-            false,         // clipless off (use horizon clipping)
-            t_LTCMat,
-            t_LTCMag
-        );
+            // Evaluate LTC
+            LTCResult ltc = LTC_EvalRect(
+                normal,        // N
+                viewDir,       // V
+                fragPos,       // P
+                points,        // quad corners
+                material.roughness,
+                material.albedo,
+                F0,            // specular F0
+                twoSided,
+                false,         // clipless off (use horizon clipping)
+                t_LTCMat,
+                t_LTCMag
+            );
 
-        // Accumulate area light contribution
-        Lo_area += intensity * color * (ltc.spec + ltc.diff);
+            // Accumulate area light contribution
+            Lo_area += intensity * color * (ltc.spec + ltc.diff);
+        }
     }
-#endif
 
-    vec4 fragPosLightSpace = biasMat * getLightSpaceMatrix() * vec4(fragPos, 1.0);
-    float shadow = simpleShadowWithPCF(fragPosLightSpace, t_ShadowMap);
+    // vec4 fragPosLightSpace = biasMat * getLightSpaceMatrix() * vec4(fragPos, 1.0);
+    float shadow = 0.0; // No shadow for now, TODO: Cascaded Shadow Maps
 
     vec3 ambient = vec3(0.05) * material.albedo * material.ao;
     vec3 finalColor = material.emissive + ambient + (1.0 - shadow) * Lo_dir + Lo_area;
-
-#ifdef SWAPCHAIN_UNORM
-    // Convert to sRGB
-    finalColor = linearTosRGB(finalColor);
-#endif
 
     FragColor = vec4(finalColor, 1.0);
 }

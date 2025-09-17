@@ -148,14 +148,15 @@ namespace vultra
             public:
                 explicit MyIncluder(const std::filesystem::path& shaderRootPath) : m_ShaderRootPath(shaderRootPath) {}
 
-                IncludeResult*
-                includeSystem(const char*  /*headerName*/, const char*  /*includerName*/, size_t  /*inclusionDepth*/) override
+                IncludeResult* includeSystem(const char* /*headerName*/,
+                                             const char* /*includerName*/,
+                                             size_t /*inclusionDepth*/) override
                 {
                     return nullptr;
                 }
 
                 IncludeResult*
-                includeLocal(const char* headerName, const char* includerName, size_t  /*inclusionDepth*/) override
+                includeLocal(const char* headerName, const char* includerName, size_t /*inclusionDepth*/) override
                 {
                     return readFile(headerName, includerName);
                 }
@@ -166,7 +167,7 @@ namespace vultra
                 IncludeResult* readFile(const char* headerName, const char* includerName)
                 {
                     const std::filesystem::path includerPath = includerName;
-                    std::filesystem::path       headerPath = m_ShaderRootPath;
+                    std::filesystem::path       headerPath   = m_ShaderRootPath;
                     if (includerPath.has_extension())
                     {
                         headerPath /= includerPath.parent_path();
@@ -233,7 +234,7 @@ namespace vultra
             shader.setEntryPoint(entryPointName.data());
 
             shader.setEnvInput(glslang::EShSourceGlsl, shader.getStage(), glslang::EShClientVulkan, 100);
-            shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_3);
+            shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_2);
             shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_5);
 
             constexpr auto kMessages =

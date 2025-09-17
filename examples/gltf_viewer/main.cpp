@@ -17,6 +17,9 @@ public:
         ImGuiApp(args, {.title = "GLTF Viewer", .vSyncConfig = rhi::VerticalSync::eEnabled}, {.enableDocking = false}),
         m_Renderer(*m_RenderDevice)
     {
+        // Setup scene
+
+        // Main Camera
         auto  camera                = m_LogicScene.createMainCamera();
         auto& camTransform          = camera.getComponent<TransformComponent>();
         auto& camComponent          = camera.getComponent<CameraComponent>();
@@ -24,6 +27,10 @@ public:
         camComponent.viewPortWidth  = m_Window.getExtent().x;
         camComponent.viewPortHeight = m_Window.getExtent().y;
 
+        // Directional Light
+        m_LogicScene.createDirectionalLight();
+
+        // Load a sample model
         m_LogicScene.createMeshEntity("Damaged Helmet", "resources/models/DamagedHelmet/DamagedHelmet.gltf");
         m_Renderer.setScene(&m_LogicScene);
     }

@@ -1,5 +1,4 @@
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
-#include "vultra/core/os/file_system.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
@@ -12,9 +11,11 @@
 
 #include <shader_headers/area_light_debug.frag.spv.h>
 #include <shader_headers/area_light_debug.vert.spv.h>
+#include <shader_headers/decal.frag.spv.h>
 #include <shader_headers/gbuffer.frag.spv.h>
 #include <shader_headers/gbuffer_alpha_masking.frag.spv.h>
 #include <shader_headers/geometry.vert.spv.h>
+
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
@@ -306,17 +307,13 @@ namespace vultra
                         MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.material);
                         if (!m_DecalPipelineCreated)
                         {
-                            rhi::ShaderStageInfo vertexInfo {};
-                            vertexInfo.code = os::FileSystem::readFileAllText("assets/shaders/geometry.vert");
-                            rhi::ShaderStageInfo fragmentInfo {};
-                            fragmentInfo.code = os::FileSystem::readFileAllText("assets/shaders/decal.frag");
-                            auto builder      = rhi::GraphicsPipeline::Builder {};
+                            auto builder = rhi::GraphicsPipeline::Builder {};
                             builder.setDepthFormat(passInfo.depthFormat)
                                 .setColorFormats(passInfo.colorFormats)
                                 .setInputAssembly(passInfo.vertexFormat->getAttributes())
                                 .setTopology(passInfo.topology)
-                                .addShader(rhi::ShaderType::eVertex, vertexInfo)
-                                .addShader(rhi::ShaderType::eFragment, fragmentInfo)
+                                .addBuiltinShader(rhi::ShaderType::eVertex, geometry_vert_spv)
+                                .addBuiltinShader(rhi::ShaderType::eFragment, decal_frag_spv)
                                 .setDepthStencil({
                                     .depthTest      = true,
                                     .depthWrite     = false,

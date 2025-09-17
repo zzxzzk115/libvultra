@@ -10,6 +10,7 @@ namespace vultra
     namespace gfx
     {
         class GBufferPass;
+        class DeferredLightingPass;
         class FinalPass;
 
         class BuiltinRenderer : public BaseRenderer
@@ -36,8 +37,11 @@ namespace vultra
             FrameInfo  m_FrameInfo {};
             LightInfo  m_LightInfo {};
 
-            GBufferPass* m_GBufferPass {nullptr};
-            FinalPass*   m_FinalPass {nullptr};
+            GBufferPass*          m_GBufferPass {nullptr};
+            DeferredLightingPass* m_DeferredLightingPass {nullptr};
+            FinalPass*            m_FinalPass {nullptr};
+
+            glm::vec4 m_ClearColor {0.0f, 0.0f, 0.0f, 1.0f};
         };
     } // namespace gfx
 } // namespace vultra

@@ -6,7 +6,7 @@ task("shader_task")
 
         local shader_root = path.join(os.projectdir(), "builtin/shaders")
         local spv_root = path.join(os.projectdir(), "builtin/shader_spvs")
-		local shader_header_root = path.join(os.projectdir(), "builtin/shader_headers")
+		local shader_header_root = path.join(os.projectdir(), "builtin/generated/include/shader_headers")
         os.mkdir(spv_root)
 
         -- valid shader stages to compile
@@ -33,7 +33,7 @@ task("shader_task")
                 cprint("${green}[BUILD]${clear} %s", rel)
                 os.execv("glslangValidator", {
                     "-V",
-					"--target-env", "vulkan1.3",
+					"--target-env", "vulkan1.2",
                     "-I" .. shader_root,
                     "-o", out_spv,
 					"-P#extension GL_ARB_shading_language_include : enable", -- https://github.com/KhronosGroup/glslang/issues/1691#issuecomment-2282322200
@@ -87,16 +87,77 @@ task("shader_task")
 task_end()
 
 
-target("vultra_shaders")
+-- Texture convert task
+task("texture_task")
+    on_run(function ()
+        import("core.project.config")
+        import("core.base.option")
+
+        local texture_root = path.join(os.projectdir(), "builtin/textures")
+		local texture_header_root = path.join(os.projectdir(), "builtin/generated/include/texture_headers")
+        os.mkdir(texture_header_root)
+
+        -- valid texture formats to convert
+        local exts = {"png", "jpg", "jpeg", "bmp", "tga", "psd", "gif", "hdr", "pic", "exr", "ktx", "ktx2", "dds"}
+
+        local files = {}
+        for _, ext in ipairs(exts) do
+            local pattern = path.join(texture_root, "**" .. ext)
+            table.join2(files, os.files(pattern))
+        end
+
+        for _, f in ipairs(files) do
+            print(f)
+
+            local rel = path.relative(f, texture_root)
+            -- read texture binary and write to header file
+            local tex_data = io.readfile(f, {encoding = "binary"})
+
+            local header_path = path.join(texture_header_root, rel .. ".bintex.h")
+            if os.exists(header_path) and os.mtime(header_path) >= os.mtime(f) then
+                cprint("${cyan}[OK]${clear}   %s", rel)
+            else
+                cprint("${green}[CONVERT]${clear} %s", rel)
+                os.mkdir(path.directory(header_path))
+                -- base name + extension -> unique symbol
+                local base = path.basename(rel):gsub("%.", "_")
+                local ext  = path.extension(rel):sub(2)
+                local symbol = base .. "_" .. ext -- e.g. ltc1_dds
+
+                local header_file = io.open(header_path, "w")
+                header_file:write("// Auto-generated from " .. rel .. "\n")
+                header_file:write("#pragma once\n\n")
+                header_file:write("#include <cstdint>\n")
+                header_file:write("#include <string>\n")
+                header_file:write("#include <vector>\n\n")
+                header_file:write("const std::string " .. symbol .. "_ext = " .. "\"." .. ext .. "\";\n")
+                header_file:write("const std::vector<uint8_t> " .. symbol .. "_bintex = {\n    ")
+
+                for i = 1, #tex_data do
+                    if i > 1 then header_file:write(",\n    ") end
+                    local byte = tex_data:byte(i)
+                    header_file:write(string.format("0x%02X", byte))
+                end
+
+                header_file:write("\n};\n")
+                header_file:close()
+            end
+		end
+	end)
+task_end()
+
+
+target("vultra_builtin_assets")
     -- https://xmake.io/zh/api/description/project-target.html#headeronly
     set_kind("headeronly")
 
-	add_headerfiles("shader_headers/**.h")
-    add_includedirs(".", {public = true}) -- public: let other targets to auto include
+	add_headerfiles("generated/include/**.h")
+    add_includedirs("generated/include", {public = true}) -- public: let other targets to auto include
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
 
     on_config(function (target)
         import("core.base.task")
         task.run("shader_task")
+        task.run("texture_task")
     end)

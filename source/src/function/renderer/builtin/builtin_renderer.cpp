@@ -2,6 +2,7 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
+#include "vultra/function/renderer/builtin/passes/deferred_lighting_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/final_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
@@ -23,8 +24,9 @@ namespace vultra
     {
         BuiltinRenderer::BuiltinRenderer(rhi::RenderDevice& rd) : BaseRenderer(rd), m_TransientResources(rd)
         {
-            m_GBufferPass = new GBufferPass(rd);
-            m_FinalPass   = new FinalPass(rd);
+            m_GBufferPass          = new GBufferPass(rd);
+            m_DeferredLightingPass = new DeferredLightingPass(rd);
+            m_FinalPass            = new FinalPass(rd);
 
             setupSamplers();
         }
@@ -32,6 +34,7 @@ namespace vultra
         BuiltinRenderer::~BuiltinRenderer()
         {
             delete m_GBufferPass;
+            delete m_DeferredLightingPass;
             delete m_FinalPass;
         }
 
@@ -64,7 +67,8 @@ namespace vultra
                     uploadLightBlock(fg, blackboard, m_LightInfo);
 
                     m_GBufferPass->addPass(fg, blackboard, renderTarget->getExtent(), m_RenderPrimitiveGroup, true);
-                    m_FinalPass->compose(fg, blackboard, PassOutputMode::GBuffer_Albedo, backBuffer);
+                    m_DeferredLightingPass->addPass(fg, blackboard, true, m_ClearColor);
+                    m_FinalPass->compose(fg, blackboard, PassOutputMode::SceneColor_HDR, backBuffer);
                 }
 
                 {
@@ -143,6 +147,8 @@ namespace vultra
                     m_CameraInfo.zFar                      = camComponent.zFar;
                     m_CameraInfo.viewProjection            = m_CameraInfo.projection * m_CameraInfo.view;
                     m_CameraInfo.inverseOriginalProjection = glm::inverse(m_CameraInfo.projection);
+
+                    m_ClearColor = camComponent.clearColor;
                 }
                 else
                 {

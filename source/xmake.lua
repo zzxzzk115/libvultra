@@ -100,7 +100,7 @@ target("vultra")
     add_files("src/**.cpp")
 
     -- add deps
-    add_deps("dds-ktx", "renderdoc", "vultra_shaders")
+    add_deps("dds-ktx", "renderdoc", "vultra_builtin_assets")
 
     -- add rules
     add_rules("vulkansdk")
