@@ -1,4 +1,5 @@
 #include "vultra/function/app/base_app.hpp"
+#include "vultra/core/input/input.hpp"
 #include "vultra/function/service/services.hpp"
 
 namespace vultra
@@ -132,7 +133,38 @@ namespace vultra
     {
         if (event.type == SDL_EVENT_KEY_DOWN)
         {
-            onKeyPress(event.internalEvent.key.key, event.internalEvent.key.scancode, event.internalEvent.key.mod);
+            if (event.internalEvent.key.repeat == 0)
+            {
+                Input::setKeyState(event.internalEvent.key.scancode, InputAction::ePress);
+            }
+            else
+            {
+                Input::setKeyState(event.internalEvent.key.scancode, InputAction::eRepeat);
+            }
+        }
+        else if (event.type == SDL_EVENT_KEY_UP)
+        {
+            Input::setKeyState(event.internalEvent.key.scancode, InputAction::eRelease);
+        }
+
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+        {
+            Input::setMouseButtonState(event.internalEvent.button.button,
+                                       {.pressed = true, .clicks = event.internalEvent.button.clicks});
+        }
+        else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
+        {
+            Input::setMouseButtonState(event.internalEvent.button.button, {.pressed = false, .clicks = 0});
+        }
+        else if (event.type == SDL_EVENT_MOUSE_MOTION)
+        {
+            Input::setMousePosition({event.internalEvent.motion.x, event.internalEvent.motion.y});
+            Input::setMousePositionFlipY({event.internalEvent.motion.x,
+                                          static_cast<float>(m_Window.getExtent().y) - event.internalEvent.motion.y});
+        }
+        else if (event.type == SDL_EVENT_MOUSE_WHEEL)
+        {
+            Input::setMouseScrollDelta({event.internalEvent.wheel.x, event.internalEvent.wheel.y});
         }
 
         if (event.type == SDL_EVENT_WINDOW_RESIZED)
@@ -150,10 +182,7 @@ namespace vultra
         }
     }
 
-    void BaseApp::onKeyPress(int key, int scancode, int mod)
-    {
-        // TODO: InputSystem
-    }
+    void BaseApp::onPreUpdate(const fsec /*dt*/) { Input::clearStates(); }
 
     void BaseApp::renderDocCaptureBegin()
     {

@@ -47,9 +47,8 @@ namespace vultra
 
         virtual void onGeneralWindowEvent(const os::GeneralWindowEvent& event);
         virtual void onResize(uint32_t width, uint32_t height);
-        virtual void onKeyPress(int key, int scancode, int mod);
 
-        virtual void onPreUpdate(const fsec) {}
+        virtual void onPreUpdate(const fsec);
         virtual void onUpdate(const fsec) {}
         virtual void onPhysicsUpdate(const fsec) {}
         virtual void onPostUpdate(const fsec) {}

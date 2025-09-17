@@ -102,6 +102,8 @@ namespace vultra
             m_RotationEuler = glm::eulerAngles(rotation);
         }
 
+        glm::vec3 forward() const { return m_Rotation * glm::vec3(0, 0, -1); }
+
     private:
         glm::vec3 m_RotationEuler {0, 0, 0};
         glm::quat m_Rotation {1, 0, 0, 0};

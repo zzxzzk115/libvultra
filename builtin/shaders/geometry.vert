@@ -20,7 +20,8 @@ void main() {
     v_Color = a_Color;
     v_TexCoord = a_TexCoords;
     v_FragPos = vec3(getModelMatrix() * vec4(a_Position, 1.0));
-    v_TBN = mat3(a_Tangent.xyz, cross(a_Tangent.xyz, a_Normal) * a_Tangent.w, a_Normal);
+    vec3 normal = transpose(mat3(getModelMatrix())) * a_Normal;
+    v_TBN = mat3(a_Tangent.xyz, cross(a_Tangent.xyz, normal) * a_Tangent.w, normal);
 
     gl_Position = u_Camera.viewProjection * vec4(v_FragPos, 1.0);
 }
