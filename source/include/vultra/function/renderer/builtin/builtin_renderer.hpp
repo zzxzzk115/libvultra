@@ -13,11 +13,12 @@ namespace vultra
         class GBufferPass;
         class DeferredLightingPass;
         class GammaCorrectionPass;
+        class FXAAPass;
         class FinalPass;
 
         struct BuiltinRenderSettings
         {
-            PassOutputMode outputMode {PassOutputMode::SceneColor_LDR};
+            PassOutputMode outputMode {PassOutputMode::SceneColor_AntiAliased};
             bool           enableAreaLights {true};
         };
 
@@ -51,6 +52,7 @@ namespace vultra
             GBufferPass*          m_GBufferPass {nullptr};
             DeferredLightingPass* m_DeferredLightingPass {nullptr};
             GammaCorrectionPass*  m_GammaCorrectionPass {nullptr};
+            FXAAPass*             m_FXAAPass {nullptr};
             FinalPass*            m_FinalPass {nullptr};
 
             BuiltinRenderSettings m_Settings {};

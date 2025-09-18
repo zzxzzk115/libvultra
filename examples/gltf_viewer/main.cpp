@@ -61,6 +61,8 @@ public:
         ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::Depth));
         ImGui::RadioButton("SceneColor (HDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_HDR));
         ImGui::RadioButton("SceneColor (LDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
+        ImGui::RadioButton(
+            "SceneColor (Anti-Aliased)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_AntiAliased));
         settings.outputMode = static_cast<gfx::PassOutputMode>(outputMode);
 
 #ifdef VULTRA_ENABLE_RENDERDOC

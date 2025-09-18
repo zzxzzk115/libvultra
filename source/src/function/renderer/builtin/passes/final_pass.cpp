@@ -74,6 +74,9 @@ namespace vultra
                     case SceneColor_LDR:
                         input = blackboard.get<SceneColorData>().ldr;
                         break;
+                    case SceneColor_AntiAliased:
+                        input = blackboard.get<SceneColorData>().aa;
+                        break;
 
                     default:
                         assert(false);

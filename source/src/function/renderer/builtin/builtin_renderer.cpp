@@ -5,6 +5,7 @@
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/renderer/builtin/passes/deferred_lighting_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/final_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/fxaa_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gamma_correction_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
 #include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
@@ -30,6 +31,7 @@ namespace vultra
             m_GBufferPass          = new GBufferPass(rd);
             m_DeferredLightingPass = new DeferredLightingPass(rd);
             m_GammaCorrectionPass  = new GammaCorrectionPass(rd);
+            m_FXAAPass             = new FXAAPass(rd);
             m_FinalPass            = new FinalPass(rd);
 
             setupSamplers();
@@ -40,6 +42,7 @@ namespace vultra
             delete m_GBufferPass;
             delete m_DeferredLightingPass;
             delete m_GammaCorrectionPass;
+            delete m_FXAAPass;
             delete m_FinalPass;
         }
 
@@ -83,6 +86,9 @@ namespace vultra
                     // Gamma correction
                     sceneColor.ldr = m_GammaCorrectionPass->addPass(
                         fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);
+
+                    // FXAA
+                    sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
 
                     // Final composition
                     m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
