@@ -66,9 +66,10 @@ namespace vultra
                     uploadFrameBlock(fg, blackboard, m_FrameInfo);
                     uploadLightBlock(fg, blackboard, m_LightInfo);
 
-                    m_GBufferPass->addPass(fg, blackboard, renderTarget->getExtent(), m_RenderPrimitiveGroup, true);
-                    m_DeferredLightingPass->addPass(fg, blackboard, true, m_ClearColor);
-                    m_FinalPass->compose(fg, blackboard, PassOutputMode::SceneColor_HDR, backBuffer);
+                    m_GBufferPass->addPass(
+                        fg, blackboard, renderTarget->getExtent(), m_RenderPrimitiveGroup, m_Settings.enableAreaLights);
+                    m_DeferredLightingPass->addPass(fg, blackboard, m_Settings.enableAreaLights, m_ClearColor);
+                    m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
                 }
 
                 {

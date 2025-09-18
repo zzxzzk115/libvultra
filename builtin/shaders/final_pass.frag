@@ -5,11 +5,7 @@ layout (location = 0) in vec2 v_TexCoord;
 #include "resources/camera_block.glsl"
 #include "lib/depth.glsl"
 
-#ifdef USE_UINT_TEXTURE
-layout (set = 3, binding = 0) uniform usampler2D t_0;
-#else
 layout (set = 3, binding = 0) uniform sampler2D t_0;
-#endif
 
 const uint Mode_Default = 0;
 const uint Mode_LinearDepth = 1;
@@ -25,25 +21,11 @@ layout (push_constant) uniform _PushConstants { uint u_Mode; };
 layout (location = 0) out vec4 FragColor;
 
 void main() {
-#ifdef USE_UINT_TEXTURE
-    const uvec4 sourceUint = texture(t_0, v_TexCoord);
-    // Convert to float
-#ifdef DENOM
-    const vec4 source = vec4(sourceUint.r / DENOM, 0, 0, 1);
-#else
-    const vec4 source = vec4(uintBitsToFloat(sourceUint.r), 0, 0, 1);
-#endif
-#else
-#ifdef DENOM
-    const vec4 source = texture(t_0, v_TexCoord) / vec4(DENOM);
-#else
     const vec4 source = texture(t_0, v_TexCoord);
-#endif
-#endif
 
     switch (u_Mode) {
         case Mode_LinearDepth:
-            FragColor.rgb = vec3(linearizeDepth(source.r));
+            FragColor.rgb = vec3(linearizeDepth(source.r) / u_Camera.far);
             break;
         case Mode_RedChannel:
             FragColor.rgb = source.rrr;
@@ -70,5 +52,5 @@ void main() {
             FragColor.rgb = source.rgb;
             break;
     }
-    FragColor.a = source.a;
+    FragColor.a = 1.0;
 }

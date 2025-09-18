@@ -12,10 +12,6 @@ namespace vultra
             result_type operator()(const std::string_view, DefaultMesh&&) const;
 
         private:
-            static Ref<rhi::Texture>
-            createDefaultTexture(uint8_t r, uint8_t g, uint8_t b, uint8_t a, rhi::RenderDevice& rd);
-
-        private:
             Ref<rhi::Texture> m_DefaultWhite1x1 {nullptr};
         };
     } // namespace gfx

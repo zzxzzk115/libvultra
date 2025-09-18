@@ -1,6 +1,7 @@
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/core/base/visitor_helper.hpp"
 #include "vultra/core/rhi/render_device.hpp"
+#include "vultra/core/rhi/util.hpp"
 #include "vultra/core/rhi/vk/macro.hpp"
 
 #include <glm/common.hpp>
@@ -668,6 +669,29 @@ namespace vultra
                 default:
                     return false;
             }
+        }
+
+        Ref<rhi::Texture> createDefaultTexture(uint8_t r, uint8_t g, uint8_t b, uint8_t a, rhi::RenderDevice& rd)
+        {
+            auto texture =
+                createRef<rhi::Texture>(rhi::Texture::Builder {}
+                                            .setExtent({1, 1})
+                                            .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
+                                            .setNumMipLevels(1)
+                                            .setNumLayers(std::nullopt)
+                                            .setUsageFlags(rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled)
+                                            .setupOptimalSampler(true)
+                                            .build(rd));
+
+            const uint8_t pixelData[4] = {r, g, b, a};
+            const auto    pixelSize    = sizeof(uint8_t);
+            const auto    uploadSize   = 1 * 1 * 4 * pixelSize;
+
+            const auto srcStagingBuffer = rd.createStagingBuffer(uploadSize, pixelData);
+
+            rhi::upload(rd, srcStagingBuffer, {}, *texture, false);
+
+            return texture;
         }
     } // namespace rhi
 } // namespace vultra

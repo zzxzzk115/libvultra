@@ -3,6 +3,7 @@
 #include "vultra/function/framegraph/render_context.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
 #include "vultra/function/renderer/base_renderer.hpp"
+#include "vultra/function/renderer/builtin/pass_output_mode.hpp"
 #include "vultra/function/renderer/builtin/upload_resources.hpp"
 
 namespace vultra
@@ -12,6 +13,12 @@ namespace vultra
         class GBufferPass;
         class DeferredLightingPass;
         class FinalPass;
+
+        struct BuiltinRenderSettings
+        {
+            PassOutputMode outputMode {PassOutputMode::SceneColor_HDR};
+            bool           enableAreaLights {true};
+        };
 
         class BuiltinRenderer : public BaseRenderer
         {
@@ -25,6 +32,9 @@ namespace vultra
             LightInfo&  getLightInfo() { return m_LightInfo; }
 
             void setScene(LogicScene* scene) override;
+
+            void                   setSettings(const BuiltinRenderSettings& settings) { m_Settings = settings; }
+            BuiltinRenderSettings& getSettings() { return m_Settings; }
 
         private:
             void setupSamplers();
@@ -40,6 +50,8 @@ namespace vultra
             GBufferPass*          m_GBufferPass {nullptr};
             DeferredLightingPass* m_DeferredLightingPass {nullptr};
             FinalPass*            m_FinalPass {nullptr};
+
+            BuiltinRenderSettings m_Settings {};
 
             glm::vec4 m_ClearColor {0.0f, 0.0f, 0.0f, 1.0f};
         };

@@ -12,6 +12,7 @@ namespace vultra
     };
 
     extern CommonContext commonContext;
+} // namespace vultra
 
 #define VULTRA_CORE_TRACE(...) ::vultra::commonContext.logger.trace(true, __VA_ARGS__);
 #define VULTRA_CORE_INFO(...) ::vultra::commonContext.logger.info(true, __VA_ARGS__);
@@ -32,6 +33,6 @@ namespace vultra
             VULTRA_CORE_ERROR("Assertion Failed: {0}", __VA_ARGS__); \
             DEBUG_BREAK(); \
             assert(x); \
+            exit(EXIT_FAILURE); \
         } \
     }
-} // namespace vultra

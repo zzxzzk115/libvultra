@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
+#include "vultra/core/math/aabb.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/primitive_topology.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
@@ -32,6 +33,7 @@ namespace vultra
         {
             std::vector<VertexType> vertices;
             std::vector<uint32_t>   indices;
+            AABB                    aabb;
 
             std::vector<SubMesh<MaterialType>> subMeshes;
 

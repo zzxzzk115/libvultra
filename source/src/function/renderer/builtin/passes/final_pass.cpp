@@ -55,6 +55,7 @@ namespace vultra
                         input = blackboard.get<GBufferData>().metallicRoughnessAO;
                         break;
                     case GBuffer_Depth:
+                        mode  = Mode::eLinearDepth;
                         input = blackboard.get<GBufferData>().depth;
                         break;
 

@@ -189,5 +189,8 @@ namespace vultra
         [[nodiscard]] glm::uvec3 calcMipSize(const glm::uvec3& baseSize, uint32_t level);
 
         [[nodiscard]] bool isCubemap(const Texture&);
+
+        [[nodiscard]] Ref<rhi::Texture>
+        createDefaultTexture(uint8_t r, uint8_t g, uint8_t b, uint8_t a, rhi::RenderDevice& rd);
     } // namespace rhi
 } // namespace vultra

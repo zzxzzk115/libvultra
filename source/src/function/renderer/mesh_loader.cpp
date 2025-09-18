@@ -158,6 +158,9 @@ namespace vultra
                     mesh.indices.push_back(face.mIndices[2]);
                 }
 
+                // Cook AABB
+                mesh.aabb = AABB::build(mesh.vertices);
+
                 // Fill in sub-mesh data
                 DefaultSubMesh subMesh {};
                 // subMesh.topology = static_cast<rhi::PrimitiveTopology>(aiMesh->mPrimitiveTypes);
@@ -363,30 +366,6 @@ namespace vultra
                                                                                 DefaultMesh&&          mesh) const
         {
             return createRef<MeshResource>(std::move(mesh), name);
-        }
-
-        Ref<rhi::Texture>
-        MeshLoader::createDefaultTexture(uint8_t r, uint8_t g, uint8_t b, uint8_t a, rhi::RenderDevice& rd)
-        {
-            auto texture =
-                createRef<rhi::Texture>(rhi::Texture::Builder {}
-                                            .setExtent({1, 1})
-                                            .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
-                                            .setNumMipLevels(1)
-                                            .setNumLayers(std::nullopt)
-                                            .setUsageFlags(rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled)
-                                            .setupOptimalSampler(true)
-                                            .build(rd));
-
-            const uint8_t pixelData[4] = {r, g, b, a};
-            const auto    pixelSize    = sizeof(uint8_t);
-            const auto    uploadSize   = 1 * 1 * 4 * pixelSize;
-
-            const auto srcStagingBuffer = rd.createStagingBuffer(uploadSize, pixelData);
-
-            rhi::upload(rd, srcStagingBuffer, {}, *texture, false);
-
-            return texture;
         }
     } // namespace gfx
 } // namespace vultra

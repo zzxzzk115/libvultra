@@ -2,6 +2,7 @@
 #include <vultra/core/input/input.hpp>
 #include <vultra/function/app/imgui_app.hpp>
 #include <vultra/function/renderer/builtin/builtin_renderer.hpp>
+#include <vultra/function/renderer/builtin/pass_output_mode.hpp>
 #include <vultra/function/scenegraph/entity.hpp>
 #include <vultra/function/scenegraph/logic_scene.hpp>
 
@@ -35,14 +36,30 @@ public:
         m_LogicScene.createDirectionalLight();
 
         // Load a sample model
-        m_LogicScene.createMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
+        auto model = m_LogicScene.createMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
+
+        // Set camera far plane based on model's AABB
+        auto& rawMesh     = model.getComponent<RawMeshComponent>().mesh;
+        camComponent.zFar = rawMesh->aabb.getRadius() * 10.0f;
     }
 
     void onImGui() override
     {
         ImGui::Begin("GLTF Viewer");
-        m_EnableOrbitCamera = !ImGui::IsItemHovered() && !ImGui::IsAnyItemActive() &&
-                              !ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+        m_EnableOrbitCamera = !ImGui::IsItemHovered() && !ImGui::IsAnyItemActive();
+
+        auto& settings   = m_Renderer.getSettings();
+        int   outputMode = static_cast<int>(settings.outputMode);
+        ImGui::RadioButton("Albedo", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_Albedo));
+        ImGui::RadioButton("Normal", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_Normal));
+        ImGui::RadioButton("Emissive", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_Emissive));
+        ImGui::RadioButton(
+            "MetallicRoughnessAO", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_MetallicRoughnessAO));
+        ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_Depth));
+        ImGui::RadioButton("SceneColor (HDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_HDR));
+        ImGui::RadioButton("SceneColor (LDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
+        settings.outputMode = static_cast<gfx::PassOutputMode>(outputMode);
+
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");
         if (ImGui::IsItemClicked())

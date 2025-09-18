@@ -29,15 +29,12 @@ namespace vultra
         {
             // Load builtin LTC lookup textures
             auto ltc_1 = resource::loadTextureKTX_DDS_Raw(ltc_1_dds_bintex, rd);
-            if (ltc_1)
-            {
-                m_LTCMat = createRef<vultra::rhi::Texture>(std::move(ltc_1.value()));
-            }
+            VULTRA_CORE_ASSERT(ltc_1, "[Builtin-DeferredLightingPass] Failed to load LTC 1 texture");
+            m_LTCMat = createRef<vultra::rhi::Texture>(std::move(ltc_1.value()));
+
             auto ltc_2 = resource::loadTextureKTX_DDS_Raw(ltc_2_dds_bintex, rd);
-            if (ltc_2)
-            {
-                m_LTCMag = createRef<vultra::rhi::Texture>(std::move(ltc_2.value()));
-            }
+            VULTRA_CORE_ASSERT(ltc_2, "[Builtin-DeferredLightingPass] Failed to load LTC 2 texture");
+            m_LTCMag = createRef<vultra::rhi::Texture>(std::move(ltc_2.value()));
         }
 
         void DeferredLightingPass::addPass(FrameGraph&           fg,
@@ -125,31 +122,29 @@ namespace vultra
                                      .imageAspect = rhi::ImageAspect::eDepth,
                                  });
 
-                    if (enableAreaLight && m_LTCMat && m_LTCMag)
-                    {
-                        auto ltcMat = framegraph::importTexture(fg, "LTCMat", m_LTCMat.get());
-                        auto ltcMag = framegraph::importTexture(fg, "LTCMag", m_LTCMag.get());
-                        builder.read(ltcMat,
-                                     framegraph::TextureRead {
-                                         .binding =
-                                             {
-                                                 .location      = {.set = 3, .binding = 5},
-                                                 .pipelineStage = framegraph::PipelineStage::eFragmentShader,
-                                             },
-                                         .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
-                                         .imageAspect = rhi::ImageAspect::eColor,
-                                     });
-                        builder.read(ltcMag,
-                                     framegraph::TextureRead {
-                                         .binding =
-                                             {
-                                                 .location      = {.set = 3, .binding = 6},
-                                                 .pipelineStage = framegraph::PipelineStage::eFragmentShader,
-                                             },
-                                         .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
-                                         .imageAspect = rhi::ImageAspect::eColor,
-                                     });
-                    }
+                    // LTC lookup textures for area lights
+                    auto ltcMat = framegraph::importTexture(fg, "LTCMat", m_LTCMat.get());
+                    auto ltcMag = framegraph::importTexture(fg, "LTCMag", m_LTCMag.get());
+                    builder.read(ltcMat,
+                                 framegraph::TextureRead {
+                                     .binding =
+                                         {
+                                             .location      = {.set = 3, .binding = 5},
+                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                         },
+                                     .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                     .imageAspect = rhi::ImageAspect::eColor,
+                                 });
+                    builder.read(ltcMag,
+                                 framegraph::TextureRead {
+                                     .binding =
+                                         {
+                                             .location      = {.set = 3, .binding = 6},
+                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                         },
+                                     .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                     .imageAspect = rhi::ImageAspect::eColor,
+                                 });
 
                     data.hdr = builder.create<framegraph::FrameGraphTexture>(
                         "SceneColor - HDR",
@@ -201,16 +196,13 @@ namespace vultra
                         assert(samplers.count("point") > 0);
                         // assert(samplers.count("shadow_map") > 0);
                         assert(samplers.count("bilinear") > 0);
-                        rc.overrideSampler(sets[3][0], samplers["point"]); // Albedo
-                        rc.overrideSampler(sets[3][1], samplers["point"]); // Normal
-                        rc.overrideSampler(sets[3][2], samplers["point"]); // Emissive
-                        rc.overrideSampler(sets[3][3], samplers["point"]); // MetallicRoughnessAO
-                        rc.overrideSampler(sets[3][4], samplers["point"]); // Depth
-                        if (enableAreaLight && m_LTCMat && m_LTCMag)
-                        {
-                            rc.overrideSampler(sets[3][5], samplers["bilinear"]); // LTCMat
-                            rc.overrideSampler(sets[3][6], samplers["bilinear"]); // LTCMag
-                        }
+                        rc.overrideSampler(sets[3][0], samplers["point"]);    // Albedo
+                        rc.overrideSampler(sets[3][1], samplers["point"]);    // Normal
+                        rc.overrideSampler(sets[3][2], samplers["point"]);    // Emissive
+                        rc.overrideSampler(sets[3][3], samplers["point"]);    // MetallicRoughnessAO
+                        rc.overrideSampler(sets[3][4], samplers["point"]);    // Depth
+                        rc.overrideSampler(sets[3][5], samplers["bilinear"]); // LTCMat
+                        rc.overrideSampler(sets[3][6], samplers["bilinear"]); // LTCMag
                         cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pushConstants);
                         rc.bindDescriptorSets(*pipeline);
                         cb.beginRendering(*framebufferInfo).drawFullScreenTriangle();
