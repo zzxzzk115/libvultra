@@ -59,7 +59,8 @@ namespace vultra
                                   FrameGraphBlackboard&       blackboard,
                                   const rhi::Extent2D&        resolution,
                                   const RenderPrimitiveGroup& renderPrimitiveGroup,
-                                  bool                        enableAreaLight)
+                                  bool                        enableAreaLight,
+                                  bool                        enableNormalMapping)
         {
             const auto& gBufferData = fg.addCallbackPass<GBufferData>(
                 PASS_NAME,
@@ -139,7 +140,8 @@ namespace vultra
                                                                  .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                                              });
                 },
-                [this, renderPrimitiveGroup, enableAreaLight](const GBufferData&, auto&, void* ctx) {
+                [this, renderPrimitiveGroup, enableAreaLight, enableNormalMapping](
+                    const GBufferData&, auto&, void* ctx) {
                     auto& rc                                    = *static_cast<gfx::RendererRenderContext*>(ctx);
                     auto& [cb, framebufferInfo, sets, samplers] = rc;
                     RHI_GPU_ZONE(cb, PASS_NAME);
@@ -159,6 +161,10 @@ namespace vultra
                         passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
 
                         MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.material);
+                        if (!enableNormalMapping)
+                        {
+                            meshConstants.useNormalTexture = 0;
+                        }
 
                         // True for now
                         // TODO: Bake the scene, mark materials that need alpha masking

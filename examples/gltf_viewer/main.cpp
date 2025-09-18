@@ -65,6 +65,8 @@ public:
             "SceneColor (Anti-Aliased)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_AntiAliased));
         settings.outputMode = static_cast<gfx::PassOutputMode>(outputMode);
 
+        ImGui::Checkbox("Enable Normal Mapping", &settings.enableNormalMapping);
+
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");
         if (ImGui::IsItemClicked())

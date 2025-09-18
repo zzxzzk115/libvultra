@@ -22,7 +22,8 @@ namespace vultra
                          FrameGraphBlackboard&,
                          const rhi::Extent2D&        resolution,
                          const RenderPrimitiveGroup& renderPrimitiveGroup,
-                         bool                        enableAreaLight);
+                         bool                        enableAreaLight,
+                         bool                        enableNormalMapping = true);
 
         private:
             rhi::GraphicsPipeline

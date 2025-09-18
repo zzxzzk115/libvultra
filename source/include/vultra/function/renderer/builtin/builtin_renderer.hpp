@@ -20,6 +20,7 @@ namespace vultra
         {
             PassOutputMode outputMode {PassOutputMode::SceneColor_AntiAliased};
             bool           enableAreaLights {true};
+            bool           enableNormalMapping {true};
         };
 
         class BuiltinRenderer : public BaseRenderer

@@ -75,8 +75,12 @@ namespace vultra
                     uploadLightBlock(fg, blackboard, m_LightInfo);
 
                     // G-Buffer
-                    m_GBufferPass->addPass(
-                        fg, blackboard, renderTarget->getExtent(), m_RenderPrimitiveGroup, m_Settings.enableAreaLights);
+                    m_GBufferPass->addPass(fg,
+                                           blackboard,
+                                           renderTarget->getExtent(),
+                                           m_RenderPrimitiveGroup,
+                                           m_Settings.enableAreaLights,
+                                           m_Settings.enableNormalMapping);
 
                     // Deferred lighting
                     m_DeferredLightingPass->addPass(
