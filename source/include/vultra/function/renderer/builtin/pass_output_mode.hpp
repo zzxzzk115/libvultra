@@ -7,11 +7,13 @@ namespace vultra
         // NOLINTBEGIN
         enum class PassOutputMode
         {
-            GBuffer_Albedo,
-            GBuffer_Normal,
-            GBuffer_Emissive,
-            GBuffer_MetallicRoughnessAO,
-            GBuffer_Depth,
+            Albedo,
+            Normal,
+            Emissive,
+            Metallic,
+            Roughness,
+            AmbientOcclusion,
+            Depth,
             SceneColor_HDR,
             SceneColor_LDR,
         };

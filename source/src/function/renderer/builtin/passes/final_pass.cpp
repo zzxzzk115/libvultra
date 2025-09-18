@@ -42,19 +42,28 @@ namespace vultra
                 {
                     using enum PassOutputMode;
 
-                    case GBuffer_Albedo:
+                    case Albedo:
                         input = blackboard.get<GBufferData>().albedo;
                         break;
-                    case GBuffer_Normal:
+                    case Normal:
                         input = blackboard.get<GBufferData>().normal;
                         break;
-                    case GBuffer_Emissive:
+                    case Emissive:
                         input = blackboard.get<GBufferData>().emissive;
                         break;
-                    case GBuffer_MetallicRoughnessAO:
+                    case Metallic:
+                        mode  = Mode::eRedChannel;
                         input = blackboard.get<GBufferData>().metallicRoughnessAO;
                         break;
-                    case GBuffer_Depth:
+                    case Roughness:
+                        mode  = Mode::eGreenChannel;
+                        input = blackboard.get<GBufferData>().metallicRoughnessAO;
+                        break;
+                    case AmbientOcclusion:
+                        mode  = Mode::eBlueChannel;
+                        input = blackboard.get<GBufferData>().metallicRoughnessAO;
+                        break;
+                    case Depth:
                         mode  = Mode::eLinearDepth;
                         input = blackboard.get<GBufferData>().depth;
                         break;

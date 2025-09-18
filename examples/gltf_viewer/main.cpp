@@ -52,12 +52,13 @@ public:
 
         auto& settings   = m_Renderer.getSettings();
         int   outputMode = static_cast<int>(settings.outputMode);
-        ImGui::RadioButton("Albedo", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_Albedo));
-        ImGui::RadioButton("Normal", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_Normal));
-        ImGui::RadioButton("Emissive", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_Emissive));
-        ImGui::RadioButton(
-            "MetallicRoughnessAO", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_MetallicRoughnessAO));
-        ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::GBuffer_Depth));
+        ImGui::RadioButton("Albedo", &outputMode, static_cast<int>(gfx::PassOutputMode::Albedo));
+        ImGui::RadioButton("Normal", &outputMode, static_cast<int>(gfx::PassOutputMode::Normal));
+        ImGui::RadioButton("Emissive", &outputMode, static_cast<int>(gfx::PassOutputMode::Emissive));
+        ImGui::RadioButton("Metallic", &outputMode, static_cast<int>(gfx::PassOutputMode::Metallic));
+        ImGui::RadioButton("Roughness", &outputMode, static_cast<int>(gfx::PassOutputMode::Roughness));
+        ImGui::RadioButton("Ambient Occlusion", &outputMode, static_cast<int>(gfx::PassOutputMode::AmbientOcclusion));
+        ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::Depth));
         ImGui::RadioButton("SceneColor (HDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_HDR));
         ImGui::RadioButton("SceneColor (LDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
         settings.outputMode = static_cast<gfx::PassOutputMode>(outputMode);
