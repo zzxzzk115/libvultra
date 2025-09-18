@@ -3,7 +3,10 @@
 #include "vultra/function/renderer/builtin/post_process_helper.hpp"
 #include "vultra/function/renderer/builtin/tool/cubemap_capture.hpp"
 
+#include <shader_headers/cube.vert.spv.h>
 #include <shader_headers/generate_brdf.frag.spv.h>
+#include <shader_headers/generate_irradiance_map.frag.spv.h>
+#include <shader_headers/prefilter_envmap.frag.spv.h>
 
 #include <glm/glm.hpp>
 
@@ -19,19 +22,20 @@ namespace vultra
             m_PrefilterEnvMapPipeline = createPrefilterEnvMapPipeline();
         }
 
-        rhi::Texture IBLDataGenerator::generateBrdfLUT(rhi::CommandBuffer& cb)
+        Ref<rhi::Texture> IBLDataGenerator::generateBrdfLUT(rhi::CommandBuffer& cb)
         {
-            RHI_GPU_ZONE(cb, "Generate BRDF LUT");
             constexpr auto kSize = 1024u;
 
-            auto brdf = rhi::Texture::Builder {}
-                            .setExtent({kSize, kSize})
-                            .setPixelFormat(rhi::PixelFormat::eRG16F)
-                            .setNumMipLevels(1)
-                            .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled)
-                            .build(m_RenderDevice);
+            auto brdf = createRef<rhi::Texture>(
+                std::move(rhi::Texture::Builder {}
+                              .setExtent({kSize, kSize})
+                              .setPixelFormat(rhi::PixelFormat::eRG16F)
+                              .setNumMipLevels(1)
+                              .setNumLayers(std::nullopt)
+                              .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled)
+                              .build(m_RenderDevice)));
 
-            m_RenderDevice.setupSampler(brdf,
+            m_RenderDevice.setupSampler(*brdf,
                                         {
                                             .magFilter  = rhi::TexelFilter::eLinear,
                                             .minFilter  = rhi::TexelFilter::eLinear,
@@ -41,48 +45,41 @@ namespace vultra
                                             .addressModeT = rhi::SamplerAddressMode::eClampToEdge,
                                         });
 
-            rhi::prepareForAttachment(cb, brdf, false);
+            rhi::prepareForAttachment(cb, *brdf, false);
 
-            constexpr auto kDescriptorSetId = 0;
+            {
+                cb.beginRendering({.area             = {0, 0, kSize, kSize},
+                                   .colorAttachments = {{
+                                       .target     = brdf.get(),
+                                       .clearValue = glm::vec4(0.0f),
+                                   }}})
+                    .bindPipeline(m_BrdfPipeline)
+                    .drawFullScreenTriangle()
+                    .endRendering();
+            }
 
-            const auto descriptors = cb.createDescriptorSetBuilder()
-                                         .bind(0,
-                                               rhi::bindings::CombinedImageSampler {
-                                                   .texture     = &brdf,
-                                                   .imageAspect = rhi::ImageAspect::eColor,
-                                               })
-                                         .build(m_BrdfPipeline.getDescriptorSetLayout(kDescriptorSetId));
+            rhi::prepareForReading(cb, *brdf);
 
-            cb.beginRendering({.area             = {0, 0, kSize, kSize},
-                               .colorAttachments = {{
-                                   .target     = &brdf,
-                                   .clearValue = glm::vec4(0.0f),
-                               }}});
-
-            cb.bindPipeline(m_BrdfPipeline).bindDescriptorSet(kDescriptorSetId, descriptors).drawFullScreenTriangle();
-            cb.endRendering();
-
-            rhi::prepareForReading(cb, brdf);
+            m_BrdfLUTGenerated = true;
 
             return brdf;
         }
 
-        rhi::Texture IBLDataGenerator::generateIrradiance(rhi::CommandBuffer& cb, rhi::Texture& cubemap)
+        Ref<rhi::Texture> IBLDataGenerator::generateIrradiance(rhi::CommandBuffer& cb, rhi::Texture& cubemap)
         {
-            RHI_GPU_ZONE(cb, "Generate Irradiance Map");
-
             constexpr auto kSize = 64u;
 
-            auto irradiance = rhi::Texture::Builder {}
-                                  .setExtent({kSize, kSize})
-                                  .setPixelFormat(rhi::PixelFormat::eRGB16F)
-                                  .setNumMipLevels(1)
-                                  .setNumLayers(6)
-                                  .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled)
-                                  .setCubemap(true)
-                                  .build(m_RenderDevice);
+            auto irradiance = createRef<rhi::Texture>(
+                std::move(rhi::Texture::Builder {}
+                              .setExtent({kSize, kSize})
+                              .setPixelFormat(rhi::PixelFormat::eRGBA16F)
+                              .setNumMipLevels(1)
+                              .setNumLayers(6)
+                              .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled)
+                              .setCubemap(true)
+                              .build(m_RenderDevice)));
 
-            m_RenderDevice.setupSampler(irradiance,
+            m_RenderDevice.setupSampler(*irradiance,
                                         {
                                             .magFilter  = rhi::TexelFilter::eLinear,
                                             .minFilter  = rhi::TexelFilter::eLinear,
@@ -93,7 +90,7 @@ namespace vultra
                                             .addressModeR = rhi::SamplerAddressMode::eClampToEdge,
                                         });
 
-            rhi::prepareForAttachment(cb, irradiance, true);
+            rhi::prepareForAttachment(cb, *irradiance, true);
 
             struct PushConstants
             {
@@ -115,7 +112,7 @@ namespace vultra
 
                 cb.beginRendering({.area             = {0, 0, kSize, kSize},
                                    .colorAttachments = {{
-                                       .target     = &irradiance,
+                                       .target     = irradiance.get(),
                                        .layer      = face,
                                        .clearValue = glm::vec4(0.0f),
                                    }}});
@@ -131,27 +128,26 @@ namespace vultra
                 cb.endRendering();
             }
 
-            rhi::prepareForReading(cb, irradiance);
+            rhi::prepareForReading(cb, *irradiance);
 
             return irradiance;
         }
 
-        rhi::Texture IBLDataGenerator::generatePrefilterEnvMap(rhi::CommandBuffer& cb, rhi::Texture& cubemap)
+        Ref<rhi::Texture> IBLDataGenerator::generatePrefilterEnvMap(rhi::CommandBuffer& cb, rhi::Texture& cubemap)
         {
-            RHI_GPU_ZONE(cb, "Prefilter Environment Map");
-
             constexpr auto kSize = 512u;
 
-            auto prefilteredEnvMap = rhi::Texture::Builder {}
-                                         .setExtent({kSize, kSize})
-                                         .setPixelFormat(rhi::PixelFormat::eRGB16F)
-                                         .setNumMipLevels(0) // let backend calc full mip chain
-                                         .setNumLayers(6)
-                                         .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled)
-                                         .setCubemap(true)
-                                         .build(m_RenderDevice);
+            auto prefilteredEnvMap = createRef<rhi::Texture>(
+                std::move(rhi::Texture::Builder {}
+                              .setExtent({kSize, kSize})
+                              .setPixelFormat(rhi::PixelFormat::eRGBA16F)
+                              .setNumMipLevels(1)
+                              .setNumLayers(6)
+                              .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled)
+                              .setCubemap(true)
+                              .build(m_RenderDevice)));
 
-            m_RenderDevice.setupSampler(prefilteredEnvMap,
+            m_RenderDevice.setupSampler(*prefilteredEnvMap,
                                         {
                                             .magFilter  = rhi::TexelFilter::eLinear,
                                             .minFilter  = rhi::TexelFilter::eLinear,
@@ -162,7 +158,7 @@ namespace vultra
                                             .addressModeR = rhi::SamplerAddressMode::eClampToEdge,
                                         });
 
-            rhi::prepareForAttachment(cb, prefilteredEnvMap, true);
+            rhi::prepareForAttachment(cb, *prefilteredEnvMap, true);
 
             struct PushConstantsVertex
             {
@@ -174,7 +170,7 @@ namespace vultra
                 float roughness;
             };
 
-            const auto     numMipLevels     = prefilteredEnvMap.getNumMipLevels();
+            const auto     numMipLevels     = prefilteredEnvMap->getNumMipLevels();
             constexpr auto kDescriptorSetId = 0;
 
             for (uint32_t level = 0; level < numMipLevels; ++level)
@@ -195,7 +191,7 @@ namespace vultra
 
                     cb.beginRendering({.area             = {0, 0, mipSize, mipSize},
                                        .colorAttachments = {{
-                                           .target     = &prefilteredEnvMap,
+                                           .target     = prefilteredEnvMap.get(),
                                            .layer      = level,
                                            .face       = static_cast<rhi::CubeFace>(face),
                                            .clearValue = glm::vec4(0.0f),
@@ -218,7 +214,7 @@ namespace vultra
                 }
             }
 
-            rhi::prepareForReading(cb, prefilteredEnvMap);
+            rhi::prepareForReading(cb, *prefilteredEnvMap);
 
             return prefilteredEnvMap;
         }
@@ -228,8 +224,38 @@ namespace vultra
             return createPostProcessPipelineFromSPV(m_RenderDevice, rhi::PixelFormat::eRG16F, generate_brdf_frag_spv);
         }
 
-        rhi::GraphicsPipeline IBLDataGenerator::createIrradiancePipeline() const { return {}; }
+        rhi::GraphicsPipeline IBLDataGenerator::createIrradiancePipeline() const
+        {
+            return rhi::GraphicsPipeline::Builder {}
+                .setColorFormats({rhi::PixelFormat::eRGBA16F})
+                .setInputAssembly({})
+                .setTopology(rhi::PrimitiveTopology::eTriangleList)
+                .addBuiltinShader(rhi::ShaderType::eVertex, cube_vert_spv)
+                .addBuiltinShader(rhi::ShaderType::eFragment, generate_irradiance_map_frag_spv)
+                .setDepthStencil({
+                    .depthTest  = false,
+                    .depthWrite = false,
+                })
+                .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
+                .setBlending(0, {.enabled = false})
+                .build(m_RenderDevice);
+        }
 
-        rhi::GraphicsPipeline IBLDataGenerator::createPrefilterEnvMapPipeline() const { return {}; }
+        rhi::GraphicsPipeline IBLDataGenerator::createPrefilterEnvMapPipeline() const
+        {
+            return rhi::GraphicsPipeline::Builder {}
+                .setColorFormats({rhi::PixelFormat::eRGBA16F})
+                .setInputAssembly({})
+                .setTopology(rhi::PrimitiveTopology::eTriangleList)
+                .addBuiltinShader(rhi::ShaderType::eVertex, cube_vert_spv)
+                .addBuiltinShader(rhi::ShaderType::eFragment, prefilter_envmap_frag_spv)
+                .setDepthStencil({
+                    .depthTest  = false,
+                    .depthWrite = false,
+                })
+                .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
+                .setBlending(0, {.enabled = false})
+                .build(m_RenderDevice);
+        }
     } // namespace gfx
 } // namespace vultra

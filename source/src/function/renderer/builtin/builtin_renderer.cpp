@@ -26,7 +26,8 @@ namespace vultra
 {
     namespace gfx
     {
-        BuiltinRenderer::BuiltinRenderer(rhi::RenderDevice& rd) : BaseRenderer(rd), m_TransientResources(rd)
+        BuiltinRenderer::BuiltinRenderer(rhi::RenderDevice& rd) :
+            BaseRenderer(rd), m_TransientResources(rd), m_IBLDataGenerator(rd)
         {
             m_GBufferPass          = new GBufferPass(rd);
             m_DeferredLightingPass = new DeferredLightingPass(rd);
@@ -44,6 +45,15 @@ namespace vultra
             delete m_GammaCorrectionPass;
             delete m_FXAAPass;
             delete m_FinalPass;
+        }
+
+        void BuiltinRenderer::preRender()
+        {
+            if (!m_IBLDataGenerator.isBrdfLUTPresent())
+            {
+                m_RenderDevice.execute(
+                    [&](rhi::CommandBuffer& cb) { m_BrdfLUT = m_IBLDataGenerator.generateBrdfLUT(cb); });
+            }
         }
 
         void BuiltinRenderer::render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)

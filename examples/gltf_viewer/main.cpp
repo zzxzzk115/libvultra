@@ -149,6 +149,12 @@ public:
         ImGuiApp::onUpdate(dt);
     }
 
+    void onPreRender() override
+    {
+        m_Renderer.preRender();
+        ImGuiApp::onPreRender();
+    }
+
     void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
     {
         const auto& [frameIndex, target] = rtv;

@@ -4,6 +4,7 @@
 #include "vultra/function/framegraph/transient_resources.hpp"
 #include "vultra/function/renderer/base_renderer.hpp"
 #include "vultra/function/renderer/builtin/pass_output_mode.hpp"
+#include "vultra/function/renderer/builtin/tool/ibl_data_generator.hpp"
 #include "vultra/function/renderer/builtin/upload_resources.hpp"
 
 namespace vultra
@@ -29,6 +30,7 @@ namespace vultra
             BuiltinRenderer(rhi::RenderDevice& rd);
             ~BuiltinRenderer() override;
 
+            virtual void preRender() override final;
             virtual void render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) override final;
 
             CameraInfo& getCameraInfo() { return m_CameraInfo; }
@@ -55,6 +57,9 @@ namespace vultra
             GammaCorrectionPass*  m_GammaCorrectionPass {nullptr};
             FXAAPass*             m_FXAAPass {nullptr};
             FinalPass*            m_FinalPass {nullptr};
+
+            IBLDataGenerator  m_IBLDataGenerator;
+            Ref<rhi::Texture> m_BrdfLUT {nullptr};
 
             BuiltinRenderSettings m_Settings {};
 

@@ -14,9 +14,11 @@ namespace vultra
             explicit IBLDataGenerator(rhi::RenderDevice&);
             ~IBLDataGenerator() = default;
 
-            rhi::Texture generateBrdfLUT(rhi::CommandBuffer& cb);
-            rhi::Texture generateIrradiance(rhi::CommandBuffer& cb, rhi::Texture& cubemap);
-            rhi::Texture generatePrefilterEnvMap(rhi::CommandBuffer& cb, rhi::Texture& cubemap);
+            [[nodiscard]] Ref<rhi::Texture> generateBrdfLUT(rhi::CommandBuffer& cb);
+            [[nodiscard]] Ref<rhi::Texture> generateIrradiance(rhi::CommandBuffer& cb, rhi::Texture& cubemap);
+            [[nodiscard]] Ref<rhi::Texture> generatePrefilterEnvMap(rhi::CommandBuffer& cb, rhi::Texture& cubemap);
+
+            [[nodiscard]] bool isBrdfLUTPresent() const { return m_BrdfLUTGenerated; }
 
         private:
             rhi::GraphicsPipeline createBrdfPipeline() const;
@@ -29,6 +31,8 @@ namespace vultra
             rhi::GraphicsPipeline m_BrdfPipeline;
             rhi::GraphicsPipeline m_IrradiancePipeline;
             rhi::GraphicsPipeline m_PrefilterEnvMapPipeline;
+
+            bool m_BrdfLUTGenerated {false};
         };
     } // namespace gfx
 } // namespace vultra
