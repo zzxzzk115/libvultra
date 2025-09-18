@@ -1,7 +1,7 @@
 #ifndef PBR_GLSL
 
 #include "math.glsl"
-#include "light.glsl"
+#include "ibl.glsl"
 
 struct PBRMaterial {
     vec3 albedo;
@@ -103,6 +103,71 @@ vec3 calDirectionalLight(DirectionalLight light, vec3 F0, vec3 N, vec3 V, PBRMat
     float NdotL = max(dot(N, L), 0.0);
 
     return (kD * material.albedo / PI + specular) * radiance * NdotL;
+}
+
+vec3 calPointLight(PointLight pointLight, vec3 F0, vec3 N, vec3 V, PBRMaterial material, vec3 fragPos) {
+    vec3 L = normalize(pointLight.position - fragPos);
+    vec3 H = normalize(V + L);
+    vec3 radiance = pointLight.color * pointLight.intensity;
+
+    // cook-torrance brdf
+    float gamma = 2.0;
+    float NDF = DistributionGTR(N, H, material.roughness, gamma);
+    float G = GeometrySmith(N, V, L, material.roughness);
+    vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - material.metallic;
+
+    vec3 nominator = NDF * G * F;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 1e-12;
+    vec3 specular = nominator / denominator;
+
+    // add to outgoing radiance Lo
+    float NdotL = max(dot(N, L), 0.0);
+
+    return (kD * material.albedo / PI + specular) * radiance * NdotL;
+}
+
+vec3 calIBLAmbient(vec3 diffuseColor, vec3 F0, vec3 N, vec3 V, PBRMaterial material, sampler2D brdfLUT, samplerCube irradianceMap, samplerCube prefilteredEnvMap) {
+    float NdotV = dot(N, V);
+    LightContribution iblContribution = calIBL(diffuseColor, F0, 0.5, material.roughness, N, V, NdotV, brdfLUT, irradianceMap, prefilteredEnvMap);
+    return iblContribution.diffuse * material.ao + iblContribution.specular * material.ao;
+}
+
+vec3 calPBRLighting(DirectionalLight directionalLight, PointLight pointLights[NUM_MAX_POINT_LIGHT], uint numPointLights, vec3 normal, PBRMaterial material, vec3 fragPos, vec3 viewPos, sampler2DArrayShadow cascadedShadowMaps, sampler2D brdfLUT, samplerCube irradianceMap, samplerCube prefilteredEnvMap) {
+    vec3 viewDir = normalize(viewPos - fragPos);
+
+    vec3 N = normalize(normal);
+    vec3 V = normalize(viewDir);
+
+    vec3 F0 = vec3(0.04);
+    const vec3 diffuseColor = mix(material.albedo * (1.0 - F0), vec3(0.0), material.metallic);
+    F0 = mix(F0, material.albedo, material.metallic);
+
+    vec3 Lo = vec3(0.0);
+    // directional light contribution
+    Lo += calDirectionalLight(directionalLight, F0, N, V, material);
+    // point lights contribution
+    for(uint i = 0; i < numPointLights; ++i) {
+        Lo += calPointLight(pointLights[i], F0, N, V, material, fragPos);
+    }
+
+    Lo += calIBLAmbient(diffuseColor, F0, N, V, material, brdfLUT, irradianceMap, prefilteredEnvMap);
+
+    // // select cascade layer
+    // vec4 fragPosViewSpace = getViewMatrix() * vec4(fragPos, 1.0);
+    // uint cascadeIndex = selectCascadeIndex(fragPosViewSpace.xyz);
+
+    // // calculate shadow
+    // float shadow = calShadow(cascadeIndex, fragPos, normal, directionalLight.direction, cascadedShadowMaps);
+    float shadow = 0.0; // TODO: implement CSM
+
+    vec3 ambient = vec3(0.01) * material.albedo * material.ao;
+    vec3 color = material.emissive + ambient + (1.0 - shadow) * Lo;
+
+    return color;
 }
 
 #endif

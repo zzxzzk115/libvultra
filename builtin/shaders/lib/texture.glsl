@@ -20,4 +20,7 @@ vec4 myTextureGatherOffsets(sampler2D tex, vec2 coord, ivec2[4] offsets)
 #define textureGatherOffsetsExt myTextureGatherOffsets
 #endif
 
+#define getTexelSize(src) (1.0 / textureSize(src, 0))
+#define calculateMipLevels(src) floor(log2(float(textureSize(src, 0).x))) + 1.0
+
 #endif
