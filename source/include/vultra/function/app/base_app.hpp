@@ -62,6 +62,7 @@ namespace vultra
 
     protected:
         bool     m_IsRunning {true};
+        bool     m_Minimized {false};
         bool     m_WantCaptureFrame {false};
         uint64_t m_FrameCounter {0};
 

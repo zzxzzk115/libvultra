@@ -20,8 +20,11 @@ void main() {
     v_Color = a_Color;
     v_TexCoord = a_TexCoords;
     v_FragPos = vec3(getModelMatrix() * vec4(a_Position, 1.0));
-    vec3 normal = transpose(mat3(getModelMatrix())) * a_Normal;
-    v_TBN = mat3(a_Tangent.xyz, cross(a_Tangent.xyz, normal) * a_Tangent.w, normal);
-
+    mat3 normalMatrix = transpose(inverse(mat3(getModelMatrix())));
+    vec3 T = normalize(normalMatrix * a_Tangent.xyz);
+    vec3 N = normalize(normalMatrix * a_Normal);
+    T = normalize(T - dot(T, N) * N); // Gram-Schmidt orthogonalize
+    vec3 B = cross(N, T) * a_Tangent.w;
+    v_TBN = mat3(T, B, N);
     gl_Position = u_Camera.viewProjection * vec4(v_FragPos, 1.0);
 }

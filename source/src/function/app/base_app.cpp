@@ -72,7 +72,7 @@ namespace vultra
                 onPostUpdate(deltaTime);
             }
 
-            if (m_Swapchain)
+            if (m_Swapchain && !m_Minimized)
             {
                 {
                     ZoneScopedN("[App] PreRender");
@@ -131,6 +131,7 @@ namespace vultra
 
     void BaseApp::onGeneralWindowEvent(const os::GeneralWindowEvent& event)
     {
+        // Keyboard events
         if (event.type == SDL_EVENT_KEY_DOWN)
         {
             if (event.internalEvent.key.repeat == 0)
@@ -147,6 +148,7 @@ namespace vultra
             Input::setKeyState(event.internalEvent.key.scancode, InputAction::eRelease);
         }
 
+        // Mouse button events
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
         {
             Input::setMouseButtonState(event.internalEvent.button.button,
@@ -167,17 +169,30 @@ namespace vultra
             Input::setMouseScrollDelta({event.internalEvent.wheel.x, event.internalEvent.wheel.y});
         }
 
+        // Window events
         if (event.type == SDL_EVENT_WINDOW_RESIZED)
         {
             onResize(event.internalEvent.window.data1, event.internalEvent.window.data2);
         }
+        else if (event.type == SDL_EVENT_WINDOW_MINIMIZED)
+        {
+            m_Minimized = true;
+        }
+        else if (event.type == SDL_EVENT_WINDOW_RESTORED)
+        {
+            m_Minimized = false;
+            onResize(m_Window.getExtent().x, m_Window.getExtent().y);
+        }
     }
 
-    void BaseApp::onResize(uint32_t /*width*/, uint32_t /*height*/)
+    void BaseApp::onResize(uint32_t width, uint32_t height)
     {
         // Only recreate the swapchain for Wayland, as X11 handles it automatically
         if (m_Window.getDriverType() == os::Window::DriverType::eWayland)
         {
+            // Skip zero extent
+            if (width == 0 || height == 0)
+                return;
             m_Swapchain.recreate();
         }
     }

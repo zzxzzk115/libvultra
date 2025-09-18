@@ -158,6 +158,12 @@ namespace vultra
                     mesh.indices.push_back(face.mIndices[2]);
                 }
 
+                // Generate Tangent if missing
+                if (!aiMesh->HasTangentsAndBitangents())
+                {
+                    mesh.generateTangents();
+                }
+
                 // Cook AABB
                 mesh.aabb = AABB::build(mesh.vertices);
 

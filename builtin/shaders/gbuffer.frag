@@ -56,8 +56,8 @@ void main() {
 	if (c_Mesh.useNormalTexture)
 	{
 		vec3 normalColor = texture(t_Normal, v_TexCoord).xyz;
-		vec3 tangentNormal = normalColor * 2.0 - 1.0;
-		normal = normalize(tangentNormal * transpose(v_TBN));
+		vec3 tangentNormal = normalColor * 2.0 - 1.0; // Transform from [0,1] to [-1,1], tangent space
+		normal = normalize(transpose(v_TBN) * tangentNormal); // Transform to world space
 	}
 	g_Normal = normal;
 

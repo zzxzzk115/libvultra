@@ -33,7 +33,9 @@ public:
         camComponent.viewPortHeight = m_Window.getExtent().y;
 
         // Directional Light
-        m_LogicScene.createDirectionalLight();
+        auto  directionalLight   = m_LogicScene.createDirectionalLight();
+        auto& lightComponent     = directionalLight.getComponent<DirectionalLightComponent>();
+        lightComponent.direction = glm::normalize(glm::vec3(0.0f, 0.0f, -1.0f));
 
         // Load a sample model
         auto model = m_LogicScene.createMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
