@@ -1,10 +1,13 @@
 #include "vultra/function/renderer/builtin/builtin_renderer.hpp"
+#include "vultra/core/color/color.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/renderer/builtin/passes/deferred_lighting_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/final_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/gamma_correction_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
+#include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
 #include "vultra/function/scenegraph/entity.hpp"
 #include "vultra/function/scenegraph/logic_scene.hpp"
@@ -26,6 +29,7 @@ namespace vultra
         {
             m_GBufferPass          = new GBufferPass(rd);
             m_DeferredLightingPass = new DeferredLightingPass(rd);
+            m_GammaCorrectionPass  = new GammaCorrectionPass(rd);
             m_FinalPass            = new FinalPass(rd);
 
             setupSamplers();
@@ -35,6 +39,7 @@ namespace vultra
         {
             delete m_GBufferPass;
             delete m_DeferredLightingPass;
+            delete m_GammaCorrectionPass;
             delete m_FinalPass;
         }
 
@@ -66,9 +71,20 @@ namespace vultra
                     uploadFrameBlock(fg, blackboard, m_FrameInfo);
                     uploadLightBlock(fg, blackboard, m_LightInfo);
 
+                    // G-Buffer
                     m_GBufferPass->addPass(
                         fg, blackboard, renderTarget->getExtent(), m_RenderPrimitiveGroup, m_Settings.enableAreaLights);
-                    m_DeferredLightingPass->addPass(fg, blackboard, m_Settings.enableAreaLights, m_ClearColor);
+
+                    // Deferred lighting
+                    m_DeferredLightingPass->addPass(
+                        fg, blackboard, m_Settings.enableAreaLights, color::sRGBToLinear(m_ClearColor));
+                    auto& sceneColor = blackboard.get<SceneColorData>();
+
+                    // Gamma correction
+                    sceneColor.ldr = m_GammaCorrectionPass->addPass(
+                        fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);
+
+                    // Final composition
                     m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
                 }
 

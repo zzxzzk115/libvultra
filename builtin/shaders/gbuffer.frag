@@ -1,6 +1,7 @@
 #version 460 core
 
 #include "resources/mesh_constants.glsl"
+#include "lib/color.glsl"
 
 layout (location = 0) out vec3 g_Albedo;
 layout (location = 1) out vec3 g_Normal;
@@ -49,7 +50,7 @@ void main() {
 	{
 		albedo = vec4(c_Mesh.baseColor.rgb * v_Color, c_Mesh.baseColor.a);
 	}
-	g_Albedo = albedo.rgb;
+	g_Albedo = sRGBToLinear(albedo.rgb); // Manually convert to linear, since we load textures as UNorm
 
 	// Normal
 	vec3 normal = normalize(v_TBN[2]);
@@ -67,7 +68,7 @@ void main() {
 	{
 		emissive = texture(t_Emissive, v_TexCoord);
 	}
-	g_Emissive = emissive.rgb;
+	g_Emissive = sRGBToLinear(emissive.rgb); // Manually convert to linear, since we load textures as UNorm
 
 	// Metallic + Roughness + AO
 	float metallic = c_Mesh.metallicFactor; // Default metallic

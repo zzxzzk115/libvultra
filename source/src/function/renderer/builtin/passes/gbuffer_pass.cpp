@@ -16,7 +16,6 @@
 #include <shader_headers/gbuffer_alpha_masking.frag.spv.h>
 #include <shader_headers/geometry.vert.spv.h>
 
-
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
 
@@ -88,7 +87,7 @@ namespace vultra
                         "GBuffer - Albedo",
                         {
                             .extent     = resolution,
-                            .format     = rhi::PixelFormat::eRGBA8_sRGB,
+                            .format     = rhi::PixelFormat::eRGBA8_UNorm,
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                         });
                     data.albedo = builder.write(data.albedo,
