@@ -79,7 +79,7 @@ namespace vultra
                     const glm::vec2 deltaUV2 = v2.texCoord - v0.texCoord;
 
                     float denom = deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x;
-                    if (fabs(denom) < 1e-8f) // Degenerate UV triangle → skip
+                    if (fabs(denom) < 1e-8f) // Degenerate UV triangle -> skip
                         continue;
 
                     const float     r = 1.0f / denom;

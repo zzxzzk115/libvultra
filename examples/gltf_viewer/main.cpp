@@ -156,6 +156,15 @@ public:
         ImGuiApp::onRender(cb, rtv, dt);
     }
 
+    void onResize(uint32_t width, uint32_t height) override
+    {
+        auto& camComponent          = m_LogicScene.getMainCamera().getComponent<CameraComponent>();
+        camComponent.viewPortWidth  = width;
+        camComponent.viewPortHeight = height;
+
+        ImGuiApp::onResize(width, height);
+    }
+
 private:
     gfx::BuiltinRenderer m_Renderer;
     LogicScene           m_LogicScene {"GLTF Viewer Scene"};

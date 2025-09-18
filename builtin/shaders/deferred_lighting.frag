@@ -128,8 +128,7 @@ void main() {
     // vec4 fragPosLightSpace = biasMat * getLightSpaceMatrix() * vec4(fragPos, 1.0);
     float shadow = 0.0; // No shadow for now, TODO: Cascaded Shadow Maps
 
-    vec3 ambient = vec3(0.05) * material.albedo * material.ao;
-    vec3 finalColor = material.emissive + ambient + (1.0 - shadow) * Lo_dir + Lo_area;
+    vec3 finalColor = material.emissive + (1.0 - shadow) * Lo_dir + Lo_area;
 
     FragColor = vec4(finalColor, 1.0);
 }
