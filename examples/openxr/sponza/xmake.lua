@@ -5,7 +5,7 @@ target("example-openxr-sponza")
 
 	set_values("resource_files", "resources/models/Sponza/**", "resources/textures/environment_maps/**")
 
-    add_rules("copy_resources", "imguiconfig")
+    add_rules("copy_resources")
 
     -- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/example-openxr-sponza")

@@ -5,7 +5,7 @@ target("example-gltf-viewer")
 
     set_values("resource_files", "resources/models/DamagedHelmet/**", "resources/textures/environment_maps/**")
 
-    add_rules("copy_resources", "imguiconfig")
+    add_rules("copy_resources")
 
     -- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/example-gltf-viewer")
