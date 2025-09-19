@@ -36,9 +36,7 @@ public:
         camComponent.environmentMapPath = ENV_MAP_PATH;
 
         // Directional Light
-        auto  directionalLight   = m_LogicScene.createDirectionalLight();
-        auto& lightComponent     = directionalLight.getComponent<DirectionalLightComponent>();
-        lightComponent.direction = glm::normalize(glm::vec3(0.0f, 0.0f, -1.0f));
+        m_LogicScene.createDirectionalLight();
 
         // Load a sample model
         auto model = m_LogicScene.createMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
@@ -53,21 +51,49 @@ public:
         ImGui::Begin("GLTF Viewer");
         m_EnableOrbitCamera = !ImGui::IsItemHovered() && !ImGui::IsAnyItemActive();
 
-        auto& settings   = m_Renderer.getSettings();
-        int   outputMode = static_cast<int>(settings.outputMode);
-        ImGui::RadioButton("Albedo", &outputMode, static_cast<int>(gfx::PassOutputMode::Albedo));
-        ImGui::RadioButton("Normal", &outputMode, static_cast<int>(gfx::PassOutputMode::Normal));
-        ImGui::RadioButton("Emissive", &outputMode, static_cast<int>(gfx::PassOutputMode::Emissive));
-        ImGui::RadioButton("Metallic", &outputMode, static_cast<int>(gfx::PassOutputMode::Metallic));
-        ImGui::RadioButton("Roughness", &outputMode, static_cast<int>(gfx::PassOutputMode::Roughness));
-        ImGui::RadioButton("Ambient Occlusion", &outputMode, static_cast<int>(gfx::PassOutputMode::AmbientOcclusion));
-        ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::Depth));
-        // ImGui::RadioButton("SceneColor (HDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_HDR));
-        // ImGui::RadioButton("SceneColor (LDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
-        ImGui::RadioButton("Final", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_AntiAliased));
-        settings.outputMode = static_cast<gfx::PassOutputMode>(outputMode);
+        auto& settings = m_Renderer.getSettings();
 
-        ImGui::Checkbox("Enable Normal Mapping", &settings.enableNormalMapping);
+        if (ImGui::CollapsingHeader("Output Mode", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Indent(5.0f);
+            // Output mode
+            int outputMode = static_cast<int>(settings.outputMode);
+            ImGui::RadioButton("Albedo", &outputMode, static_cast<int>(gfx::PassOutputMode::Albedo));
+            ImGui::RadioButton("Normal", &outputMode, static_cast<int>(gfx::PassOutputMode::Normal));
+            ImGui::RadioButton("Emissive", &outputMode, static_cast<int>(gfx::PassOutputMode::Emissive));
+            ImGui::RadioButton("Metallic", &outputMode, static_cast<int>(gfx::PassOutputMode::Metallic));
+            ImGui::RadioButton("Roughness", &outputMode, static_cast<int>(gfx::PassOutputMode::Roughness));
+            ImGui::RadioButton(
+                "Ambient Occlusion", &outputMode, static_cast<int>(gfx::PassOutputMode::AmbientOcclusion));
+            ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::Depth));
+            // ImGui::RadioButton("SceneColor (HDR)", &outputMode,
+            // static_cast<int>(gfx::PassOutputMode::SceneColor_HDR)); ImGui::RadioButton("SceneColor (LDR)",
+            // &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
+            ImGui::RadioButton("Final", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_AntiAliased));
+            settings.outputMode = static_cast<gfx::PassOutputMode>(outputMode);
+            ImGui::Unindent(5.0f);
+        }
+
+        if (ImGui::CollapsingHeader("Rendering Options", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::Indent(5.0f);
+            ImGui::Checkbox("Enable Normal Mapping", &settings.enableNormalMapping);
+
+            if (ImGui::CollapsingHeader("Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Indent(5.0f);
+                // Tone-mapping
+                ImGui::DragFloat("Exposure", &settings.exposure, 0.1f, 0.1f, 10.0f, "%.1f");
+                int toneMappingMethod = static_cast<int>(settings.toneMappingMethod);
+                ImGui::RadioButton("Khronos PBR Neutral", &toneMappingMethod, 0);
+                ImGui::RadioButton("ACES", &toneMappingMethod, 1);
+                ImGui::RadioButton("Reinhard", &toneMappingMethod, 2);
+                settings.toneMappingMethod = static_cast<gfx::ToneMappingMethod>(toneMappingMethod);
+                ImGui::Unindent(5.0f);
+            }
+
+            ImGui::Unindent(5.0f);
+        }
 
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");

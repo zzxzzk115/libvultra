@@ -127,10 +127,11 @@ namespace vultra
                     }
 
                     // Tone mapping
-                    sceneColor.hdr = m_ToneMappingPass->addPass(fg, sceneColor.hdr);
+                    sceneColor.hdr = m_ToneMappingPass->addPass(
+                        fg, sceneColor.hdr, m_Settings.exposure, m_Settings.toneMappingMethod);
 
-                    // Gamma correction if swapchain is in sRGB format
-                    if (m_SwapChainFormat == rhi::Swapchain::Format::esRGB)
+                    // Gamma correction if swapchain is not in sRGB format
+                    if (m_SwapChainFormat != rhi::Swapchain::Format::esRGB)
                     {
                         sceneColor.ldr = m_GammaCorrectionPass->addPass(
                             fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);

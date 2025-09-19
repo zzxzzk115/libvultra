@@ -1,6 +1,8 @@
 #version 460 core
 
-#include "lib/math.glsl"
+#include "lib/cubemap.glsl"
+#include "lib/importance_sampling.glsl"
+#include "lib/pbr.glsl"
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 6) in;
 
@@ -13,34 +15,43 @@ layout(push_constant) uniform PushConstants {
     uint  sampleCount;
 } pc;
 
-void main()
-{
-    ivec3 gid = ivec3(gl_GlobalInvocationID.xyz);
-    ivec2 size = imageSize(prefilteredMap[pc.mipLevel]);
-    if (gid.x >= size.x || gid.y >= size.y || gid.z >= 6)
-        return;
+vec3 prefilterEnvMap(vec3 N, uint width) {
+    vec3 color = vec3(0.0);
+    float weight = 0.0;
 
-    vec2 uv = (vec2(gid.xy) + 0.5) / vec2(size);
-    vec3 R = directionFromCubeUV(gid.z, uv);
-    vec3 N = normalize(R);
-
-    vec3 prefilteredColor = vec3(0.0);
-    float totalWeight = 0.0;
-
-    for (uint i = 0u; i < pc.sampleCount; ++i)
-    {
+    const uint kNumSamples = 1024;
+    for (uint i = 0; i < kNumSamples; ++i) {
         vec2 Xi = hammersley2d(i, pc.sampleCount);
-        vec3 H = importanceSampleGGX(Xi, N, pc.roughness);
-        vec3 L = normalize(2.0 * dot(R, H) * H - R);
+        const vec4 importanceSample = importanceSampleGGX(Xi, N, N, pc.roughness); // Using N as V
 
-        float NoL = max(dot(N, L), 0.0);
-        if (NoL > 0.0)
-        {
-            prefilteredColor += textureLod(environmentMap, L, 0.0).rgb * NoL;
-            totalWeight += NoL;
+        const vec3 H = vec3(importanceSample);
+        const float pdf = importanceSample.w;
+
+        // mipmap filtered samples (GPU Gems 3, 20.4)
+        float lod = computeLod(pdf, width, kNumSamples);
+
+        // Note: reflect takes incident vector.
+        vec3 V = N;
+        vec3 L = normalize(reflect(-V, H));
+        float NdotL = dot(N, L);
+
+        if (NdotL > 0.0) {
+            const vec3 sampleColor = textureLod(environmentMap, L, lod).rgb;
+            color += sampleColor * NdotL;
+            weight += NdotL;
         }
     }
+    return color / (weight != 0.0 ? weight : float(kNumSamples));
+}
 
-    prefilteredColor /= max(totalWeight, 1e-4);
-    imageStore(prefilteredMap[pc.mipLevel], ivec3(gid.xy, gid.z), vec4(prefilteredColor, 1.0));
+void main() {
+    const uint mipImageSize = imageSize(prefilteredMap[pc.mipLevel]).x;
+    const ivec3 coord = ivec3(gl_GlobalInvocationID.xyz);
+    if (coord.x >= mipImageSize || coord.y >= mipImageSize) return;
+
+    vec3 N = normalize(cubeCoordToWorld(coord, mipImageSize));
+    // N.y = -N.y;
+    const uint width = textureSize(environmentMap, 0).x;
+    const vec3 color = prefilterEnvMap(N, width);
+    imageStore(prefilteredMap[pc.mipLevel], coord, vec4(color, 1.0));
 }

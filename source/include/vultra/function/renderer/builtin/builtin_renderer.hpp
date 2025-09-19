@@ -4,6 +4,7 @@
 #include "vultra/function/framegraph/transient_resources.hpp"
 #include "vultra/function/renderer/base_renderer.hpp"
 #include "vultra/function/renderer/builtin/pass_output_mode.hpp"
+#include "vultra/function/renderer/builtin/tonemapping_method.hpp"
 #include "vultra/function/renderer/builtin/tool/cubemap_converter.hpp"
 #include "vultra/function/renderer/builtin/tool/ibl_data_generator.hpp"
 #include "vultra/function/renderer/builtin/upload_resources.hpp"
@@ -22,9 +23,11 @@ namespace vultra
 
         struct BuiltinRenderSettings
         {
-            PassOutputMode outputMode {PassOutputMode::SceneColor_AntiAliased};
-            bool           enableAreaLights {true};
-            bool           enableNormalMapping {true};
+            PassOutputMode    outputMode {PassOutputMode::SceneColor_AntiAliased};
+            bool              enableAreaLights {true};
+            bool              enableNormalMapping {true};
+            float             exposure {1.0f};
+            ToneMappingMethod toneMappingMethod {ToneMappingMethod::KhronosPBRNeutral};
         };
 
         class BuiltinRenderer : public BaseRenderer

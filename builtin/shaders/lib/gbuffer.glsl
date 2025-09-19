@@ -2,7 +2,7 @@
 #define GBUFFER_GLSL
 
 #include "resources/mesh_constants.glsl"
-#include "lib/color.glsl"
+#include "color.glsl"
 
 layout (location = 0) out vec3 g_Albedo;
 layout (location = 1) out vec3 g_Normal;

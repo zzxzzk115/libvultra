@@ -55,10 +55,25 @@ rule("clangd.config")
     end)
 rule_end()
 
+rule("imguiconfig")
+    set_extensions(".ini")
+
+    on_build_file(function (target, sourcefile, opt) end)
+
+    after_build_file(function (target, sourcefile, opt)
+        if path.basename(sourcefile) ~= "imgui" then
+            return
+        end
+        local output_path = path.join(target:targetdir(), path.filename(sourcefile))
+        os.cp(sourcefile, output_path)
+        print("Copying imgui config: " .. sourcefile .. " -> " .. output_path)
+    end)
+rule_end()
+
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.vsxmake.autoupdate")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode", lsp = "clangd"})
-add_rules("clangd.config")
+add_rules("clangd.config", "imguiconfig")
 
 -- add repositories
 add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git backup")

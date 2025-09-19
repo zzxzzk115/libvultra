@@ -1,6 +1,6 @@
 #version 460 core
 
-#include "lib/math.glsl"
+#include "lib/importance_sampling.glsl"
 
 // Workgroup size: 16x16 threads per workgroup
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -11,33 +11,15 @@ layout(set = 0, binding = 0, rgba16f) writeonly uniform image2D brdfLUT;
 const uint SAMPLE_COUNT = 1024u;
 
 void main() {
-    // Global pixel coordinate in the 2D image
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(brdfLUT);
 
-    // Skip threads outside the image bounds (can happen at workgroup edges)
-    if (gid.x >= size.x || gid.y >= size.y) {
-        return;
-    }
+    if (gid.x >= size.x || gid.y >= size.y) return;
 
-    // Convert pixel coordinates to normalized [0,1] UV space
     vec2 uv = (vec2(gid) + 0.5) / vec2(size);
-
-    // NoV = cosine of view angle, mapped to x axis
-    float NoV = uv.x;
-    // Surface roughness mapped to y axis
+    float NdotV = uv.x;
     float roughness = uv.y;
 
-    // Numerically integrate the BRDF over the hemisphere
-    vec2 integratedBRDF = vec2(0.0);
-    for (uint i = 0u; i < SAMPLE_COUNT; ++i) {
-        vec2 Xi = hammersley2d(i, SAMPLE_COUNT);
-        integratedBRDF += integrateBRDF(NoV, roughness, Xi);
-    }
-
-    // Average the samples
-    integratedBRDF /= float(SAMPLE_COUNT);
-
-    // Write result as RG, with dummy B/A components
-    imageStore(brdfLUT, gid, vec4(integratedBRDF, 0.0, 1.0));
+    vec2 result = integrateBRDF(NdotV, roughness, SAMPLE_COUNT);
+    imageStore(brdfLUT, gid, vec4(result, 0.0, 1.0));
 }

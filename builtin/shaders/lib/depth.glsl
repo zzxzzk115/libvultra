@@ -1,7 +1,7 @@
 #ifndef DEPTH_GLSL
 #define DEPTH_GLSL
 
-#include "lib/space.glsl"
+#include "space.glsl"
 
 #ifndef DEPTH_ZERO_TO_ONE
 #  error "Check preamble"

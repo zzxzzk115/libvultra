@@ -29,6 +29,11 @@
 - Modern SDL using SDL3
 - ImGui docking + multiview
 
+## Showcase
+[Example: GLTF Viewer](./examples/gltf_viewer/main.cpp)
+
+![Example: GLTF Viewer](./media/images/example-gltf-viewer.png)
+
 ## Build Instructions
 
 Prerequisites:

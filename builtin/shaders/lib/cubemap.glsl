@@ -34,4 +34,18 @@ vec2 sampleSphericalMap(vec3 dir) {
 	v *= vec2(1.0 / TAU, 1.0 / PI); // -> [-0.5, 0.5]
 	return v + 0.5;                 // -> [0.0, 1.0]
 }
+
+vec3 directionFromCubeUV(int face, vec2 uv)
+{
+    uv = uv * 2.0 - 1.0;
+    vec3 dir;
+    if (face == 0) dir = vec3(1.0, -uv.y, -uv.x);       // +X
+    else if (face == 1) dir = vec3(-1.0, -uv.y, uv.x);  // -X
+    else if (face == 2) dir = vec3(uv.x, 1.0, uv.y);    // +Y
+    else if (face == 3) dir = vec3(uv.x, -1.0, -uv.y);  // -Y
+    else if (face == 4) dir = vec3(uv.x, -uv.y, 1.0);   // +Z
+    else               dir = vec3(-uv.x, -uv.y, -1.0);  // -Z
+    return normalize(dir);
+}
+
 #endif

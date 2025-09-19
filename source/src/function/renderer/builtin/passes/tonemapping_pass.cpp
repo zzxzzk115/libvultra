@@ -18,7 +18,8 @@ namespace vultra
 
         ToneMappingPass::ToneMappingPass(rhi::RenderDevice& rd) : rhi::RenderPass<ToneMappingPass>(rd) {}
 
-        FrameGraphResource ToneMappingPass::addPass(FrameGraph& fg, FrameGraphResource target)
+        FrameGraphResource
+        ToneMappingPass::addPass(FrameGraph& fg, FrameGraphResource target, float exposure, ToneMappingMethod method)
         {
             auto extent = fg.getDescriptor<framegraph::FrameGraphTexture>(target).extent;
 
@@ -56,11 +57,17 @@ namespace vultra
                                                         .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                                     });
                 },
-                [this](const auto&, FrameGraphPassResources&, void* ctx) {
+                [this, exposure, method](const auto&, FrameGraphPassResources&, void* ctx) {
                     auto& rc                                    = *static_cast<gfx::RendererRenderContext*>(ctx);
                     auto& [cb, framebufferInfo, sets, samplers] = rc;
 
                     RHI_GPU_ZONE(cb, PASS_NAME);
+
+                    struct PushConstants
+                    {
+                        float exposure;
+                        int   method; // 0: Khronos PBR Neutral, 1: ACES, 2: Reinhard (legacy)
+                    } pushConstants {exposure, static_cast<int>(method)};
 
                     const auto* pipeline = getPipeline(rhi::getColorFormat(*framebufferInfo, 0));
                     if (pipeline)
@@ -69,6 +76,7 @@ namespace vultra
                         assert(samplers.count("point") > 0);
                         rc.overrideSampler(sets[3][0], samplers["point"]);
                         rc.bindDescriptorSets(*pipeline);
+                        cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pushConstants);
                         cb.beginRendering(*framebufferInfo).drawFullScreenTriangle();
                         rc.endRendering();
                     }
