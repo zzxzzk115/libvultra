@@ -23,7 +23,10 @@ public:
     explicit OpenXRSponzaExampleApp(const std::span<char*>& args) :
         XRApp(args,
               {.title = "OpenXR Sponza Example", .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eOpenXR}),
-        m_Renderer(*m_RenderDevice, m_Swapchain.getFormat())
+        m_Renderer(*m_RenderDevice,
+                   m_Headset.getSwapchainPixelFormat() == rhi::PixelFormat::eRGBA8_sRGB ?
+                       rhi::Swapchain::Format::esRGB :
+                       rhi::Swapchain::Format::eLinear)
     {
         // Setup scene
 
