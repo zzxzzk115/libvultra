@@ -16,6 +16,14 @@ option("tests") -- build tests?
     set_default(true)
 option_end()
 
+if is_plat("linux") then
+    option("wayland") -- use wayland (Linux only)
+        set_default(false)
+        set_showmenu(true)
+        set_description("Enable Wayland support")
+    option_end()
+end
+
 -- if build on windows
 if is_plat("windows") then
     add_cxxflags("/Zc:__cplusplus", {tools = {"msvc", "cl"}}) -- fix __cplusplus == 199711L error
