@@ -28,6 +28,8 @@ namespace vultra
             // Remove a single renderable from the existing list
             void removeRenderable(const Renderable& renderable);
 
+            virtual void onImGui() {}
+
             virtual void render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) = 0;
 
             virtual void setScene(LogicScene* scene) {}

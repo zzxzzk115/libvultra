@@ -26,6 +26,7 @@ namespace vultra
             PassOutputMode    outputMode {PassOutputMode::SceneColor_AntiAliased};
             bool              enableAreaLights {true};
             bool              enableNormalMapping {true};
+            bool              enableIBL {true};
             float             exposure {1.0f};
             ToneMappingMethod toneMappingMethod {ToneMappingMethod::KhronosPBRNeutral};
         };
@@ -35,6 +36,8 @@ namespace vultra
         public:
             BuiltinRenderer(rhi::RenderDevice& rd, rhi::Swapchain::Format swapChainFormat);
             ~BuiltinRenderer() override;
+
+            virtual void onImGui() override;
 
             virtual void render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) override final;
 
@@ -57,6 +60,8 @@ namespace vultra
         private:
             framegraph::Samplers           m_Samplers;
             framegraph::TransientResources m_TransientResources;
+
+            LogicScene* m_LogicScene {nullptr};
 
             rhi::Swapchain::Format m_SwapChainFormat;
 
@@ -84,7 +89,6 @@ namespace vultra
             Ref<rhi::Texture> m_PrefilteredEnvMap {nullptr};
 
             bool m_EnableSkybox {false};
-            bool m_EnableIBL {false};
 
             BuiltinRenderSettings m_Settings {};
 

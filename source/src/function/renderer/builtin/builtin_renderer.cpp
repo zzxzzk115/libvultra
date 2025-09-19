@@ -21,6 +21,8 @@
 
 #include <glm/gtc/type_ptr.hpp>
 
+#include <imgui.h>
+
 #if _DEBUG
 #include <fstream>
 #endif
@@ -65,6 +67,70 @@ namespace vultra
             delete m_GammaCorrectionPass;
             delete m_FXAAPass;
             delete m_FinalPass;
+        }
+
+        void BuiltinRenderer::onImGui()
+        {
+            if (m_LogicScene == nullptr)
+                return;
+
+            auto& settings = m_Settings;
+
+            if (ImGui::CollapsingHeader("Output Mode", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Indent(5.0f);
+                // Output mode
+                int outputMode = static_cast<int>(settings.outputMode);
+                ImGui::RadioButton("Albedo", &outputMode, static_cast<int>(gfx::PassOutputMode::Albedo));
+                ImGui::RadioButton("Normal", &outputMode, static_cast<int>(gfx::PassOutputMode::Normal));
+                ImGui::RadioButton("Emissive", &outputMode, static_cast<int>(gfx::PassOutputMode::Emissive));
+                ImGui::RadioButton("Metallic", &outputMode, static_cast<int>(gfx::PassOutputMode::Metallic));
+                ImGui::RadioButton("Roughness", &outputMode, static_cast<int>(gfx::PassOutputMode::Roughness));
+                ImGui::RadioButton(
+                    "Ambient Occlusion", &outputMode, static_cast<int>(gfx::PassOutputMode::AmbientOcclusion));
+                ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::Depth));
+                // ImGui::RadioButton("SceneColor (HDR)", &outputMode,
+                // static_cast<int>(gfx::PassOutputMode::SceneColor_HDR)); ImGui::RadioButton("SceneColor (LDR)",
+                // &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
+                ImGui::RadioButton("Final", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_AntiAliased));
+                settings.outputMode = static_cast<gfx::PassOutputMode>(outputMode);
+                ImGui::Unindent(5.0f);
+            }
+
+            if (ImGui::CollapsingHeader("Rendering Options", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Indent(5.0f);
+                ImGui::Checkbox("Enable Normal Mapping", &settings.enableNormalMapping);
+                ImGui::Checkbox("Enable IBL", &settings.enableIBL);
+
+                bool showSkybox = m_LogicScene->getMainCamera().getComponent<CameraComponent>().clearFlags ==
+                                  CameraClearFlags::eSkybox;
+                ImGui::Checkbox("Show Skybox", &showSkybox);
+                m_LogicScene->getMainCamera().getComponent<CameraComponent>().clearFlags =
+                    showSkybox ? CameraClearFlags::eSkybox : CameraClearFlags::eColor;
+
+                if (!showSkybox)
+                {
+                    ImGui::ColorEdit3(
+                        "Clear Color",
+                        glm::value_ptr(m_LogicScene->getMainCamera().getComponent<CameraComponent>().clearColor));
+                }
+
+                if (ImGui::CollapsingHeader("Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    ImGui::Indent(5.0f);
+                    // Tone-mapping
+                    ImGui::DragFloat("Exposure", &settings.exposure, 0.1f, 0.1f, 10.0f, "%.1f");
+                    int toneMappingMethod = static_cast<int>(settings.toneMappingMethod);
+                    ImGui::RadioButton("Khronos PBR Neutral", &toneMappingMethod, 0);
+                    ImGui::RadioButton("ACES", &toneMappingMethod, 1);
+                    ImGui::RadioButton("Reinhard", &toneMappingMethod, 2);
+                    settings.toneMappingMethod = static_cast<gfx::ToneMappingMethod>(toneMappingMethod);
+                    ImGui::Unindent(5.0f);
+                }
+
+                ImGui::Unindent(5.0f);
+            }
         }
 
         void BuiltinRenderer::render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
@@ -117,8 +183,11 @@ namespace vultra
                                            m_Settings.enableNormalMapping);
 
                     // Deferred lighting
-                    m_DeferredLightingPass->addPass(
-                        fg, blackboard, m_Settings.enableAreaLights, m_EnableIBL, color::sRGBToLinear(m_ClearColor));
+                    m_DeferredLightingPass->addPass(fg,
+                                                    blackboard,
+                                                    m_Settings.enableAreaLights,
+                                                    m_Settings.enableIBL,
+                                                    color::sRGBToLinear(m_ClearColor));
                     auto& sceneColor = blackboard.get<SceneColorData>();
 
                     if (m_EnableSkybox)
@@ -188,6 +257,8 @@ namespace vultra
 
         void BuiltinRenderer::setScene(LogicScene* scene)
         {
+            m_LogicScene = scene;
+
             if (scene)
             {
                 // Cameras
@@ -253,6 +324,10 @@ namespace vultra
                                 camComponent.environmentMap =
                                     resource::loadResource<gfx::TextureManager>(camComponent.environmentMapPath);
                             }
+                            else
+                            {
+                                m_Settings.enableIBL = false;
+                            }
 
                             VULTRA_CORE_ASSERT(camComponent.environmentMap, "Failed to load environment map");
 
@@ -262,14 +337,11 @@ namespace vultra
                                 m_IrradianceMap = m_IBLDataGenerator.generateIrradianceMap(cb, *m_Cubemap);
                                 m_PrefilteredEnvMap = m_IBLDataGenerator.generatePrefilterEnvMap(cb, *m_Cubemap);
                             });
-
-                            m_EnableIBL = true;
                         }
                     }
                     else
                     {
                         m_EnableSkybox = false;
-                        m_EnableIBL    = false;
                     }
                 }
                 else
