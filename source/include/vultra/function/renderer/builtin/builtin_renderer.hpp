@@ -38,6 +38,11 @@ namespace vultra
 
             virtual void render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) override final;
 
+            void renderXR(rhi::CommandBuffer& cb,
+                          rhi::Texture*       leftEyeRenderTarget,
+                          rhi::Texture*       rightEyeRenderTarget,
+                          const fsec          dt);
+
             CameraInfo& getCameraInfo() { return m_CameraInfo; }
             LightInfo&  getLightInfo() { return m_LightInfo; }
 
@@ -59,6 +64,9 @@ namespace vultra
             FrameInfo  m_FrameInfo {};
             LightInfo  m_LightInfo {};
 
+            CameraInfo m_XrCameraLeft {};
+            CameraInfo m_XrCameraRight {};
+
             GBufferPass*          m_GBufferPass {nullptr};
             DeferredLightingPass* m_DeferredLightingPass {nullptr};
             SkyboxPass*           m_SkyboxPass {nullptr};
@@ -75,6 +83,7 @@ namespace vultra
             Ref<rhi::Texture> m_IrradianceMap {nullptr};
             Ref<rhi::Texture> m_PrefilteredEnvMap {nullptr};
 
+            bool m_EnableSkybox {false};
             bool m_EnableIBL {false};
 
             BuiltinRenderSettings m_Settings {};

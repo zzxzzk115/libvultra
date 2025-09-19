@@ -193,6 +193,30 @@ namespace vultra
         return {};
     }
 
+    Entity LogicScene::createXrCamera(bool leftEye)
+    {
+        Entity cameraEntity = createEntity("XR Camera");
+        cameraEntity.addComponent<TransformComponent>();
+        cameraEntity.addComponent<XrCameraComponent>(leftEye);
+        return cameraEntity;
+    }
+
+    Entity LogicScene::getXrCamera(bool leftEye) const
+    {
+        // Find the entity with XrCameraComponent
+        auto view = m_Registry.view<XrCameraComponent>();
+        for (auto entity : view)
+        {
+            const auto& xrCameraComponent = view.get<XrCameraComponent>(entity);
+            if (xrCameraComponent.isLeftEye == leftEye)
+            {
+                return {entity, const_cast<LogicScene*>(this)};
+            }
+        }
+
+        return {};
+    }
+
     Entity LogicScene::createDirectionalLight()
     {
         Entity lightEntity = createEntity("Directional Light");

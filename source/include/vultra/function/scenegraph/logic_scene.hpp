@@ -87,6 +87,8 @@ namespace vultra
         // Helpers to create common entities
         Entity createMainCamera();
         Entity getMainCamera() const;
+        Entity createXrCamera(bool leftEye);
+        Entity getXrCamera(bool leftEye) const;
         Entity createDirectionalLight();
         Entity getDirectionalLight() const;
         Entity createMeshEntity(const std::string& name, const std::string& meshPath);

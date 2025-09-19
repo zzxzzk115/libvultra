@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/core/math/math.hpp"
+#include "vultra/function/openxr/xr_helper.hpp"
 #include "vultra/function/renderer/mesh_resource.hpp"
 
 #include <cereal/cereal.hpp>
@@ -161,6 +162,48 @@ namespace vultra
         CameraComponent(const CameraComponent&) = default;
 
         explicit CameraComponent(const std::string& envMapPath) : environmentMapPath(envMapPath) {}
+    };
+
+    struct XrCameraComponent
+    {
+        COMPONENT_NAME(XrCamera)
+
+        glm::vec3     position {0.0f};
+        glm::quat     rotation {1, 0, 0, 0};
+        rhi::Extent2D resolution {1024, 1024};
+        glm::mat4     viewMatrix {1.0f};
+        float         zNear {0.1f};
+        float         zFar {1000.0f};
+
+        float fovAngleLeft {-45.0f};
+        float fovAngleRight {45.0f};
+        float fovAngleUp {45.0f};
+        float fovAngleDown {-45.0f};
+
+        bool isLeftEye {true}; // true: left eye, false: right eye
+
+        // NOLINTBEGIN
+        template<class Archive>
+        void serialize(Archive& archive)
+        {
+            archive(CEREAL_NVP(position),
+                    CEREAL_NVP(rotation),
+                    CEREAL_NVP(resolution),
+                    CEREAL_NVP(viewMatrix),
+                    CEREAL_NVP(zNear),
+                    CEREAL_NVP(zFar),
+                    CEREAL_NVP(fovAngleLeft),
+                    CEREAL_NVP(fovAngleRight),
+                    CEREAL_NVP(fovAngleUp),
+                    CEREAL_NVP(fovAngleDown),
+                    CEREAL_NVP(isLeftEye));
+        }
+        // NOLINTEND
+
+        XrCameraComponent()                         = default;
+        XrCameraComponent(const XrCameraComponent&) = default;
+
+        explicit XrCameraComponent(bool aIsLeftEye) : isLeftEye(aIsLeftEye) {}
     };
 
     struct DirectionalLightComponent

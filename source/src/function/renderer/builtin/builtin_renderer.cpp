@@ -50,7 +50,8 @@ namespace vultra
                     [&](rhi::CommandBuffer& cb) { m_BrdfLUT = m_IBLDataGenerator.generateBrdfLUT(cb); });
             }
 
-            // Set default irradiance and prefiltered environment maps
+            // Set default cubemap, irradiance and prefiltered environment maps
+            m_Cubemap           = rhi::createDefaultTexture(255, 255, 255, 255, rd);
             m_IrradianceMap     = rhi::createDefaultTexture(255, 255, 255, 255, rd);
             m_PrefilteredEnvMap = rhi::createDefaultTexture(255, 255, 255, 255, rd);
         }
@@ -120,7 +121,7 @@ namespace vultra
                         fg, blackboard, m_Settings.enableAreaLights, m_EnableIBL, color::sRGBToLinear(m_ClearColor));
                     auto& sceneColor = blackboard.get<SceneColorData>();
 
-                    if (m_EnableIBL)
+                    if (m_EnableSkybox)
                     {
                         // Skybox
                         sceneColor.hdr = m_SkyboxPass->addPass(fg, blackboard, skyboxCubemap, sceneColor.hdr);
@@ -171,6 +172,18 @@ namespace vultra
                 m_FrameInfo.deltaTime = dt.count();
                 m_FrameInfo.time += m_FrameInfo.deltaTime;
             }
+        }
+
+        void BuiltinRenderer::renderXR(rhi::CommandBuffer& cb,
+                                       rhi::Texture*       leftEyeRenderTarget,
+                                       rhi::Texture*       rightEyeRenderTarget,
+                                       const fsec          dt)
+        {
+            m_CameraInfo = m_XrCameraLeft;
+            render(cb, leftEyeRenderTarget, dt);
+
+            m_CameraInfo = m_XrCameraRight;
+            render(cb, rightEyeRenderTarget, dt);
         }
 
         void BuiltinRenderer::setScene(LogicScene* scene)
@@ -230,6 +243,8 @@ namespace vultra
                     // Environment map
                     if (camComponent.clearFlags == CameraClearFlags::eSkybox)
                     {
+                        m_EnableSkybox = true;
+
                         // Load environment map if not already
                         if (!camComponent.environmentMap)
                         {
@@ -253,12 +268,60 @@ namespace vultra
                     }
                     else
                     {
-                        m_EnableIBL = false;
+                        m_EnableSkybox = false;
+                        m_EnableIBL    = false;
                     }
                 }
                 else
                 {
                     m_CameraInfo = CameraInfo {};
+                }
+
+                // XR Cameras
+                auto leftEyeCamera = scene->getXrCamera(true);
+                if (leftEyeCamera)
+                {
+                    auto& camTransform = leftEyeCamera.getComponent<TransformComponent>();
+                    auto& camComponent = leftEyeCamera.getComponent<XrCameraComponent>();
+
+                    m_XrCameraLeft.view = camComponent.viewMatrix;
+                    XrFovf fov          = {camComponent.fovAngleLeft,
+                                           camComponent.fovAngleRight,
+                                           camComponent.fovAngleUp,
+                                           camComponent.fovAngleDown};
+                    m_XrCameraLeft.projection =
+                        xrutils::createProjectionMatrix(fov, camComponent.zNear, camComponent.zFar);
+                    m_XrCameraLeft.inverseOriginalProjection = glm::inverse(m_XrCameraLeft.projection);
+                    m_XrCameraLeft.viewProjection            = m_XrCameraLeft.projection * m_XrCameraLeft.view;
+                    m_XrCameraLeft.zNear                     = camComponent.zNear;
+                    m_XrCameraLeft.zFar                      = camComponent.zFar;
+                }
+                else
+                {
+                    m_XrCameraLeft = CameraInfo {};
+                }
+
+                auto rightEyeCamera = scene->getXrCamera(false);
+                if (rightEyeCamera)
+                {
+                    auto& camTransform = rightEyeCamera.getComponent<TransformComponent>();
+                    auto& camComponent = rightEyeCamera.getComponent<XrCameraComponent>();
+
+                    m_XrCameraRight.view = camComponent.viewMatrix;
+                    XrFovf fov           = {camComponent.fovAngleLeft,
+                                            camComponent.fovAngleRight,
+                                            camComponent.fovAngleUp,
+                                            camComponent.fovAngleDown};
+                    m_XrCameraRight.projection =
+                        xrutils::createProjectionMatrix(fov, camComponent.zNear, camComponent.zFar);
+                    m_XrCameraRight.inverseOriginalProjection = glm::inverse(m_XrCameraRight.projection);
+                    m_XrCameraRight.viewProjection            = m_XrCameraRight.projection * m_XrCameraRight.view;
+                    m_XrCameraRight.zNear                     = camComponent.zNear;
+                    m_XrCameraRight.zFar                      = camComponent.zFar;
+                }
+                else
+                {
+                    m_XrCameraRight = CameraInfo {};
                 }
 
                 // Lights
