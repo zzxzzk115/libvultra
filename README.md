@@ -77,14 +77,14 @@ Step-by-Step:
   > For OpenXR programs, you may need to set the XR_RUNTIME_JSON environment variable.
   > For debugging OpenXR programs without headsets, you may need Meta XR Simulator on Windows and macOS. On Linux, you can use Monado as the simulator.
 
-## Future Work
+## TODO List
 - [x] Wayland support
 - [x] More powerful texture loader that supports KTX, KTX2, DDS and more
   - [x] KTX
   - [x] KTX2
   - [x] DDS
   - [x] EXR
-- [ ] ECS-based scene management with EnTT
+- [x] ECS-based scene management with EnTT
 - [ ] Raytracing Pipeline
 - [ ] Mesh Shading Pipeline
 - [ ] Resource Pipeline
