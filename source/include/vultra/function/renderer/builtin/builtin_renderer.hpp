@@ -4,6 +4,7 @@
 #include "vultra/function/framegraph/transient_resources.hpp"
 #include "vultra/function/renderer/base_renderer.hpp"
 #include "vultra/function/renderer/builtin/pass_output_mode.hpp"
+#include "vultra/function/renderer/builtin/tool/cubemap_converter.hpp"
 #include "vultra/function/renderer/builtin/tool/ibl_data_generator.hpp"
 #include "vultra/function/renderer/builtin/upload_resources.hpp"
 
@@ -13,6 +14,8 @@ namespace vultra
     {
         class GBufferPass;
         class DeferredLightingPass;
+        class SkyboxPass;
+        class ToneMappingPass;
         class GammaCorrectionPass;
         class FXAAPass;
         class FinalPass;
@@ -27,10 +30,9 @@ namespace vultra
         class BuiltinRenderer : public BaseRenderer
         {
         public:
-            BuiltinRenderer(rhi::RenderDevice& rd);
+            BuiltinRenderer(rhi::RenderDevice& rd, rhi::Swapchain::Format swapChainFormat);
             ~BuiltinRenderer() override;
 
-            virtual void preRender() override final;
             virtual void render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) override final;
 
             CameraInfo& getCameraInfo() { return m_CameraInfo; }
@@ -48,18 +50,29 @@ namespace vultra
             framegraph::Samplers           m_Samplers;
             framegraph::TransientResources m_TransientResources;
 
+            rhi::Swapchain::Format m_SwapChainFormat;
+
             CameraInfo m_CameraInfo {};
             FrameInfo  m_FrameInfo {};
             LightInfo  m_LightInfo {};
 
             GBufferPass*          m_GBufferPass {nullptr};
             DeferredLightingPass* m_DeferredLightingPass {nullptr};
+            SkyboxPass*           m_SkyboxPass {nullptr};
+            ToneMappingPass*      m_ToneMappingPass {nullptr};
             GammaCorrectionPass*  m_GammaCorrectionPass {nullptr};
             FXAAPass*             m_FXAAPass {nullptr};
             FinalPass*            m_FinalPass {nullptr};
 
+            CubemapConverter  m_CubemapConverter;
+            Ref<rhi::Texture> m_Cubemap {nullptr};
+
             IBLDataGenerator  m_IBLDataGenerator;
             Ref<rhi::Texture> m_BrdfLUT {nullptr};
+            Ref<rhi::Texture> m_IrradianceMap {nullptr};
+            Ref<rhi::Texture> m_PrefilteredEnvMap {nullptr};
+
+            bool m_EnableIBL {false};
 
             BuiltinRenderSettings m_Settings {};
 

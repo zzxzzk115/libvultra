@@ -90,6 +90,21 @@ namespace vultra
             }
         }
 
+        struct alignas(16) GPUDirectionalLight
+        {
+            glm::vec3 direction;
+            float     padding0 {0.0f};
+            glm::vec3 color;
+            float     intensity;
+            glm::mat4 lightSpaceMatrix {1.0f};
+        };
+
+        struct alignas(16) GPUPointLight
+        {
+            glm::vec4 posIntensity; // xyz position, w intensity
+            glm::vec4 colorRadius;  // rgb color, w radius
+        };
+
         struct alignas(16) GPUAreaLight
         {
             glm::vec4 posIntensity; // xyz position, w intensity
@@ -101,29 +116,47 @@ namespace vultra
         struct alignas(16) GPULightBlock
         {
             explicit GPULightBlock(const LightInfo& lightInfo) :
-                direction {lightInfo.direction}, color {lightInfo.color}, intensity {lightInfo.intensity},
-                lightSpaceMatrix(lightInfo.projection * lightInfo.view), areaLightCount {lightInfo.areaLightCount}
+                pointLightCount(lightInfo.pointLightCount), areaLightCount {lightInfo.areaLightCount}
             {
+                // Directional light
+                direction.direction        = lightInfo.directionalLight.direction;
+                direction.color            = lightInfo.directionalLight.color;
+                direction.intensity        = lightInfo.directionalLight.intensity;
+                direction.lightSpaceMatrix = lightInfo.directionalLight.projection * lightInfo.directionalLight.view;
+
+                // Point lights
+                for (int i = 0; i < lightInfo.pointLightCount && i < LIGHTINFO_MAX_POINT_LIGHTS; ++i)
+                {
+                    pointLights[i].posIntensity =
+                        glm::vec4(lightInfo.pointLights[i].position, lightInfo.pointLights[i].intensity);
+                    pointLights[i].colorRadius =
+                        glm::vec4(lightInfo.pointLights[i].color, lightInfo.pointLights[i].radius);
+                }
+
+                // Area lights
                 for (int i = 0; i < lightInfo.areaLightCount && i < LIGHTINFO_MAX_AREA_LIGHTS; ++i)
                 {
-                    areaLights[i].posIntensity = lightInfo.areaLights[i].posIntensity;
-                    areaLights[i].uTwoSided    = lightInfo.areaLights[i].uTwoSided;
-                    areaLights[i].vPadding     = lightInfo.areaLights[i].vPadding;
-                    areaLights[i].color        = lightInfo.areaLights[i].color;
+                    areaLights[i].posIntensity =
+                        glm::vec4(lightInfo.areaLights[i].position, lightInfo.areaLights[i].intensity);
+                    areaLights[i].uTwoSided = glm::vec4(lightInfo.areaLights[i].u, lightInfo.areaLights[i].twoSided);
+                    areaLights[i].vPadding  = glm::vec4(lightInfo.areaLights[i].v, lightInfo.areaLights[i].padding);
+                    areaLights[i].color     = glm::vec4(lightInfo.areaLights[i].color, 0.0f);
                 }
             }
 
-            glm::vec3    direction {0.0f};
-            float        padding0 {0.0f};
-            glm::vec3    color {1.0f};
-            float        intensity {1.0f};
-            glm::mat4    lightSpaceMatrix {1.0f};
+            GPUDirectionalLight direction {};
+
+            int           pointLightCount {0};                        // implicit padding to 16-byte alignment before
+            GPUPointLight pointLights[LIGHTINFO_MAX_POINT_LIGHTS] {}; // value-init to zero
+
             int          areaLightCount {0};                       // implicit padding to 16-byte alignment before array
             GPUAreaLight areaLights[LIGHTINFO_MAX_AREA_LIGHTS] {}; // value-init to zero
         };
 
+        static_assert(sizeof(GPUDirectionalLight) == 96, "GPUDirectionalLight unexpected size (std140 mismatch)");
+        static_assert(sizeof(GPUPointLight) == 32, "GPUPointLight unexpected size (std140 mismatch)");
         static_assert(sizeof(GPUAreaLight) == 64, "GPUAreaLight unexpected size (std140 mismatch)");
-        static_assert(sizeof(GPULightBlock) == 2160, "GPULightBlock unexpected size (std140 mismatch)");
+        static_assert(sizeof(GPULightBlock) == 3200, "GPULightBlock unexpected size (std140 mismatch)");
 
         void uploadLightBlock(FrameGraph& fg, FrameGraphBlackboard& blackboard, const LightInfo& lightInfo)
         {

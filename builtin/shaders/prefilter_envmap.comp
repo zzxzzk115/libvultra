@@ -1,0 +1,46 @@
+#version 460 core
+
+#include "lib/math.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 6) in;
+
+layout(set = 0, binding = 0) uniform samplerCube environmentMap;
+layout(set = 0, binding = 1, rgba16f) writeonly uniform imageCube prefilteredMap[5];
+
+layout(push_constant) uniform PushConstants {
+    uint  mipLevel;
+    float roughness;
+    uint  sampleCount;
+} pc;
+
+void main()
+{
+    ivec3 gid = ivec3(gl_GlobalInvocationID.xyz);
+    ivec2 size = imageSize(prefilteredMap[pc.mipLevel]);
+    if (gid.x >= size.x || gid.y >= size.y || gid.z >= 6)
+        return;
+
+    vec2 uv = (vec2(gid.xy) + 0.5) / vec2(size);
+    vec3 R = directionFromCubeUV(gid.z, uv);
+    vec3 N = normalize(R);
+
+    vec3 prefilteredColor = vec3(0.0);
+    float totalWeight = 0.0;
+
+    for (uint i = 0u; i < pc.sampleCount; ++i)
+    {
+        vec2 Xi = hammersley2d(i, pc.sampleCount);
+        vec3 H = importanceSampleGGX(Xi, N, pc.roughness);
+        vec3 L = normalize(2.0 * dot(R, H) * H - R);
+
+        float NoL = max(dot(N, L), 0.0);
+        if (NoL > 0.0)
+        {
+            prefilteredColor += textureLod(environmentMap, L, 0.0).rgb * NoL;
+            totalWeight += NoL;
+        }
+    }
+
+    prefilteredColor /= max(totalWeight, 1e-4);
+    imageStore(prefilteredMap[pc.mipLevel], ivec3(gid.xy, gid.z), vec4(prefilteredColor, 1.0));
+}

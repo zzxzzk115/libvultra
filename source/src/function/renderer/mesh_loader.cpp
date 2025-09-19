@@ -192,7 +192,7 @@ namespace vultra
                         subMesh.material.name = materialName.C_Str();
                     }
 
-#if DEBUG
+#if _DEBUG
                     // Traverse material properties
                     for (unsigned int i = 0; i < material->mNumProperties; ++i)
                     {
@@ -295,7 +295,7 @@ namespace vultra
                     subMesh.material.useNormalTexture = (normalTexture != nullptr);
 
                     // Ambient Occlusion
-                    auto aoTexture                = loadTexture(material, aiTextureType_AMBIENT_OCCLUSION);
+                    auto aoTexture                = loadTexture(material, aiTextureType_LIGHTMAP);
                     subMesh.material.ao           = aoTexture == nullptr ? m_DefaultWhite1x1 : aoTexture;
                     subMesh.material.useAOTexture = (aoTexture != nullptr);
 

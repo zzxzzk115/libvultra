@@ -164,6 +164,9 @@ namespace vultra
             [[nodiscard]] ComputePipeline createComputePipeline(const ShaderStageInfo& shaderStageInfo,
                                                                 std::optional<PipelineLayout> = std::nullopt);
 
+            [[nodiscard]] ComputePipeline createComputePipelineBuiltin(const SPIRV& spv,
+                                                                       std::optional<PipelineLayout> = std::nullopt);
+
             RenderDevice& upload(Buffer&, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data);
 
             RenderDevice& destroy(vk::Fence&);

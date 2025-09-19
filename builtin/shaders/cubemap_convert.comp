@@ -1,0 +1,22 @@
+#version 460 core
+
+#include "lib/cubemap.glsl"
+#include "lib/color.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 6) in;
+
+layout(binding = 0) uniform sampler2D equirectMap;
+layout(binding = 1, rgba16f) writeonly uniform imageCube outputCube;
+
+void main()
+{
+    ivec3 gid = ivec3(gl_GlobalInvocationID);
+    ivec2 size = imageSize(outputCube).xy;
+    if (gid.x >= size.x || gid.y >= size.y) return;
+
+    vec3 dir = cubeCoordToWorld(gid, size.x);
+    vec2 uv = sampleSphericalMap(normalize(dir));
+    uv.y *= -1.0;
+    vec3 color = texture(equirectMap, uv).rgb;
+    imageStore(outputCube, gid, vec4(color, 1.0));
+}

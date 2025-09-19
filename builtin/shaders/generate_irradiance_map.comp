@@ -1,0 +1,54 @@
+#version 460 core
+
+#include "lib/math.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 6) in;
+
+// input cubemap
+layout(set = 0, binding = 0) uniform samplerCube environmentMap;
+// output irradiance cubemap
+layout(set = 0, binding = 1, rgba16f) writeonly uniform imageCube irradianceMap;
+
+layout(push_constant) uniform PushConstants {
+    float lodBias;
+} pc;
+
+void main()
+{
+    ivec3 gid = ivec3(gl_GlobalInvocationID.xyz);
+    ivec2 size = imageSize(irradianceMap);
+    if (gid.x >= size.x || gid.y >= size.y || gid.z >= 6) return;
+
+    vec2 uv = (vec2(gid.xy) + 0.5) / vec2(size.xy);
+    vec3 N = directionFromCubeUV(gid.z, uv);
+
+    vec3 up        = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent   = normalize(cross(up, N));
+    vec3 bitangent = cross(N, tangent);
+
+    vec3 irradiance = vec3(0.0);
+    const float deltaPhi   = 2.0 * PI / 180.0;
+    const float deltaTheta = 0.5 * PI / 64.0;
+
+    for (float phi = 0.0; phi < 2.0 * PI; phi += deltaPhi)
+    {
+        for (float theta = 0.0; theta < 0.5 * PI; theta += deltaTheta)
+        {
+            vec3 tangentSample = vec3(
+                sin(theta) * cos(phi),
+                sin(theta) * sin(phi),
+                cos(theta)
+            );
+
+            vec3 sampleVec = tangent * tangentSample.x +
+                             bitangent * tangentSample.y +
+                             N * tangentSample.z;
+
+            irradiance += textureLod(environmentMap, sampleVec, pc.lodBias).rgb
+                          * cos(theta) * sin(theta);
+        }
+    }
+
+    irradiance = PI * irradiance * (deltaPhi * deltaTheta);
+    imageStore(irradianceMap, gid, vec4(irradiance, 1.0));
+}

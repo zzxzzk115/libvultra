@@ -1,6 +1,8 @@
 #ifndef DEPTH_GLSL
 #define DEPTH_GLSL
 
+#include "lib/space.glsl"
+
 #ifndef DEPTH_ZERO_TO_ONE
 #  error "Check preamble"
 #endif
@@ -34,11 +36,6 @@ float linearizeDepth(float n, float f, float sampledDepth) {
 
 float linearizeDepth(float sampledDepth) {
   return linearizeDepth(u_Camera.near, u_Camera.far, sampledDepth);
-}
-
-vec3 clipToView(vec4 v, mat4 inversedProjection) {
-    const vec4 view = inversedProjection * v; // Transform clip space to view space
-    return view.xyz / view.w; // Divide by w to convert from homogeneous coordinates
 }
 
 // Reconstruct view-space position from depth and texture coordinates

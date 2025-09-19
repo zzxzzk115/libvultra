@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/graphics_pipeline.hpp"
+#include "vultra/core/rhi/compute_pipeline.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/texture.hpp"
 
@@ -15,22 +15,22 @@ namespace vultra
             ~IBLDataGenerator() = default;
 
             [[nodiscard]] Ref<rhi::Texture> generateBrdfLUT(rhi::CommandBuffer& cb);
-            [[nodiscard]] Ref<rhi::Texture> generateIrradiance(rhi::CommandBuffer& cb, rhi::Texture& cubemap);
+            [[nodiscard]] Ref<rhi::Texture> generateIrradianceMap(rhi::CommandBuffer& cb, rhi::Texture& cubemap);
             [[nodiscard]] Ref<rhi::Texture> generatePrefilterEnvMap(rhi::CommandBuffer& cb, rhi::Texture& cubemap);
 
             [[nodiscard]] bool isBrdfLUTPresent() const { return m_BrdfLUTGenerated; }
 
         private:
-            rhi::GraphicsPipeline createBrdfPipeline() const;
-            rhi::GraphicsPipeline createIrradiancePipeline() const;
-            rhi::GraphicsPipeline createPrefilterEnvMapPipeline() const;
+            rhi::ComputePipeline createBrdfPipeline() const;
+            rhi::ComputePipeline createIrradiancePipeline() const;
+            rhi::ComputePipeline createPrefilterEnvMapPipeline() const;
 
         private:
             rhi::RenderDevice& m_RenderDevice;
 
-            rhi::GraphicsPipeline m_BrdfPipeline;
-            rhi::GraphicsPipeline m_IrradiancePipeline;
-            rhi::GraphicsPipeline m_PrefilterEnvMapPipeline;
+            rhi::ComputePipeline m_BrdfPipeline;
+            rhi::ComputePipeline m_IrradiancePipeline;
+            rhi::ComputePipeline m_PrefilterEnvMapPipeline;
 
             bool m_BrdfLUTGenerated {false};
         };

@@ -14,23 +14,26 @@ using namespace vultra;
 
 const char* MODEL_ENTITY_NAME = "Damaged Helmet";
 const char* MODEL_PATH        = "resources/models/DamagedHelmet/DamagedHelmet.gltf";
+const char* ENV_MAP_PATH      = "resources/textures/environment_maps/citrus_orchard_puresky_1k.hdr";
 
 class GLTFViewerApp final : public ImGuiApp
 {
 public:
     explicit GLTFViewerApp(const std::span<char*>& args) :
         ImGuiApp(args, {.title = "GLTF Viewer", .vSyncConfig = rhi::VerticalSync::eEnabled}, {.enableDocking = false}),
-        m_Renderer(*m_RenderDevice)
+        m_Renderer(*m_RenderDevice, m_Swapchain.getFormat())
     {
         // Setup scene
 
         // Main Camera
-        auto  camera                = m_LogicScene.createMainCamera();
-        auto& camTransform          = camera.getComponent<TransformComponent>();
-        auto& camComponent          = camera.getComponent<CameraComponent>();
-        camTransform.position       = glm::vec3(0.0f, 0.0f, 5.0f);
-        camComponent.viewPortWidth  = m_Window.getExtent().x;
-        camComponent.viewPortHeight = m_Window.getExtent().y;
+        auto  camera                    = m_LogicScene.createMainCamera();
+        auto& camTransform              = camera.getComponent<TransformComponent>();
+        auto& camComponent              = camera.getComponent<CameraComponent>();
+        camTransform.position           = glm::vec3(0.0f, 0.0f, 5.0f);
+        camComponent.viewPortWidth      = m_Window.getExtent().x;
+        camComponent.viewPortHeight     = m_Window.getExtent().y;
+        camComponent.clearFlags         = CameraClearFlags::eSkybox;
+        camComponent.environmentMapPath = ENV_MAP_PATH;
 
         // Directional Light
         auto  directionalLight   = m_LogicScene.createDirectionalLight();
@@ -59,10 +62,9 @@ public:
         ImGui::RadioButton("Roughness", &outputMode, static_cast<int>(gfx::PassOutputMode::Roughness));
         ImGui::RadioButton("Ambient Occlusion", &outputMode, static_cast<int>(gfx::PassOutputMode::AmbientOcclusion));
         ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::Depth));
-        ImGui::RadioButton("SceneColor (HDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_HDR));
-        ImGui::RadioButton("SceneColor (LDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
-        ImGui::RadioButton(
-            "SceneColor (Anti-Aliased)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_AntiAliased));
+        // ImGui::RadioButton("SceneColor (HDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_HDR));
+        // ImGui::RadioButton("SceneColor (LDR)", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
+        ImGui::RadioButton("Final", &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_AntiAliased));
         settings.outputMode = static_cast<gfx::PassOutputMode>(outputMode);
 
         ImGui::Checkbox("Enable Normal Mapping", &settings.enableNormalMapping);
@@ -114,6 +116,29 @@ public:
                 }
             }
 
+            // Middle button drag to rotate camera
+            if (Input::getMouseButton(MouseCode::eMiddle))
+            {
+                const auto mousePos = Input::getMousePosition();
+                const auto delta    = mousePos - lastMousePos;
+                lastMousePos        = mousePos;
+
+                auto& camTransform = m_LogicScene.getMainCamera().getComponent<TransformComponent>();
+                auto  euler        = camTransform.getRotationEuler();
+                euler.x -= delta.y * 0.1f;
+                euler.y += delta.x * 0.1f;
+                euler.x = glm::clamp(euler.x, -89.0f, 89.0f);
+                camTransform.setRotationEuler(euler);
+            }
+            else
+            {
+                // Reset last mouse position when not dragging
+                if (Input::getMouseButtonDown(MouseCode::eMiddle))
+                {
+                    lastMousePos = Input::getMousePosition();
+                }
+            }
+
             // Right button drag to zoom in/out
             static bool wasPressed = false;
             if (Input::getMouseButton(MouseCode::eRight))
@@ -147,12 +172,6 @@ public:
         m_Renderer.setScene(&m_LogicScene);
 
         ImGuiApp::onUpdate(dt);
-    }
-
-    void onPreRender() override
-    {
-        m_Renderer.preRender();
-        ImGuiApp::onPreRender();
     }
 
     void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override

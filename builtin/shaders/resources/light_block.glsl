@@ -1,25 +1,22 @@
 #ifndef LIGHT_BLOCK_GLSL
 #define LIGHT_BLOCK_GLSL
 
-struct AreaLight {
-    vec4 posIntensity; // xyz pos, w intensity
-    vec4 uTwoSided;    // xyz U, w twoSided
-    vec4 vPadding;     // xyz V, w padding
-    vec4 color;        // rgb color, a unused
-};
+#include "lib/light.glsl"
 
 layout (set = 1, binding = 1, std140) uniform _LightBlock {
-    vec3 direction; float _pad0;
-    vec3 color; float intensity;
-    mat4 lightSpaceMatrix;
-    int  areaLightCount; // std140 will pad to 16 bytes automatically
+    DirectionalLight directionalLight;
+    int pointLightCount;
+    PointLight pointLights[32];
+    int  areaLightCount;
     AreaLight areaLights[32];
 } u_LightBlock;
 
-vec3 getLightDirection() { return u_LightBlock.direction; }
-vec3 getLightColor() { return u_LightBlock.color; }
-float getLightIntensity() { return u_LightBlock.intensity; }
-mat4 getLightSpaceMatrix() { return u_LightBlock.lightSpaceMatrix; }
+vec3 getLightDirection() { return u_LightBlock.directionalLight.direction; }
+vec3 getLightColor() { return u_LightBlock.directionalLight.color; }
+float getLightIntensity() { return u_LightBlock.directionalLight.intensity; }
+mat4 getLightSpaceMatrix() { return u_LightBlock.directionalLight.lightSpaceMatrix; }
+int  getPointLightCount() { return u_LightBlock.pointLightCount; }
+PointLight getPointLight(int i) { return u_LightBlock.pointLights[i]; }
 int  getAreaLightCount() { return u_LightBlock.areaLightCount; }
 AreaLight getAreaLight(int i) { return u_LightBlock.areaLights[i]; }
 

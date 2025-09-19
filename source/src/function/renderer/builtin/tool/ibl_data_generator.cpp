@@ -1,13 +1,11 @@
 #include "vultra/function/renderer/builtin/tool/ibl_data_generator.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/function/renderer/builtin/post_process_helper.hpp"
-#include "vultra/function/renderer/builtin/tool/cubemap_capture.hpp"
 
-#include <shader_headers/cube.vert.spv.h>
-#include <shader_headers/generate_brdf.frag.spv.h>
-#include <shader_headers/generate_irradiance_map.frag.spv.h>
-#include <shader_headers/prefilter_envmap.frag.spv.h>
+#include <shader_headers/generate_brdf.comp.spv.h>
+#include <shader_headers/generate_irradiance_map.comp.spv.h>
+#include <shader_headers/prefilter_envmap.comp.spv.h>
 
+#include <glm/ext/scalar_constants.hpp>
 #include <glm/glm.hpp>
 
 namespace vultra
@@ -16,7 +14,6 @@ namespace vultra
     {
         IBLDataGenerator::IBLDataGenerator(rhi::RenderDevice& rd) : m_RenderDevice(rd)
         {
-            // Create pipelines
             m_BrdfPipeline            = createBrdfPipeline();
             m_IrradiancePipeline      = createIrradiancePipeline();
             m_PrefilterEnvMapPipeline = createPrefilterEnvMapPipeline();
@@ -29,43 +26,32 @@ namespace vultra
             auto brdf = createRef<rhi::Texture>(
                 std::move(rhi::Texture::Builder {}
                               .setExtent({kSize, kSize})
-                              .setPixelFormat(rhi::PixelFormat::eRG16F)
+                              .setPixelFormat(rhi::PixelFormat::eRGBA16F)
                               .setNumMipLevels(1)
-                              .setNumLayers(std::nullopt)
-                              .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled)
+                              .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled)
                               .build(m_RenderDevice)));
 
-            m_RenderDevice.setupSampler(*brdf,
-                                        {
-                                            .magFilter  = rhi::TexelFilter::eLinear,
-                                            .minFilter  = rhi::TexelFilter::eLinear,
-                                            .mipmapMode = rhi::MipmapMode::eNearest,
+            rhi::prepareForComputing(cb, *brdf);
 
-                                            .addressModeS = rhi::SamplerAddressMode::eClampToEdge,
-                                            .addressModeT = rhi::SamplerAddressMode::eClampToEdge,
-                                        });
-
-            rhi::prepareForAttachment(cb, *brdf, false);
+            auto descriptors =
+                cb.createDescriptorSetBuilder()
+                    .bind(0,
+                          rhi::bindings::StorageImage {.texture = brdf.get(), .imageAspect = rhi::ImageAspect::eColor})
+                    .build(m_BrdfPipeline.getDescriptorSetLayout(0));
 
             {
-                cb.beginRendering({.area             = {0, 0, kSize, kSize},
-                                   .colorAttachments = {{
-                                       .target     = brdf.get(),
-                                       .clearValue = glm::vec4(0.0f),
-                                   }}})
-                    .bindPipeline(m_BrdfPipeline)
-                    .drawFullScreenTriangle()
-                    .endRendering();
+                RHI_GPU_ZONE(cb, "BRDF LUT Generation");
+                cb.bindPipeline(m_BrdfPipeline)
+                    .bindDescriptorSet(0, descriptors)
+                    .dispatch({(kSize + 15) / 16, (kSize + 15) / 16, 1});
             }
 
             rhi::prepareForReading(cb, *brdf);
-
             m_BrdfLUTGenerated = true;
-
             return brdf;
         }
 
-        Ref<rhi::Texture> IBLDataGenerator::generateIrradiance(rhi::CommandBuffer& cb, rhi::Texture& cubemap)
+        Ref<rhi::Texture> IBLDataGenerator::generateIrradianceMap(rhi::CommandBuffer& cb, rhi::Texture& cubemap)
         {
             constexpr auto kSize = 64u;
 
@@ -74,188 +60,126 @@ namespace vultra
                               .setExtent({kSize, kSize})
                               .setPixelFormat(rhi::PixelFormat::eRGBA16F)
                               .setNumMipLevels(1)
-                              .setNumLayers(6)
-                              .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled)
+                              .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled)
                               .setCubemap(true)
                               .build(m_RenderDevice)));
 
             m_RenderDevice.setupSampler(*irradiance,
                                         {
-                                            .magFilter  = rhi::TexelFilter::eLinear,
-                                            .minFilter  = rhi::TexelFilter::eLinear,
-                                            .mipmapMode = rhi::MipmapMode::eNearest,
-
+                                            .magFilter    = rhi::TexelFilter::eLinear,
+                                            .minFilter    = rhi::TexelFilter::eLinear,
+                                            .mipmapMode   = rhi::MipmapMode::eNearest,
                                             .addressModeS = rhi::SamplerAddressMode::eClampToEdge,
                                             .addressModeT = rhi::SamplerAddressMode::eClampToEdge,
                                             .addressModeR = rhi::SamplerAddressMode::eClampToEdge,
                                         });
 
-            rhi::prepareForAttachment(cb, *irradiance, true);
-
-            struct PushConstants
-            {
-                glm::mat4 viewProjection;
-            };
+            rhi::prepareForComputing(cb, *irradiance);
 
             constexpr auto kDescriptorSetId = 0;
 
-            for (uint8_t face = 0; face < 6; ++face)
+            auto descriptors = cb.createDescriptorSetBuilder()
+                                   .bind(0,
+                                         rhi::bindings::CombinedImageSampler {.texture     = &cubemap,
+                                                                              .imageAspect = rhi::ImageAspect::eColor})
+                                   .bind(1,
+                                         rhi::bindings::StorageImage {.texture     = irradiance.get(),
+                                                                      .imageAspect = rhi::ImageAspect::eColor})
+                                   .build(m_IrradiancePipeline.getDescriptorSetLayout(kDescriptorSetId));
+
+            struct PushConstants
             {
-                // Descriptor set for sampling input cubemap
-                const auto descriptors = cb.createDescriptorSetBuilder()
-                                             .bind(0,
-                                                   rhi::bindings::CombinedImageSampler {
-                                                       .texture     = &cubemap,
-                                                       .imageAspect = rhi::ImageAspect::eColor,
-                                                   })
-                                             .build(m_IrradiancePipeline.getDescriptorSetLayout(kDescriptorSetId));
+                float lodBias; // matches shader
+            } pc {};
 
-                cb.beginRendering({.area             = {0, 0, kSize, kSize},
-                                   .colorAttachments = {{
-                                       .target     = irradiance.get(),
-                                       .layer      = face,
-                                       .clearValue = glm::vec4(0.0f),
-                                   }}});
+            pc.lodBias = 0.0f;
 
-                PushConstants pc {};
-                pc.viewProjection = kCubeProjection * kCaptureViews[face];
-
-                cb.bindPipeline(m_IrradiancePipeline)
-                    .bindDescriptorSet(kDescriptorSetId, descriptors)
-                    .pushConstants(rhi::ShaderStages::eVertex, 0, &pc)
-                    .drawCube();
-
-                cb.endRendering();
-            }
+            cb.bindPipeline(m_IrradiancePipeline)
+                .bindDescriptorSet(kDescriptorSetId, descriptors)
+                .pushConstants(rhi::ShaderStages::eCompute, 0, &pc)
+                .dispatch({(kSize + 7) / 8, (kSize + 7) / 8, 1});
 
             rhi::prepareForReading(cb, *irradiance);
-
             return irradiance;
         }
 
         Ref<rhi::Texture> IBLDataGenerator::generatePrefilterEnvMap(rhi::CommandBuffer& cb, rhi::Texture& cubemap)
         {
-            constexpr auto kSize = 512u;
+            constexpr auto kSize      = 1024u;
+            constexpr auto kMipLevels = 5u;
 
             auto prefilteredEnvMap = createRef<rhi::Texture>(
                 std::move(rhi::Texture::Builder {}
                               .setExtent({kSize, kSize})
                               .setPixelFormat(rhi::PixelFormat::eRGBA16F)
-                              .setNumMipLevels(1)
-                              .setNumLayers(6)
-                              .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled)
+                              .setNumMipLevels(kMipLevels)
+                              .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled)
                               .setCubemap(true)
                               .build(m_RenderDevice)));
 
             m_RenderDevice.setupSampler(*prefilteredEnvMap,
                                         {
-                                            .magFilter  = rhi::TexelFilter::eLinear,
-                                            .minFilter  = rhi::TexelFilter::eLinear,
-                                            .mipmapMode = rhi::MipmapMode::eLinear,
-
+                                            .magFilter    = rhi::TexelFilter::eLinear,
+                                            .minFilter    = rhi::TexelFilter::eLinear,
+                                            .mipmapMode   = rhi::MipmapMode::eLinear,
                                             .addressModeS = rhi::SamplerAddressMode::eClampToEdge,
                                             .addressModeT = rhi::SamplerAddressMode::eClampToEdge,
                                             .addressModeR = rhi::SamplerAddressMode::eClampToEdge,
+                                            .maxLod       = static_cast<float>(kMipLevels),
                                         });
 
-            rhi::prepareForAttachment(cb, *prefilteredEnvMap, true);
+            rhi::prepareForComputing(cb, *prefilteredEnvMap);
 
-            struct PushConstantsVertex
-            {
-                glm::mat4 viewProjection;
-            };
-
-            struct PushConstantsFragment
-            {
-                float roughness;
-            };
-
-            const auto     numMipLevels     = prefilteredEnvMap->getNumMipLevels();
             constexpr auto kDescriptorSetId = 0;
 
-            for (uint32_t level = 0; level < numMipLevels; ++level)
+            auto descriptors = cb.createDescriptorSetBuilder()
+                                   .bind(0,
+                                         rhi::bindings::CombinedImageSampler {.texture     = &cubemap,
+                                                                              .imageAspect = rhi::ImageAspect::eColor})
+                                   .bind(1,
+                                         rhi::bindings::StorageImage {.texture     = prefilteredEnvMap.get(),
+                                                                      .imageAspect = rhi::ImageAspect::eColor})
+                                   .build(m_PrefilterEnvMapPipeline.getDescriptorSetLayout(kDescriptorSetId));
+
+            for (uint32_t level = 0; level < kMipLevels; ++level)
             {
-                const auto  mipSize   = rhi::calcMipSize(glm::uvec3 {kSize, kSize, 1}, level).x;
-                const float roughness = static_cast<float>(level) / std::max(1u, numMipLevels - 1u);
+                uint32_t mipSize   = rhi::calcMipSize(glm::uvec3 {kSize, kSize, 1}, level).x;
+                float    roughness = static_cast<float>(level) / static_cast<float>(kMipLevels - 1);
 
-                for (uint32_t face = 0; face < 6; ++face)
+                struct PushConstants
                 {
-                    const auto descriptors =
-                        cb.createDescriptorSetBuilder()
-                            .bind(0,
-                                  rhi::bindings::CombinedImageSampler {
-                                      .texture     = &cubemap,
-                                      .imageAspect = rhi::ImageAspect::eColor,
-                                  })
-                            .build(m_PrefilterEnvMapPipeline.getDescriptorSetLayout(kDescriptorSetId));
+                    uint32_t mipLevel;
+                    float    roughness;
+                    uint32_t sampleCount;
+                } pc {};
 
-                    cb.beginRendering({.area             = {0, 0, mipSize, mipSize},
-                                       .colorAttachments = {{
-                                           .target     = prefilteredEnvMap.get(),
-                                           .layer      = level,
-                                           .face       = static_cast<rhi::CubeFace>(face),
-                                           .clearValue = glm::vec4(0.0f),
-                                       }}});
+                pc.mipLevel    = level;
+                pc.roughness   = roughness;
+                pc.sampleCount = 1024u;
 
-                    PushConstantsVertex vertexPushConstants {};
-                    vertexPushConstants.viewProjection = kCubeProjection * kCaptureViews[face];
-
-                    PushConstantsFragment fragmentPushConstants {};
-                    fragmentPushConstants.roughness = roughness;
-
-                    cb.bindPipeline(m_PrefilterEnvMapPipeline)
-                        .bindDescriptorSet(kDescriptorSetId, descriptors)
-                        .pushConstants(rhi::ShaderStages::eVertex, 0, &vertexPushConstants)
-                        .pushConstants(
-                            rhi::ShaderStages::eFragment, sizeof(PushConstantsVertex), &fragmentPushConstants)
-                        .drawCube();
-
-                    cb.endRendering();
-                }
+                cb.bindPipeline(m_PrefilterEnvMapPipeline)
+                    .bindDescriptorSet(kDescriptorSetId, descriptors)
+                    .pushConstants(rhi::ShaderStages::eCompute, 0, &pc)
+                    .dispatch({(mipSize + 7) / 8, (mipSize + 7) / 8, 1});
             }
 
             rhi::prepareForReading(cb, *prefilteredEnvMap);
-
             return prefilteredEnvMap;
         }
 
-        rhi::GraphicsPipeline IBLDataGenerator::createBrdfPipeline() const
+        rhi::ComputePipeline IBLDataGenerator::createBrdfPipeline() const
         {
-            return createPostProcessPipelineFromSPV(m_RenderDevice, rhi::PixelFormat::eRG16F, generate_brdf_frag_spv);
+            return m_RenderDevice.createComputePipelineBuiltin(generate_brdf_comp_spv);
         }
 
-        rhi::GraphicsPipeline IBLDataGenerator::createIrradiancePipeline() const
+        rhi::ComputePipeline IBLDataGenerator::createIrradiancePipeline() const
         {
-            return rhi::GraphicsPipeline::Builder {}
-                .setColorFormats({rhi::PixelFormat::eRGBA16F})
-                .setInputAssembly({})
-                .setTopology(rhi::PrimitiveTopology::eTriangleList)
-                .addBuiltinShader(rhi::ShaderType::eVertex, cube_vert_spv)
-                .addBuiltinShader(rhi::ShaderType::eFragment, generate_irradiance_map_frag_spv)
-                .setDepthStencil({
-                    .depthTest  = false,
-                    .depthWrite = false,
-                })
-                .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
-                .setBlending(0, {.enabled = false})
-                .build(m_RenderDevice);
+            return m_RenderDevice.createComputePipelineBuiltin(generate_irradiance_map_comp_spv);
         }
 
-        rhi::GraphicsPipeline IBLDataGenerator::createPrefilterEnvMapPipeline() const
+        rhi::ComputePipeline IBLDataGenerator::createPrefilterEnvMapPipeline() const
         {
-            return rhi::GraphicsPipeline::Builder {}
-                .setColorFormats({rhi::PixelFormat::eRGBA16F})
-                .setInputAssembly({})
-                .setTopology(rhi::PrimitiveTopology::eTriangleList)
-                .addBuiltinShader(rhi::ShaderType::eVertex, cube_vert_spv)
-                .addBuiltinShader(rhi::ShaderType::eFragment, prefilter_envmap_frag_spv)
-                .setDepthStencil({
-                    .depthTest  = false,
-                    .depthWrite = false,
-                })
-                .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
-                .setBlending(0, {.enabled = false})
-                .build(m_RenderDevice);
+            return m_RenderDevice.createComputePipelineBuiltin(prefilter_envmap_comp_spv);
         }
     } // namespace gfx
 } // namespace vultra

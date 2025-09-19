@@ -31,8 +31,14 @@ layout (set = 3, binding = 4) uniform sampler2D t_GDepth;
 layout (set = 3, binding = 5) uniform sampler2D t_LTCMat; // ltc_1
 layout (set = 3, binding = 6) uniform sampler2D t_LTCMag; // ltc_2
 
+// IBL
+layout (set = 3, binding = 7) uniform sampler2D t_BrdfLUT;
+layout (set = 3, binding = 8) uniform samplerCube t_IrradianceMap;
+layout (set = 3, binding = 9) uniform samplerCube t_PrefilteredEnvMap;
+
 layout(push_constant) uniform PushConstants {
     int enableAreaLight;
+    int enableIBL;
 } pc;
 
 void main() {
@@ -82,12 +88,22 @@ void main() {
 
     vec3 F0 = vec3(0.04);
     F0 = mix(F0, material.albedo, material.metallic);
+    const vec3 diffuseColor = material.albedo * (1.0 - material.metallic);
 
     vec3 Lo_dir = vec3(0.0);
     vec3 Lo_area = vec3(0.0);
 
+    // Accumulate directional light contribution
     Lo_dir += calDirectionalLight(light, F0, normal, viewDir, material);
 
+    // Accumulate point lights contribution
+    int pointCount = getPointLightCount();
+    for (int i = 0; i < pointCount; ++i) {
+        PointLight pl = getPointLight(i);
+        Lo_dir += calPointLight(pl, F0, normal, viewDir, material, fragPos);
+    }
+
+    // Accumulate area lights contribution using LTC
     if (pc.enableAreaLight == 1) {
         int areaCount = getAreaLightCount();
         for (int i = 0; i < areaCount; ++i) {
@@ -125,10 +141,16 @@ void main() {
         }
     }
 
+    // Calculate IBL contribution (ambient)
+    vec3 Lo_ambient = vec3(0.0);
+    if (pc.enableIBL == 1) {
+        Lo_ambient += calIBLAmbient(diffuseColor, F0, normal, viewDir, material, t_BrdfLUT, t_IrradianceMap, t_PrefilteredEnvMap);
+    }
+
     // vec4 fragPosLightSpace = biasMat * getLightSpaceMatrix() * vec4(fragPos, 1.0);
     float shadow = 0.0; // No shadow for now, TODO: Cascaded Shadow Maps
 
-    vec3 finalColor = material.emissive + (1.0 - shadow) * Lo_dir + Lo_area;
+    vec3 finalColor = material.emissive + Lo_ambient + (1.0 - shadow) * Lo_dir + Lo_area;
 
     FragColor = vec4(finalColor, 1.0);
 }

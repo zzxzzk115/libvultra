@@ -659,6 +659,40 @@ namespace vultra
             };
         }
 
+        ComputePipeline RenderDevice::createComputePipelineBuiltin(const SPIRV&                  spv,
+                                                                   std::optional<PipelineLayout> pipelineLayout)
+        {
+            auto reflection = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
+
+            const auto shaderModule =
+                createShaderModule(spv, reflection ? std::addressof(reflection.value()) : nullptr);
+            if (!shaderModule)
+                return {};
+
+            if (reflection)
+                pipelineLayout = reflectPipelineLayout(*this, *reflection);
+            assert(*pipelineLayout);
+
+            vk::ComputePipelineCreateInfo createInfo {};
+            createInfo.stage = vk::PipelineShaderStageCreateInfo {
+                {}, vk::ShaderStageFlagBits::eCompute, static_cast<vk::ShaderModule>(shaderModule), "main"};
+            createInfo.layout = pipelineLayout->getHandle();
+
+            auto [result, computePipeline] = m_Device.createComputePipeline(m_PipelineCache, createInfo, nullptr);
+            if (result != vk::Result::eSuccess)
+            {
+                VULTRA_CORE_ERROR("[RenderDevice] Failed to create compute pipeline: {}", vk::to_string(result));
+                throw std::runtime_error("Failed to create compute pipeline");
+            }
+
+            return ComputePipeline {
+                m_Device,
+                std::move(pipelineLayout.value()),
+                reflection ? reflection->localSize.value() : glm::uvec3 {},
+                computePipeline,
+            };
+        }
+
         RenderDevice&
         RenderDevice::upload(Buffer& buffer, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data)
         {

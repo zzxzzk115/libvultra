@@ -8,6 +8,9 @@
 #include "vultra/function/renderer/builtin/passes/fxaa_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gamma_correction_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/skybox_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/tonemapping_pass.hpp"
+#include "vultra/function/renderer/builtin/resources/ibl_data.hpp"
 #include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
 #include "vultra/function/scenegraph/entity.hpp"
@@ -26,34 +29,41 @@ namespace vultra
 {
     namespace gfx
     {
-        BuiltinRenderer::BuiltinRenderer(rhi::RenderDevice& rd) :
-            BaseRenderer(rd), m_TransientResources(rd), m_IBLDataGenerator(rd)
+        BuiltinRenderer::BuiltinRenderer(rhi::RenderDevice& rd, rhi::Swapchain::Format swapChainFormat) :
+            BaseRenderer(rd), m_SwapChainFormat(swapChainFormat), m_TransientResources(rd), m_CubemapConverter(rd),
+            m_IBLDataGenerator(rd)
         {
             m_GBufferPass          = new GBufferPass(rd);
             m_DeferredLightingPass = new DeferredLightingPass(rd);
+            m_SkyboxPass           = new SkyboxPass(rd);
+            m_ToneMappingPass      = new ToneMappingPass(rd);
             m_GammaCorrectionPass  = new GammaCorrectionPass(rd);
             m_FXAAPass             = new FXAAPass(rd);
             m_FinalPass            = new FinalPass(rd);
 
             setupSamplers();
+
+            // Ensure BRDF LUT is generated at least once
+            if (!m_IBLDataGenerator.isBrdfLUTPresent())
+            {
+                m_RenderDevice.execute(
+                    [&](rhi::CommandBuffer& cb) { m_BrdfLUT = m_IBLDataGenerator.generateBrdfLUT(cb); });
+            }
+
+            // Set default irradiance and prefiltered environment maps
+            m_IrradianceMap     = rhi::createDefaultTexture(255, 255, 255, 255, rd);
+            m_PrefilteredEnvMap = rhi::createDefaultTexture(255, 255, 255, 255, rd);
         }
 
         BuiltinRenderer::~BuiltinRenderer()
         {
             delete m_GBufferPass;
             delete m_DeferredLightingPass;
+            delete m_SkyboxPass;
+            delete m_ToneMappingPass;
             delete m_GammaCorrectionPass;
             delete m_FXAAPass;
             delete m_FinalPass;
-        }
-
-        void BuiltinRenderer::preRender()
-        {
-            if (!m_IBLDataGenerator.isBrdfLUTPresent())
-            {
-                m_RenderDevice.execute(
-                    [&](rhi::CommandBuffer& cb) { m_BrdfLUT = m_IBLDataGenerator.generateBrdfLUT(cb); });
-            }
         }
 
         void BuiltinRenderer::render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
@@ -80,6 +90,19 @@ namespace vultra
 
                     const auto backBuffer = framegraph::importTexture(fg, "Backbuffer", renderTarget);
 
+                    // Import skybox cubemap
+                    const auto skyboxCubemap = framegraph::importTexture(fg, "Skybox Cubemap", m_Cubemap.get());
+
+                    // Import IBL textures
+                    const auto brdfLUT       = framegraph::importTexture(fg, "BRDF LUT", m_BrdfLUT.get());
+                    const auto irradianceMap = framegraph::importTexture(fg, "Irradiance Map", m_IrradianceMap.get());
+                    const auto prefilteredEnvMap =
+                        framegraph::importTexture(fg, "Prefiltered Env Map", m_PrefilteredEnvMap.get());
+                    auto& iblData             = blackboard.add<IBLData>();
+                    iblData.brdfLUT           = brdfLUT;
+                    iblData.irradianceMap     = irradianceMap;
+                    iblData.prefilteredEnvMap = prefilteredEnvMap;
+
                     uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
                     uploadFrameBlock(fg, blackboard, m_FrameInfo);
                     uploadLightBlock(fg, blackboard, m_LightInfo);
@@ -94,12 +117,28 @@ namespace vultra
 
                     // Deferred lighting
                     m_DeferredLightingPass->addPass(
-                        fg, blackboard, m_Settings.enableAreaLights, color::sRGBToLinear(m_ClearColor));
+                        fg, blackboard, m_Settings.enableAreaLights, m_EnableIBL, color::sRGBToLinear(m_ClearColor));
                     auto& sceneColor = blackboard.get<SceneColorData>();
 
-                    // Gamma correction
-                    sceneColor.ldr = m_GammaCorrectionPass->addPass(
-                        fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);
+                    if (m_EnableIBL)
+                    {
+                        // Skybox
+                        sceneColor.hdr = m_SkyboxPass->addPass(fg, blackboard, skyboxCubemap, sceneColor.hdr);
+                    }
+
+                    // Tone mapping
+                    sceneColor.hdr = m_ToneMappingPass->addPass(fg, sceneColor.hdr);
+
+                    // Gamma correction if swapchain is in sRGB format
+                    if (m_SwapChainFormat == rhi::Swapchain::Format::esRGB)
+                    {
+                        sceneColor.ldr = m_GammaCorrectionPass->addPass(
+                            fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);
+                    }
+                    else
+                    {
+                        sceneColor.ldr = sceneColor.hdr;
+                    }
 
                     // FXAA
                     sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
@@ -186,6 +225,35 @@ namespace vultra
                     m_CameraInfo.inverseOriginalProjection = glm::inverse(m_CameraInfo.projection);
 
                     m_ClearColor = camComponent.clearColor;
+
+                    // Environment map
+                    if (camComponent.clearFlags == CameraClearFlags::eSkybox)
+                    {
+                        // Load environment map if not already
+                        if (!camComponent.environmentMap)
+                        {
+                            if (!camComponent.environmentMapPath.empty())
+                            {
+                                camComponent.environmentMap =
+                                    resource::loadResource<gfx::TextureManager>(camComponent.environmentMapPath);
+                            }
+
+                            VULTRA_CORE_ASSERT(camComponent.environmentMap, "Failed to load environment map");
+
+                            // Generate IBL data if not already
+                            m_RenderDevice.execute([&](rhi::CommandBuffer& cb) {
+                                m_Cubemap       = m_CubemapConverter.convertToCubemap(cb, *camComponent.environmentMap);
+                                m_IrradianceMap = m_IBLDataGenerator.generateIrradianceMap(cb, *m_Cubemap);
+                                m_PrefilteredEnvMap = m_IBLDataGenerator.generatePrefilterEnvMap(cb, *m_Cubemap);
+                            });
+
+                            m_EnableIBL = true;
+                        }
+                    }
+                    else
+                    {
+                        m_EnableIBL = false;
+                    }
                 }
                 else
                 {
@@ -196,10 +264,10 @@ namespace vultra
                 auto directionalLight = scene->getDirectionalLight();
                 if (directionalLight)
                 {
-                    auto& lightComponent  = directionalLight.getComponent<DirectionalLightComponent>();
-                    m_LightInfo.direction = glm::normalize(lightComponent.direction);
-                    m_LightInfo.color     = lightComponent.color;
-                    m_LightInfo.intensity = lightComponent.intensity;
+                    auto& lightComponent                   = directionalLight.getComponent<DirectionalLightComponent>();
+                    m_LightInfo.directionalLight.direction = glm::normalize(lightComponent.direction);
+                    m_LightInfo.directionalLight.color     = lightComponent.color;
+                    m_LightInfo.directionalLight.intensity = lightComponent.intensity;
                 }
                 else
                 {

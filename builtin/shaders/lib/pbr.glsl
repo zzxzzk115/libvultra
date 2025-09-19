@@ -106,9 +106,9 @@ vec3 calDirectionalLight(DirectionalLight light, vec3 F0, vec3 N, vec3 V, PBRMat
 }
 
 vec3 calPointLight(PointLight pointLight, vec3 F0, vec3 N, vec3 V, PBRMaterial material, vec3 fragPos) {
-    vec3 L = normalize(pointLight.position - fragPos);
+    vec3 L = normalize(pointLight.posIntensity.xyz - fragPos);
     vec3 H = normalize(V + L);
-    vec3 radiance = pointLight.color * pointLight.intensity;
+    vec3 radiance = pointLight.colorRadius.rgb * pointLight.posIntensity.w;
 
     // cook-torrance brdf
     float gamma = 2.0;

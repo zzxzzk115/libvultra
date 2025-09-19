@@ -137,6 +137,9 @@ namespace vultra
         float            zFar {1000.0f};
         bool             isPrimary {true};
 
+        std::string       environmentMapPath;       // Optional environment map path for skybox (IBL) rendering
+        Ref<rhi::Texture> environmentMap {nullptr}; // Runtime cache, not serializable
+
         // NOLINTBEGIN
         template<class Archive>
         void serialize(Archive& archive)
@@ -149,12 +152,15 @@ namespace vultra
                     CEREAL_NVP(fov),
                     CEREAL_NVP(zNear),
                     CEREAL_NVP(zFar),
-                    CEREAL_NVP(isPrimary));
+                    CEREAL_NVP(isPrimary),
+                    CEREAL_NVP(environmentMapPath));
         }
         // NOLINTEND
 
         CameraComponent()                       = default;
         CameraComponent(const CameraComponent&) = default;
+
+        explicit CameraComponent(const std::string& envMapPath) : environmentMapPath(envMapPath) {}
     };
 
     struct DirectionalLightComponent

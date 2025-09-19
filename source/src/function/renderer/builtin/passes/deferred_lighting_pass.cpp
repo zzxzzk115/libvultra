@@ -5,6 +5,7 @@
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
 #include "vultra/function/renderer/builtin/resources/camera_data.hpp"
 #include "vultra/function/renderer/builtin/resources/gbuffer_data.hpp"
+#include "vultra/function/renderer/builtin/resources/ibl_data.hpp"
 #include "vultra/function/renderer/builtin/resources/light_data.hpp"
 #include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
@@ -40,6 +41,7 @@ namespace vultra
         void DeferredLightingPass::addPass(FrameGraph&           fg,
                                            FrameGraphBlackboard& blackboard,
                                            bool                  enableAreaLight,
+                                           bool                  enableIBL,
                                            glm::vec4             clearColor)
         {
             const auto gBuffer = blackboard.get<GBufferData>();
@@ -51,10 +53,12 @@ namespace vultra
                 enableAreaLight = false;
             }
 
+            const auto& iblData = blackboard.get<IBLData>();
+
             const auto& sceneColorData = fg.addCallbackPass<SceneColorData>(
                 PASS_NAME,
-                [this, &blackboard, &fg, extent, gBuffer, enableAreaLight](FrameGraph::Builder& builder,
-                                                                           SceneColorData&      data) {
+                [this, &blackboard, &fg, extent, gBuffer, enableAreaLight, enableIBL, iblData](
+                    FrameGraph::Builder& builder, SceneColorData& data) {
                     PASS_SETUP_ZONE;
 
                     read(builder, blackboard.get<CameraData>());
@@ -146,6 +150,39 @@ namespace vultra
                                      .imageAspect = rhi::ImageAspect::eColor,
                                  });
 
+                    // IBL textures
+                    builder.read(iblData.brdfLUT,
+                                 framegraph::TextureRead {
+                                     .binding =
+                                         {
+                                             .location      = {.set = 3, .binding = 7},
+                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                         },
+                                     .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                     .imageAspect = rhi::ImageAspect::eColor,
+                                 });
+                    builder.read(iblData.irradianceMap,
+                                 framegraph::TextureRead {
+                                     .binding =
+                                         {
+                                             .location      = {.set = 3, .binding = 8},
+                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                         },
+                                     .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                     .imageAspect = rhi::ImageAspect::eColor,
+                                 });
+                    builder.read(iblData.prefilteredEnvMap,
+                                 framegraph::TextureRead {
+                                     .binding =
+                                         {
+                                             .location      = {.set = 3, .binding = 9},
+                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                         },
+                                     .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                     .imageAspect = rhi::ImageAspect::eColor,
+                                 });
+
+                    // HDR color output
                     data.hdr = builder.create<framegraph::FrameGraphTexture>(
                         "SceneColor - HDR",
                         {
@@ -159,6 +196,7 @@ namespace vultra
                                                  .imageAspect = rhi::ImageAspect::eColor,
                                              });
 
+                    // Bright color output for bloom
                     data.bright = builder.create<framegraph::FrameGraphTexture>(
                         "SceneColor - Bright",
                         {
@@ -173,7 +211,7 @@ namespace vultra
                                                     .clearValue  = framegraph::ClearValue::eTransparentBlack,
                                                 });
                 },
-                [this, enableAreaLight, clearColor](const SceneColorData&, auto&, void* ctx) {
+                [this, enableAreaLight, enableIBL, clearColor](const SceneColorData&, auto&, void* ctx) {
                     auto& rc                                    = *static_cast<gfx::RendererRenderContext*>(ctx);
                     auto& [cb, framebufferInfo, sets, samplers] = rc;
                     RHI_GPU_ZONE(cb, PASS_NAME);
@@ -185,9 +223,10 @@ namespace vultra
                     struct PushConstants
                     {
                         int enableAreaLight;
+                        int enableIBL;
                     };
 
-                    PushConstants pushConstants {enableAreaLight};
+                    PushConstants pushConstants {enableAreaLight, enableIBL};
 
                     const auto* pipeline = getPipeline();
                     if (pipeline)
@@ -203,6 +242,9 @@ namespace vultra
                         rc.overrideSampler(sets[3][4], samplers["point"]);    // Depth
                         rc.overrideSampler(sets[3][5], samplers["bilinear"]); // LTCMat
                         rc.overrideSampler(sets[3][6], samplers["bilinear"]); // LTCMag
+                        rc.overrideSampler(sets[3][7], samplers["bilinear"]); // BRDF LUT
+                        rc.overrideSampler(sets[3][8], samplers["bilinear"]); // Irradiance map
+                        rc.overrideSampler(sets[3][9], samplers["bilinear"]); // Prefiltered env map
                         cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pushConstants);
                         rc.bindDescriptorSets(*pipeline);
                         cb.beginRendering(*framebufferInfo).drawFullScreenTriangle();
