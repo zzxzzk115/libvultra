@@ -91,6 +91,7 @@ void main() {
     const vec3 diffuseColor = material.albedo * (1.0 - material.metallic);
 
     vec3 Lo_dir = vec3(0.0);
+    vec3 Lo_point = vec3(0.0);
     vec3 Lo_area = vec3(0.0);
 
     // Accumulate directional light contribution
@@ -100,7 +101,7 @@ void main() {
     int pointCount = getPointLightCount();
     for (int i = 0; i < pointCount; ++i) {
         PointLight pl = getPointLight(i);
-        Lo_dir += calPointLight(pl, F0, normal, viewDir, material, fragPos);
+        Lo_point += calPointLight(pl, F0, normal, viewDir, material, fragPos);
     }
 
     // Accumulate area lights contribution using LTC
@@ -150,7 +151,7 @@ void main() {
     // vec4 fragPosLightSpace = biasMat * getLightSpaceMatrix() * vec4(fragPos, 1.0);
     float shadow = 0.0; // No shadow for now, TODO: Cascaded Shadow Maps
 
-    vec3 finalColor = material.emissive + Lo_ambient + (1.0 - shadow) * Lo_dir + Lo_area;
+    vec3 finalColor = material.emissive + Lo_ambient + (1.0 - shadow) * Lo_dir + Lo_point + Lo_area;
 
     FragColor = vec4(finalColor, 1.0);
 }

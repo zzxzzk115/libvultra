@@ -212,7 +212,7 @@ namespace vultra
 
         glm::vec3 direction {glm::normalize(glm::vec3(-0.6, -1, -1.2))};
         glm::vec3 color {1.0f, 0.996f, 0.885f};
-        float     intensity {5.0f};
+        float     intensity {1.0f};
 
         // NOLINTBEGIN
         template<class Archive>
@@ -226,6 +226,56 @@ namespace vultra
         DirectionalLightComponent(const DirectionalLightComponent&) = default;
         DirectionalLightComponent(const glm::vec3& aDirection, const glm::vec3& aColor, float aIntensity) :
             direction(aDirection), color(aColor), intensity(aIntensity)
+        {}
+    };
+
+    struct PointLightComponent
+    {
+        COMPONENT_NAME(PointLight)
+
+        glm::vec3 color {1.0f, 0.996f, 0.885f};
+        float     intensity {1.0f};
+        float     radius {1.0f};
+
+        // NOLINTBEGIN
+        template<class Archive>
+        void serialize(Archive& archive)
+        {
+            archive(CEREAL_NVP(color), CEREAL_NVP(intensity), CEREAL_NVP(radius));
+        }
+        // NOLINTEND
+
+        PointLightComponent()                           = default;
+        PointLightComponent(const PointLightComponent&) = default;
+        PointLightComponent(const glm::vec3& aColor, float aIntensity, float aRadius) :
+            color(aColor), intensity(aIntensity), radius(aRadius)
+        {}
+    };
+
+    struct AreaLightComponent
+    {
+        COMPONENT_NAME(AreaLight)
+
+        float width {2.0f};  // full width (X axis in local light space)
+        float height {2.0f}; // full height (Y axis in local light space)
+
+        glm::vec3 color {1.0f, 0.996f, 0.885f};
+        float     intensity {1.0f};
+        bool      twoSided {false};
+
+        // NOLINTBEGIN
+        template<class Archive>
+        void serialize(Archive& archive)
+        {
+            archive(
+                CEREAL_NVP(width), CEREAL_NVP(height), CEREAL_NVP(color), CEREAL_NVP(intensity), CEREAL_NVP(twoSided));
+        }
+        // NOLINTEND
+
+        AreaLightComponent()                          = default;
+        AreaLightComponent(const AreaLightComponent&) = default;
+        AreaLightComponent(float aWidth, float aHeight, const glm::vec3& aColor, float aIntensity, bool aTwoSided) :
+            width(aWidth), height(aHeight), color(aColor), intensity(aIntensity), twoSided(aTwoSided)
         {}
     };
 

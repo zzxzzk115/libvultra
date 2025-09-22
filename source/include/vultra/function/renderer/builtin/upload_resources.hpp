@@ -34,6 +34,7 @@ namespace vultra
 
         struct LightInfo
         {
+            int useDirectionalLight;
             // Directional light
             struct DirectionalLightInfo
             {
@@ -61,12 +62,13 @@ namespace vultra
             struct AreaLightInfo
             {
                 glm::vec3 position;
+                float     width;  // full width (X axis in local light space)
+                float     height; // full height (Y axis in local light space)
+                float     rotY;   // normalized [0,1] -> [0, 2π)
+                float     rotZ;   // normalized [0,1] -> [0, 2π)
+                glm::vec3 color;
                 float     intensity;
-                glm::vec3 u;        // half-axis U
-                float     twoSided; // 0 = false, 1 = true
-                glm::vec3 v;        // half-axis V
-                float     padding;  // unused
-                glm::vec3 color;    // rgb color
+                bool      twoSided;
             };
             AreaLightInfo areaLights[LIGHTINFO_MAX_AREA_LIGHTS] {};
         };

@@ -397,17 +397,47 @@ namespace vultra
                 }
 
                 // Lights
+                m_LightInfo = LightInfo {};
+
+                // Directional light
                 auto directionalLight = scene->getDirectionalLight();
                 if (directionalLight)
                 {
                     auto& lightComponent                   = directionalLight.getComponent<DirectionalLightComponent>();
+                    m_LightInfo.useDirectionalLight        = 1;
                     m_LightInfo.directionalLight.direction = glm::normalize(lightComponent.direction);
                     m_LightInfo.directionalLight.color     = lightComponent.color;
                     m_LightInfo.directionalLight.intensity = lightComponent.intensity;
                 }
-                else
+
+                // Point lights
+                auto pointLights            = scene->getPointLights();
+                m_LightInfo.pointLightCount = static_cast<int>(pointLights.size());
+                for (size_t i = 0; i < pointLights.size() && i < LIGHTINFO_MAX_POINT_LIGHTS; ++i)
                 {
-                    m_LightInfo = LightInfo {};
+                    auto& lightComponent                 = pointLights[i].getComponent<PointLightComponent>();
+                    auto& lightTransform                 = pointLights[i].getComponent<TransformComponent>();
+                    m_LightInfo.pointLights[i].position  = lightTransform.position;
+                    m_LightInfo.pointLights[i].intensity = lightComponent.intensity;
+                    m_LightInfo.pointLights[i].color     = lightComponent.color;
+                    m_LightInfo.pointLights[i].radius    = lightComponent.radius;
+                }
+
+                // Area lights
+                auto areaLights            = scene->getAreaLights();
+                m_LightInfo.areaLightCount = static_cast<int>(areaLights.size());
+                for (size_t i = 0; i < areaLights.size() && i < LIGHTINFO_MAX_AREA_LIGHTS; ++i)
+                {
+                    auto& lightComponent               = areaLights[i].getComponent<AreaLightComponent>();
+                    auto& lightTransform               = areaLights[i].getComponent<TransformComponent>();
+                    m_LightInfo.areaLights[i].position = lightTransform.position;
+                    m_LightInfo.areaLights[i].width    = lightComponent.width;
+                    m_LightInfo.areaLights[i].height   = lightComponent.height;
+                    m_LightInfo.areaLights[i].rotY = lightTransform.getRotationEuler().y / 360.0f; // Normalize to [0,1]
+                    m_LightInfo.areaLights[i].rotZ = lightTransform.getRotationEuler().z / 360.0f; // Normalize to [0,1]
+                    m_LightInfo.areaLights[i].color     = lightComponent.color;
+                    m_LightInfo.areaLights[i].intensity = lightComponent.intensity;
+                    m_LightInfo.areaLights[i].twoSided  = lightComponent.twoSided;
                 }
 
                 // Renderables

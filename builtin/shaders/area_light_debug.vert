@@ -2,6 +2,7 @@
 
 #include "resources/camera_block.glsl"
 #include "resources/light_block.glsl"
+#include "lib/math.glsl"
 
 layout(location = 0) out vec4 v_DebugColor; // rgb color * intensity, a = alpha
 
@@ -20,7 +21,7 @@ void main() {
     float intensity = al.posIntensity.w;
     vec3 U = al.uTwoSided.xyz; // half-extent already
     vec3 V = al.vPadding.xyz;  // half-extent already
-    vec3 color = al.color.rgb * intensity;
+    vec3 color = al.color.rgb * clamp01(intensity);
 
     vec3 p0 = center - U - V;
     vec3 p1 = center + U - V;

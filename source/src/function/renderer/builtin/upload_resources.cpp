@@ -8,6 +8,10 @@
 
 #include <fg/Blackboard.hpp>
 
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+
 namespace vultra
 {
     namespace gfx
@@ -116,7 +120,8 @@ namespace vultra
         struct alignas(16) GPULightBlock
         {
             explicit GPULightBlock(const LightInfo& lightInfo) :
-                pointLightCount(lightInfo.pointLightCount), areaLightCount {lightInfo.areaLightCount}
+                useDirectionalLight(lightInfo.useDirectionalLight), pointLightCount(lightInfo.pointLightCount),
+                areaLightCount {lightInfo.areaLightCount}
             {
                 // Directional light
                 direction.direction        = lightInfo.directionalLight.direction;
@@ -138,12 +143,25 @@ namespace vultra
                 {
                     areaLights[i].posIntensity =
                         glm::vec4(lightInfo.areaLights[i].position, lightInfo.areaLights[i].intensity);
-                    areaLights[i].uTwoSided = glm::vec4(lightInfo.areaLights[i].u, lightInfo.areaLights[i].twoSided);
-                    areaLights[i].vPadding  = glm::vec4(lightInfo.areaLights[i].v, lightInfo.areaLights[i].padding);
+
+                    float angleY = lightInfo.areaLights[i].rotY * glm::two_pi<float>();
+                    float angleZ = lightInfo.areaLights[i].rotZ * glm::two_pi<float>();
+
+                    glm::vec3 U(1, 0, 0), V(0, 1, 0);
+                    auto      rotYMat = glm::rotate(glm::mat4(1.0f), angleY, {0, 1, 0});
+                    auto      rotZMat = glm::rotate(glm::mat4(1.0f), angleZ, {0, 0, 1});
+                    auto      rotMat  = rotZMat * rotYMat;
+
+                    U = glm::vec3(rotMat * glm::vec4(U, 0.0f)) * (lightInfo.areaLights[i].width * 0.5f);
+                    V = glm::vec3(rotMat * glm::vec4(V, 0.0f)) * (lightInfo.areaLights[i].height * 0.5f);
+
+                    areaLights[i].uTwoSided = glm::vec4(U, lightInfo.areaLights[i].twoSided);
+                    areaLights[i].vPadding  = glm::vec4(V, 0.0f);
                     areaLights[i].color     = glm::vec4(lightInfo.areaLights[i].color, 0.0f);
                 }
             }
 
+            int                 useDirectionalLight {0}; // implicit padding to 16-byte alignment before
             GPUDirectionalLight direction {};
 
             int           pointLightCount {0};                        // implicit padding to 16-byte alignment before
@@ -156,7 +174,7 @@ namespace vultra
         static_assert(sizeof(GPUDirectionalLight) == 96, "GPUDirectionalLight unexpected size (std140 mismatch)");
         static_assert(sizeof(GPUPointLight) == 32, "GPUPointLight unexpected size (std140 mismatch)");
         static_assert(sizeof(GPUAreaLight) == 64, "GPUAreaLight unexpected size (std140 mismatch)");
-        static_assert(sizeof(GPULightBlock) == 3200, "GPULightBlock unexpected size (std140 mismatch)");
+        static_assert(sizeof(GPULightBlock) == 3216, "GPULightBlock unexpected size (std140 mismatch)");
 
         void uploadLightBlock(FrameGraph& fg, FrameGraphBlackboard& blackboard, const LightInfo& lightInfo)
         {

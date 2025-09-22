@@ -225,6 +225,22 @@ namespace vultra
         return lightEntity;
     }
 
+    Entity LogicScene::createPointLight()
+    {
+        Entity lightEntity = createEntity("Point Light");
+        lightEntity.addComponent<TransformComponent>();
+        lightEntity.addComponent<PointLightComponent>();
+        return lightEntity;
+    }
+
+    Entity LogicScene::createAreaLight()
+    {
+        Entity lightEntity = createEntity("Area Light");
+        lightEntity.addComponent<TransformComponent>();
+        lightEntity.addComponent<AreaLightComponent>();
+        return lightEntity;
+    }
+
     Entity LogicScene::getDirectionalLight() const
     {
         // Find the entity with DirectionalLightComponent
@@ -235,6 +251,49 @@ namespace vultra
         }
 
         return {};
+    }
+
+    Entity LogicScene::getPointLight(uint32_t index) const
+    {
+        // Find the entity with PointLightComponent by index
+        auto     view  = m_Registry.view<PointLightComponent>();
+        uint32_t count = 0;
+        for (auto entity : view)
+        {
+            if (count == index)
+            {
+                return {entity, const_cast<LogicScene*>(this)};
+            }
+            count++;
+        }
+
+        return {};
+    }
+
+    std::vector<Entity> LogicScene::getPointLights() const
+    {
+        std::vector<Entity> pointLights;
+
+        auto view = m_Registry.view<PointLightComponent>();
+        for (auto entity : view)
+        {
+            pointLights.emplace_back(entity, const_cast<LogicScene*>(this));
+        }
+
+        return pointLights;
+    }
+
+    std::vector<Entity> LogicScene::getAreaLights() const
+    {
+        std::vector<Entity> areaLights;
+
+        auto view = m_Registry.view<AreaLightComponent>();
+        for (auto entity : view)
+        {
+            areaLights.emplace_back(entity, const_cast<LogicScene*>(this));
+        }
+
+        return areaLights;
     }
 
     Entity LogicScene::createMeshEntity(const std::string& name, const std::string& meshPath)

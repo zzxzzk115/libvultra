@@ -39,12 +39,21 @@ vec3 calDirectionalLight(DirectionalLight light, vec3 F0, vec3 N, vec3 V, PBRMat
 }
 
 vec3 calPointLight(PointLight pointLight, vec3 F0, vec3 N, vec3 V, PBRMaterial material, vec3 fragPos) {
-    vec3 L = normalize(pointLight.posIntensity.xyz - fragPos);
-    vec3 H = normalize(V + L);
-    vec3 radiance = pointLight.colorRadius.rgb * pointLight.posIntensity.w;
+    vec3 Lvec = pointLight.posIntensity.xyz - fragPos;
+    float disSqr = dot(Lvec, Lvec);
+    float dis = sqrt(disSqr);
+    vec3 L = Lvec / dis;
 
-    // cook-torrance brdf
+    float radius = pointLight.colorRadius.a;
+    float falloffExp = 2.0;
+    float normDist = clamp(dis / radius, 0.0, 1.0);
+    float smoothFalloff = pow(1.0 - normDist, falloffExp);
+    float attenuation = smoothFalloff / max(disSqr, 1e-4);
+
+    vec3 radiance = pointLight.colorRadius.rgb * pointLight.posIntensity.w * attenuation;
+
     float gamma = 2.0;
+    vec3 H = normalize(V + L);
     float NDF = DistributionGTR(N, H, material.roughness, gamma);
     float G = GeometrySmith(N, V, L, material.roughness);
     vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
@@ -57,9 +66,7 @@ vec3 calPointLight(PointLight pointLight, vec3 F0, vec3 N, vec3 V, PBRMaterial m
     float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 1e-12;
     vec3 specular = nominator / denominator;
 
-    // add to outgoing radiance Lo
     float NdotL = max(dot(N, L), 0.0);
-
     return (kD * material.albedo / PI + specular) * radiance * NdotL;
 }
 

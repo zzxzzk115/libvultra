@@ -85,13 +85,19 @@ namespace vultra
         Entity getEntityWithName(const std::string& name);
 
         // Helpers to create common entities
-        Entity createMainCamera();
-        Entity getMainCamera() const;
-        Entity createXrCamera(bool leftEye);
-        Entity getXrCamera(bool leftEye) const;
-        Entity createDirectionalLight();
-        Entity getDirectionalLight() const;
-        Entity createMeshEntity(const std::string& name, const std::string& meshPath);
+        Entity              createMainCamera();
+        Entity              getMainCamera() const;
+        Entity              createXrCamera(bool leftEye);
+        Entity              getXrCamera(bool leftEye) const;
+        Entity              createDirectionalLight();
+        Entity              createPointLight();
+        Entity              createAreaLight();
+        Entity              getDirectionalLight() const;
+        Entity              getPointLight(uint32_t index) const;
+        std::vector<Entity> getPointLights() const;
+        Entity              getAreaLight(uint32_t index) const;
+        std::vector<Entity> getAreaLights() const;
+        Entity              createMeshEntity(const std::string& name, const std::string& meshPath);
 
         // Cook renderables for rendering
         std::vector<gfx::Renderable> cookRenderables();
