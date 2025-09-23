@@ -67,8 +67,9 @@ namespace vultra
             }
 
             Assimp::Importer importer;
-            const aiScene*   scene = importer.ReadFile(
-                p.generic_string(), aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_PreTransformVertices);
+            const aiScene*   scene = importer.ReadFile(p.generic_string(),
+                                                     aiProcess_Triangulate | aiProcess_FlipUVs |
+                                                         aiProcess_PreTransformVertices | aiProcess_CalcTangentSpace);
 
             if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode || !scene->HasMeshes())
             {
@@ -156,12 +157,6 @@ namespace vultra
                     mesh.indices.push_back(face.mIndices[0]);
                     mesh.indices.push_back(face.mIndices[1]);
                     mesh.indices.push_back(face.mIndices[2]);
-                }
-
-                // Generate Tangent if missing
-                if (!aiMesh->HasTangentsAndBitangents())
-                {
-                    mesh.generateTangents();
                 }
 
                 // Cook AABB
