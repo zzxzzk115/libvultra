@@ -2,13 +2,15 @@
 #include "vultra/core/base/hash.hpp"
 #include "vultra/core/base/ranges.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/raytracing/raytracing_pipeline.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
+#include "vultra/core/rhi/util.hpp"
 #include "vultra/core/rhi/vk/macro.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
 
 #include <SDL3/SDL_vulkan.h>
 #include <cpptrace/cpptrace.hpp>
-#include <glm/common.hpp>
+#include <glm/glm.hpp>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
@@ -135,15 +137,15 @@ namespace
     [[nodiscard]] constexpr auto makeAllocationFlags(const vultra::rhi::AllocationHints hints)
     {
         vma::AllocationCreateFlags flags {0};
-        if (static_cast<bool>(hints & vultra::rhi::AllocationHints::eMinMemory))
+        if (HasFlagValues(hints, vultra::rhi::AllocationHints::eMinMemory))
         {
             flags |= vma::AllocationCreateFlagBits::eStrategyMinMemory;
         }
-        if (static_cast<bool>(hints & vultra::rhi::AllocationHints::eSequentialWrite))
+        if (HasFlagValues(hints, vultra::rhi::AllocationHints::eSequentialWrite))
         {
             flags |= vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped;
         }
-        if (static_cast<bool>(hints & vultra::rhi::AllocationHints::eRandomAccess))
+        if (HasFlagValues(hints, vultra::rhi::AllocationHints::eRandomAccess))
         {
             flags |= vma::AllocationCreateFlagBits::eHostAccessRandom | vma::AllocationCreateFlagBits::eMapped;
         }
@@ -160,7 +162,7 @@ namespace vultra
         RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits featureFlag, std::string_view appName) :
             m_FeatureFlag(featureFlag), m_AppName(appName)
         {
-            if (static_cast<bool>(featureFlag & RenderDeviceFeatureFlagBits::eOpenXR))
+            if (HasFlagValues(featureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
             {
                 createXRDevice();
             }
@@ -223,7 +225,7 @@ namespace vultra
                 m_Instance.destroy();
             }
 
-            if (static_cast<bool>(m_FeatureFlag & RenderDeviceFeatureFlagBits::eOpenXR))
+            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
             {
                 delete m_XRDevice;
             }
@@ -326,15 +328,26 @@ namespace vultra
 
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
                                                       const vk::DeviceSize  capacity,
-                                                      const AllocationHints allocationHint) const
+                                                      const AllocationHints allocationHint,
+                                                      const bool            raytracing) const
         {
             assert(m_MemoryAllocator);
+
+            vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst;
+
+            if (raytracing)
+            {
+                VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline),
+                                   "[RenderDevice] Raytracing Pipeline feature is not enabled!");
+                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                         vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+            }
 
             return VertexBuffer {
                 Buffer {
                     m_MemoryAllocator,
                     stride * capacity,
-                    vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                    usage,
                     makeAllocationFlags(allocationHint),
                     vma::MemoryUsage::eAutoPreferDevice,
                 },
@@ -344,15 +357,26 @@ namespace vultra
 
         IndexBuffer RenderDevice::createIndexBuffer(IndexType             indexType,
                                                     const vk::DeviceSize  capacity,
-                                                    const AllocationHints allocationHint) const
+                                                    const AllocationHints allocationHint,
+                                                    const bool            raytracing) const
         {
             assert(m_MemoryAllocator);
+
+            vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst;
+
+            if (raytracing)
+            {
+                VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline),
+                                   "[RenderDevice] Raytracing Pipeline feature is not enabled!");
+                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                         vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+            }
 
             return IndexBuffer {
                 Buffer {
                     m_MemoryAllocator,
                     static_cast<uint8_t>(indexType) * capacity,
-                    vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                    usage,
                     makeAllocationFlags(allocationHint),
                     vma::MemoryUsage::eAutoPreferDevice,
                 },
@@ -386,38 +410,6 @@ namespace vultra
                     m_MemoryAllocator,
                     size,
                     vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                    makeAllocationFlags(allocationHint),
-                    vma::MemoryUsage::eAutoPreferDevice,
-                },
-            };
-        }
-
-        ScratchBuffer RenderDevice::createScratchBuffer(vk::DeviceSize size, AllocationHints allocationHint) const
-        {
-            assert(m_MemoryAllocator);
-
-            return ScratchBuffer {
-                Buffer {
-                    m_MemoryAllocator,
-                    size,
-                    vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
-                    makeAllocationFlags(allocationHint),
-                    vma::MemoryUsage::eAutoPreferDevice,
-                },
-            };
-        }
-
-        AccelerationStructureBuffer
-        RenderDevice::createAccelerationStructureBuffer(vk::DeviceSize size, AllocationHints allocationHint) const
-        {
-            assert(m_MemoryAllocator);
-
-            return AccelerationStructureBuffer {
-                Buffer {
-                    m_MemoryAllocator,
-                    size,
-                    vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
-                        vk::BufferUsageFlagBits::eShaderDeviceAddress,
                     makeAllocationFlags(allocationHint),
                     vma::MemoryUsage::eAutoPreferDevice,
                 },
@@ -558,7 +550,7 @@ namespace vultra
 
         RenderDevice& RenderDevice::setupSampler(Texture& texture, SamplerInfo samplerInfo)
         {
-            assert(texture && static_cast<bool>(texture.getUsageFlags() & ImageUsage::eSampled));
+            assert(texture && HasFlagValues(texture.getUsageFlags(), ImageUsage::eSampled));
 
             if (const auto props = getFormatProperties(texture.getPixelFormat());
                 !static_cast<bool>(props.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
@@ -727,7 +719,7 @@ namespace vultra
 
         void RenderDevice::createXRDevice()
         {
-            assert(static_cast<bool>(m_FeatureFlag & RenderDeviceFeatureFlagBits::eOpenXR));
+            assert(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR));
 
             m_XRDevice = new openxr::XRDevice(openxr::XRDeviceFeatureFlagBits::eVR, m_AppName);
         }
@@ -859,7 +851,7 @@ namespace vultra
             createInfo.ppEnabledExtensionNames = extensions.data();
 
             // If enable OpenXR feature, then let OpenXR create the vulkan instance.
-            if (static_cast<bool>(m_FeatureFlag & RenderDeviceFeatureFlagBits::eOpenXR))
+            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
             {
                 VkInstance           vkInstanceC;
                 VkInstanceCreateInfo createInfoC(createInfo);
@@ -905,7 +897,7 @@ namespace vultra
 
         void RenderDevice::selectPhysicalDevice()
         {
-            if (static_cast<bool>(m_FeatureFlag & RenderDeviceFeatureFlagBits::eOpenXR))
+            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
             {
                 // Retrieve the physical device from OpenXR
                 VkPhysicalDevice physicalDevice = nullptr;
@@ -955,6 +947,23 @@ namespace vultra
             }
 
             m_PhysicalDevice = bestDevice;
+
+            // Query properties and features
+            // Properties
+            vk::StructureChain<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
+                propertyChain;
+
+            m_PhysicalDevice.getProperties2(&propertyChain.get<vk::PhysicalDeviceProperties2>());
+
+            m_RaytracingPipelineProperties = propertyChain.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+
+            // Features
+            vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceAccelerationStructureFeaturesKHR>
+                featureChain;
+
+            m_PhysicalDevice.getFeatures2(&featureChain.get<vk::PhysicalDeviceFeatures2>());
+
+            m_AccelerationStructureFeatures = featureChain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>();
         }
 
         void RenderDevice::findGenericQueue()
@@ -1037,10 +1046,20 @@ namespace vultra
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
                 extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
                 extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+                extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
                 accelerationStructureFeatures.accelerationStructure = true;
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&accelerationStructureFeatures));
+
+                // BDA feature is required for raytracing
+                vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures {};
+                bufferDeviceAddressFeatures.bufferDeviceAddress = true;
+#ifdef VULTRA_ENABLE_RENDERDOC
+                // When RenderDoc is enabled, we need to enable the capture replay feature as well
+                bufferDeviceAddressFeatures.bufferDeviceAddressCaptureReplay = true;
+#endif
+                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&bufferDeviceAddressFeatures));
             }
 
             // Mesh Shader
@@ -1103,7 +1122,7 @@ namespace vultra
             createInfo.ppEnabledExtensionNames = extensions.data();
 
             // If enable OpenXR feature, then let OpenXR create the logical device.
-            if (static_cast<bool>(m_FeatureFlag & RenderDeviceFeatureFlagBits::eOpenXR))
+            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
             {
                 VkDeviceCreateInfo deviceCreateInfoC(createInfo);
 
@@ -1158,6 +1177,12 @@ namespace vultra
             allocatorInfo.device           = m_Device;
             allocatorInfo.instance         = m_Instance;
             allocatorInfo.pVulkanFunctions = &functions;
+
+            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline))
+            {
+                // When using raytracing, we need to enable the buffer device address feature
+                allocatorInfo.flags |= vma::AllocatorCreateFlagBits::eBufferDeviceAddress;
+            }
 
             vma::Allocator allocator;
             VK_CHECK(vma::createAllocator(&allocatorInfo, &allocator), LOGTAG, "Failed to create memory allocator");
@@ -1276,7 +1301,7 @@ namespace vultra
             };
         }
 
-        RenderDevice& RenderDevice::execute(const std::function<void(CommandBuffer&)>& f)
+        RenderDevice& RenderDevice::execute(const std::function<void(CommandBuffer&)>& f, bool oneTime)
         {
             auto cb = createCommandBuffer();
             cb.begin();
@@ -1286,10 +1311,10 @@ namespace vultra
                 // TRACKY_GPU_ZONE(cb, "ExecuteCommandBuffer");
                 std::invoke(f, cb);
             }
-            return execute(cb);
+            return execute(cb, JobInfo {}, oneTime);
         }
 
-        RenderDevice& RenderDevice::execute(CommandBuffer& cb, const JobInfo& jobInfo)
+        RenderDevice& RenderDevice::execute(CommandBuffer& cb, const JobInfo& jobInfo, bool oneTime)
         {
             cb.flushBarriers();
             TracyVkCollect(m_TracyContext, cb.m_Handle);
@@ -1316,7 +1341,18 @@ namespace vultra
 
             VK_CHECK(m_GenericQueue.submit2KHR(1, &submitInfo, cb.m_Fence), LOGTAG, "Failed to submit command buffer");
 
-            cb.m_State = CommandBuffer::State::ePending;
+            if (oneTime)
+            {
+                VK_CHECK(m_Device.waitForFences(cb.m_Fence, VK_TRUE, UINT64_MAX), LOGTAG, "Failed to wait for fence");
+                m_Device.resetFences(cb.m_Fence);
+                cb.m_State = CommandBuffer::State::eInitial;
+                m_GenericQueue.waitIdle();
+            }
+            else
+            {
+                cb.m_State = CommandBuffer::State::ePending;
+            }
+
             return *this;
         }
 
@@ -1455,12 +1491,343 @@ namespace vultra
             return true;
         }
 
+        AccelerationStructure
+        RenderDevice::createAccelerationStructure(AccelerationStructureType           type,
+                                                  AccelerationStructureBuildSizesInfo buildSizesInfo) const
+        {
+            assert(m_Device);
+
+            auto buffer = createAccelerationStructureBuffer(buildSizesInfo.accelerationStructureSize);
+
+            vk::AccelerationStructureCreateInfoKHR createInfo {};
+            createInfo.type   = static_cast<vk::AccelerationStructureTypeKHR>(type);
+            createInfo.size   = buildSizesInfo.accelerationStructureSize;
+            createInfo.buffer = buffer.getHandle();
+            createInfo.offset = 0;
+
+            vk::AccelerationStructureKHR handle {nullptr};
+            VK_CHECK(m_Device.createAccelerationStructureKHR(&createInfo, nullptr, &handle),
+                     LOGTAG,
+                     "Failed to create acceleration structure");
+
+            vk::AccelerationStructureDeviceAddressInfoKHR addressInfo {};
+            addressInfo.accelerationStructure = handle;
+            uint64_t deviceAddress            = m_Device.getAccelerationStructureAddressKHR(addressInfo);
+
+            return AccelerationStructure {
+                m_Device, handle, deviceAddress, type, std::move(buildSizesInfo), std::move(buffer)};
+        }
+
+        AccelerationStructure RenderDevice::createBuildSingleGeometryBLAS(uint64_t vertexBufferAddress,
+                                                                          uint64_t indexBufferAddress,
+                                                                          uint64_t transformBufferAddress,
+                                                                          uint32_t vertexStride,
+                                                                          uint32_t vertexCount,
+                                                                          uint32_t indexCount)
+        {
+            VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline),
+                               "[RenderDevice] Raytracing Pipeline feature is not enabled!");
+            VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
+                               "[RenderDevice] Acceleration Structure feature is not enabled!");
+
+            // Describe the geometry
+            vk::AccelerationStructureGeometryTrianglesDataKHR triangles {};
+            triangles.vertexFormat                = vk::Format::eR32G32B32Sfloat;
+            triangles.vertexData.deviceAddress    = vertexBufferAddress;
+            triangles.vertexStride                = vertexStride;
+            triangles.indexType                   = vk::IndexType::eUint32;
+            triangles.indexData.deviceAddress     = indexBufferAddress;
+            triangles.transformData.deviceAddress = transformBufferAddress;
+            triangles.maxVertex                   = vertexCount - 1;
+
+            vk::AccelerationStructureGeometryKHR geometry {};
+            geometry.geometryType = vk::GeometryTypeKHR::eTriangles;
+            geometry.flags        = vk::GeometryFlagBitsKHR::eOpaque;
+            geometry.geometry.setTriangles(triangles);
+
+            // Get build sizes
+            vk::AccelerationStructureBuildRangeInfoKHR buildRangeInfo {};
+            buildRangeInfo.primitiveCount  = indexCount / 3;
+            buildRangeInfo.primitiveOffset = 0;
+            buildRangeInfo.firstVertex     = 0;
+            buildRangeInfo.transformOffset = 0;
+
+            vk::AccelerationStructureBuildGeometryInfoKHR buildGeometryInfo {};
+            buildGeometryInfo.type          = vk::AccelerationStructureTypeKHR::eBottomLevel;
+            buildGeometryInfo.flags         = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
+            buildGeometryInfo.mode          = vk::BuildAccelerationStructureModeKHR::eBuild;
+            buildGeometryInfo.geometryCount = 1;
+            buildGeometryInfo.pGeometries   = &geometry;
+
+            auto buildSizes = m_Device.getAccelerationStructureBuildSizesKHR(
+                vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, buildRangeInfo.primitiveCount);
+
+            // Assign RHI build sizes info
+            AccelerationStructureBuildSizesInfo buildSizesInfo {};
+            buildSizesInfo.accelerationStructureSize = buildSizes.accelerationStructureSize;
+            buildSizesInfo.buildScratchSize          = buildSizes.buildScratchSize;
+            buildSizesInfo.updateScratchSize         = buildSizes.updateScratchSize;
+
+            // Create the BLAS
+            auto blas = createAccelerationStructure(AccelerationStructureType::eBottomLevel, buildSizesInfo);
+
+            // Create a scratch buffer
+            auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
+
+            // Fill geometry info
+            buildGeometryInfo.dstAccelerationStructure  = blas.getHandle();
+            buildGeometryInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer);
+            std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> buildRangeInfos = {&buildRangeInfo};
+
+            // Build the BLAS using a one-time command buffer
+            execute(
+                [&](CommandBuffer& cb) {
+                    cb.getHandle().buildAccelerationStructuresKHR(1, &buildGeometryInfo, buildRangeInfos.data());
+                },
+                true);
+
+            return blas;
+        }
+
+        AccelerationStructure RenderDevice::createBuildSingleGeometryTLAS(const AccelerationStructure& referenceBLAS,
+                                                                          const glm::mat4&             transform)
+        {
+            VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline),
+                               "[RenderDevice] Raytracing Pipeline feature is not enabled!");
+            VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
+                               "[RenderDevice] Acceleration Structure feature is not enabled!");
+
+            vk::TransformMatrixKHR vkTransform {};
+            glm::mat4              rowMajor = glm::transpose(transform);
+            memcpy(&vkTransform, &rowMajor, sizeof(vk::TransformMatrixKHR));
+
+            vk::AccelerationStructureInstanceKHR instance {};
+            instance.transform                              = vkTransform;
+            instance.instanceCustomIndex                    = 0;
+            instance.mask                                   = 0xFF;
+            instance.instanceShaderBindingTableRecordOffset = 0;
+            instance.flags =
+                static_cast<VkGeometryInstanceFlagsKHR>(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
+            instance.accelerationStructureReference = referenceBLAS.getDeviceAddress();
+
+            auto  instancesBuffer = createInstancesBuffer(1);
+            void* mapped          = instancesBuffer.map();
+            memcpy(mapped, &instance, sizeof(vk::AccelerationStructureInstanceKHR));
+            instancesBuffer.unmap();
+
+            vk::DeviceOrHostAddressConstKHR instanceData {};
+            instanceData.deviceAddress = getBufferDeviceAddress(instancesBuffer);
+
+            vk::AccelerationStructureGeometryKHR geometry {};
+            geometry.geometryType = vk::GeometryTypeKHR::eInstances;
+            geometry.flags        = vk::GeometryFlagBitsKHR::eOpaque;
+            geometry.geometry.instances.sType =
+                vk::StructureType::eAccelerationStructureGeometryInstancesDataKHR; // Must be set explicitly
+            geometry.geometry.instances.arrayOfPointers = VK_FALSE;
+            geometry.geometry.instances.data            = instanceData;
+
+            vk::AccelerationStructureBuildRangeInfoKHR rangeInfo {};
+            rangeInfo.primitiveCount = 1;
+
+            vk::AccelerationStructureBuildGeometryInfoKHR buildInfo {};
+            buildInfo.type          = vk::AccelerationStructureTypeKHR::eTopLevel;
+            buildInfo.flags         = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
+            buildInfo.mode          = vk::BuildAccelerationStructureModeKHR::eBuild;
+            buildInfo.geometryCount = 1;
+            buildInfo.pGeometries   = &geometry;
+
+            auto buildSizes = m_Device.getAccelerationStructureBuildSizesKHR(
+                vk::AccelerationStructureBuildTypeKHR::eDevice, buildInfo, rangeInfo.primitiveCount);
+
+            AccelerationStructureBuildSizesInfo sizesInfo {};
+            sizesInfo.accelerationStructureSize = buildSizes.accelerationStructureSize;
+            sizesInfo.buildScratchSize          = buildSizes.buildScratchSize;
+            sizesInfo.updateScratchSize         = buildSizes.updateScratchSize;
+
+            auto tlas          = createAccelerationStructure(AccelerationStructureType::eTopLevel, sizesInfo);
+            auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
+
+            buildInfo.dstAccelerationStructure                              = tlas.getHandle();
+            buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer);
+            std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> ranges = {&rangeInfo};
+
+            execute(
+                [&](CommandBuffer& cb) { cb.getHandle().buildAccelerationStructuresKHR(1, &buildInfo, ranges.data()); },
+                true);
+
+            return tlas;
+        }
+
+        ScratchBuffer RenderDevice::createScratchBuffer(uint64_t size, AllocationHints allocationHint) const
+        {
+            assert(m_MemoryAllocator);
+
+            Buffer buffer {
+                m_MemoryAllocator,
+                size,
+                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                makeAllocationFlags(allocationHint),
+                vma::MemoryUsage::eAutoPreferDevice,
+            };
+
+            uint64_t bufferAddress = getBufferDeviceAddress(buffer);
+
+            return ScratchBuffer {std::move(buffer), bufferAddress};
+        }
+
+        InstanceBuffer RenderDevice::createInstancesBuffer(uint32_t instanceCount, AllocationHints allocationHint) const
+        {
+            assert(m_MemoryAllocator);
+
+            return InstanceBuffer {
+                m_MemoryAllocator,
+                instanceCount * sizeof(VkAccelerationStructureInstanceKHR),
+                vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                    vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
+                makeAllocationFlags(allocationHint),
+                vma::MemoryUsage::eCpuToGpu, // Host visible & coherent for easy mapping
+            };
+        }
+
+        TransformBuffer RenderDevice::createTransformBuffer(AllocationHints allocationHint) const
+        {
+            assert(m_MemoryAllocator);
+
+            return TransformBuffer {
+                m_MemoryAllocator,
+                sizeof(vk::TransformMatrixKHR),
+                vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                    vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR,
+                makeAllocationFlags(allocationHint),
+                vma::MemoryUsage::eCpuToGpu, // Host visible & coherent for easy mapping
+            };
+        }
+
+        ShaderBindingTable RenderDevice::createShaderBindingTable(const rhi::RaytracingPipeline& pipeline,
+                                                                  AllocationHints                allocationHint) const
+        {
+            assert(m_MemoryAllocator);
+
+            const auto& props = m_RaytracingPipelineProperties;
+
+            const uint32_t handleSize        = props.shaderGroupHandleSize;
+            const uint32_t handleSizeAligned = alignedSize(handleSize, props.shaderGroupHandleAlignment);
+
+            const uint32_t raygenCount   = pipeline.getRaygenGroupCount();
+            const uint32_t missCount     = pipeline.getMissGroupCount();
+            const uint32_t hitCount      = pipeline.getHitGroupCount();
+            const uint32_t callableCount = pipeline.getCallableGroupCount();
+
+            const uint32_t raygenSize   = handleSizeAligned * raygenCount;
+            const uint32_t missSize     = handleSizeAligned * missCount;
+            const uint32_t hitSize      = handleSizeAligned * hitCount;
+            const uint32_t callableSize = handleSizeAligned * callableCount;
+
+            const auto baseAlign = props.shaderGroupBaseAlignment;
+
+            auto alignedOffset = [](uint32_t offset, uint32_t alignment) {
+                return (offset + alignment - 1) & ~(alignment - 1);
+            };
+
+            uint32_t raygenOffset   = 0;
+            uint32_t missOffset     = alignedOffset(raygenOffset + raygenSize, baseAlign);
+            uint32_t hitOffset      = alignedOffset(missOffset + missSize, baseAlign);
+            uint32_t callableOffset = alignedOffset(hitOffset + hitSize, baseAlign);
+
+            const uint32_t sbtSize = callableOffset + callableSize;
+
+            // Chunk buffer
+            Buffer sbtBuffer {
+                m_MemoryAllocator,
+                sbtSize,
+                vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                    vk::BufferUsageFlagBits::eTransferDst,
+                makeAllocationFlags(allocationHint),
+                vma::MemoryUsage::eCpuToGpu, // Host visible & coherent for easy mapping
+            };
+
+            std::vector<uint8_t> handles(sbtSize);
+            VK_CHECK(m_Device.getRayTracingShaderGroupHandlesKHR(
+                         pipeline.getHandle(), 0, pipeline.getGroupCount(), handles.size(), handles.data()),
+                     "RenderDevice",
+                     "Failed to get shader group handles");
+
+            auto* dst = static_cast<uint8_t*>(sbtBuffer.map());
+
+            auto copyHandles = [&](uint32_t groupBaseIndex, uint32_t count, uint32_t dstOffset) {
+                for (uint32_t i = 0; i < count; ++i)
+                {
+                    const uint8_t* src = handles.data() + (groupBaseIndex + i) * handleSize;
+                    memcpy(dst + dstOffset + i * handleSizeAligned, src, handleSize);
+                }
+            };
+
+            uint32_t groupBase = 0;
+            copyHandles(groupBase, raygenCount, raygenOffset);
+            groupBase += raygenCount;
+            copyHandles(groupBase, missCount, missOffset);
+            groupBase += missCount;
+            copyHandles(groupBase, hitCount, hitOffset);
+            groupBase += hitCount;
+            copyHandles(groupBase, callableCount, callableOffset);
+
+            sbtBuffer.unmap();
+
+            // Fill in StrideDeviceAddressRegion
+            auto makeRegion = [&](uint32_t offset, uint32_t count) -> StrideDeviceAddressRegion {
+                if (count == 0)
+                    return {};
+                return getSbtEntryStrideDeviceAddressRegion(sbtBuffer, count, offset);
+            };
+
+            ShaderBindingTable::Regions regions {
+                .raygen = makeRegion(raygenOffset, raygenCount),
+                .miss   = makeRegion(missOffset, missCount),
+                .hit    = makeRegion(hitOffset, hitCount),
+                .callable =
+                    callableCount > 0 ? std::make_optional(makeRegion(callableOffset, callableCount)) : std::nullopt,
+            };
+
+            return ShaderBindingTable {std::move(sbtBuffer), std::move(regions)};
+        }
+
         uint64_t RenderDevice::getBufferDeviceAddress(const Buffer& buffer) const
         {
             assert(m_Device);
             vk::BufferDeviceAddressInfo bufferDeviceAddressInfo {};
             bufferDeviceAddressInfo.buffer = buffer.getHandle();
             return m_Device.getBufferAddress(bufferDeviceAddressInfo);
+        }
+
+        RaytracingPipelineProperties RenderDevice::getRaytracingPipelineProperties() const
+        {
+            return RaytracingPipelineProperties {
+                m_RaytracingPipelineProperties.shaderGroupHandleSize,
+                m_RaytracingPipelineProperties.maxRayRecursionDepth,
+                m_RaytracingPipelineProperties.maxShaderGroupStride,
+                m_RaytracingPipelineProperties.shaderGroupBaseAlignment,
+                m_RaytracingPipelineProperties.shaderGroupHandleCaptureReplaySize,
+                m_RaytracingPipelineProperties.maxRayDispatchInvocationCount,
+                m_RaytracingPipelineProperties.shaderGroupHandleAlignment,
+                m_RaytracingPipelineProperties.maxRayHitAttributeSize,
+            };
+        }
+
+        AccelerationStructureBuffer
+        RenderDevice::createAccelerationStructureBuffer(vk::DeviceSize size, AllocationHints allocationHint) const
+        {
+            assert(m_MemoryAllocator);
+
+            return AccelerationStructureBuffer {
+                Buffer {
+                    m_MemoryAllocator,
+                    size,
+                    vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR |
+                        vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                    makeAllocationFlags(allocationHint),
+                    vma::MemoryUsage::eAutoPreferDevice,
+                },
+            };
         }
 
         uint64_t RenderDevice::getAccelerationStructureDeviceAddress(const AccelerationStructure& accel) const
@@ -1470,5 +1837,20 @@ namespace vultra
             addressInfo.accelerationStructure = accel.getHandle();
             return m_Device.getAccelerationStructureAddressKHR(addressInfo);
         }
+
+        StrideDeviceAddressRegion RenderDevice::getSbtEntryStrideDeviceAddressRegion(const Buffer& sbt,
+                                                                                     uint32_t      handleCount,
+                                                                                     uint64_t      offset) const
+        {
+            const uint32_t handleSizeAligned = alignedSize(m_RaytracingPipelineProperties.shaderGroupHandleSize,
+                                                           m_RaytracingPipelineProperties.shaderGroupHandleAlignment);
+
+            return StrideDeviceAddressRegion {
+                .deviceAddress = getBufferDeviceAddress(sbt) + offset,
+                .stride        = handleSizeAligned,
+                .size          = handleCount * handleSizeAligned,
+            };
+        }
+
     } // namespace rhi
 } // namespace vultra

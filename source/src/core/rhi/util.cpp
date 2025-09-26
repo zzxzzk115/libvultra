@@ -59,5 +59,10 @@ namespace vultra
                     });
             });
         }
+
+        uint32_t alignedSize(const uint32_t size, const uint32_t alignment)
+        {
+            return (size + alignment - 1) & ~(alignment - 1);
+        }
     } // namespace rhi
 } // namespace vultra

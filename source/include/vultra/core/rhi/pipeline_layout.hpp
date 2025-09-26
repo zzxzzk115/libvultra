@@ -62,6 +62,9 @@ namespace vultra
                 Builder& addUniformBuffer(const DescriptorSetIndex, const BindingIndex, const vk::ShaderStageFlags);
                 Builder& addStorageBuffer(const DescriptorSetIndex, const BindingIndex, const vk::ShaderStageFlags);
 
+                Builder&
+                addAccelerationStructure(const DescriptorSetIndex, const BindingIndex, const vk::ShaderStageFlags);
+
                 Builder& addResource(const DescriptorSetIndex, vk::DescriptorSetLayoutBinding);
                 Builder& addPushConstantRange(vk::PushConstantRange);
 

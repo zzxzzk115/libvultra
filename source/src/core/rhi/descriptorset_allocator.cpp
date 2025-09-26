@@ -28,6 +28,7 @@ namespace vultra
                     POOL_SIZE(eStorageImage, 0.12f),
                     POOL_SIZE(eUniformBuffer, 2.2f),
                     POOL_SIZE(eStorageBuffer, 3.6f),
+                    POOL_SIZE(eAccelerationStructureKHR, 1.0f),
                   };
                 // clang-format on
 #undef POOL_SIZE

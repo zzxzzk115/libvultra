@@ -26,13 +26,22 @@ namespace vultra
 #define VULTRA_CLIENT_ERROR(...) ::vultra::commonContext.logger.error(false, __VA_ARGS__);
 #define VULTRA_CLIENT_CRITICAL(...) ::vultra::commonContext.logger.critical(false, __VA_ARGS__);
 
-#define VULTRA_CORE_ASSERT(x, ...) \
+#define VULTRA_CORE_ASSERT(expr, ...) \
+    do \
     { \
-        if (!(x)) \
+        if (!(expr)) \
         { \
-            VULTRA_CORE_ERROR("Assertion Failed: {0}", __VA_ARGS__); \
+            if constexpr (sizeof(#__VA_ARGS__) > 1) \
+            { \
+                VULTRA_CORE_ERROR( \
+                    "{}:{}: Assertion '{}' failed. {}", __FILE__, __LINE__, #expr, fmt::format(__VA_ARGS__)); \
+            } \
+            else \
+            { \
+                VULTRA_CORE_ERROR("{}:{}: Assertion '{}' failed.", __FILE__, __LINE__, #expr); \
+            } \
             DEBUG_BREAK(); \
-            assert(x); \
-            exit(EXIT_FAILURE); \
+            assert(expr); \
+            std::exit(EXIT_FAILURE); \
         } \
-    }
+    } while (0)

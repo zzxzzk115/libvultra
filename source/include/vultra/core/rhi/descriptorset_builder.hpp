@@ -15,6 +15,7 @@ namespace vultra
         class DescriptorSetAllocator;
         class Buffer;
         class Texture;
+        class AccelerationStructure;
 
         // Key = Hash.
         using DescriptorSetCache = std::unordered_map<std::size_t, vk::DescriptorSet>;
@@ -56,6 +57,10 @@ namespace vultra
                 std::optional<vk::DeviceSize> range;
             };
 
+            struct AccelerationStructureKHR
+            {
+                const AccelerationStructure* as {nullptr};
+            };
         } // namespace bindings
 
         using ResourceBinding = std::variant<bindings::SeparateSampler,
@@ -63,7 +68,8 @@ namespace vultra
                                              bindings::SampledImage,
                                              bindings::StorageImage,
                                              bindings::UniformBuffer,
-                                             bindings::StorageBuffer>;
+                                             bindings::StorageBuffer,
+                                             bindings::AccelerationStructureKHR>;
 
         class DescriptorSetBuilder final
         {
@@ -83,6 +89,7 @@ namespace vultra
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::StorageImage&);
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::UniformBuffer&);
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::StorageBuffer&);
+            DescriptorSetBuilder& bind(const BindingIndex, const bindings::AccelerationStructureKHR&);
 
             [[nodiscard]] vk::DescriptorSet build(const vk::DescriptorSetLayout);
 
@@ -92,6 +99,7 @@ namespace vultra
             void addImage(const vk::ImageView, const vk::ImageLayout);
             void addSampler(const vk::Sampler);
             void addCombinedImageSampler(const vk::ImageView, const vk::ImageLayout, const vk::Sampler);
+            void addAccelerationStructure(const vk::AccelerationStructureKHR&);
 
             DescriptorSetBuilder& bindBuffer(const BindingIndex, const vk::DescriptorType, vk::DescriptorBufferInfo&&);
 
@@ -110,10 +118,12 @@ namespace vultra
             std::unordered_map<BindingIndex, BindingInfo> m_Bindings;
             union DescriptorVariant
             {
-                vk::DescriptorImageInfo  imageInfo;
-                vk::DescriptorBufferInfo bufferInfo;
+                vk::DescriptorImageInfo                        imageInfo;
+                vk::DescriptorBufferInfo                       bufferInfo;
+                vk::WriteDescriptorSetAccelerationStructureKHR asInfo;
             };
-            std::vector<DescriptorVariant> m_Descriptors;
+            std::vector<DescriptorVariant>            m_Descriptors;
+            std::vector<vk::AccelerationStructureKHR> m_AccelerationStructures; // Keep alive
         };
 
         [[nodiscard]] std::string_view toString(const ResourceBinding&);

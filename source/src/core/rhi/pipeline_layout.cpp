@@ -91,6 +91,15 @@ namespace vultra
                 setIndex, vk::DescriptorSetLayoutBinding {bindingIndex, vk::DescriptorType::eStorageBuffer, 1, stages});
         }
 
+        PipelineLayout::Builder& PipelineLayout::Builder::addAccelerationStructure(const DescriptorSetIndex setIndex,
+                                                                                   const BindingIndex bindingIndex,
+                                                                                   const vk::ShaderStageFlags stages)
+        {
+            return addResource(setIndex,
+                               vk::DescriptorSetLayoutBinding {
+                                   bindingIndex, vk::DescriptorType::eAccelerationStructureKHR, 1, stages});
+        }
+
         PipelineLayout::Builder& PipelineLayout::Builder::addResource(const DescriptorSetIndex       index,
                                                                       vk::DescriptorSetLayoutBinding desc)
         {

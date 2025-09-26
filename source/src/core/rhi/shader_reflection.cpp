@@ -22,6 +22,16 @@ namespace vultra
                         return vk::ShaderStageFlagBits::eFragment;
                     case spv::ExecutionModelGLCompute:
                         return vk::ShaderStageFlagBits::eCompute;
+                    case spv::ExecutionModelRayGenerationKHR:
+                        return vk::ShaderStageFlagBits::eRaygenKHR;
+                    case spv::ExecutionModelMissKHR:
+                        return vk::ShaderStageFlagBits::eMissKHR;
+                    case spv::ExecutionModelClosestHitKHR:
+                        return vk::ShaderStageFlagBits::eClosestHitKHR;
+                    case spv::ExecutionModelAnyHitKHR:
+                        return vk::ShaderStageFlagBits::eAnyHitKHR;
+                    case spv::ExecutionModelIntersectionKHR:
+                        return vk::ShaderStageFlagBits::eIntersectionKHR;
 
                     default:
                         assert(false);
@@ -76,6 +86,7 @@ namespace vultra
             ADD_RESOURCES(storage_images, StorageImage)
             ADD_RESOURCES(uniform_buffers, UniformBuffer)
             ADD_RESOURCES(storage_buffers, StorageBuffer)
+            ADD_RESOURCES(acceleration_structures, AccelerationStructureKHR)
 
 #undef ADD_RESOURCES
 

@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/compute_pipeline.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
+#include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 #include "vultra/core/rhi/vk/macro.hpp"
@@ -240,6 +241,48 @@ namespace vultra
             TRACY_GPU_ZONE2_("Dispatch");
             flushBarriers();
             m_Handle.dispatch(groupCount.x, groupCount.y, groupCount.z);
+
+            return *this;
+        }
+
+        CommandBuffer& CommandBuffer::traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent)
+        {
+            assert(invariant(State::eRecording, InvariantFlags::eValidPipeline));
+
+            TRACY_GPU_ZONE2_("TraceRays");
+            flushBarriers();
+
+            vk::StridedDeviceAddressRegionKHR raygenShaderBindingTable {};
+            vk::StridedDeviceAddressRegionKHR missShaderBindingTable {};
+            vk::StridedDeviceAddressRegionKHR hitShaderBindingTable {};
+            vk::StridedDeviceAddressRegionKHR callableShaderBindingTable {};
+
+            raygenShaderBindingTable.deviceAddress = sbt.regions().raygen.deviceAddress;
+            raygenShaderBindingTable.stride        = sbt.regions().raygen.stride;
+            raygenShaderBindingTable.size          = sbt.regions().raygen.size;
+
+            missShaderBindingTable.deviceAddress = sbt.regions().miss.deviceAddress;
+            missShaderBindingTable.stride        = sbt.regions().miss.stride;
+            missShaderBindingTable.size          = sbt.regions().miss.size;
+
+            hitShaderBindingTable.deviceAddress = sbt.regions().hit.deviceAddress;
+            hitShaderBindingTable.stride        = sbt.regions().hit.stride;
+            hitShaderBindingTable.size          = sbt.regions().hit.size;
+
+            if (sbt.regions().callable.has_value())
+            {
+                callableShaderBindingTable.deviceAddress = sbt.regions().callable->deviceAddress;
+                callableShaderBindingTable.stride        = sbt.regions().callable->stride;
+                callableShaderBindingTable.size          = sbt.regions().callable->size;
+            }
+
+            m_Handle.traceRaysKHR(&raygenShaderBindingTable,
+                                  &missShaderBindingTable,
+                                  &hitShaderBindingTable,
+                                  &callableShaderBindingTable,
+                                  extent.x,
+                                  extent.y,
+                                  extent.z);
 
             return *this;
         }
@@ -943,6 +986,21 @@ namespace vultra
                 },
                 {
                     .stageMask  = rhi::PipelineStages::eComputeShader,
+                    .accessMask = rhi::Access::eShaderRead | rhi::Access::eShaderWrite,
+                });
+        }
+
+        void prepareForRaytracing(CommandBuffer& cb, const Texture& texture)
+        {
+            assert(texture);
+
+            cb.getBarrierBuilder().imageBarrier(
+                {
+                    .image     = texture,
+                    .newLayout = rhi::ImageLayout::eGeneral,
+                },
+                {
+                    .stageMask  = rhi::PipelineStages::eRaytracingShader,
                     .accessMask = rhi::Access::eShaderRead | rhi::Access::eShaderWrite,
                 });
         }

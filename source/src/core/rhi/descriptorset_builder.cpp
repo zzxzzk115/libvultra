@@ -3,6 +3,7 @@
 #include "vultra/core/base/visitor_helper.hpp"
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/descriptorset_allocator.hpp"
+#include "vultra/core/rhi/raytracing/acceleration_structure.hpp"
 #include "vultra/core/rhi/texture.hpp"
 
 namespace std
@@ -162,6 +163,20 @@ namespace vultra
                               });
         }
 
+        DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex                        index,
+                                                         const bindings::AccelerationStructureKHR& info)
+        {
+            assert(info.as);
+            m_Bindings[index] = BindingInfo {
+                .type         = vk::DescriptorType::eAccelerationStructureKHR,
+                .count        = 1,
+                .descriptorId = static_cast<int32_t>(m_Descriptors.size()),
+            };
+            addAccelerationStructure(info.as->getHandle());
+
+            return *this;
+        }
+
         vk::DescriptorSet DescriptorSetBuilder::build(const vk::DescriptorSetLayout layout)
         {
             assert(layout);
@@ -197,6 +212,15 @@ namespace vultra
                             hash, record.pBufferInfo->offset, record.pBufferInfo->range, record.pBufferInfo->buffer);
                         break;
 
+                    case vk::DescriptorType::eAccelerationStructureKHR:
+                        record.pNext =
+                            std::bit_cast<const vk::WriteDescriptorSetAccelerationStructureKHR*>(descriptorPtr);
+                        hashCombine(
+                            hash,
+                            reinterpret_cast<const vk::WriteDescriptorSetAccelerationStructureKHR*>(record.pNext)
+                                ->pAccelerationStructures);
+                        break;
+
                     default:
                         assert(false);
                 }
@@ -226,6 +250,7 @@ namespace vultra
         {
             m_Bindings.clear();
             m_Descriptors.clear();
+            m_AccelerationStructures.clear();
         }
 
         void DescriptorSetBuilder::addImage(const vk::ImageView imageView, const vk::ImageLayout imageLayout)
@@ -269,6 +294,20 @@ namespace vultra
             });
         }
 
+        void DescriptorSetBuilder::addAccelerationStructure(const vk::AccelerationStructureKHR& as)
+        {
+            assert(as);
+
+            m_AccelerationStructures.push_back(as); // Keep alive
+
+            vk::WriteDescriptorSetAccelerationStructureKHR descriptorASInfo {};
+            descriptorASInfo.accelerationStructureCount = 1;
+            descriptorASInfo.pAccelerationStructures    = &m_AccelerationStructures.back();
+            m_Descriptors.emplace_back(DescriptorVariant {
+                .asInfo = descriptorASInfo,
+            });
+        }
+
         DescriptorSetBuilder& DescriptorSetBuilder::bindBuffer(const BindingIndex         index,
                                                                const vk::DescriptorType   type,
                                                                vk::DescriptorBufferInfo&& bufferInfo)
@@ -296,6 +335,7 @@ namespace vultra
                     CASE(StorageImage),
                     CASE(UniformBuffer),
                     CASE(StorageBuffer),
+                    CASE(AccelerationStructureKHR),
                 },
                 rb);
 

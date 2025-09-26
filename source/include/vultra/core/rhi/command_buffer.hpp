@@ -33,6 +33,7 @@ namespace vultra
         class Texture;
         class BasePipeline;
         class ComputePipeline;
+        class ShaderBindingTable;
 
         class CommandBuffer final
         {
@@ -89,6 +90,8 @@ namespace vultra
 
             CommandBuffer& dispatch(const ComputePipeline&, const glm::uvec3&);
             CommandBuffer& dispatch(const glm::uvec3&);
+
+            CommandBuffer& traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent);
 
             CommandBuffer& bindDescriptorSet(const DescriptorSetIndex, const vk::DescriptorSet);
 
@@ -183,6 +186,7 @@ namespace vultra
         void
         clearImageForComputing(CommandBuffer&, Texture&, const ClearValue& clearValue = ClearValue {glm::vec4(0.0f)});
         void prepareForComputing(CommandBuffer& cb, const Texture& texture);
+        void prepareForRaytracing(CommandBuffer& cb, const Texture& texture);
         void prepareForComputing(CommandBuffer& cb, const Buffer& buffer);
         void prepareForReading(CommandBuffer& cb, const Buffer& buffer);
     } // namespace rhi

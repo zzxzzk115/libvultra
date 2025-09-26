@@ -70,5 +70,5 @@ inline T& operator^=(T& lhs, T rhs)
 template<ScopedEnumWithFlags T>
 [[nodiscard]] constexpr auto HasFlagValues(T value, T flags)
 {
-    return (value & flags) == flags;
+    return static_cast<bool>(value & flags);
 }

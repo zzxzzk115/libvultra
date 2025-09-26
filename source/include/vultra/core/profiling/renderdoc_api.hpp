@@ -12,7 +12,7 @@ namespace vultra
     class RenderDocAPI
     {
     public:
-        RenderDocAPI();
+        RenderDocAPI(bool enable = true);
         ~RenderDocAPI();
 
         bool load();

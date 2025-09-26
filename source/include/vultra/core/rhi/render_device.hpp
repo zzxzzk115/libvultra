@@ -8,8 +8,9 @@
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/raytracing/acceleration_structure.hpp"
-#include "vultra/core/rhi/raytracing/acceleration_structure_buffer.hpp"
+#include "vultra/core/rhi/raytracing/raytracing_pipeline_properties.hpp"
 #include "vultra/core/rhi/raytracing/scratch_buffer.hpp"
+#include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
 #include "vultra/core/rhi/sampler_info.hpp"
 #include "vultra/core/rhi/shader_compiler.hpp"
 #include "vultra/core/rhi/shader_module.hpp"
@@ -19,6 +20,8 @@
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
 #include "vultra/core/profiling/tracy_wrapper.hpp"
+
+#include <glm/fwd.hpp>
 
 #include <functional>
 #include <string>
@@ -79,6 +82,7 @@ namespace vultra
         class RenderDevice final
         {
             friend class GraphicsPipeline;
+            friend class RaytracingPipeline;
             friend class imgui::ImGuiRenderer;
             friend class openxr::XRHeadset;
 
@@ -111,23 +115,21 @@ namespace vultra
 
             [[nodiscard]] Buffer createStagingBuffer(vk::DeviceSize size, const void* data = nullptr) const;
 
-            [[nodiscard]] VertexBuffer
-            createVertexBuffer(Buffer::Stride, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone) const;
+            [[nodiscard]] VertexBuffer createVertexBuffer(Buffer::Stride,
+                                                          vk::DeviceSize capacity,
+                                                          AllocationHints = AllocationHints::eNone,
+                                                          bool raytracing = false) const;
 
-            [[nodiscard]] IndexBuffer
-            createIndexBuffer(IndexType, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone) const;
+            [[nodiscard]] IndexBuffer createIndexBuffer(IndexType,
+                                                        vk::DeviceSize capacity,
+                                                        AllocationHints = AllocationHints::eNone,
+                                                        bool raytracing = false) const;
 
             [[nodiscard]] UniformBuffer createUniformBuffer(vk::DeviceSize size,
                                                             AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] StorageBuffer createStorageBuffer(vk::DeviceSize size,
                                                             AllocationHints = AllocationHints::eNone) const;
-
-            [[nodiscard]] ScratchBuffer createScratchBuffer(vk::DeviceSize size,
-                                                            AllocationHints = AllocationHints::eNone) const;
-
-            [[nodiscard]] AccelerationStructureBuffer
-            createAccelerationStructureBuffer(vk::DeviceSize size, AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] std::pair<std::size_t, vk::DescriptorSetLayout>
             createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>&);
@@ -174,8 +176,8 @@ namespace vultra
 
             [[nodiscard]] CommandBuffer createCommandBuffer() const;
             // Blocking.
-            RenderDevice& execute(const std::function<void(CommandBuffer&)>&);
-            RenderDevice& execute(CommandBuffer&, const JobInfo& = {});
+            RenderDevice& execute(const std::function<void(CommandBuffer&)>&, bool oneTime = false);
+            RenderDevice& execute(CommandBuffer&, const JobInfo& = {}, bool oneTime = false);
 
             RenderDevice& present(Swapchain&, const vk::Semaphore wait = nullptr);
 
@@ -188,10 +190,38 @@ namespace vultra
                                    const std::string&     filePath,
                                    const rhi::ImageAspect imageAspect = rhi::ImageAspect::eColor);
 
-            // For the raytracing
-            uint64_t getBufferDeviceAddress(const Buffer&) const;
-            uint64_t getAccelerationStructureDeviceAddress(const AccelerationStructure&) const;
+            // For the RTX
+            // General for ray query
+            [[nodiscard]] AccelerationStructure
+            createAccelerationStructure(AccelerationStructureType           type,
+                                        AccelerationStructureBuildSizesInfo buildSizesInfo) const;
 
+            // For single geometry BLAS, e.g., triangle
+            [[nodiscard]] AccelerationStructure createBuildSingleGeometryBLAS(uint64_t vertexBufferAddress,
+                                                                              uint64_t indexBufferAddress,
+                                                                              uint64_t transformBufferAddress,
+                                                                              uint32_t vertexStride,
+                                                                              uint32_t vertexCount,
+                                                                              uint32_t indexCount);
+            [[nodiscard]] AccelerationStructure
+            createBuildSingleGeometryTLAS(const AccelerationStructure& referenceBLAS, const glm::mat4& transform);
+
+            [[nodiscard]] ScratchBuffer createScratchBuffer(uint64_t size,
+                                                            AllocationHints = AllocationHints::eNone) const;
+
+            [[nodiscard]] InstanceBuffer createInstancesBuffer(uint32_t instanceCount,
+                                                               AllocationHints = AllocationHints::eNone) const;
+
+            [[nodiscard]] TransformBuffer createTransformBuffer(AllocationHints = AllocationHints::eNone) const;
+
+            [[nodiscard]] ShaderBindingTable createShaderBindingTable(const rhi::RaytracingPipeline& pipeline,
+                                                                      AllocationHints = AllocationHints::eNone) const;
+
+            [[nodiscard]] uint64_t getBufferDeviceAddress(const Buffer&) const;
+
+            [[nodiscard]] RaytracingPipelineProperties getRaytracingPipelineProperties() const;
+
+            // For the OpenXR
             openxr::XRDevice* getXRDevice() const { return m_XRDevice; }
 
         private:
@@ -210,6 +240,14 @@ namespace vultra
             vk::CommandBuffer allocateCommandBuffer() const;
             vk::Sampler       createSampler(const SamplerInfo&) const;
 
+            [[nodiscard]] AccelerationStructureBuffer
+            createAccelerationStructureBuffer(vk::DeviceSize size, AllocationHints = AllocationHints::eNone) const;
+
+            uint64_t getAccelerationStructureDeviceAddress(const AccelerationStructure&) const;
+
+            StrideDeviceAddressRegion
+            getSbtEntryStrideDeviceAddressRegion(const Buffer& sbt, uint32_t handleCount, uint64_t offset) const;
+
         private:
             RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
             std::string                 m_AppName;
@@ -224,6 +262,10 @@ namespace vultra
             vk::CommandPool            m_CommandPool {nullptr};
             vk::PipelineCache          m_PipelineCache {nullptr};
             vk::DescriptorPool         m_DefaultDescriptorPool {nullptr};
+
+            // Raytracing properties and features
+            vk::PhysicalDeviceRayTracingPipelinePropertiesKHR  m_RaytracingPipelineProperties;
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHR m_AccelerationStructureFeatures;
 
             TracyVkCtx m_TracyContext {nullptr};
 

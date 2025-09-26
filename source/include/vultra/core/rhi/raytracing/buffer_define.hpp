@@ -7,5 +7,7 @@ namespace vultra
     namespace rhi
     {
         using AccelerationStructureBuffer = Buffer;
-    }
+        using TransformBuffer             = Buffer;
+        using InstanceBuffer              = Buffer;
+    } // namespace rhi
 } // namespace vultra

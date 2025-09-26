@@ -10,10 +10,15 @@
 
 namespace vultra
 {
-    RenderDocAPI::RenderDocAPI()
+    RenderDocAPI::RenderDocAPI(bool enable)
     {
 #ifdef VULTRA_ENABLE_RENDERDOC
         VULTRA_CORE_TRACE("[Profiling] Initializing RenderDoc API...");
+        if (!enable)
+        {
+            VULTRA_CORE_TRACE("[Profiling] RenderDoc API is disabled by user.");
+            return;
+        }
 
         // Load the RenderDoc API
         m_IsAvailable = load();

@@ -28,6 +28,10 @@ namespace vultra
             eMemoryWrite                 = VK_ACCESS_2_MEMORY_WRITE_BIT,
             eShaderStorageRead           = VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
             eShaderStorageWrite          = VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+
+            // Raytracing
+            eAccelerationStructureRead  = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+            eAccelerationStructureWrite = VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
         };
     } // namespace rhi
 } // namespace vultra
