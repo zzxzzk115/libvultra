@@ -35,7 +35,7 @@ namespace vultra
             void                            reset();
 
         private:
-            explicit DescriptorSetAllocator(const vk::Device);
+            explicit DescriptorSetAllocator(const vk::Device, bool raytracing = false);
 
             void destroy() noexcept;
 
@@ -48,6 +48,7 @@ namespace vultra
 
             std::vector<DescriptorPool> m_DescriptorPools;
             int32_t                     m_LastPoolIndex {-1};
+            bool                        m_EnableRaytracing {false};
         };
     } // namespace rhi
 } // namespace vultra

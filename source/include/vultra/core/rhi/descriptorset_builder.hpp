@@ -112,18 +112,17 @@ namespace vultra
             {
                 vk::DescriptorType type;
                 uint32_t           count {0};
-                int32_t            descriptorId {-1}; // Index to m_descriptors.
+                int32_t            descriptorId {-1}; // Index to m_Descriptors
             };
+
             // layout(binding = index)
             std::unordered_map<BindingIndex, BindingInfo> m_Bindings;
-            union DescriptorVariant
-            {
-                vk::DescriptorImageInfo                        imageInfo;
-                vk::DescriptorBufferInfo                       bufferInfo;
-                vk::WriteDescriptorSetAccelerationStructureKHR asInfo;
-            };
-            std::vector<DescriptorVariant>            m_Descriptors;
-            std::vector<vk::AccelerationStructureKHR> m_AccelerationStructures; // Keep alive
+
+            std::vector<vk::DescriptorImageInfo>                        m_ImageInfos;
+            std::vector<vk::DescriptorBufferInfo>                       m_BufferInfos;
+            std::vector<vk::WriteDescriptorSetAccelerationStructureKHR> m_ASInfos;
+
+            std::vector<vk::AccelerationStructureKHR> m_AccelerationStructures; // To keep the handles alive.
         };
 
         [[nodiscard]] std::string_view toString(const ResourceBinding&);

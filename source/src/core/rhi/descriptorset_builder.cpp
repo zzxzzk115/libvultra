@@ -44,14 +44,15 @@ namespace vultra
 
         } // namespace
 #endif
-
         DescriptorSetBuilder::DescriptorSetBuilder(const vk::Device        device,
-                                                   DescriptorSetAllocator& descriptorSetAllocator,
+                                                   DescriptorSetAllocator& allocator,
                                                    DescriptorSetCache&     cache) :
-            m_Device(device), m_DescriptorSetAllocator(descriptorSetAllocator), m_DescriptorSetCache(cache)
+            m_Device(device), m_DescriptorSetAllocator(allocator), m_DescriptorSetCache(cache)
         {
             m_Bindings.reserve(10);
-            m_Descriptors.reserve(10);
+            m_ImageInfos.reserve(10);
+            m_BufferInfos.reserve(10);
+            m_ASInfos.reserve(2);
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex index, const ResourceBinding& r)
@@ -62,159 +63,100 @@ namespace vultra
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex               index,
                                                          const bindings::SeparateSampler& info)
         {
-            assert(info.handle);
-
-            m_Bindings[index] = BindingInfo {
-                .type         = vk::DescriptorType::eSampler,
-                .count        = 1,
-                .descriptorId = static_cast<int32_t>(m_Descriptors.size()),
-            };
+            m_Bindings[index] = {vk::DescriptorType::eSampler, 1, static_cast<int32_t>(m_ImageInfos.size())};
             addSampler(info.handle);
-
             return *this;
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex                    index,
                                                          const bindings::CombinedImageSampler& info)
         {
-            assert(info.texture && *info.texture);
-
-            m_Bindings[index] = BindingInfo {
-                .type         = vk::DescriptorType::eCombinedImageSampler,
-                .count        = 1,
-                .descriptorId = static_cast<int32_t>(m_Descriptors.size()),
-            };
-
+            m_Bindings[index] = {
+                vk::DescriptorType::eCombinedImageSampler, 1, static_cast<int32_t>(m_ImageInfos.size())};
             const auto sampler = info.sampler.value_or(info.texture->getSampler());
             assert(sampler != VK_NULL_HANDLE);
             const auto imageLayout = info.texture->getImageLayout();
             assert(imageLayout != ImageLayout::eUndefined);
 
-            m_Descriptors.emplace_back(DescriptorVariant {
-                .imageInfo =
-                    vk::DescriptorImageInfo {
-                        sampler,
-                        info.texture->getImageView(toVk(info.imageAspect)),
-                        static_cast<vk::ImageLayout>(imageLayout),
-                    },
-            });
-
+            addCombinedImageSampler(
+                info.texture->getImageView(toVk(info.imageAspect)), static_cast<vk::ImageLayout>(imageLayout), sampler);
             return *this;
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex index, const bindings::SampledImage& info)
         {
-            assert(info.texture && *info.texture);
-
-            m_Bindings[index] = BindingInfo {
-                .type         = vk::DescriptorType::eSampledImage,
-                .count        = 1,
-                .descriptorId = static_cast<int32_t>(m_Descriptors.size()),
-            };
+            m_Bindings[index] = {vk::DescriptorType::eSampledImage, 1, static_cast<int32_t>(m_ImageInfos.size())};
             addImage(info.texture->getImageView(toVk(info.imageAspect)),
                      static_cast<vk::ImageLayout>(info.texture->getImageLayout()));
-
             return *this;
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex index, const bindings::StorageImage& info)
         {
-            assert(info.texture && *info.texture);
-            const auto imageLayout = info.texture->getImageLayout();
-            assert(imageLayout == ImageLayout::eGeneral);
-
             const auto numImages = info.mipLevel ? 1 : info.texture->getNumMipLevels();
-
-            m_Bindings[index] = BindingInfo {
-                .type         = vk::DescriptorType::eStorageImage,
-                .count        = numImages,
-                .descriptorId = static_cast<int32_t>(m_Descriptors.size()),
-            };
-            for (auto i = 0u; i < numImages; ++i)
-            {
+            m_Bindings[index]    = {
+                vk::DescriptorType::eStorageImage, numImages, static_cast<int32_t>(m_ImageInfos.size())};
+            for (uint32_t i = 0; i < numImages; ++i)
                 addImage(info.texture->getMipLevel(i, toVk(info.imageAspect)),
-                         static_cast<vk::ImageLayout>(imageLayout));
-            }
-
+                         static_cast<vk::ImageLayout>(info.texture->getImageLayout()));
             return *this;
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex index, const bindings::UniformBuffer& info)
         {
-            assert(info.buffer && validRange(*info.buffer, info.offset, info.range));
             return bindBuffer(index,
                               vk::DescriptorType::eUniformBuffer,
-                              vk::DescriptorBufferInfo {
-                                  info.buffer->getHandle(),
-                                  info.offset,
-                                  info.range.value_or(vk::WholeSize),
-                              });
+                              {info.buffer->getHandle(), info.offset, info.range.value_or(vk::WholeSize)});
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex index, const bindings::StorageBuffer& info)
         {
-            assert(info.buffer && validRange(*info.buffer, info.offset, info.range));
             return bindBuffer(index,
                               vk::DescriptorType::eStorageBuffer,
-                              vk::DescriptorBufferInfo {
-                                  info.buffer->getHandle(),
-                                  info.offset,
-                                  info.range.value_or(vk::WholeSize),
-                              });
+                              {info.buffer->getHandle(), info.offset, info.range.value_or(vk::WholeSize)});
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex                        index,
                                                          const bindings::AccelerationStructureKHR& info)
         {
-            assert(info.as);
-            m_Bindings[index] = BindingInfo {
-                .type         = vk::DescriptorType::eAccelerationStructureKHR,
-                .count        = 1,
-                .descriptorId = static_cast<int32_t>(m_Descriptors.size()),
-            };
+            m_Bindings[index] = {
+                vk::DescriptorType::eAccelerationStructureKHR, 1, static_cast<int32_t>(m_ASInfos.size())};
             addAccelerationStructure(info.as->getHandle());
-
             return *this;
         }
 
         vk::DescriptorSet DescriptorSetBuilder::build(const vk::DescriptorSetLayout layout)
         {
-            assert(layout);
+            auto                                hash = std::bit_cast<std::size_t>(layout);
+            std::vector<vk::WriteDescriptorSet> writes;
+            writes.reserve(m_Bindings.size());
 
-            auto hash = std::bit_cast<std::size_t>(layout);
-
-            std::vector<vk::WriteDescriptorSet> writeDescriptors;
-            writeDescriptors.reserve(m_Bindings.size());
-            for (const auto& [index, binding] : m_Bindings)
+            for (auto& [idx, binding] : m_Bindings)
             {
-                hashCombine(hash, index, binding.type);
-
                 vk::WriteDescriptorSet record {};
-                record.dstBinding      = index;
+                record.dstBinding      = idx;
                 record.descriptorCount = binding.count;
                 record.descriptorType  = binding.type;
 
-                void* descriptorPtr = &m_Descriptors[binding.descriptorId];
                 switch (binding.type)
                 {
                     case vk::DescriptorType::eSampler:
                     case vk::DescriptorType::eCombinedImageSampler:
                     case vk::DescriptorType::eSampledImage:
                     case vk::DescriptorType::eStorageImage:
-                        record.pImageInfo = std::bit_cast<const vk::DescriptorImageInfo*>(descriptorPtr);
+                        record.pImageInfo = &m_ImageInfos[binding.descriptorId];
                         hashCombine(hash, record.pImageInfo->imageView);
                         break;
 
                     case vk::DescriptorType::eUniformBuffer:
                     case vk::DescriptorType::eStorageBuffer:
-                        record.pBufferInfo = std::bit_cast<const vk::DescriptorBufferInfo*>(descriptorPtr);
+                        record.pBufferInfo = &m_BufferInfos[binding.descriptorId];
                         hashCombine(
                             hash, record.pBufferInfo->offset, record.pBufferInfo->range, record.pBufferInfo->buffer);
                         break;
 
                     case vk::DescriptorType::eAccelerationStructureKHR:
-                        record.pNext =
-                            std::bit_cast<const vk::WriteDescriptorSetAccelerationStructureKHR*>(descriptorPtr);
+                        record.pNext = &m_ASInfos[binding.descriptorId];
                         hashCombine(
                             hash,
                             reinterpret_cast<const vk::WriteDescriptorSetAccelerationStructureKHR*>(record.pNext)
@@ -224,102 +166,68 @@ namespace vultra
                     default:
                         assert(false);
                 }
-                writeDescriptors.emplace_back(std::move(record));
+                writes.emplace_back(record);
             }
 
-            vk::DescriptorSet descriptorSet {nullptr};
-            if (const auto it = m_DescriptorSetCache.find(hash); it != m_DescriptorSetCache.cend())
+            vk::DescriptorSet set;
+            if (auto it = m_DescriptorSetCache.find(hash); it != m_DescriptorSetCache.end())
             {
-                descriptorSet = it->second;
+                set = it->second;
             }
             else
             {
-                descriptorSet = m_DescriptorSetAllocator.allocate(layout);
-                for (auto& record : writeDescriptors)
-                    record.dstSet = descriptorSet;
-
-                m_Device.updateDescriptorSets(
-                    static_cast<uint32_t>(writeDescriptors.size()), writeDescriptors.data(), 0, nullptr);
-                m_DescriptorSetCache.emplace(hash, descriptorSet);
+                set = m_DescriptorSetAllocator.allocate(layout);
+                for (auto& r : writes)
+                    r.dstSet = set;
+                m_Device.updateDescriptorSets(static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+                m_DescriptorSetCache.emplace(hash, set);
             }
+
             clear();
-            return descriptorSet;
+            return set;
         }
 
         void DescriptorSetBuilder::clear()
         {
             m_Bindings.clear();
-            m_Descriptors.clear();
+            m_ImageInfos.clear();
+            m_BufferInfos.clear();
+            m_ASInfos.clear();
             m_AccelerationStructures.clear();
         }
 
-        void DescriptorSetBuilder::addImage(const vk::ImageView imageView, const vk::ImageLayout imageLayout)
+        void DescriptorSetBuilder::addImage(const vk::ImageView view, const vk::ImageLayout layout)
         {
-            assert(imageView && imageLayout != vk::ImageLayout::eUndefined);
-            m_Descriptors.emplace_back(DescriptorVariant {
-                .imageInfo =
-                    vk::DescriptorImageInfo {
-                        nullptr,
-                        imageView,
-                        imageLayout,
-                    },
-            });
+            m_ImageInfos.emplace_back(vk::DescriptorImageInfo {nullptr, view, layout});
         }
 
         void DescriptorSetBuilder::addSampler(const vk::Sampler sampler)
         {
-            assert(sampler);
-            m_Descriptors.emplace_back(DescriptorVariant {
-                .imageInfo =
-                    vk::DescriptorImageInfo {
-                        sampler,
-                        nullptr,
-                        vk::ImageLayout::eUndefined,
-                    },
-            });
+            m_ImageInfos.emplace_back(vk::DescriptorImageInfo {sampler, nullptr, vk::ImageLayout::eUndefined});
         }
 
-        void DescriptorSetBuilder::addCombinedImageSampler(const vk::ImageView   imageView,
-                                                           const vk::ImageLayout imageLayout,
+        void DescriptorSetBuilder::addCombinedImageSampler(const vk::ImageView   view,
+                                                           const vk::ImageLayout layout,
                                                            const vk::Sampler     sampler)
         {
-            assert(imageView && imageLayout != vk::ImageLayout::eUndefined && sampler);
-            m_Descriptors.emplace_back(DescriptorVariant {
-                .imageInfo =
-                    vk::DescriptorImageInfo {
-                        sampler,
-                        imageView,
-                        imageLayout,
-                    },
-            });
+            m_ImageInfos.emplace_back(vk::DescriptorImageInfo {sampler, view, layout});
         }
 
         void DescriptorSetBuilder::addAccelerationStructure(const vk::AccelerationStructureKHR& as)
         {
-            assert(as);
-
-            m_AccelerationStructures.push_back(as); // Keep alive
-
-            vk::WriteDescriptorSetAccelerationStructureKHR descriptorASInfo {};
-            descriptorASInfo.accelerationStructureCount = 1;
-            descriptorASInfo.pAccelerationStructures    = &m_AccelerationStructures.back();
-            m_Descriptors.emplace_back(DescriptorVariant {
-                .asInfo = descriptorASInfo,
-            });
+            m_AccelerationStructures.push_back(as);
+            vk::WriteDescriptorSetAccelerationStructureKHR info {};
+            info.accelerationStructureCount = 1;
+            info.pAccelerationStructures    = &m_AccelerationStructures.back();
+            m_ASInfos.emplace_back(info);
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bindBuffer(const BindingIndex         index,
                                                                const vk::DescriptorType   type,
-                                                               vk::DescriptorBufferInfo&& bufferInfo)
+                                                               vk::DescriptorBufferInfo&& buf)
         {
-            m_Bindings[index] = BindingInfo {
-                .type         = type,
-                .count        = 1,
-                .descriptorId = static_cast<int32_t>(m_Descriptors.size()),
-            };
-            m_Descriptors.emplace_back(DescriptorVariant {
-                .bufferInfo = std::move(bufferInfo),
-            });
+            m_Bindings[index] = {type, 1, static_cast<int32_t>(m_BufferInfos.size())};
+            m_BufferInfos.emplace_back(std::move(buf));
             return *this;
         }
 

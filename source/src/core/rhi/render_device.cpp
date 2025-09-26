@@ -328,17 +328,14 @@ namespace vultra
 
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
                                                       const vk::DeviceSize  capacity,
-                                                      const AllocationHints allocationHint,
-                                                      const bool            raytracing) const
+                                                      const AllocationHints allocationHint) const
         {
             assert(m_MemoryAllocator);
 
             vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst;
 
-            if (raytracing)
+            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline))
             {
-                VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline),
-                                   "[RenderDevice] Raytracing Pipeline feature is not enabled!");
                 usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress |
                          vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
             }
@@ -357,17 +354,14 @@ namespace vultra
 
         IndexBuffer RenderDevice::createIndexBuffer(IndexType             indexType,
                                                     const vk::DeviceSize  capacity,
-                                                    const AllocationHints allocationHint,
-                                                    const bool            raytracing) const
+                                                    const AllocationHints allocationHint) const
         {
             assert(m_MemoryAllocator);
 
             vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst;
 
-            if (raytracing)
+            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline))
             {
-                VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline),
-                                   "[RenderDevice] Raytracing Pipeline feature is not enabled!");
                 usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress |
                          vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
             }
@@ -1292,13 +1286,12 @@ namespace vultra
 
         CommandBuffer RenderDevice::createCommandBuffer() const
         {
-            return CommandBuffer {
-                m_Device,
-                m_CommandPool,
-                allocateCommandBuffer(),
-                m_TracyContext,
-                createFence(),
-            };
+            return CommandBuffer {m_Device,
+                                  m_CommandPool,
+                                  allocateCommandBuffer(),
+                                  m_TracyContext,
+                                  createFence(),
+                                  HasFlagValues(m_FeatureFlag, rhi::RenderDeviceFeatureFlagBits::eRaytracingPipeline)};
         }
 
         RenderDevice& RenderDevice::execute(const std::function<void(CommandBuffer&)>& f, bool oneTime)

@@ -763,9 +763,10 @@ namespace vultra
                                      const vk::CommandPool   commandPool,
                                      const vk::CommandBuffer handle,
                                      TracyVkCtx              tracyContext,
-                                     const vk::Fence         fence) :
+                                     const vk::Fence         fence,
+                                     const bool              enableRaytracing) :
             m_Device(device), m_CommandPool(commandPool), m_State(State::eInitial), m_Handle(handle),
-            m_TracyContext(tracyContext), m_Fence(fence), m_DescriptorSetAllocator(device)
+            m_TracyContext(tracyContext), m_Fence(fence), m_DescriptorSetAllocator(device, enableRaytracing)
         {}
 
         bool CommandBuffer::invariant(const State requiredState, const InvariantFlags flags) const

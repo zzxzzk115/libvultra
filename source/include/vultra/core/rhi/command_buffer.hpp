@@ -144,7 +144,8 @@ namespace vultra
                           const vk::CommandPool,
                           const vk::CommandBuffer,
                           TracyVkCtx,
-                          const vk::Fence);
+                          const vk::Fence,
+                          const bool enableRaytracing = false);
 
             [[nodiscard]] bool invariant(const State requiredState, const InvariantFlags = InvariantFlags::eNone) const;
 

@@ -2,8 +2,6 @@
 
 #include "vultra/core/rhi/vk/macro.hpp"
 
-#include <array>
-
 namespace vultra
 {
     namespace rhi
@@ -13,7 +11,7 @@ namespace vultra
 
         namespace
         {
-            [[nodiscard]] auto createDescriptorPool(const vk::Device device)
+            [[nodiscard]] auto createDescriptorPool(const vk::Device device, bool raytracing = false)
             {
 #define POOL_SIZE(Type, Multiplier) \
     vk::DescriptorPoolSize \
@@ -21,22 +19,27 @@ namespace vultra
         vk::DescriptorType::Type, static_cast<uint32_t>(DescriptorPool::s_kSetsPerPool * Multiplier) \
     }
                 // clang-format off
-                constexpr auto kPoolSizes = std::array{
+                auto poolSizes = std::vector<vk::DescriptorPoolSize>{
                     POOL_SIZE(eSampler, 0.26f),
                     POOL_SIZE(eCombinedImageSampler, 5.4f),
                     POOL_SIZE(eSampledImage, 1.81f),
                     POOL_SIZE(eStorageImage, 0.12f),
                     POOL_SIZE(eUniformBuffer, 2.2f),
                     POOL_SIZE(eStorageBuffer, 3.6f),
-                    POOL_SIZE(eAccelerationStructureKHR, 1.0f),
                   };
+
+                if (raytracing)
+                {
+                    poolSizes.emplace_back(POOL_SIZE(eStorageBufferDynamic, 1.0f));
+                    poolSizes.emplace_back(POOL_SIZE(eAccelerationStructureKHR, 1.0f));
+                }
                 // clang-format on
 #undef POOL_SIZE
 
                 vk::DescriptorPoolCreateInfo createInfo {};
                 createInfo.maxSets       = DescriptorPool::s_kSetsPerPool;
-                createInfo.poolSizeCount = static_cast<uint32_t>(kPoolSizes.size());
-                createInfo.pPoolSizes    = kPoolSizes.data();
+                createInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+                createInfo.pPoolSizes    = poolSizes.data();
 
                 vk::DescriptorPool descriptorPool {nullptr};
                 VK_CHECK(device.createDescriptorPool(&createInfo, nullptr, &descriptorPool),
@@ -48,11 +51,13 @@ namespace vultra
         } // namespace
 
         DescriptorSetAllocator::DescriptorSetAllocator(DescriptorSetAllocator&& other) noexcept :
-            m_Device(other.m_Device), m_DescriptorPools(other.m_DescriptorPools), m_LastPoolIndex(other.m_LastPoolIndex)
+            m_Device(other.m_Device), m_DescriptorPools(other.m_DescriptorPools),
+            m_LastPoolIndex(other.m_LastPoolIndex), m_EnableRaytracing(other.m_EnableRaytracing)
         {
             other.m_Device = nullptr;
             other.m_DescriptorPools.clear();
-            other.m_LastPoolIndex = -1;
+            other.m_LastPoolIndex    = -1;
+            other.m_EnableRaytracing = false;
         }
 
         DescriptorSetAllocator::~DescriptorSetAllocator() { destroy(); }
@@ -66,6 +71,7 @@ namespace vultra
                 std::swap(m_Device, rhs.m_Device);
                 std::swap(m_DescriptorPools, rhs.m_DescriptorPools);
                 std::swap(m_LastPoolIndex, rhs.m_LastPoolIndex);
+                std::swap(m_EnableRaytracing, rhs.m_EnableRaytracing);
             }
 
             return *this;
@@ -98,7 +104,11 @@ namespace vultra
             m_LastPoolIndex = m_DescriptorPools.empty() ? -1 : 0;
         }
 
-        DescriptorSetAllocator::DescriptorSetAllocator(const vk::Device device) : m_Device(device) { assert(device); }
+        DescriptorSetAllocator::DescriptorSetAllocator(const vk::Device device, bool raytracing) :
+            m_Device(device), m_EnableRaytracing(raytracing)
+        {
+            assert(device);
+        }
 
         void DescriptorSetAllocator::destroy() noexcept
         {
@@ -114,6 +124,7 @@ namespace vultra
             }
             m_DescriptorPools.clear();
             m_LastPoolIndex = -1;
+            m_EnableRaytracing = false;
 
             m_Device = nullptr;
         }
@@ -121,7 +132,7 @@ namespace vultra
         DescriptorPool& DescriptorSetAllocator::createPool()
         {
             m_LastPoolIndex           = static_cast<int32_t>(m_DescriptorPools.size());
-            const auto descriptorPool = createDescriptorPool(m_Device);
+            const auto descriptorPool = createDescriptorPool(m_Device, m_EnableRaytracing);
             return m_DescriptorPools.emplace_back(descriptorPool);
         }
 

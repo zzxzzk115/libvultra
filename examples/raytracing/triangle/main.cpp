@@ -99,7 +99,7 @@ public:
     {
         // Create vertex buffer
         m_VertexBuffer =
-            std::move(m_RenderDevice->createVertexBuffer(sizeof(SimpleVertex), 3, rhi::AllocationHints::eNone, true));
+            std::move(m_RenderDevice->createVertexBuffer(sizeof(SimpleVertex), 3, rhi::AllocationHints::eNone));
 
         // Upload vertex buffer
         {
@@ -117,7 +117,7 @@ public:
         // Create index buffer
         {
             m_IndexBuffer = std::move(
-                m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, 3, rhi::AllocationHints::eNone, true));
+                m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, 3, rhi::AllocationHints::eNone));
 
             // Upload index buffer
             constexpr auto kIndicesSize       = sizeof(uint32_t) * kIndices.size();
