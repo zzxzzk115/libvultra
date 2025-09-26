@@ -71,6 +71,7 @@ Step-by-Step:
   xmake run example-framegraph-triangle
   xmake run example-openxr-triangle
   xmake run example-gltf-viewer
+  xmake run example-raytracing-triangle
   ```
 
   > **Tips:**
