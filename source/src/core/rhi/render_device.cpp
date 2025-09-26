@@ -1033,8 +1033,8 @@ namespace vultra
 
             // Raytracing
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures {};
-            rayTracingFeatures.rayTracingPipeline = true;
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};
+            vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures {};
             if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline))
             {
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
@@ -1042,26 +1042,34 @@ namespace vultra
                 extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
                 extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
+                // Enable raytracing pipeline features
+                rayTracingFeatures.rayTracingPipeline = true;
+
+                // Enable acceleration structure features
                 accelerationStructureFeatures.accelerationStructure = true;
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&accelerationStructureFeatures));
 
                 // BDA feature is required for raytracing
-                vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures {};
                 bufferDeviceAddressFeatures.bufferDeviceAddress = true;
 #ifdef VULTRA_ENABLE_RENDERDOC
                 // When RenderDoc is enabled, we need to enable the capture replay feature as well
                 bufferDeviceAddressFeatures.bufferDeviceAddressCaptureReplay = true;
 #endif
+                
+                // NOTE: The order of the feature chain matters!
+                // AccelerationStructure must come before RayTracingPipeline, and BufferDeviceAddress must come last
+                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&accelerationStructureFeatures));
+                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&bufferDeviceAddressFeatures));
             }
 
             // Mesh Shader
             vk::PhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures {};
-            meshShaderFeatures.meshShader = true;
             if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
             {
                 extensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
+
+                // Enable mesh shader features
+                meshShaderFeatures.meshShader = true;
 
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&meshShaderFeatures));
             }
@@ -1339,7 +1347,6 @@ namespace vultra
                 VK_CHECK(m_Device.waitForFences(cb.m_Fence, VK_TRUE, UINT64_MAX), LOGTAG, "Failed to wait for fence");
                 m_Device.resetFences(cb.m_Fence);
                 cb.m_State = CommandBuffer::State::eInitial;
-                m_GenericQueue.waitIdle();
             }
             else
             {

@@ -81,9 +81,9 @@ namespace vultra
                 PipelineLayout m_PipelineLayout;
                 uint32_t       m_MaxRecursionDepth {1};
 
-                std::unordered_map<ShaderType, ShaderStageInfo> m_ShaderStages;
-                std::unordered_map<ShaderType, SPIRV>           m_BuiltinShaderStages;
-                std::vector<RaytracingShaderGroup>              m_Groups;
+                std::vector<std::pair<ShaderType, ShaderStageInfo>> m_ShaderStages;
+                std::vector<std::pair<ShaderType, SPIRV>>           m_BuiltinShaderStages;
+                std::vector<RaytracingShaderGroup>                  m_Groups;
 
                 std::vector<uint32_t> m_RaygenGroupIndices;
                 std::vector<uint32_t> m_MissGroupIndices;

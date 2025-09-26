@@ -53,14 +53,14 @@ namespace vultra
         RaytracingPipeline::Builder& RaytracingPipeline::Builder::addShader(const ShaderType       type,
                                                                             const ShaderStageInfo& stageInfo)
         {
-            m_ShaderStages.emplace(type, stageInfo);
+            m_ShaderStages.push_back({type, stageInfo});
             return *this;
         }
 
         RaytracingPipeline::Builder& RaytracingPipeline::Builder::addBuiltinShader(const ShaderType type,
                                                                                    const SPIRV&     spv)
         {
-            m_BuiltinShaderStages.emplace(type, spv);
+            m_BuiltinShaderStages.push_back({type, spv});
             return *this;
         }
 

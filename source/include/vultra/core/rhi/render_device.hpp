@@ -8,6 +8,7 @@
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/raytracing/acceleration_structure.hpp"
+#include "vultra/core/rhi/raytracing/raytracing_pipeline.hpp"
 #include "vultra/core/rhi/raytracing/raytracing_pipeline_properties.hpp"
 #include "vultra/core/rhi/raytracing/scratch_buffer.hpp"
 #include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
