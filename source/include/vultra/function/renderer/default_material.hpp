@@ -5,6 +5,8 @@
 
 #include <glm/glm.hpp>
 
+#include <format>
+
 namespace vultra
 {
     namespace gfx
@@ -46,6 +48,39 @@ namespace vultra
             {
                 auto upperCaseName = util::toupper_str(name);
                 return blendState.enabled && upperCaseName.find("DECAL") != std::string::npos;
+            }
+
+            std::string toString() const
+            {
+                return std::format(
+                    "PBRMaterial(name='{}', baseColor=({}, {}, {}, {}), emissiveColor=({}, {}, {}), "
+                    "emissiveIntensity={}, opacity={}, metallicFactor={}, "
+                    "roughnessFactor={}, ior={}, doubleSided={}, albedoTexIdx={}, alphaMaskTexIdx={}, "
+                    "metallicTexIdx={}, roughnessTexIdx={}, specularTexIdx={}, normalTexIdx={}, aoTexIdx={}, "
+                    "emissiveTexIdx={}, metallicRoughnessTexIdx={})",
+                    name,
+                    baseColor.r,
+                    baseColor.g,
+                    baseColor.b,
+                    baseColor.a,
+                    emissiveColorIntensity.r,
+                    emissiveColorIntensity.g,
+                    emissiveColorIntensity.b,
+                    emissiveColorIntensity.a,
+                    opacity,
+                    metallicFactor,
+                    roughnessFactor,
+                    ior,
+                    doubleSided,
+                    albedoIndex,
+                    alphaMaskIndex,
+                    metallicIndex,
+                    roughnessIndex,
+                    specularIndex,
+                    normalIndex,
+                    aoIndex,
+                    emissiveIndex,
+                    metallicRoughnessIndex);
             }
         };
     } // namespace gfx

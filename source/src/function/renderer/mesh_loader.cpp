@@ -58,6 +58,125 @@ namespace vultra
 {
     namespace gfx
     {
+        struct MatPropValue
+        {
+            std::variant<aiString, int, float, double, bool, aiColor3D, aiColor4D, std::vector<uint8_t>> value;
+            bool                                                                                         parsed = false;
+        };
+
+        struct MatPropKey
+        {
+            std::string key;
+            unsigned    semantic = 0;
+            unsigned    index    = 0;
+            bool        operator==(const MatPropKey& other) const noexcept
+            {
+                return key == other.key && semantic == other.semantic && index == other.index;
+            }
+        };
+        struct MatPropKeyHash
+        {
+            size_t operator()(const MatPropKey& k) const noexcept
+            {
+                size_t h1 = std::hash<std::string> {}(k.key);
+                size_t h2 = std::hash<unsigned> {}(k.semantic);
+                size_t h3 = std::hash<unsigned> {}(k.index);
+                return h1 ^ (h2 << 1) ^ (h3 << 2);
+            }
+        };
+        using MatPropMap = std::unordered_map<MatPropKey, MatPropValue, MatPropKeyHash>;
+
+        MatPropMap parseMaterialProperties(const aiMaterial* material)
+        {
+            MatPropMap result;
+            if (!material)
+                return result;
+
+            for (unsigned i = 0; i < material->mNumProperties; ++i)
+            {
+                aiMaterialProperty* prop = material->mProperties[i];
+                MatPropKey          key {prop->mKey.C_Str(), prop->mSemantic, prop->mIndex};
+                MatPropValue        entry {};
+
+                switch (prop->mType)
+                {
+                    case aiPTI_String: {
+                        aiString value;
+                        if (material->Get(prop->mKey.C_Str(), prop->mSemantic, prop->mIndex, value) == aiReturn_SUCCESS)
+                            entry.value = std::move(value);
+                        break;
+                    }
+                    case aiPTI_Float: {
+                        if (prop->mDataLength / sizeof(float) == 3)
+                        {
+                            aiColor3D value;
+                            if (material->Get(prop->mKey.C_Str(), prop->mSemantic, prop->mIndex, value) ==
+                                aiReturn_SUCCESS)
+                                entry.value = std::move(value);
+                        }
+                        else if (prop->mDataLength / sizeof(float) == 4)
+                        {
+                            aiColor4D value;
+                            if (material->Get(prop->mKey.C_Str(), prop->mSemantic, prop->mIndex, value) ==
+                                aiReturn_SUCCESS)
+                                entry.value = std::move(value);
+                        }
+                        else
+                        {
+                            float value;
+                            if (material->Get(prop->mKey.C_Str(), prop->mSemantic, prop->mIndex, value) ==
+                                aiReturn_SUCCESS)
+                                entry.value = std::move(value);
+                        }
+                        break;
+                    }
+                    case aiPTI_Double: {
+                        double value;
+                        if (material->Get(prop->mKey.C_Str(), prop->mSemantic, prop->mIndex, value) == aiReturn_SUCCESS)
+                            entry.value = std::move(value);
+                        break;
+                    }
+                    case aiPTI_Integer: {
+                        int value;
+                        if (material->Get(prop->mKey.C_Str(), prop->mSemantic, prop->mIndex, value) == aiReturn_SUCCESS)
+                            entry.value = std::move(value);
+                        break;
+                    }
+                    case aiPTI_Buffer: {
+                        std::vector<uint8_t> buf(prop->mDataLength);
+                        std::memcpy(buf.data(), prop->mData, prop->mDataLength);
+                        entry.value = std::move(buf);
+                        break;
+                    }
+                    default: {
+                        VULTRA_CORE_WARN("[MeshLoader] Unknown material property type {} for key {}",
+                                         static_cast<int>(prop->mType),
+                                         prop->mKey.C_Str());
+                        break;
+                    }
+                }
+                result.emplace(std::move(key), std::move(entry));
+            }
+            return result;
+        }
+
+        template<typename T>
+        bool tryGet(MatPropMap& props, const char* key, unsigned semantic, unsigned index, T& out)
+        {
+            MatPropKey mk {key, semantic, index};
+            auto       it = props.find(mk);
+            if (it != props.end())
+            {
+                it->second.parsed = true;
+                if (auto p = std::get_if<T>(&it->second.value))
+                {
+                    out = *p;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         entt::resource_loader<MeshResource>::result_type MeshLoader::operator()(const std::filesystem::path& p,
                                                                                 rhi::RenderDevice&           rd)
         {
@@ -128,8 +247,18 @@ namespace vultra
                 return 0; // Fallback to white 1x1
             };
 
-            const auto processMesh = [this, &mesh, loadTexture](
+            const auto processMesh = [this, &mesh, &scene, loadTexture](
                                          const aiMesh* aiMesh, uint32_t& vertexOffset, uint32_t& indexOffset) {
+                VULTRA_CORE_TRACE("[MeshLoader] Processing SubMesh: {}, with {} vertices, {} faces, material index {}, "
+                                  "material name {}",
+                                  aiMesh->mName.C_Str(),
+                                  aiMesh->mNumVertices,
+                                  aiMesh->mNumFaces,
+                                  aiMesh->mMaterialIndex,
+                                  aiMesh->mMaterialIndex < scene->mNumMaterials ?
+                                      scene->mMaterials[aiMesh->mMaterialIndex]->GetName().C_Str() :
+                                      "Unknown");
+
                 // Copy vertices
                 for (unsigned int v = 0; v < aiMesh->mNumVertices; ++v)
                 {
@@ -196,8 +325,6 @@ namespace vultra
             };
 
             const auto processMaterials = [this, &mesh, &loadTexture](const aiScene* aiScene) {
-                assert(aiScene);
-
                 mesh.materials.resize(aiScene->mNumMaterials);
 
                 for (unsigned int i = 0; i < aiScene->mNumMaterials; ++i)
@@ -206,174 +333,74 @@ namespace vultra
                     if (!material)
                         continue;
 
+                    auto        props = parseMaterialProperties(material);
                     PBRMaterial pbrMat {};
 
-                    // Log material properties
-                    aiString materialName;
-                    auto     result = material->Get(AI_MATKEY_NAME, materialName);
-                    if (result != aiReturn_SUCCESS)
+                    // Name
+                    aiString name;
+                    if (tryGet(props, AI_MATKEY_NAME, name))
                     {
-                        VULTRA_CORE_WARN("[MeshLoader] Failed to get material name");
-                    }
-                    else
-                    {
-                        VULTRA_CORE_TRACE("[MeshLoader] Loading material: {}", materialName.C_Str());
-                        pbrMat.name = materialName.C_Str();
+                        pbrMat.name = name.C_Str();
                     }
 
-#if _DEBUG
-                    // Traverse material properties
-                    for (unsigned int i = 0; i < material->mNumProperties; ++i)
-                    {
-                        aiMaterialProperty* prop = material->mProperties[i];
-                        VULTRA_CORE_TRACE(
-                            "[MeshLoader] MaterialProperty {}: key='{}', semantic={}, index={}, type={}, dataLength={}",
-                            i,
-                            prop->mKey.C_Str(),
-                            prop->mSemantic,
-                            prop->mIndex,
-                            magic_enum::enum_name(prop->mType).data(),
-                            prop->mDataLength);
-                    }
-#endif
-
-                    // Legacy shading will be converted to PBR
+                    // Read color properties
                     aiColor3D kd(1, 1, 1), ks(0, 0, 0), ke(0, 0, 0);
-                    float     Ns = 0.0f, d = 1.0f, Ni = 1.5f, emissiveIntensity = 1.0f;
+                    tryGet(props, AI_MATKEY_COLOR_DIFFUSE, kd);
+                    tryGet(props, AI_MATKEY_COLOR_SPECULAR, ks);
+                    tryGet(props, AI_MATKEY_COLOR_EMISSIVE, ke);
 
-                    material->Get(AI_MATKEY_COLOR_DIFFUSE, kd);
-                    material->Get(AI_MATKEY_COLOR_SPECULAR, ks);
-                    material->Get(AI_MATKEY_COLOR_EMISSIVE, ke);
-                    material->Get(AI_MATKEY_EMISSIVE_INTENSITY, emissiveIntensity);
-                    material->Get(AI_MATKEY_SHININESS, Ns);
-                    material->Get(AI_MATKEY_OPACITY, d);
-                    material->Get(AI_MATKEY_REFRACTI, Ni);
+                    // Read scalar properties
+                    float Ns = 0.0f, d = 1.0f, Ni = 1.5f, emissiveIntensity = 1.0f;
+                    tryGet(props, AI_MATKEY_EMISSIVE_INTENSITY, emissiveIntensity);
+                    tryGet(props, AI_MATKEY_SHININESS, Ns);
+                    tryGet(props, AI_MATKEY_OPACITY, d);
+                    tryGet(props, AI_MATKEY_REFRACTI, Ni);
 
-                    // Convert legacy material to PBR
-
-                    // Base color
-                    pbrMat.baseColor = glm::vec4(kd.r, kd.g, kd.b, d);
-
-                    // Approximate metallic factor from specular color
-                    float ksLum    = 0.2126f * ks.r + 0.7152f * ks.g + 0.0722f * ks.b;
-                    float metallic = 0.0f;
-                    if (ksLum >= 0.04f)
-                    {
-                        metallic = (ksLum - 0.04f) / (1.0f - 0.04f);
-                        metallic = glm::clamp(metallic, 0.0f, 1.0f);
-                    }
-                    pbrMat.metallicFactor = metallic;
-
-                    // Roughness = sqrt(2/(Ns+2))
-                    Ns                     = glm::clamp(Ns, 0.0f, 1000.0f);
-                    float roughness        = std::sqrt(2.0f / (Ns + 2.0f));
-                    pbrMat.roughnessFactor = glm::clamp(roughness, 0.04f, 1.0f);
-
-                    // Emissive color
+                    pbrMat.baseColor      = glm::vec4(kd.r, kd.g, kd.b, d);
+                    pbrMat.metallicFactor = std::clamp(
+                        (0.2126f * ks.r + 0.7152f * ks.g + 0.0722f * ks.b - 0.04f) / (1.0f - 0.04f), 0.0f, 1.0f);
+                    pbrMat.roughnessFactor        = glm::clamp(std::sqrt(2.0f / (Ns + 2.0f)), 0.04f, 1.0f);
                     pbrMat.emissiveColorIntensity = glm::vec4(ke.r, ke.g, ke.b, emissiveIntensity);
+                    pbrMat.ior                    = Ni;
 
-                    // IOR
-                    pbrMat.ior = Ni;
+                    // Textures
+                    pbrMat.albedoIndex            = loadTexture(material, aiTextureType_DIFFUSE);
+                    pbrMat.alphaMaskIndex         = loadTexture(material, aiTextureType_OPACITY);
+                    pbrMat.metallicIndex          = loadTexture(material, aiTextureType_METALNESS);
+                    pbrMat.roughnessIndex         = loadTexture(material, aiTextureType_DIFFUSE_ROUGHNESS);
+                    pbrMat.specularIndex          = loadTexture(material, aiTextureType_SPECULAR);
+                    pbrMat.normalIndex            = loadTexture(material, aiTextureType_NORMALS);
+                    pbrMat.aoIndex                = loadTexture(material, aiTextureType_LIGHTMAP);
+                    pbrMat.emissiveIndex          = loadTexture(material, aiTextureType_EMISSIVE);
+                    pbrMat.metallicRoughnessIndex = loadTexture(material, aiTextureType_GLTF_METALLIC_ROUGHNESS);
 
-                    // PBR textures & factors
+                    // Double sided?
+                    tryGet(props, AI_MATKEY_TWOSIDED, pbrMat.doubleSided);
 
-                    // Albedo
-                    pbrMat.albedoIndex = loadTexture(material, aiTextureType_DIFFUSE);
-                    aiColor4D baseColor;
-                    result = material->Get(AI_MATKEY_BASE_COLOR, baseColor);
-                    if (result != aiReturn_SUCCESS)
+                    // Unhandled properties warning
+                    for (auto& [k, v] : props)
                     {
-                        VULTRA_CORE_WARN("[MeshLoader] Failed to get base color");
-                    }
-                    else
-                    {
-                        pbrMat.baseColor = glm::vec4(baseColor.r, baseColor.g, baseColor.b, baseColor.a);
-                    }
-
-                    // Alpha Mask
-                    pbrMat.alphaMaskIndex = loadTexture(material, aiTextureType_OPACITY);
-                    if (pbrMat.alphaMaskIndex != 0)
-                    {
-                        VULTRA_CORE_TRACE("[MeshLoader] Material uses alpha mask texture");
-                    }
-
-                    // Opacity
-                    float opacity = 1.0f;
-                    result        = material->Get(AI_MATKEY_OPACITY, opacity);
-                    if (result != aiReturn_SUCCESS)
-                    {
-                        VULTRA_CORE_WARN("[MeshLoader] Failed to get opacity");
-                    }
-                    else
-                    {
-                        pbrMat.opacity    = opacity;
-                        pbrMat.blendState = (opacity < 1.0f) ? kAlphaBlend : kNoBlend;
-                        if (opacity < 1.0f)
+                        if (!v.parsed)
                         {
-                            VULTRA_CORE_TRACE("[MeshLoader] Material is not opaque, opacity: {}", opacity);
+                            VULTRA_CORE_WARN(
+                                "[MeshLoader] Material {} has unhandled property: key='{}' semantic={} index={}",
+                                pbrMat.name,
+                                k.key,
+                                k.semantic,
+                                k.index);
                         }
                     }
 
-                    // Alpha blend mode
-                    aiBlendMode blendMode {aiBlendMode_Default};
-                    result = material->Get(AI_MATKEY_BLEND_FUNC, blendMode);
-                    if (result != aiReturn_SUCCESS)
-                    {
-                        VULTRA_CORE_WARN("[MeshLoader] Failed to get blend mode");
-                    }
-                    else
-                    {
-                        pbrMat.blendState = toBlendState(blendMode);
-                    }
-
-                    // Metallic
-                    pbrMat.metallicIndex = loadTexture(material, aiTextureType_METALNESS);
-                    result               = material->Get(AI_MATKEY_METALLIC_FACTOR, pbrMat.metallicFactor);
-                    if (result != aiReturn_SUCCESS)
-                    {
-                        VULTRA_CORE_WARN("[MeshLoader] Failed to get metallic factor");
-                    }
-
-                    // Roughness
-                    pbrMat.roughnessIndex = loadTexture(material, aiTextureType_DIFFUSE_ROUGHNESS);
-                    result                = material->Get(AI_MATKEY_ROUGHNESS_FACTOR, pbrMat.roughnessFactor);
-                    if (result != aiReturn_SUCCESS)
-                    {
-                        VULTRA_CORE_WARN("[MeshLoader] Failed to get roughness factor");
-                    }
-
-                    // Specular
-                    pbrMat.specularIndex = loadTexture(material, aiTextureType_SPECULAR);
-
-                    // Normal
-                    pbrMat.normalIndex = loadTexture(material, aiTextureType_NORMALS);
-
-                    // Ambient Occlusion
-                    pbrMat.aoIndex = loadTexture(material, aiTextureType_LIGHTMAP);
-
-                    // Emissive
-                    pbrMat.emissiveIndex = loadTexture(material, aiTextureType_EMISSIVE);
-
-                    // Metallic Roughness
-                    pbrMat.metallicRoughnessIndex = loadTexture(material, aiTextureType_GLTF_METALLIC_ROUGHNESS);
-
-                    // Double Sided
-                    result = material->Get(AI_MATKEY_TWOSIDED, pbrMat.doubleSided);
-                    if (result != aiReturn_SUCCESS)
-                    {
-                        VULTRA_CORE_WARN("[MeshLoader] Failed to get double sided");
-                        pbrMat.doubleSided = true;
-                    }
+                    // Log material info
+                    VULTRA_CORE_TRACE("[MeshLoader] Loaded Material[{}]: [{}]", i, pbrMat.toString());
 
                     mesh.materials[i] = pbrMat;
                 }
             };
 
             std::function<void(const aiNode*, const aiScene*)> processNode;
-            processNode = [&processMaterials, &processMesh, &processNode, &vertexOffset, &indexOffset](
-                              const aiNode* aiNode, const aiScene* aiScene) {
-                processMaterials(aiScene);
-
+            processNode = [&processMesh, &processNode, &vertexOffset, &indexOffset](const aiNode*  aiNode,
+                                                                                    const aiScene* aiScene) {
                 for (uint32_t i = 0; i < aiNode->mNumMeshes; ++i)
                 {
                     aiMesh* aiMesh = aiScene->mMeshes[aiNode->mMeshes[i]];
@@ -386,6 +413,7 @@ namespace vultra
                 }
             };
 
+            processMaterials(scene);
             processNode(scene->mRootNode, scene);
 
             mesh.vertexBuffer = createRef<rhi::VertexBuffer>(
