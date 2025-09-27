@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/core/math/math.hpp"
+#include "vultra/core/rhi/texture.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
 #include "vultra/function/renderer/mesh_resource.hpp"
 

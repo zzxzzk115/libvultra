@@ -41,6 +41,11 @@ namespace vultra
         class XRHeadset;
     } // namespace openxr
 
+    namespace gfx
+    {
+        class MeshLoader;
+    }
+
     namespace rhi
     {
         enum class RenderDeviceFeatureFlagBits : uint32_t
@@ -86,6 +91,7 @@ namespace vultra
             friend class RaytracingPipeline;
             friend class imgui::ImGuiRenderer;
             friend class openxr::XRHeadset;
+            friend class gfx::MeshLoader;
 
         public:
             explicit RenderDevice(RenderDeviceFeatureFlagBits, std::string_view appName = "Untitled Vultra App");
@@ -221,6 +227,10 @@ namespace vultra
             // For the OpenXR
             openxr::XRDevice* getXRDevice() const { return m_XRDevice; }
 
+            // Bindless
+            Ref<rhi::Texture> getTextureByIndex(const uint32_t index);
+            void              clearLoadedTextures() { m_LoadedTextures.clear(); }
+
         private:
             void createXRDevice();
             void createInstance();
@@ -276,6 +286,9 @@ namespace vultra
             ShaderCompiler m_ShaderCompiler;
 
             openxr::XRDevice* m_XRDevice {nullptr};
+
+            // Textures loaded from files, used for bindless textures
+            std::vector<Ref<rhi::Texture>> m_LoadedTextures;
         };
     } // namespace rhi
 } // namespace vultra

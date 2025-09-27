@@ -2,7 +2,6 @@
 
 #include "vultra/core/base/string_util.hpp"
 #include "vultra/core/rhi/graphics_pipeline.hpp"
-#include "vultra/core/rhi/texture.hpp"
 
 #include <glm/glm.hpp>
 
@@ -14,43 +13,34 @@ namespace vultra
         {
             std::string name;
 
-            Ref<rhi::Texture> albedo {nullptr};
-            glm::vec4         baseColor {1.0f, 1.0f, 1.0f, 1.0f};
-            bool              useAlbedoTexture {false};
+            uint32_t  albedoIndex {0};
+            glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};
 
-            Ref<rhi::Texture> alphaMask {nullptr};
-            bool              useAlphaMaskTexture {false};
+            uint32_t alphaMaskIndex {0};
 
             float           opacity {1.0f};
             rhi::BlendState blendState {.enabled = false};
 
-            Ref<rhi::Texture> metallic {nullptr};
-            float             metallicFactor {0.0f};
-            bool              useMetallicTexture {false};
+            uint32_t metallicIndex {0};
+            float    metallicFactor {0.0f};
 
-            Ref<rhi::Texture> roughness {nullptr};
-            float             roughnessFactor {0.0f};
-            bool              useRoughnessTexture {false};
+            uint32_t roughnessIndex {0};
+            float    roughnessFactor {0.0f};
 
-            Ref<rhi::Texture> specular {nullptr};
-            bool              useSpecularTexture {false};
+            uint32_t specularIndex {0};
 
-            Ref<rhi::Texture> normal {nullptr};
-            bool              useNormalTexture {false};
+            uint32_t normalIndex {0};
 
-            Ref<rhi::Texture> ao {nullptr};
-            bool              useAOTexture {false};
+            uint32_t aoIndex {0};
 
-            Ref<rhi::Texture> emissive {nullptr};
-            glm::vec4         emissiveColorIntensity {0.0f, 0.0f, 0.0f, 1.0f};
-            bool              useEmissiveTexture {false};
+            uint32_t  emissiveIndex {0};
+            glm::vec4 emissiveColorIntensity {0.0f, 0.0f, 0.0f, 1.0f};
 
             float ior {1.0f};
 
             // GLTF
-            Ref<rhi::Texture> metallicRoughness {nullptr};
-            bool              useMetallicRoughnessTexture {false};
-            bool              doubleSided {false};
+            uint32_t metallicRoughnessIndex {0};
+            bool     doubleSided {false};
 
             bool isDecal() const
             {

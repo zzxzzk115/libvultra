@@ -31,18 +31,20 @@ namespace vultra
                     primitive.renderSubMesh      = subMesh;
                     primitive.renderSubMeshIndex = i;
 
-                    if (subMesh.material.isDecal())
+                    auto material = renderable.mesh->materials[subMesh.materialIndex];
+
+                    if (material.isDecal())
                     {
                         decalPrimitives.push_back(primitive);
                     }
-                    else if (!subMesh.material.blendState.enabled)
+                    else if (!material.blendState.enabled)
                     {
                         opaquePrimitives.push_back(primitive);
                     }
                     else
                     {
                         // For now, ignore transparent objects
-                        VULTRA_CORE_WARN("[Renderer] Ignoring transparent object: {}", subMesh.material.name);
+                        VULTRA_CORE_WARN("[Renderer] Ignoring transparent object: {}", material.name);
                     }
                 }
             }

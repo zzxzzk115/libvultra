@@ -1,5 +1,6 @@
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
 #include "vultra/function/renderer/builtin/resources/camera_data.hpp"
@@ -44,12 +45,12 @@ namespace vultra
 
             MeshConstants(const glm::mat4& m, const gfx::PBRMaterial& mat) :
                 model(m), baseColor(mat.baseColor), opacity(mat.opacity), metallicFactor(mat.metallicFactor),
-                roughnessFactor(mat.roughnessFactor), useAlbedoTexture(mat.useAlbedoTexture ? 1 : 0),
-                useMetallicTexture(mat.useMetallicTexture ? 1 : 0),
-                useRoughnessTexture(mat.useRoughnessTexture ? 1 : 0), useNormalTexture(mat.useNormalTexture ? 1 : 0),
-                useAOTexture(mat.useAOTexture ? 1 : 0), useEmissiveTexture(mat.useEmissiveTexture ? 1 : 0),
-                useMetallicRoughnessTexture(mat.useMetallicRoughnessTexture ? 1 : 0),
-                useSpecularTexture(mat.useSpecularTexture ? 1 : 0)
+                roughnessFactor(mat.roughnessFactor), useAlbedoTexture(mat.albedoIndex ? 1 : 0),
+                useMetallicTexture(mat.metallicIndex ? 1 : 0), useRoughnessTexture(mat.roughnessIndex ? 1 : 0),
+                useNormalTexture(mat.normalIndex ? 1 : 0), useAOTexture(mat.aoIndex ? 1 : 0),
+                useEmissiveTexture(mat.emissiveIndex ? 1 : 0),
+                useMetallicRoughnessTexture(mat.metallicRoughnessIndex ? 1 : 0),
+                useSpecularTexture(mat.specularIndex ? 1 : 0)
             {}
         };
 
@@ -160,16 +161,17 @@ namespace vultra
                     {
                         passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
 
-                        MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.material);
+                        const auto& material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
+
+                        MeshConstants meshConstants(primitive.modelMatrix, material);
                         if (!enableNormalMapping)
                         {
-                            meshConstants.useNormalTexture = 0;
+                            meshConstants.useNormalTexture = 0; // Disable normal mapping
                         }
 
                         // True for now
                         // TODO: Bake the scene, mark materials that need alpha masking
-                        const auto* pipeline =
-                            getPipeline(passInfo, primitive.renderSubMesh.material.doubleSided, true);
+                        const auto* pipeline = getPipeline(passInfo, material.doubleSided, true);
 
                         cb.bindPipeline(*pipeline).pushConstants(rhi::ShaderStages::eVertex |
                                                                      rhi::ShaderStages::eFragment,
@@ -178,28 +180,28 @@ namespace vultra
                                                                  &meshConstants);
 
                         rc.resourceSet[3][0] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.albedo.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.albedoIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][1] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.metallic.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.metallicIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][2] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.roughness.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.roughnessIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][3] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.normal.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.normalIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
-                        rc.resourceSet[3][4] =
-                            rhi::bindings::CombinedImageSampler {.texture = primitive.renderSubMesh.material.ao.get(),
-                                                                 .imageAspect = rhi::ImageAspect::eColor};
+                        rc.resourceSet[3][4] = rhi::bindings::CombinedImageSampler {
+                            .texture     = getRenderDevice().getTextureByIndex(material.aoIndex).get(),
+                            .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][5] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.emissive.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.emissiveIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][6] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.metallicRoughness.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.metallicRoughnessIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][7] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.specular.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.specularIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
 
                         rc.bindDescriptorSets(*pipeline);
@@ -220,10 +222,11 @@ namespace vultra
                     {
                         passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
 
-                        MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.material);
+                        const auto& material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
 
-                        const auto* pipeline =
-                            getPipeline(passInfo, primitive.renderSubMesh.material.doubleSided, true);
+                        MeshConstants meshConstants(primitive.modelMatrix, material);
+
+                        const auto* pipeline = getPipeline(passInfo, material.doubleSided, true);
 
                         cb.bindPipeline(*pipeline).pushConstants(rhi::ShaderStages::eVertex |
                                                                      rhi::ShaderStages::eFragment,
@@ -232,28 +235,28 @@ namespace vultra
                                                                  &meshConstants);
 
                         rc.resourceSet[3][0] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.albedo.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.albedoIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][1] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.metallic.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.metallicIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][2] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.roughness.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.roughnessIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][3] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.normal.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.normalIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
-                        rc.resourceSet[3][4] =
-                            rhi::bindings::CombinedImageSampler {.texture = primitive.renderSubMesh.material.ao.get(),
-                                                                 .imageAspect = rhi::ImageAspect::eColor};
+                        rc.resourceSet[3][4] = rhi::bindings::CombinedImageSampler {
+                            .texture     = getRenderDevice().getTextureByIndex(material.aoIndex).get(),
+                            .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][5] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.emissive.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.emissiveIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][6] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.metallicRoughness.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.metallicRoughnessIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
                         rc.resourceSet[3][7] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.specular.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.specularIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
 
                         rc.bindDescriptorSets(*pipeline);
@@ -309,7 +312,9 @@ namespace vultra
                     {
                         passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
 
-                        MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.material);
+                        const auto& material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
+
+                        MeshConstants meshConstants(primitive.modelMatrix, material);
                         if (!m_DecalPipelineCreated)
                         {
                             auto builder = rhi::GraphicsPipeline::Builder {};
@@ -329,7 +334,7 @@ namespace vultra
                                     {.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eBack});
                             for (auto i = 0; i < passInfo.colorFormats.size(); ++i)
                             {
-                                builder.setBlending(i, primitive.renderSubMesh.material.blendState);
+                                builder.setBlending(i, material.blendState);
                             }
                             m_DecalPipeline        = builder.build(getRenderDevice());
                             m_DecalPipelineCreated = true;
@@ -342,7 +347,7 @@ namespace vultra
                                            &meshConstants);
 
                         rc.resourceSet[3][0] = rhi::bindings::CombinedImageSampler {
-                            .texture     = primitive.renderSubMesh.material.albedo.get(),
+                            .texture     = getRenderDevice().getTextureByIndex(material.albedoIndex).get(),
                             .imageAspect = rhi::ImageAspect::eColor};
 
                         rc.bindDescriptorSets(m_DecalPipeline);

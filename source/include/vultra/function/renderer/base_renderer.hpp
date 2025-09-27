@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/function/renderer/renderable.hpp"
 
 namespace vultra

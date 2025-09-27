@@ -14,7 +14,6 @@ namespace vultra
     {
         class VertexFormat;
 
-        template<typename MaterialType>
         struct SubMesh
         {
             rhi::PrimitiveTopology topology {rhi::PrimitiveTopology::eTriangleList};
@@ -25,7 +24,7 @@ namespace vultra
             uint32_t indexOffset {0};
             uint32_t indexCount {0};
 
-            MaterialType material {};
+            uint32_t materialIndex {0};
         };
 
         template<typename VertexType, typename MaterialType>
@@ -35,7 +34,8 @@ namespace vultra
             std::vector<uint32_t>   indices;
             AABB                    aabb;
 
-            std::vector<SubMesh<MaterialType>> subMeshes;
+            std::vector<SubMesh>      subMeshes;
+            std::vector<MaterialType> materials;
 
             Ref<rhi::VertexBuffer> vertexBuffer {nullptr};
             Ref<rhi::IndexBuffer>  indexBuffer {nullptr};

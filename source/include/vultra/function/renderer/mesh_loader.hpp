@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/rhi/texture.hpp"
 #include "vultra/function/renderer/mesh_resource.hpp"
 
 namespace vultra

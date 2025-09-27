@@ -12,14 +12,13 @@ namespace vultra
         {
             Ref<gfx::MeshResource> mesh {nullptr};
             glm::mat4              modelMatrix {1.0f};
-            
         };
 
         struct RenderPrimitive
         {
             Ref<gfx::MeshResource> mesh {nullptr};
             glm::mat4              modelMatrix {1.0f};
-            gfx::DefaultSubMesh    renderSubMesh;
+            gfx::SubMesh           renderSubMesh;
             uint32_t               renderSubMeshIndex {0};
         };
 

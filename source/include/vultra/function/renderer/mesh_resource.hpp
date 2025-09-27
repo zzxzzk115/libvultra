@@ -9,8 +9,7 @@ namespace vultra
 {
     namespace gfx
     {
-        using DefaultMesh    = Mesh<SimpleVertex, PBRMaterial>;
-        using DefaultSubMesh = SubMesh<PBRMaterial>;
+        using DefaultMesh = Mesh<SimpleVertex, PBRMaterial>;
 
         class MeshResource final : public resource::Resource, public DefaultMesh
         {

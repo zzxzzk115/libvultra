@@ -186,6 +186,11 @@ namespace vultra
                 m_Device.waitIdle();
             }
 
+            for (auto& texture : m_LoadedTextures)
+            {
+                texture.reset();
+            }
+
             for (auto [_, layout] : m_DescriptorSetLayouts)
             {
                 m_Device.destroyDescriptorSetLayout(layout);
@@ -1032,9 +1037,9 @@ namespace vultra
 #endif
 
             // Raytracing
-            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures {};
+            vk::PhysicalDeviceRayTracingPipelineFeaturesKHR    rayTracingFeatures {};
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};
-            vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures {};
+            vk::PhysicalDeviceBufferDeviceAddressFeatures      bufferDeviceAddressFeatures {};
             if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline))
             {
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
@@ -1054,7 +1059,7 @@ namespace vultra
                 // When RenderDoc is enabled, we need to enable the capture replay feature as well
                 bufferDeviceAddressFeatures.bufferDeviceAddressCaptureReplay = true;
 #endif
-                
+
                 // NOTE: The order of the feature chain matters!
                 // AccelerationStructure must come before RayTracingPipeline, and BufferDeviceAddress must come last
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&accelerationStructureFeatures));
@@ -1850,6 +1855,13 @@ namespace vultra
                 .stride        = handleSizeAligned,
                 .size          = handleCount * handleSizeAligned,
             };
+        }
+
+        Ref<rhi::Texture> RenderDevice::getTextureByIndex(const uint32_t index)
+        {
+            if (index >= m_LoadedTextures.size())
+                return nullptr;
+            return m_LoadedTextures[index];
         }
 
     } // namespace rhi
