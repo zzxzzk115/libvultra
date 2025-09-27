@@ -766,6 +766,7 @@ namespace vultra
 
 #ifdef __APPLE__
             requiredExtensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+            requiredExtensions.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
 #endif
 
             std::unordered_map<const char*, bool> extensionMap;
@@ -848,6 +849,36 @@ namespace vultra
 #endif
             createInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
             createInfo.ppEnabledExtensionNames = extensions.data();
+
+#ifdef __APPLE__
+            // If layer settings are defined, then activate the sample's required layer settings during instance
+            // creation.
+            // Layer settings are typically used to activate specific features of a layer, such as the Validation
+            // Layer's printf feature, or to configure specific capabilities of drivers such as MoltenVK on macOS and/or
+            // iOS.
+            std::vector<vk::LayerSettingEXT> enabledLayerSettings;
+
+            // Configure MoltenVK to use Metal argument buffers (needed for descriptor indexing)
+            vk::LayerSettingEXT layerSetting;
+            layerSetting.pLayerName   = "MoltenVK";
+            layerSetting.pSettingName = "MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS";
+            layerSetting.type         = vk::LayerSettingTypeEXT::eBool32;
+            layerSetting.valueCount   = 1;
+
+            // Make this static so layer setting reference remains valid after leaving constructor scope
+            static const vk::Bool32 layerSettingOn = VK_TRUE;
+            layerSetting.pValues                   = &layerSettingOn;
+            enabledLayerSettings.push_back(layerSetting);
+
+            vk::LayerSettingsCreateInfoEXT layerSettingsCreateInfo {};
+            if (enabledLayerSettings.size() > 0)
+            {
+                layerSettingsCreateInfo.settingCount = static_cast<uint32_t>(enabledLayerSettings.size());
+                layerSettingsCreateInfo.pSettings    = enabledLayerSettings.data();
+                layerSettingsCreateInfo.pNext        = createInfo.pNext;
+                createInfo.pNext                     = &layerSettingsCreateInfo;
+            }
+#endif
 
             // If enable OpenXR feature, then let OpenXR create the vulkan instance.
             if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
@@ -1035,6 +1066,13 @@ namespace vultra
             vk13Features.synchronization2 = true;
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk13Features));
 #endif
+
+            // Descriptor Indexing
+            vk::PhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures {};
+            descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+            descriptorIndexingFeatures.runtimeDescriptorArray                    = VK_TRUE;
+            descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount  = VK_TRUE;
+            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&descriptorIndexingFeatures));
 
             // Raytracing
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR    rayTracingFeatures {};
