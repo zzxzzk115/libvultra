@@ -10,27 +10,6 @@
 
 using namespace vultra;
 
-struct SimpleVertex
-{
-    glm::vec3 position;
-};
-
-// Triangle in NDC for simplicity.
-constexpr auto kTriangle = std::array {
-    // clang-format off
-    //                    position
-    SimpleVertex{ {  0.0f, -0.5f, 0.0f } }, // top
-    SimpleVertex{ { -0.5f,  0.5f, 0.0f } }, // left
-    SimpleVertex{ {  0.5f,  0.5f, 0.0f } }, // right
-    // clang-format on
-};
-
-constexpr auto kIndices = std::array {
-    0u,
-    1u,
-    2u,
-};
-
 constexpr glm::mat4 kTransform = glm::mat4(1.0f);
 
 const char* const raygenCode = R"(
@@ -43,15 +22,30 @@ layout(binding = 1, set = 0) uniform image2D image;
 
 layout(location = 0) rayPayloadEXT vec3 hitValue;
 
+layout(push_constant) uniform GlobalPushConstants
+{
+    mat4 invViewProj;
+    vec3 camPos;
+    float _pad;
+    vec4 missColor;
+};
+
 void main()
 {
-    vec3 origin = vec3(0.0, 0.0, -2.0);
-    vec2 uv = (vec2(gl_LaunchIDEXT.xy) + 0.5) / vec2(gl_LaunchSizeEXT.xy);
+    vec2 uv  = (vec2(gl_LaunchIDEXT.xy) + 0.5) / vec2(gl_LaunchSizeEXT.xy);
     vec2 ndc = uv * 2.0 - 1.0;
-    vec3 target = vec3(ndc, 0.0);
-    vec3 direction = normalize(target - origin);
+
+    vec4 clip  = vec4(ndc, 0.0, 1.0);
+    vec4 world = invViewProj * clip;
+    world /= world.w;
+
+    vec3 origin    = camPos;
+    vec3 direction = normalize(world.xyz - camPos);
+
     hitValue = vec3(0.0);
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin, 0.001, direction, 10000.0, 0);
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0,
+                origin, 0.001, direction, 10000.0, 0);
+
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 0.0));
 }
 )";
@@ -62,8 +56,11 @@ const char* const missCode = R"(
 
 layout(location = 0) rayPayloadInEXT vec3 hitValue;
 
-layout(push_constant) uniform PushConstants
+layout(push_constant) uniform GlobalPushConstants
 {
+    mat4 invViewProj;
+    vec3 camPos;
+    float _pad;
     vec4 missColor;
 };
 
@@ -99,41 +96,11 @@ public:
                  {.enableDocking = false})
     {
         // Load cornell box model
-        m_MeshResource = resource::loadResource<gfx::MeshManager>("resources/models/CornellBox/CornellBox-Original.obj");
+        m_MeshResource =
+            resource::loadResource<gfx::MeshManager>("resources/models/CornellBox/CornellBox-Original.obj");
 
-        // Create vertex buffer
-        m_VertexBuffer =
-            std::move(m_RenderDevice->createVertexBuffer(sizeof(SimpleVertex), 3, rhi::AllocationHints::eNone));
-
-        // Upload vertex buffer
-        {
-            constexpr auto kVerticesSize       = sizeof(SimpleVertex) * kTriangle.size();
-            auto           stagingVertexBuffer = m_RenderDevice->createStagingBuffer(kVerticesSize, kTriangle.data());
-
-            m_RenderDevice->execute(
-                [&](auto& cb) {
-                    cb.copyBuffer(stagingVertexBuffer, m_VertexBuffer, vk::BufferCopy {0, 0, kVerticesSize});
-                },
-                true);
-        }
-        const auto vertexBufferAddress = m_RenderDevice->getBufferDeviceAddress(m_VertexBuffer);
-
-        // Create index buffer
-        {
-            m_IndexBuffer =
-                std::move(m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, 3, rhi::AllocationHints::eNone));
-
-            // Upload index buffer
-            constexpr auto kIndicesSize       = sizeof(uint32_t) * kIndices.size();
-            auto           stagingIndexBuffer = m_RenderDevice->createStagingBuffer(kIndicesSize, kIndices.data());
-
-            m_RenderDevice->execute(
-                [&](auto& cb) {
-                    cb.copyBuffer(stagingIndexBuffer, m_IndexBuffer, vk::BufferCopy {0, 0, kIndicesSize});
-                },
-                true);
-        }
-        const auto indexBufferAddress = m_RenderDevice->getBufferDeviceAddress(m_IndexBuffer);
+        auto vertexBufferAddress = m_RenderDevice->getBufferDeviceAddress(*m_MeshResource->vertexBuffer);
+        auto indexBufferAddress  = m_RenderDevice->getBufferDeviceAddress(*m_MeshResource->indexBuffer);
 
         // Create transform buffer
         {
@@ -153,9 +120,9 @@ public:
         m_BLAS = m_RenderDevice->createBuildSingleGeometryBLAS(vertexBufferAddress,
                                                                indexBufferAddress,
                                                                transformBufferAddress,
-                                                               sizeof(SimpleVertex),
-                                                               kTriangle.size(),
-                                                               kIndices.size());
+                                                               sizeof(gfx::SimpleVertex),
+                                                               m_MeshResource->getVertexCount(),
+                                                               m_MeshResource->getIndexCount());
 
         // Create and build TLAS
         m_TLAS = m_RenderDevice->createBuildSingleGeometryTLAS(m_BLAS, kTransform);
@@ -223,11 +190,32 @@ public:
                       rhi::bindings::StorageImage {.texture = &m_OutputImage, .imageAspect = rhi::ImageAspect::eColor})
                 .build(m_Pipeline.getDescriptorSetLayout(0));
 
+        glm::vec3 camPos = glm::vec3(0.0f, 1.0f, 4.0f);
+        glm::mat4 projection =
+            glm::perspective(glm::radians(45.0f),
+                             static_cast<float>(m_Window.getExtent().x) / static_cast<float>(m_Window.getExtent().y),
+                             0.1f,
+                             100.0f);
+        projection[1][1] *= -1; // Flip Y for Vulkan
+        glm::mat4 view        = glm::lookAt(camPos, glm::vec3(camPos.x, camPos.y, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 viewProj    = projection * view;
+        glm::mat4 invViewProj = glm::inverse(viewProj);
+
         const glm::vec4 missColor = glm::vec4(0.2f, 0.3f, 0.3f, 1.0f);
+
+        struct GlobalPushConstants
+        {
+            glm::mat4 invViewProj; // for raygen
+            glm::vec3 camPos;      // for raygen
+            float     padding;
+            glm::vec4 missColor; // for miss
+        };
+
+        GlobalPushConstants pushConstants {invViewProj, camPos, 0.0f, missColor};
 
         cb.bindPipeline(m_Pipeline)
             .bindDescriptorSet(0, descriptorSet)
-            .pushConstants(rhi::ShaderStages::eMiss, 0, &missColor)
+            .pushConstants(rhi::ShaderStages::eRayGen | rhi::ShaderStages::eMiss, 0, &pushConstants)
             .traceRays(m_SBT, {m_Window.getExtent(), 1});
 
         cb.blit(m_OutputImage, rtv.texture, vk::Filter::eLinear);
@@ -253,8 +241,6 @@ public:
 private:
     Ref<gfx::MeshResource> m_MeshResource {nullptr};
 
-    rhi::VertexBuffer          m_VertexBuffer;
-    rhi::IndexBuffer           m_IndexBuffer;
     rhi::Buffer                m_TransformBuffer;
     rhi::AccelerationStructure m_BLAS, m_TLAS;
     rhi::RaytracingPipeline    m_Pipeline;
