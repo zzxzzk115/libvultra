@@ -204,40 +204,44 @@ namespace vultra
 #endif
 
                     // Legacy shading will be converted to PBR
-                    aiColor3D kd(1, 1, 1), ks(0, 0, 0), ke(0, 0, 0), ka(0, 0, 0);
-                    float     Ns = 0.0f, d = 1.0f, Ni = 1.5f;
+                    aiColor3D kd(1, 1, 1), ks(0, 0, 0), ke(0, 0, 0);
+                    float     Ns = 0.0f, d = 1.0f, Ni = 1.5f, emissiveIntensity = 1.0f;
 
                     material->Get(AI_MATKEY_COLOR_DIFFUSE, kd);
                     material->Get(AI_MATKEY_COLOR_SPECULAR, ks);
                     material->Get(AI_MATKEY_COLOR_EMISSIVE, ke);
-                    material->Get(AI_MATKEY_COLOR_AMBIENT, ka);
+                    material->Get(AI_MATKEY_EMISSIVE_INTENSITY, emissiveIntensity);
                     material->Get(AI_MATKEY_SHININESS, Ns);
                     material->Get(AI_MATKEY_OPACITY, d);
                     material->Get(AI_MATKEY_REFRACTI, Ni);
 
                     // Convert legacy material to PBR
+
+                    // Base color
                     subMesh.material.baseColor = glm::vec4(kd.r, kd.g, kd.b, d);
+
                     // Approximate metallic factor from specular color
-                    auto  lum   = [](float r, float g, float b) { return 0.2126f * r + 0.7152f * g + 0.0722f * b; };
-                    float kdLum = glm::clamp(lum(kd.r, kd.g, kd.b), 0.0f, 1.0f);
-                    float ksLum = glm::clamp(lum(ks.r, ks.g, ks.b), 0.0f, 1.0f);
-                    float m     = (ksLum - 0.04f) / (1.0f - 0.04f);
-                    m           = glm::clamp(m, 0.0f, 1.0f);
-                    m *= (1.0f - 0.5f * kdLum);
-                    float colorSimilarity =
-                        1.0f -
-                        glm::clamp(glm::length(glm::vec3(kd.r, kd.g, kd.b) - glm::vec3(ks.r, ks.g, ks.b)), 0.0f, 1.0f);
-                    m                               = glm::clamp(m + 0.25f * colorSimilarity * m, 0.0f, 1.0f);
-                    subMesh.material.metallicFactor = m;
-                    // Approximate roughness from shininess
-                    Ns                               = glm::clamp(Ns, 1.0f, 1000.0f);
+                    float ksLum    = 0.2126f * ks.r + 0.7152f * ks.g + 0.0722f * ks.b;
+                    float metallic = 0.0f;
+                    if (ksLum >= 0.04f)
+                    {
+                        metallic = (ksLum - 0.04f) / (1.0f - 0.04f);
+                        metallic = glm::clamp(metallic, 0.0f, 1.0f);
+                    }
+                    subMesh.material.metallicFactor = metallic;
+
+                    // Roughness = sqrt(2/(Ns+2))
+                    Ns                               = glm::clamp(Ns, 0.0f, 1000.0f);
                     float roughness                  = std::sqrt(2.0f / (Ns + 2.0f));
                     subMesh.material.roughnessFactor = glm::clamp(roughness, 0.04f, 1.0f);
+
                     // Emissive color
-                    subMesh.material.emissiveColor = glm::vec3(ke.r, ke.g, ke.b);
-                    // Ambient color is ignored for now
+                    subMesh.material.emissiveColorIntensity = glm::vec4(ke.r, ke.g, ke.b, emissiveIntensity);
+
                     // IOR
                     subMesh.material.ior = Ni;
+
+                    // PBR textures & factors
 
                     // Albedo
                     auto albedoTexture      = loadTexture(material, aiTextureType_DIFFUSE);

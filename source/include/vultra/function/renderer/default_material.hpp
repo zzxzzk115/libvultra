@@ -42,7 +42,7 @@ namespace vultra
             bool              useAOTexture {false};
 
             Ref<rhi::Texture> emissive {nullptr};
-            glm::vec3         emissiveColor {0.0f, 0.0f, 0.0f};
+            glm::vec4         emissiveColorIntensity {0.0f, 0.0f, 0.0f, 1.0f};
             bool              useEmissiveTexture {false};
 
             float ior {1.0f};
