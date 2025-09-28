@@ -235,6 +235,7 @@ namespace vultra
             // Bindless
             Ref<rhi::Texture> getTextureByIndex(const uint32_t index);
             void              clearLoadedTextures() { m_LoadedTextures.clear(); }
+            Ref<rhi::Buffer>  createBindlessStorageBuffer(AllocationHints = AllocationHints::eNone);
 
         private:
             void createXRDevice();

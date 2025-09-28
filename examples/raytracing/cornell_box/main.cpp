@@ -75,15 +75,45 @@ const char* const closestHitCode = R"(
 #extension GL_EXT_ray_tracing : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
+struct GPUMaterial {
+    vec4 baseColor;
+};
+layout(binding = 2, set = 0) buffer Materials {
+    GPUMaterial materials[];
+};
+
+struct GPUGeometryNode {
+    uint materialIndex;
+};
+layout(binding = 3, set = 0) buffer GeometryNodes {
+    GPUGeometryNode geometryNodes[];
+};
+
 layout(location = 0) rayPayloadInEXT vec3 hitValue;
 hitAttributeEXT vec2 attribs;
 
 void main()
 {
-    const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
-    hitValue = barycentricCoords;
+    vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+
+    uint geomIndex = gl_GeometryIndexEXT;
+
+    vec3 color = materials[geometryNodes[geomIndex].materialIndex].baseColor.rgb;
+
+    hitValue = color;
 }
 )";
+
+// Only base color for simplicity
+struct GPUMaterial
+{
+    glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+struct GPUGeometryNode
+{
+    uint32_t materialIndex {0};
+};
 
 class RaytracingCornellBoxApp final : public ImGuiApp
 {
@@ -127,6 +157,57 @@ public:
                             .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eTransferSrc)
                             .setupOptimalSampler(false)
                             .build(*m_RenderDevice);
+
+        // Create material buffer
+        {
+            std::vector<GPUMaterial> materials;
+            materials.reserve(m_MeshResource->materials.size());
+
+            for (const auto& mat : m_MeshResource->materials)
+            {
+                GPUMaterial gpuMat {};
+                gpuMat.baseColor = glm::vec4(mat.baseColor.r, mat.baseColor.g, mat.baseColor.b, 1.0f);
+                materials.push_back(gpuMat);
+            }
+
+            m_MaterialBuffer = m_RenderDevice->createStorageBuffer(
+                sizeof(GPUMaterial) * static_cast<vk::DeviceSize>(materials.size()), rhi::AllocationHints::eNone);
+
+            auto stagingBuffer = m_RenderDevice->createStagingBuffer(
+                sizeof(GPUMaterial) * static_cast<vk::DeviceSize>(materials.size()), materials.data());
+
+            m_RenderDevice->execute(
+                [&](rhi::CommandBuffer& cb) {
+                    cb.copyBuffer(stagingBuffer, m_MaterialBuffer, vk::BufferCopy {0, 0, stagingBuffer.getSize()});
+                },
+                true);
+        }
+
+        // Create geometry node buffer
+        {
+            std::vector<GPUGeometryNode> geometryNodes;
+            geometryNodes.reserve(m_MeshResource->renderMesh.subMeshes.size());
+
+            for (const auto& sm : m_MeshResource->renderMesh.subMeshes)
+            {
+                GPUGeometryNode node {};
+                node.materialIndex = sm.materialIndex;
+                geometryNodes.push_back(node);
+            }
+
+            m_GeometryNodeBuffer = m_RenderDevice->createStorageBuffer(
+                sizeof(GPUGeometryNode) * static_cast<vk::DeviceSize>(geometryNodes.size()),
+                rhi::AllocationHints::eNone);
+
+            auto stagingBuffer = m_RenderDevice->createStagingBuffer(
+                sizeof(GPUGeometryNode) * static_cast<vk::DeviceSize>(geometryNodes.size()), geometryNodes.data());
+
+            m_RenderDevice->execute(
+                [&](rhi::CommandBuffer& cb) {
+                    cb.copyBuffer(stagingBuffer, m_GeometryNodeBuffer, vk::BufferCopy {0, 0, stagingBuffer.getSize()});
+                },
+                true);
+        }
     }
 
     void onImGui() override
@@ -163,6 +244,8 @@ public:
                 .bind(0, rhi::bindings::AccelerationStructureKHR {.as = &m_TLAS})
                 .bind(1,
                       rhi::bindings::StorageImage {.texture = &m_OutputImage, .imageAspect = rhi::ImageAspect::eColor})
+                .bind(2, rhi::bindings::StorageBuffer {.buffer = &m_MaterialBuffer})
+                .bind(3, rhi::bindings::StorageBuffer {.buffer = &m_GeometryNodeBuffer})
                 .build(m_Pipeline.getDescriptorSetLayout(0));
 
         glm::vec3 camPos = glm::vec3(0.0f, 1.0f, 4.0f);
@@ -221,6 +304,9 @@ private:
     rhi::RaytracingPipeline    m_Pipeline;
     rhi::ShaderBindingTable    m_SBT;
     rhi::Texture               m_OutputImage;
+
+    rhi::Buffer m_MaterialBuffer;
+    rhi::Buffer m_GeometryNodeBuffer;
 };
 
 CONFIG_MAIN(RaytracingCornellBoxApp)

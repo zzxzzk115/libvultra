@@ -2007,5 +2007,35 @@ namespace vultra
             return m_LoadedTextures[index];
         }
 
+        Ref<rhi::Buffer> RenderDevice::createBindlessStorageBuffer(AllocationHints allocationHint)
+        {
+            assert(m_MemoryAllocator);
+
+            // Analyze texture memory usage
+            vk::DeviceSize totalTextureMemory = 0;
+            for (const auto& texture : m_LoadedTextures)
+            {
+                if (texture)
+                {
+                    const auto& extent = texture->getExtent();
+                    const auto& depth  = texture->getDepth() > 0 ? texture->getDepth() : 1;
+                    // Calculate the memory usage for this texture
+                    vk::DeviceSize textureSize =
+                        extent.width * extent.height * depth * getBytesPerPixel(texture->getPixelFormat());
+                    totalTextureMemory += textureSize;
+                }
+            }
+
+            // Create a large storage buffer for bindless resources
+            Buffer buffer {
+                m_MemoryAllocator,
+                totalTextureMemory,
+                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
+                makeAllocationFlags(allocationHint),
+                vma::MemoryUsage::eAutoPreferDevice,
+            };
+
+            return createRef<rhi::Buffer>(std::move(buffer));
+        }
     } // namespace rhi
 } // namespace vultra
