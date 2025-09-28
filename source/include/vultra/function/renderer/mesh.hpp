@@ -18,6 +18,8 @@ namespace vultra
 
         struct SubMesh
         {
+            std::string name;
+
             rhi::PrimitiveTopology topology {rhi::PrimitiveTopology::eTriangleList};
 
             uint32_t vertexOffset {0};
@@ -47,6 +49,13 @@ namespace vultra
             rhi::PrimitiveTopology topology {rhi::PrimitiveTopology::eTriangleList};
 
             rhi::RenderMesh renderMesh {}; // Currently only used for ray tracing
+
+            struct Light
+            {
+                std::vector<VertexType> vertices;
+                glm::vec4               colorIntensity {1.0f, 1.0f, 1.0f, 1.0f};
+            };
+            std::vector<Light> lights;
 
             [[nodiscard]] auto& getVertices() { return vertices; }
             [[nodiscard]] auto& getIndices() { return indices; }

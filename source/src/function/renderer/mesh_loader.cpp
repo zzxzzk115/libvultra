@@ -314,6 +314,7 @@ namespace vultra
                 // Fill in sub-mesh data
                 SubMesh subMesh {};
                 // subMesh.topology = static_cast<rhi::PrimitiveTopology>(aiMesh->mPrimitiveTypes);
+                subMesh.name          = aiMesh->mName.C_Str();
                 subMesh.vertexOffset  = vertexOffset;
                 subMesh.indexOffset   = indexOffset;
                 subMesh.vertexCount   = aiMesh->mNumVertices;
@@ -449,6 +450,32 @@ namespace vultra
             if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRaytracingPipeline))
             {
                 mesh.buildRenderMesh(rd);
+            }
+
+            // Find light meshes (meshes with emissive materials)
+            for (const auto& sm : mesh.subMeshes)
+            {
+                if (sm.materialIndex < mesh.materials.size())
+                {
+                    const auto& mat = mesh.materials[sm.materialIndex];
+                    if (mat.emissiveColorIntensity.r > 0.0f || mat.emissiveColorIntensity.g > 0.0f ||
+                        mat.emissiveColorIntensity.b > 0.0f || mat.emissiveIndex > 0)
+                    {
+                        // This sub-mesh is emissive, add its vertices to light mesh
+                        std::vector<SimpleVertex> vertices;
+                        for (uint32_t vi = 0; vi < sm.vertexCount; ++vi)
+                        {
+                            const auto& v = mesh.vertices[sm.vertexOffset + vi];
+                            vertices.push_back(v);
+                        }
+                        mesh.lights.push_back({.vertices = std::move(vertices), .colorIntensity = mat.emissiveColorIntensity});
+                        VULTRA_CORE_INFO(
+                            "[MeshLoader] Found light mesh in sub-mesh {}, material {}, total light vertices {}",
+                            sm.name,
+                            mesh.materials[sm.materialIndex].name,
+                            mesh.lights.back().vertices.size());
+                    }
+                }
             }
 
             return createRef<MeshResource>(std::move(mesh), p);
