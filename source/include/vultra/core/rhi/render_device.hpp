@@ -12,6 +12,7 @@
 #include "vultra/core/rhi/raytracing/raytracing_pipeline_properties.hpp"
 #include "vultra/core/rhi/raytracing/scratch_buffer.hpp"
 #include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
+#include "vultra/core/rhi/render_mesh.hpp"
 #include "vultra/core/rhi/sampler_info.hpp"
 #include "vultra/core/rhi/shader_compiler.hpp"
 #include "vultra/core/rhi/shader_module.hpp"
@@ -206,6 +207,10 @@ namespace vultra
                                                                               uint32_t vertexStride,
                                                                               uint32_t vertexCount,
                                                                               uint32_t indexCount);
+
+            // For render mesh BLAS, e.g., multiple sub-meshes
+            [[nodiscard]] AccelerationStructure createBuildRenderMeshBLAS(std::vector<RenderSubMesh>& subMeshes);
+
             [[nodiscard]] AccelerationStructure
             createBuildSingleGeometryTLAS(const AccelerationStructure& referenceBLAS, const glm::mat4& transform);
 

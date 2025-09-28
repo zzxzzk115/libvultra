@@ -79,6 +79,24 @@ namespace std
 
 namespace
 {
+    [[nodiscard]] vk::IndexType toVk(const vultra::rhi::IndexType indexType)
+    {
+        switch (indexType)
+        {
+            case vultra::rhi::IndexType::eUInt16:
+                return vk::IndexType::eUint16;
+            case vultra::rhi::IndexType::eUInt32:
+                return vk::IndexType::eUint32;
+
+            default:
+                assert(false);
+                return vk::IndexType::eNoneKHR;
+        }
+    }
+} // namespace
+
+namespace
+{
 #if _DEBUG
     const char* validationLayers[] = {"VK_LAYER_KHRONOS_validation"};
 #endif
@@ -1626,6 +1644,93 @@ namespace vultra
             execute(
                 [&](CommandBuffer& cb) {
                     cb.getHandle().buildAccelerationStructuresKHR(1, &buildGeometryInfo, buildRangeInfos.data());
+                },
+                true);
+
+            return blas;
+        }
+
+        AccelerationStructure RenderDevice::createBuildRenderMeshBLAS(std::vector<RenderSubMesh>& subMeshes)
+        {
+            VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline),
+                               "[RenderDevice] Raytracing Pipeline feature is not enabled!");
+            VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
+                               "[RenderDevice] Acceleration Structure feature is not enabled!");
+
+            VULTRA_CORE_ASSERT(!subMeshes.empty(), "[RenderDevice] Cannot build BLAS from empty subMeshes!");
+
+            std::vector<vk::AccelerationStructureGeometryKHR>       geometries;
+            std::vector<vk::AccelerationStructureBuildRangeInfoKHR> buildRanges;
+            geometries.reserve(subMeshes.size());
+            buildRanges.reserve(subMeshes.size());
+
+            // Describe the geometry, one for each sub-mesh
+            for (auto& sm : subMeshes)
+            {
+                vk::AccelerationStructureGeometryTrianglesDataKHR triangles {};
+                triangles.vertexFormat                = vk::Format::eR32G32B32Sfloat;
+                triangles.vertexData.deviceAddress    = sm.vertexBufferAddress;
+                triangles.vertexStride                = sm.vertexStride;
+                triangles.indexType                   = toVk(sm.indexType);
+                triangles.indexData.deviceAddress     = sm.indexBufferAddress;
+                triangles.transformData.deviceAddress = sm.transformBufferAddress;
+                triangles.maxVertex                   = sm.vertexCount - 1;
+
+                vk::AccelerationStructureGeometryKHR geometry {};
+                geometry.geometryType = vk::GeometryTypeKHR::eTriangles;
+                geometry.flags        = vk::GeometryFlagBitsKHR::eOpaque;
+                geometry.geometry.setTriangles(triangles);
+                geometries.push_back(geometry);
+
+                vk::AccelerationStructureBuildRangeInfoKHR range {};
+                range.primitiveCount  = sm.indexCount / 3;
+                range.primitiveOffset = 0;
+                range.firstVertex     = 0;
+                range.transformOffset = 0;
+                buildRanges.push_back(range);
+            }
+
+            // Get build sizes
+            vk::AccelerationStructureBuildGeometryInfoKHR buildGeometryInfo {};
+            buildGeometryInfo.type          = vk::AccelerationStructureTypeKHR::eBottomLevel;
+            buildGeometryInfo.flags         = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
+            buildGeometryInfo.mode          = vk::BuildAccelerationStructureModeKHR::eBuild;
+            buildGeometryInfo.geometryCount = static_cast<uint32_t>(geometries.size());
+            buildGeometryInfo.pGeometries   = geometries.data();
+
+            std::vector<uint32_t> primitiveCounts;
+            primitiveCounts.reserve(buildRanges.size());
+            for (auto& r : buildRanges)
+                primitiveCounts.push_back(r.primitiveCount);
+
+            auto buildSizes = m_Device.getAccelerationStructureBuildSizesKHR(
+                vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, primitiveCounts);
+
+            // Assign RHI build sizes info
+            AccelerationStructureBuildSizesInfo buildSizesInfo {};
+            buildSizesInfo.accelerationStructureSize = buildSizes.accelerationStructureSize;
+            buildSizesInfo.buildScratchSize          = buildSizes.buildScratchSize;
+            buildSizesInfo.updateScratchSize         = buildSizes.updateScratchSize;
+
+            // Create the BLAS
+            auto blas = createAccelerationStructure(AccelerationStructureType::eBottomLevel, buildSizesInfo);
+
+            // Create a scratch buffer
+            auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
+
+            // Fill geometry info
+            buildGeometryInfo.dstAccelerationStructure  = blas.getHandle();
+            buildGeometryInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer);
+
+            std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> buildRangePtrs;
+            buildRangePtrs.reserve(buildRanges.size());
+            for (auto& r : buildRanges)
+                buildRangePtrs.push_back(&r);
+
+            // Build the BLAS using a one-time command buffer
+            execute(
+                [&](CommandBuffer& cb) {
+                    cb.getHandle().buildAccelerationStructuresKHR(1, &buildGeometryInfo, buildRangePtrs.data());
                 },
                 true);
 

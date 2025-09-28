@@ -438,7 +438,13 @@ namespace vultra
                     cb.copyBuffer(
                         stagingIndexBuffer, *mesh.indexBuffer, vk::BufferCopy {0, 0, stagingIndexBuffer.getSize()});
                 }
-            });
+            }, true);
+
+            // Build the render mesh for ray tracing if supported
+            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRaytracingPipeline))
+            {
+                mesh.buildRenderMesh(rd);
+            }
 
             return createRef<MeshResource>(std::move(mesh), p);
         }

@@ -99,33 +99,8 @@ public:
         m_MeshResource =
             resource::loadResource<gfx::MeshManager>("resources/models/CornellBox/CornellBox-Original.obj");
 
-        auto vertexBufferAddress = m_RenderDevice->getBufferDeviceAddress(*m_MeshResource->vertexBuffer);
-        auto indexBufferAddress  = m_RenderDevice->getBufferDeviceAddress(*m_MeshResource->indexBuffer);
-
-        // Create transform buffer
-        {
-            m_TransformBuffer = std::move(m_RenderDevice->createTransformBuffer());
-
-            // Convert to row-major
-            glm::mat4 rowMajor = glm::transpose(kTransform);
-
-            // Host visible & coherent memory, so we can directly map and copy
-            void* mapped = m_TransformBuffer.map();
-            memcpy(mapped, &rowMajor, sizeof(vk::TransformMatrixKHR));
-            m_TransformBuffer.unmap();
-        }
-        const auto transformBufferAddress = m_RenderDevice->getBufferDeviceAddress(m_TransformBuffer);
-
-        // Create and build BLAS
-        m_BLAS = m_RenderDevice->createBuildSingleGeometryBLAS(vertexBufferAddress,
-                                                               indexBufferAddress,
-                                                               transformBufferAddress,
-                                                               sizeof(gfx::SimpleVertex),
-                                                               m_MeshResource->getVertexCount(),
-                                                               m_MeshResource->getIndexCount());
-
         // Create and build TLAS
-        m_TLAS = m_RenderDevice->createBuildSingleGeometryTLAS(m_BLAS, kTransform);
+        m_TLAS = m_RenderDevice->createBuildSingleGeometryTLAS(m_MeshResource->renderMesh.blas, kTransform);
 
         // Create raytracing pipeline
         m_Pipeline = rhi::RaytracingPipeline::Builder {}
@@ -242,7 +217,7 @@ private:
     Ref<gfx::MeshResource> m_MeshResource {nullptr};
 
     rhi::Buffer                m_TransformBuffer;
-    rhi::AccelerationStructure m_BLAS, m_TLAS;
+    rhi::AccelerationStructure m_TLAS;
     rhi::RaytracingPipeline    m_Pipeline;
     rhi::ShaderBindingTable    m_SBT;
     rhi::Texture               m_OutputImage;

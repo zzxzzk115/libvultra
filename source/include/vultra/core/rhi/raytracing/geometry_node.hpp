@@ -13,7 +13,7 @@ namespace vultra
             uint64_t indexBufferDeviceAddress {0};
 
             // Name -> Material ID
-            std::unordered_map<std::string, int32_t> materials;
+            std::unordered_map<std::string, uint32_t> materials;
         };
     } // namespace rhi
 } // namespace vultra
