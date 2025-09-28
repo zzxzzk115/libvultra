@@ -38,6 +38,8 @@ namespace vultra
             uint32_t  emissiveIndex {0};
             glm::vec4 emissiveColorIntensity {0.0f, 0.0f, 0.0f, 1.0f};
 
+            glm::vec4 ambientColor {0.0f, 0.0f, 0.0f, 1.0f};
+
             float ior {1.0f};
 
             // GLTF

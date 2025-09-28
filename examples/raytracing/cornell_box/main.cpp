@@ -72,17 +72,35 @@ void main()
 
 const char* const closestHitCode = R"(
 #version 460
-#extension GL_EXT_ray_tracing : enable
-#extension GL_EXT_nonuniform_qualifier : enable
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+struct Vertex {
+    vec3 position;
+    vec3 color;
+    vec3 normal;
+    vec2 texCoord;
+    vec4 tangent;
+};
+
+layout(buffer_reference, scalar) buffer VertexBuffer { Vertex v[]; };
+layout(buffer_reference, scalar) buffer IndexBuffer  { uint i[]; };
 
 struct GPUMaterial {
     vec4 baseColor;
+    vec4 ambientColor;
+    vec4 emissiveIntensity;
 };
 layout(binding = 2, set = 0) buffer Materials {
     GPUMaterial materials[];
 };
 
 struct GPUGeometryNode {
+    uint64_t vertexBufferAddress;
+    uint64_t indexBufferAddress;
     uint materialIndex;
 };
 layout(binding = 3, set = 0) buffer GeometryNodes {
@@ -94,13 +112,43 @@ hitAttributeEXT vec2 attribs;
 
 void main()
 {
-    vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+    const uint geomIndex = gl_GeometryIndexEXT;
+    GPUGeometryNode node = geometryNodes[nonuniformEXT(geomIndex)];
 
-    uint geomIndex = gl_GeometryIndexEXT;
+    // Fetch material properties
+    GPUMaterial mat = materials[nonuniformEXT(node.materialIndex)];
 
-    vec3 color = materials[geometryNodes[geomIndex].materialIndex].baseColor.rgb;
+    vec3 baseColor = mat.baseColor.rgb;
+    vec3 ambientColor = mat.ambientColor.rgb;
+    vec3 emissiveColor = mat.emissiveIntensity.rgb * mat.emissiveIntensity.a;
 
-    hitValue = color;
+    // Construct buffer references from device addresses
+    VertexBuffer vb = VertexBuffer(node.vertexBufferAddress);
+    IndexBuffer ib  = IndexBuffer(node.indexBufferAddress);
+
+    // Get indices for this triangle
+    const uint i0 = ib.i[gl_PrimitiveID * 3 + 0];
+    const uint i1 = ib.i[gl_PrimitiveID * 3 + 1];
+    const uint i2 = ib.i[gl_PrimitiveID * 3 + 2];
+
+    // Fetch vertices
+    Vertex v0 = vb.v[i0];
+    Vertex v1 = vb.v[i1];
+    Vertex v2 = vb.v[i2];
+
+    // Barycentric interpolation
+    vec3 bary = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
+
+    vec3 worldPos = v0.position * bary.x + v1.position * bary.y + v2.position * bary.z;
+    vec3 normal   = normalize(v0.normal * bary.x + v1.normal * bary.y + v2.normal * bary.z);
+    vec2 uv       = v0.texCoord * bary.x + v1.texCoord * bary.y + v2.texCoord * bary.z;
+
+    // TODO: Area light sampling, shadows, etc.
+    // For now, just output ambient + emissive
+
+    hitValue = ambientColor + emissiveColor;
+    // hitValue = normalize(abs(normal));
+    // hitValue = normalize(abs(v0.position * bary.x + v1.position * bary.y + v2.position * bary.z));
 }
 )";
 
@@ -108,10 +156,14 @@ void main()
 struct GPUMaterial
 {
     glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};
+    glm::vec4 ambientColor {0.0f, 0.0f, 0.0f, 1.0f};
+    glm::vec4 emissiveIntensity {0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 struct GPUGeometryNode
 {
+    uint64_t vertexBufferAddress {0};
+    uint64_t indexBufferAddress {0};
     uint32_t materialIndex {0};
 };
 
@@ -166,7 +218,9 @@ public:
             for (const auto& mat : m_MeshResource->materials)
             {
                 GPUMaterial gpuMat {};
-                gpuMat.baseColor = glm::vec4(mat.baseColor.r, mat.baseColor.g, mat.baseColor.b, 1.0f);
+                gpuMat.baseColor         = glm::vec4(mat.baseColor.r, mat.baseColor.g, mat.baseColor.b, 1.0f);
+                gpuMat.ambientColor      = mat.ambientColor;
+                gpuMat.emissiveIntensity = mat.emissiveColorIntensity;
                 materials.push_back(gpuMat);
             }
 
@@ -191,7 +245,9 @@ public:
             for (const auto& sm : m_MeshResource->renderMesh.subMeshes)
             {
                 GPUGeometryNode node {};
-                node.materialIndex = sm.materialIndex;
+                node.materialIndex       = sm.materialIndex;
+                node.vertexBufferAddress = sm.vertexBufferAddress;
+                node.indexBufferAddress  = sm.indexBufferAddress;
                 geometryNodes.push_back(node);
             }
 

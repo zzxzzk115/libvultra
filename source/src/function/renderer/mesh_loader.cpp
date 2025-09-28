@@ -187,9 +187,10 @@ namespace vultra
             }
 
             Assimp::Importer importer;
-            const aiScene*   scene = importer.ReadFile(p.generic_string(),
-                                                     aiProcess_Triangulate | aiProcess_FlipUVs |
-                                                         aiProcess_PreTransformVertices | aiProcess_CalcTangentSpace);
+            const aiScene*   scene =
+                importer.ReadFile(p.generic_string(),
+                                  aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_PreTransformVertices |
+                                      aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals | aiProcess_GenUVCoords);
 
             if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode || !scene->HasMeshes())
             {
@@ -344,10 +345,11 @@ namespace vultra
                     }
 
                     // Read color properties
-                    aiColor3D kd(1, 1, 1), ks(0, 0, 0), ke(0, 0, 0);
+                    aiColor3D kd(1, 1, 1), ks(0, 0, 0), ke(0, 0, 0), ka(0, 0, 0);
                     tryGet(props, AI_MATKEY_COLOR_DIFFUSE, kd);
                     tryGet(props, AI_MATKEY_COLOR_SPECULAR, ks);
                     tryGet(props, AI_MATKEY_COLOR_EMISSIVE, ke);
+                    tryGet(props, AI_MATKEY_COLOR_AMBIENT, ka);
 
                     // Read scalar properties
                     float Ns = 0.0f, d = 1.0f, Ni = 1.5f, emissiveIntensity = 1.0f;
@@ -362,6 +364,7 @@ namespace vultra
                     pbrMat.roughnessFactor        = glm::clamp(std::sqrt(2.0f / (Ns + 2.0f)), 0.04f, 1.0f);
                     pbrMat.emissiveColorIntensity = glm::vec4(ke.r, ke.g, ke.b, emissiveIntensity);
                     pbrMat.ior                    = Ni;
+                    pbrMat.ambientColor           = glm::vec4(ka.r, ka.g, ka.b, 1.0f);
 
                     // Textures
                     pbrMat.albedoIndex            = loadTexture(material, aiTextureType_DIFFUSE);
@@ -430,15 +433,17 @@ namespace vultra
                     rd.createStagingBuffer(mesh.getIndexStride() * mesh.getIndexCount(), mesh.indices.data());
             }
 
-            rd.execute([&](rhi::CommandBuffer& cb) {
-                cb.copyBuffer(
-                    stagingVertexBuffer, *mesh.vertexBuffer, vk::BufferCopy {0, 0, stagingVertexBuffer.getSize()});
-                if (stagingIndexBuffer)
-                {
+            rd.execute(
+                [&](rhi::CommandBuffer& cb) {
                     cb.copyBuffer(
-                        stagingIndexBuffer, *mesh.indexBuffer, vk::BufferCopy {0, 0, stagingIndexBuffer.getSize()});
-                }
-            }, true);
+                        stagingVertexBuffer, *mesh.vertexBuffer, vk::BufferCopy {0, 0, stagingVertexBuffer.getSize()});
+                    if (stagingIndexBuffer)
+                    {
+                        cb.copyBuffer(
+                            stagingIndexBuffer, *mesh.indexBuffer, vk::BufferCopy {0, 0, stagingIndexBuffer.getSize()});
+                    }
+                },
+                true);
 
             // Build the render mesh for ray tracing if supported
             if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRaytracingPipeline))

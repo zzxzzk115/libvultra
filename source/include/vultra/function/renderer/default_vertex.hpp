@@ -27,5 +27,6 @@ namespace vultra
 
             static Ref<VertexFormat> getVertexFormat();
         });
+        static_assert(sizeof(SimpleVertex) == 60, "SimpleVertex size should be 60 bytes");
     } // namespace gfx
 } // namespace vultra

@@ -1064,6 +1064,7 @@ namespace vultra
 #ifndef __APPLE__
             enabledFeatures.geometryShader            = true;
             enabledFeatures.shaderImageGatherExtended = true;
+            enabledFeatures.shaderInt64               = true;
 #endif
             deviceFeatures2.features = enabledFeatures;
 
@@ -1096,6 +1097,7 @@ namespace vultra
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR    rayTracingFeatures {};
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};
             vk::PhysicalDeviceBufferDeviceAddressFeatures      bufferDeviceAddressFeatures {};
+            vk::PhysicalDeviceScalarBlockLayoutFeatures       scalarBlockLayoutFeatures {};
             if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRaytracingPipeline))
             {
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
@@ -1111,6 +1113,9 @@ namespace vultra
 
                 // BDA feature is required for raytracing
                 bufferDeviceAddressFeatures.bufferDeviceAddress = true;
+
+                // Scalar block layout
+                scalarBlockLayoutFeatures.scalarBlockLayout = true;
 #ifdef VULTRA_ENABLE_RENDERDOC
                 // When RenderDoc is enabled, we need to enable the capture replay feature as well
                 bufferDeviceAddressFeatures.bufferDeviceAddressCaptureReplay = true;
@@ -1121,6 +1126,7 @@ namespace vultra
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&accelerationStructureFeatures));
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&bufferDeviceAddressFeatures));
+                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&scalarBlockLayoutFeatures));
             }
 
             // Mesh Shader
