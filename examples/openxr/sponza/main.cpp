@@ -3,6 +3,7 @@
 #include <vultra/core/rhi/graphics_pipeline.hpp>
 #include <vultra/core/rhi/vertex_buffer.hpp>
 #include <vultra/function/app/xr_app.hpp>
+#include <vultra/function/openxr/ext/xr_eyetracker.hpp>
 #include <vultra/function/openxr/xr_device.hpp>
 #include <vultra/function/openxr/xr_headset.hpp>
 #include <vultra/function/renderer/builtin/builtin_renderer.hpp>
@@ -63,6 +64,21 @@ public:
                     XR_VERSION_MINOR(xrInstanceProperties.runtimeVersion),
                     XR_VERSION_PATCH(xrInstanceProperties.runtimeVersion));
 
+        const auto* eyeTracker = m_CommonAction.getEyeTracker();
+        ImGui::Text("Eye Tracker Enabled : %s", eyeTracker ? "Yes" : "No");
+        if (eyeTracker)
+        {
+            const auto& gazePose = eyeTracker->getGazePose();
+            ImGui::Text(
+                "Gaze Position : (%.3f, %.3f, %.3f)", gazePose.position.x, gazePose.position.y, gazePose.position.z);
+            const auto gazeRotationQuat  = xrutils::toQuat(gazePose.orientation);
+            const auto gazeRotationEuler = glm::eulerAngles(gazeRotationQuat);
+            ImGui::Text("Gaze Rotation : (%.3f, %.3f, %.3f) (degrees)",
+                        glm::degrees(gazeRotationEuler.x),
+                        glm::degrees(gazeRotationEuler.y),
+                        glm::degrees(gazeRotationEuler.z));
+        }
+
         m_Renderer.onImGui();
 
 #ifdef VULTRA_ENABLE_RENDERDOC
@@ -112,8 +128,84 @@ public:
                     openxr::XRHeadset::StereoRenderTargetView& xrRenderTargetView,
                     const fsec                                 dt) override
     {
+        // Clear draw list from last frame
+        // m_Renderer.clearDrawList();
+
         auto& [leftRTV, rightRTV] = xrRenderTargetView;
         m_Renderer.renderXR(cb, &leftRTV, &rightRTV, dt);
+
+        // Render Eye Tracker Circle in screen space
+        const auto* eyeTracker = m_CommonAction.getEyeTracker();
+        if (eyeTracker)
+        {
+            auto& leftEyeCamera  = m_LogicScene.getXrCamera(true).getComponent<XrCameraComponent>();
+            auto& rightEyeCamera = m_LogicScene.getXrCamera(false).getComponent<XrCameraComponent>();
+
+            const auto& leftEyeViewMatrix = leftEyeCamera.viewMatrix;
+            const auto& leftEyeProjMatrix = xrutils::createProjectionMatrix({.angleLeft  = leftEyeCamera.fovAngleLeft,
+                                                                             .angleRight = leftEyeCamera.fovAngleRight,
+                                                                             .angleUp    = leftEyeCamera.fovAngleUp,
+                                                                             .angleDown  = leftEyeCamera.fovAngleDown},
+                                                                            leftEyeCamera.zNear,
+                                                                            leftEyeCamera.zFar);
+
+            const auto& rightEyeViewMatrix = rightEyeCamera.viewMatrix;
+            const auto& rightEyeProjMatrix =
+                xrutils::createProjectionMatrix({.angleLeft  = rightEyeCamera.fovAngleLeft,
+                                                 .angleRight = rightEyeCamera.fovAngleRight,
+                                                 .angleUp    = rightEyeCamera.fovAngleUp,
+                                                 .angleDown  = rightEyeCamera.fovAngleDown},
+                                                rightEyeCamera.zNear,
+                                                rightEyeCamera.zFar);
+
+            const auto& gazePose = eyeTracker->getGazePose();
+            if (gazePose.orientation.w != 0)
+            {
+                glm::vec3 origin  = xrutils::toVec3(gazePose.position);
+                glm::vec3 forward = xrutils::toQuat(gazePose.orientation) * glm::vec3(0, 0, -1);
+
+                const auto drawPerEyeCircle = [&](const rhi::Texture&      target,
+                                                  const glm::mat4&         viewMatrix,
+                                                  const glm::mat4&         projMatrix,
+                                                  const XrCameraComponent& eyeCamera,
+                                                  bool                     isLeftEye) {
+                    // Raycast to left eye near plane
+                    glm::vec3 originVS = glm::vec3(viewMatrix * glm::vec4(origin, 1.0));
+                    glm::vec3 dirVS    = glm::mat3(viewMatrix) * forward;
+
+                    float     t     = -(originVS.z + eyeCamera.zNear) / dirVS.z;
+                    glm::vec3 hitVS = originVS + t * dirVS;
+
+                    // Convert to NDC
+                    glm::vec4 clip = projMatrix * glm::vec4(hitVS, 1.0);
+                    glm::vec3 ndc  = glm::vec3(clip) / clip.w;
+
+                    // NDC to Screen Space
+                    const auto& extent = target.getExtent();
+                    glm::vec2   screenSpacePos {
+                        (ndc.x * 0.5f + 0.5f) * extent.width,
+                        (1.0f - (ndc.y * 0.5f + 0.5f)) * extent.height,
+                    };
+
+                    VULTRA_CLIENT_TRACE("Gaze ({} screen): ({:.1f}, {:.1f})",
+                                        isLeftEye ? "left" : "right",
+                                        screenSpacePos.x,
+                                        screenSpacePos.y);
+                    // TODO: Draw circle API
+                    // Will add to draw list
+                    // m_Renderer.drawCircleFilled(cb, target.texture, screenSpacePos, 20.0f, glm::vec4(1.0));
+                };
+
+                // Left Eye
+                drawPerEyeCircle(leftRTV, leftEyeViewMatrix, leftEyeProjMatrix, leftEyeCamera, true);
+
+                // Right Eye
+                drawPerEyeCircle(rightRTV, rightEyeViewMatrix, rightEyeProjMatrix, rightEyeCamera, false);
+            }
+        }
+
+        // Render draw list
+        // m_Renderer.renderDrawList(cb);
     }
 
 private:
