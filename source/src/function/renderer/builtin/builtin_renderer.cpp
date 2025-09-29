@@ -10,6 +10,7 @@
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/skybox_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/tonemapping_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/ui_pass.hpp"
 #include "vultra/function/renderer/builtin/resources/ibl_data.hpp"
 #include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
@@ -43,6 +44,8 @@ namespace vultra
             m_FXAAPass             = new FXAAPass(rd);
             m_FinalPass            = new FinalPass(rd);
 
+            m_UIPass = new UIPass(rd);
+
             setupSamplers();
 
             // Ensure BRDF LUT is generated at least once
@@ -67,6 +70,8 @@ namespace vultra
             delete m_GammaCorrectionPass;
             delete m_FXAAPass;
             delete m_FinalPass;
+
+            delete m_UIPass;
         }
 
         void BuiltinRenderer::onImGui()
@@ -253,6 +258,29 @@ namespace vultra
 
             m_CameraInfo = m_XrCameraRight;
             render(cb, rightEyeRenderTarget, dt);
+        }
+
+        void BuiltinRenderer::beginFrame(rhi::CommandBuffer& cb)
+        {
+            BaseRenderer::beginFrame(cb);
+            clearUIDrawList();
+        }
+
+        void BuiltinRenderer::endFrame()
+        {
+            assert(m_ActiveCommandBuffer && "No active command buffer. Did you call beginFrame()?");
+            renderUIDrawList(*m_ActiveCommandBuffer);
+            BaseRenderer::endFrame();
+        }
+
+        void BuiltinRenderer::drawCircleFilled(rhi::Texture*    target,
+                                               const glm::vec2& position,
+                                               float            radius,
+                                               const glm::vec4& fillColor,
+                                               const glm::vec4& outlineColor,
+                                               float            outlineThickness)
+        {
+            m_UIDrawList.addCircleFilled(target, position, radius, fillColor, outlineColor, outlineThickness);
         }
 
         void BuiltinRenderer::setScene(LogicScene* scene)
@@ -494,6 +522,17 @@ namespace vultra
 
                 .borderColor = rhi::BorderColor::eOpaqueWhite,
             });
+        }
+
+        void BuiltinRenderer::clearUIDrawList() { m_UIDrawList.commands.clear(); }
+
+        void BuiltinRenderer::renderUIDrawList(rhi::CommandBuffer& cb)
+        {
+            if (m_UIDrawList.commands.empty())
+                return;
+
+            // UI Pass
+            m_UIPass->draw(cb, m_UIDrawList.commands);
         }
     } // namespace gfx
 } // namespace vultra

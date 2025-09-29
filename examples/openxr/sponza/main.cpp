@@ -128,8 +128,7 @@ public:
                     openxr::XRHeadset::StereoRenderTargetView& xrRenderTargetView,
                     const fsec                                 dt) override
     {
-        // Clear draw list from last frame
-        // m_Renderer.clearDrawList();
+        m_Renderer.beginFrame(cb);
 
         auto& [leftRTV, rightRTV] = xrRenderTargetView;
         m_Renderer.renderXR(cb, &leftRTV, &rightRTV, dt);
@@ -204,8 +203,14 @@ public:
             }
         }
 
-        // Render draw list
-        // m_Renderer.renderDrawList(cb);
+        glm::vec4 fillColor    = glm::vec4(0.0f, 1.0f, 1.0f, 0.3f);
+        glm::vec4 outlineColor = glm::vec4(0.0f, 0.2f, 0.4f, 0.5f);
+
+        // Test draw circle API
+        m_Renderer.drawCircleFilled(&leftRTV, glm::vec2(100, 100), 100.0f, fillColor, outlineColor, 5.0f);
+        m_Renderer.drawCircleFilled(&rightRTV, glm::vec2(200, 100), 50.0f, fillColor, outlineColor, 10.0f);
+
+        m_Renderer.endFrame();
     }
 
 private:

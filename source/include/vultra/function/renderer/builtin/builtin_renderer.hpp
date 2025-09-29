@@ -7,6 +7,7 @@
 #include "vultra/function/renderer/builtin/tonemapping_method.hpp"
 #include "vultra/function/renderer/builtin/tool/cubemap_converter.hpp"
 #include "vultra/function/renderer/builtin/tool/ibl_data_generator.hpp"
+#include "vultra/function/renderer/builtin/ui_structs.hpp"
 #include "vultra/function/renderer/builtin/upload_resources.hpp"
 
 namespace vultra
@@ -20,6 +21,8 @@ namespace vultra
         class GammaCorrectionPass;
         class FXAAPass;
         class FinalPass;
+
+        class UIPass;
 
         struct BuiltinRenderSettings
         {
@@ -46,6 +49,16 @@ namespace vultra
                           rhi::Texture*       rightEyeRenderTarget,
                           const fsec          dt);
 
+            void beginFrame(rhi::CommandBuffer& cb) override;
+            void endFrame() override;
+
+            void drawCircleFilled(rhi::Texture*    target,
+                                  const glm::vec2& position,
+                                  float            radius,
+                                  const glm::vec4& fillColor,
+                                  const glm::vec4& outlineColor     = glm::vec4(0.0f),
+                                  float            outlineThickness = 0.0f);
+
             CameraInfo& getCameraInfo() { return m_CameraInfo; }
             LightInfo&  getLightInfo() { return m_LightInfo; }
 
@@ -56,6 +69,9 @@ namespace vultra
 
         private:
             void setupSamplers();
+
+            void clearUIDrawList();
+            void renderUIDrawList(rhi::CommandBuffer& cb);
 
         private:
             framegraph::Samplers           m_Samplers;
@@ -93,6 +109,9 @@ namespace vultra
             BuiltinRenderSettings m_Settings {};
 
             glm::vec4 m_ClearColor {0.0f, 0.0f, 0.0f, 1.0f};
+
+            UIDrawList m_UIDrawList;
+            UIPass*    m_UIPass {nullptr};
         };
     } // namespace gfx
 } // namespace vultra

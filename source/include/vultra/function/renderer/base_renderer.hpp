@@ -35,8 +35,12 @@ namespace vultra
 
             virtual void setScene(LogicScene* scene) {}
 
+            virtual void beginFrame(rhi::CommandBuffer& cb) { m_ActiveCommandBuffer = &cb; }
+            virtual void endFrame() { m_ActiveCommandBuffer = nullptr; }
+
         protected:
             rhi::RenderDevice&   m_RenderDevice;
+            rhi::CommandBuffer*  m_ActiveCommandBuffer {nullptr};
             RenderPrimitiveGroup m_RenderPrimitiveGroup;
         };
     } // namespace gfx
