@@ -74,18 +74,6 @@ void main()
 }
 )";
 
-const char* const shadowClosestHitCode = R"(
-#version 460
-#extension GL_EXT_ray_tracing : enable
-
-layout(location = 1) rayPayloadInEXT bool shadowed;
-
-void main()
-{
-    shadowed = true;
-}
-)";
-
 const char* const shadowMissCode = R"(
 #version 460
 #extension GL_EXT_ray_tracing : enable
@@ -124,18 +112,14 @@ struct GPUMaterial {
     vec4 ambientColor;
     vec4 emissiveIntensity;
 };
-layout(binding = 2, set = 0) buffer Materials {
-    GPUMaterial materials[];
-};
+layout(binding = 2, set = 0) buffer Materials { GPUMaterial materials[]; };
 
 struct GPUGeometryNode {
     uint64_t vertexBufferAddress;
     uint64_t indexBufferAddress;
     uint materialIndex;
 };
-layout(binding = 3, set = 0) buffer GeometryNodes {
-    GPUGeometryNode geometryNodes[];
-};
+layout(binding = 3, set = 0) buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
 
 layout(push_constant) uniform GlobalPushConstants
 {
@@ -155,26 +139,6 @@ float rand(vec2 co) {
     return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-vec3 toneMappingKhronosPbrNeutral(vec3 color)
-{
-    const float startCompression = 0.8 - 0.04;
-    const float desaturation = 0.15;
-
-    float x = min(color.r, min(color.g, color.b));
-    float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
-    color -= offset;
-
-    float peak = max(color.r, max(color.g, color.b));
-    if (peak < startCompression) return color;
-
-    const float d = 1. - startCompression;
-    float newPeak = 1. - d * d / (peak + d - startCompression);
-    color *= newPeak / peak;
-
-    float g = 1. - 1. / (desaturation * (peak - newPeak) + 1.);
-    return mix(color, newPeak * vec3(1, 1, 1), g);
-}
-
 void main()
 {
     const uint geomIndex = gl_GeometryIndexEXT;
@@ -182,12 +146,11 @@ void main()
     GPUMaterial mat = materials[nonuniformEXT(node.materialIndex)];
 
     vec3 baseColor = mat.baseColor.rgb;
-    vec3 ambientColor = mat.ambientColor.rgb;
     vec3 emissiveColor = mat.emissiveIntensity.rgb * mat.emissiveIntensity.a;
     vec3 lightColor = lightColorIntensity.rgb * lightColorIntensity.a;
 
-    bool isLight = length(emissiveColor) > 0.0;
-    if (isLight) {
+    // Light surface hit -> return emissive
+    if (length(emissiveColor) > 0.0) {
         hitValue = emissiveColor;
         return;
     }
@@ -207,42 +170,52 @@ void main()
     vec3 worldPos = v0.position * bary.x + v1.position * bary.y + v2.position * bary.z;
     vec3 normal   = normalize(v0.normal * bary.x + v1.normal * bary.y + v2.normal * bary.z);
 
-    // Sample point on area light
+    // --- sample point on area light
     vec3 p0 = lightVertices[0].xyz;
     vec3 p1 = lightVertices[1].xyz;
     vec3 p2 = lightVertices[2].xyz;
     vec3 p3 = lightVertices[3].xyz;
 
-    // Random numbers
     float r1 = rand(vec2(gl_LaunchIDEXT.xy) + float(gl_PrimitiveID));
     float r2 = rand(vec2(gl_LaunchIDEXT.yx) + float(gl_PrimitiveID) * 0.37);
+    // vec3 samplePos = mix(mix(p0, p1, r1), mix(p3, p2, r1), r2);
 
-    // bilinear interpolate on quad
-    vec3 samplePos = mix(mix(p0, p1, r1), mix(p3, p2, r1), r2);
+    // NOTE: Fallback to point light here.
+    // TODO: Monte Carlo sampling & TAA
+    vec3 samplePos = 0.25 * (p0 + p1 + p2 + p3);
 
     vec3 toLight = samplePos - worldPos;
     float dist   = length(toLight);
     vec3 lightDir = normalize(toLight);
-    
-    shadowed = false;
+
+    // shadow test
+    float tmin = 1e-5;
+    float tmax = dist - 1e-3;
+	vec3 origin = worldPos + normal * 1e-5;
+    shadowed = true;
     traceRayEXT(topLevelAS,
-                gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT,
-                0xff, 1, 0, 1,
-                worldPos + normal * 1e-6, 1e-6, lightDir, dist - 1e-4, 1);
+                gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT,
+                0xff,
+                0,
+                0,
+                1, // missGroupIndex = 1
+                origin,
+                tmin,
+                lightDir, 
+                tmax,
+                1); // shadow payload location = 1
 
     float NdotL = max(dot(normal, lightDir), 0.0);
     vec3 directLighting = vec3(0.0);
-    
+
     if (!shadowed) {
         float area = length(cross(p1 - p0, p3 - p0));
         vec3 lightNormal = normalize(cross(p1 - p0, p3 - p0));
-        float cosThetaL = max(dot(lightNormal, -lightDir), 0.0); // Single sided light
+        float cosThetaL = max(dot(lightNormal, -lightDir), 0.0);
         directLighting = lightColor * NdotL * cosThetaL * area / (dist * dist);
-        // directLighting = lightColor * NdotL * area / (dist * dist);
     }
 
-    hitValue = toneMappingKhronosPbrNeutral(baseColor * directLighting);
-    // hitValue = vec3(shadowed ? 0.0 : 1.0);
+    hitValue = baseColor * directLighting;
 }
 )";
 
@@ -287,17 +260,15 @@ public:
 
         // Create raytracing pipeline
         m_Pipeline = rhi::RaytracingPipeline::Builder {}
-                         .setMaxRecursionDepth(2) // primary + shadow
-                         .addShader(rhi::ShaderType::eRayGen, {.code = raygenCode})
-                         .addShader(rhi::ShaderType::eMiss, {.code = missCode})             // missGroup[0] primary ray
-                         .addShader(rhi::ShaderType::eMiss, {.code = shadowMissCode})       // missGroup[1] shadow ray
-                         .addShader(rhi::ShaderType::eClosestHit, {.code = closestHitCode}) // hitGroup[0]
-                         .addShader(rhi::ShaderType::eClosestHit, {.code = shadowClosestHitCode}) // hitGroup[1]
+                         .setMaxRecursionDepth(2)                                           // primary + shadow
+                         .addShader(rhi::ShaderType::eRayGen, {.code = raygenCode})         // raygenGroup[0]
+                         .addShader(rhi::ShaderType::eMiss, {.code = missCode})             // missGroup[0] primary
+                         .addShader(rhi::ShaderType::eMiss, {.code = shadowMissCode})       // missGroup[1] shadow
+                         .addShader(rhi::ShaderType::eClosestHit, {.code = closestHitCode}) // hitGroup[0] primary hit
                          .addRaygenGroup(0)
-                         .addMissGroup(1) // miss for primary
-                         .addMissGroup(2) // miss for shadow ray
-                         .addHitGroup(3)  // hit for primary
-                         .addHitGroup(4)  // hit for shadow ray
+                         .addMissGroup(1) // miss group 0
+                         .addMissGroup(2) // miss group 1 (shadow)
+                         .addHitGroup(3)  // only primary hit group
                          .build(*m_RenderDevice);
 
         // Create SBT
