@@ -93,6 +93,12 @@ namespace
                 return vk::IndexType::eNoneKHR;
         }
     }
+
+    [[nodiscard]] bool isRaytracingOrRayQueryEnabled(const vultra::rhi::RenderDeviceFeatureFlagBits featureFlag)
+    {
+        return HasFlagValues(featureFlag, vultra::rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
+               HasFlagValues(featureFlag, vultra::rhi::RenderDeviceFeatureFlagBits::eRayQuery);
+    }
 } // namespace
 
 namespace
@@ -357,7 +363,7 @@ namespace vultra
 
             vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst;
 
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline))
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
                 usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress |
                          vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
@@ -383,7 +389,7 @@ namespace vultra
 
             vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst;
 
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline))
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
                 usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress |
                          vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
@@ -1096,9 +1102,11 @@ namespace vultra
             // Acceleration Structure & BDA if RayQuery or RayTracingPipeline is enabled
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};
             vk::PhysicalDeviceBufferDeviceAddressFeatures      bufferDeviceAddressFeatures {};
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayQuery) ||
-                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline))
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
+                // Required by Acceleration Structure
+                extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+
                 extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
                 extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 
@@ -1134,7 +1142,6 @@ namespace vultra
             if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline))
             {
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
-                extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
 
                 // Enable raytracing pipeline features
                 rayTracingFeatures.rayTracingPipeline = VK_TRUE;
@@ -1264,9 +1271,9 @@ namespace vultra
             allocatorInfo.instance         = m_Instance;
             allocatorInfo.pVulkanFunctions = &functions;
 
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline))
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
-                // When using raytracing, we need to enable the buffer device address feature
+                // When using raytracing or ray query, we need to enable the buffer device address feature
                 allocatorInfo.flags |= vma::AllocatorCreateFlagBits::eBufferDeviceAddress;
             }
 
@@ -1306,7 +1313,7 @@ namespace vultra
                 {vk::DescriptorType::eInputAttachment, 100},
             };
 
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline))
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
                 poolSizes.emplace_back(vk::DescriptorType::eStorageBufferDynamic, 100);
                 poolSizes.emplace_back(vk::DescriptorType::eAccelerationStructureKHR, 100);
@@ -1383,7 +1390,7 @@ namespace vultra
                                   allocateCommandBuffer(),
                                   m_TracyContext,
                                   createFence(),
-                                  HasFlagValues(m_FeatureFlag, rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline)};
+                                  isRaytracingOrRayQueryEnabled(m_FeatureFlag)};
         }
 
         RenderDevice& RenderDevice::execute(const std::function<void(CommandBuffer&)>& f, bool oneTime)
@@ -1609,7 +1616,7 @@ namespace vultra
                                                                           uint32_t vertexCount,
                                                                           uint32_t indexCount)
         {
-            VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline),
+            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(m_FeatureFlag),
                                "[RenderDevice] Raytracing Pipeline feature is not enabled!");
             VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
                                "[RenderDevice] Acceleration Structure feature is not enabled!");
@@ -1675,7 +1682,7 @@ namespace vultra
 
         AccelerationStructure RenderDevice::createBuildRenderMeshBLAS(std::vector<RenderSubMesh>& subMeshes)
         {
-            VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline),
+            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(m_FeatureFlag),
                                "[RenderDevice] Raytracing Pipeline feature is not enabled!");
             VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
                                "[RenderDevice] Acceleration Structure feature is not enabled!");
@@ -1761,9 +1768,9 @@ namespace vultra
         }
 
         AccelerationStructure RenderDevice::createBuildTLAS(const AccelerationStructure& referenceBLAS,
-                                                                          const glm::mat4&             transform)
+                                                            const glm::mat4&             transform)
         {
-            VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline),
+            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(m_FeatureFlag),
                                "[RenderDevice] Raytracing Pipeline feature is not enabled!");
             VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
                                "[RenderDevice] Acceleration Structure feature is not enabled!");

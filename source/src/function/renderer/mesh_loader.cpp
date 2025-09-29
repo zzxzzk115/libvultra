@@ -359,13 +359,40 @@ namespace vultra
                     tryGet(props, AI_MATKEY_OPACITY, d);
                     tryGet(props, AI_MATKEY_REFRACTI, Ni);
 
-                    pbrMat.baseColor      = glm::vec4(kd.r, kd.g, kd.b, d);
+                    pbrMat.baseColor      = glm::vec4(kd.r, kd.g, kd.b, 1.0);
+                    pbrMat.opacity        = d;
+                    pbrMat.blendState     = d < 1.0f ? toBlendState(aiBlendMode::aiBlendMode_Default) : kNoBlend;
                     pbrMat.metallicFactor = std::clamp(
                         (0.2126f * ks.r + 0.7152f * ks.g + 0.0722f * ks.b - 0.04f) / (1.0f - 0.04f), 0.0f, 1.0f);
                     pbrMat.roughnessFactor        = glm::clamp(std::sqrt(2.0f / (Ns + 2.0f)), 0.04f, 1.0f);
                     pbrMat.emissiveColorIntensity = glm::vec4(ke.r, ke.g, ke.b, emissiveIntensity);
                     pbrMat.ior                    = Ni;
                     pbrMat.ambientColor           = glm::vec4(ka.r, ka.g, ka.b, 1.0f);
+
+                    // Override with common PBR extensions if present
+                    aiColor4D baseColorFactorPBR(1, 1, 1, 1), emissiveIntensityPBR(0, 0, 0, 1);
+                    float     metallicFactorPBR  = 0.0f;
+                    float     roughnessFactorPBR = 0.5f;
+                    if (tryGet(props, AI_MATKEY_BASE_COLOR, baseColorFactorPBR))
+                    {
+                        pbrMat.baseColor =
+                            glm::vec4(baseColorFactorPBR.r, baseColorFactorPBR.g, baseColorFactorPBR.b, 1.0);
+                    }
+                    if (tryGet(props, AI_MATKEY_METALLIC_FACTOR, metallicFactorPBR))
+                    {
+                        pbrMat.metallicFactor = metallicFactorPBR;
+                    }
+                    if (tryGet(props, AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactorPBR))
+                    {
+                        pbrMat.roughnessFactor = roughnessFactorPBR;
+                    }
+                    if (tryGet(props, AI_MATKEY_EMISSIVE_INTENSITY, emissiveIntensityPBR))
+                    {
+                        pbrMat.emissiveColorIntensity = glm::vec4(emissiveIntensityPBR.r,
+                                                                  emissiveIntensityPBR.g,
+                                                                  emissiveIntensityPBR.b,
+                                                                  emissiveIntensityPBR.a);
+                    }
 
                     // Textures
                     pbrMat.albedoIndex            = loadTexture(material, aiTextureType_DIFFUSE);
@@ -446,8 +473,9 @@ namespace vultra
                 },
                 true);
 
-            // Build the render mesh for ray tracing if supported
-            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline))
+            // Build the render mesh for ray tracing or ray query if supported
+            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
+                HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayQuery))
             {
                 mesh.buildRenderMesh(rd);
             }
@@ -468,7 +496,8 @@ namespace vultra
                             const auto& v = mesh.vertices[sm.vertexOffset + vi];
                             vertices.push_back(v);
                         }
-                        mesh.lights.push_back({.vertices = std::move(vertices), .colorIntensity = mat.emissiveColorIntensity});
+                        mesh.lights.push_back(
+                            {.vertices = std::move(vertices), .colorIntensity = mat.emissiveColorIntensity});
                         VULTRA_CORE_INFO(
                             "[MeshLoader] Found light mesh in sub-mesh {}, material {}, total light vertices {}",
                             sm.name,

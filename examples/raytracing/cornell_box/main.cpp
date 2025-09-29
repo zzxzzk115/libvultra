@@ -402,6 +402,18 @@ public:
 
     void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
     {
+        // Skip rendering if resizing is not finished
+        if (rtv.texture.getExtent() != m_OutputImage.getExtent())
+        {
+            VULTRA_CLIENT_TRACE("RTV size ({}, {}) != Output Image size ({}, {}), skipping rendering this frame",
+                                rtv.texture.getExtent().width,
+                                rtv.texture.getExtent().height,
+                                m_OutputImage.getExtent().width,
+                                m_OutputImage.getExtent().height);
+            ImGuiApp::onRender(cb, rtv, dt);
+            return;
+        }
+
         // Record raytracing commands
         rhi::prepareForRaytracing(cb, m_OutputImage);
 
