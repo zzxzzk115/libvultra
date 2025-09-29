@@ -139,6 +139,40 @@ float rand(vec2 co) {
     return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
+const float kGamma = 2.4;
+const float kInvGamma = 1.0 / kGamma;
+
+vec3 linearTosRGB(vec3 color) {
+    #if 1
+  const bvec3 cutoff = lessThan(color, vec3(0.0031308));
+    const vec3 higher = 1.055 * pow(color, vec3(kInvGamma)) - 0.055;
+    const vec3 lower = color * 12.92;
+    return mix(higher, lower, cutoff);
+    #else
+  return pow(color, vec3(kInvGamma));
+    #endif
+}
+
+vec3 toneMappingKhronosPbrNeutral(vec3 color)
+{
+    const float startCompression = 0.8 - 0.04;
+    const float desaturation = 0.15;
+
+    float x = min(color.r, min(color.g, color.b));
+    float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+    color -= offset;
+
+    float peak = max(color.r, max(color.g, color.b));
+    if (peak < startCompression) return color;
+
+    const float d = 1. - startCompression;
+    float newPeak = 1. - d * d / (peak + d - startCompression);
+    color *= newPeak / peak;
+
+    float g = 1. - 1. / (desaturation * (peak - newPeak) + 1.);
+    return mix(color, newPeak * vec3(1, 1, 1), g);
+}
+
 void main()
 {
     const uint geomIndex = gl_GeometryIndexEXT;
@@ -215,7 +249,7 @@ void main()
         directLighting = lightColor * NdotL * cosThetaL * area / (dist * dist);
     }
 
-    hitValue = baseColor * directLighting;
+    hitValue = linearTosRGB(toneMappingKhronosPbrNeutral(baseColor * directLighting));
 }
 )";
 
