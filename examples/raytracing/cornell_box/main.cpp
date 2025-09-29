@@ -274,7 +274,7 @@ public:
     explicit RaytracingCornellBoxApp(const std::span<char*>& args) :
         ImGuiApp(args,
                  {.title                   = "Raytracing Cornell Box Example",
-                  .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eRaytracingPipeline,
+                  .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline,
                   .vSyncConfig             = rhi::VerticalSync::eEnabled},
                  {.enableDocking = false})
     {
@@ -293,7 +293,7 @@ public:
         m_TLAS = m_RenderDevice->createBuildSingleGeometryTLAS(m_MeshResource->renderMesh.blas, kTransform);
 
         // Create raytracing pipeline
-        m_Pipeline = rhi::RaytracingPipeline::Builder {}
+        m_Pipeline = rhi::RayTracingPipeline::Builder {}
                          .setMaxRecursionDepth(2)                                           // primary + shadow
                          .addShader(rhi::ShaderType::eRayGen, {.code = raygenCode})         // raygenGroup[0]
                          .addShader(rhi::ShaderType::eMiss, {.code = missCode})             // missGroup[0] primary
@@ -482,7 +482,7 @@ private:
 
     rhi::Buffer                m_TransformBuffer;
     rhi::AccelerationStructure m_TLAS;
-    rhi::RaytracingPipeline    m_Pipeline;
+    rhi::RayTracingPipeline    m_Pipeline;
     rhi::ShaderBindingTable    m_SBT;
     rhi::Texture               m_OutputImage;
 

@@ -32,39 +32,39 @@ namespace vultra
             }
         } // namespace
 
-        RaytracingPipeline::Builder::Builder()
+        RayTracingPipeline::Builder::Builder()
         {
             m_ShaderStages.reserve(8);
             m_Groups.reserve(8);
         }
 
-        RaytracingPipeline::Builder& RaytracingPipeline::Builder::setPipelineLayout(PipelineLayout pipelineLayout)
+        RayTracingPipeline::Builder& RayTracingPipeline::Builder::setPipelineLayout(PipelineLayout pipelineLayout)
         {
             m_PipelineLayout = std::move(pipelineLayout);
             return *this;
         }
 
-        RaytracingPipeline::Builder& RaytracingPipeline::Builder::setMaxRecursionDepth(uint32_t depth)
+        RayTracingPipeline::Builder& RayTracingPipeline::Builder::setMaxRecursionDepth(uint32_t depth)
         {
             m_MaxRecursionDepth = depth;
             return *this;
         }
 
-        RaytracingPipeline::Builder& RaytracingPipeline::Builder::addShader(const ShaderType       type,
+        RayTracingPipeline::Builder& RayTracingPipeline::Builder::addShader(const ShaderType       type,
                                                                             const ShaderStageInfo& stageInfo)
         {
             m_ShaderStages.push_back({type, stageInfo});
             return *this;
         }
 
-        RaytracingPipeline::Builder& RaytracingPipeline::Builder::addBuiltinShader(const ShaderType type,
+        RayTracingPipeline::Builder& RayTracingPipeline::Builder::addBuiltinShader(const ShaderType type,
                                                                                    const SPIRV&     spv)
         {
             m_BuiltinShaderStages.push_back({type, spv});
             return *this;
         }
 
-        RaytracingPipeline::Builder& RaytracingPipeline::Builder::addRaygenGroup(uint32_t shaderIndex)
+        RayTracingPipeline::Builder& RayTracingPipeline::Builder::addRaygenGroup(uint32_t shaderIndex)
         {
             uint32_t groupIndex = static_cast<uint32_t>(m_Groups.size());
             m_Groups.push_back({.type = vk::RayTracingShaderGroupTypeKHR::eGeneral, .generalShader = shaderIndex});
@@ -72,7 +72,7 @@ namespace vultra
             return *this;
         }
 
-        RaytracingPipeline::Builder& RaytracingPipeline::Builder::addMissGroup(uint32_t shaderIndex)
+        RayTracingPipeline::Builder& RayTracingPipeline::Builder::addMissGroup(uint32_t shaderIndex)
         {
             uint32_t groupIndex = static_cast<uint32_t>(m_Groups.size());
             m_Groups.push_back({.type = vk::RayTracingShaderGroupTypeKHR::eGeneral, .generalShader = shaderIndex});
@@ -80,8 +80,8 @@ namespace vultra
             return *this;
         }
 
-        RaytracingPipeline::Builder&
-        RaytracingPipeline::Builder::addHitGroup(uint32_t                closestHitShader,
+        RayTracingPipeline::Builder&
+        RayTracingPipeline::Builder::addHitGroup(uint32_t                closestHitShader,
                                                  std::optional<uint32_t> anyHitShader,
                                                  std::optional<uint32_t> intersectionShader)
         {
@@ -95,7 +95,7 @@ namespace vultra
             return *this;
         }
 
-        RaytracingPipeline::Builder& RaytracingPipeline::Builder::addCallableGroup(uint32_t shaderIndex)
+        RayTracingPipeline::Builder& RayTracingPipeline::Builder::addCallableGroup(uint32_t shaderIndex)
         {
             uint32_t groupIndex = static_cast<uint32_t>(m_Groups.size());
             m_Groups.push_back({.type = vk::RayTracingShaderGroupTypeKHR::eGeneral, .generalShader = shaderIndex});
@@ -103,7 +103,7 @@ namespace vultra
             return *this;
         }
 
-        RaytracingPipeline RaytracingPipeline::Builder::build(RenderDevice& rd)
+        RayTracingPipeline RayTracingPipeline::Builder::build(RenderDevice& rd)
         {
             assert(!m_ShaderStages.empty());
             assert(!m_Groups.empty());
@@ -184,7 +184,7 @@ namespace vultra
                 throw std::runtime_error("Failed to create raytracing pipeline");
             }
 
-            return RaytracingPipeline {rd.m_Device,
+            return RayTracingPipeline {rd.m_Device,
                                        std::move(m_PipelineLayout),
                                        result.value,
                                        std::move(m_Groups),
@@ -192,10 +192,10 @@ namespace vultra
                                        std::move(m_MissGroupIndices),
                                        std::move(m_HitGroupIndices),
                                        std::move(m_CallableGroupIndices),
-                                       rd.m_RaytracingPipelineProperties};
+                                       rd.m_RayTracingPipelineProperties};
         }
 
-        RaytracingPipeline::RaytracingPipeline(const vk::Device                                  device,
+        RayTracingPipeline::RayTracingPipeline(const vk::Device                                  device,
                                                PipelineLayout&&                                  pipelineLayout,
                                                const vk::Pipeline                                handle,
                                                std::vector<RaytracingShaderGroup>&&              groups,
@@ -209,8 +209,8 @@ namespace vultra
             m_HitGroupIndices(std::move(hitGroupIndices)), m_CallableGroupIndices(std::move(callableGroupIndices))
         {}
 
-        uint32_t RaytracingPipeline::getShaderGroupHandleSize() const { return m_Props.shaderGroupHandleSize; }
+        uint32_t RayTracingPipeline::getShaderGroupHandleSize() const { return m_Props.shaderGroupHandleSize; }
 
-        uint32_t RaytracingPipeline::getShaderGroupBaseAlignment() const { return m_Props.shaderGroupBaseAlignment; }
+        uint32_t RayTracingPipeline::getShaderGroupBaseAlignment() const { return m_Props.shaderGroupBaseAlignment; }
     } // namespace rhi
 } // namespace vultra

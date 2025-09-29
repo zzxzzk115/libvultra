@@ -93,7 +93,7 @@ public:
     explicit RaytracingTriangleApp(const std::span<char*>& args) :
         ImGuiApp(args,
                  {.title                   = "Raytracing Triangle Example",
-                  .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eRaytracingPipeline,
+                  .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline,
                   .vSyncConfig             = rhi::VerticalSync::eEnabled},
                  {.enableDocking = false})
     {
@@ -157,7 +157,7 @@ public:
         m_TLAS = m_RenderDevice->createBuildSingleGeometryTLAS(m_BLAS, kTransform);
 
         // Create raytracing pipeline
-        m_Pipeline = rhi::RaytracingPipeline::Builder {}
+        m_Pipeline = rhi::RayTracingPipeline::Builder {}
                          .setMaxRecursionDepth(1)
                          .addShader(rhi::ShaderType::eRayGen, {.code = raygenCode})
                          .addShader(rhi::ShaderType::eMiss, {.code = missCode})
@@ -251,7 +251,7 @@ private:
     rhi::IndexBuffer           m_IndexBuffer;
     rhi::Buffer                m_TransformBuffer;
     rhi::AccelerationStructure m_BLAS, m_TLAS;
-    rhi::RaytracingPipeline    m_Pipeline;
+    rhi::RayTracingPipeline    m_Pipeline;
     rhi::ShaderBindingTable    m_SBT;
     rhi::Texture               m_OutputImage;
 };

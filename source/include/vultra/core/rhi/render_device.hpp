@@ -52,11 +52,13 @@ namespace vultra
         enum class RenderDeviceFeatureFlagBits : uint32_t
         {
             eNormal             = 0,
-            eRaytracingPipeline = BIT(0),
-            eMeshShader         = BIT(1),
-            eOpenXR             = BIT(2),
+            eRayQuery           = BIT(0),
+            eRayTracingPipeline = BIT(1),
+            eMeshShader         = BIT(2),
+            eOpenXR             = BIT(3),
 
-            eAll = eNormal | eRaytracingPipeline | eMeshShader | eOpenXR,
+            eRayTracing = eRayQuery | eRayTracingPipeline,
+            eAll        = eNormal | eRayQuery | eRayTracingPipeline | eMeshShader | eOpenXR,
         };
 
         struct PhysicalDeviceInfo
@@ -89,7 +91,7 @@ namespace vultra
         class RenderDevice final
         {
             friend class GraphicsPipeline;
-            friend class RaytracingPipeline;
+            friend class RayTracingPipeline;
             friend class imgui::ImGuiRenderer;
             friend class openxr::XRHeadset;
             friend class gfx::MeshLoader;
@@ -222,12 +224,12 @@ namespace vultra
 
             [[nodiscard]] TransformBuffer createTransformBuffer(AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] ShaderBindingTable createShaderBindingTable(const rhi::RaytracingPipeline& pipeline,
+            [[nodiscard]] ShaderBindingTable createShaderBindingTable(const rhi::RayTracingPipeline& pipeline,
                                                                       AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] uint64_t getBufferDeviceAddress(const Buffer&) const;
 
-            [[nodiscard]] RaytracingPipelineProperties getRaytracingPipelineProperties() const;
+            [[nodiscard]] RayTracingPipelineProperties getRayTracingPipelineProperties() const;
 
             // For the OpenXR
             openxr::XRDevice* getXRDevice() const { return m_XRDevice; }
@@ -277,7 +279,7 @@ namespace vultra
             vk::DescriptorPool         m_DefaultDescriptorPool {nullptr};
 
             // Raytracing properties and features
-            vk::PhysicalDeviceRayTracingPipelinePropertiesKHR  m_RaytracingPipelineProperties;
+            vk::PhysicalDeviceRayTracingPipelinePropertiesKHR  m_RayTracingPipelineProperties;
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR m_AccelerationStructureFeatures;
 
             TracyVkCtx m_TracyContext {nullptr};

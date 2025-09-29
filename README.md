@@ -86,7 +86,7 @@ Step-by-Step:
   - [x] DDS
   - [x] EXR
 - [x] ECS-based scene management with EnTT
-- [ ] Raytracing Pipeline
+- [x] Raytracing Pipeline
 - [ ] Mesh Shading Pipeline
 - [ ] Resource Pipeline
 - [ ] Lua or C# Scripting System

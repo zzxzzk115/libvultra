@@ -6,7 +6,7 @@ namespace vultra
 {
     namespace rhi
     {
-        struct RaytracingPipelineProperties
+        struct RayTracingPipelineProperties
         {
             uint32_t shaderGroupHandleSize;
             uint32_t maxRayRecursionDepth;

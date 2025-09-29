@@ -63,6 +63,9 @@ namespace vultra
 
                 eInsideRenderPass  = BIT(3),
                 eOutsideRenderPass = BIT(4),
+
+                eRayTracingPipeline      = BIT(5),
+                eValidRayTracingPipeline = eValidPipeline | eRayTracingPipeline,
             };
 
         public:

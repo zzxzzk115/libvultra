@@ -447,7 +447,7 @@ namespace vultra
                 true);
 
             // Build the render mesh for ray tracing if supported
-            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRaytracingPipeline))
+            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline))
             {
                 mesh.buildRenderMesh(rd);
             }

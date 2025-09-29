@@ -23,17 +23,17 @@ namespace vultra
             uint32_t intersectionShader {VK_SHADER_UNUSED_KHR};
         };
 
-        class RaytracingPipeline final : public BasePipeline
+        class RayTracingPipeline final : public BasePipeline
         {
             friend class RenderDevice;
 
         public:
-            RaytracingPipeline()                              = default;
-            RaytracingPipeline(const RaytracingPipeline&)     = delete;
-            RaytracingPipeline(RaytracingPipeline&&) noexcept = default;
+            RayTracingPipeline()                              = default;
+            RayTracingPipeline(const RayTracingPipeline&)     = delete;
+            RayTracingPipeline(RayTracingPipeline&&) noexcept = default;
 
-            RaytracingPipeline& operator=(const RaytracingPipeline&)     = delete;
-            RaytracingPipeline& operator=(RaytracingPipeline&&) noexcept = default;
+            RayTracingPipeline& operator=(const RayTracingPipeline&)     = delete;
+            RayTracingPipeline& operator=(RayTracingPipeline&&) noexcept = default;
 
             constexpr vk::PipelineBindPoint getBindPoint() const override
             {
@@ -75,7 +75,7 @@ namespace vultra
                                      std::optional<uint32_t> intersectionShader = std::nullopt);
                 Builder& addCallableGroup(uint32_t shaderIndex);
 
-                [[nodiscard]] RaytracingPipeline build(RenderDevice&);
+                [[nodiscard]] RayTracingPipeline build(RenderDevice&);
 
             private:
                 PipelineLayout m_PipelineLayout;
@@ -92,7 +92,7 @@ namespace vultra
             };
 
         private:
-            RaytracingPipeline(const vk::Device                                  device,
+            RayTracingPipeline(const vk::Device                                  device,
                                PipelineLayout&&                                  pipelineLayout,
                                const vk::Pipeline                                handle,
                                std::vector<RaytracingShaderGroup>&&              groups,

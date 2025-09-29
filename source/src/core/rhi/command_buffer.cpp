@@ -199,7 +199,7 @@ namespace vultra
             {
                 assert(m_Handle);
 
-                VK_CHECK(m_Device.waitForFences(1, &m_Fence, true, std::numeric_limits<uint64_t>::max()),
+                VK_CHECK(m_Device.waitForFences(1, &m_Fence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
                          "CommandBuffer",
                          "Failed to wait for fence");
 
@@ -247,7 +247,7 @@ namespace vultra
 
         CommandBuffer& CommandBuffer::traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent)
         {
-            assert(invariant(State::eRecording, InvariantFlags::eValidPipeline));
+            assert(invariant(State::eRecording, InvariantFlags::eValidRayTracingPipeline));
 
             TRACY_GPU_ZONE2_("TraceRays");
             flushBarriers();
@@ -788,6 +788,11 @@ namespace vultra
             {
                 assert(m_Pipeline);
                 valid |= m_Pipeline->getBindPoint() == vk::PipelineBindPoint::eCompute;
+            }
+            if (static_cast<bool>(flags & InvariantFlags::eRayTracingPipeline))
+            {
+                assert(m_Pipeline);
+                valid |= m_Pipeline->getBindPoint() == vk::PipelineBindPoint::eRayTracingKHR;
             }
             if (static_cast<bool>(flags & InvariantFlags::eInsideRenderPass))
             {
