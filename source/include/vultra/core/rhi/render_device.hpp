@@ -214,7 +214,7 @@ namespace vultra
             [[nodiscard]] AccelerationStructure createBuildRenderMeshBLAS(std::vector<RenderSubMesh>& subMeshes);
 
             [[nodiscard]] AccelerationStructure
-            createBuildSingleGeometryTLAS(const AccelerationStructure& referenceBLAS, const glm::mat4& transform);
+            createBuildTLAS(const AccelerationStructure& referenceBLAS, const glm::mat4& transform);
 
             [[nodiscard]] ScratchBuffer createScratchBuffer(uint64_t size,
                                                             AllocationHints = AllocationHints::eNone) const;

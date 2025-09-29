@@ -154,7 +154,7 @@ public:
                                                                kIndices.size());
 
         // Create and build TLAS
-        m_TLAS = m_RenderDevice->createBuildSingleGeometryTLAS(m_BLAS, kTransform);
+        m_TLAS = m_RenderDevice->createBuildTLAS(m_BLAS, kTransform);
 
         // Create raytracing pipeline
         m_Pipeline = rhi::RayTracingPipeline::Builder {}

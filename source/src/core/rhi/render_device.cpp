@@ -1760,7 +1760,7 @@ namespace vultra
             return blas;
         }
 
-        AccelerationStructure RenderDevice::createBuildSingleGeometryTLAS(const AccelerationStructure& referenceBLAS,
+        AccelerationStructure RenderDevice::createBuildTLAS(const AccelerationStructure& referenceBLAS,
                                                                           const glm::mat4&             transform)
         {
             VULTRA_CORE_ASSERT(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline),
