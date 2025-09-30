@@ -454,6 +454,19 @@ namespace vultra
 
         XrFovf XRHeadset::getEyeFOV(size_t eyeIndex) const { return m_EyeFOVs.at(eyeIndex); }
 
+        float XRHeadset::getIPD() const
+        {
+            if (m_EyePoses.size() < 2)
+            {
+                VULTRA_CORE_WARN("[XRHeadset] Cannot get IPD with less than 2 eyes.");
+                return 0.0f;
+            }
+
+            glm::vec3 leftEyePos  = getEyePosition(0);
+            glm::vec3 rightEyePos = getEyePosition(1);
+            return glm::length(rightEyePos - leftEyePos);
+        }
+
         XRHeadset::StereoRenderTargetView& XRHeadset::getSwapchainStereoRenderTargetView(size_t index)
         {
             return m_SwapchainStereoRenderTargetViews.at(index);

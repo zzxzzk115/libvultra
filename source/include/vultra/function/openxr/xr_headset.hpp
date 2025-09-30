@@ -62,6 +62,8 @@ namespace vultra
             [[nodiscard]] glm::mat4     getEyeViewMatrix(size_t eyeIndex) const;
             [[nodiscard]] XrFovf        getEyeFOV(size_t eyeIndex) const;
 
+            [[nodiscard]] float getIPD() const;
+
             [[nodiscard]] size_t                  getSwapchainCount() const { return m_SwapchainImages.size(); }
             [[nodiscard]] StereoRenderTargetView& getSwapchainStereoRenderTargetView(size_t index);
             [[nodiscard]] static rhi::PixelFormat getSwapchainPixelFormat();

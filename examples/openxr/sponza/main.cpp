@@ -12,9 +12,11 @@
 
 #include <imgui.h>
 
-const char* MODEL_ENTITY_NAME = "Sponza";
-const char* MODEL_PATH        = "resources/models/Sponza/Sponza.gltf";
-const char* ENV_MAP_PATH      = "resources/textures/environment_maps/citrus_orchard_puresky_1k.hdr";
+const char*     MODEL_ENTITY_NAME = "Sponza";
+const char*     MODEL_PATH        = "resources/models/Sponza/Sponza.gltf";
+const char*     ENV_MAP_PATH      = "resources/textures/environment_maps/citrus_orchard_puresky_1k.hdr";
+const glm::vec4 FILL_COLOR        = glm::vec4(0.0f, 1.0f, 1.0f, 0.3f);
+const glm::vec4 OUTLINE_COLOR     = glm::vec4(0.0f, 0.2f, 0.4f, 0.5f);
 
 using namespace vultra;
 
@@ -33,7 +35,10 @@ public:
 
         // Main Camera, will be overridden by XR cameras
         // TODO: Move skybox logic to global <EnvironmentComponent>
-        auto  camera                       = m_LogicScene.createMainCamera();
+        auto  camera                      = m_LogicScene.createMainCamera();
+        auto& cameraTransformComponent    = camera.getComponent<TransformComponent>();
+        cameraTransformComponent.position = glm::vec3(8.0f, 1.5f, 0.0f);
+        cameraTransformComponent.setRotationEuler(glm::vec3(0.0f, glm::radians(-90.0f), 0.0f));
         auto& cameraComponent              = camera.getComponent<CameraComponent>();
         cameraComponent.clearFlags         = CameraClearFlags::eSkybox;
         cameraComponent.environmentMapPath = ENV_MAP_PATH;
@@ -163,12 +168,12 @@ public:
                 glm::vec3 origin  = xrutils::toVec3(gazePose.position);
                 glm::vec3 forward = xrutils::toQuat(gazePose.orientation) * glm::vec3(0, 0, -1);
 
-                const auto drawPerEyeCircle = [&](const rhi::Texture&      target,
+                const auto drawPerEyeCircle = [&](rhi::Texture&            target,
                                                   const glm::mat4&         viewMatrix,
                                                   const glm::mat4&         projMatrix,
                                                   const XrCameraComponent& eyeCamera,
-                                                  bool                     isLeftEye) {
-                    // Raycast to left eye near plane
+                                                  float                    xOffset = 0.0f) {
+                    // Raycast to one eye's near plane
                     glm::vec3 originVS = glm::vec3(viewMatrix * glm::vec4(origin, 1.0));
                     glm::vec3 dirVS    = glm::mat3(viewMatrix) * forward;
 
@@ -182,33 +187,21 @@ public:
                     // NDC to Screen Space
                     const auto& extent = target.getExtent();
                     glm::vec2   screenSpacePos {
-                        (ndc.x * 0.5f + 0.5f) * extent.width,
-                        (1.0f - (ndc.y * 0.5f + 0.5f)) * extent.height,
+                        ((ndc.x + xOffset) * 0.5f + 0.5f) * extent.width,
+                        (ndc.y * 0.5f + 0.5f) * extent.height,
                     };
 
-                    VULTRA_CLIENT_TRACE("Gaze ({} screen): ({:.1f}, {:.1f})",
-                                        isLeftEye ? "left" : "right",
-                                        screenSpacePos.x,
-                                        screenSpacePos.y);
-                    // TODO: Draw circle API
-                    // Will add to draw list
-                    // m_Renderer.drawCircleFilled(cb, target.texture, screenSpacePos, 20.0f, glm::vec4(1.0));
+                    // Draw circle API
+                    m_Renderer.drawCircleFilled(&target, screenSpacePos, 100.0f, FILL_COLOR, OUTLINE_COLOR, 5.0f);
                 };
 
                 // Left Eye
-                drawPerEyeCircle(leftRTV, leftEyeViewMatrix, leftEyeProjMatrix, leftEyeCamera, true);
+                drawPerEyeCircle(leftRTV, leftEyeViewMatrix, leftEyeProjMatrix, leftEyeCamera, -0.25f);
 
                 // Right Eye
-                drawPerEyeCircle(rightRTV, rightEyeViewMatrix, rightEyeProjMatrix, rightEyeCamera, false);
+                drawPerEyeCircle(rightRTV, rightEyeViewMatrix, rightEyeProjMatrix, rightEyeCamera, 0.25f);
             }
         }
-
-        glm::vec4 fillColor    = glm::vec4(0.0f, 1.0f, 1.0f, 0.3f);
-        glm::vec4 outlineColor = glm::vec4(0.0f, 0.2f, 0.4f, 0.5f);
-
-        // Test draw circle API
-        m_Renderer.drawCircleFilled(&leftRTV, glm::vec2(100, 100), 100.0f, fillColor, outlineColor, 5.0f);
-        m_Renderer.drawCircleFilled(&rightRTV, glm::vec2(200, 100), 50.0f, fillColor, outlineColor, 10.0f);
 
         m_Renderer.endFrame();
     }
