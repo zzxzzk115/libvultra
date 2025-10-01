@@ -213,8 +213,8 @@ namespace vultra
             // For render mesh BLAS, e.g., multiple sub-meshes
             [[nodiscard]] AccelerationStructure createBuildRenderMeshBLAS(std::vector<RenderSubMesh>& subMeshes);
 
-            [[nodiscard]] AccelerationStructure
-            createBuildTLAS(const AccelerationStructure& referenceBLAS, const glm::mat4& transform);
+            [[nodiscard]] AccelerationStructure createBuildTLAS(const AccelerationStructure& referenceBLAS,
+                                                                const glm::mat4&             transform);
 
             [[nodiscard]] ScratchBuffer createScratchBuffer(uint64_t size,
                                                             AllocationHints = AllocationHints::eNone) const;
@@ -235,9 +235,10 @@ namespace vultra
             openxr::XRDevice* getXRDevice() const { return m_XRDevice; }
 
             // Bindless
-            Ref<rhi::Texture> getTextureByIndex(const uint32_t index);
-            void              clearLoadedTextures() { m_LoadedTextures.clear(); }
-            Ref<rhi::Buffer>  createBindlessStorageBuffer(AllocationHints = AllocationHints::eNone);
+            Ref<rhi::Texture>                getTextureByIndex(const uint32_t index);
+            std::vector<const rhi::Texture*> getAllLoadedTextures();
+            void                             clearLoadedTextures() { m_LoadedTextures.clear(); }
+            Ref<rhi::Buffer>                 createBindlessStorageBuffer(AllocationHints = AllocationHints::eNone);
 
         private:
             void createXRDevice();

@@ -967,6 +967,21 @@ namespace vultra
                 });
         }
 
+        void prepareForPresent(CommandBuffer& cb, const Texture& texture)
+        {
+            assert(texture);
+
+            cb.getBarrierBuilder().imageBarrier(
+                {
+                    .image     = texture,
+                    .newLayout = ImageLayout::ePresent,
+                },
+                {
+                    .stageMask  = PipelineStages::eColorAttachmentOutput,
+                    .accessMask = Access::eColorAttachmentWrite,
+                });
+        }
+
         void clearImageForComputing(CommandBuffer& cb, Texture& texture, const ClearValue& clearValue)
         {
             cb.getBarrierBuilder().imageBarrier(
@@ -1006,7 +1021,7 @@ namespace vultra
                     .newLayout = rhi::ImageLayout::eGeneral,
                 },
                 {
-                    .stageMask  = rhi::PipelineStages::eRaytracingShader,
+                    .stageMask  = rhi::PipelineStages::eRayTracingShader,
                     .accessMask = rhi::Access::eShaderRead | rhi::Access::eShaderWrite,
                 });
         }

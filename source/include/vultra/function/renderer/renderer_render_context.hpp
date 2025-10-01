@@ -22,6 +22,7 @@ namespace vultra
             void bindDescriptorSets(const rhi::BasePipeline&);
             void renderFullScreenPostProcess(const rhi::BasePipeline&);
             void endRendering();
+            void endRayTracing();
 
             // Helpers
 

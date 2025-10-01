@@ -23,7 +23,7 @@ namespace vultra
             eFragmentTests = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
             eColorAttachmentOutput      = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
             eComputeShader              = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            eRaytracingShader           = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
+            eRayTracingShader           = VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR,
             eAccelerationStructureBuild = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
             eTransfer                   = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
             eBlit                       = VK_PIPELINE_STAGE_2_BLIT_BIT,

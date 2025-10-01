@@ -2037,6 +2037,18 @@ namespace vultra
             return m_LoadedTextures[index];
         }
 
+        std::vector<const rhi::Texture*> RenderDevice::getAllLoadedTextures()
+        {
+            std::vector<const rhi::Texture*> textures;
+            textures.reserve(m_LoadedTextures.size());
+            for (const auto& tex : m_LoadedTextures)
+            {
+                if (tex)
+                    textures.push_back(tex.get());
+            }
+            return textures;
+        }
+
         Ref<rhi::Buffer> RenderDevice::createBindlessStorageBuffer(AllocationHints allocationHint)
         {
             assert(m_MemoryAllocator);

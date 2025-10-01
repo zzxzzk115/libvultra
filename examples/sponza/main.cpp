@@ -3,6 +3,7 @@
 #include <vultra/function/app/imgui_app.hpp>
 #include <vultra/function/renderer/builtin/builtin_renderer.hpp>
 #include <vultra/function/renderer/builtin/pass_output_mode.hpp>
+#include <vultra/function/renderer/imgui_renderer.hpp>
 #include <vultra/function/scenegraph/entity.hpp>
 #include <vultra/function/scenegraph/logic_scene.hpp>
 
@@ -20,7 +21,11 @@ class SponzaApp final : public ImGuiApp
 {
 public:
     explicit SponzaApp(const std::span<char*>& args) :
-        ImGuiApp(args, {.title = "Sponza", .vSyncConfig = rhi::VerticalSync::eEnabled}, {.enableDocking = false}),
+        ImGuiApp(args,
+                 {.title                   = "Sponza",
+                  .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eRayTracing,
+                  .vSyncConfig             = rhi::VerticalSync::eEnabled},
+                 {.enableDocking = false}),
         m_Renderer(*m_RenderDevice, m_Swapchain.getFormat())
     {
         // Render Settings
@@ -50,11 +55,11 @@ public:
         pointLightComponent.color     = glm::vec3(0.9f, 0.9f, 0.1f);
 
         // Area Light (RED)
-        auto  areaLightRed             = m_LogicScene.createAreaLight();
-        auto& areaRedLightTransform    = areaLightRed.getComponent<TransformComponent>();
-        areaRedLightTransform.position = glm::vec3(-2.0f, 1.0f, 0.8f);
-        auto& areaRedLightComponent    = areaLightRed.getComponent<AreaLightComponent>();
-        areaRedLightComponent.color = glm::vec3(0.9f, 0.1f, 0.1f);
+        auto  areaLightRed              = m_LogicScene.createAreaLight();
+        auto& areaRedLightTransform     = areaLightRed.getComponent<TransformComponent>();
+        areaRedLightTransform.position  = glm::vec3(-2.0f, 1.0f, 0.8f);
+        auto& areaRedLightComponent     = areaLightRed.getComponent<AreaLightComponent>();
+        areaRedLightComponent.color     = glm::vec3(0.9f, 0.1f, 0.1f);
         areaRedLightComponent.intensity = 10.0f;
 
         // Area Light (GREEN)
@@ -84,6 +89,9 @@ public:
     void onImGui() override
     {
         ImGui::Begin("Sponza Example");
+
+        ImGuiExt::Combo("Renderer Type", m_Renderer.getSettings().rendererType);
+
         m_Renderer.onImGui();
 
 #ifdef VULTRA_ENABLE_RENDERDOC

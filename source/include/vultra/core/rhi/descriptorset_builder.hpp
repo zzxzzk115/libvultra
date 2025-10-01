@@ -32,6 +32,12 @@ namespace vultra
                 ImageAspect                imageAspect {ImageAspect::eNone};
                 std::optional<vk::Sampler> sampler;
             };
+            struct CombinedImageSamplerArray
+            {
+                std::vector<const Texture*> textures;
+                ImageAspect                 imageAspect {ImageAspect::eNone};
+                std::optional<vk::Sampler>  sampler;
+            };
             struct SampledImage
             {
                 const Texture* texture {nullptr};
@@ -65,6 +71,7 @@ namespace vultra
 
         using ResourceBinding = std::variant<bindings::SeparateSampler,
                                              bindings::CombinedImageSampler,
+                                             bindings::CombinedImageSamplerArray,
                                              bindings::SampledImage,
                                              bindings::StorageImage,
                                              bindings::UniformBuffer,
@@ -85,6 +92,7 @@ namespace vultra
             DescriptorSetBuilder& bind(const BindingIndex, const ResourceBinding&);
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::SeparateSampler&);
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::CombinedImageSampler&);
+            DescriptorSetBuilder& bind(const BindingIndex, const bindings::CombinedImageSamplerArray&);
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::SampledImage&);
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::StorageImage&);
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::UniformBuffer&);

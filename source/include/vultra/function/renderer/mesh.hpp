@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/math/aabb.hpp"
+#include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/primitive_topology.hpp"
 #include "vultra/core/rhi/render_device.hpp"
@@ -96,7 +97,73 @@ namespace vultra
                     renderMesh.subMeshes.push_back(rsm);
                 }
 
-                renderMesh.createBuildBLAS(rd);
+                renderMesh.createBuildAccelerationStructures(rd, glm::mat4(1.0f));
+
+                // Create material buffer
+                {
+                    struct GPUMaterial
+                    {
+                        uint32_t albedoIndex {0};
+                    };
+                    std::vector<GPUMaterial> gpuMaterials;
+                    gpuMaterials.reserve(materials.size());
+
+                    for (const auto& mat : materials)
+                    {
+                        GPUMaterial gpuMat {};
+                        gpuMat.albedoIndex = mat.albedoIndex;
+                        gpuMaterials.push_back(gpuMat);
+                    }
+
+                    renderMesh.materialBuffer = createRef<rhi::StorageBuffer>(
+                        std::move(rd.createStorageBuffer(sizeof(GPUMaterial) * gpuMaterials.size())));
+
+                    auto stagingBuffer =
+                        rd.createStagingBuffer(sizeof(GPUMaterial) * gpuMaterials.size(), gpuMaterials.data());
+
+                    rd.execute(
+                        [&](rhi::CommandBuffer& cb) {
+                            cb.copyBuffer(stagingBuffer,
+                                          *renderMesh.materialBuffer,
+                                          vk::BufferCopy {0, 0, stagingBuffer.getSize()});
+                        },
+                        true);
+                }
+
+                // Create geometry node buffer
+                {
+                    struct GPUGeometryNode
+                    {
+                        uint64_t vertexBufferAddress {0};
+                        uint64_t indexBufferAddress {0};
+                        uint32_t materialIndex {0};
+                    };
+                    std::vector<GPUGeometryNode> geometryNodes;
+                    geometryNodes.reserve(renderMesh.subMeshes.size());
+
+                    for (const auto& sm : renderMesh.subMeshes)
+                    {
+                        GPUGeometryNode node {};
+                        node.vertexBufferAddress = sm.vertexBufferAddress;
+                        node.indexBufferAddress  = sm.indexBufferAddress;
+                        node.materialIndex       = sm.materialIndex;
+                        geometryNodes.push_back(node);
+                    }
+
+                    renderMesh.geometryNodeBuffer = createRef<rhi::StorageBuffer>(
+                        std::move(rd.createStorageBuffer(sizeof(GPUGeometryNode) * geometryNodes.size())));
+
+                    auto stagingBuffer =
+                        rd.createStagingBuffer(sizeof(GPUGeometryNode) * geometryNodes.size(), geometryNodes.data());
+
+                    rd.execute(
+                        [&](rhi::CommandBuffer& cb) {
+                            cb.copyBuffer(stagingBuffer,
+                                          *renderMesh.geometryNodeBuffer,
+                                          vk::BufferCopy {0, 0, stagingBuffer.getSize()});
+                        },
+                        true);
+                }
             }
         };
     } // namespace gfx

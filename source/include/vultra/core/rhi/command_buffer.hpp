@@ -187,6 +187,7 @@ namespace vultra
 
         void prepareForAttachment(CommandBuffer&, const Texture&, const bool readOnly);
         void prepareForReading(CommandBuffer&, const Texture&, uint32_t mipLevel = 0, uint32_t layer = 0);
+        void prepareForPresent(CommandBuffer&, const Texture&);
         void
         clearImageForComputing(CommandBuffer&, Texture&, const ClearValue& clearValue = ClearValue {glm::vec4(0.0f)});
         void prepareForComputing(CommandBuffer& cb, const Texture& texture);

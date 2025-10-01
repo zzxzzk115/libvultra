@@ -305,9 +305,6 @@ public:
                          .addHitGroup(3)  // only primary hit group
                          .build(*m_RenderDevice);
 
-        // Create SBT
-        m_SBT = m_RenderDevice->createShaderBindingTable(m_Pipeline);
-
         // Create output image
         rhi::Extent2D extent {static_cast<uint32_t>(m_Window.getExtent().x),
                               static_cast<uint32_t>(m_Window.getExtent().y)};
@@ -467,7 +464,7 @@ public:
             .pushConstants(rhi::ShaderStages::eRayGen | rhi::ShaderStages::eMiss | rhi::ShaderStages::eClosestHit,
                            0,
                            &pushConstants)
-            .traceRays(m_SBT, {m_Window.getExtent(), 1});
+            .traceRays(*m_Pipeline.getSBT(*m_RenderDevice), {m_Window.getExtent(), 1});
 
         cb.blit(m_OutputImage, rtv.texture, vk::Filter::eLinear);
 
@@ -495,7 +492,6 @@ private:
     rhi::Buffer                m_TransformBuffer;
     rhi::AccelerationStructure m_TLAS;
     rhi::RayTracingPipeline    m_Pipeline;
-    rhi::ShaderBindingTable    m_SBT;
     rhi::Texture               m_OutputImage;
 
     rhi::Buffer m_MaterialBuffer;

@@ -15,11 +15,12 @@ namespace vultra
     {
         enum class PipelineStage
         {
-            eTransfer       = BIT(0),
-            eVertexShader   = BIT(1),
-            eGeometryShader = BIT(2),
-            eFragmentShader = BIT(3),
-            eComputeShader  = BIT(4),
+            eTransfer         = BIT(0),
+            eVertexShader     = BIT(1),
+            eGeometryShader   = BIT(2),
+            eFragmentShader   = BIT(3),
+            eComputeShader    = BIT(4),
+            eRayTracingShader = BIT(5),
         };
 
         enum class ClearValue

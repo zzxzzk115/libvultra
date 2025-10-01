@@ -1,6 +1,8 @@
 #pragma once
 
+#include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/base_pipeline.hpp"
+#include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
 #include "vultra/core/rhi/shader_type.hpp"
 
 #include <vector>
@@ -45,6 +47,8 @@ namespace vultra
 
             uint32_t getShaderGroupHandleSize() const;
             uint32_t getShaderGroupBaseAlignment() const;
+
+            [[nodiscard]] const Ref<ShaderBindingTable>& getSBT(rhi::RenderDevice& rd);
 
             uint32_t getRaygenGroupCount() const { return static_cast<uint32_t>(m_RaygenGroupIndices.size()); }
             uint32_t getMissGroupCount() const { return static_cast<uint32_t>(m_MissGroupIndices.size()); }
@@ -110,6 +114,8 @@ namespace vultra
             std::vector<uint32_t> m_MissGroupIndices;
             std::vector<uint32_t> m_HitGroupIndices;
             std::vector<uint32_t> m_CallableGroupIndices;
+
+            Ref<ShaderBindingTable> m_SBT {nullptr};
         };
     } // namespace rhi
 } // namespace vultra

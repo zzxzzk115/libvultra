@@ -3,11 +3,13 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
+#include "vultra/function/renderer/builtin/passes/blit_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/deferred_lighting_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/final_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/fxaa_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gamma_correction_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/simple_raytracing_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/skybox_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/tonemapping_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/ui_pass.hpp"
@@ -43,8 +45,11 @@ namespace vultra
             m_GammaCorrectionPass  = new GammaCorrectionPass(rd);
             m_FXAAPass             = new FXAAPass(rd);
             m_FinalPass            = new FinalPass(rd);
+            m_BlitPass             = new BlitPass(rd);
 
             m_UIPass = new UIPass(rd);
+
+            m_SimpleRaytracingPass = new SimpleRaytracingPass(rd);
 
             setupSamplers();
 
@@ -70,8 +75,11 @@ namespace vultra
             delete m_GammaCorrectionPass;
             delete m_FXAAPass;
             delete m_FinalPass;
+            delete m_BlitPass;
 
             delete m_UIPass;
+
+            delete m_SimpleRaytracingPass;
         }
 
         void BuiltinRenderer::onImGui()
@@ -107,6 +115,7 @@ namespace vultra
                 ImGui::Indent(5.0f);
                 ImGui::Checkbox("Enable Normal Mapping", &settings.enableNormalMapping);
                 ImGui::Checkbox("Enable IBL", &settings.enableIBL);
+                ImGui::Checkbox("Enable Area Lights", &settings.enableAreaLights);
 
                 bool showSkybox = m_LogicScene->getMainCamera().getComponent<CameraComponent>().clearFlags ==
                                   CameraClearFlags::eSkybox;
@@ -134,117 +143,42 @@ namespace vultra
                     ImGui::Unindent(5.0f);
                 }
 
+                switch (settings.rendererType)
+                {
+                    case RendererType::eRasterization:
+                        onImGuiRasterization();
+                        break;
+
+                    case RendererType::eRayTracing:
+                        onImGuiRayTracing();
+                        break;
+
+                    default:
+                        break;
+                }
+
                 ImGui::Unindent(5.0f);
             }
         }
 
         void BuiltinRenderer::render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
         {
-            if (m_RenderPrimitiveGroup.empty())
-            {
+            if (m_LogicScene == nullptr)
                 return;
-            }
 
+            switch (m_Settings.rendererType)
             {
-                ZoneScopedN("Prepare Attachments");
+                case RendererType::eRasterization:
+                    renderRasterization(cb, renderTarget, dt);
+                    break;
 
-                rhi::prepareForAttachment(cb, *renderTarget, false);
-            }
+                case RendererType::eRayTracing:
+                    renderRayTracing(cb, renderTarget, dt);
+                    break;
 
-            {
-                ZoneScopedN("BultinRenderer");
-
-                FrameGraph fg;
-                {
-                    FrameGraphBlackboard blackboard;
-
-                    ZoneScopedN("Setup");
-
-                    const auto backBuffer = framegraph::importTexture(fg, "Backbuffer", renderTarget);
-
-                    // Import skybox cubemap
-                    const auto skyboxCubemap = framegraph::importTexture(fg, "Skybox Cubemap", m_Cubemap.get());
-
-                    // Import IBL textures
-                    const auto brdfLUT       = framegraph::importTexture(fg, "BRDF LUT", m_BrdfLUT.get());
-                    const auto irradianceMap = framegraph::importTexture(fg, "Irradiance Map", m_IrradianceMap.get());
-                    const auto prefilteredEnvMap =
-                        framegraph::importTexture(fg, "Prefiltered Env Map", m_PrefilteredEnvMap.get());
-                    auto& iblData             = blackboard.add<IBLData>();
-                    iblData.brdfLUT           = brdfLUT;
-                    iblData.irradianceMap     = irradianceMap;
-                    iblData.prefilteredEnvMap = prefilteredEnvMap;
-
-                    uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
-                    uploadFrameBlock(fg, blackboard, m_FrameInfo);
-                    uploadLightBlock(fg, blackboard, m_LightInfo);
-
-                    // G-Buffer
-                    m_GBufferPass->addPass(fg,
-                                           blackboard,
-                                           renderTarget->getExtent(),
-                                           m_RenderPrimitiveGroup,
-                                           m_Settings.enableAreaLights,
-                                           m_Settings.enableNormalMapping);
-
-                    // Deferred lighting
-                    m_DeferredLightingPass->addPass(fg,
-                                                    blackboard,
-                                                    m_Settings.enableAreaLights,
-                                                    m_Settings.enableIBL,
-                                                    color::sRGBToLinear(m_ClearColor));
-                    auto& sceneColor = blackboard.get<SceneColorData>();
-
-                    if (m_EnableSkybox)
-                    {
-                        // Skybox
-                        sceneColor.hdr = m_SkyboxPass->addPass(fg, blackboard, skyboxCubemap, sceneColor.hdr);
-                    }
-
-                    // Tone mapping
-                    sceneColor.hdr = m_ToneMappingPass->addPass(
-                        fg, sceneColor.hdr, m_Settings.exposure, m_Settings.toneMappingMethod);
-
-                    // Gamma correction if swapchain is not in sRGB format
-                    if (m_SwapChainFormat != rhi::Swapchain::Format::esRGB)
-                    {
-                        sceneColor.ldr = m_GammaCorrectionPass->addPass(
-                            fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);
-                    }
-                    else
-                    {
-                        sceneColor.ldr = sceneColor.hdr;
-                    }
-
-                    // FXAA
-                    sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
-
-                    // Final composition
-                    m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
-                }
-
-                {
-                    ZoneScopedN("FrameGraph::Compile");
-                    fg.compile();
-                }
-
-                {
-                    gfx::RendererRenderContext rc {cb, m_Samplers};
-                    FG_GPU_ZONE(rc.commandBuffer);
-                    fg.execute(&rc, &m_TransientResources);
-                }
-
-#if _DEBUG
-                {
-                    std::ofstream ofs {"framegraph.dot"};
-                    ofs << fg;
-                }
-#endif
-
-                m_TransientResources.update();
-
-                m_FrameInfo.deltaTime = dt.count();
-                m_FrameInfo.time += m_FrameInfo.deltaTime;
+                default:
+                    VULTRA_CLIENT_ERROR("Unknown renderer type");
+                    return;
             }
         }
 
@@ -522,6 +456,197 @@ namespace vultra
 
                 .borderColor = rhi::BorderColor::eOpaqueWhite,
             });
+        }
+
+        void BuiltinRenderer::onImGuiRasterization() {}
+
+        void BuiltinRenderer::onImGuiRayTracing() {}
+
+        void BuiltinRenderer::renderRasterization(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
+        {
+            if (m_RenderPrimitiveGroup.empty())
+            {
+                return;
+            }
+
+            {
+                ZoneScopedN("Prepare Attachments");
+
+                rhi::prepareForAttachment(cb, *renderTarget, false);
+            }
+
+            {
+                ZoneScopedN("BultinRenderer");
+
+                FrameGraph fg;
+                {
+                    FrameGraphBlackboard blackboard;
+
+                    ZoneScopedN("Setup");
+
+                    const auto backBuffer = framegraph::importTexture(fg, "Backbuffer", renderTarget);
+
+                    // Import skybox cubemap
+                    const auto skyboxCubemap = framegraph::importTexture(fg, "Skybox Cubemap", m_Cubemap.get());
+
+                    // Import IBL textures
+                    const auto brdfLUT       = framegraph::importTexture(fg, "BRDF LUT", m_BrdfLUT.get());
+                    const auto irradianceMap = framegraph::importTexture(fg, "Irradiance Map", m_IrradianceMap.get());
+                    const auto prefilteredEnvMap =
+                        framegraph::importTexture(fg, "Prefiltered Env Map", m_PrefilteredEnvMap.get());
+                    auto& iblData             = blackboard.add<IBLData>();
+                    iblData.brdfLUT           = brdfLUT;
+                    iblData.irradianceMap     = irradianceMap;
+                    iblData.prefilteredEnvMap = prefilteredEnvMap;
+
+                    uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
+                    uploadFrameBlock(fg, blackboard, m_FrameInfo);
+                    uploadLightBlock(fg, blackboard, m_LightInfo);
+
+                    // G-Buffer
+                    m_GBufferPass->addPass(fg,
+                                           blackboard,
+                                           renderTarget->getExtent(),
+                                           m_RenderPrimitiveGroup,
+                                           m_Settings.enableAreaLights,
+                                           m_Settings.enableNormalMapping);
+
+                    // Deferred lighting
+                    m_DeferredLightingPass->addPass(fg,
+                                                    blackboard,
+                                                    m_Settings.enableAreaLights,
+                                                    m_Settings.enableIBL,
+                                                    color::sRGBToLinear(m_ClearColor));
+                    auto& sceneColor = blackboard.get<SceneColorData>();
+
+                    if (m_EnableSkybox)
+                    {
+                        // Skybox
+                        sceneColor.hdr = m_SkyboxPass->addPass(fg, blackboard, skyboxCubemap, sceneColor.hdr);
+                    }
+
+                    // Tone mapping
+                    sceneColor.hdr = m_ToneMappingPass->addPass(
+                        fg, sceneColor.hdr, m_Settings.exposure, m_Settings.toneMappingMethod);
+
+                    // Gamma correction if swapchain is not in sRGB format
+                    if (m_SwapChainFormat != rhi::Swapchain::Format::esRGB)
+                    {
+                        sceneColor.ldr = m_GammaCorrectionPass->addPass(
+                            fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);
+                    }
+                    else
+                    {
+                        sceneColor.ldr = sceneColor.hdr;
+                    }
+
+                    // FXAA
+                    sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
+
+                    // Final composition
+                    m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
+                }
+
+                {
+                    ZoneScopedN("FrameGraph::Compile");
+                    fg.compile();
+                }
+
+                {
+                    gfx::RendererRenderContext rc {cb, m_Samplers};
+                    FG_GPU_ZONE(rc.commandBuffer);
+                    fg.execute(&rc, &m_TransientResources);
+                }
+
+#if _DEBUG
+                {
+                    std::ofstream ofs {"framegraph.dot"};
+                    ofs << fg;
+                }
+#endif
+
+                m_TransientResources.update();
+
+                m_FrameInfo.deltaTime = dt.count();
+                m_FrameInfo.time += m_FrameInfo.deltaTime;
+            }
+        }
+
+        void BuiltinRenderer::renderRayTracing(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
+        {
+            if (m_RenderPrimitiveGroup.empty())
+            {
+                return;
+            }
+
+            {
+                ZoneScopedN("Prepare Attachments");
+
+                rhi::prepareForAttachment(cb, *renderTarget, false);
+            }
+
+            {
+                ZoneScopedN("BultinRenderer");
+
+                FrameGraph fg;
+                {
+                    FrameGraphBlackboard blackboard;
+
+                    ZoneScopedN("Setup");
+
+                    const auto backBuffer = framegraph::importTexture(fg, "Backbuffer", renderTarget);
+
+                    // Import skybox cubemap
+                    const auto skyboxCubemap = framegraph::importTexture(fg, "Skybox Cubemap", m_Cubemap.get());
+
+                    // Import IBL textures
+                    const auto brdfLUT       = framegraph::importTexture(fg, "BRDF LUT", m_BrdfLUT.get());
+                    const auto irradianceMap = framegraph::importTexture(fg, "Irradiance Map", m_IrradianceMap.get());
+                    const auto prefilteredEnvMap =
+                        framegraph::importTexture(fg, "Prefiltered Env Map", m_PrefilteredEnvMap.get());
+                    auto& iblData             = blackboard.add<IBLData>();
+                    iblData.brdfLUT           = brdfLUT;
+                    iblData.irradianceMap     = irradianceMap;
+                    iblData.prefilteredEnvMap = prefilteredEnvMap;
+
+                    uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
+                    uploadFrameBlock(fg, blackboard, m_FrameInfo);
+                    uploadLightBlock(fg, blackboard, m_LightInfo);
+
+                    // Ray Tracing Pass
+                    auto raytracedResult = m_SimpleRaytracingPass->addPass(fg,
+                                                                           blackboard,
+                                                                           renderTarget->getExtent(),
+                                                                           m_RenderPrimitiveGroup,
+                                                                           m_Settings.maxRayRecursionDepth,
+                                                                           m_ClearColor);
+
+                    m_BlitPass->blit(fg, raytracedResult, backBuffer);
+                }
+
+                {
+                    ZoneScopedN("FrameGraph::Compile");
+                    fg.compile();
+                }
+
+                {
+                    gfx::RendererRenderContext rc {cb, m_Samplers};
+                    FG_GPU_ZONE(rc.commandBuffer);
+                    fg.execute(&rc, &m_TransientResources);
+                }
+
+#if _DEBUG
+                {
+                    std::ofstream ofs {"framegraph.dot"};
+                    ofs << fg;
+                }
+#endif
+
+                m_TransientResources.update();
+
+                m_FrameInfo.deltaTime = dt.count();
+                m_FrameInfo.time += m_FrameInfo.deltaTime;
+            }
         }
 
         void BuiltinRenderer::clearUIDrawList() { m_UIDrawList.commands.clear(); }

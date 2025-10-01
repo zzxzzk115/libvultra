@@ -105,7 +105,7 @@ namespace vultra
 
         RayTracingPipeline RayTracingPipeline::Builder::build(RenderDevice& rd)
         {
-            assert(!m_ShaderStages.empty());
+            assert(!m_ShaderStages.empty() || !m_BuiltinShaderStages.empty());
             assert(!m_Groups.empty());
 
             std::vector<vk::RayTracingShaderGroupCreateInfoKHR> groupInfos;
@@ -212,5 +212,14 @@ namespace vultra
         uint32_t RayTracingPipeline::getShaderGroupHandleSize() const { return m_Props.shaderGroupHandleSize; }
 
         uint32_t RayTracingPipeline::getShaderGroupBaseAlignment() const { return m_Props.shaderGroupBaseAlignment; }
+
+        const Ref<ShaderBindingTable>& RayTracingPipeline::getSBT(rhi::RenderDevice& rd)
+        {
+            if (!m_SBT)
+            {
+                m_SBT = createRef<ShaderBindingTable>(std::move(rd.createShaderBindingTable(*this)));
+            }
+            return m_SBT;
+        }
     } // namespace rhi
 } // namespace vultra

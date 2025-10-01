@@ -21,17 +21,33 @@ namespace vultra
         class GammaCorrectionPass;
         class FXAAPass;
         class FinalPass;
+        class BlitPass;
 
         class UIPass;
 
+        class SimpleRaytracingPass;
+
+        enum class RendererType
+        {
+            eRasterization = 0,
+            eRayTracing
+        };
+
         struct BuiltinRenderSettings
         {
+            // Rasterization or Ray Tracing
+            RendererType rendererType {RendererType::eRasterization};
+
+            // Rasterization settings
             PassOutputMode    outputMode {PassOutputMode::SceneColor_AntiAliased};
             bool              enableAreaLights {true};
             bool              enableNormalMapping {true};
             bool              enableIBL {true};
             float             exposure {1.0f};
             ToneMappingMethod toneMappingMethod {ToneMappingMethod::KhronosPBRNeutral};
+
+            // Ray Tracing settings
+            uint32_t maxRayRecursionDepth {2};
         };
 
         class BuiltinRenderer : public BaseRenderer
@@ -70,6 +86,12 @@ namespace vultra
         private:
             void setupSamplers();
 
+            void onImGuiRasterization();
+            void onImGuiRayTracing();
+
+            void renderRasterization(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt);
+            void renderRayTracing(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt);
+
             void clearUIDrawList();
             void renderUIDrawList(rhi::CommandBuffer& cb);
 
@@ -95,6 +117,7 @@ namespace vultra
             GammaCorrectionPass*  m_GammaCorrectionPass {nullptr};
             FXAAPass*             m_FXAAPass {nullptr};
             FinalPass*            m_FinalPass {nullptr};
+            BlitPass*             m_BlitPass {nullptr};
 
             CubemapConverter  m_CubemapConverter;
             Ref<rhi::Texture> m_Cubemap {nullptr};
@@ -112,6 +135,8 @@ namespace vultra
 
             UIDrawList m_UIDrawList;
             UIPass*    m_UIPass {nullptr};
+
+            SimpleRaytracingPass* m_SimpleRaytracingPass {nullptr};
         };
     } // namespace gfx
 } // namespace vultra

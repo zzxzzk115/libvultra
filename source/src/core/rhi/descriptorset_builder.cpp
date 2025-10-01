@@ -83,6 +83,25 @@ namespace vultra
             return *this;
         }
 
+        DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex                         index,
+                                                         const bindings::CombinedImageSamplerArray& info)
+        {
+            const auto numImages = static_cast<uint32_t>(info.textures.size());
+            assert(numImages > 0);
+            m_Bindings[index] = {
+                vk::DescriptorType::eCombinedImageSampler, numImages, static_cast<int32_t>(m_ImageInfos.size())};
+            const auto sampler = info.sampler.value_or(info.textures[0]->getSampler());
+            assert(sampler != VK_NULL_HANDLE);
+            for (const auto* texture : info.textures)
+            {
+                const auto imageLayout = texture->getImageLayout();
+                assert(imageLayout != ImageLayout::eUndefined);
+                addCombinedImageSampler(
+                    texture->getImageView(toVk(info.imageAspect)), static_cast<vk::ImageLayout>(imageLayout), sampler);
+            }
+            return *this;
+        }
+
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex index, const bindings::SampledImage& info)
         {
             m_Bindings[index] = {vk::DescriptorType::eSampledImage, 1, static_cast<int32_t>(m_ImageInfos.size())};
@@ -239,6 +258,7 @@ namespace vultra
                 Overload {
                     CASE(SeparateSampler),
                     CASE(CombinedImageSampler),
+                    CASE(CombinedImageSamplerArray),
                     CASE(SampledImage),
                     CASE(StorageImage),
                     CASE(UniformBuffer),

@@ -92,6 +92,8 @@ namespace vultra
             resourceSet.clear();
         }
 
+        void RendererRenderContext::endRayTracing() { resourceSet.clear(); }
+
         std::string RendererRenderContext::toString(const framegraph::ResourceSet& sets)
         {
             std::ostringstream oss;

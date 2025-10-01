@@ -146,7 +146,8 @@ namespace vultra
                         cb.beginRendering(*framebufferInfo).drawFullScreenTriangle();
                         rc.endRendering();
                     }
-                    rhi::prepareForReading(cb, *resources.get<framegraph::FrameGraphTexture>(target).texture);
+                    auto* targetTexture = resources.get<framegraph::FrameGraphTexture>(target).texture;
+                    rhi::prepareForReading(cb, *targetTexture);
                 });
 
             return target;
