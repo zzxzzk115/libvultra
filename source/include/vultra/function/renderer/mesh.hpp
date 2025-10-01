@@ -17,6 +17,34 @@ namespace vultra
     {
         class VertexFormat;
 
+        struct alignas(16) GPUMaterial
+        {
+            uint32_t albedoIndex {0};
+            uint32_t alphaMaskIndex {0};
+            uint32_t metallicIndex {0};
+            uint32_t roughnessIndex {0};
+            uint32_t specularIndex {0};
+            uint32_t normalIndex {0};
+            uint32_t aoIndex {0};
+            uint32_t emissiveIndex {0};
+            uint32_t metallicRoughnessIndex {0};
+
+            // padding
+            uint32_t padding0 {0};
+            uint32_t padding1 {0};
+            uint32_t padding2 {0};
+
+            glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};
+            glm::vec4 emissiveColorIntensity {0.0f, 0.0f, 0.0f, 1.0f};
+            glm::vec4 ambientColor {0.0f, 0.0f, 0.0f, 1.0f};
+            float     opacity {1.0f};
+            float     metallicFactor {0.0f};
+            float     roughnessFactor {0.0f};
+            float     ior {1.0f};
+            int       doubleSided {0};
+        };
+        static_assert(sizeof(GPUMaterial) % 16 == 0);
+
         struct SubMesh
         {
             std::string name;
@@ -42,8 +70,9 @@ namespace vultra
             std::vector<SubMesh>      subMeshes;
             std::vector<MaterialType> materials;
 
-            Ref<rhi::VertexBuffer> vertexBuffer {nullptr};
-            Ref<rhi::IndexBuffer>  indexBuffer {nullptr};
+            Ref<rhi::VertexBuffer>  vertexBuffer {nullptr};
+            Ref<rhi::IndexBuffer>   indexBuffer {nullptr};
+            Ref<rhi::StorageBuffer> materialBuffer {nullptr};
 
             Ref<VertexFormat> vertexFormat {nullptr};
 
@@ -70,6 +99,48 @@ namespace vultra
             [[nodiscard]] auto        getIndexCount() const { return static_cast<uint32_t>(indices.size()); }
             [[nodiscard]] static auto getVertexStride() { return static_cast<uint32_t>(sizeof(VertexType)); }
             [[nodiscard]] static auto getIndexStride() { return sizeof(uint32_t); }
+
+            void buildMaterialBuffer(rhi::RenderDevice& rd)
+            {
+                // Create material buffer
+                std::vector<GPUMaterial> gpuMaterials;
+                gpuMaterials.reserve(materials.size());
+
+                for (const auto& mat : materials)
+                {
+                    GPUMaterial gpuMat {};
+                    gpuMat.albedoIndex            = mat.albedoIndex;
+                    gpuMat.alphaMaskIndex         = mat.alphaMaskIndex;
+                    gpuMat.metallicIndex          = mat.metallicIndex;
+                    gpuMat.roughnessIndex         = mat.roughnessIndex;
+                    gpuMat.specularIndex          = mat.specularIndex;
+                    gpuMat.normalIndex            = mat.normalIndex;
+                    gpuMat.aoIndex                = mat.aoIndex;
+                    gpuMat.emissiveIndex          = mat.emissiveIndex;
+                    gpuMat.metallicRoughnessIndex = mat.metallicRoughnessIndex;
+                    gpuMat.baseColor              = mat.baseColor;
+                    gpuMat.emissiveColorIntensity = mat.emissiveColorIntensity;
+                    gpuMat.ambientColor           = mat.ambientColor;
+                    gpuMat.opacity                = mat.opacity;
+                    gpuMat.metallicFactor         = mat.metallicFactor;
+                    gpuMat.roughnessFactor        = mat.roughnessFactor;
+                    gpuMat.ior                    = mat.ior;
+                    gpuMat.doubleSided            = mat.doubleSided ? 1 : 0;
+                    gpuMaterials.push_back(gpuMat);
+                }
+
+                materialBuffer = createRef<rhi::StorageBuffer>(
+                    std::move(rd.createStorageBuffer(sizeof(GPUMaterial) * gpuMaterials.size())));
+
+                auto stagingBuffer =
+                    rd.createStagingBuffer(sizeof(GPUMaterial) * gpuMaterials.size(), gpuMaterials.data());
+
+                rd.execute(
+                    [&](rhi::CommandBuffer& cb) {
+                        cb.copyBuffer(stagingBuffer, *materialBuffer, vk::BufferCopy {0, 0, stagingBuffer.getSize()});
+                    },
+                    true);
+            }
 
             void buildRenderMesh(rhi::RenderDevice& rd)
             {
@@ -99,38 +170,7 @@ namespace vultra
 
                 renderMesh.createBuildAccelerationStructures(rd, glm::mat4(1.0f));
 
-                // Create material buffer
-                {
-                    struct GPUMaterial
-                    {
-                        uint32_t albedoIndex {0};
-                    };
-                    std::vector<GPUMaterial> gpuMaterials;
-                    gpuMaterials.reserve(materials.size());
-
-                    for (const auto& mat : materials)
-                    {
-                        GPUMaterial gpuMat {};
-                        gpuMat.albedoIndex = mat.albedoIndex;
-                        gpuMaterials.push_back(gpuMat);
-                    }
-
-                    renderMesh.materialBuffer = createRef<rhi::StorageBuffer>(
-                        std::move(rd.createStorageBuffer(sizeof(GPUMaterial) * gpuMaterials.size())));
-
-                    auto stagingBuffer =
-                        rd.createStagingBuffer(sizeof(GPUMaterial) * gpuMaterials.size(), gpuMaterials.data());
-
-                    rd.execute(
-                        [&](rhi::CommandBuffer& cb) {
-                            cb.copyBuffer(stagingBuffer,
-                                          *renderMesh.materialBuffer,
-                                          vk::BufferCopy {0, 0, stagingBuffer.getSize()});
-                        },
-                        true);
-                }
-
-                // Create geometry node buffer
+                // Create geometry node buffer (raytracing only)
                 {
                     struct GPUGeometryNode
                     {

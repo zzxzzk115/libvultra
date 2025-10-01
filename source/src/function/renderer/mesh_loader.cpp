@@ -480,6 +480,9 @@ namespace vultra
                 mesh.buildRenderMesh(rd);
             }
 
+            // Build material buffer (for bindless descriptors)
+            mesh.buildMaterialBuffer(rd);
+
             // Find light meshes (meshes with emissive materials)
             for (const auto& sm : mesh.subMeshes)
             {

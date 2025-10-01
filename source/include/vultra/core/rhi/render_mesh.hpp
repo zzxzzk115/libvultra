@@ -32,7 +32,6 @@ namespace vultra
         {
             std::vector<RenderSubMesh> subMeshes;
 
-            Ref<StorageBuffer> materialBuffer {nullptr};
             Ref<StorageBuffer> geometryNodeBuffer {nullptr};
 
             AccelerationStructure blas;

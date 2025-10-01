@@ -1708,7 +1708,6 @@ namespace vultra
 
                 vk::AccelerationStructureGeometryKHR geometry {};
                 geometry.geometryType = vk::GeometryTypeKHR::eTriangles;
-                geometry.flags        = vk::GeometryFlagBitsKHR::eOpaque;
                 geometry.geometry.setTriangles(triangles);
                 geometries.push_back(geometry);
 

@@ -8,6 +8,11 @@ namespace vultra
 
         void BaseRenderer::setRenderables(const std::span<Renderable> renderables)
         {
+            m_Renderables.clear();
+            std::copy_if(renderables.begin(), renderables.end(), std::back_inserter(m_Renderables), [](const auto& r) {
+                return r.mesh && !r.mesh->getSubMeshes().empty();
+            });
+
             m_RenderPrimitiveGroup.clear();
             for (const auto& renderable : renderables)
             {

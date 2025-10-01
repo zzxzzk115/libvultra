@@ -13,20 +13,25 @@ namespace vultra
         void read(FrameGraph::Builder&,
                   const FrameData&,
                   const framegraph::PipelineStage = framegraph::PipelineStage::eVertexShader |
-                                                    framegraph::PipelineStage::eFragmentShader);
+                                                    framegraph::PipelineStage::eFragmentShader |
+                                                    framegraph::PipelineStage::eComputeShader |
+                                                    framegraph::PipelineStage::eRayTracingShader);
 
         struct CameraData;
         void read(FrameGraph::Builder&,
                   const CameraData&,
                   const framegraph::PipelineStage = framegraph::PipelineStage::eVertexShader |
                                                     framegraph::PipelineStage::eFragmentShader |
-                                                    framegraph::PipelineStage::eComputeShader);
+                                                    framegraph::PipelineStage::eComputeShader |
+                                                    framegraph::PipelineStage::eRayTracingShader);
 
         struct LightData;
         void read(FrameGraph::Builder&,
                   const LightData&,
                   const framegraph::PipelineStage = framegraph::PipelineStage::eVertexShader |
-                                                    framegraph::PipelineStage::eFragmentShader);
+                                                    framegraph::PipelineStage::eFragmentShader |
+                                                    framegraph::PipelineStage::eComputeShader |
+                                                    framegraph::PipelineStage::eRayTracingShader);
 
         template<typename T>
         inline T& add(FrameGraphBlackboard& blackboard, const T& data)

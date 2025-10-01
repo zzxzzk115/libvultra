@@ -22,7 +22,7 @@ void main()
     vec3 direction = normalize(world.xyz - origin);
 
     hitValue = vec3(0.0);
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0,
+    traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xff, 0, 0, 0,
                 origin, 0.001, direction, 10000.0, 0);
 
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 0.0));

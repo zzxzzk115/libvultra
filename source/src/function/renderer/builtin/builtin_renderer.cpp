@@ -617,9 +617,15 @@ namespace vultra
                     auto raytracedResult = m_SimpleRaytracingPass->addPass(fg,
                                                                            blackboard,
                                                                            renderTarget->getExtent(),
-                                                                           m_RenderPrimitiveGroup,
+                                                                           m_Renderables,
                                                                            m_Settings.maxRayRecursionDepth,
-                                                                           m_ClearColor);
+                                                                           m_ClearColor,
+                                                                           static_cast<uint32_t>(m_Settings.outputMode),
+                                                                           m_Settings.enableNormalMapping,
+                                                                           m_Settings.enableAreaLights,
+                                                                           m_Settings.enableIBL,
+                                                                           m_Settings.exposure,
+                                                                           m_Settings.toneMappingMethod);
 
                     m_BlitPass->blit(fg, raytracedResult, backBuffer);
                 }

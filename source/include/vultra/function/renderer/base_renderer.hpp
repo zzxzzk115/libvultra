@@ -39,9 +39,10 @@ namespace vultra
             virtual void endFrame() { m_ActiveCommandBuffer = nullptr; }
 
         protected:
-            rhi::RenderDevice&   m_RenderDevice;
-            rhi::CommandBuffer*  m_ActiveCommandBuffer {nullptr};
-            RenderPrimitiveGroup m_RenderPrimitiveGroup;
+            rhi::RenderDevice&      m_RenderDevice;
+            rhi::CommandBuffer*     m_ActiveCommandBuffer {nullptr};
+            RenderPrimitiveGroup    m_RenderPrimitiveGroup;
+            std::vector<Renderable> m_Renderables; // For raytracing purposes
         };
     } // namespace gfx
 } // namespace vultra
