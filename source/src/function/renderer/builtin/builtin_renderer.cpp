@@ -647,7 +647,9 @@ namespace vultra
                                                                            m_Settings.exposure,
                                                                            m_Settings.toneMappingMethod);
 
-                    m_BlitPass->blit(fg, raytracedResult, backBuffer);
+                    auto aaResult = m_FXAAPass->aa(fg, raytracedResult);
+
+                    m_BlitPass->blit(fg, aaResult, backBuffer);
                 }
 
                 {
