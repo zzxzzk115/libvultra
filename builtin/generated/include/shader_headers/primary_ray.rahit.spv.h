@@ -1236,7 +1236,7 @@ const std::vector<uint32_t> primary_ray_rahit_spv = {
     0x0004002B,
     0x0000001E,
     0x000000A2,
-    0x00000200,
+    0x00000046,
     0x0004001C,
     0x000000A3,
     0x000000A1,

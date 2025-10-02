@@ -264,6 +264,10 @@ namespace vultra
         float     intensity {1.0f};
         bool      twoSided {false};
 
+        // For raytracing
+        Ref<rhi::VertexBuffer> vertexBuffer {nullptr}; // Runtime cache, not serializable
+        Ref<rhi::IndexBuffer>  indexBuffer {nullptr};  // Runtime cache, not serializable
+
         // NOLINTBEGIN
         template<class Archive>
         void serialize(Archive& archive)
@@ -287,7 +291,7 @@ namespace vultra
         std::string meshPath;
 
         // Runtime cache, not serializable
-        Ref<gfx::MeshResource> mesh {nullptr};
+        Ref<gfx::DefaultMesh> mesh {nullptr};
 
         // NOLINTBEGIN
         template<class Archive>

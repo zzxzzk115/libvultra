@@ -72,6 +72,15 @@ namespace vultra
                 if (emplaced)
                     resource.count = type.array.empty() ? 1 : type.array[0];
                 resource.stageFlags |= stageFlag;
+                if (!type.array.empty())
+                {
+                    if (type.array[0] == 0)
+                    {
+                        // Runtime-sized array
+                        resource.count = 512;
+                        resource.flags = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
+                    }
+                }
             };
 
 #define ADD_RESOURCES(Member, EnumValue) \

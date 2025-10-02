@@ -470,7 +470,10 @@ namespace vultra
     ON_COMPONENT_ADDED(NameComponent) {}
     ON_COMPONENT_ADDED(TransformComponent) {}
     ON_COMPONENT_ADDED(CameraComponent) {}
+    ON_COMPONENT_ADDED(XrCameraComponent) {}
     ON_COMPONENT_ADDED(DirectionalLightComponent) {}
+    ON_COMPONENT_ADDED(PointLightComponent) {}
+    ON_COMPONENT_ADDED(AreaLightComponent) {}
     ON_COMPONENT_ADDED(RawMeshComponent)
     {
         (void)entity; // Unused, avoid warning

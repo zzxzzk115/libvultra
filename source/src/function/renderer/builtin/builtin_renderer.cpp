@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
+#include "vultra/function/renderer/area_light.hpp"
 #include "vultra/function/renderer/builtin/passes/blit_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/deferred_lighting_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/final_pass.hpp"
@@ -388,6 +389,7 @@ namespace vultra
                 // Area lights
                 auto areaLights            = scene->getAreaLights();
                 m_LightInfo.areaLightCount = static_cast<int>(areaLights.size());
+                m_AreaLightMeshResources.resize(areaLights.size());
                 for (size_t i = 0; i < areaLights.size() && i < LIGHTINFO_MAX_AREA_LIGHTS; ++i)
                 {
                     auto& lightComponent               = areaLights[i].getComponent<AreaLightComponent>();
@@ -400,15 +402,33 @@ namespace vultra
                     m_LightInfo.areaLights[i].color     = lightComponent.color;
                     m_LightInfo.areaLights[i].intensity = lightComponent.intensity;
                     m_LightInfo.areaLights[i].twoSided  = lightComponent.twoSided;
+
+                    // For raytracing
+                    if (i < areaLights.size() && m_AreaLightMeshResources[i] == nullptr)
+                    {
+                        auto areaLightMesh =
+                            gfx::createAreaLightMesh(m_RenderDevice,
+                                                     lightTransform.position,
+                                                     lightComponent.width,
+                                                     lightComponent.height,
+                                                     glm::vec4(lightComponent.color, lightComponent.intensity),
+                                                     lightComponent.twoSided);
+                        m_AreaLightMeshResources[i] = areaLightMesh;
+                    }
                 }
 
                 // Renderables
                 auto renderables = scene->cookRenderables();
+                for (auto& areaLightMeshResource : m_AreaLightMeshResources)
+                {
+                    // renderables.push_back({.mesh = areaLightMeshResource, .modelMatrix = glm::mat4(1.0f)});
+                }
                 setRenderables(renderables);
             }
             else
             {
                 m_RenderPrimitiveGroup.clear();
+                m_RenderableGroup.clear();
             }
         }
 
@@ -617,7 +637,7 @@ namespace vultra
                     auto raytracedResult = m_SimpleRaytracingPass->addPass(fg,
                                                                            blackboard,
                                                                            renderTarget->getExtent(),
-                                                                           m_Renderables,
+                                                                           m_RenderableGroup,
                                                                            m_Settings.maxRayRecursionDepth,
                                                                            m_ClearColor,
                                                                            static_cast<uint32_t>(m_Settings.outputMode),

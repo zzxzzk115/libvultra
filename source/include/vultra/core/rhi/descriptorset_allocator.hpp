@@ -31,7 +31,7 @@ namespace vultra
             DescriptorSetAllocator& operator=(const DescriptorSetAllocator&) = delete;
             DescriptorSetAllocator& operator=(DescriptorSetAllocator&&) noexcept;
 
-            [[nodiscard]] vk::DescriptorSet allocate(const vk::DescriptorSetLayout);
+            [[nodiscard]] vk::DescriptorSet allocate(const vk::DescriptorSetLayout, uint32_t);
             void                            reset();
 
         private:
@@ -41,7 +41,7 @@ namespace vultra
 
             [[nodiscard]] DescriptorPool&   createPool();
             [[nodiscard]] DescriptorPool&   getPool();
-            [[nodiscard]] vk::DescriptorSet allocate(DescriptorPool&, const vk::DescriptorSetLayout) const;
+            [[nodiscard]] vk::DescriptorSet allocate(DescriptorPool&, const vk::DescriptorSetLayout, uint32_t) const;
 
         private:
             vk::Device m_Device {nullptr};

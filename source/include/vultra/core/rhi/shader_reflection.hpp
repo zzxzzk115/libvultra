@@ -19,14 +19,12 @@ namespace vultra
 
             struct Descriptor
             {
-                explicit Descriptor(vk::DescriptorType type)
-                    : type {type}
-                {
-                }
+                explicit Descriptor(vk::DescriptorType type) : type {type} {}
 
-                vk::DescriptorType   type {vk::DescriptorType::eSampler};
-                uint32_t             count {1};
-                vk::ShaderStageFlags stageFlags {0};
+                vk::DescriptorType       type {vk::DescriptorType::eSampler};
+                uint32_t                 count {1};
+                vk::ShaderStageFlags     stageFlags {0};
+                VkDescriptorBindingFlags flags {0};
             };
             // Key = binding
             // layout(binding = index)

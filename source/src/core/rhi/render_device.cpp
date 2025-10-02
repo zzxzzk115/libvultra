@@ -30,12 +30,32 @@ namespace std
     };
 
     template<>
+    struct hash<vk::DescriptorBindingFlags>
+    {
+        size_t operator()(const vk::DescriptorBindingFlags& v) const noexcept
+        {
+            return hash<VkDescriptorBindingFlags>()(static_cast<VkDescriptorBindingFlags>(v));
+        }
+    };
+
+    template<>
     struct hash<vk::DescriptorSetLayoutBinding>
     {
         auto operator()(const vk::DescriptorSetLayoutBinding& v) const noexcept
         {
             size_t h {0};
             hashCombine(h, v.binding, v.descriptorType, v.descriptorCount, v.stageFlags);
+            return h;
+        }
+    };
+
+    template<>
+    struct hash<vultra::rhi::DescriptorSetLayoutBindingEx>
+    {
+        auto operator()(const vultra::rhi::DescriptorSetLayoutBindingEx& v) const noexcept
+        {
+            size_t h {0};
+            hashCombine(h, v.binding, v.flags);
             return h;
         }
     };
@@ -440,7 +460,7 @@ namespace vultra
         }
 
         std::pair<std::size_t, vk::DescriptorSetLayout>
-        RenderDevice::createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>& bindings)
+        RenderDevice::createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>& bindings)
         {
             assert(m_Device);
 
@@ -453,9 +473,24 @@ namespace vultra
                 return {hash, it->second};
             }
 
+            std::vector<vk::DescriptorSetLayoutBinding> vkBindings;
+            vkBindings.reserve(bindings.size());
+            for (const auto& b : bindings)
+                vkBindings.push_back(b.binding);
+
+            std::vector<vk::DescriptorBindingFlags> vkFlags;
+            vkFlags.reserve(bindings.size());
+            for (const auto& b : bindings)
+                vkFlags.push_back(static_cast<vk::DescriptorBindingFlags>(b.flags));
+
+            vk::DescriptorSetLayoutBindingFlagsCreateInfo flagsInfo {};
+            flagsInfo.bindingCount  = static_cast<uint32_t>(vkFlags.size());
+            flagsInfo.pBindingFlags = vkFlags.data();
+
             vk::DescriptorSetLayoutCreateInfo createInfo {};
-            createInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-            createInfo.pBindings    = bindings.data();
+            createInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
+            createInfo.pBindings    = vkBindings.data();
+            createInfo.pNext        = &flagsInfo;
 
             vk::DescriptorSetLayout descriptorSetLayout {nullptr};
             VK_CHECK(m_Device.createDescriptorSetLayout(&createInfo, nullptr, &descriptorSetLayout),
@@ -1766,8 +1801,8 @@ namespace vultra
             return blas;
         }
 
-        AccelerationStructure RenderDevice::createBuildTLAS(const AccelerationStructure& referenceBLAS,
-                                                            const glm::mat4&             transform)
+        AccelerationStructure RenderDevice::createBuildSingleInstanceTLAS(const AccelerationStructure& referenceBLAS,
+                                                                          const glm::mat4&             transform)
         {
             VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(m_FeatureFlag),
                                "[RenderDevice] Raytracing Pipeline feature is not enabled!");
@@ -1805,6 +1840,84 @@ namespace vultra
 
             vk::AccelerationStructureBuildRangeInfoKHR rangeInfo {};
             rangeInfo.primitiveCount = 1;
+
+            vk::AccelerationStructureBuildGeometryInfoKHR buildInfo {};
+            buildInfo.type          = vk::AccelerationStructureTypeKHR::eTopLevel;
+            buildInfo.flags         = vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace;
+            buildInfo.mode          = vk::BuildAccelerationStructureModeKHR::eBuild;
+            buildInfo.geometryCount = 1;
+            buildInfo.pGeometries   = &geometry;
+
+            auto buildSizes = m_Device.getAccelerationStructureBuildSizesKHR(
+                vk::AccelerationStructureBuildTypeKHR::eDevice, buildInfo, rangeInfo.primitiveCount);
+
+            AccelerationStructureBuildSizesInfo sizesInfo {};
+            sizesInfo.accelerationStructureSize = buildSizes.accelerationStructureSize;
+            sizesInfo.buildScratchSize          = buildSizes.buildScratchSize;
+            sizesInfo.updateScratchSize         = buildSizes.updateScratchSize;
+
+            auto tlas          = createAccelerationStructure(AccelerationStructureType::eTopLevel, sizesInfo);
+            auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
+
+            buildInfo.dstAccelerationStructure                              = tlas.getHandle();
+            buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer);
+            std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> ranges = {&rangeInfo};
+
+            execute(
+                [&](CommandBuffer& cb) { cb.getHandle().buildAccelerationStructuresKHR(1, &buildInfo, ranges.data()); },
+                true);
+
+            return tlas;
+        }
+
+        AccelerationStructure
+        RenderDevice::createBuildMultipleInstanceTLAS(const std::vector<RayTracingInstance>& instances)
+        {
+            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(m_FeatureFlag),
+                               "[RenderDevice] Raytracing Pipeline feature is not enabled!");
+            VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
+                               "[RenderDevice] Acceleration Structure feature is not enabled!");
+
+            VULTRA_CORE_ASSERT(!instances.empty(), "[RenderDevice] Cannot build TLAS from empty instances!");
+
+            std::vector<vk::AccelerationStructureInstanceKHR> vkInstances;
+            vkInstances.reserve(instances.size());
+
+            for (const auto& inst : instances)
+            {
+                vk::TransformMatrixKHR vkTransform {};
+                glm::mat4              rowMajor = glm::transpose(inst.transform);
+                memcpy(&vkTransform, &rowMajor, sizeof(vk::TransformMatrixKHR));
+
+                vk::AccelerationStructureInstanceKHR vkInstance {};
+                vkInstance.transform                              = vkTransform;
+                vkInstance.instanceCustomIndex                    = inst.instanceID;
+                vkInstance.mask                                   = inst.mask;
+                vkInstance.instanceShaderBindingTableRecordOffset = inst.sbtRecordOffset;
+                vkInstance.flags                                  = static_cast<VkGeometryInstanceFlagsKHR>(inst.flags);
+                vkInstance.accelerationStructureReference         = inst.blas->getDeviceAddress();
+
+                vkInstances.push_back(vkInstance);
+            }
+
+            auto  instancesBuffer = createInstancesBuffer(static_cast<uint32_t>(vkInstances.size()));
+            void* mapped          = instancesBuffer.map();
+            memcpy(mapped, vkInstances.data(), sizeof(vk::AccelerationStructureInstanceKHR) * vkInstances.size());
+            instancesBuffer.unmap();
+
+            vk::DeviceOrHostAddressConstKHR instanceData {};
+            instanceData.deviceAddress = getBufferDeviceAddress(instancesBuffer);
+
+            vk::AccelerationStructureGeometryKHR geometry {};
+            geometry.geometryType = vk::GeometryTypeKHR::eInstances;
+            geometry.flags        = vk::GeometryFlagBitsKHR::eOpaque;
+            geometry.geometry.instances.sType =
+                vk::StructureType::eAccelerationStructureGeometryInstancesDataKHR; // Must be set explicitly
+            geometry.geometry.instances.arrayOfPointers = VK_FALSE;
+            geometry.geometry.instances.data            = instanceData;
+
+            vk::AccelerationStructureBuildRangeInfoKHR rangeInfo {};
+            rangeInfo.primitiveCount = static_cast<uint32_t>(vkInstances.size());
 
             vk::AccelerationStructureBuildGeometryInfoKHR buildInfo {};
             buildInfo.type          = vk::AccelerationStructureTypeKHR::eTopLevel;

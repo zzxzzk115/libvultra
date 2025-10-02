@@ -137,6 +137,8 @@ namespace vultra
             UIPass*    m_UIPass {nullptr};
 
             SimpleRaytracingPass* m_SimpleRaytracingPass {nullptr};
+
+            std::vector<Ref<DefaultMesh>> m_AreaLightMeshResources; // Keep alive for raytracing purposes
         };
     } // namespace gfx
 } // namespace vultra

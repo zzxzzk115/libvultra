@@ -195,7 +195,16 @@ namespace vultra
             }
             else
             {
-                set = m_DescriptorSetAllocator.allocate(layout);
+                uint32_t variableDescriptorCount = 0;
+                for (const auto& [_, binding] : m_Bindings)
+                {
+                    if (binding.type == vk::DescriptorType::eCombinedImageSampler && binding.count > 1)
+                    {
+                        variableDescriptorCount = binding.count;
+                        break;
+                    }
+                }
+                set = m_DescriptorSetAllocator.allocate(layout, variableDescriptorCount);
                 for (auto& r : writes)
                     r.dstSet = set;
                 m_Device.updateDescriptorSets(static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);

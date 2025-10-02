@@ -4,10 +4,6 @@
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/core/rhi/vk/macro.hpp"
 
-#include <glm/common.hpp>
-#include <glm/detail/func_exponential.inl>
-#include <glm/vec3.hpp>
-
 namespace vultra
 {
     namespace rhi

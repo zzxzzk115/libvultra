@@ -53,7 +53,7 @@ struct GPUGeometryNode {
 };
 layout(set = 2, binding = 1) buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
 
-layout(set = 2, binding = 2) uniform sampler2D textures[512]; // TODO: Variable length
+layout(set = 2, binding = 2) uniform sampler2D textures[]; // TODO: Variable length
 
 layout(push_constant) uniform GlobalPushConstants
 {

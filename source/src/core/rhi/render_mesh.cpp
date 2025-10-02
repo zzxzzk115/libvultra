@@ -7,15 +7,9 @@ namespace vultra
 {
     namespace rhi
     {
-        void RenderMesh::createBuildAccelerationStructures(RenderDevice& rd, const glm::mat4& transform)
+        void RenderMesh::createBuildBLAS(RenderDevice& rd)
         {
             blas = rd.createBuildRenderMeshBLAS(subMeshes);
-            tlas = rd.createBuildTLAS(blas, transform);
-        }
-
-        void RenderMesh::updateTLAS(RenderDevice& rd, const glm::mat4& transform)
-        {
-            // TODO: Update TLAS
         }
     } // namespace rhi
 } // namespace vultra

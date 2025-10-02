@@ -8,6 +8,7 @@
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/raytracing/acceleration_structure.hpp"
+#include "vultra/core/rhi/raytracing/raytracing_instance.hpp"
 #include "vultra/core/rhi/raytracing/raytracing_pipeline.hpp"
 #include "vultra/core/rhi/raytracing/raytracing_pipeline_properties.hpp"
 #include "vultra/core/rhi/raytracing/scratch_buffer.hpp"
@@ -138,7 +139,7 @@ namespace vultra
                                                             AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] std::pair<std::size_t, vk::DescriptorSetLayout>
-            createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>&);
+            createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>&);
 
             [[nodiscard]] PipelineLayout createPipelineLayout(const PipelineLayoutInfo&);
 
@@ -213,8 +214,13 @@ namespace vultra
             // For render mesh BLAS, e.g., multiple sub-meshes
             [[nodiscard]] AccelerationStructure createBuildRenderMeshBLAS(std::vector<RenderSubMesh>& subMeshes);
 
-            [[nodiscard]] AccelerationStructure createBuildTLAS(const AccelerationStructure& referenceBLAS,
-                                                                const glm::mat4&             transform);
+            // For single instance TLAS, e.g., triangle instance
+            [[nodiscard]] AccelerationStructure
+            createBuildSingleInstanceTLAS(const AccelerationStructure& referenceBLAS, const glm::mat4& transform);
+
+            // For multiple instance TLAS, e.g., render mesh instance
+            [[nodiscard]] AccelerationStructure
+            createBuildMultipleInstanceTLAS(const std::vector<RayTracingInstance>& instances);
 
             [[nodiscard]] ScratchBuffer createScratchBuffer(uint64_t size,
                                                             AllocationHints = AllocationHints::eNone) const;

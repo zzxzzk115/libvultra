@@ -40,18 +40,18 @@ namespace vultra
             m_LTCMag = createRef<vultra::rhi::Texture>(std::move(ltc_2.value()));
         }
 
-        FrameGraphResource SimpleRaytracingPass::addPass(FrameGraph&                 fg,
-                                                         FrameGraphBlackboard&       blackboard,
-                                                         const rhi::Extent2D&        resolution,
-                                                         const std::span<Renderable> renderables,
-                                                         uint32_t                    maxRecursionDepth,
-                                                         const glm::vec4&            missColor,
-                                                         uint32_t                    mode,
-                                                         bool                        enableNormalMapping,
-                                                         bool                        enableAreaLights,
-                                                         bool                        enableIBL,
-                                                         float                       exposure,
-                                                         ToneMappingMethod           toneMappingMethod)
+        FrameGraphResource SimpleRaytracingPass::addPass(FrameGraph&            fg,
+                                                         FrameGraphBlackboard&  blackboard,
+                                                         const rhi::Extent2D&   resolution,
+                                                         const RenderableGroup& renderableGroup,
+                                                         uint32_t               maxRecursionDepth,
+                                                         const glm::vec4&       missColor,
+                                                         uint32_t               mode,
+                                                         bool                   enableNormalMapping,
+                                                         bool                   enableAreaLights,
+                                                         bool                   enableIBL,
+                                                         float                  exposure,
+                                                         ToneMappingMethod      toneMappingMethod)
         {
             // Disable area lights if LUTs missing
             if (enableAreaLights && (!m_LTCMat || !m_LTCMag))
@@ -71,8 +71,8 @@ namespace vultra
                                                                 SimpleRaytracingData& data) {
                     PASS_SETUP_ZONE;
 
-                    read(builder, blackboard.get<CameraData>());
-                    read(builder, blackboard.get<LightData>());
+                    read(builder, blackboard.get<CameraData>(), framegraph::PipelineStage::eRayTracingShader);
+                    read(builder, blackboard.get<LightData>(), framegraph::PipelineStage::eRayTracingShader);
 
                     // IBL textures
                     builder.read(iblData.brdfLUT,
@@ -125,7 +125,7 @@ namespace vultra
                                       });
                 },
                 [this,
-                 renderables,
+                 &renderableGroup,
                  resolution,
                  maxRecursionDepth,
                  &missColor,
@@ -167,11 +167,10 @@ namespace vultra
                     cb.bindPipeline(*pipeline).pushConstants(
                         rhi::ShaderStages::eMiss | rhi::ShaderStages::eClosestHit, 0, &pushConstants);
 
-                    for (const auto& renderable : renderables)
+                    for (const auto& renderable : renderableGroup.renderables)
                     {
-                        assert(renderable.mesh->renderMesh.tlas);
-                        rc.resourceSet[3][0] =
-                            rhi::bindings::AccelerationStructureKHR {.as = &renderable.mesh->renderMesh.tlas};
+                        assert(renderableGroup.tlas);
+                        rc.resourceSet[3][0] = rhi::bindings::AccelerationStructureKHR {.as = &renderableGroup.tlas};
 
                         rc.resourceSet[3][2] = rhi::bindings::CombinedImageSampler {
                             .texture     = m_LTCMat.get(),

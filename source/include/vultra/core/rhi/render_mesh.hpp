@@ -35,11 +35,8 @@ namespace vultra
             Ref<StorageBuffer> geometryNodeBuffer {nullptr};
 
             AccelerationStructure blas;
-            AccelerationStructure tlas;
 
-            void createBuildAccelerationStructures(RenderDevice& rd, const glm::mat4& transform);
-
-            void updateTLAS(RenderDevice& rd, const glm::mat4& transform);
+            void createBuildBLAS(RenderDevice& rd);
         };
     } // namespace rhi
 } // namespace vultra

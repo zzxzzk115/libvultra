@@ -168,7 +168,7 @@ namespace vultra
                     renderMesh.subMeshes.push_back(rsm);
                 }
 
-                renderMesh.createBuildAccelerationStructures(rd, glm::mat4(1.0f));
+                renderMesh.createBuildBLAS(rd);
 
                 // Create geometry node buffer (raytracing only)
                 {

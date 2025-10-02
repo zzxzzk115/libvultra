@@ -1,5 +1,32 @@
 #include "vultra/function/renderer/base_renderer.hpp"
 
+namespace std
+{
+    template<>
+    struct hash<vultra::gfx::RenderableGroup>
+    {
+        size_t operator()(const vultra::gfx::RenderableGroup& rg) const
+        {
+            size_t seed = 0;
+            for (const auto& renderable : rg.renderables)
+            {
+                // Combine the hash of the mesh pointer and model matrix
+                seed ^=
+                    std::hash<decltype(renderable.mesh)>()(renderable.mesh) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                for (int i = 0; i < 4; ++i)
+                {
+                    for (int j = 0; j < 4; ++j)
+                    {
+                        seed ^=
+                            std::hash<float>()(renderable.modelMatrix[i][j]) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                    }
+                }
+            }
+            return seed;
+        }
+    };
+} // namespace std
+
 namespace vultra
 {
     namespace gfx
@@ -8,10 +35,22 @@ namespace vultra
 
         void BaseRenderer::setRenderables(const std::span<Renderable> renderables)
         {
-            m_Renderables.clear();
-            std::copy_if(renderables.begin(), renderables.end(), std::back_inserter(m_Renderables), [](const auto& r) {
-                return r.mesh && !r.mesh->getSubMeshes().empty();
-            });
+            m_RenderableGroup.renderables.clear();
+            std::copy(renderables.begin(), renderables.end(), std::back_inserter(m_RenderableGroup.renderables));
+
+            auto hash_value = std::hash<RenderableGroup>()(m_RenderableGroup);
+            if (m_RenderableGroupHash != hash_value)
+            {
+                m_RenderableGroupHash = hash_value;
+
+                // If raytracing or ray query is used, rebuild TLAS if the group has changed
+                if (HasFlagValues(m_RenderDevice.getFeatureFlag(),
+                                  rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
+                    HasFlagValues(m_RenderDevice.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayQuery))
+                {
+                    m_RenderableGroup.createBuildTLAS(m_RenderDevice);
+                }
+            }
 
             m_RenderPrimitiveGroup.clear();
             for (const auto& renderable : renderables)

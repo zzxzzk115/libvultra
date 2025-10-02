@@ -105,7 +105,7 @@ public:
             resource::loadResource<gfx::MeshManager>("resources/models/raytracing_shadow/raytracing_shadow.gltf");
 
         // Create and build TLAS
-        m_TLAS = m_RenderDevice->createBuildTLAS(m_MeshResource->renderMesh.blas, kTransform);
+        m_TLAS = m_RenderDevice->createBuildSingleInstanceTLAS(m_MeshResource->renderMesh.blas, kTransform);
 
         // Create graphics pipeline
         m_Pipeline =

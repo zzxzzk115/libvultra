@@ -41,67 +41,85 @@ namespace vultra
             return m_DescriptorSetLayouts[index];
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addImage(const DescriptorSetIndex   setIndex,
-                                                                   const BindingIndex         bindingIndex,
-                                                                   const vk::ShaderStageFlags stages)
+        PipelineLayout::Builder& PipelineLayout::Builder::addImage(const DescriptorSetIndex         setIndex,
+                                                                   const BindingIndex               bindingIndex,
+                                                                   const vk::ShaderStageFlags       stages,
+                                                                   const VkDescriptorBindingFlags flags)
         {
-            return addImages(setIndex, bindingIndex, 1, stages);
+            return addImages(setIndex, bindingIndex, 1, stages, flags);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addImages(const DescriptorSetIndex   setIndex,
-                                                                    const BindingIndex         bindingIndex,
-                                                                    const uint32_t             count,
-                                                                    const vk::ShaderStageFlags stages)
+        PipelineLayout::Builder& PipelineLayout::Builder::addImages(const DescriptorSetIndex         setIndex,
+                                                                    const BindingIndex               bindingIndex,
+                                                                    const uint32_t                   count,
+                                                                    const vk::ShaderStageFlags       stages,
+                                                                    const VkDescriptorBindingFlags flags)
         {
-            return addResource(
-                setIndex,
-                vk::DescriptorSetLayoutBinding {bindingIndex, vk::DescriptorType::eStorageImage, count, stages});
+            DescriptorSetLayoutBindingEx desc {};
+            desc.binding =
+                vk::DescriptorSetLayoutBinding {bindingIndex, vk::DescriptorType::eStorageImage, count, stages};
+            desc.flags = flags;
+            return addResource(setIndex, desc);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addSampledImage(const DescriptorSetIndex   setIndex,
-                                                                          const BindingIndex         bindingIndex,
-                                                                          const vk::ShaderStageFlags stages)
+        PipelineLayout::Builder& PipelineLayout::Builder::addSampledImage(const DescriptorSetIndex         setIndex,
+                                                                          const BindingIndex               bindingIndex,
+                                                                          const vk::ShaderStageFlags       stages,
+                                                                          const VkDescriptorBindingFlags flags)
         {
-            return addSampledImages(setIndex, bindingIndex, 1, stages);
+            return addSampledImages(setIndex, bindingIndex, 1, stages, flags);
         }
 
         PipelineLayout::Builder& PipelineLayout::Builder::addSampledImages(const DescriptorSetIndex   setIndex,
                                                                            const BindingIndex         bindingIndex,
                                                                            const uint32_t             count,
-                                                                           const vk::ShaderStageFlags stages)
+                                                                           const vk::ShaderStageFlags stages,
+                                                                           const VkDescriptorBindingFlags flags)
         {
-            return addResource(setIndex,
-                               vk::DescriptorSetLayoutBinding {
-                                   bindingIndex, vk::DescriptorType::eCombinedImageSampler, count, stages});
+            DescriptorSetLayoutBindingEx desc {};
+            desc.binding =
+                vk::DescriptorSetLayoutBinding {bindingIndex, vk::DescriptorType::eCombinedImageSampler, count, stages};
+            desc.flags = flags;
+            return addResource(setIndex, desc);
         }
 
         PipelineLayout::Builder& PipelineLayout::Builder::addUniformBuffer(const DescriptorSetIndex   setIndex,
                                                                            const BindingIndex         bindingIndex,
-                                                                           const vk::ShaderStageFlags stages)
+                                                                           const vk::ShaderStageFlags stages,
+                                                                           const VkDescriptorBindingFlags flags)
         {
-            return addResource(
-                setIndex, vk::DescriptorSetLayoutBinding {bindingIndex, vk::DescriptorType::eUniformBuffer, 1, stages});
+            DescriptorSetLayoutBindingEx desc {};
+            desc.binding = vk::DescriptorSetLayoutBinding {bindingIndex, vk::DescriptorType::eUniformBuffer, 1, stages};
+            desc.flags   = flags;
+            return addResource(setIndex, desc);
         }
 
         PipelineLayout::Builder& PipelineLayout::Builder::addStorageBuffer(const DescriptorSetIndex   setIndex,
                                                                            const BindingIndex         bindingIndex,
-                                                                           const vk::ShaderStageFlags stages)
+                                                                           const vk::ShaderStageFlags stages,
+                                                                           const VkDescriptorBindingFlags flags)
         {
-            return addResource(
-                setIndex, vk::DescriptorSetLayoutBinding {bindingIndex, vk::DescriptorType::eStorageBuffer, 1, stages});
+            DescriptorSetLayoutBindingEx desc {};
+            desc.binding = vk::DescriptorSetLayoutBinding {bindingIndex, vk::DescriptorType::eStorageBuffer, 1, stages};
+            desc.flags   = flags;
+            return addResource(setIndex, desc);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addAccelerationStructure(const DescriptorSetIndex setIndex,
-                                                                                   const BindingIndex bindingIndex,
-                                                                                   const vk::ShaderStageFlags stages)
+        PipelineLayout::Builder&
+        PipelineLayout::Builder::addAccelerationStructure(const DescriptorSetIndex         setIndex,
+                                                          const BindingIndex               bindingIndex,
+                                                          const vk::ShaderStageFlags       stages,
+                                                          const VkDescriptorBindingFlags flags)
         {
-            return addResource(setIndex,
-                               vk::DescriptorSetLayoutBinding {
-                                   bindingIndex, vk::DescriptorType::eAccelerationStructureKHR, 1, stages});
+            DescriptorSetLayoutBindingEx desc {};
+            desc.binding =
+                vk::DescriptorSetLayoutBinding {bindingIndex, vk::DescriptorType::eAccelerationStructureKHR, 1, stages};
+            desc.flags = flags;
+            return addResource(setIndex, desc);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addResource(const DescriptorSetIndex       index,
-                                                                      vk::DescriptorSetLayoutBinding desc)
+        PipelineLayout::Builder& PipelineLayout::Builder::addResource(const DescriptorSetIndex     index,
+                                                                      DescriptorSetLayoutBindingEx desc)
         {
             assert(index <= m_LayoutInfo.descriptorSets.size());
             m_LayoutInfo.descriptorSets[index].emplace_back(std::move(desc));
@@ -133,13 +151,11 @@ namespace vultra
             {
                 for (const auto& [index, resource] : bindings)
                 {
-                    builder.addResource(static_cast<DescriptorSetIndex>(set),
-                                        vk::DescriptorSetLayoutBinding {
-                                            index,
-                                            resource.type,
-                                            resource.count,
-                                            resource.stageFlags,
-                                        });
+                    DescriptorSetLayoutBindingEx desc {};
+                    desc.binding =
+                        vk::DescriptorSetLayoutBinding {index, resource.type, resource.count, resource.stageFlags};
+                    desc.flags = resource.flags;
+                    builder.addResource(static_cast<DescriptorSetIndex>(set), desc);
                 }
             }
             for (const auto& range : reflection.pushConstantRanges)

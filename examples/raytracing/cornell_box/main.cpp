@@ -290,7 +290,7 @@ public:
         }
 
         // Create and build TLAS
-        m_TLAS = m_RenderDevice->createBuildTLAS(m_MeshResource->renderMesh.blas, kTransform);
+        m_TLAS = m_RenderDevice->createBuildSingleInstanceTLAS(m_MeshResource->renderMesh.blas, kTransform);
 
         // Create raytracing pipeline
         m_Pipeline = rhi::RayTracingPipeline::Builder {}

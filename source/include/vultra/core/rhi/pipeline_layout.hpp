@@ -11,9 +11,15 @@ namespace vultra
 
         constexpr auto kMinNumDescriptorSets = 4;
 
+        struct DescriptorSetLayoutBindingEx
+        {
+            vk::DescriptorSetLayoutBinding binding;
+            VkDescriptorBindingFlags       flags {0};
+        };
+
         struct PipelineLayoutInfo
         {
-            using DescriptorSetBindings = std::vector<vk::DescriptorSetLayoutBinding>;
+            using DescriptorSetBindings = std::vector<DescriptorSetLayoutBindingEx>;
             std::array<DescriptorSetBindings, kMinNumDescriptorSets> descriptorSets;
             std::vector<vk::PushConstantRange>                       pushConstantRanges;
         };
@@ -49,23 +55,39 @@ namespace vultra
                 Builder& operator=(const Builder&)     = delete;
                 Builder& operator=(Builder&&) noexcept = delete;
 
-                Builder& addImage(const DescriptorSetIndex, const BindingIndex, const vk::ShaderStageFlags);
+                Builder& addImage(const DescriptorSetIndex,
+                                  const BindingIndex,
+                                  const vk::ShaderStageFlags,
+                                  const VkDescriptorBindingFlags = {});
                 Builder& addImages(const DescriptorSetIndex,
                                    const BindingIndex,
                                    const uint32_t count,
-                                   const vk::ShaderStageFlags);
-                Builder& addSampledImage(const DescriptorSetIndex, const BindingIndex, const vk::ShaderStageFlags);
+                                   const vk::ShaderStageFlags,
+                                   const VkDescriptorBindingFlags = {});
+                Builder& addSampledImage(const DescriptorSetIndex,
+                                         const BindingIndex,
+                                         const vk::ShaderStageFlags,
+                                         const VkDescriptorBindingFlags = {});
                 Builder& addSampledImages(const DescriptorSetIndex,
                                           const BindingIndex,
                                           const uint32_t count,
-                                          const vk::ShaderStageFlags);
-                Builder& addUniformBuffer(const DescriptorSetIndex, const BindingIndex, const vk::ShaderStageFlags);
-                Builder& addStorageBuffer(const DescriptorSetIndex, const BindingIndex, const vk::ShaderStageFlags);
+                                          const vk::ShaderStageFlags,
+                                          const VkDescriptorBindingFlags = {});
+                Builder& addUniformBuffer(const DescriptorSetIndex,
+                                          const BindingIndex,
+                                          const vk::ShaderStageFlags,
+                                          const VkDescriptorBindingFlags = {});
+                Builder& addStorageBuffer(const DescriptorSetIndex,
+                                          const BindingIndex,
+                                          const vk::ShaderStageFlags,
+                                          const VkDescriptorBindingFlags = {});
 
-                Builder&
-                addAccelerationStructure(const DescriptorSetIndex, const BindingIndex, const vk::ShaderStageFlags);
+                Builder& addAccelerationStructure(const DescriptorSetIndex,
+                                                  const BindingIndex,
+                                                  const vk::ShaderStageFlags,
+                                                  const VkDescriptorBindingFlags = {});
 
-                Builder& addResource(const DescriptorSetIndex, vk::DescriptorSetLayoutBinding);
+                Builder& addResource(const DescriptorSetIndex, DescriptorSetLayoutBindingEx);
                 Builder& addPushConstantRange(vk::PushConstantRange);
 
                 [[nodiscard]] PipelineLayout build(RenderDevice&) const;

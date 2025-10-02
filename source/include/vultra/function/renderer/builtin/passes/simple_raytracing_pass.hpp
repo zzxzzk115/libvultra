@@ -20,16 +20,16 @@ namespace vultra
 
             [[nodiscard]] FrameGraphResource addPass(FrameGraph&,
                                                      FrameGraphBlackboard&,
-                                                     const rhi::Extent2D&        resolution,
-                                                     const std::span<Renderable> renderables,
-                                                     uint32_t                    maxRecursionDepth,
-                                                     const glm::vec4&            missColor,
-                                                     uint32_t                    mode,
-                                                     bool                        enableNormalMapping,
-                                                     bool                        enableAreaLights,
-                                                     bool                        enableIBL,
-                                                     float                       exposure,
-                                                     ToneMappingMethod           toneMappingMethod);
+                                                     const rhi::Extent2D&   resolution,
+                                                     const RenderableGroup& renderableGroup,
+                                                     uint32_t               maxRecursionDepth,
+                                                     const glm::vec4&       missColor,
+                                                     uint32_t               mode,
+                                                     bool                   enableNormalMapping,
+                                                     bool                   enableAreaLights,
+                                                     bool                   enableIBL,
+                                                     float                  exposure,
+                                                     ToneMappingMethod      toneMappingMethod);
 
         private:
             rhi::RayTracingPipeline createPipeline(uint32_t maxRecursionDepth) const;
