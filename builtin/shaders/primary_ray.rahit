@@ -6,6 +6,14 @@
 
 layout(set = 3, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
+struct GPUInstanceData {
+    uint geometryOffset;
+    uint geometryCount;
+    uint materialOffset;
+    uint materialCount;
+};
+layout(set = 2, binding = 0) buffer InstanceData { GPUInstanceData instances[]; };
+
 struct GPUMaterial {
     uint albedoIndex;
     uint alphaMaskIndex;
@@ -30,31 +38,39 @@ struct GPUMaterial {
     float ior;
     int   doubleSided;
 };
-layout(set = 2, binding = 0) buffer Materials { GPUMaterial materials[]; };
+layout(set = 2, binding = 1) buffer Materials { GPUMaterial materials[]; };
 
 struct GPUGeometryNode {
     uint64_t vertexBufferAddress;
     uint64_t indexBufferAddress;
     uint materialIndex;
 };
-layout(set = 2, binding = 1) buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
+layout(set = 2, binding = 2) buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
 
-layout(set = 2, binding = 2) uniform sampler2D textures[70]; // TODO: Variable length
+layout(set = 2, binding = 3) uniform sampler2D textures[];
 
 hitAttributeEXT vec2 attribs;
 
 void main()
 {
+    const uint instanceIndex = gl_InstanceCustomIndexEXT;
+    GPUInstanceData instance = instances[nonuniformEXT(instanceIndex)];
+
 	const uint geomIndex = gl_GeometryIndexEXT;
-    GPUGeometryNode node = geometryNodes[nonuniformEXT(geomIndex)];
-    GPUMaterial mat = materials[nonuniformEXT(node.materialIndex)];
+    const uint geomGlobalIndex = instance.geometryOffset + geomIndex;
+    GPUGeometryNode node = geometryNodes[nonuniformEXT(geomGlobalIndex)];
+
+    const uint materialIndex = node.materialIndex;
+    const uint materialGlobalIndex = instance.materialOffset + materialIndex;
+    GPUMaterial mat = materials[nonuniformEXT(materialGlobalIndex)];
 
 	Vertex v0 = fromBufferDeviceAddresses(node.vertexBufferAddress, node.indexBufferAddress, 0);
 	Vertex v1 = fromBufferDeviceAddresses(node.vertexBufferAddress, node.indexBufferAddress, 1);
 	Vertex v2 = fromBufferDeviceAddresses(node.vertexBufferAddress, node.indexBufferAddress, 2);
 
 	vec2 uv = (1.0 - attribs.x - attribs.y) * v0.texCoord + attribs.x * v1.texCoord + attribs.y * v2.texCoord;
-    vec4 albedoWithAlpha = mat.albedoIndex > 0 ? texture(textures[nonuniformEXT(mat.albedoIndex)], uv) : mat.baseColor;
+
+    vec4 albedoWithAlpha = texture(textures[nonuniformEXT(mat.albedoIndex)], uv);
     if (albedoWithAlpha.a < 0.5)
     {
         ignoreIntersectionEXT; // alpha cutout

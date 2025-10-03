@@ -167,47 +167,47 @@ namespace vultra
                     cb.bindPipeline(*pipeline).pushConstants(
                         rhi::ShaderStages::eMiss | rhi::ShaderStages::eClosestHit, 0, &pushConstants);
 
-                    for (const auto& renderable : renderableGroup.renderables)
-                    {
-                        assert(renderableGroup.tlas);
-                        rc.resourceSet[3][0] = rhi::bindings::AccelerationStructureKHR {.as = &renderableGroup.tlas};
+                    assert(renderableGroup.tlas);
 
-                        rc.resourceSet[3][2] = rhi::bindings::CombinedImageSampler {
-                            .texture     = m_LTCMat.get(),
-                            .imageAspect = rhi::ImageAspect::eColor,
-                        };
+                    rc.resourceSet[3][0] = rhi::bindings::AccelerationStructureKHR {.as = &renderableGroup.tlas};
+                    rc.resourceSet[3][2] = rhi::bindings::CombinedImageSampler {
+                        .texture     = m_LTCMat.get(),
+                        .imageAspect = rhi::ImageAspect::eColor,
+                    };
 
-                        rc.resourceSet[3][3] = rhi::bindings::CombinedImageSampler {
-                            .texture     = m_LTCMag.get(),
-                            .imageAspect = rhi::ImageAspect::eColor,
-                        };
+                    rc.resourceSet[3][3] = rhi::bindings::CombinedImageSampler {
+                        .texture     = m_LTCMag.get(),
+                        .imageAspect = rhi::ImageAspect::eColor,
+                    };
 
-                        rc.resourceSet[2][0] = rhi::bindings::StorageBuffer {
-                            .buffer = renderable.mesh->materialBuffer.get(),
-                        };
-                        rc.resourceSet[2][1] = rhi::bindings::StorageBuffer {
-                            .buffer = renderable.mesh->renderMesh.geometryNodeBuffer.get(),
-                        };
-                        rc.resourceSet[2][2] = rhi::bindings::CombinedImageSamplerArray {
-                            .textures    = getRenderDevice().getAllLoadedTextures(),
-                            .imageAspect = rhi::ImageAspect::eColor,
-                        };
+                    rc.resourceSet[2][0] = rhi::bindings::StorageBuffer {
+                        .buffer = renderableGroup.instanceBuffer.get(),
+                    };
+                    rc.resourceSet[2][1] = rhi::bindings::StorageBuffer {
+                        .buffer = renderableGroup.materialBuffer.get(),
+                    };
+                    rc.resourceSet[2][2] = rhi::bindings::StorageBuffer {
+                        .buffer = renderableGroup.geometryNodeBuffer.get(),
+                    };
+                    rc.resourceSet[2][3] = rhi::bindings::CombinedImageSamplerArray {
+                        .textures    = getRenderDevice().getAllLoadedTextures(),
+                        .imageAspect = rhi::ImageAspect::eColor,
+                    };
 
-                        assert(samplers.count("bilinear") > 0);
-                        rc.overrideSampler(sets[3][4], samplers["bilinear"]); // BRDF LUT
-                        rc.overrideSampler(sets[3][5], samplers["bilinear"]); // Irradiance map
-                        rc.overrideSampler(sets[3][6], samplers["bilinear"]); // Prefiltered env map
+                    assert(samplers.count("bilinear") > 0);
+                    rc.overrideSampler(sets[3][4], samplers["bilinear"]); // BRDF LUT
+                    rc.overrideSampler(sets[3][5], samplers["bilinear"]); // Irradiance map
+                    rc.overrideSampler(sets[3][6], samplers["bilinear"]); // Prefiltered env map
 
-                        rc.bindDescriptorSets(*pipeline);
+                    rc.bindDescriptorSets(*pipeline);
 
-                        // Trace rays
-                        cb.traceRays(*pipeline->getSBT(getRenderDevice()),
-                                     {
-                                         static_cast<float>(resolution.width),
-                                         static_cast<float>(resolution.height),
-                                         1.0f,
-                                     });
-                    }
+                    // Trace rays
+                    cb.traceRays(*pipeline->getSBT(getRenderDevice()),
+                                 {
+                                     static_cast<float>(resolution.width),
+                                     static_cast<float>(resolution.height),
+                                     1.0f,
+                                 });
 
                     rc.endRayTracing();
                 });

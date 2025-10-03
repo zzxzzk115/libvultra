@@ -20,6 +20,14 @@ layout(set = 3, binding = 4) uniform sampler2D t_BrdfLUT;
 layout(set = 3, binding = 5) uniform samplerCube t_IrradianceMap;
 layout(set = 3, binding = 6) uniform samplerCube t_PrefilteredEnvMap;
 
+struct GPUInstanceData {
+    uint geometryOffset;
+    uint geometryCount;
+    uint materialOffset;
+    uint materialCount;
+};
+layout(set = 2, binding = 0) buffer InstanceData { GPUInstanceData instances[]; };
+
 struct GPUMaterial {
     uint albedoIndex;
     uint alphaMaskIndex;
@@ -44,16 +52,16 @@ struct GPUMaterial {
     float ior;
     int   doubleSided;
 };
-layout(set = 2, binding = 0) buffer Materials { GPUMaterial materials[]; };
+layout(set = 2, binding = 1) buffer Materials { GPUMaterial materials[]; };
 
 struct GPUGeometryNode {
     uint64_t vertexBufferAddress;
     uint64_t indexBufferAddress;
     uint materialIndex;
 };
-layout(set = 2, binding = 1) buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
+layout(set = 2, binding = 2) buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
 
-layout(set = 2, binding = 2) uniform sampler2D textures[]; // TODO: Variable length
+layout(set = 2, binding = 3) uniform sampler2D textures[];
 
 layout(push_constant) uniform GlobalPushConstants
 {
@@ -81,9 +89,16 @@ hitAttributeEXT vec2 attribs;
 
 void main()
 {
+    const uint instanceIndex = gl_InstanceCustomIndexEXT;
+    GPUInstanceData instance = instances[nonuniformEXT(instanceIndex)];
+
 	const uint geomIndex = gl_GeometryIndexEXT;
-    GPUGeometryNode node = geometryNodes[nonuniformEXT(geomIndex)];
-    GPUMaterial mat = materials[nonuniformEXT(node.materialIndex)];
+    const uint geomGlobalIndex = instance.geometryOffset + geomIndex;
+
+    GPUGeometryNode node = geometryNodes[nonuniformEXT(geomGlobalIndex)];
+    const uint materialIndex = node.materialIndex;
+    const uint materialGlobalIndex = instance.materialOffset + materialIndex;
+    GPUMaterial mat = materials[nonuniformEXT(materialGlobalIndex)];
 
 	Vertex v0 = fromBufferDeviceAddresses(node.vertexBufferAddress, node.indexBufferAddress, 0);
 	Vertex v1 = fromBufferDeviceAddresses(node.vertexBufferAddress, node.indexBufferAddress, 1);
@@ -94,13 +109,17 @@ void main()
 	float lod = log2(dist * 0.25);
 
 	vec2 uv = (1.0 - attribs.x - attribs.y) * v0.texCoord + attribs.x * v1.texCoord + attribs.y * v2.texCoord;
-    vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(textureLod(textures[nonuniformEXT(mat.emissiveIndex)], uv, lod).rgb) : mat.emissiveColorIntensity.rgb * mat.emissiveColorIntensity.a;
-
-    if (length(emissive) > 1e-6) {
-        hitValue = emissive; // Emissive material early out
+    vec3 emissiveColor = mat.emissiveColorIntensity.rgb;
+    
+    if (length(emissiveColor) > 0.0) {
+        vec3 finalColor = emissiveColor * exposure;
+        if (toneMappingMethod == 0) finalColor = linearTosRGB(toneMappingKhronosPbrNeutral(finalColor));
+        else if (toneMappingMethod == 1) finalColor = linearTosRGB(toneMappingACES(finalColor));
+        else if (toneMappingMethod == 2) finalColor = linearTosRGB(toneMappingReinhard(finalColor));
+        hitValue = finalColor;
         return;
     }
-    
+
     vec3 N = normalize((1.0 - attribs.x - attribs.y) * v0.normal + attribs.x * v1.normal + attribs.y * v2.normal);
     vec3 T = normalize((1.0 - attribs.x - attribs.y) * v0.tangent.xyz + attribs.x * v1.tangent.xyz + attribs.y * v2.tangent.xyz);
     vec3 B = normalize(cross(N, T) * v0.tangent.w);
@@ -109,7 +128,8 @@ void main()
     vec3 fragPos = (1.0 - attribs.x - attribs.y) * v0.position + attribs.x * v1.position + attribs.y * v2.position;
     float depth = length(gl_WorldRayOriginEXT - fragPos) / u_Camera.far;
 
-	vec3 albedo = sRGBToLinear(textureLod(textures[nonuniformEXT(mat.albedoIndex)], uv, lod).rgb);
+	vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(textureLod(textures[nonuniformEXT(mat.albedoIndex)], uv, lod).rgb) : sRGBToLinear(mat.baseColor.rgb);
+    vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(texture(textures[nonuniformEXT(mat.emissiveIndex)], uv).rgb) : mat.emissiveColorIntensity.rgb * mat.emissiveColorIntensity.a;
     vec3 normal = textureLod(textures[nonuniformEXT(mat.normalIndex)], uv, lod).rgb;
     normal = normalize(normal * 2.0 - 1.0); // normal map
     normal = mat.normalIndex > 0 && enableNormalMapping == 1 ? normalize(TBN * normal) : N;

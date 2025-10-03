@@ -389,7 +389,7 @@ namespace vultra
                 // Area lights
                 auto areaLights            = scene->getAreaLights();
                 m_LightInfo.areaLightCount = static_cast<int>(areaLights.size());
-                m_AreaLightMeshResources.resize(areaLights.size());
+                m_AreaLightMeshes.resize(areaLights.size());
                 for (size_t i = 0; i < areaLights.size() && i < LIGHTINFO_MAX_AREA_LIGHTS; ++i)
                 {
                     auto& lightComponent               = areaLights[i].getComponent<AreaLightComponent>();
@@ -404,24 +404,18 @@ namespace vultra
                     m_LightInfo.areaLights[i].twoSided  = lightComponent.twoSided;
 
                     // For raytracing
-                    if (i < areaLights.size() && m_AreaLightMeshResources[i] == nullptr)
+                    if (i < areaLights.size() && m_AreaLightMeshes[i] == nullptr)
                     {
-                        auto areaLightMesh =
-                            gfx::createAreaLightMesh(m_RenderDevice,
-                                                     lightTransform.position,
-                                                     lightComponent.width,
-                                                     lightComponent.height,
-                                                     glm::vec4(lightComponent.color, lightComponent.intensity),
-                                                     lightComponent.twoSided);
-                        m_AreaLightMeshResources[i] = areaLightMesh;
+                        auto areaLightMesh   = gfx::createAreaLightMesh(m_RenderDevice, lightComponent, lightTransform);
+                        m_AreaLightMeshes[i] = areaLightMesh;
                     }
                 }
 
                 // Renderables
                 auto renderables = scene->cookRenderables();
-                for (auto& areaLightMeshResource : m_AreaLightMeshResources)
+                for (auto& areaLightMesh : m_AreaLightMeshes)
                 {
-                    // renderables.push_back({.mesh = areaLightMeshResource, .modelMatrix = glm::mat4(1.0f)});
+                    renderables.push_back({.mesh = areaLightMesh, .modelMatrix = glm::mat4(1.0f)});
                 }
                 setRenderables(renderables);
             }

@@ -2,19 +2,18 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/renderer/default_vertex.hpp"
+#include "vultra/function/scenegraph/components.hpp"
 
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/vec3.hpp>
 
 namespace vultra
 {
     namespace gfx
     {
-        Ref<DefaultMesh> createAreaLightMesh(rhi::RenderDevice& rd,
-                                             const glm::vec3&   position,
-                                             float              width,
-                                             float              height,
-                                             const glm::vec4&   emissiveColorIntensity,
-                                             bool               twoSided)
+        Ref<DefaultMesh> createAreaLightMesh(rhi::RenderDevice&        rd,
+                                             const AreaLightComponent& lightComponent,
+                                             const TransformComponent& lightTransform)
         {
             auto outMesh = createRef<DefaultMesh>();
 
@@ -28,17 +27,26 @@ namespace vultra
 
             outMesh->materials.push_back({
                 .name                   = "AreaLightMaterial",
-                .emissiveColorIntensity = emissiveColorIntensity,
-                .doubleSided            = twoSided,
+                .emissiveColorIntensity = glm::vec4(lightComponent.color, lightComponent.intensity),
+                .doubleSided            = lightComponent.twoSided,
             });
 
             // Create a simple quad mesh for the area light
             outMesh->vertices.resize(4);
-            auto& vertices       = outMesh->vertices;
-            vertices[0].position = position + glm::vec3(-width / 2.0f, 0.0f, -height / 2.0f);
-            vertices[1].position = position + glm::vec3(width / 2.0f, 0.0f, -height / 2.0f);
-            vertices[2].position = position + glm::vec3(width / 2.0f, 0.0f, height / 2.0f);
-            vertices[3].position = position + glm::vec3(-width / 2.0f, 0.0f, height / 2.0f);
+            auto& vertices = outMesh->vertices;
+
+            // Set vertices with rotation
+            glm::mat4 transform = lightTransform.getTransform();
+            float     width     = lightComponent.width;
+            float     height    = lightComponent.height;
+
+            glm::vec3 center = lightTransform.position;
+            glm::vec3 halfExtents = glm::vec3(width * 0.5f, height * 0.5f, 0.0f);
+
+            vertices[0].position = glm::vec3(transform * glm::vec4(-halfExtents.x, -halfExtents.y, 0.0f, 1.0f));
+            vertices[1].position = glm::vec3(transform * glm::vec4(halfExtents.x, -halfExtents.y, 0.0f, 1.0f));
+            vertices[2].position = glm::vec3(transform * glm::vec4(halfExtents.x, halfExtents.y, 0.0f, 1.0f));
+            vertices[3].position = glm::vec3(transform * glm::vec4(-halfExtents.x, halfExtents.y, 0.0f, 1.0f));
 
             outMesh->indices.resize(6);
             auto& indices = outMesh->indices;

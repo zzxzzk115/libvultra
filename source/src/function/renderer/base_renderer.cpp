@@ -43,12 +43,12 @@ namespace vultra
             {
                 m_RenderableGroupHash = hash_value;
 
-                // If raytracing or ray query is used, rebuild TLAS if the group has changed
+                // If raytracing or ray query is used, rebuild if the group has changed
                 if (HasFlagValues(m_RenderDevice.getFeatureFlag(),
                                   rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
                     HasFlagValues(m_RenderDevice.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayQuery))
                 {
-                    m_RenderableGroup.createBuildTLAS(m_RenderDevice);
+                    m_RenderableGroup.build(m_RenderDevice);
                 }
             }
 

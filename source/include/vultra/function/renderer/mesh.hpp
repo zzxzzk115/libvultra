@@ -43,7 +43,13 @@ namespace vultra
             float     ior {1.0f};
             int       doubleSided {0};
         };
-        static_assert(sizeof(GPUMaterial) % 16 == 0);
+
+        struct GPUGeometryNode
+        {
+            uint64_t vertexBufferAddress {0};
+            uint64_t indexBufferAddress {0};
+            uint32_t materialIndex {0};
+        };
 
         struct SubMesh
         {
@@ -172,12 +178,6 @@ namespace vultra
 
                 // Create geometry node buffer (raytracing only)
                 {
-                    struct GPUGeometryNode
-                    {
-                        uint64_t vertexBufferAddress {0};
-                        uint64_t indexBufferAddress {0};
-                        uint32_t materialIndex {0};
-                    };
                     std::vector<GPUGeometryNode> geometryNodes;
                     geometryNodes.reserve(renderMesh.subMeshes.size());
 
