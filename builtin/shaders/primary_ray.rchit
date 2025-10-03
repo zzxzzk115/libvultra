@@ -104,10 +104,6 @@ void main()
 	Vertex v1 = fromBufferDeviceAddresses(node.vertexBufferAddress, node.indexBufferAddress, 1);
 	Vertex v2 = fromBufferDeviceAddresses(node.vertexBufferAddress, node.indexBufferAddress, 2);
 
-    float dist = length(gl_WorldRayOriginEXT + gl_HitTEXT * gl_WorldRayDirectionEXT 
-                    - gl_WorldRayOriginEXT); // hit distance
-	float lod = log2(dist * 0.25);
-
 	vec2 uv = (1.0 - attribs.x - attribs.y) * v0.texCoord + attribs.x * v1.texCoord + attribs.y * v2.texCoord;
     vec3 emissiveColor = mat.emissiveColorIntensity.rgb;
     
@@ -128,16 +124,16 @@ void main()
     vec3 fragPos = (1.0 - attribs.x - attribs.y) * v0.position + attribs.x * v1.position + attribs.y * v2.position;
     float depth = length(gl_WorldRayOriginEXT - fragPos) / u_Camera.far;
 
-	vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(textureLod(textures[nonuniformEXT(mat.albedoIndex)], uv, lod).rgb) : sRGBToLinear(mat.baseColor.rgb);
+	vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(texture(textures[nonuniformEXT(mat.albedoIndex)], uv).rgb) : sRGBToLinear(mat.baseColor.rgb);
     vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(texture(textures[nonuniformEXT(mat.emissiveIndex)], uv).rgb) : mat.emissiveColorIntensity.rgb * mat.emissiveColorIntensity.a;
-    vec3 normal = textureLod(textures[nonuniformEXT(mat.normalIndex)], uv, lod).rgb;
+    vec3 normal = texture(textures[nonuniformEXT(mat.normalIndex)], uv).rgb;
     normal = normalize(normal * 2.0 - 1.0); // normal map
     normal = mat.normalIndex > 0 && enableNormalMapping == 1 ? normalize(TBN * normal) : N;
-    float ao = textureLod(textures[nonuniformEXT(mat.aoIndex)], uv, lod).r;
-    float metallic = textureLod(textures[nonuniformEXT(mat.metallicIndex)], uv, lod).r;
-    float roughness = textureLod(textures[nonuniformEXT(mat.roughnessIndex)], uv, lod).r;
+    float ao = texture(textures[nonuniformEXT(mat.aoIndex)], uv).r;
+    float metallic = texture(textures[nonuniformEXT(mat.metallicIndex)], uv).r;
+    float roughness = texture(textures[nonuniformEXT(mat.roughnessIndex)], uv).r;
     if (mat.metallicRoughnessIndex > 0) {
-        vec4 mrSample = textureLod(textures[nonuniformEXT(mat.metallicRoughnessIndex)], uv, lod);
+        vec4 mrSample = texture(textures[nonuniformEXT(mat.metallicRoughnessIndex)], uv);
         metallic = mrSample.b;
         roughness = mrSample.g;
     }
@@ -223,7 +219,7 @@ void main()
 
     // shadow test
     float tmin = 1e-5;
-    float tmax = dist - 1e-3;
+    float tmax = 10000.0;
 	vec3 origin = fragPos + normal * 1e-5;
     shadowed = true;
     traceRayEXT(topLevelAS,
@@ -234,7 +230,7 @@ void main()
                 1, // missGroupIndex = 1
                 origin,
                 tmin,
-                light.direction, 
+                -light.direction,
                 tmax,
                 1); // shadow payload location = 1
 
