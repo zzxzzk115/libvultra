@@ -45,7 +45,7 @@ public:
         camComponent.environmentMapPath = ENV_MAP_PATH;
 
         // First Person Shooter Camera Controller
-        m_FPSCamera = createScope<FirstPersonShooterCamera>(camComponent, camTransform);
+        m_FPSCamera = createScope<FirstPersonShooterCamera>(&camTransform);
 
         // Point Light
         auto  pointLight              = m_LogicScene.createPointLight();

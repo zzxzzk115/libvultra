@@ -2,6 +2,7 @@
 #include <vultra/core/input/input.hpp>
 #include <vultra/core/rhi/raytracing/raytracing_pipeline.hpp>
 #include <vultra/function/app/imgui_app.hpp>
+#include <vultra/function/camera/fps_camera.hpp>
 #include <vultra/function/renderer/mesh_manager.hpp>
 #include <vultra/function/renderer/vertex_format.hpp>
 
@@ -135,11 +136,19 @@ public:
                              .setUsageFlags(rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
                                             rhi::ImageUsage::eTransferSrc)
                              .build(*m_RenderDevice);
+
+        // Create a FPS camera controller
+        m_FPSCamera =
+            createScope<FirstPersonShooterCamera>(glm::vec3 {0.0f, 4.0f, 8.0f}, glm::vec3 {-20.0f, 0.0f, 0.0f});
     }
 
     void onImGui() override
     {
         ImGui::Begin("RayQuery Example");
+        m_FPSCamera->enableCameraControl(!ImGui::IsWindowHovered());
+
+        m_FPSCamera->onImGui();
+
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");
         if (ImGui::IsItemClicked())
@@ -157,6 +166,8 @@ public:
         {
             close();
         }
+
+        m_FPSCamera->onUpdate(dt);
 
         ImGuiApp::onUpdate(dt);
     }
@@ -194,17 +205,18 @@ public:
         };
 
         static glm::vec3 lightPos {-5.0f, 5.0f, -5.0f};
-        static glm::vec3 camPos = glm::vec3(0.0f, 4.0f, 8.0f);
         glm::mat4        projection =
             glm::perspective(glm::radians(45.0f),
                              static_cast<float>(m_Window.getExtent().x) / static_cast<float>(m_Window.getExtent().y),
                              0.1f,
                              100.0f);
         projection[1][1] *= -1; // Flip Y for Vulkan
-        glm::mat4 view     = glm::lookAt(camPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 view = glm::lookAt(
+            m_FPSCamera->getPosition(), m_FPSCamera->getPosition() + m_FPSCamera->forward(), m_FPSCamera->up());
         glm::mat4 viewProj = projection * view;
 
-        GlobalPushConstants pushConstants {kTransform, viewProj, glm::vec4(lightPos, 1.0f), glm::vec4(camPos, 1.0f)};
+        GlobalPushConstants pushConstants {
+            kTransform, viewProj, glm::vec4(lightPos, 1.0f), glm::vec4(m_FPSCamera->getPosition(), 1.0f)};
 
         cb.bindPipeline(m_Pipeline)
             .bindDescriptorSet(0, descriptorSet)
@@ -258,6 +270,8 @@ private:
     rhi::GraphicsPipeline      m_Pipeline;
 
     rhi::Texture m_DepthTexture;
+
+    std::unique_ptr<FirstPersonShooterCamera> m_FPSCamera {nullptr};
 };
 
 CONFIG_MAIN(RayQueryApp)

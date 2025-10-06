@@ -12,7 +12,8 @@ namespace vultra
     class FirstPersonShooterCamera
     {
     public:
-        FirstPersonShooterCamera(CameraComponent&, TransformComponent&);
+        FirstPersonShooterCamera(TransformComponent*);
+        FirstPersonShooterCamera(const glm::vec3& position, const glm::vec3& rotationEuler);
         ~FirstPersonShooterCamera() = default;
 
         void onUpdate(const fsec dt);
@@ -29,9 +30,15 @@ namespace vultra
         [[nodiscard]] float getMouseSensitivity() const { return m_MouseSensitivity; }
         void                setMouseSensitivity(float sensitivity) { m_MouseSensitivity = sensitivity; }
 
+        [[nodiscard]] glm::vec3 getPosition() const;
+        [[nodiscard]] glm::vec3 getRotationEuler() const;
+
+        [[nodiscard]] glm::vec3 forward() const;
+        [[nodiscard]] glm::vec3 right() const;
+        [[nodiscard]] glm::vec3 up() const;
+
     private:
-        CameraComponent&    m_CameraComponent;
-        TransformComponent& m_TransformComponent;
+        TransformComponent* m_TransformComponent {nullptr};
 
         float m_MovementSpeed {5.0f};
         float m_MouseSensitivity {0.1f};
@@ -42,6 +49,9 @@ namespace vultra
 
         glm::vec3 m_BackupPosition;
         glm::vec3 m_BackupRotationEuler;
+
+        glm::vec3 m_Position;
+        glm::vec3 m_RotationEuler;
 
         bool m_EnableCameraControl {true};
     };
