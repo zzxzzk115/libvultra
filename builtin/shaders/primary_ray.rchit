@@ -105,16 +105,6 @@ void main()
 	Vertex v2 = fromBufferDeviceAddresses(node.vertexBufferAddress, node.indexBufferAddress, 2);
 
 	vec2 uv = (1.0 - attribs.x - attribs.y) * v0.texCoord + attribs.x * v1.texCoord + attribs.y * v2.texCoord;
-    vec3 emissiveColor = mat.emissiveColorIntensity.rgb;
-    
-    if (length(emissiveColor) > 0.0) {
-        vec3 finalColor = emissiveColor * exposure;
-        if (toneMappingMethod == 0) finalColor = linearTosRGB(toneMappingKhronosPbrNeutral(finalColor));
-        else if (toneMappingMethod == 1) finalColor = linearTosRGB(toneMappingACES(finalColor));
-        else if (toneMappingMethod == 2) finalColor = linearTosRGB(toneMappingReinhard(finalColor));
-        hitValue = finalColor;
-        return;
-    }
 
     vec3 N = normalize((1.0 - attribs.x - attribs.y) * v0.normal + attribs.x * v1.normal + attribs.y * v2.normal);
     vec3 T = normalize((1.0 - attribs.x - attribs.y) * v0.tangent.xyz + attribs.x * v1.tangent.xyz + attribs.y * v2.tangent.xyz);
@@ -124,7 +114,29 @@ void main()
     vec3 fragPos = (1.0 - attribs.x - attribs.y) * v0.position + attribs.x * v1.position + attribs.y * v2.position;
     float depth = length(gl_WorldRayOriginEXT - fragPos) / u_Camera.far;
 
-	vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(texture(textures[nonuniformEXT(mat.albedoIndex)], uv).rgb) : sRGBToLinear(mat.baseColor.rgb);
+    vec3 emissiveColor = mat.emissiveColorIntensity.rgb;
+
+    if (length(emissiveColor) > 0.0) {
+        vec3 toneMappedColor = emissiveColor * exposure;
+        if (toneMappingMethod == 0) toneMappedColor = toneMappingKhronosPbrNeutral(toneMappedColor);
+        else if (toneMappingMethod == 1) toneMappedColor = linearTosRGB(toneMappingACES(toneMappedColor));
+        else if (toneMappingMethod == 2) toneMappedColor = linearTosRGB(toneMappingReinhard(toneMappedColor));
+
+        vec3 finalColor = linearTosRGB(toneMappedColor);
+
+        if (mode == MODE_ALBEDO)      hitValue = vec3(0.0);
+        else if (mode == MODE_NORMAL) hitValue = vec3(0.0);
+        else if (mode == MODE_EMISSIVE) hitValue = toneMappedColor;
+        else if (mode == MODE_MATALLIC) hitValue = vec3(0.0);
+        else if (mode == MODE_ROUGHNESS) hitValue = vec3(1.0);
+        else if (mode == MODE_AO)       hitValue = vec3(0.0);
+        else if (mode == MODE_DEPTH)    hitValue = vec3(depth);
+        else if (mode == MODE_FINAL) hitValue = finalColor;
+
+        return;
+    }
+
+    vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(texture(textures[nonuniformEXT(mat.albedoIndex)], uv).rgb) : sRGBToLinear(mat.baseColor.rgb);
     vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(texture(textures[nonuniformEXT(mat.emissiveIndex)], uv).rgb) : mat.emissiveColorIntensity.rgb * mat.emissiveColorIntensity.a;
     vec3 normal = texture(textures[nonuniformEXT(mat.normalIndex)], uv).rgb;
     normal = normalize(normal * 2.0 - 1.0); // normal map

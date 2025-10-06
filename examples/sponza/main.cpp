@@ -22,9 +22,7 @@ class SponzaApp final : public ImGuiApp
 public:
     explicit SponzaApp(const std::span<char*>& args) :
         ImGuiApp(args,
-                 {.title                   = "Sponza",
-                  .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eRayTracing,
-                  .vSyncConfig             = rhi::VerticalSync::eEnabled},
+                 {.title = "Sponza", .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eRayTracing},
                  {.enableDocking = false}),
         m_Renderer(*m_RenderDevice, m_Swapchain.getFormat())
     {

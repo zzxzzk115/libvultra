@@ -413,9 +413,12 @@ namespace vultra
 
                 // Renderables
                 auto renderables = scene->cookRenderables();
-                for (auto& areaLightMesh : m_AreaLightMeshes)
+                if (m_Settings.enableAreaLights)
                 {
-                    renderables.push_back({.mesh = areaLightMesh, .modelMatrix = glm::mat4(1.0f)});
+                    for (auto& areaLightMesh : m_AreaLightMeshes)
+                    {
+                        renderables.push_back({.mesh = areaLightMesh, .modelMatrix = glm::mat4(1.0f)});
+                    }
                 }
                 setRenderables(renderables);
             }
