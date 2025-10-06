@@ -78,10 +78,14 @@ void main() {
     float tMax = dist - 1e-3;
 
 	rayQueryEXT rayQuery;
-	rayQueryInitializeEXT(rayQuery, topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT, 0xFF, rayOrigin, tMin, rayDirection, tMax);
+	rayQueryInitializeEXT(rayQuery, topLevelAS, gl_RayFlagsNoneEXT, 0xFF, rayOrigin, tMin, rayDirection, tMax);
 
-	// Traverse the acceleration structure and store information about the first intersection (if any)
-	rayQueryProceedEXT(rayQuery);
+	while (rayQueryProceedEXT(rayQuery)) {
+        if (rayQueryGetIntersectionTypeEXT(rayQuery, false) == gl_RayQueryCandidateIntersectionTriangleEXT) {
+            rayQueryConfirmIntersectionEXT(rayQuery);
+            break;
+        }
+    }
 
 	// If the intersection has hit a triangle, the fragment is shadowed
 	if (rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT) {
