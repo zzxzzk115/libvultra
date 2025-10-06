@@ -1,6 +1,7 @@
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/input/input.hpp>
 #include <vultra/function/app/imgui_app.hpp>
+#include <vultra/function/camera/fps_camera.hpp>
 #include <vultra/function/renderer/builtin/builtin_renderer.hpp>
 #include <vultra/function/renderer/builtin/pass_output_mode.hpp>
 #include <vultra/function/renderer/imgui_renderer.hpp>
@@ -37,11 +38,14 @@ public:
         auto& camTransform    = camera.getComponent<TransformComponent>();
         auto& camComponent    = camera.getComponent<CameraComponent>();
         camTransform.position = glm::vec3(8.0f, 1.5f, -0.5f);
-        camTransform.setRotationEuler({0.0f, -90.0f, 0.0f});
+        camTransform.setRotationEuler({0.0f, 90.0f, 0.0f});
         camComponent.viewPortWidth      = m_Window.getExtent().x;
         camComponent.viewPortHeight     = m_Window.getExtent().y;
         camComponent.clearFlags         = CameraClearFlags::eSkybox;
         camComponent.environmentMapPath = ENV_MAP_PATH;
+
+        // First Person Shooter Camera Controller
+        m_FPSCamera = createScope<FirstPersonShooterCamera>(camComponent, camTransform);
 
         // Point Light
         auto  pointLight              = m_LogicScene.createPointLight();
@@ -87,10 +91,13 @@ public:
     void onImGui() override
     {
         ImGui::Begin("Sponza Example");
+        m_FPSCamera->enableCameraControl(!ImGui::IsWindowHovered());
 
         ImGuiExt::Combo("Renderer Type", m_Renderer.getSettings().rendererType);
 
         m_Renderer.onImGui();
+
+        m_FPSCamera->onImGui();
 
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");
@@ -109,6 +116,9 @@ public:
         {
             close();
         }
+
+        m_FPSCamera->onUpdate(dt);
+
         m_Renderer.setScene(&m_LogicScene);
 
         ImGuiApp::onUpdate(dt);
@@ -133,6 +143,8 @@ public:
 private:
     gfx::BuiltinRenderer m_Renderer;
     LogicScene           m_LogicScene {"Sponza Scene"};
+
+    Scope<FirstPersonShooterCamera> m_FPSCamera {nullptr};
 };
 
 CONFIG_MAIN(SponzaApp)

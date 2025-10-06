@@ -101,10 +101,12 @@ namespace vultra
         void setRotation(glm::quat rotation)
         {
             m_Rotation      = rotation;
-            m_RotationEuler = glm::eulerAngles(rotation);
+            m_RotationEuler = glm::degrees(glm::eulerAngles(rotation));
         }
 
         glm::vec3 forward() const { return m_Rotation * glm::vec3(0, 0, -1); }
+        glm::vec3 right() const { return m_Rotation * glm::vec3(1, 0, 0); }
+        glm::vec3 up() const { return m_Rotation * glm::vec3(0, 1, 0); }
 
     private:
         glm::vec3 m_RotationEuler {0, 0, 0};

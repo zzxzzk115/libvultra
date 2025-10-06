@@ -38,7 +38,7 @@ public:
         auto  camera                      = m_LogicScene.createMainCamera();
         auto& cameraTransformComponent    = camera.getComponent<TransformComponent>();
         cameraTransformComponent.position = glm::vec3(8.0f, 1.5f, 0.0f);
-        cameraTransformComponent.setRotationEuler(glm::vec3(0.0f, glm::radians(-90.0f), 0.0f));
+        cameraTransformComponent.setRotationEuler(glm::vec3(0.0f, glm::radians(90.0f), 0.0f));
         auto& cameraComponent              = camera.getComponent<CameraComponent>();
         cameraComponent.clearFlags         = CameraClearFlags::eSkybox;
         cameraComponent.environmentMapPath = ENV_MAP_PATH;

@@ -104,12 +104,12 @@ public:
             if (Input::getMouseButton(MouseCode::eMiddle))
             {
                 const auto mousePos = Input::getMousePosition();
-                const auto delta    = mousePos - lastMousePos;
+                const auto delta    = lastMousePos - mousePos;
                 lastMousePos        = mousePos;
 
                 auto& camTransform = m_LogicScene.getMainCamera().getComponent<TransformComponent>();
                 auto  euler        = camTransform.getRotationEuler();
-                euler.x -= delta.y * 0.1f;
+                euler.x += delta.y * 0.1f;
                 euler.y += delta.x * 0.1f;
                 euler.x = glm::clamp(euler.x, -89.0f, 89.0f);
                 camTransform.setRotationEuler(euler);

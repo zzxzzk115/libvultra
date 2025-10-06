@@ -231,20 +231,8 @@ namespace vultra
                     auto& camTransform = mainCamera.getComponent<TransformComponent>();
                     auto& camComponent = mainCamera.getComponent<CameraComponent>();
 
-                    auto eulerAngles = camTransform.getRotationEuler();
-
-                    // Calculate forward (Yaw - 90 to adjust)
-                    glm::vec3 forward;
-                    forward.x = cos(glm::radians(eulerAngles.y - 90)) * cos(glm::radians(eulerAngles.x));
-                    forward.y = sin(glm::radians(eulerAngles.x));
-                    forward.z = sin(glm::radians(eulerAngles.y - 90)) * cos(glm::radians(eulerAngles.x));
-                    forward   = glm::normalize(forward);
-
-                    // Calculate up
-                    glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0, 1, 0)));
-                    glm::vec3 up    = glm::normalize(glm::cross(right, forward));
-
-                    m_CameraInfo.view = glm::lookAt(camTransform.position, camTransform.position + forward, up);
+                    m_CameraInfo.view = glm::lookAt(
+                        camTransform.position, camTransform.position + camTransform.forward(), camTransform.up());
 
                     if (camComponent.projection == CameraProjection::ePerspective)
                     {
