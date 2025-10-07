@@ -18,7 +18,9 @@ namespace vultra
             uint32_t  albedoIndex {0};
             glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};
 
-            uint32_t alphaMaskIndex {0};
+            uint32_t    alphaMaskIndex {0};
+            float       alphaCutoff {0.5f};
+            std::string alphaMaskMode {"OPAQUE"}; // "MASK", "BLEND", "OPAQUE"
 
             float           opacity {1.0f};
             rhi::BlendState blendState {.enabled = false};
@@ -42,9 +44,8 @@ namespace vultra
 
             float ior {1.0f};
 
-            // GLTF
             uint32_t metallicRoughnessIndex {0};
-            bool     doubleSided {false};
+            bool     doubleSided {true};
 
             bool isDecal() const
             {
@@ -57,7 +58,7 @@ namespace vultra
                 return std::format(
                     "PBRMaterial(name='{}', baseColor=({}, {}, {}, {}), emissiveColor=({}, {}, {}), "
                     "emissiveIntensity={}, opacity={}, metallicFactor={}, "
-                    "roughnessFactor={}, ior={}, doubleSided={}, albedoTexIdx={}, alphaMaskTexIdx={}, "
+                    "roughnessFactor={}, ior={}, doubleSided={}, alphaMode={}, alphaCutoff={}, blendState={}, "
                     "metallicTexIdx={}, roughnessTexIdx={}, specularTexIdx={}, normalTexIdx={}, aoTexIdx={}, "
                     "emissiveTexIdx={}, metallicRoughnessTexIdx={})",
                     name,
@@ -74,6 +75,9 @@ namespace vultra
                     roughnessFactor,
                     ior,
                     doubleSided,
+                    alphaMaskMode,
+                    alphaCutoff,
+                    blendState.enabled ? "Enabled" : "Disabled",
                     albedoIndex,
                     alphaMaskIndex,
                     metallicIndex,

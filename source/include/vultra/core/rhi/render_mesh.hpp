@@ -26,6 +26,8 @@ namespace vultra
             IndexType indexType {IndexType::eUInt32};
 
             uint32_t materialIndex {0};
+
+            bool opaque {true};
         };
 
         struct RenderMesh

@@ -6,6 +6,7 @@
 #include "vultra/function/renderer/mesh_manager.hpp"
 #include "vultra/function/renderer/texture_manager.hpp"
 
+#include <assimp/GltfMaterial.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
@@ -60,8 +61,9 @@ namespace vultra
     {
         struct MatPropValue
         {
-            std::variant<aiString, int, float, double, bool, aiColor3D, aiColor4D, std::vector<uint8_t>> value;
-            bool                                                                                         parsed = false;
+            std::variant<aiString, int, float, double, bool, aiColor3D, aiColor4D, std::vector<uint8_t>, aiBlendMode>
+                 value;
+            bool parsed = false;
         };
 
         struct MatPropKey
@@ -140,6 +142,14 @@ namespace vultra
                         int value;
                         if (material->Get(prop->mKey.C_Str(), prop->mSemantic, prop->mIndex, value) == aiReturn_SUCCESS)
                             entry.value = std::move(value);
+                        bool bvalue;
+                        if (material->Get(prop->mKey.C_Str(), prop->mSemantic, prop->mIndex, bvalue) ==
+                            aiReturn_SUCCESS)
+                            entry.value = std::move(bvalue);
+                        aiBlendMode bmvalue;
+                        if (material->Get(prop->mKey.C_Str(), prop->mSemantic, prop->mIndex, bmvalue) ==
+                            aiReturn_SUCCESS)
+                            entry.value = std::move(bmvalue);
                         break;
                     }
                     case aiPTI_Buffer: {
@@ -359,9 +369,30 @@ namespace vultra
                     tryGet(props, AI_MATKEY_OPACITY, d);
                     tryGet(props, AI_MATKEY_REFRACTI, Ni);
 
-                    pbrMat.baseColor      = glm::vec4(kd.r, kd.g, kd.b, 1.0);
-                    pbrMat.opacity        = d;
-                    pbrMat.blendState     = d < 1.0f ? toBlendState(aiBlendMode::aiBlendMode_Default) : kNoBlend;
+                    // Alpha masking & Blend mode
+                    aiString alphaMode;
+                    if (tryGet(props, AI_MATKEY_GLTF_ALPHAMODE, alphaMode))
+                    {
+                        pbrMat.alphaMaskMode = alphaMode.C_Str();
+                    }
+                    float alphaCutoff = 0.5f;
+                    if (tryGet(props, AI_MATKEY_GLTF_ALPHACUTOFF, alphaCutoff))
+                    {
+                        pbrMat.alphaCutoff = alphaCutoff;
+                    }
+                    aiBlendMode blendMode = aiBlendMode_Default;
+                    if (tryGet(props, AI_MATKEY_BLEND_FUNC, blendMode))
+                    {
+                        pbrMat.blendState = toBlendState(blendMode);
+                    }
+                    else
+                    {
+                        pbrMat.blendState = d < 1.0f ? toBlendState(aiBlendMode::aiBlendMode_Default) : kNoBlend;
+                    }
+
+                    pbrMat.baseColor = glm::vec4(kd.r, kd.g, kd.b, 1.0);
+                    pbrMat.opacity   = d;
+
                     pbrMat.metallicFactor = std::clamp(
                         (0.2126f * ks.r + 0.7152f * ks.g + 0.0722f * ks.b - 0.04f) / (1.0f - 0.04f), 0.0f, 1.0f);
                     pbrMat.roughnessFactor        = glm::clamp(std::sqrt(2.0f / (Ns + 2.0f)), 0.04f, 1.0f);
@@ -406,7 +437,11 @@ namespace vultra
                     pbrMat.metallicRoughnessIndex = loadTexture(material, aiTextureType_GLTF_METALLIC_ROUGHNESS);
 
                     // Double sided?
-                    tryGet(props, AI_MATKEY_TWOSIDED, pbrMat.doubleSided);
+                    bool doubleSided = false;
+                    if (tryGet(props, AI_MATKEY_TWOSIDED, doubleSided))
+                    {
+                        pbrMat.doubleSided = doubleSided;
+                    }
 
                     // Unhandled properties warning
                     for (auto& [k, v] : props)

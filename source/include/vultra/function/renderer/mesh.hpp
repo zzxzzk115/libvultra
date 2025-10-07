@@ -170,6 +170,7 @@ namespace vultra
                     rsm.indexType  = indexBuffer ? indexBuffer->getIndexType() : rhi::IndexType::eUInt32;
 
                     rsm.materialIndex = sm.materialIndex;
+                    rsm.opaque        = materials[sm.materialIndex].alphaMaskMode == "OPAQUE";
 
                     renderMesh.subMeshes.push_back(rsm);
                 }
