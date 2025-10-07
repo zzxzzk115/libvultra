@@ -1003,39 +1003,40 @@ namespace vultra
                     throw std::runtime_error("Failed to get Vulkan graphics device from OpenXR");
                 }
                 m_PhysicalDevice = physicalDevice;
-                return;
             }
-
-            auto               physicalDevices = m_Instance.enumeratePhysicalDevices();
-            vk::PhysicalDevice bestDevice      = nullptr;
-            int                bestScore       = 0;
-
-            for (const auto& device : physicalDevices)
+            else
             {
-                vk::PhysicalDeviceProperties properties = device.getProperties();
+                auto               physicalDevices = m_Instance.enumeratePhysicalDevices();
+                vk::PhysicalDevice bestDevice      = nullptr;
+                int                bestScore       = 0;
 
-                int score = 0;
-                if (properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu)
+                for (const auto& device : physicalDevices)
                 {
-                    score += 1000;
+                    vk::PhysicalDeviceProperties properties = device.getProperties();
+
+                    int score = 0;
+                    if (properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu)
+                    {
+                        score += 1000;
+                    }
+
+                    score += properties.limits.maxImageDimension2D;
+
+                    if (score > bestScore)
+                    {
+                        bestDevice = device;
+                        bestScore  = score;
+                    }
                 }
 
-                score += properties.limits.maxImageDimension2D;
-
-                if (score > bestScore)
+                if (!bestDevice)
                 {
-                    bestDevice = device;
-                    bestScore  = score;
+                    VULTRA_CORE_ERROR("[RenderDevice] Failed to find a suitable GPU!");
+                    throw std::runtime_error("Failed to find a suitable GPU");
                 }
-            }
 
-            if (!bestDevice)
-            {
-                VULTRA_CORE_ERROR("[RenderDevice] Failed to find a suitable GPU!");
-                throw std::runtime_error("Failed to find a suitable GPU");
+                m_PhysicalDevice = bestDevice;
             }
-
-            m_PhysicalDevice = bestDevice;
 
             // Query properties and features
             // Properties
