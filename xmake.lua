@@ -7,14 +7,27 @@ set_version("0.1.0")
 -- set language version: C++ 23
 set_languages("cxx23")
 
--- global options
-option("examples") -- build examples?
-    set_default(true)
-option_end()
+-- root ?
+local is_root = (os.projectdir() == os.scriptdir())
+set_config("root", is_root)
 
-option("tests") -- build tests?
-    set_default(true)
-option_end()
+-- global options
+if is_root then
+    option("examples") -- build examples?
+        set_default(true)
+        set_showmenu(true)
+        set_description("Enable examples")
+    option_end()
+
+    option("tests") -- build tests?
+        set_default(true)
+        set_showmenu(true)
+        set_description("Enable tests")
+    option_end()
+else
+    set_config("examples", false)
+    set_config("tests", false)
+end
 
 if is_plat("linux") then
     option("wayland") -- use wayland (Linux only)
@@ -96,11 +109,11 @@ includes("builtin")
 includes("source")
 
 -- include tests
-if has_config("tests") then
+if is_config("tests") then
     includes("tests")
 end
 
 -- if build examples, then include examples
-if has_config("examples") then
+if is_config("examples") then
     includes("examples")
 end
