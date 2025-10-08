@@ -26,40 +26,55 @@ struct GPUInstanceData {
     uint materialOffset;
     uint materialCount;
 };
-layout(set = 2, binding = 0) buffer InstanceData { GPUInstanceData instances[]; };
+layout(std430, set = 2, binding = 0) buffer InstanceData { GPUInstanceData instances[]; };
 
 struct GPUMaterial {
+    // --- texture indices ---
     uint albedoIndex;
     uint alphaMaskIndex;
     uint metallicIndex;
     uint roughnessIndex;
+
     uint specularIndex;
     uint normalIndex;
     uint aoIndex;
     uint emissiveIndex;
+
     uint metallicRoughnessIndex;
+    uint paddingUI0; // ensure 16-byte alignment
+    uint paddingUI1; // ensure 16-byte alignment
+    uint paddingUI2; // ensure 16-byte alignment
 
-    uint padding0; // padding
-    uint padding1; // padding
-    uint padding2; // padding
+    // --- color vectors ---
+    vec4 baseColor;
+    vec4 emissiveColorIntensity;
+    vec4 ambientColor;
 
-    vec4  baseColor;
-    vec4  emissiveColorIntensity;
-    vec4  ambientColor;
+    // --- scalar material params ---
     float opacity;
     float metallicFactor;
     float roughnessFactor;
     float ior;
-    int   doubleSided;
+
+    float alphaCutoff;
+    float paddingF0; // ensure 16-byte alignment
+    float paddingF1; // ensure 16-byte alignment
+    float paddingF2; // ensure 16-byte alignment
+
+    // --- int params ---
+    int alphaMode; // 0: OPAQUE, 1: MASK, 2: BLEND
+    int doubleSided;
+    int paddingI0; // ensure 16-byte alignment
+    int paddingI1; // ensure 16-byte alignment
 };
-layout(set = 2, binding = 1) buffer Materials { GPUMaterial materials[]; };
+layout(std430, set = 2, binding = 1) buffer Materials { GPUMaterial materials[]; };
 
 struct GPUGeometryNode {
     uint64_t vertexBufferAddress;
     uint64_t indexBufferAddress;
     uint materialIndex;
 };
-layout(set = 2, binding = 2) buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
+layout(std430, set = 2, binding = 2) buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
 
 layout(set = 2, binding = 3) uniform sampler2D textures[];
 

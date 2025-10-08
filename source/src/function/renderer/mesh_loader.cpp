@@ -373,7 +373,13 @@ namespace vultra
                     aiString alphaMode;
                     if (tryGet(props, AI_MATKEY_GLTF_ALPHAMODE, alphaMode))
                     {
-                        pbrMat.alphaMaskMode = alphaMode.C_Str();
+                        auto alphaModeStr = std::string(alphaMode.C_Str());
+                        if (alphaModeStr == "MASK")
+                            pbrMat.alphaMode = rhi::AlphaMode::eMask;
+                        else if (alphaModeStr == "BLEND")
+                            pbrMat.alphaMode = rhi::AlphaMode::eBlend;
+                        else
+                            pbrMat.alphaMode = rhi::AlphaMode::eOpaque;
                     }
                     float alphaCutoff = 0.5f;
                     if (tryGet(props, AI_MATKEY_GLTF_ALPHACUTOFF, alphaCutoff))
