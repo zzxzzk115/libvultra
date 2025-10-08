@@ -1,11 +1,14 @@
+print(get_config("project_dir"))
+
 rule("copy_resources")
 	after_build(function (target)
         local resource_files = target:values("resource_files")
         if resource_files then
             for _, pattern in ipairs(resource_files) do
+                pattern = path.join(get_config("project_dir"), pattern)
                 local files = os.files(pattern)
                 for _, file in ipairs(files) do
-                    local relpath = path.relative(file, os.projectdir())
+                    local relpath = path.relative(file, get_config("project_dir"))
                     local target_dir = path.join(target:targetdir(), path.directory(relpath))
                     os.mkdir(target_dir)
                     os.cp(file, target_dir)
@@ -19,9 +22,10 @@ rule("copy_resources")
         local resource_files = target:values("resource_files")
         if resource_files then
             for _, pattern in ipairs(resource_files) do
+                pattern = path.join(get_config("project_dir"), pattern)
                 local files = os.files(pattern)
                 for _, file in ipairs(files) do
-                    local relpath = path.relative(file, os.projectdir())
+                    local relpath = path.relative(file, get_config("project_dir"))
                     local target_dir = path.join(target:installdir(), "bin", path.directory(relpath))
                     os.mkdir(target_dir)
                     os.cp(file, target_dir)

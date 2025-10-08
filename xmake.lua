@@ -10,24 +10,20 @@ set_languages("cxx23")
 -- root ?
 local is_root = (os.projectdir() == os.scriptdir())
 set_config("root", is_root)
+set_config("project_dir", os.scriptdir())
 
 -- global options
-if is_root then
-    option("examples") -- build examples?
-        set_default(true)
-        set_showmenu(true)
-        set_description("Enable examples")
-    option_end()
+option("libvultra_build_examples") -- build examples?
+    set_default(true)
+    set_showmenu(true)
+    set_description("Enable libvultra examples")
+option_end()
 
-    option("tests") -- build tests?
-        set_default(true)
-        set_showmenu(true)
-        set_description("Enable tests")
-    option_end()
-else
-    set_config("examples", false)
-    set_config("tests", false)
-end
+option("libvultra_build_tests") -- build tests?
+    set_default(true)
+    set_showmenu(true)
+    set_description("Enable libvultra tests")
+option_end()
 
 if is_plat("linux") then
     option("wayland") -- use wayland (Linux only)
@@ -109,11 +105,11 @@ includes("builtin")
 includes("source")
 
 -- include tests
-if is_config("tests") then
+if has_config("libvultra_build_tests") then
     includes("tests")
 end
 
 -- if build examples, then include examples
-if is_config("examples") then
+if has_config("libvultra_build_examples") then
     includes("examples")
 end

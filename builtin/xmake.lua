@@ -4,9 +4,11 @@ task("shader_task")
         import("core.project.config")
         import("core.base.option")
 
-        local shader_root = path.join(os.projectdir(), "builtin/shaders")
-        local spv_root = path.join(os.projectdir(), "builtin/shader_spvs")
-		local shader_header_root = path.join(os.projectdir(), "builtin/generated/include/shader_headers")
+        local projectdir = get_config("project_dir")
+
+        local shader_root = path.join(projectdir, "builtin/shaders")
+        local spv_root = path.join(projectdir, "builtin/shader_spvs")
+		local shader_header_root = path.join(projectdir, "builtin/generated/include/shader_headers")
         os.mkdir(spv_root)
 
         -- valid shader stages to compile
@@ -93,8 +95,10 @@ task("texture_task")
         import("core.project.config")
         import("core.base.option")
 
-        local texture_root = path.join(os.projectdir(), "builtin/textures")
-		local texture_header_root = path.join(os.projectdir(), "builtin/generated/include/texture_headers")
+        local projectdir = get_config("project_dir")
+
+        local texture_root = path.join(projectdir, "builtin/textures")
+		local texture_header_root = path.join(projectdir, "builtin/generated/include/texture_headers")
         os.mkdir(texture_header_root)
 
         -- valid texture formats to convert
