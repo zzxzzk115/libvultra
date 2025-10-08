@@ -1,9 +1,11 @@
 #pragma once
 
 #include "vultra/core/base/string_util.hpp"
+#include "vultra/core/rhi/alpha_mode.hpp"
 #include "vultra/core/rhi/graphics_pipeline.hpp"
 
 #include <glm/glm.hpp>
+#include <magic_enum.hpp>
 
 #include <format>
 
@@ -18,9 +20,9 @@ namespace vultra
             uint32_t  albedoIndex {0};
             glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};
 
-            uint32_t    alphaMaskIndex {0};
-            float       alphaCutoff {0.5f};
-            std::string alphaMaskMode {"OPAQUE"}; // "MASK", "BLEND", "OPAQUE"
+            uint32_t       alphaMaskIndex {0};
+            float          alphaCutoff {0.5f};
+            rhi::AlphaMode alphaMode {rhi::AlphaMode::eOpaque}; // OPAQUE, MASK, BLEND
 
             float           opacity {1.0f};
             rhi::BlendState blendState {.enabled = false};
@@ -75,7 +77,7 @@ namespace vultra
                     roughnessFactor,
                     ior,
                     doubleSided,
-                    alphaMaskMode,
+                    magic_enum::enum_name(alphaMode).data(),
                     alphaCutoff,
                     blendState.enabled ? "Enabled" : "Disabled",
                     albedoIndex,

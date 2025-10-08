@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/math/aabb.hpp"
+#include "vultra/core/rhi/alpha_mode.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/primitive_topology.hpp"
@@ -19,30 +20,44 @@ namespace vultra
 
         struct alignas(16) GPUMaterial
         {
-            uint32_t albedoIndex {0};
-            uint32_t alphaMaskIndex {0};
-            uint32_t metallicIndex {0};
-            uint32_t roughnessIndex {0};
-            uint32_t specularIndex {0};
-            uint32_t normalIndex {0};
-            uint32_t aoIndex {0};
-            uint32_t emissiveIndex {0};
-            uint32_t metallicRoughnessIndex {0};
+            // --- texture indices ---
+            uint32_t albedoIndex;
+            uint32_t alphaMaskIndex;
+            uint32_t metallicIndex;
+            uint32_t roughnessIndex;
 
-            // padding
-            uint32_t padding0 {0};
-            uint32_t padding1 {0};
-            uint32_t padding2 {0};
+            uint32_t specularIndex;
+            uint32_t normalIndex;
+            uint32_t aoIndex;
+            uint32_t emissiveIndex;
 
-            glm::vec4 baseColor {1.0f, 1.0f, 1.0f, 1.0f};
-            glm::vec4 emissiveColorIntensity {0.0f, 0.0f, 0.0f, 1.0f};
-            glm::vec4 ambientColor {0.0f, 0.0f, 0.0f, 1.0f};
-            float     opacity {1.0f};
-            float     metallicFactor {0.0f};
-            float     roughnessFactor {0.0f};
-            float     ior {1.0f};
-            int       doubleSided {0};
+            uint32_t metallicRoughnessIndex;
+            uint32_t paddingUI0; // ensure 16-byte alignment
+            uint32_t paddingUI1; // ensure 16-byte alignment
+            uint32_t paddingUI2; // ensure 16-byte alignment
+
+            // --- color vectors ---
+            glm::vec4 baseColor;
+            glm::vec4 emissiveColorIntensity;
+            glm::vec4 ambientColor;
+
+            // --- scalars (unpacked) ---
+            float opacity;
+            float metallicFactor;
+            float roughnessFactor;
+            float ior;
+
+            float alphaCutoff;
+            float paddingF0; // ensure 16-byte alignment
+            float paddingF1; // ensure 16-byte alignment
+            float paddingF2; // ensure 16-byte alignment
+
+            int alphaMode;
+            int doubleSided;
+            int paddingI0;
+            int paddingI1; // ensure 16-byte alignment
         };
+        static_assert(sizeof(GPUMaterial) % 16 == 0);
 
         struct GPUGeometryNode
         {
@@ -131,6 +146,8 @@ namespace vultra
                     gpuMat.metallicFactor         = mat.metallicFactor;
                     gpuMat.roughnessFactor        = mat.roughnessFactor;
                     gpuMat.ior                    = mat.ior;
+                    gpuMat.alphaCutoff            = mat.alphaCutoff;
+                    gpuMat.alphaMode              = static_cast<int>(mat.alphaMode);
                     gpuMat.doubleSided            = mat.doubleSided ? 1 : 0;
                     gpuMaterials.push_back(gpuMat);
                 }
@@ -170,7 +187,7 @@ namespace vultra
                     rsm.indexType  = indexBuffer ? indexBuffer->getIndexType() : rhi::IndexType::eUInt32;
 
                     rsm.materialIndex = sm.materialIndex;
-                    rsm.opaque        = materials[sm.materialIndex].alphaMaskMode == "OPAQUE";
+                    rsm.opaque        = materials[sm.materialIndex].alphaMode == rhi::AlphaMode::eOpaque;
 
                     renderMesh.subMeshes.push_back(rsm);
                 }

@@ -108,6 +108,8 @@ namespace vultra
                         gpuMat.metallicFactor         = mat.metallicFactor;
                         gpuMat.roughnessFactor        = mat.roughnessFactor;
                         gpuMat.ior                    = mat.ior;
+                        gpuMat.alphaCutoff            = mat.alphaCutoff;
+                        gpuMat.alphaMode              = static_cast<int>(mat.alphaMode);
                         gpuMat.doubleSided            = mat.doubleSided ? 1 : 0;
                         materials.push_back(gpuMat);
                     }
