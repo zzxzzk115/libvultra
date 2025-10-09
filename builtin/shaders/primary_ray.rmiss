@@ -1,7 +1,12 @@
 #version 460
 #extension GL_EXT_ray_tracing : enable
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+struct HitValue {
+    vec3 color;
+    vec3 ddx;
+    vec3 ddy;
+};
+layout(location = 0) rayPayloadInEXT HitValue hitValue;
 
 layout(push_constant) uniform RaytracingPushConstants
 {
@@ -16,5 +21,5 @@ layout(push_constant) uniform RaytracingPushConstants
 
 void main()
 {
-    hitValue = missColor.rgb;
+    hitValue.color = missColor.rgb;
 }

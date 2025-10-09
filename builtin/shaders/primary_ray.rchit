@@ -8,7 +8,8 @@
 #include "lib/bda_vertex.glsl"
 #include "lib/pbr.glsl"
 #include "lib/ltc.glsl"
-#include "lib/ray_cones.glsl"
+// #include "lib/ray_cones.glsl"
+#include "lib/ray_differentials.glsl"
 
 layout(set = 3, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
@@ -100,7 +101,12 @@ const uint MODE_DEPTH = 6;
 const uint MODE_TEXTURE_LOD_DEBUG = 7;
 const uint MODE_FINAL = 10;
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+struct HitValue {
+    vec3 color;
+    vec3 ddx;
+    vec3 ddy;
+};
+layout(location = 0) rayPayloadInEXT HitValue hitValue;
 layout(location = 1) rayPayloadEXT bool shadowed;
 hitAttributeEXT vec2 attribs;
 
@@ -132,16 +138,20 @@ void main()
     float dist = length(gl_WorldRayOriginEXT - fragPos);
     float depth = dist / u_Camera.far;
 
-    // Caculate LOD by using ray cones
-    Ray ray = makeRay(gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT);
-    SurfaceHit surf = makeSurfaceHit(fragPos, N, dist, v0, v1, v2);
-    RayCone cone = initPrimaryRayCone(u_Camera.fovY, u_Camera.resolution.y);
+    // // Caculate LOD by using ray cones
+    // Ray ray = makeRay(gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT);
+    // SurfaceHit surf = makeSurfaceHit(fragPos, N, dist, v0, v1, v2);
+    // RayCone cone = initPrimaryRayCone(u_Camera.fovY, u_Camera.resolution.y);
 
-    ivec2 texSize = textureSize(textures[nonuniformEXT(mat.albedoIndex)], 0);
-    int texWidth = texSize.x;
-    int texHeight = texSize.y;
+    // ivec2 texSize = textureSize(textures[nonuniformEXT(mat.albedoIndex)], 0);
+    // int texWidth = texSize.x;
+    // int texHeight = texSize.y;
 
-    float lod = computeTextureLod(ray, surf, cone, v0, v1, v2, texWidth, texHeight);
+    // float lod = computeTextureLod(ray, surf, cone, v0, v1, v2, texWidth, texHeight);
+
+    // Caculate LOD by using ray differentials
+    UVDiff diff = computeUVDiffPrimary(gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT, hitValue.ddx, hitValue.ddy, v0, v1, v2, attribs, textures[nonuniformEXT(mat.albedoIndex)]);
+    float lod = diff.lod;
 
     vec3 emissiveColor = mat.emissiveColorIntensity.rgb;
 
@@ -153,15 +163,15 @@ void main()
 
         vec3 finalColor = linearTosRGB(toneMappedColor);
 
-        if (mode == MODE_ALBEDO)      hitValue = vec3(0.0);
-        else if (mode == MODE_NORMAL) hitValue = vec3(0.0);
-        else if (mode == MODE_EMISSIVE) hitValue = toneMappedColor;
-        else if (mode == MODE_MATALLIC) hitValue = vec3(0.0);
-        else if (mode == MODE_ROUGHNESS) hitValue = vec3(1.0);
-        else if (mode == MODE_AO)       hitValue = vec3(0.0);
-        else if (mode == MODE_DEPTH)    hitValue = vec3(depth);
-        else if (mode == MODE_TEXTURE_LOD_DEBUG) hitValue = vec3(0.0);
-        else if (mode == MODE_FINAL) hitValue = finalColor;
+        if (mode == MODE_ALBEDO)      hitValue.color = vec3(0.0);
+        else if (mode == MODE_NORMAL) hitValue.color = vec3(0.0);
+        else if (mode == MODE_EMISSIVE) hitValue.color = toneMappedColor;
+        else if (mode == MODE_MATALLIC) hitValue.color = vec3(0.0);
+        else if (mode == MODE_ROUGHNESS) hitValue.color = vec3(1.0);
+        else if (mode == MODE_AO)       hitValue.color = vec3(0.0);
+        else if (mode == MODE_DEPTH)    hitValue.color = vec3(depth);
+        else if (mode == MODE_TEXTURE_LOD_DEBUG) hitValue.color = vec3(0.0);
+        else if (mode == MODE_FINAL) hitValue.color = finalColor;
 
         return;
     }
@@ -287,13 +297,13 @@ void main()
     else if (toneMappingMethod == 1) finalColor = linearTosRGB(toneMappingACES(finalColor));
     else if (toneMappingMethod == 2) finalColor = linearTosRGB(toneMappingReinhard(finalColor));
 
-    if (mode == MODE_ALBEDO)      hitValue = albedo;
-    else if (mode == MODE_NORMAL) hitValue = normal;
-    else if (mode == MODE_EMISSIVE) hitValue = emissive;
-    else if (mode == MODE_MATALLIC) hitValue = vec3(metallic);
-    else if (mode == MODE_ROUGHNESS) hitValue = vec3(roughness);
-    else if (mode == MODE_AO)       hitValue = vec3(ao);
-    else if (mode == MODE_DEPTH)    hitValue = vec3(depth);
-    else if (mode == MODE_TEXTURE_LOD_DEBUG) hitValue = lodColors[int(lod)];
-    else if (mode == MODE_FINAL) hitValue = finalColor;
+    if (mode == MODE_ALBEDO)      hitValue.color = albedo;
+    else if (mode == MODE_NORMAL) hitValue.color = normal;
+    else if (mode == MODE_EMISSIVE) hitValue.color = emissive;
+    else if (mode == MODE_MATALLIC) hitValue.color = vec3(metallic);
+    else if (mode == MODE_ROUGHNESS) hitValue.color = vec3(roughness);
+    else if (mode == MODE_AO)       hitValue.color = vec3(ao);
+    else if (mode == MODE_DEPTH)    hitValue.color = vec3(depth);
+    else if (mode == MODE_TEXTURE_LOD_DEBUG) hitValue.color = lodColors[int(lod)];
+    else if (mode == MODE_FINAL) hitValue.color = finalColor;
 }

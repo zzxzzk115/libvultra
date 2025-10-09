@@ -3,27 +3,28 @@
 #extension GL_EXT_shader_image_load_formatted : enable
 
 #include "resources/camera_block.glsl"
+#include "lib/raygen_utils.glsl"
 
 layout(set = 3, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 3, binding = 1) uniform image2D image;
 
-layout(location = 0) rayPayloadEXT vec3 hitValue;
+struct HitValue {
+    vec3 color;
+    vec3 ddx;
+    vec3 ddy;
+};
+layout(location = 0) rayPayloadEXT HitValue hitValue;
 
 void main()
 {
-    vec2 uv  = (vec2(gl_LaunchIDEXT.xy) + 0.5) / vec2(gl_LaunchSizeEXT.xy);
-    vec2 ndc = uv * 2.0 - 1.0;
+    Ray ray = makePrimaryRay(gl_LaunchIDEXT.xy, gl_LaunchSizeEXT.xy);
+    Ray rayDX = makePrimaryRayDX(gl_LaunchIDEXT.xy, gl_LaunchSizeEXT.xy);
+    Ray rayDY = makePrimaryRayDY(gl_LaunchIDEXT.xy, gl_LaunchSizeEXT.xy);
 
-    vec4 clip  = vec4(ndc, 0.0, 1.0);
-    vec4 world = u_Camera.inversedViewProjection * clip;
-    world /= world.w;
+    hitValue.color = vec3(0.0);
+    hitValue.ddx = rayDX.direction;
+    hitValue.ddy = rayDY.direction;
+    traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xff, 0, 0, 0, ray.origin, 0.001, ray.direction, 10000.0, 0);
 
-    vec3 origin    = u_Camera.inversedView[3].xyz;
-    vec3 direction = normalize(world.xyz - origin);
-
-    hitValue = vec3(0.0);
-    traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xff, 0, 0, 0,
-                origin, 0.001, direction, 10000.0, 0);
-
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 0.0));
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue.color, 0.0));
 }
