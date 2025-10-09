@@ -8,6 +8,7 @@
 #include "lib/bda_vertex.glsl"
 #include "lib/pbr.glsl"
 #include "lib/ltc.glsl"
+#include "lib/ray_cones.glsl"
 
 layout(set = 3, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
@@ -96,7 +97,8 @@ const uint MODE_MATALLIC = 3;
 const uint MODE_ROUGHNESS = 4;
 const uint MODE_AO = 5;
 const uint MODE_DEPTH = 6;
-const uint MODE_FINAL = 9;
+const uint MODE_TEXTURE_LOD_DEBUG = 7;
+const uint MODE_FINAL = 10;
 
 layout(location = 0) rayPayloadInEXT vec3 hitValue;
 layout(location = 1) rayPayloadEXT bool shadowed;
@@ -127,7 +129,19 @@ void main()
     mat3 TBN = mat3(T, B, N);
     vec3 viewDir = normalize(-gl_WorldRayDirectionEXT);
     vec3 fragPos = (1.0 - attribs.x - attribs.y) * v0.position + attribs.x * v1.position + attribs.y * v2.position;
-    float depth = length(gl_WorldRayOriginEXT - fragPos) / u_Camera.far;
+    float dist = length(gl_WorldRayOriginEXT - fragPos);
+    float depth = dist / u_Camera.far;
+
+    // Caculate LOD by using ray cones
+    Ray ray = makeRay(gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT);
+    SurfaceHit surf = makeSurfaceHit(fragPos, N, dist, v0, v1, v2);
+    RayCone cone = initPrimaryRayCone(u_Camera.fovY, u_Camera.resolution.y);
+
+    ivec2 texSize = textureSize(textures[nonuniformEXT(mat.albedoIndex)], 0);
+    int texWidth = texSize.x;
+    int texHeight = texSize.y;
+
+    float lod = computeTextureLod(ray, surf, cone, v0, v1, v2, texWidth, texHeight);
 
     vec3 emissiveColor = mat.emissiveColorIntensity.rgb;
 
@@ -146,21 +160,22 @@ void main()
         else if (mode == MODE_ROUGHNESS) hitValue = vec3(1.0);
         else if (mode == MODE_AO)       hitValue = vec3(0.0);
         else if (mode == MODE_DEPTH)    hitValue = vec3(depth);
+        else if (mode == MODE_TEXTURE_LOD_DEBUG) hitValue = vec3(0.0);
         else if (mode == MODE_FINAL) hitValue = finalColor;
 
         return;
     }
 
-    vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(texture(textures[nonuniformEXT(mat.albedoIndex)], uv).rgb) : sRGBToLinear(mat.baseColor.rgb);
-    vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(texture(textures[nonuniformEXT(mat.emissiveIndex)], uv).rgb) : mat.emissiveColorIntensity.rgb * mat.emissiveColorIntensity.a;
-    vec3 normal = texture(textures[nonuniformEXT(mat.normalIndex)], uv).rgb;
+    vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(textureLod(textures[nonuniformEXT(mat.albedoIndex)], uv, lod).rgb) : sRGBToLinear(mat.baseColor.rgb);
+    vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(textureLod(textures[nonuniformEXT(mat.emissiveIndex)], uv, lod).rgb) : mat.emissiveColorIntensity.rgb * mat.emissiveColorIntensity.a;
+    vec3 normal = textureLod(textures[nonuniformEXT(mat.normalIndex)], uv, lod).rgb;
     normal = normalize(normal * 2.0 - 1.0); // normal map
     normal = mat.normalIndex > 0 && enableNormalMapping == 1 ? normalize(TBN * normal) : N;
-    float ao = texture(textures[nonuniformEXT(mat.aoIndex)], uv).r;
-    float metallic = texture(textures[nonuniformEXT(mat.metallicIndex)], uv).r;
-    float roughness = texture(textures[nonuniformEXT(mat.roughnessIndex)], uv).r;
+    float ao = textureLod(textures[nonuniformEXT(mat.aoIndex)], uv, lod).r;
+    float metallic = textureLod(textures[nonuniformEXT(mat.metallicIndex)], uv, lod).r;
+    float roughness = textureLod(textures[nonuniformEXT(mat.roughnessIndex)], uv, lod).r;
     if (mat.metallicRoughnessIndex > 0) {
-        vec4 mrSample = texture(textures[nonuniformEXT(mat.metallicRoughnessIndex)], uv);
+        vec4 mrSample = textureLod(textures[nonuniformEXT(mat.metallicRoughnessIndex)], uv, lod);
         metallic = mrSample.b;
         roughness = mrSample.g;
     }
@@ -279,5 +294,6 @@ void main()
     else if (mode == MODE_ROUGHNESS) hitValue = vec3(roughness);
     else if (mode == MODE_AO)       hitValue = vec3(ao);
     else if (mode == MODE_DEPTH)    hitValue = vec3(depth);
+    else if (mode == MODE_TEXTURE_LOD_DEBUG) hitValue = lodColors[int(lod)];
     else if (mode == MODE_FINAL) hitValue = finalColor;
 }

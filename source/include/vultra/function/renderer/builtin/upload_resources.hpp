@@ -25,6 +25,7 @@ namespace vultra
             glm::mat4 viewProjection;
             float     zNear;
             float     zFar;
+            float     fovY;
         };
 
         void uploadCameraBlock(FrameGraph&, FrameGraphBlackboard&, const vultra::rhi::Extent2D, const CameraInfo&);

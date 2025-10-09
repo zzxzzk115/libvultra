@@ -11,6 +11,8 @@ struct Camera {
     uvec2 resolution;
     float near;
     float far;
+    float fovY;
+    float padding; // 16 byte alignment
 };
 
 layout (set = 1, binding = 0, std140) uniform _CameraBlock { Camera u_Camera; };

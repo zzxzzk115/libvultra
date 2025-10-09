@@ -64,8 +64,10 @@ namespace vultra
 
             float zNear;
             float zFar;
+            float fovY;
+            float padding; // 16 byte alignment
         };
-        static_assert(sizeof(GPUCameraBlock) == 400);
+        static_assert(sizeof(GPUCameraBlock) == 416);
 
         [[nodiscard]] auto uploadCameraBlock(FrameGraph& fg, GPUCameraBlock&& cameraBlock)
         {

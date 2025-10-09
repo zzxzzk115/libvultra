@@ -259,6 +259,7 @@ namespace vultra
 
                     m_CameraInfo.zNear                     = camComponent.zNear;
                     m_CameraInfo.zFar                      = camComponent.zFar;
+                    m_CameraInfo.fovY                      = glm::radians(camComponent.fov);
                     m_CameraInfo.viewProjection            = m_CameraInfo.projection * m_CameraInfo.view;
                     m_CameraInfo.inverseOriginalProjection = glm::inverse(m_CameraInfo.projection);
 
@@ -320,6 +321,7 @@ namespace vultra
                     m_XrCameraLeft.viewProjection            = m_XrCameraLeft.projection * m_XrCameraLeft.view;
                     m_XrCameraLeft.zNear                     = camComponent.zNear;
                     m_XrCameraLeft.zFar                      = camComponent.zFar;
+                    m_XrCameraLeft.fovY                      = glm::radians(camComponent.fovAngleUp);
                 }
                 else
                 {
@@ -343,6 +345,7 @@ namespace vultra
                     m_XrCameraRight.viewProjection            = m_XrCameraRight.projection * m_XrCameraRight.view;
                     m_XrCameraRight.zNear                     = camComponent.zNear;
                     m_XrCameraRight.zFar                      = camComponent.zFar;
+                    m_XrCameraRight.fovY                      = glm::radians(camComponent.fovAngleUp);
                 }
                 else
                 {
