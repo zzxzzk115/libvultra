@@ -151,6 +151,67 @@ task("texture_task")
 task_end()
 
 
+task("font_task")
+    on_run(function ()
+        import("core.project.config")
+        import("core.base.option")
+
+        local projectdir = get_config("project_dir")
+
+        local font_root = path.join(projectdir, "builtin/fonts")
+        local font_header_root = path.join(projectdir, "builtin/generated/include/font_headers")
+        os.mkdir(font_header_root)
+
+        -- valid font formats
+        local exts = {"ttf", "otf"}
+        local files = {}
+
+        for _, ext in ipairs(exts) do
+            local pattern = path.join(font_root, "**." .. ext)
+            table.join2(files, os.files(pattern))
+        end
+
+        for _, f in ipairs(files) do
+            local rel = path.relative(f, font_root)
+            local header_path = path.join(font_header_root, rel .. ".binfont.h")
+
+            -- check timestamp
+            if os.exists(header_path) and os.mtime(header_path) >= os.mtime(f) then
+                cprint("${cyan}[OK]${clear}   %s", rel)
+            else
+                cprint("${green}[CONVERT]${clear} %s", rel)
+                os.mkdir(path.directory(header_path))
+
+                local font_data = io.readfile(f, {encoding = "binary"})
+                local base = path.basename(rel):gsub("%.", "_")
+                local ext  = path.extension(rel):sub(2)
+                local symbol = base .. "_" .. ext  -- e.g. roboto_ttf
+
+                local header_file = io.open(header_path, "w")
+                header_file:write("// Auto-generated from " .. rel .. "\n")
+                header_file:write("#pragma once\n\n")
+                header_file:write("#include <cstddef>\n")
+                header_file:write("#include <cstdint>\n\n")
+
+                header_file:write("inline constexpr unsigned char " .. symbol .. "_data[] = {\n")
+
+                for i = 1, #font_data do
+                    if (i - 1) % 12 == 0 then header_file:write("    ") end
+                    header_file:write(string.format("0x%02X", font_data:byte(i)))
+                    if i < #font_data then header_file:write(",") end
+                    if i % 12 == 0 then header_file:write("\n") end
+                end
+
+                header_file:write("\n};\n")
+                header_file:write("inline constexpr size_t " .. symbol .. "_size = sizeof(" .. symbol .. "_data);\n")
+
+                header_file:close()
+            end
+        end
+    end)
+task_end()
+
+
 target("vultra_builtin_assets")
     -- https://xmake.io/zh/api/description/project-target.html#headeronly
     set_kind("headeronly")
@@ -164,4 +225,5 @@ target("vultra_builtin_assets")
         import("core.base.task")
         task.run("shader_task")
         task.run("texture_task")
+        task.run("font_task")
     end)

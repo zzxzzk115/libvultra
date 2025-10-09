@@ -2,6 +2,9 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 
+#include "font_headers/materialdesignicons_webfont.ttf.binfont.h"
+
+#include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
@@ -189,7 +192,21 @@ namespace vultra
             }
 #endif
 
-            // TODO: Load TTF Fonts & Icon Fonts
+            // Add TTF Fonts & Icon Fonts
+            ImFontConfig defaultConfig = {};
+            io.Fonts->AddFontDefault(&defaultConfig);
+
+            // https://github.com/ocornut/imgui/issues/3247
+            static const ImWchar iconsRanges[] = {ICON_MIN_MDI, ICON_MAX_MDI, 0};
+            ImFontConfig         iconsConfig   = defaultConfig;
+            iconsConfig.MergeMode              = true;
+            iconsConfig.PixelSnapH             = true;
+            iconsConfig.FontDataOwnedByAtlas   = false;
+            io.Fonts->AddFontFromMemoryTTF((void*)materialdesignicons_webfont_ttf_data,
+                                           materialdesignicons_webfont_ttf_size,
+                                           16.0f,
+                                           &iconsConfig,
+                                           iconsRanges);
 
             setImGuiStyle();
 

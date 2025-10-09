@@ -13,3 +13,11 @@ target("renderdoc")
     add_includedirs("renderdoc", {public = true}) -- public: let other targets to auto include
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
+
+target("IconFontCppHeaders")
+    -- https://xmake.io/zh/api/description/project-target.html#headeronly
+    set_kind("headeronly")
+    add_headerfiles("IconFontCppHeaders/**.h")
+    add_includedirs("IconFontCppHeaders", {public = true}) -- public: let other targets to auto include
+    add_rules("utils.install.cmake_importfiles")
+    add_rules("utils.install.pkgconfig_importfiles")

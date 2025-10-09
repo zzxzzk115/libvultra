@@ -104,7 +104,7 @@ target("vultra")
     add_files("src/**.cpp")
 
     -- add deps
-    add_deps("dds-ktx", "renderdoc", "vultra_builtin_assets")
+    add_deps("dds-ktx", "renderdoc", "IconFontCppHeaders", "vultra_builtin_assets")
 
     -- add rules
     add_rules("vulkansdk")
