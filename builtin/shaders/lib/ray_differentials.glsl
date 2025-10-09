@@ -2,6 +2,7 @@
 #define RAY_DIFFERENTIALS_GLSL
 
 #include "bda_vertex.glsl"
+#include "resources/camera_block.glsl"
 
 struct UVDiff
 {
@@ -67,6 +68,16 @@ UVDiff computeUVDiffPrimary(vec3      ro,
 
     d.duvdx = uv_x - uv;
     d.duvdy = uv_y - uv;
+
+    // --- perspective correction ---
+    vec3  cameraPos        = u_Camera.inversedView[3].xyz;
+    float z                = max(dot(N, P - cameraPos), 1e-4);
+    float perspectiveScale = u_Camera.near / (z * tan(u_Camera.fovY * 0.5));
+    perspectiveScale       = clamp(perspectiveScale, 0.05, 1.0); // soft clamp to stabilize
+
+    d.duvdx *= perspectiveScale;
+    d.duvdy *= perspectiveScale;
+    // -------------------------------
 
     vec2  texDim = vec2(textureSize(tex, 0));
     vec2  dsdx   = d.duvdx * texDim;
