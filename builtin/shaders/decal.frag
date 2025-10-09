@@ -16,7 +16,8 @@ void main() {
 	vec4 albedo = vec4(0.0);
 	if (c_Mesh.useAlbedoTexture)
 	{
-		albedo = texture(t_BaseColor, v_TexCoord);
+		vec3 baseColor = texture(t_BaseColor, v_TexCoord).rgb;
+		albedo = vec4(baseColor * v_Color, c_Mesh.opacity);
 	}
 	else
 	{
