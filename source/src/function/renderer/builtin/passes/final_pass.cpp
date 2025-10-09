@@ -67,6 +67,9 @@ namespace vultra
                         mode  = Mode::eLinearDepth;
                         input = blackboard.get<GBufferData>().depth;
                         break;
+                    case TextureLodDebug:
+                        input = blackboard.get<GBufferData>().textureLodDebug;
+                        break;
 
                     case SceneColor_HDR:
                         input = blackboard.get<SceneColorData>().hdr;

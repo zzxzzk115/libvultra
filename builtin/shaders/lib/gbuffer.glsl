@@ -8,6 +8,7 @@ layout (location = 0) out vec3 g_Albedo;
 layout (location = 1) out vec3 g_Normal;
 layout (location = 2) out vec3 g_Emissive;
 layout (location = 3) out vec3 g_MetallicRoughnessAO;
+layout (location = 4) out vec3 g_TextureLodDebug;
 
 layout (location = 0) in vec3 v_Color;
 layout (location = 1) in vec2 v_TexCoord;
@@ -106,6 +107,9 @@ void main() {
 		ao = texture(t_AO, v_TexCoord).r; // Ambient Occlusion
 	}
 	g_MetallicRoughnessAO = vec3(metallic, roughness, ao);
+
+	float lod = textureQueryLod(t_Diffuse, v_TexCoord).x;
+	g_TextureLodDebug = lodColors[int(lod)];
 }
 
 #endif

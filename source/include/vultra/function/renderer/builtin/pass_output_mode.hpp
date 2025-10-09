@@ -14,6 +14,7 @@ namespace vultra
             Roughness,
             AmbientOcclusion,
             Depth,
+            TextureLodDebug,
             SceneColor_HDR,
             SceneColor_LDR,
             SceneColor_AntiAliased,

@@ -75,4 +75,23 @@ vec3 toneMapping(vec3 color, int method) {
     }
 }
 
+const vec3 lodColors[16] = {
+    vec3(1.0, 0.0, 0.0),   // Red
+    vec3(1.0, 0.5, 0.0),   // Orange
+    vec3(1.0, 1.0, 0.0),   // Yellow
+    vec3(0.0, 1.0, 0.0),   // Green
+    vec3(0.0, 1.0, 1.0),   // Cyan
+    vec3(0.0, 0.0, 1.0),   // Blue
+    vec3(0.5, 0.0, 1.0),   // Purple
+    vec3(1.0, 0.0, 1.0),   // Magenta
+    vec3(0.7, 0.7, 0.7),   // Grey
+    vec3(0.3, 0.3, 0.3),   // Dark Grey
+    vec3(0.8, 0.2, 0.2),   // Dark Red
+    vec3(0.2, 0.8, 0.2),   // Dark Green
+    vec3(0.2, 0.2, 0.8),   // Dark Blue
+    vec3(0.8, 0.8, 0.2),   // Olive
+    vec3(0.8, 0.2, 0.8),   // Dark Magenta
+    vec3(0.2, 0.8, 0.8)    // Teal
+};
+
 #endif

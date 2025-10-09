@@ -103,6 +103,8 @@ namespace vultra
                 ImGui::RadioButton(
                     "Ambient Occlusion", &outputMode, static_cast<int>(gfx::PassOutputMode::AmbientOcclusion));
                 ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::Depth));
+                ImGui::RadioButton(
+                    "Texture LOD Debug", &outputMode, static_cast<int>(gfx::PassOutputMode::TextureLodDebug));
                 // ImGui::RadioButton("SceneColor (HDR)", &outputMode,
                 // static_cast<int>(gfx::PassOutputMode::SceneColor_HDR)); ImGui::RadioButton("SceneColor (LDR)",
                 // &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));

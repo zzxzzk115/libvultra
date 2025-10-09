@@ -13,6 +13,7 @@ namespace vultra
             FrameGraphResource emissive;
             FrameGraphResource metallicRoughnessAO;
             FrameGraphResource depth;
+            FrameGraphResource textureLodDebug;
         };
     } // namespace gfx
 } // namespace vultra

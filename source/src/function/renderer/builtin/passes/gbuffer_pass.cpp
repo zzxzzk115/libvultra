@@ -140,6 +140,20 @@ namespace vultra
                                                                  .imageAspect = rhi::ImageAspect::eColor,
                                                                  .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                                              });
+
+                    data.textureLodDebug = builder.create<framegraph::FrameGraphTexture>(
+                        "GBuffer - LOD Debug",
+                        {
+                            .extent     = resolution,
+                            .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                            .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        });
+                    data.textureLodDebug = builder.write(data.textureLodDebug,
+                                                         framegraph::Attachment {
+                                                             .index       = 4,
+                                                             .imageAspect = rhi::ImageAspect::eColor,
+                                                             .clearValue  = framegraph::ClearValue::eOpaqueBlack,
+                                                         });
                 },
                 [this, renderPrimitiveGroup, enableAreaLight, enableNormalMapping](
                     const GBufferData&, auto&, void* ctx) {
