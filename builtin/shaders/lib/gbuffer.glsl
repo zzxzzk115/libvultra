@@ -3,6 +3,7 @@
 
 #include "resources/mesh_constants.glsl"
 #include "color.glsl"
+#include "texture.glsl"
 
 layout (location = 0) out vec3 g_Albedo;
 layout (location = 1) out vec3 g_Normal;
@@ -42,11 +43,17 @@ layout (set = 3, binding = 6) uniform sampler2D t_MetallicRoughness;
 layout (set = 3, binding = 7) uniform sampler2D t_Specular;
 
 void main() {
+	// Manually calculate LOD for better consistency
+	vec2 duvdx = dFdx(v_TexCoord);
+	vec2 duvdy = dFdy(v_TexCoord);
+	vec2 textureDimensions = vec2(textureSize(t_Diffuse, 0));
+	float lod = calculateMipLevelsGL(duvdx, duvdy, textureDimensions);
+
 	// Albedo
 	vec4 albedo = vec4(0.0);
 	if (c_Mesh.useAlbedoTexture)
 	{
-		vec4 baseColor = texture(t_Diffuse, v_TexCoord);
+		vec4 baseColor = textureGrad(t_Diffuse, v_TexCoord, duvdx, duvdy);
 		albedo = vec4(baseColor.rgb * v_Color, baseColor.a * c_Mesh.opacity);
 	}
 	else
@@ -65,7 +72,7 @@ void main() {
 	vec3 normal = normalize(v_TBN[2]);
 	if (c_Mesh.useNormalTexture)
 	{
-		vec3 normalColor = texture(t_Normal, v_TexCoord).xyz;
+		vec3 normalColor = textureGrad(t_Normal, v_TexCoord, duvdx, duvdy).xyz;
 		vec3 tangentNormal = normalColor * 2.0 - 1.0; // Transform from [0,1] to [-1,1], tangent space
 		normal = normalize(v_TBN * tangentNormal); // Transform to world space
 	}
@@ -75,7 +82,7 @@ void main() {
 	vec4 emissive = vec4(0.0);
 	if (c_Mesh.useEmissiveTexture)
 	{
-		emissive = texture(t_Emissive, v_TexCoord);
+		emissive = textureGrad(t_Emissive, v_TexCoord, duvdx, duvdy);
 	}
 	g_Emissive = sRGBToLinear(emissive.rgb); // Manually convert to linear, since we load textures as UNorm
 
@@ -84,31 +91,31 @@ void main() {
 	float roughness = c_Mesh.roughnessFactor; // Default roughness
 	if (c_Mesh.useMetallicTexture)
 	{
-		metallic = texture(t_Metallic, v_TexCoord).r; // Assuming metallic is stored in the R channel
+		metallic = textureGrad(t_Metallic, v_TexCoord, duvdx, duvdy).r; // Assuming metallic is stored in the R channel
 	}
 	if (c_Mesh.useRoughnessTexture)
 	{
-		roughness = texture(t_Roughness, v_TexCoord).r; // Assuming roughness is stored in the R channel
+		roughness = textureGrad(t_Roughness, v_TexCoord, duvdx, duvdy).r; // Assuming roughness is stored in the R channel
 	}
 	if (c_Mesh.useMetallicRoughnessTexture)
 	{
-		metallic = texture(t_MetallicRoughness, v_TexCoord).b; // Metallic stored in the B channel
-		roughness = texture(t_MetallicRoughness, v_TexCoord).g; // Roughness stored in the G channel
+		metallic = textureGrad(t_MetallicRoughness, v_TexCoord, duvdx, duvdy).b; // Metallic stored in the B channel
+		roughness = textureGrad(t_MetallicRoughness, v_TexCoord, duvdx, duvdy).g; // Roughness stored in the G channel
 	}
 	float ao = 1.0; // Default AO
 	if (c_Mesh.useSpecularTexture)
 	{
-		metallic = texture(t_Specular, v_TexCoord).b; // Specular stored in the B channel
-		roughness = texture(t_Specular, v_TexCoord).g; // Roughness stored in the G channel
-		ao = texture(t_Specular, v_TexCoord).r; // AO stored in the R channel
+		metallic = textureGrad(t_Specular, v_TexCoord, duvdx, duvdy).b; // Specular stored in the B channel
+		roughness = textureGrad(t_Specular, v_TexCoord, duvdx, duvdy).g; // Roughness stored in the G channel
+		ao = textureGrad(t_Specular, v_TexCoord, duvdx, duvdy).r; // AO stored in the R channel
 	}
 	if (c_Mesh.useAOTexture)
 	{
-		ao = texture(t_AO, v_TexCoord).r; // Ambient Occlusion
+		ao = textureGrad(t_AO, v_TexCoord, duvdx, duvdy).r; // Ambient Occlusion
 	}
 	g_MetallicRoughnessAO = vec3(metallic, roughness, ao);
 
-	float lod = textureQueryLod(t_Diffuse, v_TexCoord).x;
+	// float lod = textureQueryLod(t_Diffuse, v_TexCoord).x;
 	g_TextureLodDebug = lodColors[int(lod)];
 }
 

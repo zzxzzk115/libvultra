@@ -5,11 +5,14 @@
 #include "resources/light_block.glsl"
 #include "resources/camera_block.glsl"
 #include "lib/color.glsl"
+#include "lib/texture.glsl"
 #include "lib/bda_vertex.glsl"
 #include "lib/pbr.glsl"
 #include "lib/ltc.glsl"
 // #include "lib/ray_cones.glsl"
-#include "lib/ray_differentials.glsl"
+// #include "lib/ray_differentials.glsl"
+#include "lib/raytracing_utils.glsl"
+#include "lib/visibility_buffer_utils.glsl" // For using the same texture LOD calculation method as visibility buffer
 
 layout(set = 3, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
@@ -150,8 +153,23 @@ void main()
     // float lod = computeTextureLod(ray, surf, cone, v0, v1, v2, texWidth, texHeight);
 
     // Caculate LOD by using ray differentials
-    UVDiff diff = computeUVDiffPrimary(gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT, hitValue.ddx, hitValue.ddy, v0, v1, v2, attribs, textures[nonuniformEXT(mat.albedoIndex)]);
-    float lod = diff.lod;
+    // UVDiff diff = computeUVDiffPrimary(gl_WorldRayOriginEXT, gl_WorldRayDirectionEXT, hitValue.ddx, hitValue.ddy, v0, v1, v2, attribs, textures[nonuniformEXT(mat.albedoIndex)]);
+    // float lod = diff.lod;
+
+    // Calculate LOD by using partial derivatives of barycentric coordinates as in visibility buffer
+    vec2 screenPosNDC = getNDC(gl_LaunchIDEXT.xy, gl_LaunchSizeEXT.xy, vec2(0.0));
+    vec2 textureDimensions = vec2(textureSize(textures[nonuniformEXT(mat.albedoIndex)], 0));
+    mat3x2 texCoords = mat3x2(v0.texCoord, v1.texCoord, v2.texCoord);
+    vec2 twoOverWindowSize = 2.0 / u_Camera.resolution;
+    vec4 pt0 = u_Camera.viewProjection * vec4(v0.position, 1.0);
+    vec4 pt1 = u_Camera.viewProjection * vec4(v1.position, 1.0);
+    vec4 pt2 = u_Camera.viewProjection * vec4(v2.position, 1.0);
+
+    BarycentricDeriv derivativesOut = CalcFullBary(pt0, pt1, pt2, screenPosNDC, twoOverWindowSize);
+    GradientInterpolationResults results = Interpolate2DWithDeriv(derivativesOut, texCoords);
+    float lod = calculateMipLevelsGL(results.dx, results.dy, textureDimensions);
+    vec2 duvdx = results.dx;
+    vec2 duvdy = results.dy;
 
     vec3 emissiveColor = mat.emissiveColorIntensity.rgb;
 
@@ -176,16 +194,16 @@ void main()
         return;
     }
 
-    vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(textureLod(textures[nonuniformEXT(mat.albedoIndex)], uv, lod).rgb) : sRGBToLinear(mat.baseColor.rgb);
-    vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(textureLod(textures[nonuniformEXT(mat.emissiveIndex)], uv, lod).rgb) : mat.emissiveColorIntensity.rgb * mat.emissiveColorIntensity.a;
-    vec3 normal = textureLod(textures[nonuniformEXT(mat.normalIndex)], uv, lod).rgb;
+    vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(textureGrad(textures[nonuniformEXT(mat.albedoIndex)], uv, duvdx, duvdy).rgb) : sRGBToLinear(mat.baseColor.rgb);
+    vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(textureGrad(textures[nonuniformEXT(mat.emissiveIndex)], uv, duvdx, duvdy).rgb) : mat.emissiveColorIntensity.rgb * mat.emissiveColorIntensity.a;
+    vec3 normal = textureGrad(textures[nonuniformEXT(mat.normalIndex)], uv, duvdx, duvdy).rgb;
     normal = normalize(normal * 2.0 - 1.0); // normal map
     normal = mat.normalIndex > 0 && enableNormalMapping == 1 ? normalize(TBN * normal) : N;
-    float ao = textureLod(textures[nonuniformEXT(mat.aoIndex)], uv, lod).r;
-    float metallic = textureLod(textures[nonuniformEXT(mat.metallicIndex)], uv, lod).r;
-    float roughness = textureLod(textures[nonuniformEXT(mat.roughnessIndex)], uv, lod).r;
+    float ao = textureGrad(textures[nonuniformEXT(mat.aoIndex)], uv, duvdx, duvdy).r;
+    float metallic = textureGrad(textures[nonuniformEXT(mat.metallicIndex)], uv, duvdx, duvdy).r;
+    float roughness = textureGrad(textures[nonuniformEXT(mat.roughnessIndex)], uv, duvdx, duvdy).r;
     if (mat.metallicRoughnessIndex > 0) {
-        vec4 mrSample = textureLod(textures[nonuniformEXT(mat.metallicRoughnessIndex)], uv, lod);
+        vec4 mrSample = textureGrad(textures[nonuniformEXT(mat.metallicRoughnessIndex)], uv, duvdx, duvdy);
         metallic = mrSample.b;
         roughness = mrSample.g;
     }

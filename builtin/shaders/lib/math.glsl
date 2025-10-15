@@ -35,4 +35,28 @@ mat3 generateTBN(vec3 N) {
     return mat3(T, B, N);
 }
 
+float rcp(float v) {
+    return 1.0 / v;
+}
+
+vec2 rcp(vec2 v) {
+    return vec2(1.0 / v.x, 1.0 / v.y);
+}
+
+vec3 rcp(vec3 v) {
+    return vec3(1.0 / v.x, 1.0 / v.y, 1.0 / v.z);
+}
+
+vec4 rcp(vec4 v) {
+    return vec4(1.0 / v.x, 1.0 / v.y, 1.0 / v.z, 1.0 / v.w);
+}
+
+// Column-major order
+vec3 getCol0(mat3 m) { return m[0]; }
+vec3 getCol1(mat3 m) { return m[1]; }
+vec3 getCol2(mat3 m) { return m[2]; }
+
+vec3 getRow0(mat3x2 m) { return vec3(m[0][0], m[1][0], m[2][0]); }
+vec3 getRow1(mat3x2 m) { return vec3(m[0][1], m[1][1], m[2][1]); }
+
 #endif

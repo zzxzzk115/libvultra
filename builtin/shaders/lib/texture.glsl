@@ -23,4 +23,16 @@ vec4 myTextureGatherOffsets(sampler2D tex, vec2 coord, ivec2[4] offsets)
 #define getTexelSize(src) (1.0 / textureSize(src, 0))
 #define calculateMipLevels(src) floor(log2(float(textureSize(src, 0).x))) + 1.0
 
+// https://registry.khronos.org/OpenGL/specs/gl/glspec42.core.pdf, chapter 3.9.11
+float calculateMipLevelsGL(vec2 ddx, vec2 ddy, vec2 textureDimensions)
+{
+	const float lodBias = 0.0;
+
+	vec2 texelDdx = ddx * textureDimensions;
+	vec2 texelDdy = ddy * textureDimensions;
+	float maxDeltaSquared = max(dot(texelDdx, texelDdx), dot(texelDdy, texelDdy));
+	float mipMapLevel = 0.5 * log2(maxDeltaSquared) + lodBias;
+	return max(mipMapLevel, 0.0);
+}
+
 #endif

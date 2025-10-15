@@ -3,7 +3,7 @@
 #extension GL_EXT_shader_image_load_formatted : enable
 
 #include "resources/camera_block.glsl"
-#include "lib/raygen_utils.glsl"
+#include "lib/raytracing_utils.glsl"
 
 layout(set = 3, binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(set = 3, binding = 1) uniform image2D image;
