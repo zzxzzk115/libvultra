@@ -73,12 +73,12 @@ rule("clangd.config")
 rule_end()
 
 rule("imguiconfig")
-    set_extensions(".ini")
+    set_extensions(".ini", ".json")
 
     on_build_file(function (target, sourcefile, opt) end)
 
     after_build_file(function (target, sourcefile, opt)
-        if path.basename(sourcefile) ~= "imgui" then
+        if path.basename(sourcefile) ~= "imgui" and path.basename(sourcefile) ~= "NodeEditor" then
             return
         end
         local output_path = path.join(target:targetdir(), path.filename(sourcefile))
