@@ -30,7 +30,8 @@ namespace vultra
         enum class RendererType
         {
             eRasterization = 0,
-            eRayTracing
+            eRayTracing,
+            eMeshShading,
         };
 
         struct BuiltinRenderSettings
@@ -88,9 +89,11 @@ namespace vultra
 
             void onImGuiRasterization();
             void onImGuiRayTracing();
+            void onImGuiMeshShading();
 
             void renderRasterization(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt);
             void renderRayTracing(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt);
+            void renderMeshShading(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt);
 
             void clearUIDrawList();
             void renderUIDrawList(rhi::CommandBuffer& cb);

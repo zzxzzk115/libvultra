@@ -156,6 +156,10 @@ namespace vultra
                         onImGuiRayTracing();
                         break;
 
+                    case RendererType::eMeshShading:
+                        onImGuiMeshShading();
+                        break;
+
                     default:
                         break;
                 }
@@ -177,6 +181,10 @@ namespace vultra
 
                 case RendererType::eRayTracing:
                     renderRayTracing(cb, renderTarget, dt);
+                    break;
+
+                case RendererType::eMeshShading:
+                    renderMeshShading(cb, renderTarget, dt);
                     break;
 
                 default:
@@ -472,6 +480,8 @@ namespace vultra
 
         void BuiltinRenderer::onImGuiRayTracing() {}
 
+        void BuiltinRenderer::onImGuiMeshShading() {}
+
         void BuiltinRenderer::renderRasterization(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
         {
             if (m_RenderPrimitiveGroup.empty())
@@ -666,6 +676,8 @@ namespace vultra
                 m_FrameInfo.time += m_FrameInfo.deltaTime;
             }
         }
+
+        void BuiltinRenderer::renderMeshShading(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) {}
 
         void BuiltinRenderer::clearUIDrawList() { m_UIDrawList.commands.clear(); }
 
