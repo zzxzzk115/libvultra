@@ -1,0 +1,93 @@
+{
+    "id_counters": {
+        "nextLinkId": 20004,
+        "nextNodeId": 5,
+        "nextPinId": 10008
+    },
+    "links": [
+        {
+            "fromNode": 1,
+            "fromPin": "GBufferColor",
+            "toNode": 2,
+            "toPin": "GBufferColor"
+        },
+        {
+            "fromNode": 1,
+            "fromPin": "GBufferDepth",
+            "toNode": 2,
+            "toPin": "GBufferDepth"
+        },
+        {
+            "fromNode": 2,
+            "fromPin": "LightingResult",
+            "toNode": 3,
+            "toPin": "LightingResult"
+        },
+        {
+            "fromNode": 3,
+            "fromPin": "FinalColor",
+            "toNode": 4,
+            "toPin": "FinalColor"
+        }
+    ],
+    "passes": [
+        {
+            "id": 1,
+            "inputs": [],
+            "name": "GBufferPass",
+            "outputs": [
+                "GBufferColor",
+                "GBufferDepth"
+            ],
+            "position": [
+                131.0,
+                176.0
+            ],
+            "type": "GBufferPass"
+        },
+        {
+            "id": 2,
+            "inputs": [
+                "GBufferColor",
+                "GBufferDepth"
+            ],
+            "name": "LightingPass",
+            "outputs": [
+                "LightingResult"
+            ],
+            "position": [
+                307.0,
+                208.0
+            ],
+            "type": "LightingPass"
+        },
+        {
+            "id": 3,
+            "inputs": [
+                "LightingResult"
+            ],
+            "name": "PostFXPass",
+            "outputs": [
+                "FinalColor"
+            ],
+            "position": [
+                538.0,
+                287.0
+            ],
+            "type": "PostFXPass"
+        },
+        {
+            "id": 4,
+            "inputs": [
+                "FinalColor"
+            ],
+            "name": "PresentPass",
+            "outputs": [],
+            "position": [
+                730.0,
+                336.0
+            ],
+            "type": "PresentPass"
+        }
+    ]
+}

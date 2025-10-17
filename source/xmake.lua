@@ -71,7 +71,7 @@ option_end()
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "glm", "stb", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr")
+add_requires("spdlog", "magic_enum", "entt", "glm", "stb", "nlohmann_json", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr")
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
@@ -109,7 +109,7 @@ target("vultra")
     add_rules("vulkansdk")
 
     -- add packages
-    add_packages("fmt", "spdlog", "stduuid", "cereal", "magic_enum", "entt", "glm", "stb", "vulkan-headers", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr", { public = true })
+    add_packages("fmt", "spdlog", "stduuid", "cereal", "magic_enum", "entt", "glm", "stb", "nlohmann_json", "vulkan-headers", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr", { public = true })
     add_packages("libsdl3", "assimp", "spirv-cross", "glslang", "openxr", { public = true })
     if has_config("tracy") then
         add_packages("tracy", { public = true })

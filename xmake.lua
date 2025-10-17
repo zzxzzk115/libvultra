@@ -73,17 +73,29 @@ rule("clangd.config")
 rule_end()
 
 rule("imguiconfig")
-    set_extensions(".ini", ".json")
+    set_extensions(".ini")
 
     on_build_file(function (target, sourcefile, opt) end)
 
     after_build_file(function (target, sourcefile, opt)
-        if path.basename(sourcefile) ~= "imgui" and path.basename(sourcefile) ~= "NodeEditor" then
+        if path.basename(sourcefile) ~= "imgui" then
             return
         end
         local output_path = path.join(target:targetdir(), path.filename(sourcefile))
         os.cp(sourcefile, output_path)
         print("Copying imgui config: " .. sourcefile .. " -> " .. output_path)
+    end)
+rule_end()
+
+rule("vfg")
+    set_extensions(".vfg")
+
+    on_build_file(function (target, sourcefile, opt) end)
+
+    after_build_file(function (target, sourcefile, opt)
+        local output_path = path.join(target:targetdir(), path.filename(sourcefile))
+        os.cp(sourcefile, output_path)
+        print("Copying vfg data: " .. sourcefile .. " -> " .. output_path)
     end)
 rule_end()
 
