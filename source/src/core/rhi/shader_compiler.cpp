@@ -110,6 +110,15 @@ namespace vultra
                 .maxTaskWorkGroupSizeY_NV                  = 1,
                 .maxTaskWorkGroupSizeZ_NV                  = 1,
                 .maxMeshViewCountNV                        = 4,
+                .maxMeshOutputVerticesEXT                  = 256,
+                .maxMeshOutputPrimitivesEXT                = 512,
+                .maxMeshWorkGroupSizeX_EXT                 = 32,
+                .maxMeshWorkGroupSizeY_EXT                 = 1,
+                .maxMeshWorkGroupSizeZ_EXT                 = 1,
+                .maxTaskWorkGroupSizeX_EXT                 = 32,
+                .maxTaskWorkGroupSizeY_EXT                 = 1,
+                .maxTaskWorkGroupSizeZ_EXT                 = 1,
+                .maxMeshViewCountEXT                       = 4,
                 .limits =
                     {
                         .nonInductiveForLoops                 = true,
@@ -135,12 +144,17 @@ namespace vultra
                     CASE(Vertex);
                     CASE(Geometry);
                     CASE(Fragment);
+
                     CASE(Compute);
+
                     CASE(RayGen);
                     CASE(Miss);
                     CASE(ClosestHit);
                     CASE(AnyHit);
                     CASE(Intersect);
+
+                    CASE(Mesh);
+                    CASE(Task);
                 }
 #undef CASE
 

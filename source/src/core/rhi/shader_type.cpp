@@ -21,12 +21,17 @@ namespace vultra
                 CASE(Vertex);
                 CASE(Geometry);
                 CASE(Fragment);
+
                 CASE(Compute);
+
                 CASE(RayGen);
                 CASE(Miss);
                 CASE(ClosestHit);
                 CASE(AnyHit);
                 CASE(Intersect);
+
+                CASE(Mesh);
+                CASE(Task);
             }
 #undef CASE
 

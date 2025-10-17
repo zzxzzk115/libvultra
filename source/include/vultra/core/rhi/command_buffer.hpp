@@ -119,6 +119,7 @@ namespace vultra
             CommandBuffer& draw(const GeometryInfo&, const uint32_t numInstances = 1);
             CommandBuffer& drawFullScreenTriangle();
             CommandBuffer& drawCube();
+            CommandBuffer& drawMeshTask(const glm::uvec3& numTaskGroups);
 
             // ---
 

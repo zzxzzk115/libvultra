@@ -20,8 +20,10 @@ namespace vultra
                         return vk::ShaderStageFlagBits::eGeometry;
                     case spv::ExecutionModelFragment:
                         return vk::ShaderStageFlagBits::eFragment;
+
                     case spv::ExecutionModelGLCompute:
                         return vk::ShaderStageFlagBits::eCompute;
+
                     case spv::ExecutionModelRayGenerationKHR:
                         return vk::ShaderStageFlagBits::eRaygenKHR;
                     case spv::ExecutionModelMissKHR:
@@ -32,6 +34,11 @@ namespace vultra
                         return vk::ShaderStageFlagBits::eAnyHitKHR;
                     case spv::ExecutionModelIntersectionKHR:
                         return vk::ShaderStageFlagBits::eIntersectionKHR;
+
+                    case spv::ExecutionModelMeshEXT:
+                        return vk::ShaderStageFlagBits::eMeshEXT;
+                    case spv::ExecutionModelTaskEXT:
+                        return vk::ShaderStageFlagBits::eTaskEXT;
 
                     default:
                         assert(false);

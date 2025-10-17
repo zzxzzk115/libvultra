@@ -1197,6 +1197,7 @@ namespace vultra
 
                 // Enable mesh shader features
                 meshShaderFeatures.meshShader = VK_TRUE;
+                meshShaderFeatures.taskShader = VK_TRUE;
 
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&meshShaderFeatures));
             }

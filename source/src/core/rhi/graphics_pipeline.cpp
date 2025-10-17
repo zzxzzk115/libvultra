@@ -24,8 +24,15 @@ namespace vultra
                         return vk::ShaderStageFlagBits::eGeometry;
                     case eFragment:
                         return vk::ShaderStageFlagBits::eFragment;
+
                     case eCompute:
                         return vk::ShaderStageFlagBits::eCompute;
+
+                    case eMesh:
+                        return vk::ShaderStageFlagBits::eMeshEXT;
+
+                    case eTask:
+                        return vk::ShaderStageFlagBits::eTaskEXT;
                 }
                 assert(false);
                 return static_cast<vk::ShaderStageFlagBits>(0);

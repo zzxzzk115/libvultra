@@ -423,6 +423,17 @@ namespace vultra
 
         CommandBuffer& CommandBuffer::drawCube() { return draw({.numVertices = 36}); }
 
+        CommandBuffer& CommandBuffer::drawMeshTask(const glm::uvec3& numTaskGroups)
+        {
+            assert(invariant(State::eRecording,
+                             InvariantFlags::eValidGraphicsPipeline | InvariantFlags::eInsideRenderPass));
+
+            TRACY_GPU_ZONE2_("DrawMeshTask");
+            m_Handle.drawMeshTasksEXT(numTaskGroups.x, numTaskGroups.y, numTaskGroups.z);
+
+            return *this;
+        }
+
         CommandBuffer& CommandBuffer::clear(const Buffer& buffer, const uint32_t value)
         {
             assert(buffer);
