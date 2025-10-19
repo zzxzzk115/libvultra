@@ -551,6 +551,12 @@ namespace vultra
                         outMesh.meshletGroup.meshlets.push_back(dst);
                     }
                 }
+
+                // Resize to actual used size
+                const auto& last = outMesh.meshletGroup.meshlets.back();
+
+                outMesh.meshletGroup.meshletVertices.resize(last.vertexOffset + last.vertexCount);
+                outMesh.meshletGroup.meshletTriangles.resize(last.triangleOffset + ((last.triangleCount * 3 + 3) & ~3));
             };
 
             std::function<void(const aiNode*, const aiScene*)> processNode;
@@ -609,6 +615,9 @@ namespace vultra
 
             // Build material buffer (for bindless descriptors)
             mesh.buildMaterialBuffer(rd);
+
+            // Build meshlet buffers
+            mesh.buildMeshletBuffers(rd);
 
             // Find light meshes (meshes with emissive materials)
             for (const auto& sm : mesh.subMeshes)

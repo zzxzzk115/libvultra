@@ -117,6 +117,10 @@ namespace vultra
             Ref<rhi::IndexBuffer>   indexBuffer {nullptr};
             Ref<rhi::StorageBuffer> materialBuffer {nullptr};
 
+            Ref<rhi::StorageBuffer> meshletBuffer {nullptr};
+            Ref<rhi::StorageBuffer> meshletVertexBuffer {nullptr};
+            Ref<rhi::StorageBuffer> meshletTriangleBuffer {nullptr};
+
             Ref<VertexFormat> vertexFormat {nullptr};
 
             rhi::PrimitiveTopology topology {rhi::PrimitiveTopology::eTriangleList};
@@ -183,6 +187,38 @@ namespace vultra
                 rd.execute(
                     [&](rhi::CommandBuffer& cb) {
                         cb.copyBuffer(stagingBuffer, *materialBuffer, vk::BufferCopy {0, 0, stagingBuffer.getSize()});
+                    },
+                    true);
+            }
+
+            void buildMeshletBuffers(rhi::RenderDevice& rd)
+            {
+                // Create meshlet buffers
+                meshletBuffer = createRef<rhi::StorageBuffer>(
+                    std::move(rd.createStorageBuffer(sizeof(Meshlet) * meshletGroup.meshlets.size())));
+                meshletVertexBuffer = createRef<rhi::StorageBuffer>(
+                    std::move(rd.createStorageBuffer(sizeof(uint32_t) * meshletGroup.meshletVertices.size())));
+                meshletTriangleBuffer = createRef<rhi::StorageBuffer>(
+                    std::move(rd.createStorageBuffer(sizeof(uint8_t) * meshletGroup.meshletTriangles.size())));
+
+                auto stagingMeshletBuffer       = rd.createStagingBuffer(sizeof(Meshlet) * meshletGroup.meshlets.size(),
+                                                                   meshletGroup.meshlets.data());
+                auto stagingMeshletVertexBuffer = rd.createStagingBuffer(
+                    sizeof(uint32_t) * meshletGroup.meshletVertices.size(), meshletGroup.meshletVertices.data());
+                auto stagingMeshletTriangleBuffer = rd.createStagingBuffer(
+                    sizeof(uint8_t) * meshletGroup.meshletTriangles.size(), meshletGroup.meshletTriangles.data());
+
+                rd.execute(
+                    [&](rhi::CommandBuffer& cb) {
+                        cb.copyBuffer(stagingMeshletBuffer,
+                                      *meshletBuffer,
+                                      vk::BufferCopy {0, 0, stagingMeshletBuffer.getSize()});
+                        cb.copyBuffer(stagingMeshletVertexBuffer,
+                                      *meshletVertexBuffer,
+                                      vk::BufferCopy {0, 0, stagingMeshletVertexBuffer.getSize()});
+                        cb.copyBuffer(stagingMeshletTriangleBuffer,
+                                      *meshletTriangleBuffer,
+                                      vk::BufferCopy {0, 0, stagingMeshletTriangleBuffer.getSize()});
                     },
                     true);
             }
