@@ -48,7 +48,11 @@ namespace vultra
                                   rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
                     HasFlagValues(m_RenderDevice.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayQuery))
                 {
-                    m_RenderableGroup.build(m_RenderDevice);
+                    m_RenderableGroup.buildRayTracing(m_RenderDevice);
+                }
+                else if (HasFlagValues(m_RenderDevice.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eMeshShader))
+                {
+                    m_RenderableGroup.buildMeshShading(m_RenderDevice);
                 }
             }
 
