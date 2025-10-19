@@ -1,7 +1,6 @@
 #include "example_passes.hpp"
 #include "fg_panel.hpp"
 
-
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/function/app/imgui_app.hpp>
 #include <vultra/function/renderer/imgui_renderer.hpp>

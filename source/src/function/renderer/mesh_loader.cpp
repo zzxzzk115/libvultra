@@ -11,6 +11,8 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+#include <meshoptimizer.h>
+
 #include <magic_enum.hpp>
 
 namespace
@@ -470,9 +472,90 @@ namespace vultra
                 }
             };
 
+            std::function<void(DefaultMesh&)> generateMeshlets = [](DefaultMesh& outMesh) {
+                // Collect positions for meshoptimizer
+                std::vector<glm::vec3> positions;
+                positions.reserve(outMesh.vertices.size());
+                for (const auto& v : outMesh.vertices)
+                {
+                    positions.push_back(v.position);
+                }
+
+                // Extra: meshlets
+                // https://github.com/zeux/meshoptimizer/tree/v0.24#clusterization
+                outMesh.meshletGroup.meshlets.clear();
+                outMesh.meshletGroup.meshletTriangles.clear();
+                outMesh.meshletGroup.meshletVertices.clear();
+
+                const size_t maxVerts = 64;
+                const size_t maxTris  = 124;
+
+                // --- Build meshlets per submesh to preserve correct material assignment ---
+                for (const auto& sub : outMesh.subMeshes)
+                {
+                    const uint32_t* subIndices = outMesh.indices.data() + sub.indexOffset;
+                    size_t          subCount   = sub.indexCount;
+
+                    // allocate space for meshlet vertices and triangles
+                    size_t                       maxMeshlets = meshopt_buildMeshletsBound(subCount, maxVerts, maxTris);
+                    std::vector<meshopt_Meshlet> meshletsTemp(maxMeshlets);
+
+                    // store current offsets
+                    size_t baseVertOffset = outMesh.meshletGroup.meshletVertices.size();
+                    size_t baseTriOffset  = outMesh.meshletGroup.meshletTriangles.size();
+
+                    outMesh.meshletGroup.meshletVertices.resize(baseVertOffset + maxMeshlets * maxVerts);
+                    outMesh.meshletGroup.meshletTriangles.resize(baseTriOffset + maxMeshlets * maxTris * 3);
+
+                    // build meshlets
+                    size_t meshletCount =
+                        meshopt_buildMeshlets(meshletsTemp.data(),
+                                              outMesh.meshletGroup.meshletVertices.data() + baseVertOffset,
+                                              outMesh.meshletGroup.meshletTriangles.data() + baseTriOffset,
+                                              subIndices,
+                                              subCount,
+                                              reinterpret_cast<const float*>(positions.data()),
+                                              positions.size(),
+                                              sizeof(glm::vec3),
+                                              maxVerts,
+                                              maxTris,
+                                              0.0f);
+
+                    meshletsTemp.resize(meshletCount);
+
+                    // copy to Meshlet
+                    for (size_t i = 0; i < meshletCount; ++i)
+                    {
+                        const auto& src = meshletsTemp[i];
+                        Meshlet     dst {};
+
+                        dst.vertexOffset   = baseVertOffset + src.vertex_offset;
+                        dst.triangleOffset = baseTriOffset + src.triangle_offset;
+                        dst.vertexCount    = src.vertex_count;
+                        dst.triangleCount  = src.triangle_count;
+
+                        // --- Assign material index directly from submesh ---
+                        dst.materialIndex = sub.materialIndex;
+
+                        auto bounds =
+                            meshopt_computeMeshletBounds(&outMesh.meshletGroup.meshletVertices[dst.vertexOffset],
+                                                         &outMesh.meshletGroup.meshletTriangles[dst.triangleOffset],
+                                                         dst.triangleCount,
+                                                         reinterpret_cast<const float*>(positions.data()),
+                                                         positions.size(),
+                                                         sizeof(glm::vec3));
+
+                        dst.center = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
+                        dst.radius = bounds.radius;
+
+                        outMesh.meshletGroup.meshlets.push_back(dst);
+                    }
+                }
+            };
+
             std::function<void(const aiNode*, const aiScene*)> processNode;
-            processNode = [&processMesh, &processNode, &vertexOffset, &indexOffset](const aiNode*  aiNode,
-                                                                                    const aiScene* aiScene) {
+            processNode = [&processMesh, &processNode, &vertexOffset, &indexOffset, &mesh](const aiNode*  aiNode,
+                                                                                           const aiScene* aiScene) {
                 for (uint32_t i = 0; i < aiNode->mNumMeshes; ++i)
                 {
                     aiMesh* aiMesh = aiScene->mMeshes[aiNode->mMeshes[i]];
@@ -487,6 +570,9 @@ namespace vultra
 
             processMaterials(scene);
             processNode(scene->mRootNode, scene);
+
+            // Generate meshlets
+            generateMeshlets(mesh);
 
             mesh.vertexBuffer = createRef<rhi::VertexBuffer>(
                 std::move(rd.createVertexBuffer(mesh.getVertexStride(), mesh.getVertexCount())));

@@ -81,6 +81,27 @@ namespace vultra
             uint32_t materialIndex {0};
         };
 
+        struct Meshlet
+        {
+            uint32_t vertexOffset {0};
+            uint32_t vertexCount {0};
+
+            uint32_t triangleOffset {0};
+            uint32_t triangleCount {0};
+
+            uint32_t materialIndex {0};
+
+            glm::vec3 center;
+            float     radius {0.0f};
+        };
+
+        struct MeshletGroup
+        {
+            std::vector<Meshlet>  meshlets;
+            std::vector<uint32_t> meshletVertices;
+            std::vector<uint8_t>  meshletTriangles;
+        };
+
         template<typename VertexType, typename MaterialType>
         struct Mesh
         {
@@ -90,6 +111,7 @@ namespace vultra
 
             std::vector<SubMesh>      subMeshes;
             std::vector<MaterialType> materials;
+            MeshletGroup              meshletGroup;
 
             Ref<rhi::VertexBuffer>  vertexBuffer {nullptr};
             Ref<rhi::IndexBuffer>   indexBuffer {nullptr};
