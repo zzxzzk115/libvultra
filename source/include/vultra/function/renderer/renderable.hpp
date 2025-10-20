@@ -197,7 +197,7 @@ namespace vultra
             Ref<rhi::StorageBuffer> globalMeshletBuffer {nullptr};
             Ref<rhi::StorageBuffer> globalMeshletVertexBuffer {nullptr};
             Ref<rhi::StorageBuffer> globalMeshletTriangleBuffer {nullptr};
-            Ref<rhi::StorageBuffer> globalVertexBuffer {nullptr};
+            Ref<rhi::VertexBuffer>  globalVertexBuffer {nullptr};
 
             void buildMeshShading(rhi::RenderDevice& rd)
             {
@@ -308,8 +308,8 @@ namespace vultra
                     std::move(rd.createStorageBuffer(sizeof(uint32_t) * globalMeshletGroup.meshletVertices.size())));
                 globalMeshletTriangleBuffer = createRef<rhi::StorageBuffer>(
                     std::move(rd.createStorageBuffer(sizeof(uint8_t) * globalMeshletGroup.meshletTriangles.size())));
-                globalVertexBuffer = createRef<rhi::StorageBuffer>(
-                    std::move(rd.createStorageBuffer(sizeof(SimpleVertex) * globalVertices.size())));
+                globalVertexBuffer = createRef<rhi::VertexBuffer>(
+                    std::move(rd.createVertexBuffer(sizeof(SimpleVertex), globalVertices.size())));
 
                 // Staging buffers
                 auto stagingMeshletBuffer = rd.createStagingBuffer(sizeof(Meshlet) * globalMeshletGroup.meshlets.size(),

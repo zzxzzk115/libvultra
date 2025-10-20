@@ -27,6 +27,8 @@ namespace vultra
 
         class SimpleRaytracingPass;
 
+        class MeshletGenerationPass;
+
         enum class RendererType
         {
             eRasterization = 0,
@@ -140,6 +142,8 @@ namespace vultra
             UIPass*    m_UIPass {nullptr};
 
             SimpleRaytracingPass* m_SimpleRaytracingPass {nullptr};
+
+            MeshletGenerationPass* m_MeshletGenerationPass {nullptr};
 
             std::vector<Ref<DefaultMesh>> m_AreaLightMeshes; // Keep alive for raytracing purposes
         };

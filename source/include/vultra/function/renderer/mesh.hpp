@@ -85,15 +85,18 @@ namespace vultra
         {
             uint32_t vertexOffset {0};
             uint32_t vertexCount {0};
-
             uint32_t triangleOffset {0};
             uint32_t triangleCount {0};
 
             uint32_t materialIndex {0};
+            uint32_t paddingU0 {0}; // ensure 16-byte alignment
+            uint32_t paddingU1 {0}; // ensure 16-byte alignment
+            uint32_t paddingU2 {0}; // ensure 16-byte alignment
 
             glm::vec3 center;
             float     radius {0.0f};
         };
+        static_assert(sizeof(Meshlet) == 48, "Meshlet size should be 48 bytes");
 
         struct MeshletGroup
         {

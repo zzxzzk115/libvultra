@@ -385,8 +385,13 @@ namespace vultra
 
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
-                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                         vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+                usage |= vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+            }
+
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
+                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
+            {
+                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
             }
 
             return VertexBuffer {
@@ -411,8 +416,13 @@ namespace vultra
 
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
-                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress |
-                         vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+                usage |= vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+            }
+
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
+                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
+            {
+                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
             }
 
             return IndexBuffer {
@@ -448,11 +458,25 @@ namespace vultra
         {
             assert(m_MemoryAllocator);
 
+            vk::BufferUsageFlags usage =
+                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
+
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            {
+                usage |= vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+            }
+
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
+                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
+            {
+                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
+            }
+
             return StorageBuffer {
                 Buffer {
                     m_MemoryAllocator,
                     size,
-                    vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                    usage,
                     makeAllocationFlags(allocationHint),
                     vma::MemoryUsage::eAutoPreferDevice,
                 },
@@ -1135,29 +1159,39 @@ namespace vultra
             descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount  = VK_TRUE;
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&descriptorIndexingFeatures));
 
-            // Acceleration Structure & BDA if RayQuery or RayTracingPipeline is enabled
-            vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};
-            vk::PhysicalDeviceBufferDeviceAddressFeatures      bufferDeviceAddressFeatures {};
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            // BDA if RayTracingPipeline or MeshShader is enabled
+            vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures {};
+            vk::PhysicalDeviceScalarBlockLayoutFeatures   scalarBlockLayoutFeatures {};
+            vk::PhysicalDeviceVulkan12Features            vk12Features {};
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
+                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
             {
-                // Required by Acceleration Structure
-                extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-
-                extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
                 extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
 
-                // Enable acceleration structure features
-                accelerationStructureFeatures.accelerationStructure = VK_TRUE;
-
-                // BDA feature is required for ray query and raytracing
                 bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
+                scalarBlockLayoutFeatures.scalarBlockLayout     = VK_TRUE;
+                vk12Features.storageBuffer8BitAccess            = VK_TRUE;
 #ifdef VULTRA_ENABLE_RENDERDOC
                 // When RenderDoc is enabled, we need to enable the capture replay feature as well
                 bufferDeviceAddressFeatures.bufferDeviceAddressCaptureReplay = VK_TRUE;
 #endif
+                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&bufferDeviceAddressFeatures));
+                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&scalarBlockLayoutFeatures));
+                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk12Features));
+            }
+
+            // Acceleration Structure if RayQuery or RayTracingPipeline is enabled
+            vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            {
+                // Required by Acceleration Structure
+                extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+                extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+
+                // Enable acceleration structure features
+                accelerationStructureFeatures.accelerationStructure = VK_TRUE;
 
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&accelerationStructureFeatures));
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&bufferDeviceAddressFeatures));
             }
 
             // RayQuery
@@ -1174,7 +1208,6 @@ namespace vultra
 
             // Raytracing
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures {};
-            vk::PhysicalDeviceScalarBlockLayoutFeatures     scalarBlockLayoutFeatures {};
             if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline))
             {
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
@@ -1182,11 +1215,7 @@ namespace vultra
                 // Enable raytracing pipeline features
                 rayTracingFeatures.rayTracingPipeline = VK_TRUE;
 
-                // Scalar block layout
-                scalarBlockLayoutFeatures.scalarBlockLayout = VK_TRUE;
-
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&scalarBlockLayoutFeatures));
             }
 
             // Mesh Shader
@@ -1308,9 +1337,10 @@ namespace vultra
             allocatorInfo.instance         = m_Instance;
             allocatorInfo.pVulkanFunctions = &functions;
 
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
+                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
             {
-                // When using raytracing or ray query, we need to enable the buffer device address feature
+                // When using raytracing/query or mesh shading, enable the buffer device address feature in VMA
                 allocatorInfo.flags |= vma::AllocatorCreateFlagBits::eBufferDeviceAddress;
             }
 

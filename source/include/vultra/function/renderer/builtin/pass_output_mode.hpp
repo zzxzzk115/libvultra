@@ -18,6 +18,7 @@ namespace vultra
             SceneColor_HDR,
             SceneColor_LDR,
             SceneColor_AntiAliased,
+            MeshletDebug,
         };
         // NOLINTEND
     } // namespace gfx

@@ -4,6 +4,7 @@
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
 #include "vultra/function/renderer/builtin/resources/camera_data.hpp"
 #include "vultra/function/renderer/builtin/resources/gbuffer_data.hpp"
+#include "vultra/function/renderer/builtin/resources/meshlet_data.hpp"
 #include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
 
@@ -79,6 +80,10 @@ namespace vultra
                         break;
                     case SceneColor_AntiAliased:
                         input = blackboard.get<SceneColorData>().aa;
+                        break;
+
+                    case MeshletDebug:
+                        input = blackboard.get<MeshletData>().debug;
                         break;
 
                     default:

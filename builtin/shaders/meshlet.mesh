@@ -1,0 +1,96 @@
+#version 460 core
+#extension GL_EXT_mesh_shader : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8: require // uint8_t for meshlet triangle indices
+
+#include "lib/bda_vertex.glsl"
+#include "resources/camera_block.glsl"
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout(triangles, max_vertices = 64, max_primitives = 126) out;
+
+struct Meshlet {
+    uint vertexOffset;
+    uint vertexCount;
+	uint triangleOffset;
+    uint triangleCount;
+
+    uint materialIndex;
+	uint padding0; // ensure 16-byte alignment
+	uint padding1; // ensure 16-byte alignment
+	uint padding2; // ensure 16-byte alignment
+
+    vec3 center;
+    float radius;
+};
+
+// layout(buffer_reference, scalar) buffer MeshletBuffer { Meshlet meshlets[]; };
+// layout(buffer_reference, scalar) buffer MeshletVertexBuffer { uint meshletVertices[]; };
+// layout(buffer_reference, scalar) buffer MeshletTriangleBuffer { uint8_t meshletTriangles[]; };
+
+layout(set = 2, binding = 0) buffer MeshletBuffer { Meshlet meshlets[]; } meshletBuf;
+layout(set = 2, binding = 1) buffer MeshletVertexBuffer { uint meshletVertices[]; } meshletVertBuf;
+layout(set = 2, binding = 2) buffer MeshletTriangleBuffer { uint8_t meshletTriangles[]; } meshletTriBuf;
+
+layout(push_constant) uniform GlobalMeshDataPushConstants {
+	uint64_t vertexBufferAddress;
+    uint64_t meshletBufferAddress;
+    uint64_t meshletVertexBufferAddress;
+    uint64_t meshletTriangleBufferAddress;
+    uint meshletCount;
+	uint _padding;
+} g_Mesh;
+
+out PerVertex {
+    layout(location = 0) flat uint meshletID;
+} VSOut[];
+
+const uint TASK_WORKGROUP_SIZE = 32;
+struct TaskPayload
+{
+	uint meshletInstanceIDs[TASK_WORKGROUP_SIZE];
+};
+taskPayloadSharedEXT TaskPayload payload;
+
+shared Meshlet mShared;
+
+void main() {
+    // uint meshletID = payload.meshletInstanceIDs[gl_WorkGroupID.x % TASK_WORKGROUP_SIZE];
+	uint meshletID = gl_WorkGroupID.x;
+	if (meshletID >= g_Mesh.meshletCount)
+        return;
+
+    // Resolve buffer references
+    // MeshletBuffer meshletBuf = MeshletBuffer(g_Mesh.meshletBufferAddress);
+    // MeshletVertexBuffer meshletVertBuf = MeshletVertexBuffer(g_Mesh.meshletVertexBufferAddress);
+    // MeshletTriangleBuffer meshletTriBuf = MeshletTriangleBuffer(g_Mesh.meshletTriangleBufferAddress);
+    VertexBuffer vertexBuf = VertexBuffer(g_Mesh.vertexBufferAddress);
+
+    if (gl_LocalInvocationIndex == 0) {
+        mShared = meshletBuf.meshlets[meshletID];
+        SetMeshOutputsEXT(mShared.vertexCount, mShared.triangleCount);
+    }
+    barrier();
+
+    Meshlet m = mShared;
+
+    // Emit vertices
+    for (uint i = gl_LocalInvocationIndex; i < m.vertexCount; i += gl_WorkGroupSize.x) {
+        uint vIndex = meshletVertBuf.meshletVertices[m.vertexOffset + i];
+        Vertex v = vertexBuf.vertices[vIndex];
+        gl_MeshVerticesEXT[i].gl_Position = u_Camera.viewProjection * vec4(v.position, 1.0);
+        VSOut[i].meshletID = meshletID;
+    }
+
+    barrier();
+
+	// Emit triangles
+    for (uint i = gl_LocalInvocationIndex; i < m.triangleCount; i += gl_WorkGroupSize.x) {
+        uint base = m.triangleOffset + i * 3;
+        uvec3 tri = uvec3(
+            meshletTriBuf.meshletTriangles[base + 0],
+            meshletTriBuf.meshletTriangles[base + 1],
+            meshletTriBuf.meshletTriangles[base + 2]
+        );
+        gl_PrimitiveTriangleIndicesEXT[i] = tri;
+    }
+}

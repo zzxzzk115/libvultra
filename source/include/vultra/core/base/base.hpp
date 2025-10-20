@@ -39,6 +39,14 @@ using fsec = std::chrono::duration<float>;
 #define ZERO_BIT 0
 #endif
 
+#if defined(_MSC_VER)
+#define PACKED_STRUCT(definition) __pragma(pack(push, 1)) definition __pragma(pack(pop))
+#elif defined(__GNUC__) || defined(__clang__)
+#define PACKED_STRUCT(definition) definition __attribute__((packed))
+#else
+#error "Unknown compiler, please define PACKED_STRUCT for it."
+#endif
+
 namespace vultra
 {
     template<typename T>

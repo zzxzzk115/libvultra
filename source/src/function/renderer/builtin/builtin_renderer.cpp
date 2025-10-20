@@ -10,11 +10,13 @@
 #include "vultra/function/renderer/builtin/passes/fxaa_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gamma_correction_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/meshlet_generation_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/simple_raytracing_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/skybox_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/tonemapping_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/ui_pass.hpp"
 #include "vultra/function/renderer/builtin/resources/ibl_data.hpp"
+#include "vultra/function/renderer/builtin/resources/meshlet_data.hpp"
 #include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
 #include "vultra/function/scenegraph/entity.hpp"
@@ -52,6 +54,8 @@ namespace vultra
 
             m_SimpleRaytracingPass = new SimpleRaytracingPass(rd);
 
+            m_MeshletGenerationPass = new MeshletGenerationPass(rd);
+
             setupSamplers();
 
             // Ensure BRDF LUT is generated at least once
@@ -81,6 +85,8 @@ namespace vultra
             delete m_UIPass;
 
             delete m_SimpleRaytracingPass;
+
+            delete m_MeshletGenerationPass;
         }
 
         void BuiltinRenderer::onImGui()
@@ -677,7 +683,79 @@ namespace vultra
             }
         }
 
-        void BuiltinRenderer::renderMeshShading(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) {}
+        void BuiltinRenderer::renderMeshShading(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
+        {
+            if (m_RenderPrimitiveGroup.empty())
+            {
+                return;
+            }
+
+            {
+                ZoneScopedN("Prepare Attachments");
+
+                rhi::prepareForAttachment(cb, *renderTarget, false);
+            }
+
+            {
+                ZoneScopedN("BultinRenderer");
+
+                FrameGraph fg;
+                {
+                    FrameGraphBlackboard blackboard;
+
+                    ZoneScopedN("Setup");
+
+                    const auto backBuffer = framegraph::importTexture(fg, "Backbuffer", renderTarget);
+
+                    // Import skybox cubemap
+                    const auto skyboxCubemap = framegraph::importTexture(fg, "Skybox Cubemap", m_Cubemap.get());
+
+                    // Import IBL textures
+                    const auto brdfLUT       = framegraph::importTexture(fg, "BRDF LUT", m_BrdfLUT.get());
+                    const auto irradianceMap = framegraph::importTexture(fg, "Irradiance Map", m_IrradianceMap.get());
+                    const auto prefilteredEnvMap =
+                        framegraph::importTexture(fg, "Prefiltered Env Map", m_PrefilteredEnvMap.get());
+                    auto& iblData             = blackboard.add<IBLData>();
+                    iblData.brdfLUT           = brdfLUT;
+                    iblData.irradianceMap     = irradianceMap;
+                    iblData.prefilteredEnvMap = prefilteredEnvMap;
+
+                    uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
+                    uploadFrameBlock(fg, blackboard, m_FrameInfo);
+                    uploadLightBlock(fg, blackboard, m_LightInfo);
+
+                    // Meshlet Generation Pass
+                    m_MeshletGenerationPass->addPass(fg, blackboard, renderTarget->getExtent(), m_RenderableGroup);
+
+                    auto& meshletResult = blackboard.get<MeshletData>().debug;
+
+                    m_BlitPass->blit(fg, meshletResult, backBuffer);
+                }
+
+                {
+                    ZoneScopedN("FrameGraph::Compile");
+                    fg.compile();
+                }
+
+                {
+                    gfx::RendererRenderContext rc {cb, m_Samplers};
+                    FG_GPU_ZONE(rc.commandBuffer);
+                    fg.execute(&rc, &m_TransientResources);
+                }
+
+#if _DEBUG
+                {
+                    std::ofstream ofs {"framegraph.dot"};
+                    ofs << fg;
+                }
+#endif
+
+                m_TransientResources.update();
+
+                m_FrameInfo.deltaTime = dt.count();
+                m_FrameInfo.time += m_FrameInfo.deltaTime;
+            }
+        }
 
         void BuiltinRenderer::clearUIDrawList() { m_UIDrawList.commands.clear(); }
 

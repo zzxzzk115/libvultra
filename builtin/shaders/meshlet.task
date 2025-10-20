@@ -1,0 +1,44 @@
+#version 460 core
+#extension GL_EXT_mesh_shader : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+const uint TASK_WORKGROUP_SIZE = 32;
+layout(local_size_x = TASK_WORKGROUP_SIZE) in;
+
+layout(push_constant) uniform GlobalMeshDataPushConstants {
+	uint64_t vertexBufferAddress;
+    uint64_t meshletBufferAddress;
+    uint64_t meshletVertexBufferAddress;
+    uint64_t meshletTriangleBufferAddress;
+    uint meshletCount;
+	uint _padding;
+} g_Mesh;
+
+shared uint taskMeshletCount;
+
+struct TaskPayload
+{
+	uint meshletInstanceIDs[TASK_WORKGROUP_SIZE];
+};
+taskPayloadSharedEXT TaskPayload payload;
+
+void main()
+{
+    if(gl_LocalInvocationIndex == 0) {
+        taskMeshletCount = 0;
+    }
+	barrier();
+
+	uint meshletID = gl_LocalInvocationIndex + gl_WorkGroupID.x * TASK_WORKGROUP_SIZE;
+	if(meshletID >= g_Mesh.meshletCount) {
+		return;
+	}
+
+	uint index = atomicAdd(taskMeshletCount, 1);
+	payload.meshletInstanceIDs[index] = meshletID;
+
+	barrier();
+	if (gl_LocalInvocationIndex == 0) {
+		EmitMeshTasksEXT(taskMeshletCount, 1, 1);
+	}
+}

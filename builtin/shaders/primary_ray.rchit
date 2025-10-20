@@ -6,7 +6,7 @@
 #include "resources/camera_block.glsl"
 #include "lib/color.glsl"
 #include "lib/texture.glsl"
-#include "lib/bda_vertex.glsl"
+#include "lib/bda_raytracing.glsl"
 #include "lib/pbr.glsl"
 #include "lib/ltc.glsl"
 // #include "lib/ray_cones.glsl"

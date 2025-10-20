@@ -4,14 +4,6 @@
 
 #include <glm/glm.hpp>
 
-#if defined(_MSC_VER)
-#define PACKED_STRUCT(definition) __pragma(pack(push, 1)) definition __pragma(pack(pop))
-#elif defined(__GNUC__) || defined(__clang__)
-#define PACKED_STRUCT(definition) definition __attribute__((packed))
-#else
-#error "Unknown compiler, please define PACKED_STRUCT for it."
-#endif
-
 namespace vultra
 {
     namespace gfx

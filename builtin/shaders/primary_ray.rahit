@@ -3,7 +3,7 @@
 #extension GL_EXT_nonuniform_qualifier : require
 
 #include "resources/camera_block.glsl"
-#include "lib/bda_vertex.glsl"
+#include "lib/bda_raytracing.glsl"
 #include "lib/texture.glsl"
 #include "lib/raytracing_utils.glsl"
 #include "lib/visibility_buffer_utils.glsl" // For using the same texture LOD calculation method as visibility buffer
