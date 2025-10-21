@@ -473,26 +473,27 @@ namespace vultra
             };
 
             std::function<void(DefaultMesh&)> generateMeshlets = [](DefaultMesh& outMesh) {
-                // Collect positions for meshoptimizer
-                std::vector<glm::vec3> positions;
-                positions.reserve(outMesh.vertices.size());
-                for (const auto& v : outMesh.vertices)
+                // --- Build meshlets per submesh ---
+                for (auto& sub : outMesh.subMeshes)
                 {
-                    positions.push_back(v.position);
-                }
+                    // Collect positions for meshoptimizer
+                    std::vector<glm::vec3> positions;
+                    positions.reserve(sub.vertexCount);
+                    for (uint32_t v = 0; v < sub.vertexCount; ++v)
+                    {
+                        const auto& vertex = outMesh.vertices[sub.vertexOffset + v];
+                        positions.push_back(vertex.position);
+                    }
 
-                // Extra: meshlets
-                // https://github.com/zeux/meshoptimizer/tree/v0.24#clusterization
-                outMesh.meshletGroup.meshlets.clear();
-                outMesh.meshletGroup.meshletTriangles.clear();
-                outMesh.meshletGroup.meshletVertices.clear();
+                    // Extra: meshlets
+                    // https://github.com/zeux/meshoptimizer/tree/v0.24#clusterization
+                    sub.meshletGroup.meshlets.clear();
+                    sub.meshletGroup.meshletTriangles.clear();
+                    sub.meshletGroup.meshletVertices.clear();
 
-                const size_t maxVerts = 64;
-                const size_t maxTris  = 124;
+                    const size_t maxVerts = 64;
+                    const size_t maxTris  = 124;
 
-                // --- Build meshlets per submesh to preserve correct material assignment ---
-                for (const auto& sub : outMesh.subMeshes)
-                {
                     const uint32_t* subIndices = outMesh.indices.data() + sub.indexOffset;
                     size_t          subCount   = sub.indexCount;
 
@@ -501,17 +502,17 @@ namespace vultra
                     std::vector<meshopt_Meshlet> meshletsTemp(maxMeshlets);
 
                     // store current offsets
-                    size_t baseVertOffset = outMesh.meshletGroup.meshletVertices.size();
-                    size_t baseTriOffset  = outMesh.meshletGroup.meshletTriangles.size();
+                    size_t baseVertOffset = sub.meshletGroup.meshletVertices.size();
+                    size_t baseTriOffset  = sub.meshletGroup.meshletTriangles.size();
 
-                    outMesh.meshletGroup.meshletVertices.resize(baseVertOffset + maxMeshlets * maxVerts);
-                    outMesh.meshletGroup.meshletTriangles.resize(baseTriOffset + maxMeshlets * maxTris * 3);
+                    sub.meshletGroup.meshletVertices.resize(baseVertOffset + maxMeshlets * maxVerts);
+                    sub.meshletGroup.meshletTriangles.resize(baseTriOffset + maxMeshlets * maxTris * 3);
 
                     // build meshlets
                     size_t meshletCount =
                         meshopt_buildMeshlets(meshletsTemp.data(),
-                                              outMesh.meshletGroup.meshletVertices.data() + baseVertOffset,
-                                              outMesh.meshletGroup.meshletTriangles.data() + baseTriOffset,
+                                              sub.meshletGroup.meshletVertices.data() + baseVertOffset,
+                                              sub.meshletGroup.meshletTriangles.data() + baseTriOffset,
                                               subIndices,
                                               subCount,
                                               reinterpret_cast<const float*>(positions.data()),
@@ -538,8 +539,8 @@ namespace vultra
                         dst.materialIndex = sub.materialIndex;
 
                         auto bounds =
-                            meshopt_computeMeshletBounds(&outMesh.meshletGroup.meshletVertices[dst.vertexOffset],
-                                                         &outMesh.meshletGroup.meshletTriangles[dst.triangleOffset],
+                            meshopt_computeMeshletBounds(&sub.meshletGroup.meshletVertices[dst.vertexOffset],
+                                                         &sub.meshletGroup.meshletTriangles[dst.triangleOffset],
                                                          dst.triangleCount,
                                                          reinterpret_cast<const float*>(positions.data()),
                                                          positions.size(),
@@ -548,15 +549,15 @@ namespace vultra
                         dst.center = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
                         dst.radius = bounds.radius;
 
-                        outMesh.meshletGroup.meshlets.push_back(dst);
+                        sub.meshletGroup.meshlets.push_back(dst);
                     }
+
+                    // Resize to actual used size
+                    const auto& last = sub.meshletGroup.meshlets.back();
+
+                    sub.meshletGroup.meshletVertices.resize(last.vertexOffset + last.vertexCount);
+                    sub.meshletGroup.meshletTriangles.resize(last.triangleOffset + ((last.triangleCount * 3 + 3) & ~3));
                 }
-
-                // Resize to actual used size
-                const auto& last = outMesh.meshletGroup.meshlets.back();
-
-                outMesh.meshletGroup.meshletVertices.resize(last.vertexOffset + last.vertexCount);
-                outMesh.meshletGroup.meshletTriangles.resize(last.triangleOffset + ((last.triangleCount * 3 + 3) & ~3));
             };
 
             std::function<void(const aiNode*, const aiScene*)> processNode;
@@ -606,18 +607,16 @@ namespace vultra
                 },
                 true);
 
-            // Build the render mesh for ray tracing or ray query if supported
-            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
-                HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayQuery))
-            {
-                mesh.buildRenderMesh(rd);
-            }
-
             // Build material buffer (for bindless descriptors)
             mesh.buildMaterialBuffer(rd);
 
-            // Build meshlet buffers
-            mesh.buildMeshletBuffers(rd);
+            // Build meshlet buffers for each sub-mesh
+            for (auto& sm : mesh.subMeshes)
+            {
+                sm.buildMeshletBuffers(rd);
+            }
+
+            mesh.buildRenderMesh(rd);
 
             // Find light meshes (meshes with emissive materials)
             for (const auto& sm : mesh.subMeshes)

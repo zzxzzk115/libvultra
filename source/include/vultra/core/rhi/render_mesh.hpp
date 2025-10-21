@@ -19,6 +19,11 @@ namespace vultra
             uint64_t indexBufferAddress {0};
             uint64_t transformBufferAddress {0}; // Optional
 
+            uint64_t meshletBufferAddress {0};
+            uint64_t meshletVertexBufferAddress {0};
+            uint64_t meshletTriangleBufferAddress {0};
+            uint32_t meshletCount {0};
+
             uint32_t vertexStride {0};
             uint32_t vertexCount {0};
 

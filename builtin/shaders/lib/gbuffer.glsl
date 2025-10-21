@@ -87,8 +87,8 @@ void main() {
 	g_Emissive = sRGBToLinear(emissive.rgb); // Manually convert to linear, since we load textures as UNorm
 
 	// Metallic + Roughness + AO
-	float metallic = c_Mesh.metallicFactor; // Default metallic
-	float roughness = c_Mesh.roughnessFactor; // Default roughness
+	float metallic = 0.0; // Default metallic
+	float roughness = 0.5; // Default roughness
 	if (c_Mesh.useMetallicTexture)
 	{
 		metallic = textureGrad(t_Metallic, v_TexCoord, duvdx, duvdy).r; // Assuming metallic is stored in the R channel
@@ -102,6 +102,10 @@ void main() {
 		metallic = textureGrad(t_MetallicRoughness, v_TexCoord, duvdx, duvdy).b; // Metallic stored in the B channel
 		roughness = textureGrad(t_MetallicRoughness, v_TexCoord, duvdx, duvdy).g; // Roughness stored in the G channel
 	}
+
+	metallic *= c_Mesh.metallicFactor;
+	roughness *= c_Mesh.roughnessFactor;
+
 	float ao = 1.0; // Default AO
 	if (c_Mesh.useSpecularTexture)
 	{

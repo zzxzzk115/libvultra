@@ -66,21 +66,6 @@ namespace vultra
             uint32_t materialIndex {0};
         };
 
-        struct SubMesh
-        {
-            std::string name;
-
-            rhi::PrimitiveTopology topology {rhi::PrimitiveTopology::eTriangleList};
-
-            uint32_t vertexOffset {0};
-            uint32_t vertexCount {0};
-
-            uint32_t indexOffset {0};
-            uint32_t indexCount {0};
-
-            uint32_t materialIndex {0};
-        };
-
         struct Meshlet
         {
             uint32_t vertexOffset {0};
@@ -105,6 +90,59 @@ namespace vultra
             std::vector<uint8_t>  meshletTriangles;
         };
 
+        struct SubMesh
+        {
+            std::string name;
+
+            rhi::PrimitiveTopology topology {rhi::PrimitiveTopology::eTriangleList};
+
+            uint32_t vertexOffset {0};
+            uint32_t vertexCount {0};
+
+            uint32_t indexOffset {0};
+            uint32_t indexCount {0};
+
+            uint32_t materialIndex {0};
+
+            MeshletGroup meshletGroup;
+
+            Ref<rhi::StorageBuffer> meshletBuffer {nullptr};
+            Ref<rhi::StorageBuffer> meshletVertexBuffer {nullptr};
+            Ref<rhi::StorageBuffer> meshletTriangleBuffer {nullptr};
+
+            void buildMeshletBuffers(rhi::RenderDevice& rd)
+            {
+                // Create meshlet buffers
+                meshletBuffer = createRef<rhi::StorageBuffer>(
+                    std::move(rd.createStorageBuffer(sizeof(Meshlet) * meshletGroup.meshlets.size())));
+                meshletVertexBuffer = createRef<rhi::StorageBuffer>(
+                    std::move(rd.createStorageBuffer(sizeof(uint32_t) * meshletGroup.meshletVertices.size())));
+                meshletTriangleBuffer = createRef<rhi::StorageBuffer>(
+                    std::move(rd.createStorageBuffer(sizeof(uint8_t) * meshletGroup.meshletTriangles.size())));
+
+                auto stagingMeshletBuffer       = rd.createStagingBuffer(sizeof(Meshlet) * meshletGroup.meshlets.size(),
+                                                                   meshletGroup.meshlets.data());
+                auto stagingMeshletVertexBuffer = rd.createStagingBuffer(
+                    sizeof(uint32_t) * meshletGroup.meshletVertices.size(), meshletGroup.meshletVertices.data());
+                auto stagingMeshletTriangleBuffer = rd.createStagingBuffer(
+                    sizeof(uint8_t) * meshletGroup.meshletTriangles.size(), meshletGroup.meshletTriangles.data());
+
+                rd.execute(
+                    [&](rhi::CommandBuffer& cb) {
+                        cb.copyBuffer(stagingMeshletBuffer,
+                                      *meshletBuffer,
+                                      vk::BufferCopy {0, 0, stagingMeshletBuffer.getSize()});
+                        cb.copyBuffer(stagingMeshletVertexBuffer,
+                                      *meshletVertexBuffer,
+                                      vk::BufferCopy {0, 0, stagingMeshletVertexBuffer.getSize()});
+                        cb.copyBuffer(stagingMeshletTriangleBuffer,
+                                      *meshletTriangleBuffer,
+                                      vk::BufferCopy {0, 0, stagingMeshletTriangleBuffer.getSize()});
+                    },
+                    true);
+            }
+        };
+
         template<typename VertexType, typename MaterialType>
         struct Mesh
         {
@@ -114,15 +152,10 @@ namespace vultra
 
             std::vector<SubMesh>      subMeshes;
             std::vector<MaterialType> materials;
-            MeshletGroup              meshletGroup;
 
             Ref<rhi::VertexBuffer>  vertexBuffer {nullptr};
             Ref<rhi::IndexBuffer>   indexBuffer {nullptr};
             Ref<rhi::StorageBuffer> materialBuffer {nullptr};
-
-            Ref<rhi::StorageBuffer> meshletBuffer {nullptr};
-            Ref<rhi::StorageBuffer> meshletVertexBuffer {nullptr};
-            Ref<rhi::StorageBuffer> meshletTriangleBuffer {nullptr};
 
             Ref<VertexFormat> vertexFormat {nullptr};
 
@@ -194,40 +227,10 @@ namespace vultra
                     true);
             }
 
-            void buildMeshletBuffers(rhi::RenderDevice& rd)
-            {
-                // Create meshlet buffers
-                meshletBuffer = createRef<rhi::StorageBuffer>(
-                    std::move(rd.createStorageBuffer(sizeof(Meshlet) * meshletGroup.meshlets.size())));
-                meshletVertexBuffer = createRef<rhi::StorageBuffer>(
-                    std::move(rd.createStorageBuffer(sizeof(uint32_t) * meshletGroup.meshletVertices.size())));
-                meshletTriangleBuffer = createRef<rhi::StorageBuffer>(
-                    std::move(rd.createStorageBuffer(sizeof(uint8_t) * meshletGroup.meshletTriangles.size())));
-
-                auto stagingMeshletBuffer       = rd.createStagingBuffer(sizeof(Meshlet) * meshletGroup.meshlets.size(),
-                                                                   meshletGroup.meshlets.data());
-                auto stagingMeshletVertexBuffer = rd.createStagingBuffer(
-                    sizeof(uint32_t) * meshletGroup.meshletVertices.size(), meshletGroup.meshletVertices.data());
-                auto stagingMeshletTriangleBuffer = rd.createStagingBuffer(
-                    sizeof(uint8_t) * meshletGroup.meshletTriangles.size(), meshletGroup.meshletTriangles.data());
-
-                rd.execute(
-                    [&](rhi::CommandBuffer& cb) {
-                        cb.copyBuffer(stagingMeshletBuffer,
-                                      *meshletBuffer,
-                                      vk::BufferCopy {0, 0, stagingMeshletBuffer.getSize()});
-                        cb.copyBuffer(stagingMeshletVertexBuffer,
-                                      *meshletVertexBuffer,
-                                      vk::BufferCopy {0, 0, stagingMeshletVertexBuffer.getSize()});
-                        cb.copyBuffer(stagingMeshletTriangleBuffer,
-                                      *meshletTriangleBuffer,
-                                      vk::BufferCopy {0, 0, stagingMeshletTriangleBuffer.getSize()});
-                    },
-                    true);
-            }
-
             void buildRenderMesh(rhi::RenderDevice& rd)
             {
+                const auto& features = rd.getFeatureFlag();
+
                 renderMesh.subMeshes.clear();
                 renderMesh.subMeshes.reserve(subMeshes.size());
 
@@ -241,6 +244,17 @@ namespace vultra
                         indexBuffer ? (rd.getBufferDeviceAddress(*indexBuffer) + sm.indexOffset * getIndexStride()) : 0;
                     rsm.transformBufferAddress = 0; // Optional
 
+                    // Meshlet buffer addresses
+                    if (HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eMeshShader))
+                    {
+                        rsm.meshletBufferAddress = sm.meshletBuffer ? rd.getBufferDeviceAddress(*sm.meshletBuffer) : 0;
+                        rsm.meshletVertexBufferAddress =
+                            sm.meshletVertexBuffer ? rd.getBufferDeviceAddress(*sm.meshletVertexBuffer) : 0;
+                        rsm.meshletTriangleBufferAddress =
+                            sm.meshletTriangleBuffer ? rd.getBufferDeviceAddress(*sm.meshletTriangleBuffer) : 0;
+                        rsm.meshletCount = static_cast<uint32_t>(sm.meshletGroup.meshlets.size());
+                    }
+
                     rsm.vertexStride = getVertexStride();
                     rsm.vertexCount  = sm.vertexCount;
 
@@ -253,35 +267,39 @@ namespace vultra
                     renderMesh.subMeshes.push_back(rsm);
                 }
 
-                renderMesh.createBuildBLAS(rd);
-
-                // Create geometry node buffer (raytracing only)
+                if (HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
+                    HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayQuery))
                 {
-                    std::vector<GPUGeometryNode> geometryNodes;
-                    geometryNodes.reserve(renderMesh.subMeshes.size());
+                    renderMesh.createBuildBLAS(rd);
 
-                    for (const auto& sm : renderMesh.subMeshes)
+                    // Create geometry node buffer (raytracing only)
                     {
-                        GPUGeometryNode node {};
-                        node.vertexBufferAddress = sm.vertexBufferAddress;
-                        node.indexBufferAddress  = sm.indexBufferAddress;
-                        node.materialIndex       = sm.materialIndex;
-                        geometryNodes.push_back(node);
+                        std::vector<GPUGeometryNode> geometryNodes;
+                        geometryNodes.reserve(renderMesh.subMeshes.size());
+
+                        for (const auto& sm : renderMesh.subMeshes)
+                        {
+                            GPUGeometryNode node {};
+                            node.vertexBufferAddress = sm.vertexBufferAddress;
+                            node.indexBufferAddress  = sm.indexBufferAddress;
+                            node.materialIndex       = sm.materialIndex;
+                            geometryNodes.push_back(node);
+                        }
+
+                        renderMesh.geometryNodeBuffer = createRef<rhi::StorageBuffer>(
+                            std::move(rd.createStorageBuffer(sizeof(GPUGeometryNode) * geometryNodes.size())));
+
+                        auto stagingBuffer = rd.createStagingBuffer(sizeof(GPUGeometryNode) * geometryNodes.size(),
+                                                                    geometryNodes.data());
+
+                        rd.execute(
+                            [&](rhi::CommandBuffer& cb) {
+                                cb.copyBuffer(stagingBuffer,
+                                              *renderMesh.geometryNodeBuffer,
+                                              vk::BufferCopy {0, 0, stagingBuffer.getSize()});
+                            },
+                            true);
                     }
-
-                    renderMesh.geometryNodeBuffer = createRef<rhi::StorageBuffer>(
-                        std::move(rd.createStorageBuffer(sizeof(GPUGeometryNode) * geometryNodes.size())));
-
-                    auto stagingBuffer =
-                        rd.createStagingBuffer(sizeof(GPUGeometryNode) * geometryNodes.size(), geometryNodes.data());
-
-                    rd.execute(
-                        [&](rhi::CommandBuffer& cb) {
-                            cb.copyBuffer(stagingBuffer,
-                                          *renderMesh.geometryNodeBuffer,
-                                          vk::BufferCopy {0, 0, stagingBuffer.getSize()});
-                        },
-                        true);
                 }
             }
         };

@@ -23,25 +23,30 @@ struct Meshlet {
     float radius;
 };
 
-// layout(buffer_reference, scalar) buffer MeshletBuffer { Meshlet meshlets[]; };
-// layout(buffer_reference, scalar) buffer MeshletVertexBuffer { uint meshletVertices[]; };
-// layout(buffer_reference, scalar) buffer MeshletTriangleBuffer { uint8_t meshletTriangles[]; };
-
-layout(set = 2, binding = 0) buffer MeshletBuffer { Meshlet meshlets[]; } meshletBuf;
-layout(set = 2, binding = 1) buffer MeshletVertexBuffer { uint meshletVertices[]; } meshletVertBuf;
-layout(set = 2, binding = 2) buffer MeshletTriangleBuffer { uint8_t meshletTriangles[]; } meshletTriBuf;
+layout(buffer_reference, scalar) buffer MeshletBuffer { Meshlet meshlets[]; };
+layout(buffer_reference, scalar) buffer MeshletVertexBuffer { uint meshletVertices[]; };
+layout(buffer_reference, scalar) buffer MeshletTriangleBuffer { uint8_t meshletTriangles[]; };
 
 layout(push_constant) uniform GlobalMeshDataPushConstants {
 	uint64_t vertexBufferAddress;
     uint64_t meshletBufferAddress;
     uint64_t meshletVertexBufferAddress;
     uint64_t meshletTriangleBufferAddress;
+
     uint meshletCount;
-	uint _padding;
+	uint enableNormalMapping;
+	uint padding0;
+	uint padding1;
+
+    mat4 modelMatrix;
 } g_Mesh;
 
 out PerVertex {
     layout(location = 0) flat uint meshletID;
+    layout(location = 1) flat uint materialIndex;
+    layout(location = 2) vec3 fragPos;
+    layout(location = 3) vec2 texCoord;
+    layout(location = 4) mat3 tbn;
 } VSOut[];
 
 const uint TASK_WORKGROUP_SIZE = 32;
@@ -51,8 +56,6 @@ struct TaskPayload
 };
 taskPayloadSharedEXT TaskPayload payload;
 
-shared Meshlet mShared;
-
 void main() {
     // uint meshletID = payload.meshletInstanceIDs[gl_WorkGroupID.x % TASK_WORKGROUP_SIZE];
 	uint meshletID = gl_WorkGroupID.x;
@@ -60,28 +63,34 @@ void main() {
         return;
 
     // Resolve buffer references
-    // MeshletBuffer meshletBuf = MeshletBuffer(g_Mesh.meshletBufferAddress);
-    // MeshletVertexBuffer meshletVertBuf = MeshletVertexBuffer(g_Mesh.meshletVertexBufferAddress);
-    // MeshletTriangleBuffer meshletTriBuf = MeshletTriangleBuffer(g_Mesh.meshletTriangleBufferAddress);
+    MeshletBuffer meshletBuf = MeshletBuffer(g_Mesh.meshletBufferAddress);
+    MeshletVertexBuffer meshletVertBuf = MeshletVertexBuffer(g_Mesh.meshletVertexBufferAddress);
+    MeshletTriangleBuffer meshletTriBuf = MeshletTriangleBuffer(g_Mesh.meshletTriangleBufferAddress);
     VertexBuffer vertexBuf = VertexBuffer(g_Mesh.vertexBufferAddress);
 
-    if (gl_LocalInvocationIndex == 0) {
-        mShared = meshletBuf.meshlets[meshletID];
-        SetMeshOutputsEXT(mShared.vertexCount, mShared.triangleCount);
-    }
-    barrier();
-
-    Meshlet m = mShared;
+    Meshlet m = meshletBuf.meshlets[meshletID];
+    SetMeshOutputsEXT(m.vertexCount, m.triangleCount);
 
     // Emit vertices
     for (uint i = gl_LocalInvocationIndex; i < m.vertexCount; i += gl_WorkGroupSize.x) {
         uint vIndex = meshletVertBuf.meshletVertices[m.vertexOffset + i];
         Vertex v = vertexBuf.vertices[vIndex];
-        gl_MeshVerticesEXT[i].gl_Position = u_Camera.viewProjection * vec4(v.position, 1.0);
-        VSOut[i].meshletID = meshletID;
-    }
 
-    barrier();
+        vec3 fragPos = vec3(g_Mesh.modelMatrix * vec4(v.position, 1.0));
+        mat3 normalMatrix = transpose(inverse(mat3(g_Mesh.modelMatrix)));
+        vec3 T = normalize(normalMatrix * v.tangent.xyz);
+        vec3 N = normalize(normalMatrix * v.normal);
+        T = normalize(T - dot(T, N) * N); // Gram-Schmidt orthogonalize
+        vec3 B = cross(N, T) * v.tangent.w;
+        mat3 TBN = mat3(T, B, N);
+        gl_MeshVerticesEXT[i].gl_Position = u_Camera.viewProjection * vec4(fragPos, 1.0);
+
+        VSOut[i].meshletID = meshletID;
+        VSOut[i].materialIndex = m.materialIndex;
+        VSOut[i].fragPos = fragPos;
+        VSOut[i].texCoord = v.texCoord;
+        VSOut[i].tbn = TBN;
+    }
 
 	// Emit triangles
     for (uint i = gl_LocalInvocationIndex; i < m.triangleCount; i += gl_WorkGroupSize.x) {

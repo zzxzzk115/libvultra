@@ -10,8 +10,13 @@ layout(push_constant) uniform GlobalMeshDataPushConstants {
     uint64_t meshletBufferAddress;
     uint64_t meshletVertexBufferAddress;
     uint64_t meshletTriangleBufferAddress;
+
     uint meshletCount;
-	uint _padding;
+	uint enableNormalMapping;
+	uint padding0;
+	uint padding1;
+
+	mat4 modelMatrix;
 } g_Mesh;
 
 shared uint taskMeshletCount;

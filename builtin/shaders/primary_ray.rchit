@@ -31,7 +31,7 @@ struct GPUInstanceData {
     uint materialOffset;
     uint materialCount;
 };
-layout(std430, set = 2, binding = 0) buffer InstanceData { GPUInstanceData instances[]; };
+layout(std430, set = 2, binding = 0) readonly buffer InstanceData { GPUInstanceData instances[]; };
 
 struct GPUMaterial {
     // --- texture indices ---
@@ -72,14 +72,14 @@ struct GPUMaterial {
     int paddingI0; // ensure 16-byte alignment
     int paddingI1; // ensure 16-byte alignment
 };
-layout(std430, set = 2, binding = 1) buffer Materials { GPUMaterial materials[]; };
+layout(std430, set = 2, binding = 1) readonly buffer Materials { GPUMaterial materials[]; };
 
 struct GPUGeometryNode {
     uint64_t vertexBufferAddress;
     uint64_t indexBufferAddress;
     uint materialIndex;
 };
-layout(std430, set = 2, binding = 2) buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
+layout(std430, set = 2, binding = 2) readonly buffer GeometryNodes { GPUGeometryNode geometryNodes[]; };
 
 layout(set = 2, binding = 3) uniform sampler2D textures[];
 
@@ -102,7 +102,7 @@ const uint MODE_ROUGHNESS = 4;
 const uint MODE_AO = 5;
 const uint MODE_DEPTH = 6;
 const uint MODE_TEXTURE_LOD_DEBUG = 7;
-const uint MODE_FINAL = 10;
+const uint MODE_FINAL = 11;
 
 struct HitValue {
     vec3 color;

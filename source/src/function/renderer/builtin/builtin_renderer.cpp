@@ -10,13 +10,12 @@
 #include "vultra/function/renderer/builtin/passes/fxaa_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gamma_correction_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
-#include "vultra/function/renderer/builtin/passes/meshlet_generation_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/meshlet_gbuffer_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/simple_raytracing_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/skybox_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/tonemapping_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/ui_pass.hpp"
 #include "vultra/function/renderer/builtin/resources/ibl_data.hpp"
-#include "vultra/function/renderer/builtin/resources/meshlet_data.hpp"
 #include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
 #include "vultra/function/scenegraph/entity.hpp"
@@ -54,7 +53,7 @@ namespace vultra
 
             m_SimpleRaytracingPass = new SimpleRaytracingPass(rd);
 
-            m_MeshletGenerationPass = new MeshletGenerationPass(rd);
+            m_MeshletGBufferPass = new MeshletGBufferPass(rd);
 
             setupSamplers();
 
@@ -86,7 +85,7 @@ namespace vultra
 
             delete m_SimpleRaytracingPass;
 
-            delete m_MeshletGenerationPass;
+            delete m_MeshletGBufferPass;
         }
 
         void BuiltinRenderer::onImGui()
@@ -111,6 +110,12 @@ namespace vultra
                 ImGui::RadioButton("Depth", &outputMode, static_cast<int>(gfx::PassOutputMode::Depth));
                 ImGui::RadioButton(
                     "Texture LOD Debug", &outputMode, static_cast<int>(gfx::PassOutputMode::TextureLodDebug));
+                if (settings.rendererType == RendererType::eMeshShading)
+                {
+                    ImGui::RadioButton(
+                        "Meshlet Debug", &outputMode, static_cast<int>(gfx::PassOutputMode::MeshletDebug));
+                    ImGui::DragInt("Meshlet Debug Mode", &m_Settings.meshletDebugMode, 1, 0, 1);
+                }
                 // ImGui::RadioButton("SceneColor (HDR)", &outputMode,
                 // static_cast<int>(gfx::PassOutputMode::SceneColor_HDR)); ImGui::RadioButton("SceneColor (LDR)",
                 // &outputMode, static_cast<int>(gfx::PassOutputMode::SceneColor_LDR));
@@ -724,12 +729,48 @@ namespace vultra
                     uploadFrameBlock(fg, blackboard, m_FrameInfo);
                     uploadLightBlock(fg, blackboard, m_LightInfo);
 
-                    // Meshlet Generation Pass
-                    m_MeshletGenerationPass->addPass(fg, blackboard, renderTarget->getExtent(), m_RenderableGroup);
+                    // Meshlet GBuffer Pass
+                    m_MeshletGBufferPass->addPass(fg,
+                                                  blackboard,
+                                                  renderTarget->getExtent(),
+                                                  m_RenderableGroup,
+                                                  m_Settings.enableNormalMapping,
+                                                  m_Settings.meshletDebugMode);
 
-                    auto& meshletResult = blackboard.get<MeshletData>().debug;
+                    // Deferred lighting
+                    m_DeferredLightingPass->addPass(fg,
+                                                    blackboard,
+                                                    m_Settings.enableAreaLights,
+                                                    m_Settings.enableIBL,
+                                                    color::sRGBToLinear(m_ClearColor));
+                    auto& sceneColor = blackboard.get<SceneColorData>();
 
-                    m_BlitPass->blit(fg, meshletResult, backBuffer);
+                    if (m_EnableSkybox)
+                    {
+                        // Skybox
+                        sceneColor.hdr = m_SkyboxPass->addPass(fg, blackboard, skyboxCubemap, sceneColor.hdr);
+                    }
+
+                    // Tone mapping
+                    sceneColor.hdr = m_ToneMappingPass->addPass(
+                        fg, sceneColor.hdr, m_Settings.exposure, m_Settings.toneMappingMethod);
+
+                    // Gamma correction if swapchain is not in sRGB format
+                    if (m_SwapChainFormat != rhi::Swapchain::Format::esRGB)
+                    {
+                        sceneColor.ldr = m_GammaCorrectionPass->addPass(
+                            fg, sceneColor.hdr, GammaCorrectionPass::GammaCorrectionMode::eGamma);
+                    }
+                    else
+                    {
+                        sceneColor.ldr = sceneColor.hdr;
+                    }
+
+                    // FXAA
+                    sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
+
+                    // Final composition
+                    m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
                 }
 
                 {

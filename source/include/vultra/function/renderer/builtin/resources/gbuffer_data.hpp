@@ -14,6 +14,9 @@ namespace vultra
             FrameGraphResource metallicRoughnessAO;
             FrameGraphResource depth;
             FrameGraphResource textureLodDebug;
+
+            // Meshlet debug output
+            FrameGraphResource meshletDebug;
         };
     } // namespace gfx
 } // namespace vultra

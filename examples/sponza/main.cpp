@@ -23,7 +23,9 @@ class SponzaApp final : public ImGuiApp
 public:
     explicit SponzaApp(const std::span<char*>& args) :
         ImGuiApp(args,
-                 {.title = "Sponza", .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eRayTracing},
+                 {.title = "Sponza",
+                  .renderDeviceFeatureFlag =
+                      rhi::RenderDeviceFeatureFlagBits::eRayTracing | rhi::RenderDeviceFeatureFlagBits::eMeshShader},
                  {.enableDocking = false}),
         m_Renderer(*m_RenderDevice, m_Swapchain.getFormat())
     {

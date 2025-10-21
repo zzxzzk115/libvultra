@@ -50,10 +50,6 @@ namespace vultra
                 {
                     m_RenderableGroup.buildRayTracing(m_RenderDevice);
                 }
-                else if (HasFlagValues(m_RenderDevice.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eMeshShader))
-                {
-                    m_RenderableGroup.buildMeshShading(m_RenderDevice);
-                }
             }
 
             m_RenderPrimitiveGroup.clear();

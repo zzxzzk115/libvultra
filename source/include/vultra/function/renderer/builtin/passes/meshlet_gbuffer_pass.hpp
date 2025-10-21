@@ -11,20 +11,22 @@ namespace vultra
 {
     namespace gfx
     {
-        class MeshletGenerationPass final : public rhi::RenderPass<MeshletGenerationPass>
+        class MeshletGBufferPass final : public rhi::RenderPass<MeshletGBufferPass>
         {
             friend class BasePass;
 
         public:
-            explicit MeshletGenerationPass(rhi::RenderDevice&);
+            explicit MeshletGBufferPass(rhi::RenderDevice&);
 
             void addPass(FrameGraph&,
                          FrameGraphBlackboard&,
                          const rhi::Extent2D&   resolution,
-                         const RenderableGroup& renderableGroup);
+                         const RenderableGroup& renderableGroup,
+                         bool                   enableNormalMapping,
+                         uint32_t               debugMode);
 
         private:
-            rhi::GraphicsPipeline createPipeline(const gfx::BaseGeometryPassInfo&) const;
+            rhi::GraphicsPipeline createPipeline(const gfx::BaseGeometryPassInfo&, uint32_t) const;
         };
     } // namespace gfx
 } // namespace vultra

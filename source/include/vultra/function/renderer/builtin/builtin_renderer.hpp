@@ -27,7 +27,7 @@ namespace vultra
 
         class SimpleRaytracingPass;
 
-        class MeshletGenerationPass;
+        class MeshletGBufferPass;
 
         enum class RendererType
         {
@@ -51,6 +51,9 @@ namespace vultra
 
             // Ray Tracing settings
             uint32_t maxRayRecursionDepth {2};
+
+            // Mesh Shading settings
+            int meshletDebugMode {0};
         };
 
         class BuiltinRenderer : public BaseRenderer
@@ -143,7 +146,7 @@ namespace vultra
 
             SimpleRaytracingPass* m_SimpleRaytracingPass {nullptr};
 
-            MeshletGenerationPass* m_MeshletGenerationPass {nullptr};
+            MeshletGBufferPass* m_MeshletGBufferPass {nullptr};
 
             std::vector<Ref<DefaultMesh>> m_AreaLightMeshes; // Keep alive for raytracing purposes
         };
