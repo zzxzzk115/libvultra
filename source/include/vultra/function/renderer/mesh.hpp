@@ -80,8 +80,14 @@ namespace vultra
 
             glm::vec3 center;
             float     radius {0.0f};
+
+            glm::vec3 coneAxis;
+            float     coneCutoff {0.0f}; // cosine of the cone cutoff angle
+
+            glm::vec3 coneApex;
+            float     paddingF0; // ensure 16-byte alignment
         };
-        static_assert(sizeof(Meshlet) == 48, "Meshlet size should be 48 bytes");
+        static_assert(sizeof(Meshlet) == 80, "Meshlet size should be 80 bytes");
 
         struct MeshletGroup
         {

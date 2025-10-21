@@ -15,12 +15,18 @@ struct Meshlet {
     uint triangleCount;
 
     uint materialIndex;
-	uint padding0; // ensure 16-byte alignment
-	uint padding1; // ensure 16-byte alignment
-	uint padding2; // ensure 16-byte alignment
+	uint paddingU0; // ensure 16-byte alignment
+	uint paddingU1; // ensure 16-byte alignment
+	uint paddingU2; // ensure 16-byte alignment
 
     vec3 center;
     float radius;
+
+	vec3 coneAxis;
+	float coneCutoff; // cosine of the cone cutoff angle
+
+	vec3 coneApex;
+    float paddingF0; // ensure 16-byte alignment
 };
 
 layout(buffer_reference, scalar) buffer MeshletBuffer { Meshlet meshlets[]; };
@@ -52,15 +58,16 @@ out PerVertex {
 const uint TASK_WORKGROUP_SIZE = 32;
 struct TaskPayload
 {
-	uint meshletInstanceIDs[TASK_WORKGROUP_SIZE];
+	uint visibleMeshletIndices[TASK_WORKGROUP_SIZE];
+	uint visibleMeshletCount;
 };
 taskPayloadSharedEXT TaskPayload payload;
 
 void main() {
-    // uint meshletID = payload.meshletInstanceIDs[gl_WorkGroupID.x % TASK_WORKGROUP_SIZE];
-	uint meshletID = gl_WorkGroupID.x;
-	if (meshletID >= g_Mesh.meshletCount)
-        return;
+	if (gl_WorkGroupID.x >= payload.visibleMeshletCount)
+		return;
+
+    uint meshletID = payload.visibleMeshletIndices[gl_WorkGroupID.x];
 
     // Resolve buffer references
     MeshletBuffer meshletBuf = MeshletBuffer(g_Mesh.meshletBufferAddress);

@@ -213,7 +213,7 @@ namespace vultra
                                              0,
                                              &pushConstants)
                                 .drawMeshTask({
-                                    pushConstants.meshletCount,
+                                    (pushConstants.meshletCount + 31) / 32,
                                     1,
                                     1,
                                 });
@@ -234,7 +234,7 @@ namespace vultra
             builder.setDepthFormat(passInfo.depthFormat)
                 .setColorFormats(passInfo.colorFormats)
                 .setTopology(passInfo.topology)
-                // .addBuiltinShader(rhi::ShaderType::eTask, meshlet_task_spv)
+                .addBuiltinShader(rhi::ShaderType::eTask, meshlet_task_spv)
                 .addBuiltinShader(rhi::ShaderType::eMesh, meshlet_mesh_spv)
                 .addBuiltinShader(rhi::ShaderType::eFragment, getMeshletDebugShader(debugMode))
                 .setDepthStencil({

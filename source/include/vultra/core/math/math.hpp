@@ -6,6 +6,8 @@
 
 #include <cereal/cereal.hpp>
 
+#include <array>
+
 namespace glm
 {
     // NOLINTBEGIN
@@ -87,6 +89,74 @@ namespace vultra
             glm::mat4 R = glm::mat4_cast(rotation);
             glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
             return T * R * S;
+        }
+
+        struct Plane
+        {
+            glm::vec3 normal {0.0f, 1.0f, 0.0f};
+            float     d {0.0f};
+
+            Plane() = default;
+
+            Plane(const glm::vec3& normal, float d) : normal(glm::normalize(normal)), d(d) {}
+
+            Plane(const glm::vec3& pointA, const glm::vec3& pointB, const glm::vec3& pointC)
+            {
+                normal = glm::normalize(glm::cross(pointB - pointA, pointC - pointA));
+                d      = -glm::dot(normal, pointA);
+            }
+
+            float getDistanceToPoint(const glm::vec3& point) const { return glm::dot(normal, point) + d; }
+        };
+
+        inline std::array<Plane, 6> extractFrustumPlanes(const glm::mat4& viewProjectionMatrix)
+        {
+            std::array<Plane, 6> planes;
+
+            // Left plane
+            planes[0].normal.x = viewProjectionMatrix[0][3] + viewProjectionMatrix[0][0];
+            planes[0].normal.y = viewProjectionMatrix[1][3] + viewProjectionMatrix[1][0];
+            planes[0].normal.z = viewProjectionMatrix[2][3] + viewProjectionMatrix[2][0];
+            planes[0].d        = viewProjectionMatrix[3][3] + viewProjectionMatrix[3][0];
+
+            // Right plane
+            planes[1].normal.x = viewProjectionMatrix[0][3] - viewProjectionMatrix[0][0];
+            planes[1].normal.y = viewProjectionMatrix[1][3] - viewProjectionMatrix[1][0];
+            planes[1].normal.z = viewProjectionMatrix[2][3] - viewProjectionMatrix[2][0];
+            planes[1].d        = viewProjectionMatrix[3][3] - viewProjectionMatrix[3][0];
+
+            // Bottom plane
+            planes[2].normal.x = viewProjectionMatrix[0][3] + viewProjectionMatrix[0][1];
+            planes[2].normal.y = viewProjectionMatrix[1][3] + viewProjectionMatrix[1][1];
+            planes[2].normal.z = viewProjectionMatrix[2][3] + viewProjectionMatrix[2][1];
+            planes[2].d        = viewProjectionMatrix[3][3] + viewProjectionMatrix[3][1];
+
+            // Top plane
+            planes[3].normal.x = viewProjectionMatrix[0][3] - viewProjectionMatrix[0][1];
+            planes[3].normal.y = viewProjectionMatrix[1][3] - viewProjectionMatrix[1][1];
+            planes[3].normal.z = viewProjectionMatrix[2][3] - viewProjectionMatrix[2][1];
+            planes[3].d        = viewProjectionMatrix[3][3] - viewProjectionMatrix[3][1];
+
+            // Near plane
+            planes[4].normal.x = viewProjectionMatrix[0][3] + viewProjectionMatrix[0][2];
+            planes[4].normal.y = viewProjectionMatrix[1][3] + viewProjectionMatrix[1][2];
+            planes[4].normal.z = viewProjectionMatrix[2][3] + viewProjectionMatrix[2][2];
+            planes[4].d        = viewProjectionMatrix[3][3] + viewProjectionMatrix[3][2];
+
+            // Far plane
+            planes[5].normal.x = viewProjectionMatrix[0][3] - viewProjectionMatrix[0][2];
+            planes[5].normal.y = viewProjectionMatrix[1][3] - viewProjectionMatrix[1][2];
+            planes[5].normal.z = viewProjectionMatrix[2][3] - viewProjectionMatrix[2][2];
+            planes[5].d        = viewProjectionMatrix[3][3] - viewProjectionMatrix[3][2];
+
+            // Normalize planes
+            for (auto& plane : planes)
+            {
+                float length = glm::length(plane.normal);
+                plane.normal /= length;
+                plane.d /= length;
+            }
+            return planes;
         }
     } // namespace math
 } // namespace vultra

@@ -26,6 +26,7 @@ namespace vultra
             float     zNear;
             float     zFar;
             float     fovY;
+            glm::vec4 frustumPlanes[6]; // left, right, bottom, top, near, far
         };
 
         void uploadCameraBlock(FrameGraph&, FrameGraphBlackboard&, const vultra::rhi::Extent2D, const CameraInfo&);

@@ -11,7 +11,6 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-
 namespace vultra
 {
     namespace gfx
@@ -50,8 +49,13 @@ namespace vultra
                 projection {camera.projection}, inversedProjection {glm::inverse(projection)}, view {camera.view},
                 inversedView {glm::inverse(view)}, viewProjection {camera.viewProjection},
                 inversedViewProjection {glm::inverse(viewProjection)}, resolution {extent}, zNear {camera.zNear},
-                zFar {camera.zFar}
-            {}
+                zFar {camera.zFar}, fovY {camera.fovY}
+            {
+                for (int i = 0; i < 6; ++i)
+                {
+                    frustumPlanes[i] = camera.frustumPlanes[i];
+                }
+            }
 
             glm::mat4 projection {1.0f};
             glm::mat4 inversedProjection {1.0f};
@@ -61,13 +65,16 @@ namespace vultra
             glm::mat4 inversedViewProjection {1.0f};
 
             rhi::Extent2D resolution;
+            rhi::Extent2D padding0;
 
             float zNear;
             float zFar;
             float fovY;
-            float padding; // 16 byte alignment
+            float padding1; // 16 byte alignment
+
+            glm::vec4 frustumPlanes[6]; // left, right, bottom, top, near, far
         };
-        static_assert(sizeof(GPUCameraBlock) == 416);
+        static_assert(sizeof(GPUCameraBlock) == 512, "GPUCameraBlock unexpected size (std140 mismatch)");
 
         [[nodiscard]] auto uploadCameraBlock(FrameGraph& fg, GPUCameraBlock&& cameraBlock)
         {

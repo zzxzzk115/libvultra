@@ -520,7 +520,7 @@ namespace vultra
                                               sizeof(glm::vec3),
                                               maxVerts,
                                               maxTris,
-                                              0.0f);
+                                              0.5f);
 
                     meshletsTemp.resize(meshletCount);
 
@@ -546,8 +546,11 @@ namespace vultra
                                                          positions.size(),
                                                          sizeof(glm::vec3));
 
-                        dst.center = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
-                        dst.radius = bounds.radius;
+                        dst.center     = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
+                        dst.radius     = bounds.radius;
+                        dst.coneAxis   = glm::vec3(bounds.cone_axis[0], bounds.cone_axis[1], bounds.cone_axis[2]);
+                        dst.coneCutoff = bounds.cone_cutoff;
+                        dst.coneApex   = glm::vec3(bounds.cone_apex[0], bounds.cone_apex[1], bounds.cone_apex[2]);
 
                         sub.meshletGroup.meshlets.push_back(dst);
                     }

@@ -282,6 +282,14 @@ namespace vultra
                     m_CameraInfo.viewProjection            = m_CameraInfo.projection * m_CameraInfo.view;
                     m_CameraInfo.inverseOriginalProjection = glm::inverse(m_CameraInfo.projection);
 
+                    // Extract frustum planes
+                    const auto frustumPlanes = vultra::math::extractFrustumPlanes(m_CameraInfo.viewProjection);
+                    for (int i = 0; i < 6; ++i)
+                    {
+                        const auto& plane             = frustumPlanes[i];
+                        m_CameraInfo.frustumPlanes[i] = glm::vec4(plane.normal, plane.d);
+                    }
+
                     m_ClearColor = camComponent.clearColor;
 
                     // Environment map
@@ -341,6 +349,14 @@ namespace vultra
                     m_XrCameraLeft.zNear                     = camComponent.zNear;
                     m_XrCameraLeft.zFar                      = camComponent.zFar;
                     m_XrCameraLeft.fovY                      = glm::radians(camComponent.fovAngleUp);
+
+                    // Extract frustum planes
+                    const auto frustumPlanes = vultra::math::extractFrustumPlanes(m_XrCameraLeft.viewProjection);
+                    for (int i = 0; i < 6; ++i)
+                    {
+                        const auto& plane               = frustumPlanes[i];
+                        m_XrCameraLeft.frustumPlanes[i] = glm::vec4(plane.normal, plane.d);
+                    }
                 }
                 else
                 {
@@ -365,6 +381,14 @@ namespace vultra
                     m_XrCameraRight.zNear                     = camComponent.zNear;
                     m_XrCameraRight.zFar                      = camComponent.zFar;
                     m_XrCameraRight.fovY                      = glm::radians(camComponent.fovAngleUp);
+
+                    // Extract frustum planes
+                    const auto frustumPlanes = vultra::math::extractFrustumPlanes(m_XrCameraRight.viewProjection);
+                    for (int i = 0; i < 6; ++i)
+                    {
+                        const auto& plane                = frustumPlanes[i];
+                        m_XrCameraRight.frustumPlanes[i] = glm::vec4(plane.normal, plane.d);
+                    }
                 }
                 else
                 {

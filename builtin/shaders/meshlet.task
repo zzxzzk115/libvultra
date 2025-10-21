@@ -1,9 +1,36 @@
 #version 460 core
 #extension GL_EXT_mesh_shader : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_scalar_block_layout : require
+
+#include "resources/camera_block.glsl"
 
 const uint TASK_WORKGROUP_SIZE = 32;
 layout(local_size_x = TASK_WORKGROUP_SIZE) in;
+
+struct Meshlet {
+    uint vertexOffset;
+    uint vertexCount;
+	uint triangleOffset;
+    uint triangleCount;
+
+    uint materialIndex;
+	uint paddingU0; // ensure 16-byte alignment
+	uint paddingU1; // ensure 16-byte alignment
+	uint paddingU2; // ensure 16-byte alignment
+
+    vec3 center;
+    float radius;
+
+	vec3 coneAxis;
+	float coneCutoff; // cosine of the cone cutoff angle
+
+	vec3 coneApex;
+    float paddingF0; // ensure 16-byte alignment
+};
+
+layout(buffer_reference, scalar) buffer MeshletBuffer { Meshlet meshlets[]; };
 
 layout(push_constant) uniform GlobalMeshDataPushConstants {
 	uint64_t vertexBufferAddress;
@@ -19,31 +46,68 @@ layout(push_constant) uniform GlobalMeshDataPushConstants {
 	mat4 modelMatrix;
 } g_Mesh;
 
-shared uint taskMeshletCount;
-
 struct TaskPayload
 {
-	uint meshletInstanceIDs[TASK_WORKGROUP_SIZE];
+	uint visibleMeshletIndices[TASK_WORKGROUP_SIZE];
+	uint visibleMeshletCount;
 };
 taskPayloadSharedEXT TaskPayload payload;
 
+bool isInsideFrustum(vec3 center, float radius) {
+    for (int i = 0; i < 6; ++i) {
+        vec4 plane = u_Camera.frustumPlanes[i];
+        float d = dot(plane.xyz, center) + plane.w;
+        if (d < -radius)
+            return false; // outside the frustum
+    }
+    return true;
+}
+
+// https://github.com/zeux/meshoptimizer/tree/v0.24?tab=readme-ov-file#mesh-shading
+bool isVisibleByCone(vec3 coneApex, vec3 coneAxis, float coneCutoff, vec3 cameraPos) {
+    return dot(normalize(coneApex - cameraPos), coneAxis) < coneCutoff;
+}
+
 void main()
 {
+	uint idx = gl_WorkGroupID.x * TASK_WORKGROUP_SIZE + gl_LocalInvocationIndex;
+	if (idx >= g_Mesh.meshletCount)
+		return;
+
     if(gl_LocalInvocationIndex == 0) {
-        taskMeshletCount = 0;
+        payload.visibleMeshletCount = 0;
     }
 	barrier();
 
-	uint meshletID = gl_LocalInvocationIndex + gl_WorkGroupID.x * TASK_WORKGROUP_SIZE;
-	if(meshletID >= g_Mesh.meshletCount) {
-		return;
+	// Resolve meshlet buffer
+	MeshletBuffer meshletBuf = MeshletBuffer(g_Mesh.meshletBufferAddress);
+
+	// Get meshlet
+	Meshlet meshlet = meshletBuf.meshlets[idx];
+	vec3 center = (g_Mesh.modelMatrix * vec4(meshlet.center, 1.0)).xyz;
+	float radius = meshlet.radius;
+
+	// Frustum culling
+	bool frustumVisible = isInsideFrustum(center, radius);
+
+	// Cone culling
+	bool coneVisible = false;
+	if (meshlet.coneCutoff < 1.0) {
+		vec3 coneApexWorld = (g_Mesh.modelMatrix * vec4(meshlet.coneApex, 1.0)).xyz;
+		vec3 coneAxisWorld = normalize((g_Mesh.modelMatrix * vec4(meshlet.coneAxis, 0.0)).xyz);
+		vec3 cameraPos = getCameraPosition();
+		coneVisible = isVisibleByCone(coneApexWorld, coneAxisWorld, meshlet.coneCutoff, cameraPos);
+	} else {
+		coneVisible = true; // skip cone culling if cutoff is invalid
 	}
 
-	uint index = atomicAdd(taskMeshletCount, 1);
-	payload.meshletInstanceIDs[index] = meshletID;
+	if (frustumVisible && coneVisible) {
+		uint index = atomicAdd(payload.visibleMeshletCount, 1);
+		payload.visibleMeshletIndices[index] = idx;
+	}
 
 	barrier();
-	if (gl_LocalInvocationIndex == 0) {
-		EmitMeshTasksEXT(taskMeshletCount, 1, 1);
+	if (gl_LocalInvocationIndex == 0 && payload.visibleMeshletCount > 0) {
+		EmitMeshTasksEXT(payload.visibleMeshletCount, 1, 1);
 	}
 }
