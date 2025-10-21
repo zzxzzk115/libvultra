@@ -64,8 +64,17 @@ bool isInsideFrustum(vec3 center, float radius) {
 }
 
 // https://github.com/zeux/meshoptimizer/tree/v0.24?tab=readme-ov-file#mesh-shading
+// Not used currently
 bool isVisibleByCone(vec3 coneApex, vec3 coneAxis, float coneCutoff, vec3 cameraPos) {
     return dot(normalize(coneApex - cameraPos), coneAxis) < coneCutoff;
+}
+
+// Alternative cone culling method inspired by Alan Wake 2 tech talk
+bool isVisibleByConeAlanWake2(vec3 coneAxis, float coneCutoff, vec3 center, float radius, vec3 cameraPos) {
+	vec3 boundingSphereDir = center - cameraPos;
+	float boundingSphereDistance = length(boundingSphereDir);
+	float cutOff = coneCutoff + boundingSphereDistance + radius;
+	return dot(boundingSphereDir, coneAxis) < cutOff;
 }
 
 void main()
@@ -93,12 +102,10 @@ void main()
 	// Cone culling
 	bool coneVisible = false;
 	if (meshlet.coneCutoff < 1.0) {
-		vec3 coneApexWorld = (g_Mesh.modelMatrix * vec4(meshlet.coneApex, 1.0)).xyz;
-		vec3 coneAxisWorld = normalize((g_Mesh.modelMatrix * vec4(meshlet.coneAxis, 0.0)).xyz);
-		vec3 cameraPos = getCameraPosition();
-		coneVisible = isVisibleByCone(coneApexWorld, coneAxisWorld, meshlet.coneCutoff, cameraPos);
+		vec3 coneAxis = normalize((g_Mesh.modelMatrix * vec4(meshlet.coneAxis, 0.0)).xyz);
+		coneVisible = isVisibleByConeAlanWake2(coneAxis, meshlet.coneCutoff, center, radius, getCameraPosition());
 	} else {
-		coneVisible = true; // skip cone culling if cutoff is invalid
+		coneVisible = true; // Skip cone culling for invalid coneCutoff
 	}
 
 	if (frustumVisible && coneVisible) {
