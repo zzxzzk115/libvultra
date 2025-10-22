@@ -32,6 +32,49 @@ struct Meshlet {
 
 layout(buffer_reference, scalar) buffer MeshletBuffer { Meshlet meshlets[]; };
 
+struct GPUMaterial {
+    // --- texture indices ---
+    uint albedoIndex;
+    uint alphaMaskIndex;
+    uint metallicIndex;
+    uint roughnessIndex;
+
+    uint specularIndex;
+    uint normalIndex;
+    uint aoIndex;
+    uint emissiveIndex;
+
+    uint metallicRoughnessIndex;
+    uint paddingUI0; // ensure 16-byte alignment
+    uint paddingUI1; // ensure 16-byte alignment
+    uint paddingUI2; // ensure 16-byte alignment
+
+    // --- color vectors ---
+    vec4 baseColor;
+    vec4 emissiveColorIntensity;
+    vec4 ambientColor;
+
+    // --- scalar material params ---
+    float opacity;
+    float metallicFactor;
+    float roughnessFactor;
+    float ior;
+
+    float alphaCutoff;
+    float paddingF0; // ensure 16-byte alignment
+    float paddingF1; // ensure 16-byte alignment
+    float paddingF2; // ensure 16-byte alignment
+
+    // --- int params ---
+    int alphaMode; // 0: OPAQUE, 1: MASK, 2: BLEND
+    int doubleSided;
+    int paddingI0; // ensure 16-byte alignment
+    int paddingI1; // ensure 16-byte alignment
+};
+layout(std430, set = 2, binding = 0) readonly buffer Materials {
+    GPUMaterial materials[];
+};
+
 layout(push_constant) uniform GlobalMeshDataPushConstants {
 	uint64_t vertexBufferAddress;
     uint64_t meshletBufferAddress;
@@ -99,13 +142,15 @@ void main()
 	// Frustum culling
 	bool frustumVisible = isInsideFrustum(center, radius);
 
-	// Cone culling
+	// Cone culling for backface elimination
 	bool coneVisible = false;
-	if (meshlet.coneCutoff < 1.0) {
+	GPUMaterial material = materials[meshlet.materialIndex];
+	// Only perform cone culling for single-sided materials with a valid coneCutoff
+	if (meshlet.coneCutoff < 1.0 && material.doubleSided == 0) {
 		vec3 coneAxis = normalize((g_Mesh.modelMatrix * vec4(meshlet.coneAxis, 0.0)).xyz);
 		coneVisible = isVisibleByConeAlanWake2(coneAxis, meshlet.coneCutoff, center, radius, getCameraPosition());
 	} else {
-		coneVisible = true; // Skip cone culling for invalid coneCutoff
+		coneVisible = true;
 	}
 
 	if (frustumVisible && coneVisible) {
