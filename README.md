@@ -34,6 +34,10 @@
 
 ![Example: GLTF Viewer](./media/images/example-gltf-viewer.png)
 
+[[Example: Sponza with Meshlet Debug View]](./examples/sponza/main.cpp)
+
+![[Example: Sponza]](./media/images/example-sponza.png)
+
 ## Build Instructions
 
 Prerequisites:
@@ -70,8 +74,13 @@ Step-by-Step:
   xmake run example-imgui
   xmake run example-framegraph-triangle
   xmake run example-openxr-triangle
-  xmake run example-gltf-viewer
+  xmake run example-openxr-sponza
   xmake run example-raytracing-triangle
+  xmake run example-raytracing-cornell-box
+  xmake run example-rayquery
+  xmake run example-meshshading-triangle
+  xmake run example-gltf-viewer
+  xmake run example-sponza
   ```
 
   > **Tips:**
@@ -87,7 +96,7 @@ Step-by-Step:
   - [x] EXR
 - [x] ECS-based scene management with EnTT
 - [x] Raytracing Pipeline
-- [ ] Mesh Shading Pipeline
+- [x] Mesh Shading Pipeline
 - [ ] Resource Pipeline
 - [ ] Lua or C# Scripting System
 - [ ] (Maybe?) AR support
