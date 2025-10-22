@@ -20,6 +20,7 @@
 #     include <stdio.h>
 #     include <memory>
 # endif
+#include <exception>  // std::terminate()
 
 namespace crude_json {
 
