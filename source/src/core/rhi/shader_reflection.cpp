@@ -4,6 +4,8 @@
 
 // https://github.com/KhronosGroup/SPIRV-Cross/wiki/Reflection-API-user-guide
 
+#define MAX_ARRAY_SIZE 1024
+
 namespace vultra
 {
     namespace rhi
@@ -84,13 +86,15 @@ namespace vultra
                     if (type.array[0] == 0)
                     {
                         // Runtime-sized array
+                        // Set to a large value as placeholder
+                        resource.count = MAX_ARRAY_SIZE;
 #ifdef __APPLE__
                         // On macOS, VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT is not supported
-                        // Instead, we just allocate a large enough array
-                        resource.count = 512;
-                        // Also set the UPDATE_AFTER_BIND_POOL_BIT to avoid validation errors
+                        // We set the UPDATE_AFTER_BIND_POOL_BIT to avoid validation errors
                         resource.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 #else
+                        // Other platforms support variable descriptor count
+                        // Actual count will be specified during descriptor set allocation
                         resource.flags = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
 #endif
                     }
