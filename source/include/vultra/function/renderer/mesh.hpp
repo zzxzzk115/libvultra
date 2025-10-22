@@ -108,6 +108,8 @@ namespace vultra
             uint32_t indexOffset {0};
             uint32_t indexCount {0};
 
+            AABB aabb;
+
             uint32_t materialIndex {0};
 
             MeshletGroup meshletGroup;

@@ -23,6 +23,8 @@ namespace vultra
             // When initializing or changing the scene, call this to set all renderables at once
             void setRenderables(const std::span<Renderable> renderables);
 
+            void sortRenderables(const glm::mat4& viewProjectionMatrix);
+
             // Add a single renderable to the existing list
             void addRenderable(const Renderable& renderable);
 

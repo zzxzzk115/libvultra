@@ -273,6 +273,7 @@ namespace vultra
                                       "Unknown");
 
                 // Copy vertices
+                std::vector<SimpleVertex> subMeshVertices;
                 for (unsigned int v = 0; v < aiMesh->mNumVertices; ++v)
                 {
                     SimpleVertex vertex {};
@@ -308,6 +309,7 @@ namespace vultra
                     }
 
                     mesh.vertices.push_back(vertex);
+                    subMeshVertices.push_back(vertex);
                 }
 
                 // Copy indices
@@ -320,9 +322,6 @@ namespace vultra
                     mesh.indices.push_back(face.mIndices[2]);
                 }
 
-                // Cook AABB
-                mesh.aabb = AABB::build(mesh.vertices);
-
                 // Fill in sub-mesh data
                 SubMesh subMesh {};
                 // subMesh.topology = static_cast<rhi::PrimitiveTopology>(aiMesh->mPrimitiveTypes);
@@ -332,6 +331,10 @@ namespace vultra
                 subMesh.vertexCount   = aiMesh->mNumVertices;
                 subMesh.indexCount    = aiMesh->mNumFaces * 3;
                 subMesh.materialIndex = aiMesh->mMaterialIndex;
+
+                // Cook AABB
+                subMesh.aabb = AABB::build(subMeshVertices);
+
                 mesh.subMeshes.push_back(subMesh);
 
                 vertexOffset += subMesh.vertexCount;
@@ -580,6 +583,9 @@ namespace vultra
 
             processMaterials(scene);
             processNode(scene->mRootNode, scene);
+
+            // Cook AABB
+            mesh.aabb = AABB::build(mesh.vertices);
 
             // Generate meshlets
             generateMeshlets(mesh);

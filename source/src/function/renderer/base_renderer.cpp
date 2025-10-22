@@ -59,9 +59,29 @@ namespace vultra
             }
         }
 
+        void BaseRenderer::sortRenderables(const glm::mat4& viewProjectionMatrix)
+        {
+            auto& [opaquePrimitives, alphaMaskingPrimitives, decalPrimitives] = m_RenderPrimitiveGroup;
+
+            // Sort by depth
+            auto distanceComparator = [&](const RenderPrimitive& a, const RenderPrimitive& b) {
+                auto  aabbA  = a.renderSubMesh.aabb.transform(a.modelMatrix);
+                auto  aabbB  = b.renderSubMesh.aabb.transform(b.modelMatrix);
+                auto  ndcA   = viewProjectionMatrix * glm::vec4(aabbA.min, 1.0f);
+                auto  ndcB   = viewProjectionMatrix * glm::vec4(aabbB.min, 1.0f);
+                float aDepth = ndcA.z / ndcA.w;
+                float bDepth = ndcB.z / ndcB.w;
+                return aDepth < bDepth;
+            };
+
+            std::sort(opaquePrimitives.begin(), opaquePrimitives.end(), distanceComparator);
+            std::sort(alphaMaskingPrimitives.begin(), alphaMaskingPrimitives.end(), distanceComparator);
+            std::sort(decalPrimitives.begin(), decalPrimitives.end(), distanceComparator);
+        }
+
         void BaseRenderer::addRenderable(const Renderable& renderable)
         {
-            auto& [opaquePrimitives, _, decalPrimitives] = m_RenderPrimitiveGroup;
+            auto& [opaquePrimitives, alphaMaskingPrimitives, decalPrimitives] = m_RenderPrimitiveGroup;
 
             for (uint32_t i = 0; i < renderable.mesh->getSubMeshes().size(); ++i)
             {
@@ -81,7 +101,11 @@ namespace vultra
                     {
                         decalPrimitives.push_back(primitive);
                     }
-                    else if (!material.blendState.enabled)
+                    else if (material.alphaMode == rhi::AlphaMode::eMask)
+                    {
+                        alphaMaskingPrimitives.push_back(primitive);
+                    }
+                    else if (material.alphaMode == rhi::AlphaMode::eOpaque)
                     {
                         opaquePrimitives.push_back(primitive);
                     }

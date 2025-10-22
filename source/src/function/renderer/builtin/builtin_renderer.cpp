@@ -282,6 +282,8 @@ namespace vultra
                     m_CameraInfo.viewProjection            = m_CameraInfo.projection * m_CameraInfo.view;
                     m_CameraInfo.inverseOriginalProjection = glm::inverse(m_CameraInfo.projection);
 
+                    m_ReferenceViewProjectionMatrix = m_CameraInfo.viewProjection;
+
                     // Extract frustum planes
                     const auto frustumPlanes = vultra::math::extractFrustumPlanes(m_CameraInfo.viewProjection);
                     for (int i = 0; i < 6; ++i)
@@ -350,6 +352,8 @@ namespace vultra
                     m_XrCameraLeft.zFar                      = camComponent.zFar;
                     m_XrCameraLeft.fovY                      = glm::radians(camComponent.fovAngleUp);
 
+                    m_ReferenceViewProjectionMatrix = m_XrCameraLeft.viewProjection;
+
                     // Extract frustum planes
                     const auto frustumPlanes = vultra::math::extractFrustumPlanes(m_XrCameraLeft.viewProjection);
                     for (int i = 0; i < 6; ++i)
@@ -381,6 +385,8 @@ namespace vultra
                     m_XrCameraRight.zNear                     = camComponent.zNear;
                     m_XrCameraRight.zFar                      = camComponent.zFar;
                     m_XrCameraRight.fovY                      = glm::radians(camComponent.fovAngleUp);
+
+                    m_ReferenceViewProjectionMatrix = m_XrCameraRight.viewProjection;
 
                     // Extract frustum planes
                     const auto frustumPlanes = vultra::math::extractFrustumPlanes(m_XrCameraRight.viewProjection);
@@ -457,6 +463,7 @@ namespace vultra
                     }
                 }
                 setRenderables(renderables);
+                sortRenderables(m_ReferenceViewProjectionMatrix);
             }
             else
             {

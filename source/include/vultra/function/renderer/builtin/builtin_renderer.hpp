@@ -118,6 +118,8 @@ namespace vultra
             CameraInfo m_XrCameraLeft {};
             CameraInfo m_XrCameraRight {};
 
+            glm::mat4 m_ReferenceViewProjectionMatrix {1.0f};
+
             GBufferPass*          m_GBufferPass {nullptr};
             DeferredLightingPass* m_DeferredLightingPass {nullptr};
             SkyboxPass*           m_SkyboxPass {nullptr};
