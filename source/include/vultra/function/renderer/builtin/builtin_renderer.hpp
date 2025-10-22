@@ -14,6 +14,7 @@ namespace vultra
 {
     namespace gfx
     {
+        class DepthPrePass;
         class GBufferPass;
         class DeferredLightingPass;
         class SkyboxPass;
@@ -120,6 +121,7 @@ namespace vultra
 
             glm::mat4 m_ReferenceViewProjectionMatrix {1.0f};
 
+            DepthPrePass*         m_DepthPrePass {nullptr};
             GBufferPass*          m_GBufferPass {nullptr};
             DeferredLightingPass* m_DeferredLightingPass {nullptr};
             SkyboxPass*           m_SkyboxPass {nullptr};

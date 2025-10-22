@@ -6,6 +6,7 @@
 #include "vultra/function/renderer/area_light.hpp"
 #include "vultra/function/renderer/builtin/passes/blit_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/deferred_lighting_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/depth_pre_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/final_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/fxaa_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gamma_correction_pass.hpp"
@@ -40,6 +41,7 @@ namespace vultra
             BaseRenderer(rd), m_SwapChainFormat(swapChainFormat), m_TransientResources(rd), m_CubemapConverter(rd),
             m_IBLDataGenerator(rd)
         {
+            m_DepthPrePass         = new DepthPrePass(rd);
             m_GBufferPass          = new GBufferPass(rd);
             m_DeferredLightingPass = new DeferredLightingPass(rd);
             m_SkyboxPass           = new SkyboxPass(rd);
@@ -72,6 +74,7 @@ namespace vultra
 
         BuiltinRenderer::~BuiltinRenderer()
         {
+            delete m_DepthPrePass;
             delete m_GBufferPass;
             delete m_DeferredLightingPass;
             delete m_SkyboxPass;
@@ -564,6 +567,9 @@ namespace vultra
                     uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
                     uploadFrameBlock(fg, blackboard, m_FrameInfo);
                     uploadLightBlock(fg, blackboard, m_LightInfo);
+
+                    // Depth pre-pass
+                    m_DepthPrePass->addPass(fg, blackboard, renderTarget->getExtent(), m_RenderPrimitiveGroup);
 
                     // G-Buffer
                     m_GBufferPass->addPass(fg,

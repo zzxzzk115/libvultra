@@ -4,6 +4,7 @@
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
 #include "vultra/function/renderer/builtin/resources/camera_data.hpp"
+#include "vultra/function/renderer/builtin/resources/depth_pre_data.hpp"
 #include "vultra/function/renderer/builtin/resources/gbuffer_data.hpp"
 #include "vultra/function/renderer/builtin/resources/ibl_data.hpp"
 #include "vultra/function/renderer/builtin/resources/light_data.hpp"
@@ -45,7 +46,18 @@ namespace vultra
                                            glm::vec4             clearColor)
         {
             const auto gBuffer = blackboard.get<GBufferData>();
-            const auto extent  = fg.getDescriptor<framegraph::FrameGraphTexture>(gBuffer.depth).extent;
+
+            FrameGraphResource depthResource;
+            if (blackboard.has<DepthPreData>())
+            {
+                depthResource = blackboard.get<DepthPreData>().depth;
+            }
+            else
+            {
+                depthResource = gBuffer.depth;
+            }
+
+            const auto extent = fg.getDescriptor<framegraph::FrameGraphTexture>(depthResource).extent;
 
             // Disable area lights if LUTs missing
             if (enableAreaLight && (!m_LTCMat || !m_LTCMag))
@@ -57,7 +69,7 @@ namespace vultra
 
             const auto& sceneColorData = fg.addCallbackPass<SceneColorData>(
                 PASS_NAME,
-                [this, &blackboard, &fg, extent, gBuffer, enableAreaLight, enableIBL, iblData](
+                [this, &blackboard, &fg, extent, gBuffer, depthResource, enableAreaLight, enableIBL, iblData](
                     FrameGraph::Builder& builder, SceneColorData& data) {
                     PASS_SETUP_ZONE;
 
@@ -115,7 +127,7 @@ namespace vultra
                                  });
 
                     // Depth
-                    builder.read(gBuffer.depth,
+                    builder.read(depthResource,
                                  framegraph::TextureRead {
                                      .binding =
                                          {

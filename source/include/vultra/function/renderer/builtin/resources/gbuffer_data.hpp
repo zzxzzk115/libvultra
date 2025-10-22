@@ -12,7 +12,7 @@ namespace vultra
             FrameGraphResource normal;
             FrameGraphResource emissive;
             FrameGraphResource metallicRoughnessAO;
-            FrameGraphResource depth;
+            FrameGraphResource depth; // Not used if there is a separate depth pre-pass
             FrameGraphResource textureLodDebug;
 
             // Meshlet debug output

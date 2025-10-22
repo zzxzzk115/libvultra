@@ -26,8 +26,10 @@ namespace vultra
                          bool                        enableNormalMapping = true);
 
         private:
-            rhi::GraphicsPipeline
-            createPipeline(const gfx::BaseGeometryPassInfo&, bool doubleSided, bool alphaMasking) const;
+            rhi::GraphicsPipeline createPipeline(const gfx::BaseGeometryPassInfo&,
+                                                 bool doubleSided,
+                                                 bool alphaMasking,
+                                                 bool earlyZ = false) const;
 
             rhi::GraphicsPipeline m_AreaLightDebugPipeline;
             bool                  m_AreaLightDebugCreated {false};

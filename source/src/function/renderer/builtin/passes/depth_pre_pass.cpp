@@ -21,6 +21,12 @@ namespace vultra
     {
         constexpr auto PASS_NAME = "DepthPrePass";
 
+        struct MeshConstants
+        {
+            glm::mat4 model {1.0f};
+            uint32_t  materialIndex {0};
+        };
+
         DepthPrePass::DepthPrePass(rhi::RenderDevice& rd) : rhi::RenderPass<DepthPrePass>(rd) {}
 
         void DepthPrePass::addPass(FrameGraph&                 fg,
@@ -68,9 +74,14 @@ namespace vultra
                     for (const auto& primitive : opaquePrimitives)
                     {
                         passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
-                        const auto* pipeline  = getPipeline(passInfo);
+                        MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.materialIndex);
+                        const auto*   pipeline = getPipeline(passInfo);
 
-                        cb.bindPipeline(*pipeline);
+                        cb.bindPipeline(*pipeline).pushConstants(rhi::ShaderStages::eVertex |
+                                                                     rhi::ShaderStages::eFragment,
+                                                                 0,
+                                                                 sizeof(MeshConstants),
+                                                                 &meshConstants);
 
                         rc.bindDescriptorSets(*pipeline);
 

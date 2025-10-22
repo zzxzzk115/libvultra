@@ -62,6 +62,10 @@ layout(std430, set = 3, binding = 0) readonly buffer Materials {
 
 layout(set = 3, binding = 1) uniform sampler2D textures[];
 
+#ifdef ENABLE_EARLY_Z
+layout(early_fragment_tests) in;
+#endif
+
 void main() {
 	GPUMaterial material = materials[nonuniformEXT(getMaterialIndex())];
 
