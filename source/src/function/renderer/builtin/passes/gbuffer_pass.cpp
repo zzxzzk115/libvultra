@@ -15,9 +15,10 @@
 #include <shader_headers/area_light_debug.vert.spv.h>
 #include <shader_headers/decal.frag.spv.h>
 #include <shader_headers/gbuffer.frag.spv.h>
-#include <shader_headers/gbuffer_earlyz.frag.spv.h>
 #include <shader_headers/gbuffer_alpha_masking.frag.spv.h>
+#include <shader_headers/gbuffer_earlyz.frag.spv.h>
 #include <shader_headers/geometry.vert.spv.h>
+
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
@@ -332,7 +333,7 @@ namespace vultra
                 .setDepthStencil({
                     .depthTest      = true,
                     .depthWrite     = !earlyZ,
-                    .depthCompareOp = rhi::CompareOp::eLessOrEqual,
+                    .depthCompareOp = earlyZ ? rhi::CompareOp::eEqual : rhi::CompareOp::eLessOrEqual,
                 })
                 .setRasterizer({.polygonMode = rhi::PolygonMode::eFill,
                                 .cullMode    = doubleSided ? rhi::CullMode::eNone : rhi::CullMode::eBack});
