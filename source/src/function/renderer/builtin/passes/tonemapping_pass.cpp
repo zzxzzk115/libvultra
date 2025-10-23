@@ -47,7 +47,7 @@ namespace vultra
                         "ToneMapped",
                         {
                             .extent     = extent,
-                            .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                            .format     = rhi::PixelFormat::eRGBA16F, // LDR still use RGBA16F to avoid color banding
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                         });
                     data.tonemapped = builder.write(data.tonemapped,
