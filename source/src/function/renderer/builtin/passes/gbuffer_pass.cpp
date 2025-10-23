@@ -19,7 +19,6 @@
 #include <shader_headers/gbuffer_earlyz.frag.spv.h>
 #include <shader_headers/geometry.vert.spv.h>
 
-
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
 
@@ -129,7 +128,7 @@ namespace vultra
                                                               .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                                          });
                 },
-                [this, renderPrimitiveGroup, enableAreaLight, enableNormalMapping](
+                [this, &renderPrimitiveGroup, enableAreaLight, enableNormalMapping](
                     const GBufferData&, auto&, void* ctx) {
                     auto& rc                                    = *static_cast<gfx::RendererRenderContext*>(ctx);
                     auto& [cb, framebufferInfo, sets, samplers] = rc;

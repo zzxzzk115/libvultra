@@ -56,7 +56,7 @@ namespace vultra
                                                    .clearValue  = framegraph::ClearValue::eOne,
                                                });
                 },
-                [this, renderPrimitiveGroup](const DepthPreData&, auto&, void* ctx) {
+                [this, &renderPrimitiveGroup](const DepthPreData&, auto&, void* ctx) {
                     auto& rc                                    = *static_cast<gfx::RendererRenderContext*>(ctx);
                     auto& [cb, framebufferInfo, sets, samplers] = rc;
                     RHI_GPU_ZONE(cb, PASS_NAME);
