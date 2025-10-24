@@ -48,15 +48,6 @@ layout(push_constant) uniform GlobalMeshDataPushConstants {
     mat4 modelMatrix;
 } g_Mesh;
 
-out PerVertex {
-    layout(location = 0) flat uint meshletID;
-    layout(location = 1) flat uint materialIndex;
-    layout(location = 2) vec3 fragPos;
-    layout(location = 3) vec2 texCoord;
-    layout(location = 4) vec3 normal;
-    layout(location = 5) vec4 tangent;
-} VSOut[];
-
 struct TaskPayload
 {
 	uint visibleMeshletIndices[TASK_WORK_GROUP_SIZE_X];
@@ -92,13 +83,6 @@ void main() {
 
         vec3 fragPos = vec3(g_Mesh.modelMatrix * vec4(v.position, 1.0));
         gl_MeshVerticesEXT[i].gl_Position = u_Camera.viewProjection * vec4(fragPos, 1.0);
-
-        VSOut[i].meshletID = meshletID;
-        VSOut[i].materialIndex = m.materialIndex;
-        VSOut[i].fragPos = fragPos;
-        VSOut[i].texCoord = v.texCoord;
-        VSOut[i].normal = v.normal;
-        VSOut[i].tangent = v.tangent;
     }
 
 	// Emit triangles

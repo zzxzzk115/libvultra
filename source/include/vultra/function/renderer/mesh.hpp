@@ -66,7 +66,7 @@ namespace vultra
             uint32_t materialIndex {0};
         };
 
-        struct Meshlet
+        struct alignas(16) Meshlet
         {
             uint32_t vertexOffset {0};
             uint32_t vertexCount {0};
@@ -87,7 +87,7 @@ namespace vultra
             glm::vec3 coneApex;
             float     paddingF0; // ensure 16-byte alignment
         };
-        static_assert(sizeof(Meshlet) == 80, "Meshlet size should be 80 bytes");
+        static_assert(sizeof(Meshlet) % 16 == 0);
 
         struct MeshletGroup
         {

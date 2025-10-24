@@ -5,9 +5,9 @@
 #extension GL_EXT_scalar_block_layout : require
 
 #include "resources/camera_block.glsl"
+#include "shader_config.hpp"
 
-const uint TASK_WORKGROUP_SIZE = 32;
-layout(local_size_x = TASK_WORKGROUP_SIZE) in;
+layout(local_size_x = TASK_WORK_GROUP_SIZE_X) in;
 
 struct Meshlet {
     uint vertexOffset;
@@ -91,7 +91,7 @@ layout(push_constant) uniform GlobalMeshDataPushConstants {
 
 struct TaskPayload
 {
-	uint visibleMeshletIndices[TASK_WORKGROUP_SIZE];
+	uint visibleMeshletIndices[TASK_WORK_GROUP_SIZE_X];
 	uint visibleMeshletCount;
 };
 taskPayloadSharedEXT TaskPayload payload;
@@ -122,7 +122,7 @@ bool isVisibleByConeAlanWake2(vec3 coneAxis, float coneCutoff, vec3 center, floa
 
 void main()
 {
-	uint idx = gl_WorkGroupID.x * TASK_WORKGROUP_SIZE + gl_LocalInvocationIndex;
+	uint idx = gl_WorkGroupID.x * TASK_WORK_GROUP_SIZE_X + gl_LocalInvocationIndex;
 	if (idx >= g_Mesh.meshletCount)
 		return;
 

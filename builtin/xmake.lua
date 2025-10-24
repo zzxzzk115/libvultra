@@ -9,6 +9,7 @@ task("shader_task")
         local shader_root = path.join(projectdir, "builtin/shaders")
         local spv_root = path.join(projectdir, "builtin/shader_spvs")
 		local shader_header_root = path.join(projectdir, "builtin/generated/include/shader_headers")
+        local shader_config_root = path.join(projectdir, "source/include/vultra/function/renderer/shader_config")
         os.mkdir(spv_root)
 
         -- valid shader stages to compile
@@ -37,6 +38,7 @@ task("shader_task")
                     "-V",
 					"--target-env", "vulkan1.2",
                     "-I" .. shader_root,
+                    "-I" .. shader_config_root,
                     "-o", out_spv,
 					"-P#extension GL_ARB_shading_language_include : enable", -- https://github.com/KhronosGroup/glslang/issues/1691#issuecomment-2282322200
 					"-P#extension GL_GOOGLE_cpp_style_line_directive : require",

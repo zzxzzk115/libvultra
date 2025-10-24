@@ -15,7 +15,8 @@ layout(location = 0) in flat uint meshletID;
 layout(location = 1) in flat uint materialIndex;
 layout(location = 2) in vec3 fragColor;
 layout(location = 3) in vec2 texCoord;
-layout(location = 4) in mat3 tbn;
+layout(location = 4) in vec3 normal;
+layout(location = 5) in vec4 tangent;
 
 struct GPUMaterial {
     // --- texture indices ---
@@ -91,6 +92,14 @@ vec3 hashColor(uint id)
 
 void main()
 {
+    // Construct TBN matrix
+    mat3 normalMatrix = transpose(inverse(mat3(g_Mesh.modelMatrix)));
+    vec3 T = normalize(normalMatrix * tangent.xyz);
+    vec3 N = normalize(normalMatrix * normal);
+    T = normalize(T - dot(T, N) * N); // Gram-Schmidt orthogonalize
+    vec3 B = cross(N, T) * tangent.w;
+    mat3 tbn = mat3(T, B, N);
+
 	GPUMaterial mat = materials[nonuniformEXT(materialIndex)];
 
 	// Manually calculate LOD for better consistency

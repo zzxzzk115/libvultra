@@ -1,0 +1,18 @@
+#ifndef SHADER_CONFIG_HPP
+#define SHADER_CONFIG_HPP
+
+#define TASK_WORK_GROUP_SIZE_X 32
+#define MESH_WORK_GROUP_SIZE_X 32
+
+#define USE_TASK_SHADER 1
+
+#if USE_TASK_SHADER
+#define DISPATCH_SIZE_X(meshletCount) ((meshletCount + TASK_WORK_GROUP_SIZE_X - 1) / TASK_WORK_GROUP_SIZE_X)
+#else
+#define DISPATCH_SIZE_X(meshletCount) (meshletCount)
+#endif
+
+#define MAX_MESHLET_VERTICES 64
+#define MAX_MESHLET_TRIANGLES 124
+
+#endif // SHADER_CONFIG_HPP

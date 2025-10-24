@@ -7,6 +7,7 @@
 #include "vultra/function/renderer/builtin/resources/depth_pre_data.hpp"
 #include "vultra/function/renderer/builtin/resources/gbuffer_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
+#include "vultra/function/renderer/shader_config/shader_config.hpp"
 
 #include <shader_headers/meshlet.frag.spv.h>
 #include <shader_headers/meshlet.mesh.spv.h>
@@ -209,7 +210,7 @@ namespace vultra
                                              0,
                                              &pushConstants)
                                 .drawMeshTask({
-                                    (pushConstants.meshletCount + 31) / 32,
+                                    DISPATCH_SIZE_X(pushConstants.meshletCount),
                                     1,
                                     1,
                                 });
@@ -254,7 +255,7 @@ namespace vultra
                                              0,
                                              &pushConstants)
                                 .drawMeshTask({
-                                    (pushConstants.meshletCount + 31) / 32,
+                                    DISPATCH_SIZE_X(pushConstants.meshletCount),
                                     1,
                                     1,
                                 });
@@ -275,7 +276,9 @@ namespace vultra
             builder.setDepthFormat(passInfo.depthFormat)
                 .setColorFormats(passInfo.colorFormats)
                 .setTopology(passInfo.topology)
+#if USE_TASK_SHADER
                 .addBuiltinShader(rhi::ShaderType::eTask, meshlet_task_spv)
+#endif
                 .addBuiltinShader(rhi::ShaderType::eMesh, meshlet_mesh_spv)
                 .addBuiltinShader(rhi::ShaderType::eFragment, getMeshletFragmentShader(earlyZ))
                 .setDepthStencil({

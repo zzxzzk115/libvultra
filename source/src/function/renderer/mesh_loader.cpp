@@ -4,6 +4,7 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/function/renderer/mesh_manager.hpp"
+#include "vultra/function/renderer/shader_config/shader_config.hpp"
 #include "vultra/function/renderer/texture_manager.hpp"
 
 #include <assimp/GltfMaterial.h>
@@ -494,8 +495,8 @@ namespace vultra
                     sub.meshletGroup.meshletTriangles.clear();
                     sub.meshletGroup.meshletVertices.clear();
 
-                    const size_t maxVerts = 64;
-                    const size_t maxTris  = 124;
+                    const size_t maxVerts = MAX_MESHLET_VERTICES;
+                    const size_t maxTris  = MAX_MESHLET_TRIANGLES;
 
                     const uint32_t* subIndices = outMesh.indices.data() + sub.indexOffset;
                     size_t          subCount   = sub.indexCount;
