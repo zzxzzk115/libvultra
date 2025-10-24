@@ -5,6 +5,8 @@
 #include "font_headers/materialdesignicons_webfont.ttf.binfont.h"
 
 #include <IconsMaterialDesignIcons.h>
+#include <ImGuiAl/fonts/RobotoBold.inl>
+#include <ImGuiAl/fonts/RobotoRegular.inl>
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
@@ -193,20 +195,44 @@ namespace vultra
 #endif
 
             // Add TTF Fonts & Icon Fonts
-            ImFontConfig defaultConfig = {};
-            io.Fonts->AddFontDefault(&defaultConfig);
+            ImFontConfig fontConfg {};
+            fontConfg.MergeMode   = false;
+            fontConfg.PixelSnapH  = true;
+            fontConfg.OversampleH = fontConfg.OversampleV = 1;
+            fontConfg.GlyphMinAdvanceX                    = 4.0f;
+            fontConfg.SizePixels                          = 12.0f;
+
+            static const ImWchar ranges[] = {
+                0x0020,
+                0x00FF,
+                0x0400,
+                0x044F,
+                0,
+            };
+
+            const float fontSize = 16.0f;
+
+            // Roboto
+            io.Fonts->AddFontFromMemoryCompressedTTF(
+                RobotoRegular_compressed_data, RobotoRegular_compressed_size, fontSize, &fontConfg, ranges);
 
             // https://github.com/ocornut/imgui/issues/3247
             static const ImWchar iconsRanges[] = {ICON_MIN_MDI, ICON_MAX_MDI, 0};
-            ImFontConfig         iconsConfig   = defaultConfig;
-            iconsConfig.MergeMode              = true;
-            iconsConfig.PixelSnapH             = true;
-            iconsConfig.FontDataOwnedByAtlas   = false;
+            ImFontConfig         iconsConfig {};
+            iconsConfig.MergeMode            = true;
+            iconsConfig.PixelSnapH           = true;
+            iconsConfig.FontDataOwnedByAtlas = false;
             io.Fonts->AddFontFromMemoryTTF((void*)materialdesignicons_webfont_ttf_data,
                                            materialdesignicons_webfont_ttf_size,
                                            16.0f,
                                            &iconsConfig,
                                            iconsRanges);
+
+            io.Fonts->AddFontFromMemoryCompressedTTF(
+                RobotoBold_compressed_data, RobotoBold_compressed_size, fontSize + 2.0f, &fontConfg, ranges);
+
+            io.Fonts->AddFontFromMemoryCompressedTTF(
+                RobotoRegular_compressed_data, RobotoRegular_compressed_size, fontSize * 0.8f, &fontConfg, ranges);
 
             setImGuiStyle();
 

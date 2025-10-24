@@ -1,7 +1,7 @@
 #pragma once
 
 #include <imgui.h>
-#include <imgui_node_editor.h>
+#include <imgui_node_editor/imgui_node_editor.h>
 #include <string>
 #include <vector>
 
