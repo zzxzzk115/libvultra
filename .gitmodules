@@ -1,0 +1,4 @@
+[submodule "external/vasset"]
+	path = external/vasset
+	url = https://github.com/zzxzzk115/vasset.git
+	branch = dev

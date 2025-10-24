@@ -54,12 +54,13 @@ Step-by-Step:
 
 - Clone the project:
   ```bash
-  git clone https://github.com/zzxzzk115/libvultra.git
+  git clone --recursive https://github.com/zzxzzk115/libvultra.git
   ```
 
 - Build the project:
   ```bash
   cd libvultra
+  git submodule update --init
   xmake -vD
   ```
 

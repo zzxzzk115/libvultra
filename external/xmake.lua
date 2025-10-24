@@ -32,3 +32,5 @@ target("imgui-ext")
     add_packages("imgui", {public = true})
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
+
+includes("vasset")

@@ -71,13 +71,12 @@ option_end()
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "glm", "stb", "nlohmann_json", "meshoptimizer", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr")
+add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr")
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
 add_requires("stduuid", {configs = {span = true}})
 add_requireconfs("imgui.libsdl3", {system = false}) -- we don't use system's SDL3 to avoid version conflicts
-add_requires("assimp", {configs = {shared = true, debug = is_mode("debug"), draco = true}})
 add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
 -- note: spirv-cross & glslang must require the same vulkan sdk version
 add_requires("spirv-cross vulkan-sdk-1.4.309", {configs = { shared = true, debug = is_mode("debug")}, system = false})
@@ -103,14 +102,14 @@ target("vultra")
     add_files("src/**.cpp")
 
     -- add deps
-    add_deps("dds-ktx", "renderdoc", "IconFontCppHeaders", "imgui-ext", "vultra_builtin_assets")
+    add_deps("vasset", "dds-ktx", "renderdoc", "IconFontCppHeaders", "imgui-ext", "vultra_builtin_assets")
 
     -- add rules
     add_rules("vulkansdk")
 
     -- add packages
-    add_packages("fmt", "spdlog", "stduuid", "cereal", "magic_enum", "entt", "glm", "stb", "nlohmann_json", "meshoptimizer", "vulkan-headers", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr", { public = true })
-    add_packages("libsdl3", "assimp", "spirv-cross", "glslang", "openxr", { public = true })
+    add_packages("fmt", "spdlog", "stduuid", "cereal", "magic_enum", "entt", "vulkan-headers", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr", { public = true })
+    add_packages("libsdl3", "spirv-cross", "glslang", "openxr", { public = true })
     if has_config("tracy") then
         add_packages("tracy", { public = true })
     end
