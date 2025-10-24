@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
+#include "vultra/function/renderer/builtin/mesh_constants.hpp"
 #include "vultra/function/renderer/builtin/resources/camera_data.hpp"
 #include "vultra/function/renderer/builtin/resources/depth_pre_data.hpp"
 #include "vultra/function/renderer/builtin/resources/gbuffer_data.hpp"
@@ -27,12 +28,6 @@ namespace vultra
     namespace gfx
     {
         constexpr auto PASS_NAME = "GBufferPass";
-
-        struct MeshConstants
-        {
-            glm::mat4 model {1.0f};
-            uint32_t  materialIndex {0};
-        };
 
         GBufferPass::GBufferPass(rhi::RenderDevice& rd) : rhi::RenderPass<GBufferPass>(rd) {}
 
@@ -138,6 +133,7 @@ namespace vultra
                          .depthFormat  = rhi::getDepthFormat(*framebufferInfo),
                          .colorFormats = rhi::getColorFormats(*framebufferInfo),
                     };
+                    uint32_t meshEnableNormalMapping = enableNormalMapping ? 1 : 0;
 
                     cb.beginRendering(*framebufferInfo);
 
@@ -149,7 +145,8 @@ namespace vultra
                         passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
 
                         const auto&   material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
-                        MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.materialIndex);
+                        MeshConstants meshConstants(
+                            primitive.modelMatrix, primitive.renderSubMesh.materialIndex, meshEnableNormalMapping);
 
                         // Enable earlyZ for opaque objects
                         const auto* pipeline = getPipeline(passInfo, material.doubleSided, false, true);
@@ -188,7 +185,8 @@ namespace vultra
                         passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
 
                         const auto&   material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
-                        MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.materialIndex);
+                        MeshConstants meshConstants(
+                            primitive.modelMatrix, primitive.renderSubMesh.materialIndex, meshEnableNormalMapping);
 
                         const auto* pipeline = getPipeline(passInfo, material.doubleSided, true);
 
@@ -260,7 +258,8 @@ namespace vultra
                         passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
 
                         const auto&   material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
-                        MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.materialIndex);
+                        MeshConstants meshConstants(
+                            primitive.modelMatrix, primitive.renderSubMesh.materialIndex, meshEnableNormalMapping);
                         if (!m_DecalPipelineCreated)
                         {
                             auto builder = rhi::GraphicsPipeline::Builder {};
@@ -292,9 +291,14 @@ namespace vultra
                                            sizeof(MeshConstants),
                                            &meshConstants);
 
-                        rc.resourceSet[3][0] = rhi::bindings::CombinedImageSampler {
-                             .texture     = getRenderDevice().getTextureByIndex(material.albedoIndex).get(),
-                             .imageAspect = rhi::ImageAspect::eColor};
+                        rc.resourceSet[3][0] = rhi::bindings::StorageBuffer {
+                             .buffer = primitive.mesh->materialBuffer.get(),
+                        };
+
+                        rc.resourceSet[3][1] = rhi::bindings::CombinedImageSamplerArray {
+                             .textures    = getRenderDevice().getAllLoadedTextures(),
+                             .imageAspect = rhi::ImageAspect::eColor,
+                        };
 
                         rc.bindDescriptorSets(m_DecalPipeline);
 

@@ -96,7 +96,7 @@ void main() {
 
 	// Normal
 	vec3 normal = normalize(v_TBN[2]);
-	if (material.normalIndex > 0)
+	if (material.normalIndex > 0 && getEnableNormalMapping() == 1)
 	{
 		vec3 normalColor = textureGrad(textures[nonuniformEXT(material.normalIndex)], v_TexCoord, duvdx, duvdy).xyz;
 		vec3 tangentNormal = normalColor * 2.0 - 1.0; // Transform from [0,1] to [-1,1], tangent space

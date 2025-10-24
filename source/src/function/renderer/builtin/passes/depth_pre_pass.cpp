@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
+#include "vultra/function/renderer/builtin/mesh_constants.hpp"
 #include "vultra/function/renderer/builtin/resources/camera_data.hpp"
 #include "vultra/function/renderer/builtin/resources/depth_pre_data.hpp"
 #include "vultra/function/renderer/builtin/resources/light_data.hpp"
@@ -20,12 +21,6 @@ namespace vultra
     namespace gfx
     {
         constexpr auto PASS_NAME = "DepthPrePass";
-
-        struct MeshConstants
-        {
-            glm::mat4 model {1.0f};
-            uint32_t  materialIndex {0};
-        };
 
         DepthPrePass::DepthPrePass(rhi::RenderDevice& rd) : rhi::RenderPass<DepthPrePass>(rd) {}
 
@@ -77,11 +72,8 @@ namespace vultra
                         MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.materialIndex);
                         const auto*   pipeline = getPipeline(passInfo);
 
-                        cb.bindPipeline(*pipeline).pushConstants(rhi::ShaderStages::eVertex |
-                                                                     rhi::ShaderStages::eFragment,
-                                                                 0,
-                                                                 sizeof(MeshConstants),
-                                                                 &meshConstants);
+                        cb.bindPipeline(*pipeline).pushConstants(
+                            rhi::ShaderStages::eVertex, 0, sizeof(MeshConstants), &meshConstants);
 
                         rc.bindDescriptorSets(*pipeline);
 
