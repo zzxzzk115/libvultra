@@ -90,12 +90,12 @@ namespace vultra
             assert(numImages > 0);
             m_Bindings[index] = {
                 vk::DescriptorType::eCombinedImageSampler, numImages, static_cast<int32_t>(m_ImageInfos.size())};
-            const auto sampler = info.sampler.value_or(info.textures.back()->getSampler());
-            assert(sampler != VK_NULL_HANDLE);
             for (const auto* texture : info.textures)
             {
                 const auto imageLayout = texture->getImageLayout();
                 assert(imageLayout != ImageLayout::eUndefined);
+                const auto sampler = info.sampler.value_or(texture->getSampler());
+                assert(sampler != VK_NULL_HANDLE);
                 addCombinedImageSampler(
                     texture->getImageView(toVk(info.imageAspect)), static_cast<vk::ImageLayout>(imageLayout), sampler);
             }
