@@ -7,6 +7,10 @@
 #include "lib/color.glsl"
 #include "lib/texture.glsl"
 
+#ifdef ENABLE_EARLY_Z
+layout (early_fragment_tests) in;
+#endif
+
 layout(location = 0) in flat uint meshletID;
 layout(location = 1) in flat uint materialIndex;
 layout(location = 2) in vec3 fragColor;
@@ -66,7 +70,7 @@ layout(push_constant) uniform GlobalMeshDataPushConstants {
 
     uint meshletCount;
 	uint enableNormalMapping;
-	uint padding0;
+	uint debugMode;
 	uint padding1;
 
 	mat4 modelMatrix;
@@ -78,10 +82,6 @@ layout (location = 2) out vec3 g_Emissive;
 layout (location = 3) out vec3 g_MetallicRoughnessAO;
 layout (location = 4) out vec3 g_TextureLodDebug;
 layout (location = 5) out vec4 g_MeshletDebug;
-
-#ifndef MESHLET_DEBUG_MODE
-#define MESHLET_DEBUG_MODE 0
-#endif
 
 vec3 hashColor(uint id)
 {
@@ -130,11 +130,14 @@ void main()
 	// float lod = textureQueryLod(t_Diffuse, v_TexCoord).x;
 	g_TextureLodDebug = lodColors[int(lod)];
 
-#if MESHLET_DEBUG_MODE == 0
-    g_MeshletDebug = vec4(hashColor(meshletID), 1.0);
-#elif MESHLET_DEBUG_MODE == 1
-    g_MeshletDebug = vec4(hashColor(materialIndex), 1.0);
-#endif
+    if (g_Mesh.debugMode == 0)
+    {
+        g_MeshletDebug = vec4(hashColor(meshletID), 1.0);
+    }
+    else if (g_Mesh.debugMode == 1)
+    {
+        g_MeshletDebug = vec4(hashColor(materialIndex), 1.0);
+    }
 }
 
 #endif // MESHLET_GLSL

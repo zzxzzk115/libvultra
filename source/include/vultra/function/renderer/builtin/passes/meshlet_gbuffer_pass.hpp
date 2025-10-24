@@ -26,7 +26,7 @@ namespace vultra
                          uint32_t               debugMode);
 
         private:
-            rhi::GraphicsPipeline createPipeline(const gfx::BaseGeometryPassInfo&, uint32_t) const;
+            rhi::GraphicsPipeline createPipeline(const gfx::BaseGeometryPassInfo&, bool earlyZ) const;
         };
     } // namespace gfx
 } // namespace vultra

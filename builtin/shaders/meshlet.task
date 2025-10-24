@@ -83,7 +83,7 @@ layout(push_constant) uniform GlobalMeshDataPushConstants {
 
     uint meshletCount;
 	uint enableNormalMapping;
-	uint padding0;
+	uint debugMode; // 0: meshlet ID, 1: material index
 	uint padding1;
 
 	mat4 modelMatrix;

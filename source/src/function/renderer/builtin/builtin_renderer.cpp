@@ -11,6 +11,7 @@
 #include "vultra/function/renderer/builtin/passes/fxaa_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gamma_correction_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/gbuffer_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/meshlet_depth_pre_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/meshlet_gbuffer_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/simple_raytracing_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/skybox_pass.hpp"
@@ -55,7 +56,8 @@ namespace vultra
 
             m_SimpleRaytracingPass = new SimpleRaytracingPass(rd);
 
-            m_MeshletGBufferPass = new MeshletGBufferPass(rd);
+            m_MeshletDepthPrePass = new MeshletDepthPrePass(rd);
+            m_MeshletGBufferPass  = new MeshletGBufferPass(rd);
 
             setupSamplers();
 
@@ -88,6 +90,7 @@ namespace vultra
 
             delete m_SimpleRaytracingPass;
 
+            delete m_MeshletDepthPrePass;
             delete m_MeshletGBufferPass;
         }
 
@@ -765,6 +768,9 @@ namespace vultra
                     uploadCameraBlock(fg, blackboard, renderTarget->getExtent(), m_CameraInfo);
                     uploadFrameBlock(fg, blackboard, m_FrameInfo);
                     uploadLightBlock(fg, blackboard, m_LightInfo);
+
+                    // Meshlet Depth Pre-pass
+                    m_MeshletDepthPrePass->addPass(fg, blackboard, renderTarget->getExtent(), m_RenderableGroup);
 
                     // Meshlet GBuffer Pass
                     m_MeshletGBufferPass->addPass(fg,

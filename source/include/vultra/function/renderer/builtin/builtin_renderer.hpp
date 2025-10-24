@@ -28,6 +28,7 @@ namespace vultra
 
         class SimpleRaytracingPass;
 
+        class MeshletDepthPrePass;
         class MeshletGBufferPass;
 
         enum class RendererType
@@ -150,7 +151,8 @@ namespace vultra
 
             SimpleRaytracingPass* m_SimpleRaytracingPass {nullptr};
 
-            MeshletGBufferPass* m_MeshletGBufferPass {nullptr};
+            MeshletDepthPrePass* m_MeshletDepthPrePass {nullptr};
+            MeshletGBufferPass*  m_MeshletGBufferPass {nullptr};
 
             std::vector<Ref<DefaultMesh>> m_AreaLightMeshes; // Keep alive for raytracing purposes
         };

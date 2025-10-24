@@ -101,16 +101,9 @@ namespace vultra
 
                             rc.resourceSet[2][0] =
                                 rhi::bindings::StorageBuffer {.buffer = renderable.mesh->materialBuffer.get()};
-                            rc.resourceSet[2][1] = rhi::bindings::CombinedImageSamplerArray {
-                                .textures    = getRenderDevice().getAllLoadedTextures(),
-                                .imageAspect = rhi::ImageAspect::eColor,
-                            };
                             rc.bindDescriptorSets(*pipeline);
 
-                            cb.pushConstants(rhi::ShaderStages::eTask | rhi::ShaderStages::eMesh |
-                                                 rhi::ShaderStages::eFragment,
-                                             0,
-                                             &pushConstants)
+                            cb.pushConstants(rhi::ShaderStages::eTask | rhi::ShaderStages::eMesh, 0, &pushConstants)
                                 .drawMeshTask({
                                     (pushConstants.meshletCount + 31) / 32,
                                     1,
