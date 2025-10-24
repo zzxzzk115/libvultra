@@ -3,7 +3,8 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/util.hpp"
 
-#define STB_IMAGE_IMPLEMENTATION
+// #define STB_IMAGE_IMPLEMENTATION
+// Already defined in vasset_importers.cpp
 #include <stb_image.h>
 
 #define DDSKTX_IMPLEMENT
@@ -147,7 +148,7 @@ namespace vultra
         {
             stbi_set_flip_vertically_on_load(false);
 
-            auto* file = stbi__fopen(p.string().c_str(), "rb");
+            auto* file = fopen(p.string().c_str(), "rb");
             if (!file)
             {
                 return std::unexpected {"Could not open the file."};
