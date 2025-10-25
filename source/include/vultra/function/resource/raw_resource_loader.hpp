@@ -14,6 +14,9 @@ namespace vultra
 
     namespace resource
     {
+        [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureVTexture(const std::filesystem::path&,
+                                                                                   rhi::RenderDevice&);
+
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureSTB(const std::filesystem::path&,
                                                                               rhi::RenderDevice&);
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureSTB_Raw(const std::vector<uint8_t>& bintex,

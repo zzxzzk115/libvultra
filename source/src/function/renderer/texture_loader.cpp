@@ -43,6 +43,9 @@ namespace vultra
                     case ".ktx2"_hs:
                         return resource::loadTextureKTX2(p, rd);
 
+                    case ".vtex"_hs:
+                        return resource::loadTextureVTexture(p, rd);
+
                     default:
                         break;
                 }

@@ -3,6 +3,8 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/util.hpp"
 
+#include <vasset/vasset.hpp>
+
 // #define STB_IMAGE_IMPLEMENTATION
 // Already defined in vasset_importers.cpp
 #include <stb_image.h>
@@ -144,6 +146,32 @@ namespace vultra
 {
     namespace resource
     {
+        std::expected<rhi::Texture, std::string> loadTextureVTexture(const std::filesystem::path& p,
+                                                                     rhi::RenderDevice&           rd)
+        {
+            vasset::VTexture vtexture {};
+            if (!vasset::loadTexture(p.string(), vtexture))
+            {
+                return std::unexpected {"Failed to load VTexture."};
+            }
+
+            auto fileFormat = vtexture.fileFormat;
+
+            switch (fileFormat)
+            {
+                case vasset::VTextureFileFormat::eKTX2:
+                    return loadTextureKTX2_Raw(vtexture.data, rd);
+                case vasset::VTextureFileFormat::ePNG:
+                case vasset::VTextureFileFormat::eJPG:
+                case vasset::VTextureFileFormat::eHDR:
+                    return loadTextureSTB_Raw(vtexture.data, rd);
+                default:
+                    return std::unexpected {"Unsupported VTexture file format."};
+            }
+
+            return std::unexpected {"Unreachable code reached."};
+        }
+
         std::expected<rhi::Texture, std::string> loadTextureSTB(const std::filesystem::path& p, rhi::RenderDevice& rd)
         {
             stbi_set_flip_vertically_on_load(false);
