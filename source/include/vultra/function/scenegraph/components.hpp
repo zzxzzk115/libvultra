@@ -37,13 +37,13 @@ namespace vultra
         explicit IDComponent(CoreUUID aID) : id(aID) {}
         IDComponent(const IDComponent&) = default;
 
-        std::string getIdString() const { return to_string(id); }
+        std::string getIdString() const { return id.toString(); }
         void        setIdByString(std::string aID)
         {
-            auto optionalId = CoreUUID::from_string(aID);
-            if (optionalId.has_value())
+            auto optionalId = CoreUUID::fromString(aID);
+            if (!optionalId.isNil())
             {
-                id = optionalId.value();
+                id = optionalId;
             }
         }
     };
@@ -308,13 +308,36 @@ namespace vultra
         explicit RawMeshComponent(const std::string& aMeshPath) : meshPath(aMeshPath) {}
     };
 
+    struct MeshComponent
+    {
+        COMPONENT_NAME(Mesh)
+
+        std::string uuidStr; // vasset UUID string
+
+        // NOLINTBEGIN
+        template<class Archive>
+        void serialize(Archive& archive)
+        {
+            archive(CEREAL_NVP(uuidStr));
+        }
+        // NOLINTEND
+
+        // Runtime only, not serializable
+        Ref<gfx::MeshResource> meshResource {nullptr};
+
+        MeshComponent()                     = default;
+        MeshComponent(const MeshComponent&) = default;
+        explicit MeshComponent(const std::string& aUUIDStr) : uuidStr(aUUIDStr) {}
+    };
+
     template<typename... Component>
     struct ComponentGroup
     {};
 
 #define COMMON_COMPONENT_TYPES
 #define ALL_SERIALIZABLE_COMPONENT_TYPES \
-    IDComponent, NameComponent, TransformComponent, CameraComponent, DirectionalLightComponent, RawMeshComponent
+    IDComponent, NameComponent, TransformComponent, CameraComponent, DirectionalLightComponent, RawMeshComponent, \
+        MeshComponent
 #define ALL_COPYABLE_COMPONENT_TYPES COMMON_COMPONENT_TYPES
 
     using AllCopyableComponents = ComponentGroup<ALL_COPYABLE_COMPONENT_TYPES>;

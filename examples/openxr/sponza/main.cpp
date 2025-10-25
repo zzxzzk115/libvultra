@@ -53,7 +53,7 @@ public:
         m_LogicScene.createDirectionalLight();
 
         // Load a sample model
-        auto model = m_LogicScene.createMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
+        auto model = m_LogicScene.createRawMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
     }
 
     void onImGui() override

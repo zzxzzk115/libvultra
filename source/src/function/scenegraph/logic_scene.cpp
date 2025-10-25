@@ -296,11 +296,19 @@ namespace vultra
         return areaLights;
     }
 
-    Entity LogicScene::createMeshEntity(const std::string& name, const std::string& meshPath)
+    Entity LogicScene::createRawMeshEntity(const std::string& name, const std::string& meshPath)
     {
         Entity meshEntity = createEntity(name);
         meshEntity.addComponent<TransformComponent>();
         meshEntity.addComponent<RawMeshComponent>(meshPath);
+        return meshEntity;
+    }
+
+    Entity LogicScene::createMeshEntity(const std::string& name, const CoreUUID& uuid)
+    {
+        Entity meshEntity = createEntity(name);
+        meshEntity.addComponent<TransformComponent>();
+        meshEntity.addComponent<MeshComponent>(uuid.toString());
         return meshEntity;
     }
 
@@ -482,4 +490,5 @@ namespace vultra
             component.mesh = resource::loadResource<gfx::MeshManager>(component.meshPath);
         }
     }
+    ON_COMPONENT_ADDED(MeshComponent) {}
 } // namespace vultra

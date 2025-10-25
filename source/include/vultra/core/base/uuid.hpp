@@ -2,37 +2,34 @@
 
 #include "vultra/core/base/base.hpp"
 
-#include <uuid.h>
+#include <vasset/vuuid.hpp>
 
-namespace uuids
+namespace vasset
 {
     template<class Archive>
-    void save(Archive& archive, const uuid& id)
+    void save(Archive& archive, const VUUID& id)
     {
-        std::string idStr = to_string(id);
+        std::string idStr = id.toString();
         archive(idStr);
     }
 
     template<class Archive>
-    void load(Archive& archive, uuid& id)
+    void load(Archive& archive, VUUID& id)
     {
         std::string idStr;
         archive(idStr);
-        id = uuid::from_string(idStr).value();
+        id = VUUID::fromString(idStr);
     }
-} // namespace uuids
+} // namespace vasset
 
 namespace vultra
 {
-    using CoreUUID = uuids::uuid;
+    using CoreUUID = vasset::VUUID;
 
     class CoreUUIDHelper
     {
     public:
         static CoreUUID createStandardUUID();
         static CoreUUID getFromName(const std::string& name);
-
-    private:
-        static Ref<uuids::uuid_name_generator> s_NameUUIDGenerator;
     };
 } // namespace vultra

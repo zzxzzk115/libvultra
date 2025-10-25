@@ -97,7 +97,8 @@ namespace vultra
         std::vector<Entity> getPointLights() const;
         Entity              getAreaLight(uint32_t index) const;
         std::vector<Entity> getAreaLights() const;
-        Entity              createMeshEntity(const std::string& name, const std::string& meshPath);
+        Entity              createRawMeshEntity(const std::string& name, const std::string& meshPath);
+        Entity              createMeshEntity(const std::string& name, const CoreUUID& uuid);
 
         // Cook renderables for rendering
         std::vector<gfx::Renderable> cookRenderables();

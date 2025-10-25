@@ -83,7 +83,7 @@ public:
         areaBlueLightComponent.intensity = 10.0f;
 
         // Load a sample model
-        auto model = m_LogicScene.createMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
+        auto model = m_LogicScene.createRawMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
 
         // Set camera far plane based on model's AABB
         auto& rawMesh     = model.getComponent<RawMeshComponent>().mesh;

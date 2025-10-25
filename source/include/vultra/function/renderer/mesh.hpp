@@ -246,11 +246,19 @@ namespace vultra
                 {
                     rhi::RenderSubMesh rsm {};
                     assert(vertexBuffer != nullptr);
-                    rsm.vertexBufferAddress =
-                        rd.getBufferDeviceAddress(*vertexBuffer) + sm.vertexOffset * getVertexStride();
-                    rsm.indexBufferAddress =
-                        indexBuffer ? (rd.getBufferDeviceAddress(*indexBuffer) + sm.indexOffset * getIndexStride()) : 0;
-                    rsm.transformBufferAddress = 0; // Optional
+
+                    if (HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
+                        HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayQuery) ||
+                        HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eMeshShader))
+                    {
+                        rsm.vertexBufferAddress =
+                            rd.getBufferDeviceAddress(*vertexBuffer) + sm.vertexOffset * getVertexStride();
+                        rsm.indexBufferAddress =
+                            indexBuffer ?
+                                (rd.getBufferDeviceAddress(*indexBuffer) + sm.indexOffset * getIndexStride()) :
+                                0;
+                        rsm.transformBufferAddress = 0; // Optional
+                    }
 
                     // Meshlet buffer addresses
                     if (HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eMeshShader))
