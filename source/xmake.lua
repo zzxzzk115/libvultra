@@ -71,7 +71,7 @@ option_end()
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr")
+add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "fg", "cpptrace")
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
@@ -80,11 +80,6 @@ add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
 -- note: spirv-cross & glslang must require the same vulkan sdk version
 add_requires("spirv-cross vulkan-sdk-1.4.309", {configs = { shared = true, debug = is_mode("debug")}, system = false})
 add_requires("glslang 1.4.309+0", {configs = {debug = is_mode("debug")}, system = false})
-if is_plat("windows") then
-    add_requires("ktx-windows")
-else
-    add_requires("ktx", {configs = {decoder = true, vulkan = true}})
-end
 
 -- target defination, name: vultra
 target("vultra")
@@ -101,7 +96,7 @@ target("vultra")
     add_files("src/**.cpp")
 
     -- add deps
-    add_deps("vasset", "dds-ktx", "renderdoc", "IconFontCppHeaders", "imgui-ext", "vultra_builtin_assets")
+    add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "vultra_builtin_assets")
 
     -- add rules
     add_rules("vulkansdk")
@@ -111,11 +106,6 @@ target("vultra")
     add_packages("libsdl3", "spirv-cross", "glslang", "openxr", { public = true })
     if has_config("tracy") then
         add_packages("tracy", { public = true })
-    end
-    if is_plat("windows") then
-        add_packages("ktx-windows", { public = true })
-    else
-        add_packages("ktx", { public = true })
     end
 
     -- vulkan dynamic loader
@@ -144,12 +134,6 @@ target("vultra")
     else
         add_defines("NDEBUG", { public = true })
     end
-
-    -- GLM force settings
-    add_defines("GLM_FORCE_DEPTH_ZERO_TO_ONE", { public = true }) -- for vulkan depth range [0, 1]
-    -- add_defines("GLM_FORCE_LEFT_HANDED", { public = true }) -- for left-handed coordinate system
-    add_defines("GLM_ENABLE_EXPERIMENTAL", { public = true }) -- for experimental features
-    add_defines("GLM_FORCE_RADIANS", { public = true }) -- force radians
 
     -- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra")

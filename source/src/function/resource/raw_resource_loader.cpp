@@ -9,10 +9,12 @@
 // Already defined in vasset_importers.cpp
 #include <stb_image.h>
 
-#define DDSKTX_IMPLEMENT
+// #define DDSKTX_IMPLEMENT
+// Already defined in vasset_importers.cpp
 #include <dds-ktx.h>
 
-#define TINYEXR_IMPLEMENTATION
+// #define TINYEXR_IMPLEMENTATION
+// Already defined in vasset_importers.cpp
 #include <tinyexr.h>
 
 #include <ktx.h>
