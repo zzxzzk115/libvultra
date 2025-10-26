@@ -335,7 +335,8 @@ namespace vultra
                 }
                 else
                 {
-                    m_CameraInfo = CameraInfo {};
+                    m_EnableSkybox = false;
+                    m_CameraInfo   = CameraInfo {};
                 }
 
                 // XR Cameras

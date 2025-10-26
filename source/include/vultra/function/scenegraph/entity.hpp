@@ -112,6 +112,12 @@ namespace vultra
 
         // helper functions (setters)
 
+        void setName(const std::string& name)
+        {
+            VULTRA_CORE_ASSERT(hasComponent<NameComponent>(), "[Entity] Entity has no NameComponent!");
+            getComponent<NameComponent>().name = name;
+        }
+
         void removeChild(const CoreUUID& childUUID)
         {
             VULTRA_CORE_ASSERT(hasComponent<SceneGraphComponent>(), "[Entity] Entity has no SceneGraphComponent!");
