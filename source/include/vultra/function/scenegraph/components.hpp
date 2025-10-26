@@ -113,6 +113,54 @@ namespace vultra
         glm::quat m_Rotation {1, 0, 0, 0};
     };
 
+    struct SceneGraphComponent
+    {
+        COMPONENT_NAME(SceneGraph)
+
+        CoreUUID              parentUUID;
+        std::vector<CoreUUID> childrenUUIDs;
+
+        // NOLINTBEGIN
+        template<class Archive>
+        void serialize(Archive& archive)
+        {
+            archive(CEREAL_NVP(parentUUID), CEREAL_NVP(childrenUUIDs));
+        }
+        // NOLINTEND
+
+        SceneGraphComponent()                           = default;
+        SceneGraphComponent(const SceneGraphComponent&) = default;
+    };
+
+    enum class EntityFlags : uint32_t
+    {
+        eNone        = 0,
+        eStatic      = 1 << 0,
+        eDontDestroy = 1 << 1,
+        eVisible     = 1 << 2,
+
+        eDefault = eVisible
+    };
+
+    struct EntityFlagsComponent
+    {
+        COMPONENT_NAME(EntityFlags)
+
+        uint32_t flags {static_cast<uint32_t>(EntityFlags::eDefault)};
+
+        // NOLINTBEGIN
+        template<class Archive>
+        void serialize(Archive& archive)
+        {
+            archive(CEREAL_NVP(flags));
+        }
+        // NOLINTEND
+
+        EntityFlagsComponent()                            = default;
+        EntityFlagsComponent(const EntityFlagsComponent&) = default;
+        explicit EntityFlagsComponent(uint32_t aFlags) : flags(aFlags) {}
+    };
+
     // -------- Rendering --------
 
     enum class CameraClearFlags
@@ -336,8 +384,8 @@ namespace vultra
 
 #define COMMON_COMPONENT_TYPES
 #define ALL_SERIALIZABLE_COMPONENT_TYPES \
-    IDComponent, NameComponent, TransformComponent, CameraComponent, DirectionalLightComponent, RawMeshComponent, \
-        MeshComponent
+    IDComponent, NameComponent, TransformComponent, SceneGraphComponent, EntityFlagsComponent, CameraComponent, \
+        DirectionalLightComponent, RawMeshComponent, MeshComponent
 #define ALL_COPYABLE_COMPONENT_TYPES COMMON_COMPONENT_TYPES
 
     using AllCopyableComponents = ComponentGroup<ALL_COPYABLE_COMPONENT_TYPES>;

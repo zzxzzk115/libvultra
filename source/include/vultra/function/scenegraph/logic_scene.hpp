@@ -113,10 +113,13 @@ namespace vultra
         void loadFrom(const std::filesystem::path& srcPath);
 
         std::vector<Entity> getEntitiesSortedByName();
+        
+        std::vector<Entity> getRootEntities();
 
     private:
         void        createDefaultEntities();
         std::string getNameFromEntity(Entity entity) const;
+        void       sortEntitiesByName(std::vector<Entity>& entities) const;
 
         static int         extractEntityNumber(const std::string& name);
         static std::string extractEntityName(const std::string& name);

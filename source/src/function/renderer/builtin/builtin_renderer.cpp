@@ -532,11 +532,6 @@ namespace vultra
 
         void BuiltinRenderer::renderRasterization(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
         {
-            if (m_RenderPrimitiveGroup.empty())
-            {
-                return;
-            }
-
             {
                 ZoneScopedN("Prepare Attachments");
 
@@ -645,11 +640,6 @@ namespace vultra
 
         void BuiltinRenderer::renderRayTracing(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
         {
-            if (m_RenderPrimitiveGroup.empty())
-            {
-                return;
-            }
-
             {
                 ZoneScopedN("Prepare Attachments");
 
@@ -730,11 +720,6 @@ namespace vultra
 
         void BuiltinRenderer::renderMeshShading(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
         {
-            if (m_RenderPrimitiveGroup.empty())
-            {
-                return;
-            }
-
             {
                 ZoneScopedN("Prepare Attachments");
 

@@ -63,7 +63,96 @@ namespace vultra
         CoreUUID    getCoreUUID() { return getComponent<IDComponent>().id; }
         std::string getName() { return getComponent<NameComponent>().name; }
 
-        // TODO: helper functions (setters)
+        bool hasParent()
+        {
+            if (hasComponent<SceneGraphComponent>())
+            {
+                return !getComponent<SceneGraphComponent>().parentUUID.isNil();
+            }
+            return false;
+        }
+
+        CoreUUID getParentUUID()
+        {
+            VULTRA_CORE_ASSERT(hasComponent<SceneGraphComponent>(), "[Entity] Entity has no SceneGraphComponent!");
+            return getComponent<SceneGraphComponent>().parentUUID;
+        }
+
+        Entity getParentEntity()
+        {
+            VULTRA_CORE_ASSERT(hasComponent<SceneGraphComponent>(), "[Entity] Entity has no SceneGraphComponent!");
+            return m_Scene->getEntityWithCoreUUID(getComponent<SceneGraphComponent>().parentUUID);
+        }
+
+        bool hasChildren()
+        {
+            if (hasComponent<SceneGraphComponent>())
+            {
+                return !getComponent<SceneGraphComponent>().childrenUUIDs.empty();
+            }
+            return false;
+        }
+
+        const std::vector<CoreUUID>& getChildrenUUIDs()
+        {
+            VULTRA_CORE_ASSERT(hasComponent<SceneGraphComponent>(), "[Entity] Entity has no SceneGraphComponent!");
+            return getComponent<SceneGraphComponent>().childrenUUIDs;
+        }
+
+        std::vector<Entity> getChildrenEntities()
+        {
+            VULTRA_CORE_ASSERT(hasComponent<SceneGraphComponent>(), "[Entity] Entity has no SceneGraphComponent!");
+            std::vector<Entity> children;
+            for (const auto& childUUID : getComponent<SceneGraphComponent>().childrenUUIDs)
+            {
+                children.emplace_back(m_Scene->getEntityWithCoreUUID(childUUID));
+            }
+            return children;
+        }
+
+        // helper functions (setters)
+
+        void removeChild(const CoreUUID& childUUID)
+        {
+            VULTRA_CORE_ASSERT(hasComponent<SceneGraphComponent>(), "[Entity] Entity has no SceneGraphComponent!");
+            auto child = m_Scene->getEntityWithCoreUUID(childUUID);
+            child.setParent({}); // Clear parent UUID
+            auto& children = getComponent<SceneGraphComponent>().childrenUUIDs;
+            children.erase(std::remove(children.begin(), children.end(), childUUID), children.end());
+        }
+
+        void addChild(const CoreUUID& childUUID)
+        {
+            VULTRA_CORE_ASSERT(hasComponent<SceneGraphComponent>(), "[Entity] Entity has no SceneGraphComponent!");
+            auto child = m_Scene->getEntityWithCoreUUID(childUUID);
+            child.setParent(getCoreUUID());
+        }
+
+        void setParent(const CoreUUID& parentUUID)
+        {
+            VULTRA_CORE_ASSERT(hasComponent<SceneGraphComponent>(), "[Entity] Entity has no SceneGraphComponent!");
+
+            // If already has parent, let old parent remove self
+            if (hasParent())
+            {
+                auto  oldParent = m_Scene->getEntityWithCoreUUID(getParentUUID());
+                auto& children  = oldParent.getComponent<SceneGraphComponent>().childrenUUIDs;
+                children.erase(std::remove(children.begin(), children.end(), getCoreUUID()), children.end());
+            }
+
+            if (parentUUID.isNil())
+            {
+                // Clear parent
+                getComponent<SceneGraphComponent>().parentUUID = CoreUUID();
+                return;
+            }
+
+            // Set new parent
+            getComponent<SceneGraphComponent>().parentUUID = parentUUID;
+            auto  parentEntity                             = m_Scene->getEntityWithCoreUUID(parentUUID);
+            auto& children = parentEntity.getComponent<SceneGraphComponent>().childrenUUIDs;
+            children.push_back(getCoreUUID());
+        }
 
         bool operator==(const Entity& other) const
         {

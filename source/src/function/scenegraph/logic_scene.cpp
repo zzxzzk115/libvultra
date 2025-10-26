@@ -111,6 +111,8 @@ namespace vultra
             m_Name2CountMap[createName] = 1;
         }
         entity.addComponent<NameComponent>(createName);
+        entity.addComponent<SceneGraphComponent>();
+        entity.addComponent<EntityFlagsComponent>();
 
         (*m_EntityMap)[uuid] = entity;
 
@@ -123,6 +125,8 @@ namespace vultra
 
         entity.addComponent<IDComponent>(uuid);
         entity.addComponent<NameComponent>(name);
+        entity.addComponent<SceneGraphComponent>();
+        entity.addComponent<EntityFlagsComponent>();
 
         (*m_EntityMap)[uuid] = entity;
 
@@ -131,21 +135,21 @@ namespace vultra
 
     void LogicScene::destroyEntity(Entity entity)
     {
-        // // Destroy children
-        // if (entity.hasChildren())
-        // {
-        //     for (const auto& childUUID : entity.getChildrenUUIDs())
-        //     {
-        //         destroyEntity(getEntityWithCoreUUID(childUUID));
-        //     }
-        // }
+        // Destroy children
+        if (entity.hasChildren())
+        {
+            for (const auto& childUUID : entity.getChildrenUUIDs())
+            {
+                destroyEntity(getEntityWithCoreUUID(childUUID));
+            }
+        }
 
-        // // If self has parent, let parent remove self
-        // if (entity.hasParent())
-        // {
-        //     auto parent = getEntityWithCoreUUID(entity.getParentUUID());
-        //     parent.removeChild(entity.getCoreUUID());
-        // }
+        // If self has parent, let parent remove self
+        if (entity.hasParent())
+        {
+            auto parent = getEntityWithCoreUUID(entity.getParentUUID());
+            parent.removeChild(entity.getCoreUUID());
+        }
 
         // Destroy self
         m_EntityMap->erase(entity.getCoreUUID());
@@ -316,9 +320,16 @@ namespace vultra
     {
         std::vector<gfx::Renderable> renderables;
 
-        auto view = m_Registry.view<RawMeshComponent, TransformComponent>();
+        auto view = m_Registry.view<EntityFlagsComponent, RawMeshComponent, TransformComponent>();
         for (auto entity : view)
         {
+            // Skip invisible entities
+            const auto& entityFlagsComp = view.get<EntityFlagsComponent>(entity);
+            if ((entityFlagsComp.flags & static_cast<uint32_t>(EntityFlags::eVisible)) == 0)
+            {
+                continue;
+            }
+
             const auto& meshComponent      = view.get<RawMeshComponent>(entity);
             const auto& transformComponent = view.get<TransformComponent>(entity);
 
@@ -398,22 +409,26 @@ namespace vultra
             entityVector.emplace_back(entity);
         }
 
-        std::sort(entityVector.begin(), entityVector.end(), [this](const auto& a, const auto& b) {
-            const auto& nameA = getNameFromEntity(a);
-            const auto& nameB = getNameFromEntity(b);
-
-            int numberA = extractEntityNumber(nameA);
-            int numberB = extractEntityNumber(nameB);
-
-            if (numberA != 0 && numberB != 0)
-            {
-                return numberA < numberB;
-            }
-
-            return nameA < nameB;
-        });
+        sortEntitiesByName(entityVector);
 
         return entityVector;
+    }
+
+    std::vector<Entity> LogicScene::getRootEntities()
+    {
+        std::vector<Entity> rootEntities;
+
+        for (auto [uuid, entity] : *m_EntityMap)
+        {
+            if (!entity.hasParent())
+            {
+                rootEntities.emplace_back(entity);
+            }
+        }
+
+        sortEntitiesByName(rootEntities);
+
+        return rootEntities;
     }
 
     void LogicScene::createDefaultEntities()
@@ -431,6 +446,24 @@ namespace vultra
         {
             return "Untitled Entity";
         }
+    }
+
+    void LogicScene::sortEntitiesByName(std::vector<Entity>& entities) const
+    {
+        std::sort(entities.begin(), entities.end(), [this](const auto& a, const auto& b) {
+            const auto& nameA = getNameFromEntity(a);
+            const auto& nameB = getNameFromEntity(b);
+
+            int numberA = extractEntityNumber(nameA);
+            int numberB = extractEntityNumber(nameB);
+
+            if (numberA != 0 && numberB != 0)
+            {
+                return numberA < numberB;
+            }
+
+            return nameA < nameB;
+        });
     }
 
     int LogicScene::extractEntityNumber(const std::string& name)
@@ -477,6 +510,8 @@ namespace vultra
     ON_COMPONENT_ADDED(IDComponent) {}
     ON_COMPONENT_ADDED(NameComponent) {}
     ON_COMPONENT_ADDED(TransformComponent) {}
+    ON_COMPONENT_ADDED(SceneGraphComponent) {}
+    ON_COMPONENT_ADDED(EntityFlagsComponent) {}
     ON_COMPONENT_ADDED(CameraComponent) {}
     ON_COMPONENT_ADDED(XrCameraComponent) {}
     ON_COMPONENT_ADDED(DirectionalLightComponent) {}
