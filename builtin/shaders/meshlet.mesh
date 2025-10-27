@@ -34,19 +34,7 @@ layout(buffer_reference, scalar) buffer MeshletBuffer { Meshlet meshlets[]; };
 layout(buffer_reference, scalar) buffer MeshletVertexBuffer { uint meshletVertices[]; };
 layout(buffer_reference, scalar) buffer MeshletTriangleBuffer { uint8_t meshletTriangles[]; };
 
-layout(push_constant) uniform GlobalMeshDataPushConstants {
-	uint64_t vertexBufferAddress;
-    uint64_t meshletBufferAddress;
-    uint64_t meshletVertexBufferAddress;
-    uint64_t meshletTriangleBufferAddress;
-
-    uint meshletCount;
-	uint enableNormalMapping;
-	uint debugMode; // 0: meshlet ID, 1: material index
-	uint padding1;
-
-    mat4 modelMatrix;
-} g_Mesh;
+#include "resources/global_meshlet_data.glsl"
 
 out PerVertex {
     layout(location = 0) flat uint meshletID;

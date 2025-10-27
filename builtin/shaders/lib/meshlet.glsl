@@ -22,19 +22,7 @@ layout(location = 5) in vec4 tangent;
 
 layout(set = 2, binding = 1) uniform sampler2D textures[];
 
-layout(push_constant) uniform GlobalMeshDataPushConstants {
-	uint64_t vertexBufferAddress;
-    uint64_t meshletBufferAddress;
-    uint64_t meshletVertexBufferAddress;
-    uint64_t meshletTriangleBufferAddress;
-
-    uint meshletCount;
-	uint enableNormalMapping;
-	uint debugMode;
-	uint padding1;
-
-	mat4 modelMatrix;
-} g_Mesh;
+#include "resources/global_meshlet_data.glsl"
 
 layout (location = 0) out vec3 g_Albedo;
 layout (location = 1) out vec3 g_Normal;

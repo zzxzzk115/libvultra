@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
+#include "vultra/function/renderer/builtin/mesh_constants.hpp"
 #include "vultra/function/renderer/builtin/resources/camera_data.hpp"
 #include "vultra/function/renderer/builtin/resources/depth_pre_data.hpp"
 #include "vultra/function/renderer/builtin/resources/gbuffer_data.hpp"
@@ -21,23 +22,6 @@ namespace vultra
 {
     namespace gfx
     {
-        struct GlobalMeshDataPushConstants
-        {
-            uint64_t vertexBufferAddress;
-            uint64_t meshletBufferAddress;
-            uint64_t meshletVertexBufferAddress;
-            uint64_t meshletTriangleBufferAddress;
-
-            uint32_t meshletCount;
-            uint32_t enableNormalMapping;
-            uint32_t debugMode;
-            uint32_t padding1;
-
-            glm::mat4 modelMatrix;
-        };
-        static_assert(sizeof(GlobalMeshDataPushConstants) % 16 == 0,
-                      "Push constants size must be multiple of 16 bytes");
-
         const rhi::SPIRV& getMeshletFragmentShader(bool earlyZ)
         {
             if (earlyZ)
@@ -182,7 +166,7 @@ namespace vultra
                                 continue;
                             }
 
-                            GlobalMeshDataPushConstants pushConstants {
+                            GlobalMeshletDataPushConstants pushConstants {
                                  .vertexBufferAddress          = sm.vertexBufferAddress,
                                  .meshletBufferAddress         = sm.meshletBufferAddress,
                                  .meshletVertexBufferAddress   = sm.meshletVertexBufferAddress,
@@ -227,7 +211,7 @@ namespace vultra
                                 continue;
                             }
 
-                            GlobalMeshDataPushConstants pushConstants {
+                            GlobalMeshletDataPushConstants pushConstants {
                                  .vertexBufferAddress          = sm.vertexBufferAddress,
                                  .meshletBufferAddress         = sm.meshletBufferAddress,
                                  .meshletVertexBufferAddress   = sm.meshletVertexBufferAddress,

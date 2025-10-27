@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
+#include "vultra/function/renderer/builtin/mesh_constants.hpp"
 #include "vultra/function/renderer/builtin/resources/camera_data.hpp"
 #include "vultra/function/renderer/builtin/resources/depth_pre_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
@@ -71,22 +72,7 @@ namespace vultra
                                 continue;
                             }
 
-                            struct GlobalMeshDataPushConstants
-                            {
-                                uint64_t vertexBufferAddress;
-                                uint64_t meshletBufferAddress;
-                                uint64_t meshletVertexBufferAddress;
-                                uint64_t meshletTriangleBufferAddress;
-
-                                uint32_t meshletCount;
-                                uint32_t enableNormalMapping;
-                                uint32_t padding0;
-                                uint32_t padding1;
-
-                                glm::mat4 modelMatrix;
-                            };
-
-                            GlobalMeshDataPushConstants pushConstants {
+                            GlobalMeshletDataPushConstants pushConstants {
                                 .vertexBufferAddress          = sm.vertexBufferAddress,
                                 .meshletBufferAddress         = sm.meshletBufferAddress,
                                 .meshletVertexBufferAddress   = sm.meshletVertexBufferAddress,
