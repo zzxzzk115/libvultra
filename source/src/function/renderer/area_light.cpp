@@ -2,6 +2,7 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/renderer/default_vertex.hpp"
+#include "vultra/function/renderer/mesh_utils.hpp"
 #include "vultra/function/scenegraph/components.hpp"
 
 #include <glm/ext/matrix_transform.hpp>
@@ -40,7 +41,7 @@ namespace vultra
             float     width     = lightComponent.width;
             float     height    = lightComponent.height;
 
-            glm::vec3 center = lightTransform.position;
+            glm::vec3 center      = lightTransform.position;
             glm::vec3 halfExtents = glm::vec3(width * 0.5f, height * 0.5f, 0.0f);
 
             vertices[0].position = glm::vec3(transform * glm::vec4(-halfExtents.x, -halfExtents.y, 0.0f, 1.0f));
@@ -81,14 +82,24 @@ namespace vultra
 
             outMesh->aabb = AABB::build(vertices);
 
-            // Build the render mesh for ray tracing or ray query if supported
+            // Generate meshlets
+            generateMeshlets(*outMesh);
+
+            outMesh->buildMaterialBuffer(rd);
+
+            // Build meshlet buffers for each sub-mesh
+            for (auto& sm : outMesh->subMeshes)
+            {
+                sm.buildMeshletBuffers(rd);
+            }
+
+            // Build the render mesh for ray tracing, ray query or mesh shading if supported
             if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
-                HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayQuery))
+                HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayQuery) ||
+                HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eMeshShader))
             {
                 outMesh->buildRenderMesh(rd);
             }
-
-            outMesh->buildMaterialBuffer(rd);
 
             return outMesh;
         }

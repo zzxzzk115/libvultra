@@ -62,7 +62,7 @@ void main()
     }
 
 	vec3 albedo = mat.albedoIndex > 0 ? sRGBToLinear(textureGrad(textures[nonuniformEXT(mat.albedoIndex)], texCoord, duvdx, duvdy).rgb) : sRGBToLinear(mat.baseColor.rgb);
-    vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(textureGrad(textures[nonuniformEXT(mat.emissiveIndex)], texCoord, duvdx, duvdy).rgb) : mat.emissiveColorIntensity.rgb * mat.emissiveColorIntensity.a;
+    vec3 emissive = mat.emissiveIndex > 0 ? sRGBToLinear(textureGrad(textures[nonuniformEXT(mat.emissiveIndex)], texCoord, duvdx, duvdy).rgb) : mat.emissiveColorIntensity.rgb * clamp01(mat.emissiveColorIntensity.a);
     vec3 normal = textureGrad(textures[nonuniformEXT(mat.normalIndex)], texCoord, duvdx, duvdy).rgb;
     normal = normalize(normal * 2.0 - 1.0); // normal map
     normal = mat.normalIndex > 0 && g_Mesh.enableNormalMapping == 1 ? normalize(tbn * normal) : tbn[2];

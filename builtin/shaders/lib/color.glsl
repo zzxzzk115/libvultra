@@ -29,6 +29,14 @@ vec3 sRGBToLinear(vec3 color) {
 }
 vec4 sRGBToLinear(vec4 color) { return vec4(sRGBToLinear(color.rgb), color.a); }
 
+bool isHDR(vec3 color) {
+    return max(color.r, max(color.g, color.b)) > 1.0;
+}
+
+bool isHDR(vec4 color) {
+    return isHDR(color.rgb);
+}
+
 vec3 toneMappingKhronosPbrNeutral(vec3 color)
 {
     const float startCompression = 0.8 - 0.04;

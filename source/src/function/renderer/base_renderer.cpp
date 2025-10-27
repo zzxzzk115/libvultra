@@ -95,7 +95,7 @@ namespace vultra
                     primitive.renderSubMesh      = subMesh;
                     primitive.renderSubMeshIndex = i;
 
-                    auto material = renderable.mesh->materials[subMesh.materialIndex];
+                    const auto& material = renderable.mesh->materials[subMesh.materialIndex];
 
                     if (material.isDecal())
                     {
