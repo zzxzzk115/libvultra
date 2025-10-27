@@ -311,7 +311,7 @@ namespace vultra
                 ImGuiStyle& style       = ImGui::GetStyle();
                 float       minWinSizeX = style.WindowMinSize.x;
                 float       minWinSizeY = style.WindowMinSize.y;
-                style.WindowMinSize.x   = 350.0f;
+                style.WindowMinSize.x   = 240.0f;
                 style.WindowMinSize.y   = 120.0f;
                 ImGuiID dockSpaceId     = ImGui::GetID("DockSpace");
                 ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), dockSpaceFlags);
