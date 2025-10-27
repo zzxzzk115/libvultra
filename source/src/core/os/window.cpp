@@ -37,6 +37,8 @@ namespace vultra
             return *this;
         }
 
+        float Window::getPrimaryDisplayScale() { return SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay()); }
+
         Window& Window::setTitle(const std::string_view title)
         {
             m_Title = title;
@@ -99,6 +101,13 @@ namespace vultra
         bool Window::isResizable() const { return m_Resizable; }
 
         bool Window::isFullscreen() const { return m_Fullscreen; }
+
+        float Window::getDisplayScale() const
+        {
+            // int displayIndex = SDL_GetDisplayForWindow(m_SDL3WindowHandle);
+            // return SDL_GetDisplayContentScale(displayIndex);
+            return SDL_GetWindowDisplayScale(m_SDL3WindowHandle);
+        }
 
         bool Window::shouldClose() const { return m_ShouldClose; }
 
@@ -292,7 +301,9 @@ namespace vultra
             }
 
             // Create SDL window
-            m_SDL3WindowHandle = SDL_CreateWindow(m_Title.c_str(), m_Extent.x, m_Extent.y, windowFlags);
+            float main_scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+            m_SDL3WindowHandle =
+                SDL_CreateWindow(m_Title.c_str(), m_Extent.x * main_scale, m_Extent.y * main_scale, windowFlags);
             if (m_SDL3WindowHandle == nullptr)
             {
                 VULTRA_CORE_ERROR("[Window] Failed to create SDL3 window, Error:{}", SDL_GetError());

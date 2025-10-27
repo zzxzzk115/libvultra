@@ -236,6 +236,12 @@ namespace vultra
 
             setImGuiStyle();
 
+            // High-DPI support
+            float displayScale = window.getPrimaryDisplayScale();
+            auto& style        = ImGui::GetStyle();
+            style.ScaleAllSizes(displayScale);
+            style.FontScaleDpi = displayScale;
+
             // Setup Platform/Renderer backends
             // https://github.com/ocornut/imgui/issues/8282#issuecomment-2597934394
             static vk::Format colorFormat = static_cast<vk::Format>(swapchain.getPixelFormat());

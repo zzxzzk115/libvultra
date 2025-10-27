@@ -23,6 +23,8 @@ namespace vultra
             using Extent   = glm::ivec2;
             using Position = glm::ivec2;
 
+            [[nodiscard]] static float getPrimaryDisplayScale();
+
             Window& setTitle(std::string_view title);
             Window& setExtent(Extent extent);
             Window& setPosition(Position position);
@@ -37,6 +39,8 @@ namespace vultra
             [[nodiscard]] bool             getCursorVisibility() const;
             [[nodiscard]] bool             isResizable() const;
             [[nodiscard]] bool             isFullscreen() const;
+
+            [[nodiscard]] float        getDisplayScale() const;
 
             [[nodiscard]] bool shouldClose() const;
             [[nodiscard]] bool isMinimized() const;
