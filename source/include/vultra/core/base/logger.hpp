@@ -24,7 +24,8 @@ namespace vultra
             eInfo,
             eWarn,
             eError,
-            eCritical
+            eCritical,
+            eMaxLevels
         };
 
         Logger& setLevel(Level);
