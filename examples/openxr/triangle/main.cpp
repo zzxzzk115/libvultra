@@ -92,7 +92,7 @@ public:
 
     void onImGui() override
     {
-        ImGui::Begin("OpenXR Example");
+        ImGui::Begin("OpenXR Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Text("This is a simple OpenXR example with RHI triangle rendering.");
 
         const auto& xrDevice             = m_RenderDevice->getXRDevice();

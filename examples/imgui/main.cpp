@@ -98,7 +98,7 @@ public:
     void onImGui() override
     {
         ImGui::ShowDemoWindow();
-        ImGui::Begin("Example Window");
+        ImGui::Begin("Example Window", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Text("Hello, world!");
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");

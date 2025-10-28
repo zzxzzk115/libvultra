@@ -7,6 +7,8 @@
 #include <magic_enum/magic_enum.hpp>
 // NOLINTEND
 
+#include <functional>
+
 namespace vultra
 {
     namespace rhi
@@ -26,9 +28,10 @@ namespace vultra
             static void initImGui(const rhi::RenderDevice&,
                                   const rhi::Swapchain&,
                                   const os::Window&,
-                                  bool        enableMultiviewport,
-                                  bool        enableDocking,
-                                  const char* imguiIniFile = nullptr);
+                                  bool                                    enableMultiviewport,
+                                  bool                                    enableDocking,
+                                  const char*                             imguiIniFile,
+                                  std::function<void(ImGuiDockNodeFlags)> setDockSpace = nullptr);
 
             static void processEvent(const os::GeneralWindowEvent& event);
             static void begin();
@@ -36,6 +39,9 @@ namespace vultra
             static void end();
             static void postRender();
             static void shutdown();
+
+        private:
+            static std::function<void(ImGuiDockNodeFlags)> s_SetDockSpace;
         };
 
         using ImGuiTextureID = VkDescriptorSet;
@@ -132,6 +138,6 @@ namespace vultra
         void DrawVec3Control(const std::string& label,
                              glm::vec3&         values,
                              float              resetValue  = 0.0f,
-                             float              columnWidth = 100.0f);
+                             float              columnWidth = 80.0f);
     } // namespace ImGuiExt
 } // namespace vultra

@@ -2,12 +2,18 @@
 
 #include "vultra/function/app/base_app.hpp"
 
+#include <functional>
+
+using ImGuiDockNodeFlags = int;
+
 namespace vultra
 {
     struct ImGuiConfig
     {
-        bool enableMultiviewport {true};
-        bool enableDocking {true};
+        bool                                    enableMultiviewport {true};
+        bool                                    enableDocking {true};
+        const char*                             imguiIniFile {"imgui.ini"};
+        std::function<void(ImGuiDockNodeFlags)> setDockSpace {nullptr};
     };
 
     class ImGuiApp : public BaseApp

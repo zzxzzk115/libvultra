@@ -306,8 +306,8 @@ public:
                          .build(*m_RenderDevice);
 
         // Create output image
-        rhi::Extent2D extent {static_cast<uint32_t>(m_Window.getExtent().x),
-                              static_cast<uint32_t>(m_Window.getExtent().y)};
+        rhi::Extent2D extent {static_cast<uint32_t>(m_Window.getFrameBufferExtent().x),
+                              static_cast<uint32_t>(m_Window.getFrameBufferExtent().y)};
         m_OutputImage = rhi::Texture::Builder {}
                             .setExtent(extent)
                             .setPixelFormat(rhi::PixelFormat::eRGBA16F)
@@ -375,7 +375,8 @@ public:
 
     void onImGui() override
     {
-        ImGui::Begin("Raytracing Cornell Box Example");
+        ImGui::Begin("Raytracing Cornell Box Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Text("This is a simple raytracing example rendering the Cornell Box scene.");
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");
         if (ImGui::IsItemClicked())
@@ -423,12 +424,12 @@ public:
                 .bind(3, rhi::bindings::StorageBuffer {.buffer = &m_GeometryNodeBuffer})
                 .build(m_Pipeline.getDescriptorSetLayout(0));
 
-        glm::vec3 camPos = glm::vec3(0.0f, 1.0f, 4.0f);
-        glm::mat4 projection =
-            glm::perspective(glm::radians(45.0f),
-                             static_cast<float>(m_Window.getExtent().x) / static_cast<float>(m_Window.getExtent().y),
-                             0.1f,
-                             100.0f);
+        glm::vec3 camPos     = glm::vec3(0.0f, 1.0f, 4.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(45.0f),
+                                                static_cast<float>(m_Window.getFrameBufferExtent().x) /
+                                                    static_cast<float>(m_Window.getFrameBufferExtent().y),
+                                                0.1f,
+                                                100.0f);
         projection[1][1] *= -1; // Flip Y for Vulkan
         glm::mat4 view        = glm::lookAt(camPos, glm::vec3(camPos.x, camPos.y, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 viewProj    = projection * view;
@@ -464,7 +465,7 @@ public:
             .pushConstants(rhi::ShaderStages::eRayGen | rhi::ShaderStages::eMiss | rhi::ShaderStages::eClosestHit,
                            0,
                            &pushConstants)
-            .traceRays(*m_Pipeline.getSBT(*m_RenderDevice), {m_Window.getExtent(), 1});
+            .traceRays(*m_Pipeline.getSBT(*m_RenderDevice), {m_Window.getFrameBufferExtent(), 1});
 
         cb.blit(m_OutputImage, rtv.texture, vk::Filter::eLinear);
 

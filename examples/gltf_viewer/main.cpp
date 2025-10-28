@@ -48,7 +48,7 @@ public:
 
     void onImGui() override
     {
-        ImGui::Begin("GLTF Viewer");
+        ImGui::Begin("GLTF Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         m_EnableOrbitCamera = !ImGui::IsItemHovered() && !ImGui::IsAnyItemActive();
 
         m_Renderer.onImGui();

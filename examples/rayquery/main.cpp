@@ -126,7 +126,7 @@ public:
                 .build(*m_RenderDevice);
 
         // Create depth texture
-        const auto&   extent = m_Window.getExtent();
+        const auto&   extent = m_Window.getFrameBufferExtent();
         rhi::Extent2D extent2D {static_cast<uint32_t>(extent.x), static_cast<uint32_t>(extent.y)};
         m_DepthTexture = rhi::Texture::Builder {}
                              .setExtent(extent2D)
@@ -144,7 +144,7 @@ public:
 
     void onImGui() override
     {
-        ImGui::Begin("RayQuery Example");
+        ImGui::Begin("RayQuery Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         m_FPSCamera->enableCameraControl(!ImGui::IsWindowHovered());
 
         m_FPSCamera->onImGui();

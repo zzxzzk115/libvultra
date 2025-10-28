@@ -58,7 +58,7 @@ public:
 
     void onImGui() override
     {
-        ImGui::Begin("OpenXR Sponza Example");
+        ImGui::Begin("OpenXR Sponza Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Text("This is a simple OpenXR example that renders the Sponza scene.");
 
         const auto& xrDevice             = m_RenderDevice->getXRDevice();

@@ -171,8 +171,8 @@ public:
         m_SBT = m_RenderDevice->createShaderBindingTable(m_Pipeline);
 
         // Create output image
-        rhi::Extent2D extent {static_cast<uint32_t>(m_Window.getExtent().x),
-                              static_cast<uint32_t>(m_Window.getExtent().y)};
+        rhi::Extent2D extent {static_cast<uint32_t>(m_Window.getFrameBufferExtent().x),
+                              static_cast<uint32_t>(m_Window.getFrameBufferExtent().y)};
         m_OutputImage = rhi::Texture::Builder {}
                             .setExtent(extent)
                             .setPixelFormat(rhi::PixelFormat::eRGBA16F)
@@ -185,7 +185,8 @@ public:
 
     void onImGui() override
     {
-        ImGui::Begin("Raytracing Triangle Example");
+        ImGui::Begin("Raytracing Triangle Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Text("This is a simple raytracing example rendering a triangle.");
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");
         if (ImGui::IsItemClicked())
@@ -236,7 +237,7 @@ public:
         cb.bindPipeline(m_Pipeline)
             .bindDescriptorSet(0, descriptorSet)
             .pushConstants(rhi::ShaderStages::eMiss, 0, &missColor)
-            .traceRays(m_SBT, {m_Window.getExtent(), 1});
+            .traceRays(m_SBT, {m_Window.getFrameBufferExtent(), 1});
 
         cb.blit(m_OutputImage, rtv.texture, vk::Filter::eLinear);
 

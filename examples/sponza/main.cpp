@@ -92,7 +92,7 @@ public:
 
     void onImGui() override
     {
-        ImGui::Begin("Sponza Example");
+        ImGui::Begin("Sponza Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         m_FPSCamera->enableCameraControl(!ImGui::IsWindowHovered());
 
         ImGuiExt::Combo("Renderer Type", m_Renderer.getSettings().rendererType);

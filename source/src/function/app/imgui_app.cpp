@@ -8,8 +8,13 @@ namespace vultra
                        const ImGuiConfig&       imguiConfig,
                        std::optional<glm::vec4> clearColor) : BaseApp {args, appConfig}, m_ClearColor(clearColor)
     {
-        imgui::ImGuiRenderer::initImGui(
-            *m_RenderDevice, m_Swapchain, m_Window, imguiConfig.enableMultiviewport, imguiConfig.enableDocking);
+        imgui::ImGuiRenderer::initImGui(*m_RenderDevice,
+                                        m_Swapchain,
+                                        m_Window,
+                                        imguiConfig.enableMultiviewport,
+                                        imguiConfig.enableDocking,
+                                        imguiConfig.imguiIniFile,
+                                        imguiConfig.setDockSpace);
     }
 
     ImGuiApp::~ImGuiApp() { imgui::ImGuiRenderer::shutdown(); }

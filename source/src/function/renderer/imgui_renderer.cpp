@@ -12,6 +12,8 @@
 #include <imgui_impl_vulkan.h>
 #include <imgui_internal.h>
 
+#include <filesystem>
+
 namespace vultra
 {
     namespace imgui
@@ -154,12 +156,15 @@ namespace vultra
             }
         } // namespace
 
-        void ImGuiRenderer::initImGui(const rhi::RenderDevice& rd,
-                                      const rhi::Swapchain&    swapchain,
-                                      const os::Window&        window,
-                                      const bool               enableMultiviewport,
-                                      const bool               enableDocking,
-                                      const char*              imguiIniFile)
+        std::function<void(ImGuiDockNodeFlags)> ImGuiRenderer::s_SetDockSpace;
+
+        void ImGuiRenderer::initImGui(const rhi::RenderDevice&                rd,
+                                      const rhi::Swapchain&                   swapchain,
+                                      const os::Window&                       window,
+                                      const bool                              enableMultiviewport,
+                                      const bool                              enableDocking,
+                                      const char*                             imguiIniFile,
+                                      std::function<void(ImGuiDockNodeFlags)> setDockSpace)
         {
             // Setup Dear ImGui context
             IMGUI_CHECKVERSION();
@@ -181,10 +186,8 @@ namespace vultra
                 io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
             }
 #endif
-            if (imguiIniFile)
-            {
-                io.IniFilename = imguiIniFile;
-            }
+            io.IniFilename = imguiIniFile;
+            s_SetDockSpace = setDockSpace;
 
 #ifdef IMGUI_HAS_VIEWPORT
             if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
@@ -196,12 +199,12 @@ namespace vultra
 #endif
 
             // Add TTF Fonts & Icon Fonts
-            ImFontConfig fontConfg {};
-            fontConfg.MergeMode   = false;
-            fontConfg.PixelSnapH  = true;
-            fontConfg.OversampleH = fontConfg.OversampleV = 1;
-            fontConfg.GlyphMinAdvanceX                    = 4.0f;
-            fontConfg.SizePixels                          = 12.0f;
+            ImFontConfig fontConfig {};
+            fontConfig.MergeMode   = false;
+            fontConfig.PixelSnapH  = true;
+            fontConfig.OversampleH = fontConfig.OversampleV = 1;
+            fontConfig.GlyphMinAdvanceX                     = 4.0f;
+            fontConfig.SizePixels                           = 12.0f;
 
             static const ImWchar ranges[] = {
                 0x0020,
@@ -215,7 +218,7 @@ namespace vultra
 
             // Roboto
             io.Fonts->AddFontFromMemoryCompressedTTF(
-                RobotoRegular_compressed_data, RobotoRegular_compressed_size, fontSize, &fontConfg, ranges);
+                RobotoRegular_compressed_data, RobotoRegular_compressed_size, fontSize, &fontConfig, ranges);
 
             // https://github.com/ocornut/imgui/issues/3247
             static const ImWchar iconsRanges[] = {ICON_MIN_MDI, ICON_MAX_MDI, 0};
@@ -230,15 +233,15 @@ namespace vultra
                                            iconsRanges);
 
             io.Fonts->AddFontFromMemoryCompressedTTF(
-                RobotoBold_compressed_data, RobotoBold_compressed_size, fontSize + 2.0f, &fontConfg, ranges);
+                RobotoBold_compressed_data, RobotoBold_compressed_size, fontSize + 2.0f, &fontConfig, ranges);
 
             io.Fonts->AddFontFromMemoryCompressedTTF(
-                RobotoRegular_compressed_data, RobotoRegular_compressed_size, fontSize * 0.8f, &fontConfg, ranges);
+                RobotoRegular_compressed_data, RobotoRegular_compressed_size, fontSize * 0.8f, &fontConfig, ranges);
 
             setImGuiStyle();
 
             // High-DPI support
-            float displayScale = window.getPrimaryDisplayScale();
+            float displayScale = os::Window::getPrimaryDisplayScale();
             auto& style        = ImGui::GetStyle();
             style.ScaleAllSizes(displayScale);
             style.FontScaleDpi = displayScale;
@@ -307,18 +310,20 @@ namespace vultra
                 ImGui::Begin("DockSpaceWindow", &dockSpaceOpen, windowFlags);
                 ImGui::PopStyleVar(3);
 
-                // DockSpace
-
-                ImGuiStyle& style       = ImGui::GetStyle();
-                float       minWinSizeX = style.WindowMinSize.x;
-                float       minWinSizeY = style.WindowMinSize.y;
-                style.WindowMinSize.x   = 240.0f;
-                style.WindowMinSize.y   = 120.0f;
-                ImGuiID dockSpaceId     = ImGui::GetID("DockSpace");
-                ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), dockSpaceFlags);
-
-                style.WindowMinSize.x = minWinSizeX;
-                style.WindowMinSize.y = minWinSizeY;
+                if (s_SetDockSpace)
+                {
+                    s_SetDockSpace(dockSpaceFlags);
+                }
+                else
+                {
+                    // Default DockSpace
+                    float   displayScale = os::Window::getPrimaryDisplayScale();
+                    ImGuiID dockSpaceId  = ImGui::GetID("DockSpace");
+                    ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize,
+                                        ImVec2(displayScale * 320.0f, displayScale * 240.0f));
+                    ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), dockSpaceFlags);
+                    ImGui::PopStyleVar();
+                }
             }
 #endif
         }
@@ -460,6 +465,9 @@ namespace vultra
     {
         void DrawVec3Control(const std::string& label, glm::vec3& values, float resetValue, float columnWidth)
         {
+            float displayScale = os::Window::getPrimaryDisplayScale();
+            columnWidth *= displayScale;
+
             ImGuiIO& io       = ImGui::GetIO();
             auto*    boldFont = io.Fonts->Fonts[0];
 
