@@ -20,6 +20,7 @@
 #include "vultra/function/renderer/builtin/resources/ibl_data.hpp"
 #include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
+#include "vultra/function/scenegraph/component_utils.hpp"
 #include "vultra/function/scenegraph/entity.hpp"
 #include "vultra/function/scenegraph/logic_scene.hpp"
 
@@ -258,29 +259,8 @@ namespace vultra
                     auto& camTransform = mainCamera.getComponent<TransformComponent>();
                     auto& camComponent = mainCamera.getComponent<CameraComponent>();
 
-                    m_CameraInfo.view = glm::lookAt(
-                        camTransform.position, camTransform.position + camTransform.forward(), camTransform.up());
-
-                    if (camComponent.projection == CameraProjection::ePerspective)
-                    {
-                        m_CameraInfo.projection = glm::perspective(glm::radians(camComponent.fov),
-                                                                   static_cast<float>(camComponent.viewPortWidth) /
-                                                                       static_cast<float>(camComponent.viewPortHeight),
-                                                                   camComponent.zNear,
-                                                                   camComponent.zFar);
-                    }
-                    else
-                    {
-                        m_CameraInfo.projection = glm::ortho(0.0f,
-                                                             static_cast<float>(camComponent.viewPortWidth),
-                                                             static_cast<float>(camComponent.viewPortHeight),
-                                                             0.0f,
-                                                             camComponent.zNear,
-                                                             camComponent.zFar);
-                    }
-
-                    // Vulkan projection correction
-                    m_CameraInfo.projection[1][1] *= -1;
+                    m_CameraInfo.view       = getCameraViewMatrix(camTransform);
+                    m_CameraInfo.projection = getCameraProjectionMatrix(camComponent);
 
                     m_CameraInfo.zNear                     = camComponent.zNear;
                     m_CameraInfo.zFar                      = camComponent.zFar;

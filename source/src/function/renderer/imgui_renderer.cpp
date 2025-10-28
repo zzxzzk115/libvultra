@@ -7,12 +7,11 @@
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiAl/fonts/RobotoBold.inl>
 #include <ImGuiAl/fonts/RobotoRegular.inl>
+#include <ImGuizmo/ImGuizmo.h>
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
 #include <imgui_internal.h>
-
-#include <filesystem>
 
 namespace vultra
 {
@@ -281,6 +280,7 @@ namespace vultra
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplSDL3_NewFrame();
             ImGui::NewFrame();
+            ImGuizmo::BeginFrame();
 
 #ifdef IMGUI_HAS_DOCK
             ImGuiIO& io = ImGui::GetIO();

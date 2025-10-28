@@ -18,7 +18,7 @@ target("IconFontCppHeaders")
 
 target("imgui-ext")
     set_kind("static")
-    add_headerfiles("imgui-ext/**.h")
+    add_headerfiles("imgui-ext/**.h", "imgui-ext/**.hpp")
     add_files("imgui-ext/**.cpp")
     add_includedirs("imgui-ext", {public = true}) -- public: let other targets to auto include
     add_packages("imgui", {public = true})
