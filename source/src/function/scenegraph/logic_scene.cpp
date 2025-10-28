@@ -156,7 +156,11 @@ namespace vultra
         m_Registry.destroy(entity);
     }
 
-    Entity LogicScene::getEntityWithCoreUUID(CoreUUID id) const { return m_EntityMap->at(id); }
+    Entity LogicScene::getEntityWithCoreUUID(CoreUUID id) const
+    {
+        auto it = m_EntityMap->find(id);
+        return it != m_EntityMap->end() ? it->second : Entity();
+    }
 
     Entity LogicScene::getEntityWithName(const std::string& name)
     {
