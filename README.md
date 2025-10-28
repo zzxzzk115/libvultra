@@ -1,7 +1,7 @@
 # libvultra
 
 <h4 align="center">
-  libvultra is the core library of Vultra, which can be used for rapidly creating graphics or game prototypes without the VultraEditor.
+  libvultra is the core library of <a href="https://github.com/zzxzzk115/Vultra" target="_blank" rel="noopener noreferrer">Vultra</a>, which can be used for rapidly creating graphics or game prototypes without the VultraEditor.
 </h4>
 
 <p align="center">
