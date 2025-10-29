@@ -19,13 +19,13 @@ namespace vultra
         template<typename Event, typename Class, auto Method>
         void subscribe(Class& instance)
         {
-            m_Dispatcher.sink<Event>().connect<Method>(instance);
+            m_Dispatcher.sink<Event>().template connect<Method>(instance);
         }
 
         template<typename Event, typename Class, auto Method>
         void unsubscribe(Class& instance)
         {
-            m_Dispatcher.sink<Event>().disconnect<Method>(instance);
+            m_Dispatcher.sink<Event>().template disconnect<Method>(instance);
         }
 
         template<typename Event, typename... Args>
