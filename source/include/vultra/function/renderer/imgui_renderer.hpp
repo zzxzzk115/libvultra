@@ -139,5 +139,25 @@ namespace vultra
                              glm::vec3&         values,
                              float              resetValue  = 0.0f,
                              float              columnWidth = 80.0f);
+
+        class RenamePopupWidget
+        {
+        public:
+            RenamePopupWidget() = default;
+
+            void open(const char* currentName);
+            void close();
+
+            void setRenameCallback(std::function<void(const char*)> callback);
+
+            void onImGui(const char* title);
+
+        private:
+            char                             m_RenameBuffer[256] {0};
+            bool                             m_IsOpen {false};
+            bool                             m_RequestOpen {false};
+            bool                             m_IsFirstFrame {true};
+            std::function<void(const char*)> m_RenameCallback;
+        };
     } // namespace ImGuiExt
 } // namespace vultra

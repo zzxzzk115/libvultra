@@ -532,5 +532,62 @@ namespace vultra
 
             ImGui::Spacing();
         }
+
+        void RenamePopupWidget::open(const char* currentName)
+        {
+            strncpy(m_RenameBuffer, currentName, sizeof(m_RenameBuffer));
+            m_IsOpen = true;
+        }
+
+        void RenamePopupWidget::close()
+        {
+            m_IsOpen       = false;
+            m_IsFirstFrame = true;
+            ImGui::CloseCurrentPopup();
+        }
+
+        void RenamePopupWidget::setRenameCallback(std::function<void(const char*)> callback)
+        {
+            m_RenameCallback = callback;
+        }
+
+        void RenamePopupWidget::onImGui(const char* title)
+        {
+            if (!m_IsOpen)
+                return;
+
+            ImGui::OpenPopup(title);
+
+            if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                if (m_IsFirstFrame)
+                {
+                    ImGui::SetKeyboardFocusHere(0);
+                    m_IsFirstFrame = false;
+                }
+
+                ImGui::Separator();
+                ImGui::InputText("##rename_input",
+                                 m_RenameBuffer,
+                                 IM_ARRAYSIZE(m_RenameBuffer),
+                                 ImGuiInputTextFlags_EnterReturnsTrue);
+
+                if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::Button("OK"))
+                {
+                    if (m_RenameCallback)
+                        m_RenameCallback(m_RenameBuffer);
+                    close();
+                }
+
+                ImGui::SameLine();
+
+                if (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::Button("Cancel"))
+                {
+                    close();
+                }
+
+                ImGui::EndPopup();
+            }
+        }
     } // namespace ImGuiExt
 } // namespace vultra
