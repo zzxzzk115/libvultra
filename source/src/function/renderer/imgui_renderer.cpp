@@ -12,6 +12,7 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
 #include <imgui_internal.h>
+#include <implot/implot.h>
 
 namespace vultra
 {
@@ -168,6 +169,7 @@ namespace vultra
             // Setup Dear ImGui context
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
+            ImPlot::CreateContext();
             ImGuiIO& io = ImGui::GetIO();
 
 #ifdef IMGUI_HAS_DOCK
@@ -371,6 +373,7 @@ namespace vultra
         {
             ImGui_ImplVulkan_Shutdown();
             ImGui_ImplSDL3_Shutdown();
+            ImPlot::DestroyContext();
             ImGui::DestroyContext();
         }
 
