@@ -589,5 +589,55 @@ namespace vultra
                 ImGui::EndPopup();
             }
         }
+
+        void AsyncProgressWidget::open(const char* message)
+        {
+            m_Message = message;
+            m_IsOpen  = true;
+        }
+
+        void AsyncProgressWidget::close()
+        {
+            m_IsOpen       = false;
+            m_IsFirstFrame = true;
+            ImGui::CloseCurrentPopup();
+        }
+
+        void AsyncProgressWidget::setFuture(std::future<void>&& future) { m_Future = std::move(future); }
+
+        void AsyncProgressWidget::setFinishedCallback(std::function<void()> callback) { m_FinishedCallback = callback; }
+
+        void AsyncProgressWidget::onImGui(const char* title, const char* overlay)
+        {
+            if (!m_IsOpen)
+                return;
+
+            ImGui::OpenPopup(title);
+
+            if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            {
+                if (m_IsFirstFrame)
+                {
+                    ImGui::SetKeyboardFocusHere(0);
+                    m_IsFirstFrame = false;
+                }
+
+                ImGui::ProgressBar(-1.0f * static_cast<float>(ImGui::GetTime()), ImVec2(0.0f, 0.0f), overlay);
+
+                if (m_Future.valid())
+                {
+                    auto status = m_Future.wait_for(std::chrono::milliseconds(0));
+                    if (status == std::future_status::ready)
+                    {
+                        m_Future.get(); // To propagate exceptions if any
+                        if (m_FinishedCallback)
+                            m_FinishedCallback();
+                        close();
+                    }
+                }
+
+                ImGui::EndPopup();
+            }
+        }
     } // namespace ImGuiExt
 } // namespace vultra

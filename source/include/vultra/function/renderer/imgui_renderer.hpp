@@ -8,6 +8,7 @@
 // NOLINTEND
 
 #include <functional>
+#include <future>
 
 namespace vultra
 {
@@ -158,6 +159,29 @@ namespace vultra
             bool                             m_RequestOpen {false};
             bool                             m_IsFirstFrame {true};
             std::function<void(const char*)> m_RenameCallback;
+        };
+
+        class AsyncProgressWidget
+        {
+        public:
+            AsyncProgressWidget() = default;
+
+            void open(const char* message);
+            void close();
+
+            void setFuture(std::future<void>&& future);
+            void setFinishedCallback(std::function<void()> callback);
+
+            void onImGui(const char* title, const char* overlay);
+
+        private:
+            std::string m_Message;
+            bool        m_IsOpen {false};
+            bool        m_RequestOpen {false};
+            bool        m_IsFirstFrame {true};
+
+            std::future<void>     m_Future;
+            std::function<void()> m_FinishedCallback;
         };
     } // namespace ImGuiExt
 } // namespace vultra
