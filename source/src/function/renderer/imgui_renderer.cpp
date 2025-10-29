@@ -533,10 +533,12 @@ namespace vultra
             ImGui::Spacing();
         }
 
+        RenamePopupWidget::RenamePopupWidget() : m_IsOpen(false), m_IsFirstFrame(true) { m_RenameBuffer.reserve(256); }
+
         void RenamePopupWidget::open(const char* currentName)
         {
-            strncpy(m_RenameBuffer, currentName, sizeof(m_RenameBuffer));
-            m_IsOpen = true;
+            m_RenameBuffer = currentName;
+            m_IsOpen       = true;
         }
 
         void RenamePopupWidget::close()
@@ -568,14 +570,16 @@ namespace vultra
 
                 ImGui::Separator();
                 ImGui::InputText("##rename_input",
-                                 m_RenameBuffer,
-                                 IM_ARRAYSIZE(m_RenameBuffer),
-                                 ImGuiInputTextFlags_EnterReturnsTrue);
+                                 m_RenameBuffer.data(),
+                                 m_RenameBuffer.capacity() + 1,
+                                 ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize,
+                                 inputTextCallback,
+                                 (void*)&m_RenameBuffer);
 
                 if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::Button("OK"))
                 {
                     if (m_RenameCallback)
-                        m_RenameCallback(m_RenameBuffer);
+                        m_RenameCallback(m_RenameBuffer.c_str());
                     close();
                 }
 
@@ -588,6 +592,18 @@ namespace vultra
 
                 ImGui::EndPopup();
             }
+        }
+
+        int RenamePopupWidget::inputTextCallback(ImGuiInputTextCallbackData* data)
+        {
+            if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
+            {
+                auto* str = static_cast<std::string*>(data->UserData);
+                IM_ASSERT(str->data() == data->Buf);
+                str->resize(data->BufTextLen);
+                data->Buf = str->data();
+            }
+            return 0;
         }
 
         void AsyncProgressWidget::open(const char* message)

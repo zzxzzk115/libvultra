@@ -144,7 +144,7 @@ namespace vultra
         class RenamePopupWidget
         {
         public:
-            RenamePopupWidget() = default;
+            RenamePopupWidget();
 
             void open(const char* currentName);
             void close();
@@ -154,7 +154,10 @@ namespace vultra
             void onImGui(const char* title);
 
         private:
-            char                             m_RenameBuffer[256] {0};
+            static int inputTextCallback(ImGuiInputTextCallbackData* data);
+
+        private:
+            std::string                      m_RenameBuffer;
             bool                             m_IsOpen {false};
             bool                             m_RequestOpen {false};
             bool                             m_IsFirstFrame {true};
