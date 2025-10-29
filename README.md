@@ -12,12 +12,10 @@
     <a href="https://github.com/zzxzzk115/libvultra/actions" alt="Build-macOS">
         <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_macos.yaml?branch=master&label=Build-macOS&logo=github" /></a>
     <a href="https://github.com/zzxzzk115/libvultra/issues" alt="GitHub Issues">
-        <img src="https://img.shields.io/github/issues/zzxzzk115/libvultra">
-    </a>
+        <img src="https://img.shields.io/github/issues/zzxzzk115/libvultra"></a>
     <a href="https://www.codefactor.io/repository/github/zzxzzk115/libvultra"><img src="https://www.codefactor.io/repository/github/zzxzzk115/libvultra/badge" alt="CodeFactor" /></a>
     <a href="https://github.com/zzxzzk115/libvultra/blob/master/LICENSE" alt="GitHub">
-        <img src="https://img.shields.io/github/license/zzxzzk115/libvultra">
-    </a>
+        <img src="https://img.shields.io/github/license/zzxzzk115/libvultra"></a>
 </p>
 
 (This project is under early development and WIP.)
