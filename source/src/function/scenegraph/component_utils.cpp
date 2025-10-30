@@ -34,4 +34,9 @@ namespace vultra
 
         return projection;
     }
+
+    glm::vec3 getForward(const glm::vec3& eulerAngles)
+    {
+        return glm::normalize(glm::quat(glm::radians(eulerAngles)) * glm::vec3(0, 0, -1));
+    }
 } // namespace vultra

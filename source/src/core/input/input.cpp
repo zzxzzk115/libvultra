@@ -63,6 +63,7 @@ namespace vultra
         {
             state.clicks = 0;
         }
-        s_MouseScrollDelta = glm::vec2(0.0f);
+        s_MousePositionDelta = glm::vec2(0.0f);
+        s_MouseScrollDelta   = glm::vec2(0.0f);
     }
 } // namespace vultra

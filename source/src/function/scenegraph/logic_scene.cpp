@@ -20,7 +20,7 @@ namespace vultra
                 auto view = src.view<Component>();
                 for (auto srcEntity : view)
                 {
-                    Entity dstEntity = enttMap->at(src.get<IDComponent>(srcEntity).Id);
+                    Entity dstEntity = enttMap->at(src.get<IDComponent>(srcEntity).id);
 
                     auto& srcComponent = src.get<Component>(srcEntity);
                     dst.emplace_or_replace<Component>(dstEntity, srcComponent);
@@ -55,7 +55,9 @@ namespace vultra
         CopyComponentIfExists<Component...>(dst, src);
     }
 
-    Ref<LogicScene> LogicScene::copy(const Ref<LogicScene>& other)
+    Ref<LogicScene> LogicScene::copy(const Ref<LogicScene>& other) { return copy(other.get()); }
+
+    Ref<LogicScene> LogicScene::copy(LogicScene* other)
     {
         Ref<LogicScene> newScene     = createRef<LogicScene>(other->getName() + " (Copy)", true);
         newScene->m_SimulationMode   = other->m_SimulationMode;
@@ -181,7 +183,8 @@ namespace vultra
     {
         Entity cameraEntity = createEntity("Main Camera");
         cameraEntity.addComponent<TransformComponent>();
-        cameraEntity.addComponent<CameraComponent>();
+        auto& cameraComponent     = cameraEntity.addComponent<CameraComponent>();
+        cameraComponent.isPrimary = true;
         return cameraEntity;
     }
 
@@ -193,6 +196,31 @@ namespace vultra
         {
             const auto& cameraComponent = view.get<CameraComponent>(entity);
             if (cameraComponent.isPrimary)
+            {
+                return {entity, const_cast<LogicScene*>(this)};
+            }
+        }
+
+        return {};
+    }
+
+    Entity LogicScene::createEditorCamera()
+    {
+        Entity cameraEntity = createEntity("Editor Camera");
+        cameraEntity.addComponent<TransformComponent>();
+        auto& cameraComponent          = cameraEntity.addComponent<CameraComponent>();
+        cameraComponent.isEditorCamera = true;
+        return cameraEntity;
+    }
+
+    Entity LogicScene::getEditorCamera() const
+    {
+        // Find the entity with CameraComponent and isEditorCamera == true
+        auto view = m_Registry.view<CameraComponent>();
+        for (auto entity : view)
+        {
+            const auto& cameraComponent = view.get<CameraComponent>(entity);
+            if (cameraComponent.isEditorCamera)
             {
                 return {entity, const_cast<LogicScene*>(this)};
             }
@@ -223,6 +251,18 @@ namespace vultra
         }
 
         return {};
+    }
+
+    Entity LogicScene::getRenderTargetCamera() const
+    {
+        // If simulation mode is editor, return editor camera
+        if (m_SimulationMode == LogicSceneSimulationMode::eEditor)
+        {
+            return getEditorCamera();
+        }
+
+        // Otherwise, return main camera
+        return getMainCamera();
     }
 
     Entity LogicScene::createDirectionalLight()

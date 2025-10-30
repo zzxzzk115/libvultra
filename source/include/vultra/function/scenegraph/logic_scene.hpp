@@ -35,6 +35,7 @@ namespace vultra
         ~LogicScene() = default;
 
         static Ref<LogicScene> copy(const Ref<LogicScene>& other);
+        static Ref<LogicScene> copy(LogicScene* other);
 
         void setSimulationMode(LogicSceneSimulationMode mode)
         {
@@ -85,20 +86,29 @@ namespace vultra
         Entity getEntityWithName(const std::string& name);
 
         // Helpers to create common entities
-        Entity              createMainCamera();
-        Entity              getMainCamera() const;
-        Entity              createXrCamera(bool leftEye);
-        Entity              getXrCamera(bool leftEye) const;
-        Entity              createDirectionalLight();
-        Entity              createPointLight();
-        Entity              createAreaLight();
+        Entity createMainCamera();
+        Entity getMainCamera() const;
+
+        Entity createEditorCamera();
+        Entity getEditorCamera() const;
+
+        Entity createXrCamera(bool leftEye);
+        Entity getXrCamera(bool leftEye) const;
+
+        Entity getRenderTargetCamera() const;
+
+        Entity createDirectionalLight();
+        Entity createPointLight();
+        Entity createAreaLight();
+
         Entity              getDirectionalLight() const;
         Entity              getPointLight(uint32_t index) const;
         std::vector<Entity> getPointLights() const;
         Entity              getAreaLight(uint32_t index) const;
         std::vector<Entity> getAreaLights() const;
-        Entity              createRawMeshEntity(const std::string& name, const std::string& meshPath);
-        Entity              createMeshEntity(const std::string& name, const CoreUUID& uuid);
+
+        Entity createRawMeshEntity(const std::string& name, const std::string& meshPath);
+        Entity createMeshEntity(const std::string& name, const CoreUUID& uuid);
 
         // Cook renderables for rendering
         std::vector<gfx::Renderable> cookRenderables();
@@ -113,13 +123,13 @@ namespace vultra
         void loadFrom(const std::filesystem::path& srcPath);
 
         std::vector<Entity> getEntitiesSortedByName();
-        
+
         std::vector<Entity> getRootEntities();
 
     private:
         void        createDefaultEntities();
         std::string getNameFromEntity(Entity entity) const;
-        void       sortEntitiesByName(std::vector<Entity>& entities) const;
+        void        sortEntitiesByName(std::vector<Entity>& entities) const;
 
         static int         extractEntityNumber(const std::string& name);
         static std::string extractEntityName(const std::string& name);

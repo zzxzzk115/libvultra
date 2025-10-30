@@ -5,6 +5,7 @@
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
 #include "vultra/function/renderer/mesh_resource.hpp"
+#include "vultra/function/scripting/internal/internal_script.hpp"
 
 #include <cereal/cereal.hpp>
 #include <glm/glm.hpp>
@@ -187,7 +188,8 @@ namespace vultra
         float            fov {45.0f};
         float            zNear {0.1f};
         float            zFar {1000.0f};
-        bool             isPrimary {true};
+        bool             isPrimary {false};
+        bool             isEditorCamera {false};
 
         std::string       environmentMapPath;       // Optional environment map path for skybox (IBL) rendering
         Ref<rhi::Texture> environmentMap {nullptr}; // Runtime cache, not serializable
@@ -205,6 +207,7 @@ namespace vultra
                     CEREAL_NVP(zNear),
                     CEREAL_NVP(zFar),
                     CEREAL_NVP(isPrimary),
+                    CEREAL_NVP(isEditorCamera),
                     CEREAL_NVP(environmentMapPath));
         }
         // NOLINTEND
@@ -378,14 +381,40 @@ namespace vultra
         explicit MeshComponent(const std::string& aUUIDStr) : uuidStr(aUUIDStr) {}
     };
 
+    // -------- Scripting --------
+
+    struct InternalScriptComponent
+    {
+        COMPONENT_NAME(InternalScript)
+
+        std::string scriptName;
+
+        // NOLINTBEGIN
+        template<class Archive>
+        void serialize(Archive& archive)
+        {
+            archive(CEREAL_NVP(scriptName));
+        }
+        // NOLINTEND
+
+        Ref<InternalScriptInstance> scriptInstance;
+
+        InternalScriptComponent()                               = default;
+        InternalScriptComponent(const InternalScriptComponent&) = default;
+        explicit InternalScriptComponent(std::string scriptName) : scriptName(scriptName) {}
+    };
+
     template<typename... Component>
     struct ComponentGroup
     {};
 
-#define COMMON_COMPONENT_TYPES
-#define ALL_SERIALIZABLE_COMPONENT_TYPES \
-    IDComponent, NameComponent, TransformComponent, SceneGraphComponent, EntityFlagsComponent, CameraComponent, \
-        DirectionalLightComponent, RawMeshComponent, MeshComponent
+#define COMMON_COMPONENT_TYPES \
+    TransformComponent, SceneGraphComponent, EntityFlagsComponent, CameraComponent, XrCameraComponent, \
+        DirectionalLightComponent, PointLightComponent, AreaLightComponent, RawMeshComponent, MeshComponent, \
+        InternalScriptComponent
+
+#define ALL_SERIALIZABLE_COMPONENT_TYPES COMMON_COMPONENT_TYPES, IDComponent, NameComponent
+
 #define ALL_COPYABLE_COMPONENT_TYPES COMMON_COMPONENT_TYPES
 
     using AllCopyableComponents = ComponentGroup<ALL_COPYABLE_COMPONENT_TYPES>;

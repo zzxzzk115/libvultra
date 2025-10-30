@@ -23,12 +23,21 @@ namespace vultra
             using Extent   = glm::ivec2;
             using Position = glm::ivec2;
 
-            [[nodiscard]] static float getPrimaryDisplayScale();
+            enum class CursorType
+            {
+                eArrow,
+                eGrab,
+            };
+
+            [[nodiscard]] static float   getPrimaryDisplayScale();
+            [[nodiscard]] static Window& getActiveWindow();
 
             Window& setTitle(std::string_view title);
             Window& setExtent(Extent extent);
             Window& setPosition(Position position);
+            Window& setCursor(CursorType cursor);
             Window& setCursorVisibility(bool cursorVisibility);
+            Window& setMouseRelativeMode(bool mouseRelativeMode);
             Window& setResizable(bool resizable);
             Window& setFullscreen(bool fullscreen);
 
@@ -36,11 +45,13 @@ namespace vultra
             [[nodiscard]] Extent           getExtent() const;
             [[nodiscard]] Extent           getFrameBufferExtent() const;
             [[nodiscard]] Position         getPosition() const;
+            [[nodiscard]] CursorType       getCursor() const;
             [[nodiscard]] bool             getCursorVisibility() const;
+            [[nodiscard]] bool             getMouseRelativeMode() const;
             [[nodiscard]] bool             isResizable() const;
             [[nodiscard]] bool             isFullscreen() const;
 
-            [[nodiscard]] float        getDisplayScale() const;
+            [[nodiscard]] float getDisplayScale() const;
 
             [[nodiscard]] bool shouldClose() const;
             [[nodiscard]] bool isMinimized() const;
@@ -109,7 +120,9 @@ namespace vultra
             std::string m_Title;
             Extent      m_Extent {}, m_FrameBufferExtent {};
             Position    m_Position {};
+            CursorType  m_Cursor {CursorType::eArrow};
             bool        m_CursorVisibility {true};
+            bool        m_MouseRelativeMode {false};
             bool        m_Resizable {true};
             bool        m_Fullscreen {false};
 
@@ -117,6 +130,8 @@ namespace vultra
             bool m_IsMinimized {false};
 
             SDL_Window* m_SDL3WindowHandle {nullptr};
+
+            static Window* s_ActiveWindow;
         };
 
         using GeneralWindowEvent = Window::GeneralWindowEvent;

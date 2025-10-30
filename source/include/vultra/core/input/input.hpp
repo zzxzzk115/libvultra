@@ -175,6 +175,7 @@ namespace vultra
 
         static glm::vec2 getMousePosition() { return s_MousePosition; }
         static glm::vec2 getMousePositionFlipY() { return s_MousePositionFlipY; }
+        static glm::vec2 getMousePositionDelta() { return s_MousePositionDelta; }
         static glm::vec2 getMouseScrollDelta() { return s_MouseScrollDelta; }
 
     private:
@@ -189,6 +190,7 @@ namespace vultra
         static void setMouseButtonState(int button, MouseButtonState state);
         static void setMousePosition(const glm::vec2& position) { s_MousePosition = position; }
         static void setMousePositionFlipY(const glm::vec2& positionFlipY) { s_MousePositionFlipY = positionFlipY; }
+        static void setMousePositionDelta(const glm::vec2& positionDelta) { s_MousePositionDelta = positionDelta; }
         static void setMouseScrollDelta(const glm::vec2& scrollDelta) { s_MouseScrollDelta = scrollDelta; }
 
         static void clearStates();
@@ -201,6 +203,7 @@ namespace vultra
 
         inline static glm::vec2 s_MousePosition;
         inline static glm::vec2 s_MousePositionFlipY;
+        inline static glm::vec2 s_MousePositionDelta;
         inline static glm::vec2 s_MouseScrollDelta;
     };
 } // namespace vultra

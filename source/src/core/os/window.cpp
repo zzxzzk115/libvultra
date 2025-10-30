@@ -4,12 +4,15 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_vulkan.h>
 
 namespace vultra
 {
     namespace os
     {
+        Window* Window::s_ActiveWindow = nullptr;
+
         Window::Window(Window&& other) noexcept :
             emitter {std::move(other)}, m_Title(std::move(other.m_Title)), m_Extent(other.m_Extent),
             m_Position(other.m_Position), m_CursorVisibility(other.m_CursorVisibility)
@@ -39,6 +42,8 @@ namespace vultra
 
         float Window::getPrimaryDisplayScale() { return SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay()); }
 
+        Window& Window::getActiveWindow() { return *s_ActiveWindow; }
+
         Window& Window::setTitle(const std::string_view title)
         {
             m_Title = title;
@@ -60,8 +65,29 @@ namespace vultra
             return *this;
         }
 
+        Window& Window::setCursor(const CursorType cursor)
+        {
+            m_Cursor = cursor;
+            switch (cursor)
+            {
+                case CursorType::eArrow:
+                    SDL_SetCursor(SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT));
+                    break;
+                case CursorType::eGrab:
+                    SDL_SetCursor(SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE));
+                    break;
+                default:
+                    SDL_SetCursor(SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT));
+                    break;
+            }
+            return *this;
+        }
+
         Window& Window::setCursorVisibility(const bool cursorVisibility)
         {
+            if (m_CursorVisibility == cursorVisibility)
+                return *this;
+
             m_CursorVisibility = cursorVisibility;
             if (cursorVisibility)
             {
@@ -71,6 +97,13 @@ namespace vultra
             {
                 SDL_HideCursor();
             }
+            return *this;
+        }
+
+        Window& Window::setMouseRelativeMode(const bool mouseRelativeMode)
+        {
+            m_MouseRelativeMode = mouseRelativeMode;
+            SDL_SetWindowRelativeMouseMode(m_SDL3WindowHandle, mouseRelativeMode);
             return *this;
         }
 
@@ -96,7 +129,11 @@ namespace vultra
 
         Window::Position Window::getPosition() const { return m_Position; }
 
+        Window::CursorType Window::getCursor() const { return m_Cursor; }
+
         bool Window::getCursorVisibility() const { return m_CursorVisibility; }
+
+        bool Window::getMouseRelativeMode() const { return m_MouseRelativeMode; }
 
         bool Window::isResizable() const { return m_Resizable; }
 
@@ -248,6 +285,7 @@ namespace vultra
             m_CursorVisibility = cursorVisibility;
             return *this;
         }
+
         Window::Builder& Window::Builder::setResizable(bool resizable)
         {
             m_Resizable = resizable;
@@ -322,6 +360,10 @@ namespace vultra
             // Wayland & High DPI support.
             // https://github.com/ocornut/imgui/issues/8761
             SDL_GetWindowSizeInPixels(m_SDL3WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
+
+            // Set active window
+            // NOTE: Now, only support single window application
+            s_ActiveWindow = this;
         }
     } // namespace os
 } // namespace vultra

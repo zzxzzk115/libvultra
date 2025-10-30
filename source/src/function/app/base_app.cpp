@@ -156,13 +156,15 @@ namespace vultra
         }
         else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP)
         {
-            Input::setMouseButtonState(event.internalEvent.button.button, {.pressed = false, .clicks = 0});
+            Input::setMouseButtonState(event.internalEvent.button.button,
+                                       {.pressed = false, .clicks = event.internalEvent.button.clicks});
         }
         else if (event.type == SDL_EVENT_MOUSE_MOTION)
         {
             Input::setMousePosition({event.internalEvent.motion.x, event.internalEvent.motion.y});
             Input::setMousePositionFlipY({event.internalEvent.motion.x,
                                           static_cast<float>(m_Window.getExtent().y) - event.internalEvent.motion.y});
+            Input::setMousePositionDelta({event.internalEvent.motion.xrel, event.internalEvent.motion.yrel});
         }
         else if (event.type == SDL_EVENT_MOUSE_WHEEL)
         {

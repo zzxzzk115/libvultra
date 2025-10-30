@@ -253,7 +253,7 @@ namespace vultra
             if (scene)
             {
                 // Cameras
-                auto mainCamera = scene->getMainCamera();
+                auto mainCamera = scene->getRenderTargetCamera();
                 if (mainCamera)
                 {
                     auto& camTransform = mainCamera.getComponent<TransformComponent>();
