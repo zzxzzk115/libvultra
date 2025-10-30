@@ -7,6 +7,7 @@
 #include <magic_enum/magic_enum.hpp>
 // NOLINTEND
 
+#include <cmath>
 #include <functional>
 #include <future>
 
@@ -186,5 +187,26 @@ namespace vultra
             std::future<void>     m_Future;
             std::function<void()> m_FinishedCallback;
         };
+
     } // namespace ImGuiExt
+
+    namespace imgui_literals
+    {
+        inline float operator"" _dpx(unsigned long long px)
+        {
+            return static_cast<float>(px * ImGui::GetStyle().FontScaleDpi);
+        }
+
+        inline float operator"" _dpx(long double px) { return static_cast<float>(px * ImGui::GetStyle().FontScaleDpi); }
+
+        inline float operator"" _sqrtscale(unsigned long long value)
+        {
+            return value * std::sqrt(ImGui::GetStyle().FontScaleDpi);
+        }
+
+        inline float operator"" _sqrtscale(long double value)
+        {
+            return value * std::sqrt(ImGui::GetStyle().FontScaleDpi);
+        }
+    } // namespace imgui_literals
 } // namespace vultra
