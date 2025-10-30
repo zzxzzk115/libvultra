@@ -27,6 +27,7 @@
 #include <glm/fwd.hpp>
 
 #include <functional>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -297,6 +298,7 @@ namespace vultra
             getSbtEntryStrideDeviceAddressRegion(const Buffer& sbt, uint32_t handleCount, uint64_t offset) const;
 
         private:
+            std::set<std::string>       m_SupportedExtensions;
             RenderDeviceFeatureReport   m_FeatureReport {};
             RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
             std::string                 m_AppName;
