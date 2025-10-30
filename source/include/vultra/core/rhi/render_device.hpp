@@ -62,6 +62,31 @@ namespace vultra
             eAll        = eNormal | eRayQuery | eRayTracingPipeline | eMeshShader | eOpenXR,
         };
 
+        enum class RenderDeviceFeatureReportFlagBits : uint64_t
+        {
+            eNone                  = 0,
+            eOpenXR                = BIT(0),
+            eRayTracingPipeline    = BIT(1),
+            eRayQuery              = BIT(2),
+            eAccelerationStructure = BIT(3),
+            eMeshShader            = BIT(4),
+            eBufferDeviceAddress   = BIT(5),
+            eDescriptorIndexing    = BIT(6),
+            eDynamicRendering      = BIT(7),
+            eSynchronization2      = BIT(8),
+            eTimelineSemaphore     = BIT(9),
+        };
+
+        struct RenderDeviceFeatureReport
+        {
+            RenderDeviceFeatureReportFlagBits flags {RenderDeviceFeatureReportFlagBits::eNone};
+
+            std::string deviceName;
+            uint32_t    apiMajor {0};
+            uint32_t    apiMinor {0};
+            uint32_t    apiPatch {0};
+        };
+
         struct PhysicalDeviceInfo
         {
             uint32_t    vendorId;
@@ -107,6 +132,7 @@ namespace vultra
             RenderDevice& operator=(RenderDevice&&) noexcept = delete;
 
             [[nodiscard]] RenderDeviceFeatureFlagBits getFeatureFlag() const;
+            [[nodiscard]] RenderDeviceFeatureReport   getFeatureReport() const;
 
             [[nodiscard]] std::string getName() const;
 
@@ -271,6 +297,7 @@ namespace vultra
             getSbtEntryStrideDeviceAddressRegion(const Buffer& sbt, uint32_t handleCount, uint64_t offset) const;
 
         private:
+            RenderDeviceFeatureReport   m_FeatureReport {};
             RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
             std::string                 m_AppName;
 
@@ -310,6 +337,10 @@ namespace vultra
 
 template<>
 struct HasFlags<vultra::rhi::RenderDeviceFeatureFlagBits> : std::true_type
+{};
+
+template<>
+struct HasFlags<vultra::rhi::RenderDeviceFeatureReportFlagBits> : std::true_type
 {};
 
 template<>

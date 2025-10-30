@@ -282,6 +282,8 @@ namespace vultra
 
         RenderDeviceFeatureFlagBits RenderDevice::getFeatureFlag() const { return m_FeatureFlag; }
 
+        RenderDeviceFeatureReport RenderDevice::getFeatureReport() const { return m_FeatureReport; }
+
         std::string RenderDevice::getName() const
         {
             const auto v = m_PhysicalDevice.getProperties().apiVersion;
@@ -1114,17 +1116,17 @@ namespace vultra
             queueCreateInfo.queueCount       = 1;
             queueCreateInfo.pQueuePriorities = &queuePriority;
 
-            std::vector extensions = {
+            // === Base extensions ===
+            std::vector<const char*> extensions = {
                 VK_KHR_SWAPCHAIN_EXTENSION_NAME,
                 VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
                 VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
             };
 
+            // === Feature structs ===
             vk::PhysicalDeviceFeatures2        deviceFeatures2 {};
             std::vector<vk::BaseOutStructure*> featureChain;
 
-            // Internal features
-            // TODO: Default features
             vk::PhysicalDeviceFeatures enabledFeatures {};
             enabledFeatures.samplerAnisotropy = VK_TRUE;
 #ifndef __APPLE__
@@ -1152,139 +1154,122 @@ namespace vultra
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk13Features));
 #endif
 
-            // Descriptor Indexing
-            vk::PhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures {};
-            descriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
-            descriptorIndexingFeatures.runtimeDescriptorArray                    = VK_TRUE;
-            descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount  = VK_TRUE;
-            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&descriptorIndexingFeatures));
-
-            // BDA if RayTracingPipeline or MeshShader is enabled
-            vk::PhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures {};
-            vk::PhysicalDeviceScalarBlockLayoutFeatures   scalarBlockLayoutFeatures {};
-            vk::PhysicalDeviceVulkan12Features            vk12Features {};
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
-                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
-            {
-                extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-
-                bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
-                scalarBlockLayoutFeatures.scalarBlockLayout     = VK_TRUE;
-                vk12Features.storageBuffer8BitAccess            = VK_TRUE;
+            // Vulkan 1.2 features
+            vk::PhysicalDeviceVulkan12Features vk12Features {};
+            vk12Features.bufferDeviceAddress                       = VK_TRUE;
+            vk12Features.scalarBlockLayout                         = VK_TRUE;
+            vk12Features.descriptorIndexing                        = VK_TRUE;
+            vk12Features.descriptorBindingVariableDescriptorCount  = VK_TRUE;
+            vk12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+            vk12Features.runtimeDescriptorArray                    = VK_TRUE;
+            vk12Features.storageBuffer8BitAccess                   = VK_TRUE;
+            vk12Features.timelineSemaphore                         = VK_TRUE;
 #ifdef VULTRA_ENABLE_RENDERDOC
-                // When RenderDoc is enabled, we need to enable the capture replay feature as well
-                bufferDeviceAddressFeatures.bufferDeviceAddressCaptureReplay = VK_TRUE;
+            vk12Features.bufferDeviceAddressCaptureReplay = VK_TRUE;
 #endif
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&bufferDeviceAddressFeatures));
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&scalarBlockLayoutFeatures));
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk12Features));
-            }
+            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk12Features));
 
-            // Acceleration Structure if RayQuery or RayTracingPipeline is enabled
+            // Ray Tracing & Ray Query
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
-            {
-                // Required by Acceleration Structure
-                extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-                extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+            extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+            extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+            accelerationStructureFeatures.accelerationStructure = VK_TRUE;
+            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&accelerationStructureFeatures));
 
-                // Enable acceleration structure features
-                accelerationStructureFeatures.accelerationStructure = VK_TRUE;
-
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&accelerationStructureFeatures));
-            }
-
-            // RayQuery
             vk::PhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures {};
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayQuery))
-            {
-                extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+            extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+            rayQueryFeatures.rayQuery = VK_TRUE;
+            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayQueryFeatures));
 
-                // Enable ray query features
-                rayQueryFeatures.rayQuery = VK_TRUE;
-
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayQueryFeatures));
-            }
-
-            // Raytracing
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures {};
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eRayTracingPipeline))
-            {
-                extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+            extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+            rayTracingFeatures.rayTracingPipeline = VK_TRUE;
+#ifdef VULTRA_ENABLE_RENDERDOC
+            rayTracingFeatures.rayTracingPipelineShaderGroupHandleCaptureReplay = VK_TRUE;
+#endif
+            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
 
-                // Enable raytracing pipeline features
-                rayTracingFeatures.rayTracingPipeline = VK_TRUE;
-
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
-            }
-
-            // Mesh Shader
+            // Mesh Shaders
             vk::PhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures {};
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
+            extensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
+            meshShaderFeatures.meshShader = VK_TRUE;
+            meshShaderFeatures.taskShader = VK_TRUE;
+            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&meshShaderFeatures));
+
+            // === Link chain ===
+            vk::BaseOutStructure* prev = nullptr;
+            for (auto* f : featureChain)
             {
-                extensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
-
-                // Enable mesh shader features
-                meshShaderFeatures.meshShader = VK_TRUE;
-                meshShaderFeatures.taskShader = VK_TRUE;
-
-                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&meshShaderFeatures));
-            }
-
-            // OpenXR
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
-            {
-                // Add OpenXR specific features here
-            }
-
-            // Link the feature chain
-            vk::BaseOutStructure* previous = nullptr;
-            for (auto& feature : featureChain)
-            {
-                if (previous)
-                {
-                    previous->pNext = feature;
-                }
+                if (prev)
+                    prev->pNext = f;
                 else
-                {
-                    deviceFeatures2.pNext = feature;
-                }
-                previous = feature;
+                    deviceFeatures2.pNext = f;
+                prev = f;
             }
 
-            // Check if extensions are supported
-            const auto supportedExtensions = m_PhysicalDevice.enumerateDeviceExtensionProperties();
-            for (const auto& extension : extensions)
+            // === Check supported extensions ===
+            const auto                      supportedExtensions = m_PhysicalDevice.enumerateDeviceExtensionProperties();
+            std::unordered_set<std::string> supportedExtNames;
+            for (const auto& e : supportedExtensions)
+                supportedExtNames.insert(e.extensionName);
+
+            // === Query Vulkan version ===
+            const auto     props      = m_PhysicalDevice.getProperties();
+            const uint32_t apiVersion = props.apiVersion;
+            const uint32_t apiMajor   = VK_API_VERSION_MAJOR(apiVersion);
+            const uint32_t apiMinor   = VK_API_VERSION_MINOR(apiVersion);
+
+            // === Build feature report ===
+            m_FeatureReport.deviceName = props.deviceName.data();
+            m_FeatureReport.apiMajor   = apiMajor;
+            m_FeatureReport.apiMinor   = apiMinor;
+            m_FeatureReport.apiPatch   = VK_API_VERSION_PATCH(apiVersion);
+            auto& f                    = m_FeatureReport.flags;
+
+            auto add = [&](RenderDeviceFeatureReportFlagBits bit, const char* name) {
+                if (supportedExtNames.count(name))
+                    f |= bit;
+                else
+                    VULTRA_CORE_WARN("[RenderDevice] Extension not supported: {}", name);
+            };
+
+            add(RenderDeviceFeatureReportFlagBits::eRayTracingPipeline, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+            add(RenderDeviceFeatureReportFlagBits::eRayQuery, VK_KHR_RAY_QUERY_EXTENSION_NAME);
+            add(RenderDeviceFeatureReportFlagBits::eAccelerationStructure,
+                VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+            add(RenderDeviceFeatureReportFlagBits::eMeshShader, VK_EXT_MESH_SHADER_EXTENSION_NAME);
+            add(RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress, VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+            add(RenderDeviceFeatureReportFlagBits::eDescriptorIndexing, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+            add(RenderDeviceFeatureReportFlagBits::eDynamicRendering, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+            add(RenderDeviceFeatureReportFlagBits::eSynchronization2, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+            add(RenderDeviceFeatureReportFlagBits::eTimelineSemaphore, VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+
+            // === Filter unsupported extensions ===
+            std::vector<const char*> filteredExtensions;
+            for (const auto* ext : extensions)
             {
-                bool found = false;
-                for (const auto& supportedExtension : supportedExtensions)
-                {
-                    if (strcmp(extension, supportedExtension.extensionName) == 0)
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found)
-                {
-                    VULTRA_CORE_ERROR("[RenderDevice] Failed to find required extension: {}", extension);
-                    throw std::runtime_error("Missing required extension");
-                }
+                if (supportedExtNames.count(ext))
+                    filteredExtensions.push_back(ext);
+                else
+                    VULTRA_CORE_WARN("[RenderDevice] Skipping unsupported extension: {}", ext);
             }
 
+            // === Device Creation ===
             vk::DeviceCreateInfo createInfo {};
             createInfo.queueCreateInfoCount    = 1;
             createInfo.pQueueCreateInfos       = &queueCreateInfo;
             createInfo.pNext                   = &deviceFeatures2;
-            createInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
-            createInfo.ppEnabledExtensionNames = extensions.data();
+            createInfo.enabledExtensionCount   = static_cast<uint32_t>(filteredExtensions.size());
+            createInfo.ppEnabledExtensionNames = filteredExtensions.data();
 
-            // If enable OpenXR feature, then let OpenXR create the logical device.
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
+            bool useOpenXR = (m_XRDevice && m_XRDevice->m_XrInstance != XR_NULL_HANDLE);
+
+            if (useOpenXR)
             {
-                VkDeviceCreateInfo deviceCreateInfoC(createInfo);
+                VULTRA_CORE_INFO("[RenderDevice] Creating Vulkan device via OpenXR runtime");
+                m_FeatureReport.flags |= RenderDeviceFeatureReportFlagBits::eOpenXR;
 
+                VkDeviceCreateInfo          deviceCreateInfoC(createInfo);
                 XrVulkanDeviceCreateInfoKHR xrVulkanDeviceCreateInfo {};
                 xrVulkanDeviceCreateInfo.type                   = XR_TYPE_VULKAN_DEVICE_CREATE_INFO_KHR;
                 xrVulkanDeviceCreateInfo.pfnGetInstanceProcAddr = &vkGetInstanceProcAddr;
@@ -1292,38 +1277,81 @@ namespace vultra
                 xrVulkanDeviceCreateInfo.vulkanCreateInfo       = &deviceCreateInfoC;
                 xrVulkanDeviceCreateInfo.vulkanPhysicalDevice   = m_PhysicalDevice;
 
-                VkResult vkResult;
-                VkDevice device = nullptr;
+                VkResult vkResult = VK_SUCCESS;
+                VkDevice device   = VK_NULL_HANDLE;
 
-                bool ok = true;
                 if (XR_FAILED(m_XRDevice->xrCreateVulkanDeviceKHR(
-                        m_XRDevice->m_XrInstance, &xrVulkanDeviceCreateInfo, &device, &vkResult)))
+                        m_XRDevice->m_XrInstance, &xrVulkanDeviceCreateInfo, &device, &vkResult)) ||
+                    vkResult != VK_SUCCESS)
                 {
-                    ok = false;
+                    VULTRA_CORE_ERROR("[RenderDevice] OpenXR Vulkan device creation failed (VkResult: {})",
+                                      vk::to_string(static_cast<vk::Result>(vkResult)));
+                    VULTRA_CORE_WARN("[RenderDevice] Falling back to standard Vulkan device creation");
+                    VK_CHECK(m_PhysicalDevice.createDevice(&createInfo, nullptr, &m_Device),
+                             LOGTAG,
+                             "Failed to create logical device");
                 }
-
-                if (vkResult != VK_SUCCESS)
+                else
                 {
-                    ok = false;
+                    m_Device = device;
                 }
-
-                if (!ok)
-                {
-                    VULTRA_CORE_ERROR("[RenderDevice] Failed to create Vulkan device from OpenXR");
-                    throw std::runtime_error("Failed to create Vulkan device from OpenXR");
-                }
-
-                m_Device = device;
             }
             else
             {
+                VULTRA_CORE_INFO("[RenderDevice] Creating standalone Vulkan device (non-XR)");
                 VK_CHECK(m_PhysicalDevice.createDevice(&createInfo, nullptr, &m_Device),
                          LOGTAG,
                          "Failed to create logical device");
             }
 
-            // Get the generic queue
+            // === Get Generic Queue (for both graphics & compute) ===
             m_Device.getQueue(m_GenericQueueFamilyIndex, 0, &m_GenericQueue);
+
+            // === Log summary ===
+            VULTRA_CORE_INFO("[RenderDevice] Created logical device: {}", m_FeatureReport.deviceName);
+            VULTRA_CORE_INFO("  Vulkan API: {}.{}.{}", apiMajor, apiMinor, VK_API_VERSION_PATCH(apiVersion));
+
+#define PRINT_FEATURE(f) \
+    VULTRA_CORE_INFO( \
+        "   {:<30} {}", #f, HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::f) ? "yes" : "no")
+            VULTRA_CORE_INFO("[RenderDevice] Feature support report:");
+            PRINT_FEATURE(eRayTracingPipeline);
+            PRINT_FEATURE(eRayQuery);
+            PRINT_FEATURE(eAccelerationStructure);
+            PRINT_FEATURE(eMeshShader);
+            PRINT_FEATURE(eBufferDeviceAddress);
+            PRINT_FEATURE(eDescriptorIndexing);
+            PRINT_FEATURE(eDynamicRendering);
+            PRINT_FEATURE(eSynchronization2);
+            PRINT_FEATURE(eTimelineSemaphore);
+#undef PRINT_FEATURE
+
+            // === Assign & Check Feature Flags ===
+            auto availableFeatureFlag = RenderDeviceFeatureFlagBits::eNormal;
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
+                HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
+            {
+                availableFeatureFlag |= RenderDeviceFeatureFlagBits::eRayTracingPipeline;
+            }
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
+                HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayQuery))
+            {
+                availableFeatureFlag |= RenderDeviceFeatureFlagBits::eRayQuery;
+            }
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMeshShader))
+            {
+                availableFeatureFlag |= RenderDeviceFeatureFlagBits::eMeshShader;
+            }
+            if (useOpenXR)
+            {
+                availableFeatureFlag |= RenderDeviceFeatureFlagBits::eOpenXR;
+            }
+
+            if (!HasFlagValues(availableFeatureFlag, m_FeatureFlag) &&
+                m_FeatureFlag != RenderDeviceFeatureFlagBits::eNormal)
+            {
+                throw std::runtime_error("Requested features are not supported by the physical device");
+            }
         }
 
         void RenderDevice::createMemoryAllocator()
