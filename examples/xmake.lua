@@ -49,3 +49,23 @@ includes("raytracing/cornell_box")
 includes("rayquery")
 includes("rendergraph")
 includes("meshshading/triangle")
+
+target("normal-examples")
+    set_kind("phony")
+    on_run(function ()
+        import("core.project.project")
+        local examples = {
+            "window",
+            "rhi-triangle",
+            "imgui",
+            "framegraph-triangle",
+            "openxr-triangle",
+            "openxr-sponza",
+            "gltf-viewer",
+            "rendergraph",
+        }
+        for _, example in ipairs(examples) do
+            os.execv("xmake", {"run", "example-" .. example})
+        end
+    end)
+task_end()

@@ -73,9 +73,6 @@ namespace vultra
             eMeshShader            = BIT(4),
             eBufferDeviceAddress   = BIT(5),
             eDescriptorIndexing    = BIT(6),
-            eDynamicRendering      = BIT(7),
-            eSynchronization2      = BIT(8),
-            eTimelineSemaphore     = BIT(9),
         };
 
         struct RenderDeviceFeatureReport

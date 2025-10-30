@@ -1018,7 +1018,7 @@ namespace vultra
             if (useOpenXR)
             {
                 VULTRA_CORE_INFO("[RenderDevice] Selecting physical device from OpenXR");
-                m_FeatureFlag |= RenderDeviceFeatureFlagBits::eOpenXR;
+                m_FeatureReport.flags |= RenderDeviceFeatureReportFlagBits::eOpenXR;
 
                 // Retrieve the physical device from OpenXR
                 VkPhysicalDevice physicalDevice = nullptr;
@@ -1135,19 +1135,13 @@ namespace vultra
             add(RenderDeviceFeatureReportFlagBits::eMeshShader, VK_EXT_MESH_SHADER_EXTENSION_NAME, mesh.meshShader);
             add(RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress,
                 VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-                vk12.bufferDeviceAddress);
+                vk12.bufferDeviceAddress && vk12.bufferDeviceAddressCaptureReplay && vk12.scalarBlockLayout &&
+                    vk12.storageBuffer8BitAccess);
             add(RenderDeviceFeatureReportFlagBits::eDescriptorIndexing,
                 VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-                vk12.descriptorIndexing);
-            add(RenderDeviceFeatureReportFlagBits::eDynamicRendering,
-                VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-                vk13.dynamicRendering);
-            add(RenderDeviceFeatureReportFlagBits::eSynchronization2,
-                VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-                vk13.synchronization2);
-            add(RenderDeviceFeatureReportFlagBits::eTimelineSemaphore,
-                VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
-                vk12.timelineSemaphore);
+                vk12.descriptorIndexing && vk12.shaderSampledImageArrayNonUniformIndexing &&
+                    vk12.runtimeDescriptorArray && vk12.descriptorBindingPartiallyBound &&
+                    vk12.descriptorBindingVariableDescriptorCount);
 
             // Summarize selected device
             VULTRA_CORE_INFO("[RenderDevice] Selected GPU: {}", props.deviceName.data());
@@ -1159,15 +1153,13 @@ namespace vultra
     VULTRA_CORE_INFO( \
         "   {:<30} {}", #f, HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::f) ? "yes" : "no")
             VULTRA_CORE_INFO("[RenderDevice] Feature support report:");
+            PRINT_FEATURE(eOpenXR);
             PRINT_FEATURE(eRayTracingPipeline);
             PRINT_FEATURE(eRayQuery);
             PRINT_FEATURE(eAccelerationStructure);
             PRINT_FEATURE(eMeshShader);
             PRINT_FEATURE(eBufferDeviceAddress);
             PRINT_FEATURE(eDescriptorIndexing);
-            PRINT_FEATURE(eDynamicRendering);
-            PRINT_FEATURE(eSynchronization2);
-            PRINT_FEATURE(eTimelineSemaphore);
 #undef PRINT_FEATURE
 
             // === Assign & Check Feature Flags ===
@@ -1278,17 +1270,17 @@ namespace vultra
 #ifdef VULTRA_ENABLE_RENDERDOC
                 vk12Features.bufferDeviceAddressCaptureReplay = VK_TRUE;
 #endif
-                vk12Features.scalarBlockLayout = VK_TRUE;
+                vk12Features.scalarBlockLayout       = VK_TRUE;
+                vk12Features.storageBuffer8BitAccess = VK_TRUE;
             }
             if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDescriptorIndexing))
             {
                 vk12Features.descriptorIndexing                        = VK_TRUE;
                 vk12Features.descriptorBindingVariableDescriptorCount  = VK_TRUE;
+                vk12Features.descriptorBindingPartiallyBound           = VK_TRUE;
                 vk12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
                 vk12Features.runtimeDescriptorArray                    = VK_TRUE;
             }
-            vk12Features.storageBuffer8BitAccess = VK_TRUE;
-            vk12Features.timelineSemaphore       = VK_TRUE;
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk12Features));
 
             // Ray Tracing & Ray Query

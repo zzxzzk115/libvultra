@@ -139,12 +139,7 @@ namespace vultra
 
         bool Window::isFullscreen() const { return m_Fullscreen; }
 
-        float Window::getDisplayScale() const
-        {
-            // int displayIndex = SDL_GetDisplayForWindow(m_SDL3WindowHandle);
-            // return SDL_GetDisplayContentScale(displayIndex);
-            return SDL_GetWindowDisplayScale(m_SDL3WindowHandle);
-        }
+        float Window::getDisplayScale() const { return SDL_GetWindowDisplayScale(m_SDL3WindowHandle); }
 
         bool Window::shouldClose() const { return m_ShouldClose; }
 
@@ -309,8 +304,9 @@ namespace vultra
                        const bool             cursorVisible,
                        const bool             resizable,
                        const bool             fullscreen) :
-            m_Title(title), m_Extent(extent), m_Position(position), m_CursorVisibility(cursorVisible),
-            m_Resizable(resizable), m_Fullscreen(fullscreen)
+            m_Title(title),
+            m_Extent(extent), m_Position(position), m_CursorVisibility(cursorVisible), m_Resizable(resizable),
+            m_Fullscreen(fullscreen)
         {
             // Setup SDL
             if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))
@@ -338,15 +334,25 @@ namespace vultra
                 throw std::runtime_error("Could not load Vulkan library");
             }
 
-            // Create SDL window
+#if __APPLE__
+            float main_scale = 1.0f; // Will query later for macOS
+#else
             float main_scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+#endif
+            // Create SDL window
             m_SDL3WindowHandle =
                 SDL_CreateWindow(m_Title.c_str(), m_Extent.x * main_scale, m_Extent.y * main_scale, windowFlags);
+
             if (m_SDL3WindowHandle == nullptr)
             {
                 VULTRA_CORE_ERROR("[Window] Failed to create SDL3 window, Error:{}", SDL_GetError());
                 throw std::runtime_error("Failed to create SDL3 window");
             }
+
+#if __APPLE__
+            // On macOS, need to query the actual scale after window creation
+            main_scale = SDL_GetWindowDisplayScale(m_SDL3WindowHandle);
+#endif
 
             // Set position, extent, cursor visibility
             if (position != Position {0, 0})
@@ -364,6 +370,9 @@ namespace vultra
             // Set active window
             // NOTE: Now, only support single window application
             s_ActiveWindow = this;
+
+            VULTRA_CORE_INFO(
+                "[Window] Created window '{}' ({}x{}), DPI: {}", m_Title, m_Extent.x, m_Extent.y, main_scale);
         }
     } // namespace os
 } // namespace vultra
