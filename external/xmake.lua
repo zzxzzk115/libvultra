@@ -25,4 +25,12 @@ target("imgui-ext")
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
 
+target("debug_draw")
+    -- https://xmake.io/zh/api/description/project-target.html#headeronly
+    set_kind("headeronly")
+    add_headerfiles("debug_draw/debug_draw.hpp")
+    add_includedirs("debug_draw", {public = true}) -- public: let other targets to auto include
+    add_rules("utils.install.cmake_importfiles")
+    add_rules("utils.install.pkgconfig_importfiles")
+
 includes("vasset")

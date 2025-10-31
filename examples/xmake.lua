@@ -49,6 +49,7 @@ includes("raytracing/cornell_box")
 includes("rayquery")
 includes("rendergraph")
 includes("meshshading/triangle")
+includes("debug_draw")
 
 target("normal-examples")
     set_kind("phony")
@@ -63,6 +64,7 @@ target("normal-examples")
             "openxr-sponza",
             "gltf-viewer",
             "rendergraph",
+            "debugdraw",
         }
         for _, example in ipairs(examples) do
             os.execv("xmake", {"run", "example-" .. example})
