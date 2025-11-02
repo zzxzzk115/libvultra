@@ -26,7 +26,9 @@ namespace vultra
 
         void setViewProjectionMatrix(const glm::mat4& matrix);
         void overrideArea(rhi::Rect2D area);
-        void bindDepthTexture(rhi::Texture& depthTexture);
+        void updateColorFormat(rhi::PixelFormat colorFormat);
+        void bindDepthTexture(rhi::Texture* depthTexture);
+        void buildPipelineIfNeeded();
 
         void beginFrame(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& framebufferInfo);
         void endFrame();
@@ -45,6 +47,7 @@ namespace vultra
         glm::mat4                  m_ViewProjectionMatrix {1.0f};
         std::optional<rhi::Rect2D> m_OverrideArea;
         rhi::Texture*              m_DepthTexture {nullptr};
+        bool                       m_NeedsPipelineRebuild {true};
 
         rhi::GraphicsPipeline m_LineGraphicsPipeline;
         rhi::VertexBuffer     m_VertexBuffer;

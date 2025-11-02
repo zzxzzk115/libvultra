@@ -38,28 +38,52 @@ namespace vultra
 
     void DebugDrawInterface::overrideArea(rhi::Rect2D area) { m_OverrideArea = area; }
 
-    void DebugDrawInterface::bindDepthTexture(rhi::Texture& depthTexture)
+    void DebugDrawInterface::updateColorFormat(rhi::PixelFormat colorFormat)
     {
-        if (m_DepthTexture != &depthTexture)
+        if (m_ColorFormat != colorFormat)
         {
-            m_DepthTexture = &depthTexture;
-
-            // Update the depth attachment of the graphics pipeline if needed
-            m_LineGraphicsPipeline = rhi::GraphicsPipeline::Builder {}
-                                         .setDepthFormat(depthTexture.getPixelFormat())
-                                         .setColorFormats({m_ColorFormat})
-                                         .setInputAssembly({
-                                             {0, {.type = rhi::VertexAttribute::Type::eFloat3, .offset = 0}},
-                                             {1, {.type = rhi::VertexAttribute::Type::eFloat3, .offset = 12}},
-                                             {2, {.type = rhi::VertexAttribute::Type::eFloat, .offset = 24}},
-                                         })
-                                         .addBuiltinShader(rhi::ShaderType::eVertex, debug_draw_vert_spv)
-                                         .addBuiltinShader(rhi::ShaderType::eFragment, debug_draw_frag_spv)
-                                         .setDepthStencil({.depthTest = true, .depthWrite = true})
-                                         .setBlending(0, {.enabled = false})
-                                         .setTopology(rhi::PrimitiveTopology::eLineList)
-                                         .build(*m_RenderDevice);
+            m_ColorFormat          = colorFormat;
+            m_NeedsPipelineRebuild = true;
         }
+    }
+
+    void DebugDrawInterface::bindDepthTexture(rhi::Texture* depthTexture)
+    {
+
+        if (m_DepthTexture != depthTexture)
+        {
+            m_DepthTexture         = depthTexture;
+            m_NeedsPipelineRebuild = true;
+        }
+    }
+
+    void DebugDrawInterface::buildPipelineIfNeeded()
+    {
+        if (!m_NeedsPipelineRebuild)
+            return;
+
+        auto builder = rhi::GraphicsPipeline::Builder {};
+        builder.setColorFormats({m_ColorFormat});
+
+        if (m_DepthTexture)
+        {
+            builder.setDepthFormat(m_DepthTexture->getPixelFormat())
+                .setDepthStencil({.depthTest = true, .depthWrite = true});
+        }
+
+        m_LineGraphicsPipeline = builder
+                                     .setInputAssembly({
+                                         {0, {.type = rhi::VertexAttribute::Type::eFloat3, .offset = 0}},
+                                         {1, {.type = rhi::VertexAttribute::Type::eFloat3, .offset = 12}},
+                                         {2, {.type = rhi::VertexAttribute::Type::eFloat, .offset = 24}},
+                                     })
+                                     .addBuiltinShader(rhi::ShaderType::eVertex, debug_draw_vert_spv)
+                                     .addBuiltinShader(rhi::ShaderType::eFragment, debug_draw_frag_spv)
+                                     .setBlending(0, {.enabled = false})
+                                     .setTopology(rhi::PrimitiveTopology::eLineList)
+                                     .build(*m_RenderDevice);
+
+        m_NeedsPipelineRebuild = false;
     }
 
     void DebugDrawInterface::beginFrame(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& framebufferInfo)

@@ -12,8 +12,13 @@
 #include <imgui.h>
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 using namespace vultra;
+
+const char* MODEL_ENTITY_NAME = "Damaged Helmet";
+const char* MODEL_PATH        = "resources/models/DamagedHelmet/DamagedHelmet.gltf";
+const char* ENV_MAP_PATH      = "resources/textures/environment_maps/citrus_orchard_puresky_1k.hdr";
 
 class DebugDrawApp final : public ImGuiApp
 {
@@ -32,15 +37,22 @@ public:
         auto  camera          = m_LogicScene.createMainCamera();
         auto& camTransform    = camera.getComponent<TransformComponent>();
         auto& camComponent    = camera.getComponent<CameraComponent>();
-        camTransform.position = glm::vec3(-0.4665387, 0.7503508, 1.6851553);
-        camTransform.setRotationEuler({-22.20004, -15.999853, 0});
-        camComponent.viewPortWidth  = m_Window.getExtent().x;
-        camComponent.viewPortHeight = m_Window.getExtent().y;
-        camComponent.clearFlags     = CameraClearFlags::eColor;
-        camComponent.clearColor     = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f);
+        camTransform.position = {2.482268, 2.5727322, 3.682747};
+        camTransform.setRotationEuler({-28.800003, 32.399925, 0});
+        camComponent.viewPortWidth      = m_Window.getExtent().x;
+        camComponent.viewPortHeight     = m_Window.getExtent().y;
+        camComponent.clearFlags         = CameraClearFlags::eSkybox;
+        camComponent.environmentMapPath = ENV_MAP_PATH;
 
         // First Person Shooter Camera Controller
         m_FPSCamera = createScope<FirstPersonShooterCamera>(&camTransform);
+
+        // Load a sample model
+        auto model = m_LogicScene.createRawMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
+
+        // Set camera far plane based on model's AABB
+        auto& rawMesh     = model.getComponent<RawMeshComponent>().mesh;
+        camComponent.zFar = rawMesh->aabb.getRadius() * 10.0f;
     }
 
     void onImGui() override
@@ -61,18 +73,15 @@ public:
 #endif
         ImGui::End();
 
-        auto& mainCamTransform = m_LogicScene.getMainCamera().getComponent<TransformComponent>();
-        auto& mainCam          = m_LogicScene.getMainCamera().getComponent<CameraComponent>();
+        auto        model   = m_LogicScene.getEntityWithName(MODEL_ENTITY_NAME);
+        auto&       rawMesh = model.getComponent<RawMeshComponent>().mesh;
+        const auto& aabb    = rawMesh->aabb;
+        const ddVec3 boxColor  = {0.0f, 1.0f, 0.0f};
+        dd::aabb(glm::value_ptr(aabb.min), glm::value_ptr(aabb.max), boxColor);
 
-        auto viewMatrix = getCameraViewMatrix(mainCamTransform);
-        auto projMatrix = getCameraProjectionMatrix(mainCam);
-        auto viewProj   = projMatrix * viewMatrix;
-        commonContext.debugDraw->setViewProjectionMatrix(viewProj);
-
-        const ddVec3 boxColor  = {0.0f, 0.8f, 0.8f};
-        const ddVec3 boxCenter = {0.0f, 0.0f, 0.0f};
-        dd::box(boxCenter, boxColor, 0.5f, 0.5f, 0.5f);
-        dd::cross(boxCenter, 0.2f);
+        // const ddVec3 boxColor  = {0.0f, 1.0f, 0.0f};
+        // const ddVec3 boxCenter = {aabb.getCenter().x, aabb.getCenter().y, aabb.getCenter().z};
+        // dd::box(boxCenter, boxColor, aabb.getExtent().x, aabb.getExtent().y, aabb.getExtent().z);
     }
 
     void onUpdate(const fsec dt) override
@@ -85,14 +94,14 @@ public:
 
         m_FPSCamera->onUpdate(dt);
 
-        VULTRA_CLIENT_INFO("Camera Position: {}, {}, {}",
-                           m_FPSCamera->getPosition().x,
-                           m_FPSCamera->getPosition().y,
-                           m_FPSCamera->getPosition().z);
-        VULTRA_CLIENT_INFO("Camera Rotation: {}, {}, {}",
-                           m_FPSCamera->getRotationEuler().x,
-                           m_FPSCamera->getRotationEuler().y,
-                           m_FPSCamera->getRotationEuler().z);
+        // VULTRA_CLIENT_INFO("Camera Position: {}, {}, {}",
+        //                    m_FPSCamera->getPosition().x,
+        //                    m_FPSCamera->getPosition().y,
+        //                    m_FPSCamera->getPosition().z);
+        // VULTRA_CLIENT_INFO("Camera Rotation: {}, {}, {}",
+        //                    m_FPSCamera->getRotationEuler().x,
+        //                    m_FPSCamera->getRotationEuler().y,
+        //                    m_FPSCamera->getRotationEuler().z);
 
         m_Renderer.setScene(&m_LogicScene);
 

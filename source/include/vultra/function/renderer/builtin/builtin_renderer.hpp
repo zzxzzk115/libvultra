@@ -23,6 +23,8 @@ namespace vultra
         class FXAAPass;
         class FinalPass;
         class BlitPass;
+        class DebugDrawPass;
+        class ColorBlendPass;
 
         class UIPass;
 
@@ -131,6 +133,8 @@ namespace vultra
             FXAAPass*             m_FXAAPass {nullptr};
             FinalPass*            m_FinalPass {nullptr};
             BlitPass*             m_BlitPass {nullptr};
+            DebugDrawPass*        m_DebugDrawPass {nullptr};
+            ColorBlendPass*       m_ColorBlendPass {nullptr};
 
             CubemapConverter  m_CubemapConverter;
             Ref<rhi::Texture> m_Cubemap {nullptr};

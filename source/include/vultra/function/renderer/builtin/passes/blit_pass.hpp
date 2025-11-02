@@ -15,7 +15,7 @@ namespace vultra
         public:
             explicit BlitPass(rhi::RenderDevice&);
 
-            void blit(FrameGraph&, FrameGraphResource src, FrameGraphResource dst, bool readyForReading = false);
+            void blit(FrameGraph&, FrameGraphResource src, FrameGraphResource dst, bool readyForReading = false, bool clearDst = true);
 
         private:
             rhi::GraphicsPipeline createPipeline(const rhi::PixelFormat colorFormat) const;
