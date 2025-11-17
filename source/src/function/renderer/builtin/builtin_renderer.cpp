@@ -686,13 +686,8 @@ namespace vultra
 
                     auto aaResult = m_FXAAPass->aa(fg, raytracedResult);
 
-                    // Debug draw
-                    m_DebugDrawPass->addPass(fg, blackboard, dt, m_CameraInfo.viewProjection);
-                    auto& debugDrawData = blackboard.get<DebugDrawData>();
-
                     // Color blend
-                    aaResult = m_ColorBlendPass->blend(
-                        fg, debugDrawData.debugDraw, aaResult, BlendType::eAdditive, ColorRange::eLDR);
+                    aaResult = m_ColorBlendPass->blend(fg, aaResult, aaResult, BlendType::eAdditive, ColorRange::eLDR);
 
                     m_BlitPass->blit(fg, aaResult, backBuffer);
                 }
