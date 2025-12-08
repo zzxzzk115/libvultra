@@ -686,9 +686,6 @@ namespace vultra
 
                     auto aaResult = m_FXAAPass->aa(fg, raytracedResult);
 
-                    // Color blend
-                    aaResult = m_ColorBlendPass->blend(fg, aaResult, aaResult, BlendType::eAdditive, ColorRange::eLDR);
-
                     m_BlitPass->blit(fg, aaResult, backBuffer);
                 }
 

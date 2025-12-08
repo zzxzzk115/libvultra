@@ -70,12 +70,6 @@ namespace vultra
 
                     RHI_GPU_ZONE(cb, PASS_NAME);
 
-                    // Early out if no debug draws pending
-                    if (!dd::hasPendingDraws())
-                    {
-                        return;
-                    }
-
                     auto* depthTexture = framebufferInfo->depthAttachment->target;
                     commonContext.debugDraw->updateColorFormat(
                         framebufferInfo->colorAttachments[0].target->getPixelFormat());
