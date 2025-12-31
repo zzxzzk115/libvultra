@@ -96,7 +96,7 @@ target("vultra")
     add_files("src/**.cpp")
 
     -- add deps
-    add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vultra_builtin_assets")
+    add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vultra_builtin_assets", "miniply", "spz", "vrdx")
 
     -- add rules
     add_rules("vulkansdk")
