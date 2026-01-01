@@ -50,9 +50,9 @@ includes("rayquery")
 includes("rendergraph")
 includes("meshshading/triangle")
 includes("debug_draw")
+includes("gaussian_splatting")
 
-target("normal-examples")
-    set_kind("phony")
+task("normal-examples")
     on_run(function ()
         import("core.project.project")
         local examples = {
@@ -65,6 +65,7 @@ target("normal-examples")
             "gltf-viewer",
             "rendergraph",
             "debugdraw",
+            "gaussian-splatting",
         }
         for _, example in ipairs(examples) do
             os.execv("xmake", {"run", "example-" .. example})
