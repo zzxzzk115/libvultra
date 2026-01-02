@@ -22,15 +22,12 @@
 #include <vultra/core/rhi/graphics_pipeline.hpp>
 #include <vultra/core/rhi/render_device.hpp>
 #include <vultra/core/rhi/vertex_buffer.hpp>
-
-#include <vulkan/vulkan.hpp>
+#include <vultra/function/app/base_app.hpp>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
-
-#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <array>
@@ -38,7 +35,6 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <format>
 #include <limits>
 #include <numeric>
 #include <vector>
@@ -975,8 +971,10 @@ try
                                      })
                         .build(renderDevice);
 
-    using Clock = std::chrono::steady_clock;
+    using Clock = std::chrono::high_resolution_clock;
     auto lastT  = Clock::now();
+
+    FPSMonitor fpsMonitor {window};
 
     // ------------------------------------------
     // Main loop
@@ -1089,6 +1087,9 @@ try
 
         frameController.endFrame();
         frameController.present();
+
+        auto deltaTime = Clock::now() - nowT;
+        fpsMonitor.update(deltaTime);
     }
 
     renderDevice.waitIdle();
