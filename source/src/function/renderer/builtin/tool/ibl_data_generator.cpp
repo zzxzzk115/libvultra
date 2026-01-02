@@ -40,7 +40,7 @@ namespace vultra
                     .build(m_BrdfPipeline.getDescriptorSetLayout(0));
 
             {
-                RHI_GPU_ZONE(cb, "BRDF LUT Generation");
+                // RHI_GPU_ZONE(cb, "BRDF LUT Generation");
                 cb.bindPipeline(m_BrdfPipeline)
                     .bindDescriptorSet(0, descriptors)
                     .dispatch({(kSize + 15) / 16, (kSize + 15) / 16, 1});

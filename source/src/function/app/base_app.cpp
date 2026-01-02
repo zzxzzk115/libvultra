@@ -1,4 +1,5 @@
 #include "vultra/function/app/base_app.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/input/input.hpp"
 #include "vultra/function/service/services.hpp"
 
@@ -13,6 +14,9 @@ namespace vultra
 
         m_Swapchain       = m_RenderDevice->createSwapchain(m_Window, cfg.swapchainFormat, cfg.vSyncConfig);
         m_FrameController = rhi::FrameController {*m_RenderDevice, m_Swapchain, cfg.numFramesInFlight};
+
+        commonContext.debugDraw->initialize(*m_RenderDevice, m_Swapchain.getPixelFormat());
+        dd::initialize(commonContext.debugDraw.get());
 
         setupWindowCallbacks();
 
@@ -94,6 +98,24 @@ namespace vultra
 
                     onRender(cb, m_FrameController.getCurrentTarget(), deltaTime);
 
+                    if (dd::hasPendingDraws())
+                    {
+                        auto&                      backBuffer = m_FrameController.getCurrentTarget().texture;
+                        const rhi::FramebufferInfo framebufferInfo {.area =
+                                                                        rhi::Rect2D {.extent = backBuffer.getExtent()},
+                                                                    .colorAttachments = {
+                                                                        {
+                                                                            .target = &backBuffer,
+                                                                        },
+                                                                    }};
+                        commonContext.debugDraw->updateColorFormat(backBuffer.getPixelFormat());
+                        commonContext.debugDraw->bindDepthTexture(nullptr); // No depth texture bound
+                        commonContext.debugDraw->buildPipelineIfNeeded();
+                        commonContext.debugDraw->beginFrame(cb, framebufferInfo);
+                        dd::flush(deltaTime.count());
+                        commonContext.debugDraw->endFrame();
+                    }
+
                     m_FrameController.endFrame();
 
                     renderDocCaptureEnd();
@@ -117,6 +139,8 @@ namespace vultra
             fpsMonitor.update(deltaTime);
         }
 
+        dd::shutdown();
+        commonContext.cleanup();
         m_RenderDevice->waitIdle();
         service::Services::reset();
     }

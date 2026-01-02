@@ -18,11 +18,15 @@ namespace vultra
 
         BlitPass::BlitPass(rhi::RenderDevice& rd) : rhi::RenderPass<BlitPass>(rd) {}
 
-        void BlitPass::blit(FrameGraph& fg, FrameGraphResource src, FrameGraphResource dst, bool readyForReading)
+        void BlitPass::blit(FrameGraph&        fg,
+                            FrameGraphResource src,
+                            FrameGraphResource dst,
+                            bool               readyForReading,
+                            bool               clearDst)
         {
             fg.addCallbackPass(
                 PASS_NAME,
-                [&src, &dst](FrameGraph::Builder& builder, auto&) {
+                [&src, &dst, clearDst](FrameGraph::Builder& builder, auto&) {
                     PASS_SETUP_ZONE;
 
                     builder.read(src,
@@ -40,7 +44,9 @@ namespace vultra
                                         framegraph::Attachment {
                                             .index       = 0,
                                             .imageAspect = rhi::ImageAspect::eColor,
-                                            .clearValue  = framegraph::ClearValue::eOpaqueBlack,
+                                            .clearValue  = clearDst ?
+                                                               std::make_optional(framegraph::ClearValue::eOpaqueBlack) :
+                                                               std::nullopt,
                                         });
                 },
                 [this, readyForReading, dst](const auto&, FrameGraphPassResources& resources, void* ctx) {

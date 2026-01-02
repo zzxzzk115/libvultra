@@ -5,6 +5,8 @@
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/renderer/area_light.hpp"
 #include "vultra/function/renderer/builtin/passes/blit_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/color_blend_pass.hpp"
+#include "vultra/function/renderer/builtin/passes/debug_draw_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/deferred_lighting_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/depth_pre_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/final_pass.hpp"
@@ -17,6 +19,7 @@
 #include "vultra/function/renderer/builtin/passes/skybox_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/tonemapping_pass.hpp"
 #include "vultra/function/renderer/builtin/passes/ui_pass.hpp"
+#include "vultra/function/renderer/builtin/resources/debug_draw_data.hpp"
 #include "vultra/function/renderer/builtin/resources/ibl_data.hpp"
 #include "vultra/function/renderer/builtin/resources/scene_color_data.hpp"
 #include "vultra/function/renderer/renderer_render_context.hpp"
@@ -52,6 +55,8 @@ namespace vultra
             m_FXAAPass             = new FXAAPass(rd);
             m_FinalPass            = new FinalPass(rd);
             m_BlitPass             = new BlitPass(rd);
+            m_DebugDrawPass        = new DebugDrawPass(rd);
+            m_ColorBlendPass       = new ColorBlendPass(rd);
 
             m_UIPass = new UIPass(rd);
 
@@ -86,6 +91,8 @@ namespace vultra
             delete m_FXAAPass;
             delete m_FinalPass;
             delete m_BlitPass;
+            delete m_DebugDrawPass;
+            delete m_ColorBlendPass;
 
             delete m_UIPass;
 
@@ -590,6 +597,14 @@ namespace vultra
                     // FXAA
                     sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
 
+                    // Debug draw
+                    m_DebugDrawPass->addPass(fg, blackboard, dt, m_CameraInfo.viewProjection);
+                    auto& debugDrawData = blackboard.get<DebugDrawData>();
+
+                    // Color blend
+                    sceneColor.aa = m_ColorBlendPass->blend(
+                        fg, debugDrawData.debugDraw, sceneColor.aa, BlendType::eAdditive, ColorRange::eLDR);
+
                     // Final composition
                     m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
                 }
@@ -777,6 +792,14 @@ namespace vultra
 
                     // FXAA
                     sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
+
+                    // Debug draw
+                    m_DebugDrawPass->addPass(fg, blackboard, dt, m_CameraInfo.viewProjection);
+                    auto& debugDrawData = blackboard.get<DebugDrawData>();
+
+                    // Color blend
+                    sceneColor.aa = m_ColorBlendPass->blend(
+                        fg, debugDrawData.debugDraw, sceneColor.aa, BlendType::eAdditive, ColorRange::eLDR);
 
                     // Final composition
                     m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
