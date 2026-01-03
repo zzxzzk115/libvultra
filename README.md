@@ -62,9 +62,10 @@ Step-by-Step:
   xmake -vD
   ```
 
-- Run the programs:
+- Run the examples:
   ```bash
-  xmake run
+  xmake run # Run all examples
+  xmake examples # A task to run all standard examples (without modern features such as ray-tracing and mesh shaders).
   ```
   or run a specific program:
   ```bash
@@ -80,6 +81,7 @@ Step-by-Step:
   xmake run example-meshshading-triangle
   xmake run example-gltf-viewer
   xmake run example-sponza
+  xmake run example-gaussian-splatting
   ```
 
   > **Tips:**
@@ -96,6 +98,13 @@ Step-by-Step:
 - [x] ECS-based scene management with EnTT
 - [x] Raytracing Pipeline
 - [x] Mesh Shading Pipeline
+- [ ] 3D Gaussian Splatting Rendering
+  - [x] .spz loader
+  - [ ] .ply loader
+  - [x] CPU sorting
+  - [ ] CPU culling
+  - [ ] GPU sorting
+  - [ ] GPU culling
 - [ ] Resource Pipeline
 - [ ] Lua or C# Scripting System
 - [ ] (Maybe?) AR support

@@ -125,3 +125,29 @@ end
 if has_config("libvultra_build_examples") then
     includes("examples")
 end
+
+-- global task for running standard examples
+task("examples")
+    set_menu {
+        usage = "xmake examples",
+        description = "Run standard examples, without modern features (ray tracing, mesh shaders, etc.).",
+        options = {}
+    }
+    on_run(function ()
+        local examples = {
+            "window",
+            "rhi-triangle",
+            "imgui",
+            "framegraph-triangle",
+            "openxr-triangle",
+            "openxr-sponza",
+            "gltf-viewer",
+            "rendergraph",
+            "debugdraw",
+            "gaussian-splatting",
+        }
+        for _, example in ipairs(examples) do
+            os.execv("xmake", {"run", "example-" .. example})
+        end
+    end)
+task_end()

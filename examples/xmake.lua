@@ -51,24 +51,3 @@ includes("rendergraph")
 includes("meshshading/triangle")
 includes("debug_draw")
 includes("gaussian_splatting")
-
-task("normal-examples")
-    on_run(function ()
-        import("core.project.project")
-        local examples = {
-            "window",
-            "rhi-triangle",
-            "imgui",
-            "framegraph-triangle",
-            "openxr-triangle",
-            "openxr-sponza",
-            "gltf-viewer",
-            "rendergraph",
-            "debugdraw",
-            "gaussian-splatting",
-        }
-        for _, example in ipairs(examples) do
-            os.execv("xmake", {"run", "example-" .. example})
-        end
-    end)
-task_end()
