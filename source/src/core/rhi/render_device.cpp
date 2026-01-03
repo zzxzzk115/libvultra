@@ -383,7 +383,7 @@ namespace vultra
         {
             assert(m_MemoryAllocator);
 
-            vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst;
+            vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer;
 
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
@@ -461,7 +461,7 @@ namespace vultra
             assert(m_MemoryAllocator);
 
             vk::BufferUsageFlags usage =
-                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
+                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer;
 
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
