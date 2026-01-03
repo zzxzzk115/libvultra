@@ -19,11 +19,10 @@ namespace vultra
             [[nodiscard]] vk::DeviceSize   getCapacity() const;
 
         private:
-            DrawIndirectBuffer(Buffer&&, DrawIndirectType, Stride);
+            DrawIndirectBuffer(Buffer&&, DrawIndirectType);
 
         private:
             DrawIndirectType m_Type {DrawIndirectType::eIndexed};
-            Stride           m_Stride {0};
         };
     } // namespace rhi
 } // namespace vultra

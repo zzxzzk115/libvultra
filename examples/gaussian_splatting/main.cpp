@@ -19,6 +19,8 @@
 #include <vultra/core/os/window.hpp>
 #include <vultra/core/rhi/command_buffer.hpp>
 #include <vultra/core/rhi/compute_pipeline.hpp>
+#include <vultra/core/rhi/draw_indirect_buffer.hpp>
+#include <vultra/core/rhi/draw_indirect_command.hpp>
 #include <vultra/core/rhi/frame_controller.hpp>
 #include <vultra/core/rhi/graphics_pipeline.hpp>
 #include <vultra/core/rhi/render_device.hpp>
@@ -1263,6 +1265,26 @@ try
 
     rhi::VertexBuffer quadVB = renderDevice.createVertexBuffer(sizeof(QuadVertex), static_cast<uint32_t>(kQuad.size()));
     uploadInit(quadVB, kQuad.data(), sizeof(QuadVertex) * kQuad.size());
+
+    // TODO: Ziyu fill in draw indirect commands, be aware of the differences between indexed and non-indexed.
+    std::vector<rhi::DrawIndirectCommand> commands;
+    // This is just an example
+    commands.push_back({
+        .type          = rhi::DrawIndirectType::eIndexed,
+        .count         = 1,
+        .instanceCount = 1,
+        .first         = 0,
+        .vertexOffset  = 0,
+        .firstInstance = 0,
+    });
+
+    rhi::DrawIndirectBuffer diB =
+        renderDevice.createDrawIndirectBuffer(static_cast<uint32_t>(commands.size()), rhi::DrawIndirectType::eIndexed);
+    renderDevice.uploadDrawIndirect(diB, commands);
+
+    // TODO: Ziyu use this example and remove.
+    // rhi::CommandBuffer fakeCB {};
+    // fakeCB.drawIndirect({.buffer = &diB, .commandCount = static_cast<uint32_t>(commands.size())});
 
     // Graphics pipeline
     auto pipeline = rhi::GraphicsPipeline::Builder {}
