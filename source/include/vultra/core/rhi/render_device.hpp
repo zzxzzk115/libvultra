@@ -73,6 +73,7 @@ namespace vultra
             eMeshShader            = BIT(4),
             eBufferDeviceAddress   = BIT(5),
             eDescriptorIndexing    = BIT(6),
+            eDrawIndirectCount     = BIT(7),
         };
 
         struct RenderDeviceFeatureReport
@@ -151,7 +152,7 @@ namespace vultra
             [[nodiscard]] Buffer createStagingBuffer(vk::DeviceSize size, const void* data = nullptr) const;
 
             [[nodiscard]] VertexBuffer
-            createVertexBuffer(Buffer::Stride, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone) const;
+            createVertexBuffer(Buffer::Stride, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone, bool indirect = false) const;
 
             [[nodiscard]] IndexBuffer
             createIndexBuffer(IndexType, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone) const;
@@ -160,7 +161,7 @@ namespace vultra
                                                             AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] StorageBuffer createStorageBuffer(vk::DeviceSize size,
-                                                            AllocationHints = AllocationHints::eNone) const;
+                                                            AllocationHints = AllocationHints::eNone, bool indirect = false) const;
 
             [[nodiscard]] std::pair<std::size_t, vk::DescriptorSetLayout>
             createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>&);

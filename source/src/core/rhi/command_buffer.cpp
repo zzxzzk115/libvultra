@@ -2,6 +2,7 @@
 #include "vultra/core/base/visitor_helper.hpp"
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/compute_pipeline.hpp"
+#include "vultra/core/rhi/draw_indirect_info.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
 #include "vultra/core/rhi/texture.hpp"
@@ -422,6 +423,33 @@ namespace vultra
         CommandBuffer& CommandBuffer::drawFullScreenTriangle() { return draw({.numVertices = 3}); }
 
         CommandBuffer& CommandBuffer::drawCube() { return draw({.numVertices = 36}); }
+
+        CommandBuffer& CommandBuffer::drawIndirect(const DrawIndirectInfo& dii)
+        {
+            assert(invariant(State::eRecording,
+                             InvariantFlags::eValidGraphicsPipeline | InvariantFlags::eInsideRenderPass));
+
+            TRACY_GPU_ZONE2_("DrawIndirect");
+
+            const auto& drawIndirectType = dii.buffer->getDrawIndirectType();
+
+            if (drawIndirectType == DrawIndirectType::eIndexed)
+            {
+                m_Handle.drawIndexedIndirect(dii.buffer->getHandle(),
+                                             dii.firstCommand * dii.buffer->getStride(),
+                                             dii.commandCount,
+                                             dii.buffer->getStride());
+            }
+            else
+            {
+                m_Handle.drawIndirect(dii.buffer->getHandle(),
+                                      dii.firstCommand * dii.buffer->getStride(),
+                                      dii.commandCount,
+                                      dii.buffer->getStride());
+            }
+
+            return *this;
+        }
 
         CommandBuffer& CommandBuffer::drawMeshTask(const glm::uvec3& numTaskGroups)
         {

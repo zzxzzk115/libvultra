@@ -379,11 +379,17 @@ namespace vultra
 
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
                                                       const vk::DeviceSize  capacity,
-                                                      const AllocationHints allocationHint) const
+                                                      const AllocationHints allocationHint,
+                                                      const bool            indirect) const
         {
             assert(m_MemoryAllocator);
 
-            vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer;
+            vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst;
+
+            if (indirect)
+            {
+                usage | vk::BufferUsageFlagBits::eIndirectBuffer;
+            }
 
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
@@ -456,12 +462,18 @@ namespace vultra
         }
 
         StorageBuffer RenderDevice::createStorageBuffer(const vk::DeviceSize  size,
-                                                        const AllocationHints allocationHint) const
+                                                        const AllocationHints allocationHint,
+                                                        const bool            indirect) const
         {
             assert(m_MemoryAllocator);
 
             vk::BufferUsageFlags usage =
-                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndirectBuffer;
+                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
+
+            if (indirect)
+            {
+                usage | vk::BufferUsageFlagBits::eIndirectBuffer;
+            }
 
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
@@ -1142,6 +1154,9 @@ namespace vultra
                 vk12.descriptorIndexing && vk12.shaderSampledImageArrayNonUniformIndexing &&
                     vk12.runtimeDescriptorArray && vk12.descriptorBindingPartiallyBound &&
                     vk12.descriptorBindingVariableDescriptorCount);
+            add(RenderDeviceFeatureReportFlagBits::eDrawIndirectCount,
+                VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME,
+                vk12.drawIndirectCount);
 
             // Summarize selected device
             VULTRA_CORE_INFO("[RenderDevice] Selected GPU: {}", props.deviceName.data());
@@ -1161,6 +1176,7 @@ namespace vultra
             PRINT_FEATURE(eMeshShader);
             PRINT_FEATURE(eBufferDeviceAddress);
             PRINT_FEATURE(eDescriptorIndexing);
+            PRINT_FEATURE(eDrawIndirectCount);
 #undef PRINT_FEATURE
 
             // === Assign & Check Feature Flags ===
@@ -1179,6 +1195,7 @@ namespace vultra
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eMeshShader;
             }
+
             if (useOpenXR)
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eOpenXR;

@@ -6,6 +6,7 @@
 #include "vultra/core/rhi/debug_marker.hpp"
 #include "vultra/core/rhi/descriptorset_allocator.hpp"
 #include "vultra/core/rhi/descriptorset_builder.hpp"
+#include "vultra/core/rhi/draw_indirect_info.hpp"
 #include "vultra/core/rhi/framebuffer_info.hpp"
 #include "vultra/core/rhi/geometry_info.hpp"
 #include "vultra/core/rhi/image_aspect.hpp"
@@ -119,6 +120,7 @@ namespace vultra
             CommandBuffer& draw(const GeometryInfo&, const uint32_t numInstances = 1);
             CommandBuffer& drawFullScreenTriangle();
             CommandBuffer& drawCube();
+            CommandBuffer& drawIndirect(const DrawIndirectInfo&);
             CommandBuffer& drawMeshTask(const glm::uvec3& numTaskGroups);
 
             // ---
