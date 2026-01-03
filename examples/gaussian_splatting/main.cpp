@@ -23,12 +23,7 @@
 #include <vultra/core/rhi/graphics_pipeline.hpp>
 #include <vultra/core/rhi/render_device.hpp>
 #include <vultra/core/rhi/vertex_buffer.hpp>
-<<<<<<< Updated upstream
-
-#include <vulkan/vulkan.hpp>
-=======
 #include <vultra/function/app/base_app.hpp> // kept for project integration (may be unused here)
->>>>>>> Stashed changes
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -47,10 +42,6 @@
 #include <limits>
 #include <numeric>
 #include <string>
-<<<<<<< Updated upstream
-#include <type_traits>
-=======
->>>>>>> Stashed changes
 #include <vector>
 
 #include <load-spz.h>
@@ -79,46 +70,22 @@ namespace config
     constexpr float kExtentStdDev = 2.8284271247461903f; // sqrt(8)
     constexpr float kMaxAxisPx    = 512.0f;
 
-<<<<<<< Updated upstream
-    // Clamp the projected ellipse axes in pixels (prevents giant quads).
-    constexpr float kMaxAxisPx    = 512.0f;
-
-    // Anti-alias inflation in pixel-space covariance.
-    constexpr float kAAInflationPx = 0.30f;
-
-    // Base alpha cull in vertex shader (cheap early-out).
-    constexpr float kAlphaCullThreshold = 1.0f / 64.0f;
-
-    // True opacity discard in fragment shader (key for de-fog).
-=======
     constexpr float kAAInflationPx           = 0.30f;
     constexpr float kAlphaCullThreshold      = 1.0f / 64.0f;
->>>>>>> Stashed changes
     constexpr float kOpacityDiscardThreshold = 1.0f / 512.0f;
 
     constexpr float kCenterQuantileLo = 0.01f;
     constexpr float kCenterQuantileHi = 0.99f;
     constexpr float kRadiusQuantile   = 0.98f;
 
-<<<<<<< Updated upstream
-    // Heuristics for decoding SPZ fields.
-    constexpr bool  kAutoDetectScaleIsLog  = true;
-    constexpr float kLogScaleMin = -20.0f;
-    constexpr float kLogScaleMax =  4.0f;
-=======
     constexpr bool  kAutoDetectScaleIsLog = true;
     constexpr float kLogScaleMin          = -20.0f;
     constexpr float kLogScaleMax          = 4.0f;
->>>>>>> Stashed changes
 
     constexpr bool  kAutoDetectAlphaIsLogit = true;
-    constexpr float kAlphaLogitMin = -20.0f;
-    constexpr float kAlphaLogitMax =  20.0f;
+    constexpr float kAlphaLogitMin          = -20.0f;
+    constexpr float kAlphaLogitMax          = 20.0f;
 
-<<<<<<< Updated upstream
-    constexpr bool  kAutoDetectSH0Bias = true;
-}
-=======
     constexpr bool kAutoDetectSH0Bias = true;
 
     constexpr float kRebuildIntervalSecStatic = 0.05f;
@@ -138,37 +105,22 @@ namespace config
     constexpr float kCenterCullSlackNdc = 1.10f;
     constexpr float kViewZNearReject    = -0.02f;
 } // namespace config
->>>>>>> Stashed changes
 
 // =================================================================================================
 // GPU layouts (SSBO)
 // =================================================================================================
 struct QuadVertex { glm::vec2 corner; };
-<<<<<<< Updated upstream
-struct CenterGPU  { glm::vec4 xyz1;   };  // xyz + 1
-struct CovGPU     { glm::vec4 c0; glm::vec4 c1; }; // symmetric 3x3 packed
-struct ColorGPU   { glm::vec4 rgba;   };  // base rgb + alpha
-=======
 struct CenterGPU { glm::vec4 xyz1; };
 struct CovGPU    { glm::vec4 c0; glm::vec4 c1; };
 struct ColorGPU  { glm::vec4 rgba; };
->>>>>>> Stashed changes
 
 struct PushConstants
 {
-<<<<<<< Updated upstream
-    glm::mat4 view;    // world -> view
-    glm::vec4 proj;    // P00, P11, P22, P32  (perspective constants)
-    glm::vec4 vp;      // W, H, 2/W, 2/H      (viewport info)
-    glm::vec4 cam;     // camPos.xyz, alphaCullThreshold
-    glm::vec4 misc;    // aaInflatePx, opacityDiscardThreshold, signedMaxAxisPx, extentStdDev
-=======
     glm::mat4 view;
     glm::vec4 proj; // P00, P11, P22, P32
     glm::vec4 vp;   // W, H, 2/W, 2/H
     glm::vec4 cam;  // camPos.xyz, alphaCullThreshold
     glm::vec4 misc; // aaInflatePx, opacityDiscardThreshold, signedMaxAxisPx, extentStdDev
->>>>>>> Stashed changes
 };
 
 struct CullPC
@@ -289,11 +241,7 @@ static float quantile(std::vector<float> v, float q01)
 {
     if (v.empty()) return 0.0f;
     q01 = std::clamp(q01, 0.0f, 1.0f);
-<<<<<<< Updated upstream
-    size_t k = static_cast<size_t>(std::floor(q01 * float(v.size() - 1)));
-=======
     size_t k = static_cast<size_t>(std::floor(q01 * static_cast<float>(v.size() - 1)));
->>>>>>> Stashed changes
     std::nth_element(v.begin(), v.begin() + k, v.end());
     return v[k];
 }
@@ -305,13 +253,9 @@ static glm::quat sanitizeAndNormalizeQuat(glm::vec4 xyzw)
 
     glm::quat q(xyzw.w, xyzw.x, xyzw.y, xyzw.z);
     float len2 = glm::dot(q, q);
-<<<<<<< Updated upstream
-    if (!(len2 > 1e-12f)) return glm::quat(1, 0, 0, 0);
-=======
     if (!(len2 > 1e-12f))
         return glm::quat(1, 0, 0, 0);
 
->>>>>>> Stashed changes
     return glm::normalize(q);
 }
 
@@ -329,36 +273,25 @@ static bool isSrgbPixelFormat(vultra::rhi::PixelFormat pf)
 }
 
 // =================================================================================================
-// Scene loading 
+// Scene loading (same as your robust SPZ decoder)
 // =================================================================================================
 struct SceneData
 {
     std::vector<CenterGPU> centers;
     std::vector<CovGPU>    covs;
     std::vector<ColorGPU>  colors;
-<<<<<<< Updated upstream
-
-    // We store 45 floats per splat: 15 coeffs * RGB(3).
-    // (Target: SH degree 3 rest terms = 15 coefficients)
-    std::vector<float>     shRest;
-=======
     std::vector<float>     shRest; // 45 floats per splat (15 * RGB)
->>>>>>> Stashed changes
 
     glm::vec3 center {};
-    float radius = 1.0f;
-    bool success = false;
+    float     radius  = 1.0f;
+    bool      success = false;
 };
 
 static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
 {
-    SceneData out{};
+    SceneData out {};
 
-<<<<<<< Updated upstream
-    spz::UnpackOptions opt{};
-=======
     spz::UnpackOptions  opt {};
->>>>>>> Stashed changes
     spz::GaussianCloud cloud = spz::loadSpz(path.string(), opt);
     if (cloud.numPoints == 0)
     {
@@ -374,11 +307,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     float aMax = -std::numeric_limits<float>::infinity();
     for (uint32_t i = 0; i < std::min<uint32_t>(N, 200000); ++i)
     {
-<<<<<<< Updated upstream
-        float v = (float)cloud.alphas[i];
-=======
         float v = static_cast<float>(cloud.alphas[i]);
->>>>>>> Stashed changes
         if (!std::isfinite(v)) continue;
         aMin = std::min(aMin, v);
         aMax = std::max(aMax, v);
@@ -389,19 +318,11 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         looksLogitAlpha = (aMin < -0.05f) || (aMax > 1.05f);
 
     VULTRA_CLIENT_INFO("Alpha encoding: {} (min={}, max={})",
-<<<<<<< Updated upstream
-        looksLogitAlpha ? "logit" : "linear01", aMin, aMax);
-
-    auto decodeAlpha = [&](uint32_t i) -> float
-    {
-        float x = (float)cloud.alphas[i];
-=======
                        looksLogitAlpha ? "logit" : "linear01",
                        aMin, aMax);
 
     auto decodeAlpha = [&](uint32_t i) -> float {
         float x = static_cast<float>(cloud.alphas[i]);
->>>>>>> Stashed changes
         if (!std::isfinite(x)) return 0.0f;
 
         if (looksLogitAlpha)
@@ -419,11 +340,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     {
         for (int k = 0; k < 3; ++k)
         {
-<<<<<<< Updated upstream
-            float v = (float)cloud.scales[i * 3 + k];
-=======
             float v = static_cast<float>(cloud.scales[i * 3 + k]);
->>>>>>> Stashed changes
             if (!std::isfinite(v)) continue;
             sMin = std::min(sMin, v);
             sMax = std::max(sMax, v);
@@ -435,16 +352,6 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         looksLogScale = (sMin < -1.0f) || (sMax > 3.0f);
 
     VULTRA_CLIENT_INFO("Scale encoding: {} (min={}, max={})",
-<<<<<<< Updated upstream
-        looksLogScale ? "log" : "linear", sMin, sMax);
-
-    auto getLinScale = [&](uint32_t i) -> glm::vec3
-    {
-        float x = (float)cloud.scales[i * 3 + 0];
-        float y = (float)cloud.scales[i * 3 + 1];
-        float z = (float)cloud.scales[i * 3 + 2];
-
-=======
                        looksLogScale ? "log" : "linear",
                        sMin, sMax);
 
@@ -452,7 +359,6 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         float x = static_cast<float>(cloud.scales[i * 3 + 0]);
         float y = static_cast<float>(cloud.scales[i * 3 + 1]);
         float z = static_cast<float>(cloud.scales[i * 3 + 2]);
->>>>>>> Stashed changes
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z))
             return glm::vec3(1e-6f);
 
@@ -468,19 +374,13 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         return glm::vec3(std::max(x, eps), std::max(y, eps), std::max(z, eps));
     };
 
-    auto getQuat = [&](uint32_t i) -> glm::quat
-    {
+    auto getQuat = [&](uint32_t i) -> glm::quat {
         const auto& r = cloud.rotations;
-<<<<<<< Updated upstream
-        if (r.size() >= size_t(i) * 4 + 4)
-            return sanitizeAndNormalizeQuat(glm::vec4(r[i * 4 + 0], r[i * 4 + 1], r[i * 4 + 2], r[i * 4 + 3]));
-=======
         if (r.size() >= static_cast<size_t>(i) * 4 + 4)
             return sanitizeAndNormalizeQuat(glm::vec4(r[i * 4 + 0],
                                                      r[i * 4 + 1],
                                                      r[i * 4 + 2],
                                                      r[i * 4 + 3]));
->>>>>>> Stashed changes
         return glm::quat(1, 0, 0, 0);
     };
 
@@ -490,11 +390,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     {
         for (int k = 0; k < 3; ++k)
         {
-<<<<<<< Updated upstream
-            double v = (double)cloud.colors[i * 3 + k];
-=======
             double v = static_cast<double>(cloud.colors[i * 3 + k]);
->>>>>>> Stashed changes
             if (!std::isfinite(v)) continue;
             cMin = std::min(cMin, v);
             cMax = std::max(cMax, v);
@@ -506,13 +402,8 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     const bool looksSH0        = (!looksByteRGB && !looksFloatRGB01);
 
     VULTRA_CLIENT_INFO("Base RGB encoding guess: {} (cMin={}, cMax={})",
-<<<<<<< Updated upstream
-        looksByteRGB ? "byte(0..255)" : (looksFloatRGB01 ? "float(0..1-ish)" : "SH0-coeff"),
-        cMin, cMax);
-=======
                        looksByteRGB ? "byte(0..255)" : (looksFloatRGB01 ? "float(0..1-ish)" : "SH0-coeff"),
                        cMin, cMax);
->>>>>>> Stashed changes
 
     constexpr float SH_C0 = 0.28209479177f;
 
@@ -521,17 +412,17 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     {
         const uint32_t M = std::min<uint32_t>(N, 200000);
 
-        auto scoreMode = [&](bool addBias) -> double
-        {
+        auto scoreMode = [&](bool addBias) -> double {
             uint64_t outOfRange = 0;
-            uint64_t total = 0;
+            uint64_t total      = 0;
 
             for (uint32_t i = 0; i < M; ++i)
             {
-                float r = (float)cloud.colors[i * 3 + 0];
-                float g = (float)cloud.colors[i * 3 + 1];
-                float b = (float)cloud.colors[i * 3 + 2];
-                if (!std::isfinite(r) || !std::isfinite(g) || !std::isfinite(b)) continue;
+                float r = static_cast<float>(cloud.colors[i * 3 + 0]);
+                float g = static_cast<float>(cloud.colors[i * 3 + 1]);
+                float b = static_cast<float>(cloud.colors[i * 3 + 2]);
+                if (!std::isfinite(r) || !std::isfinite(g) || !std::isfinite(b))
+                    continue;
 
                 glm::vec3 rgb = SH_C0 * glm::vec3(r, g, b) + (addBias ? glm::vec3(0.5f) : glm::vec3(0.0f));
 
@@ -541,32 +432,22 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
                 total += 3;
             }
             if (total == 0) return 1e9;
-<<<<<<< Updated upstream
-            return double(outOfRange) / double(total);
-=======
             return static_cast<double>(outOfRange) / static_cast<double>(total);
->>>>>>> Stashed changes
         };
 
         double sA = scoreMode(true);
         double sB = scoreMode(false);
 
         sh0AddBias = (sA <= sB);
-<<<<<<< Updated upstream
-        VULTRA_CLIENT_INFO("SH0 decode mode: {}  (outOfRange A(with +0.5)={:.4f}, B(no bias)={:.4f})",
-            sh0AddBias ? "WITH +0.5" : "NO bias", sA, sB);
-=======
         VULTRA_CLIENT_INFO("SH0 decode mode: {} (outOfRange: with +0.5={:.4f}, no bias={:.4f})",
                            sh0AddBias ? "WITH +0.5" : "NO bias",
                            sA, sB);
->>>>>>> Stashed changes
     }
 
-    auto decodeBaseRGB = [&](uint32_t i) -> glm::vec3
-    {
-        float r = (float)cloud.colors[i * 3 + 0];
-        float g = (float)cloud.colors[i * 3 + 1];
-        float b = (float)cloud.colors[i * 3 + 2];
+    auto decodeBaseRGB = [&](uint32_t i) -> glm::vec3 {
+        float r = static_cast<float>(cloud.colors[i * 3 + 0]);
+        float g = static_cast<float>(cloud.colors[i * 3 + 1]);
+        float b = static_cast<float>(cloud.colors[i * 3 + 2]);
 
         if (!std::isfinite(r) || !std::isfinite(g) || !std::isfinite(b))
             return glm::vec3(0.0f);
@@ -593,33 +474,12 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     const int  fileRestCoeffs = (fileDeg > 0) ? ((fileDeg + 1) * (fileDeg + 1) - 1) : 0; // excludes SH0
     const bool hasSH          = (fileDeg > 0 && !cloud.sh.empty());
 
-<<<<<<< Updated upstream
-        for (uint32_t i = 0; i < N; ++i)
-        {
-            float a = decodeAlpha(i);
-            if (a < config::kAlphaMinKeep) continue;
-
-            glm::vec3 s = getLinScale(i);
-            smax.push_back(std::max({ s.x, s.y, s.z }));
-        }
-
-        if (!smax.empty())
-            scaleCut = quantile(std::move(smax), config::kScaleKeepQuantile);
-    }
-
-    // SH rest terms
-    const int fileDeg        = cloud.shDegree;
-    const int fileRestCoeffs = (fileDeg > 0) ? ((fileDeg + 1) * (fileDeg + 1) - 1) : 0;
-    const bool hasSH         = (fileDeg > 0 && !cloud.sh.empty());
-    constexpr int kTargetRest = 15; // degree 3 -> 15 rest coeffs
-=======
     constexpr int kTargetRest = 15;
->>>>>>> Stashed changes
 
     out.centers.reserve(N);
     out.covs.reserve(N);
     out.colors.reserve(N);
-    out.shRest.reserve(size_t(N) * 45);
+    out.shRest.reserve(static_cast<size_t>(N) * 45);
 
     for (uint32_t i = 0; i < N; ++i)
     {
@@ -627,25 +487,14 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         if (alpha < config::kAlphaMinKeep) continue;
 
         glm::vec3 s = getLinScale(i);
-<<<<<<< Updated upstream
-        if constexpr (config::kEnableScaleQuantileFilter)
-        {
-            float smaxi = std::max({ s.x, s.y, s.z });
-            if (std::isfinite(scaleCut) && smaxi > scaleCut) continue;
-        }
-
-        glm::vec3 p(cloud.positions[i * 3 + 0], cloud.positions[i * 3 + 1], cloud.positions[i * 3 + 2]);
-        out.centers.push_back({ glm::vec4(p, 1.0f) });
-=======
 
         glm::vec3 p(cloud.positions[i * 3 + 0],
                     cloud.positions[i * 3 + 1],
                     cloud.positions[i * 3 + 2]);
         out.centers.push_back({glm::vec4(p, 1.0f)});
->>>>>>> Stashed changes
 
         glm::vec3 rgb = decodeBaseRGB(i);
-        out.colors.push_back({ glm::vec4(rgb, alpha) });
+        out.colors.push_back({glm::vec4(rgb, alpha)});
 
         glm::quat q = getQuat(i);
         glm::mat3 R = glm::mat3_cast(q);
@@ -654,10 +503,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         D[0][0] = s.x * s.x;
         D[1][1] = s.y * s.y;
         D[2][2] = s.z * s.z;
-<<<<<<< Updated upstream
-=======
 
->>>>>>> Stashed changes
         glm::mat3 Sigma = R * D * glm::transpose(R);
 
         const float m11 = Sigma[0][0];
@@ -667,12 +513,8 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         const float m23 = Sigma[2][1];
         const float m33 = Sigma[2][2];
 
-<<<<<<< Updated upstream
-        out.covs.push_back({ glm::vec4(m11, m12, m13, m22), glm::vec4(m23, m33, 0.0f, 0.0f) });
-=======
         out.covs.push_back({glm::vec4(m11, m12, m13, m22),
                             glm::vec4(m23, m33, 0.0f, 0.0f)});
->>>>>>> Stashed changes
 
         int baseSh = i * fileRestCoeffs * 3;
         for (int k = 0; k < kTargetRest; ++k)
@@ -742,16 +584,10 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     out.radius = std::max(0.001f, quantile(std::move(ds), config::kRadiusQuantile));
 
     VULTRA_CLIENT_INFO("Kept splats={}, center=({}, {}, {}), radius(q{})={}",
-<<<<<<< Updated upstream
-        (uint32_t)out.centers.size(),
-        out.center.x, out.center.y, out.center.z,
-        int(config::kRadiusQuantile * 100.0f), out.radius);
-=======
                        (uint32_t)out.centers.size(),
                        out.center.x, out.center.y, out.center.z,
                        int(config::kRadiusQuantile * 100.0f),
                        out.radius);
->>>>>>> Stashed changes
 
     out.success = true;
     return out;
@@ -1309,8 +1145,7 @@ static inline void bufferBarrier2(vultra::rhi::CommandBuffer& cb,
 int main(int argc, char** argv)
 try
 {
-    fs::path spzPath = (argc >= 2) ? fs::path(argv[1])
-                                   : fs::path("E:/libvultra/resources/models/hornedlizard.spz");
+    fs::path spzPath = (argc >= 2) ? fs::path(argv[1]) : fs::path("resources/models/hornedlizard.spz");
 
     VULTRA_CLIENT_INFO("CWD: {}", fs::current_path().string());
     VULTRA_CLIENT_INFO("SPZ path: {}", spzPath.string());
@@ -1324,26 +1159,6 @@ try
     SceneData scene = loadSPZ_AsNvproLayout(spzPath);
     if (!scene.success) return 1;
 
-<<<<<<< Updated upstream
-    // Window + escape to quit
-    os::Window window = os::Window::Builder{}.setExtent({1280, 800}).build();
-    window.on<os::GeneralWindowEvent>([](const os::GeneralWindowEvent& e, os::Window& w)
-    {
-        if (e.type == SDL_EVENT_KEY_DOWN && e.internalEvent.key.key == SDLK_ESCAPE)
-            w.close();
-    });
-
-    rhi::RenderDevice renderDevice(rhi::RenderDeviceFeatureFlagBits::eNormal);
-
-    rhi::Swapchain swapchain = renderDevice.createSwapchain(window);
-    const auto swapFmt = swapchain.getPixelFormat();
-    const bool swapIsSRGB = isSrgbPixelFormat(swapFmt);
-
-    window.setTitle(std::format("Gaussian Splatting (srgb-fix) ({}) fmt={} {}",
-        renderDevice.getName(),
-        (int)swapFmt,
-        swapIsSRGB ? "SRGB" : "UNORM/other"));
-=======
     // Window + device
     os::Window window = os::Window::Builder {}.setExtent({1280, 800}).build();
     rhi::RenderDevice renderDevice(rhi::RenderDeviceFeatureFlagBits::eNormal);
@@ -1356,16 +1171,15 @@ try
                                 renderDevice.getName(),
                                 static_cast<int>(swapFmt),
                                 swapIsSRGB ? "SRGB" : "UNORM/other"));
->>>>>>> Stashed changes
 
     VULTRA_CLIENT_INFO("Swapchain format = {} ({})", (int)swapFmt, swapIsSRGB ? "SRGB" : "not-sRGB");
 
-    rhi::FrameController frameController{renderDevice, swapchain, 2};
+    rhi::FrameController frameController {renderDevice, swapchain, 2};
 
     // Camera init
     float initDist = scene.radius * config::kCamDistMul;
-    initDist = std::min(initDist, config::kCamMaxDist);
-    initDist = std::max(initDist, scene.radius * 0.05f);
+    initDist       = std::min(initDist, config::kCamMaxDist);
+    initDist       = std::max(initDist, scene.radius * 0.05f);
 
     glm::vec3 camTarget = scene.center;
     glm::vec3 camPos    = scene.center + glm::vec3(0, 0, initDist);
@@ -1377,98 +1191,6 @@ try
     glm::vec3 camUp      = glm::normalize(glm::cross(camRight, camForward));
 
     float baseSpeed = std::clamp(scene.radius * config::kMoveSpeedMul,
-<<<<<<< Updated upstream
-                                 config::kMoveSpeedMin, config::kMoveSpeedMax);
-
-    // ------------------------------------------
-    // GPU buffers + upload helper
-    // ------------------------------------------
-    auto centersBuf = renderDevice.createStorageBuffer(sizeof(CenterGPU) * scene.centers.size(), rhi::AllocationHints::eNone);
-    auto covsBuf    = renderDevice.createStorageBuffer(sizeof(CovGPU)    * scene.covs.size(),    rhi::AllocationHints::eNone);
-    auto colorsBuf  = renderDevice.createStorageBuffer(sizeof(ColorGPU)  * scene.colors.size(),  rhi::AllocationHints::eNone);
-    auto shBuf      = renderDevice.createStorageBuffer(sizeof(float)     * scene.shRest.size(),  rhi::AllocationHints::eNone);
-
-    auto upload = [&](auto& dst, const void* data, size_t bytes)
-    {
-        auto st = renderDevice.createStagingBuffer(bytes, data);
-        renderDevice.execute([&](auto& cb)
-        {
-            cb.copyBuffer(st, dst, vk::BufferCopy{0, 0, st.getSize()});
-        });
-        renderDevice.waitIdle();
-    };
-
-    upload(centersBuf, scene.centers.data(), sizeof(CenterGPU) * scene.centers.size());
-    upload(covsBuf,    scene.covs.data(),    sizeof(CovGPU)    * scene.covs.size());
-    upload(colorsBuf,  scene.colors.data(),  sizeof(ColorGPU)  * scene.colors.size());
-    upload(shBuf,      scene.shRest.data(),  sizeof(float)     * scene.shRest.size());
-
-    // ------------------------------------------
-    // CPU depth-sorted instance IDs (for alpha blending)
-    // ------------------------------------------
-    std::vector<uint32_t> sortedIds(scene.centers.size());
-    std::iota(sortedIds.begin(), sortedIds.end(), 0);
-
-    auto idBuf = renderDevice.createStorageBuffer(sizeof(uint32_t) * sortedIds.size(), rhi::AllocationHints::eNone);
-
-    auto sortIdsForView = [&](const glm::mat4& viewMat)
-    {
-        // Back-to-front in view-space Z (camera forward is -Z).
-        std::sort(sortedIds.begin(), sortedIds.end(), [&](uint32_t ia, uint32_t ib)
-        {
-            glm::vec3 pa(scene.centers[ia].xyz1.x, scene.centers[ia].xyz1.y, scene.centers[ia].xyz1.z);
-            glm::vec3 pb(scene.centers[ib].xyz1.x, scene.centers[ib].xyz1.y, scene.centers[ib].xyz1.z);
-            float za = (viewMat * glm::vec4(pa, 1.0f)).z;
-            float zb = (viewMat * glm::vec4(pb, 1.0f)).z;
-            return za < zb;
-        });
-    };
-
-    auto uploadIds = [&]() { upload(idBuf, sortedIds.data(), sizeof(uint32_t) * sortedIds.size()); };
-
-    {
-        glm::mat4 view0 = glm::lookAt(camPos, camTarget, camUp);
-        sortIdsForView(view0);
-        uploadIds();
-    }
-
-    // ------------------------------------------
-    // Fullscreen-oriented quad geometry (instanced per splat)
-    // ------------------------------------------
-    constexpr auto kQuad = std::array{
-        QuadVertex{{-1.f,-1.f}}, QuadVertex{{ 1.f,-1.f}}, QuadVertex{{ 1.f, 1.f}},
-        QuadVertex{{-1.f,-1.f}}, QuadVertex{{ 1.f, 1.f}}, QuadVertex{{-1.f, 1.f}},
-    };
-
-    rhi::VertexBuffer quadVB = renderDevice.createVertexBuffer(sizeof(QuadVertex), (uint32_t)kQuad.size());
-    upload(quadVB, kQuad.data(), sizeof(QuadVertex) * kQuad.size());
-
-    // ------------------------------------------
-    // Graphics pipeline (premultiplied alpha blending)
-    // ------------------------------------------
-    auto pipeline = rhi::GraphicsPipeline::Builder{}
-        .setColorFormats({swapchain.getPixelFormat()})
-        .setInputAssembly({
-            {0, {.type = rhi::VertexAttribute::Type::eFloat2, .offset = 0}},
-        })
-        .addShader(rhi::ShaderType::eVertex,   {.code = kVertGLSL})
-        .addShader(rhi::ShaderType::eFragment, {.code = kFragGLSL})
-        .setDepthStencil({.depthTest = false, .depthWrite = false})
-        .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
-        .setBlending(0, rhi::BlendState{
-            .enabled  = true,
-            .srcColor = rhi::BlendFactor::eOne,
-            .dstColor = rhi::BlendFactor::eOneMinusSrcAlpha,
-            .colorOp  = rhi::BlendOp::eAdd,
-            .srcAlpha = rhi::BlendFactor::eOne,
-            .dstAlpha = rhi::BlendFactor::eOneMinusSrcAlpha,
-            .alphaOp  = rhi::BlendOp::eAdd,
-        })
-        .build(renderDevice);
-
-    using Clock = std::chrono::steady_clock;
-    auto lastT = Clock::now();
-=======
                                  config::kMoveSpeedMin,
                                  config::kMoveSpeedMax);
 
@@ -1592,7 +1314,6 @@ try
     auto lastT  = Clock::now();
 
     FPSMonitor fpsMonitor {window};
->>>>>>> Stashed changes
 
     float rebuildTimer = 1e9f;
     uint32_t lastW = 0, lastH = 0;
@@ -1603,15 +1324,9 @@ try
         if (!swapchain) continue;
         if (!frameController.acquireNextFrame()) continue;
 
-<<<<<<< Updated upstream
-        auto nowT = Clock::now();
-        float dt = std::chrono::duration<float>(nowT - lastT).count();
-        lastT = nowT;
-=======
         auto  nowT = Clock::now();
         float dt   = std::chrono::duration<float>(nowT - lastT).count();
         lastT      = nowT;
->>>>>>> Stashed changes
         dt = std::clamp(dt, 0.0f, 0.05f);
 
         rebuildTimer += dt;
@@ -1621,27 +1336,6 @@ try
         float W          = float(ext.width);
         float H          = float(ext.height);
 
-<<<<<<< Updated upstream
-        glm::vec3 move(0.0f);
-        if (ks[SDL_SCANCODE_W]) move += camForward;
-        if (ks[SDL_SCANCODE_S]) move -= camForward;
-        if (ks[SDL_SCANCODE_D]) move += camRight;
-        if (ks[SDL_SCANCODE_A]) move -= camRight;
-        if (ks[SDL_SCANCODE_E]) move += worldUp;
-        if (ks[SDL_SCANCODE_Q]) move -= worldUp;
-
-        if (glm::dot(move, move) > 1e-12f)
-        {
-            move = glm::normalize(move);
-            float spd = baseSpeed * (ks[SDL_SCANCODE_LSHIFT] ? config::kShiftMul : 1.0f);
-            glm::vec3 delta = move * spd * dt;
-
-            // Move both camera position and target (keeps view direction).
-            camPos    += delta;
-            camTarget += delta;
-            moved = true;
-        }
-=======
         bool resized = (ext.width != lastW) || (ext.height != lastH);
         lastW = ext.width;
         lastH = ext.height;
@@ -1650,7 +1344,6 @@ try
         proj[1][1] *= -1.0f;
 
         bool moved = look.apply(camPos, camTarget, dollyStep);
->>>>>>> Stashed changes
 
         camForward = glm::normalize(camTarget - camPos);
         camRight   = glm::normalize(glm::cross(camForward, worldUp));
@@ -1677,21 +1370,6 @@ try
             moved = true;
         }
 
-<<<<<<< Updated upstream
-        // Current backbuffer / viewport
-        auto& backBuffer = frameController.getCurrentTarget().texture;
-        auto ext = backBuffer.getExtent();
-        float W = float(ext.width);
-        float H = float(ext.height);
-
-        glm::mat4 proj = glm::perspective(glm::radians(45.0f), W / H, 0.01f, std::max(10.0f, scene.radius * 500.0f));
-        proj[1][1] *= -1.0f; // Vulkan clip space correction for GLM
-
-        glm::mat4 view = glm::lookAt(camPos, camTarget, camUp);
-
-        // Fill push constants
-        PushConstants pc{};
-=======
         glm::mat4 view = glm::lookAt(camPos, camTarget, camUp);
 
         const bool  dragging        = look.dragging;
@@ -1703,20 +1381,15 @@ try
 
         // Push constants for graphics
         PushConstants pc {};
->>>>>>> Stashed changes
         pc.view = view;
         pc.proj = glm::vec4(proj[0][0], proj[1][1], proj[2][2], proj[3][2]);
         pc.vp   = glm::vec4(W, H, 2.0f / W, 2.0f / H);
         pc.cam  = glm::vec4(camPos, config::kAlphaCullThreshold);
         float signedMaxAxis = (swapIsSRGB ? +config::kMaxAxisPx : -config::kMaxAxisPx);
-<<<<<<< Updated upstream
-        pc.misc = glm::vec4(config::kAAInflationPx, config::kOpacityDiscardThreshold, signedMaxAxis, config::kExtentStdDev);
-=======
         pc.misc = glm::vec4(config::kAAInflationPx,
                             config::kOpacityDiscardThreshold,
                             signedMaxAxis,
                             config::kExtentStdDev);
->>>>>>> Stashed changes
 
         // Record frame
         auto& cb = frameController.beginFrame();
@@ -1897,21 +1570,13 @@ try
         // Render
         rhi::prepareForAttachment(cb, backBuffer, false);
 
-        const rhi::FramebufferInfo fb{
-            .area = rhi::Rect2D{.extent = ext},
-            .colorAttachments = {{ {.target = &backBuffer, .clearValue = glm::vec4(0,0,0,1)} }},
+        const rhi::FramebufferInfo fb {
+            .area             = rhi::Rect2D {.extent = ext},
+            .colorAttachments = {{{.target = &backBuffer, .clearValue = glm::vec4(0, 0, 0, 1)}}},
         };
 
         // Graphics descriptor set: + CountBuf at binding=5
         auto ds = cb.createDescriptorSetBuilder()
-<<<<<<< Updated upstream
-            .bind(0, rhi::bindings::StorageBuffer{.buffer = &centersBuf})
-            .bind(1, rhi::bindings::StorageBuffer{.buffer = &covsBuf})
-            .bind(2, rhi::bindings::StorageBuffer{.buffer = &colorsBuf})
-            .bind(3, rhi::bindings::StorageBuffer{.buffer = &shBuf})
-            .bind(4, rhi::bindings::StorageBuffer{.buffer = &idBuf})
-            .build(pipeline.getDescriptorSetLayout(0));
-=======
                       .bind(0, rhi::bindings::StorageBuffer {.buffer = &centersBuf})
                       .bind(1, rhi::bindings::StorageBuffer {.buffer = &covsBuf})
                       .bind(2, rhi::bindings::StorageBuffer {.buffer = &colorsBuf})
@@ -1919,29 +1584,20 @@ try
                       .bind(4, rhi::bindings::StorageBuffer {.buffer = &idsA})
                       .bind(5, rhi::bindings::StorageBuffer {.buffer = &countBuf})
                       .build(pipeline.getDescriptorSetLayout(0));
->>>>>>> Stashed changes
 
         cb.beginRendering(fb)
             .bindPipeline(pipeline)
             .bindDescriptorSet(0, ds)
             .pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pc)
-<<<<<<< Updated upstream
-            .draw(rhi::GeometryInfo{.vertexBuffer = &quadVB, .numVertices = (uint32_t)kQuad.size()},
-                  (uint32_t)scene.centers.size())
-=======
             // instanceCount = maxPoints; vertex shader will early-out instances >= visibleCount
             .draw(rhi::GeometryInfo {.vertexBuffer = &quadVB, .numVertices = (uint32_t)kQuad.size()},
                   maxPoints)
->>>>>>> Stashed changes
             .endRendering();
 
         frameController.endFrame();
         frameController.present();
-<<<<<<< Updated upstream
-=======
 
         fpsMonitor.update(Clock::now() - nowT);
->>>>>>> Stashed changes
     }
 
     renderDevice.waitIdle();
