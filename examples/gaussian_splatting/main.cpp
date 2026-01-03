@@ -23,25 +23,19 @@
 #include <vultra/core/rhi/graphics_pipeline.hpp>
 #include <vultra/core/rhi/render_device.hpp>
 #include <vultra/core/rhi/vertex_buffer.hpp>
-#include <vultra/function/app/base_app.hpp> // kept for project integration (may be unused here)
+#include <vultra/function/app/base_app.hpp>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 
-#include <SDL3/SDL.h>
-
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <format>
 #include <limits>
-#include <numeric>
-#include <string>
 #include <vector>
 
 #include <load-spz.h>
@@ -94,11 +88,11 @@ namespace config
     constexpr float kMouseDegPerPx = 0.25f;
 
     // Compute radix sort config
-    constexpr uint32_t kRadixBitsPerPass = 8;
-    constexpr uint32_t kRadixBuckets     = 1u << kRadixBitsPerPass; // 256
-    constexpr uint32_t kRadixPasses      = 32 / kRadixBitsPerPass;  // 4
-    constexpr uint32_t kRadixLocalSize   = 256;                     // threads/workgroup
-    constexpr uint32_t kRadixItemsPerThread = 16;                   // 16*256 = 4096 items per block
+    constexpr uint32_t kRadixBitsPerPass    = 8;
+    constexpr uint32_t kRadixBuckets        = 1u << kRadixBitsPerPass;                // 256
+    constexpr uint32_t kRadixPasses         = 32 / kRadixBitsPerPass;                 // 4
+    constexpr uint32_t kRadixLocalSize      = 256;                                    // threads/workgroup
+    constexpr uint32_t kRadixItemsPerThread = 16;                                     // 16*256 = 4096 items per block
     constexpr uint32_t kRadixBlockItems     = kRadixLocalSize * kRadixItemsPerThread; // 4096
 
     // Conservative center-only frustum slack in NDC (cheap; no covariance-based edge inflation here)
@@ -109,10 +103,23 @@ namespace config
 // =================================================================================================
 // GPU layouts (SSBO)
 // =================================================================================================
-struct QuadVertex { glm::vec2 corner; };
-struct CenterGPU { glm::vec4 xyz1; };
-struct CovGPU    { glm::vec4 c0; glm::vec4 c1; };
-struct ColorGPU  { glm::vec4 rgba; };
+struct QuadVertex
+{
+    glm::vec2 corner;
+};
+struct CenterGPU
+{
+    glm::vec4 xyz1;
+};
+struct CovGPU
+{
+    glm::vec4 c0;
+    glm::vec4 c1;
+};
+struct ColorGPU
+{
+    glm::vec4 rgba;
+};
 
 struct PushConstants
 {
@@ -125,9 +132,9 @@ struct PushConstants
 
 struct CullPC
 {
-    glm::mat4 view;
-    glm::vec4 proj;  // P00, P11, _, _
-    glm::vec4 cam;   // camPos.xyz, alphaCullThreshold
+    glm::mat4  view;
+    glm::vec4  proj; // P00, P11, _, _
+    glm::vec4  cam;  // camPos.xyz, alphaCullThreshold
     glm::uvec4 misc; // totalPoints, 0,0,0
 };
 
@@ -141,7 +148,7 @@ struct SortPC
 // =================================================================================================
 struct FreeLook
 {
-    bool  dragging = false;
+    bool dragging = false;
 
     float yaw   = 0.0f;
     float pitch = 0.0f;
@@ -171,12 +178,12 @@ struct FreeLook
 
     void initFrom(const glm::vec3& camPos, const glm::vec3& camTarget)
     {
-        glm::vec3 f = camTarget - camPos;
-        float len   = glm::length(f);
+        glm::vec3 f   = camTarget - camPos;
+        float     len = glm::length(f);
         if (!(len > 1e-6f))
         {
-            yaw = 0.0f;
-            pitch = 0.0f;
+            yaw      = 0.0f;
+            pitch    = 0.0f;
             lookDist = 1.0f;
             return;
         }
@@ -195,27 +202,27 @@ struct FreeLook
 
         if (dYaw != 0.0f || dPitch != 0.0f)
         {
-            yaw   += dYaw;
+            yaw += dYaw;
             pitch += dPitch;
-            pitch  = clampPitch(pitch);
+            pitch = clampPitch(pitch);
 
             dYaw   = 0.0f;
             dPitch = 0.0f;
 
             glm::vec3 f = forwardFromYawPitch(yaw, pitch);
-            camTarget = camPos + f * lookDist;
-            changed = true;
+            camTarget   = camPos + f * lookDist;
+            changed     = true;
         }
 
         if (dWheel != 0.0f)
         {
-            glm::vec3 f = camTarget - camPos;
-            float len   = glm::length(f);
+            glm::vec3 f   = camTarget - camPos;
+            float     len = glm::length(f);
             if (len > 1e-6f)
             {
                 f /= len;
                 float delta = dWheel * dollyStepPerNotch;
-                camPos    += f * delta;
+                camPos += f * delta;
                 camTarget += f * delta;
                 changed = true;
             }
@@ -239,8 +246,9 @@ static float sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
 
 static float quantile(std::vector<float> v, float q01)
 {
-    if (v.empty()) return 0.0f;
-    q01 = std::clamp(q01, 0.0f, 1.0f);
+    if (v.empty())
+        return 0.0f;
+    q01      = std::clamp(q01, 0.0f, 1.0f);
     size_t k = static_cast<size_t>(std::floor(q01 * static_cast<float>(v.size() - 1)));
     std::nth_element(v.begin(), v.begin() + k, v.end());
     return v[k];
@@ -252,7 +260,7 @@ static glm::quat sanitizeAndNormalizeQuat(glm::vec4 xyzw)
         return glm::quat(1, 0, 0, 0);
 
     glm::quat q(xyzw.w, xyzw.x, xyzw.y, xyzw.z);
-    float len2 = glm::dot(q, q);
+    float     len2 = glm::dot(q, q);
     if (!(len2 > 1e-12f))
         return glm::quat(1, 0, 0, 0);
 
@@ -262,14 +270,11 @@ static glm::quat sanitizeAndNormalizeQuat(glm::vec4 xyzw)
 static bool isSrgbPixelFormat(vultra::rhi::PixelFormat pf)
 {
     const int v = static_cast<int>(pf);
-    return v == static_cast<int>(vk::Format::eB8G8R8A8Srgb) ||
-           v == static_cast<int>(vk::Format::eR8G8B8A8Srgb) ||
+    return v == static_cast<int>(vk::Format::eB8G8R8A8Srgb) || v == static_cast<int>(vk::Format::eR8G8B8A8Srgb) ||
            v == static_cast<int>(vk::Format::eA8B8G8R8SrgbPack32) ||
            v == static_cast<int>(vk::Format::eBc1RgbSrgbBlock) ||
-           v == static_cast<int>(vk::Format::eBc1RgbaSrgbBlock) ||
-           v == static_cast<int>(vk::Format::eBc2SrgbBlock) ||
-           v == static_cast<int>(vk::Format::eBc3SrgbBlock) ||
-           v == static_cast<int>(vk::Format::eBc7SrgbBlock);
+           v == static_cast<int>(vk::Format::eBc1RgbaSrgbBlock) || v == static_cast<int>(vk::Format::eBc2SrgbBlock) ||
+           v == static_cast<int>(vk::Format::eBc3SrgbBlock) || v == static_cast<int>(vk::Format::eBc7SrgbBlock);
 }
 
 // =================================================================================================
@@ -291,7 +296,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
 {
     SceneData out {};
 
-    spz::UnpackOptions  opt {};
+    spz::UnpackOptions opt {};
     spz::GaussianCloud cloud = spz::loadSpz(path.string(), opt);
     if (cloud.numPoints == 0)
     {
@@ -308,7 +313,8 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     for (uint32_t i = 0; i < std::min<uint32_t>(N, 200000); ++i)
     {
         float v = static_cast<float>(cloud.alphas[i]);
-        if (!std::isfinite(v)) continue;
+        if (!std::isfinite(v))
+            continue;
         aMin = std::min(aMin, v);
         aMax = std::max(aMax, v);
     }
@@ -317,13 +323,12 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     if constexpr (config::kAutoDetectAlphaIsLogit)
         looksLogitAlpha = (aMin < -0.05f) || (aMax > 1.05f);
 
-    VULTRA_CLIENT_INFO("Alpha encoding: {} (min={}, max={})",
-                       looksLogitAlpha ? "logit" : "linear01",
-                       aMin, aMax);
+    VULTRA_CLIENT_INFO("Alpha encoding: {} (min={}, max={})", looksLogitAlpha ? "logit" : "linear01", aMin, aMax);
 
     auto decodeAlpha = [&](uint32_t i) -> float {
         float x = static_cast<float>(cloud.alphas[i]);
-        if (!std::isfinite(x)) return 0.0f;
+        if (!std::isfinite(x))
+            return 0.0f;
 
         if (looksLogitAlpha)
         {
@@ -341,7 +346,8 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         for (int k = 0; k < 3; ++k)
         {
             float v = static_cast<float>(cloud.scales[i * 3 + k]);
-            if (!std::isfinite(v)) continue;
+            if (!std::isfinite(v))
+                continue;
             sMin = std::min(sMin, v);
             sMax = std::max(sMax, v);
         }
@@ -351,9 +357,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     if constexpr (config::kAutoDetectScaleIsLog)
         looksLogScale = (sMin < -1.0f) || (sMax > 3.0f);
 
-    VULTRA_CLIENT_INFO("Scale encoding: {} (min={}, max={})",
-                       looksLogScale ? "log" : "linear",
-                       sMin, sMax);
+    VULTRA_CLIENT_INFO("Scale encoding: {} (min={}, max={})", looksLogScale ? "log" : "linear", sMin, sMax);
 
     auto getLinScale = [&](uint32_t i) -> glm::vec3 {
         float x = static_cast<float>(cloud.scales[i * 3 + 0]);
@@ -377,10 +381,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     auto getQuat = [&](uint32_t i) -> glm::quat {
         const auto& r = cloud.rotations;
         if (r.size() >= static_cast<size_t>(i) * 4 + 4)
-            return sanitizeAndNormalizeQuat(glm::vec4(r[i * 4 + 0],
-                                                     r[i * 4 + 1],
-                                                     r[i * 4 + 2],
-                                                     r[i * 4 + 3]));
+            return sanitizeAndNormalizeQuat(glm::vec4(r[i * 4 + 0], r[i * 4 + 1], r[i * 4 + 2], r[i * 4 + 3]));
         return glm::quat(1, 0, 0, 0);
     };
 
@@ -391,7 +392,8 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         for (int k = 0; k < 3; ++k)
         {
             double v = static_cast<double>(cloud.colors[i * 3 + k]);
-            if (!std::isfinite(v)) continue;
+            if (!std::isfinite(v))
+                continue;
             cMin = std::min(cMin, v);
             cMax = std::max(cMax, v);
         }
@@ -403,7 +405,8 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
 
     VULTRA_CLIENT_INFO("Base RGB encoding guess: {} (cMin={}, cMax={})",
                        looksByteRGB ? "byte(0..255)" : (looksFloatRGB01 ? "float(0..1-ish)" : "SH0-coeff"),
-                       cMin, cMax);
+                       cMin,
+                       cMax);
 
     constexpr float SH_C0 = 0.28209479177f;
 
@@ -431,7 +434,8 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
                 outOfRange += (rgb.z < 0.0f || rgb.z > 1.0f) ? 1 : 0;
                 total += 3;
             }
-            if (total == 0) return 1e9;
+            if (total == 0)
+                return 1e9;
             return static_cast<double>(outOfRange) / static_cast<double>(total);
         };
 
@@ -441,7 +445,8 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         sh0AddBias = (sA <= sB);
         VULTRA_CLIENT_INFO("SH0 decode mode: {} (outOfRange: with +0.5={:.4f}, no bias={:.4f})",
                            sh0AddBias ? "WITH +0.5" : "NO bias",
-                           sA, sB);
+                           sA,
+                           sB);
     }
 
     auto decodeBaseRGB = [&](uint32_t i) -> glm::vec3 {
@@ -484,13 +489,12 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     for (uint32_t i = 0; i < N; ++i)
     {
         float alpha = decodeAlpha(i);
-        if (alpha < config::kAlphaMinKeep) continue;
+        if (alpha < config::kAlphaMinKeep)
+            continue;
 
         glm::vec3 s = getLinScale(i);
 
-        glm::vec3 p(cloud.positions[i * 3 + 0],
-                    cloud.positions[i * 3 + 1],
-                    cloud.positions[i * 3 + 2]);
+        glm::vec3 p(cloud.positions[i * 3 + 0], cloud.positions[i * 3 + 1], cloud.positions[i * 3 + 2]);
         out.centers.push_back({glm::vec4(p, 1.0f)});
 
         glm::vec3 rgb = decodeBaseRGB(i);
@@ -513,8 +517,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         const float m23 = Sigma[2][1];
         const float m33 = Sigma[2][2];
 
-        out.covs.push_back({glm::vec4(m11, m12, m13, m22),
-                            glm::vec4(m23, m33, 0.0f, 0.0f)});
+        out.covs.push_back({glm::vec4(m11, m12, m13, m22), glm::vec4(m23, m33, 0.0f, 0.0f)});
 
         int baseSh = i * fileRestCoeffs * 3;
         for (int k = 0; k < kTargetRest; ++k)
@@ -525,9 +528,12 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
                 float gg = cloud.sh[baseSh + k * 3 + 1];
                 float bb = cloud.sh[baseSh + k * 3 + 2];
 
-                if (!std::isfinite(rr)) rr = 0.0f;
-                if (!std::isfinite(gg)) gg = 0.0f;
-                if (!std::isfinite(bb)) bb = 0.0f;
+                if (!std::isfinite(rr))
+                    rr = 0.0f;
+                if (!std::isfinite(gg))
+                    gg = 0.0f;
+                if (!std::isfinite(bb))
+                    bb = 0.0f;
 
                 rr = std::clamp(rr, -10.0f, 10.0f);
                 gg = std::clamp(gg, -10.0f, 10.0f);
@@ -578,14 +584,17 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     for (auto& c : out.centers)
     {
         glm::vec3 p(c.xyz1.x, c.xyz1.y, c.xyz1.z);
-        float d = glm::length(p - out.center);
-        if (std::isfinite(d)) ds.push_back(d);
+        float     d = glm::length(p - out.center);
+        if (std::isfinite(d))
+            ds.push_back(d);
     }
     out.radius = std::max(0.001f, quantile(std::move(ds), config::kRadiusQuantile));
 
     VULTRA_CLIENT_INFO("Kept splats={}, center=({}, {}, {}), radius(q{})={}",
                        (uint32_t)out.centers.size(),
-                       out.center.x, out.center.y, out.center.z,
+                       out.center.x,
+                       out.center.y,
+                       out.center.z,
                        int(config::kRadiusQuantile * 100.0f),
                        out.radius);
 
@@ -1117,11 +1126,11 @@ void main()
 // Barrier helper (sync2)
 // =================================================================================================
 static inline void bufferBarrier2(vultra::rhi::CommandBuffer& cb,
-                                 vk::PipelineStageFlags2 srcStage,
-                                 vk::AccessFlags2        srcAccess,
-                                 vk::PipelineStageFlags2 dstStage,
-                                 vk::AccessFlags2        dstAccess,
-                                 const vk::Buffer&       buffer)
+                                  vk::PipelineStageFlags2     srcStage,
+                                  vk::AccessFlags2            srcAccess,
+                                  vk::PipelineStageFlags2     dstStage,
+                                  vk::AccessFlags2            dstAccess,
+                                  const vk::Buffer&           buffer)
 {
     vk::BufferMemoryBarrier2 b {};
     b.srcStageMask  = srcStage;
@@ -1157,14 +1166,15 @@ try
     }
 
     SceneData scene = loadSPZ_AsNvproLayout(spzPath);
-    if (!scene.success) return 1;
+    if (!scene.success)
+        return 1;
 
     // Window + device
-    os::Window window = os::Window::Builder {}.setExtent({1280, 800}).build();
+    os::Window        window = os::Window::Builder {}.setExtent({1280, 800}).build();
     rhi::RenderDevice renderDevice(rhi::RenderDeviceFeatureFlagBits::eNormal);
 
-    rhi::Swapchain swapchain = renderDevice.createSwapchain(window);
-    const auto     swapFmt   = swapchain.getPixelFormat();
+    rhi::Swapchain swapchain  = renderDevice.createSwapchain(window);
+    const auto     swapFmt    = swapchain.getPixelFormat();
     const bool     swapIsSRGB = isSrgbPixelFormat(swapFmt);
 
     window.setTitle(std::format("Gaussian Splatting (GPU cull+radix sort) ({}) fmt={} {}",
@@ -1190,9 +1200,7 @@ try
     glm::vec3 camRight   = glm::normalize(glm::cross(camForward, worldUp));
     glm::vec3 camUp      = glm::normalize(glm::cross(camRight, camForward));
 
-    float baseSpeed = std::clamp(scene.radius * config::kMoveSpeedMul,
-                                 config::kMoveSpeedMin,
-                                 config::kMoveSpeedMax);
+    float baseSpeed = std::clamp(scene.radius * config::kMoveSpeedMul, config::kMoveSpeedMin, config::kMoveSpeedMax);
 
     FreeLook look;
     look.initFrom(camPos, camTarget);
@@ -1214,42 +1222,43 @@ try
         }
         else if (e.type == SDL_EVENT_MOUSE_MOTION && look.dragging)
         {
-            look.dYaw   +=  float(e.internalEvent.motion.xrel) * look.rotRadPerPx;
-            look.dPitch += -float(e.internalEvent.motion.yrel) * look.rotRadPerPx;
+            look.dYaw += e.internalEvent.motion.xrel * look.rotRadPerPx;
+            look.dPitch += -e.internalEvent.motion.yrel * look.rotRadPerPx;
         }
         else if (e.type == SDL_EVENT_MOUSE_WHEEL)
         {
-            look.dWheel += float(e.internalEvent.wheel.y);
+            look.dWheel += e.internalEvent.wheel.y;
         }
     });
 
     // Upload buffers
-    auto centersBuf = renderDevice.createStorageBuffer(sizeof(CenterGPU) * scene.centers.size(), rhi::AllocationHints::eNone);
-    auto covsBuf    = renderDevice.createStorageBuffer(sizeof(CovGPU)    * scene.covs.size(),    rhi::AllocationHints::eNone);
-    auto colorsBuf  = renderDevice.createStorageBuffer(sizeof(ColorGPU)  * scene.colors.size(),  rhi::AllocationHints::eNone);
-    auto shBuf      = renderDevice.createStorageBuffer(sizeof(float)     * scene.shRest.size(),  rhi::AllocationHints::eNone);
+    auto centersBuf =
+        renderDevice.createStorageBuffer(sizeof(CenterGPU) * scene.centers.size(), rhi::AllocationHints::eNone);
+    auto covsBuf = renderDevice.createStorageBuffer(sizeof(CovGPU) * scene.covs.size(), rhi::AllocationHints::eNone);
+    auto colorsBuf =
+        renderDevice.createStorageBuffer(sizeof(ColorGPU) * scene.colors.size(), rhi::AllocationHints::eNone);
+    auto shBuf = renderDevice.createStorageBuffer(sizeof(float) * scene.shRest.size(), rhi::AllocationHints::eNone);
 
     auto uploadInit = [&](auto& dst, const void* data, size_t bytes) {
-        if (bytes == 0) return;
+        if (bytes == 0)
+            return;
         auto st = renderDevice.createStagingBuffer(bytes, data);
-        renderDevice.execute([&](auto& cb) {
-            cb.copyBuffer(st, dst, vk::BufferCopy {0, 0, st.getSize()});
-        }, true);
+        renderDevice.execute([&](auto& cb) { cb.copyBuffer(st, dst, vk::BufferCopy {0, 0, st.getSize()}); }, true);
     };
 
     uploadInit(centersBuf, scene.centers.data(), sizeof(CenterGPU) * scene.centers.size());
-    uploadInit(covsBuf,    scene.covs.data(),    sizeof(CovGPU)    * scene.covs.size());
-    uploadInit(colorsBuf,  scene.colors.data(),  sizeof(ColorGPU)  * scene.colors.size());
-    uploadInit(shBuf,      scene.shRest.data(),  sizeof(float)     * scene.shRest.size());
+    uploadInit(covsBuf, scene.covs.data(), sizeof(CovGPU) * scene.covs.size());
+    uploadInit(colorsBuf, scene.colors.data(), sizeof(ColorGPU) * scene.colors.size());
+    uploadInit(shBuf, scene.shRest.data(), sizeof(float) * scene.shRest.size());
 
     // Quad
     constexpr auto kQuad = std::array {
         QuadVertex {{-1.f, -1.f}},
-        QuadVertex {{ 1.f, -1.f}},
-        QuadVertex {{ 1.f,  1.f}},
+        QuadVertex {{1.f, -1.f}},
+        QuadVertex {{1.f, 1.f}},
         QuadVertex {{-1.f, -1.f}},
-        QuadVertex {{ 1.f,  1.f}},
-        QuadVertex {{-1.f,  1.f}},
+        QuadVertex {{1.f, 1.f}},
+        QuadVertex {{-1.f, 1.f}},
     };
 
     rhi::VertexBuffer quadVB = renderDevice.createVertexBuffer(sizeof(QuadVertex), static_cast<uint32_t>(kQuad.size()));
@@ -1261,7 +1270,7 @@ try
                         .setInputAssembly({
                             {0, {.type = rhi::VertexAttribute::Type::eFloat2, .offset = 0}},
                         })
-                        .addShader(rhi::ShaderType::eVertex,   {.code = kVertGLSL})
+                        .addShader(rhi::ShaderType::eVertex, {.code = kVertGLSL})
                         .addShader(rhi::ShaderType::eFragment, {.code = kFragGLSL})
                         .setDepthStencil({.depthTest = false, .depthWrite = false})
                         .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
@@ -1278,14 +1287,14 @@ try
                         .build(renderDevice);
 
     // Compute pipelines
-    auto cullPipe   = renderDevice.createComputePipeline({.code = kCullCompGLSL});
-    auto histPipe   = renderDevice.createComputePipeline({.code = kRadixHistGLSL});
-    auto scanPipe   = renderDevice.createComputePipeline({.code = kRadixScanGLSL});
-    auto basePipe   = renderDevice.createComputePipeline({.code = kRadixBaseGLSL});
-    auto scatPipe   = renderDevice.createComputePipeline({.code = kRadixScatterGLSL});
+    auto cullPipe = renderDevice.createComputePipeline({.code = kCullCompGLSL});
+    auto histPipe = renderDevice.createComputePipeline({.code = kRadixHistGLSL});
+    auto scanPipe = renderDevice.createComputePipeline({.code = kRadixScanGLSL});
+    auto basePipe = renderDevice.createComputePipeline({.code = kRadixBaseGLSL});
+    auto scatPipe = renderDevice.createComputePipeline({.code = kRadixScatterGLSL});
 
     // GPU sort buffers
-    const uint32_t maxPoints = (uint32_t)scene.centers.size();
+    const uint32_t maxPoints = static_cast<uint32_t>(scene.centers.size());
     const uint32_t maxBlocks = (maxPoints + config::kRadixBlockItems - 1) / config::kRadixBlockItems;
     if (maxBlocks > 1024)
     {
@@ -1300,8 +1309,10 @@ try
     auto idsB  = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxPoints, rhi::AllocationHints::eNone);
 
     // block histo/prefix: [maxBlocks][256]
-    auto blockHisto  = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxBlocks * 256u, rhi::AllocationHints::eNone);
-    auto blockPrefix = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxBlocks * 256u, rhi::AllocationHints::eNone);
+    auto blockHisto =
+        renderDevice.createStorageBuffer(sizeof(uint32_t) * maxBlocks * 256u, rhi::AllocationHints::eNone);
+    auto blockPrefix =
+        renderDevice.createStorageBuffer(sizeof(uint32_t) * maxBlocks * 256u, rhi::AllocationHints::eNone);
 
     // totals/base: [256]
     auto bucketTotals = renderDevice.createStorageBuffer(sizeof(uint32_t) * 256u, rhi::AllocationHints::eNone);
@@ -1315,30 +1326,32 @@ try
 
     FPSMonitor fpsMonitor {window};
 
-    float rebuildTimer = 1e9f;
+    float    rebuildTimer = 1e9f;
     uint32_t lastW = 0, lastH = 0;
 
     while (!window.shouldClose())
     {
         window.pollEvents();
-        if (!swapchain) continue;
-        if (!frameController.acquireNextFrame()) continue;
+        if (!swapchain)
+            continue;
+        if (!frameController.acquireNextFrame())
+            continue;
 
         auto  nowT = Clock::now();
         float dt   = std::chrono::duration<float>(nowT - lastT).count();
         lastT      = nowT;
-        dt = std::clamp(dt, 0.0f, 0.05f);
+        dt         = std::clamp(dt, 0.0f, 0.05f);
 
         rebuildTimer += dt;
 
         auto& backBuffer = frameController.getCurrentTarget().texture;
         auto  ext        = backBuffer.getExtent();
-        float W          = float(ext.width);
-        float H          = float(ext.height);
+        float W          = static_cast<float>(ext.width);
+        float H          = static_cast<float>(ext.height);
 
         bool resized = (ext.width != lastW) || (ext.height != lastH);
-        lastW = ext.width;
-        lastH = ext.height;
+        lastW        = ext.width;
+        lastH        = ext.height;
 
         glm::mat4 proj = glm::perspective(glm::radians(45.0f), W / H, 0.01f, std::max(10.0f, scene.radius * 500.0f));
         proj[1][1] *= -1.0f;
@@ -1350,22 +1363,28 @@ try
         camUp      = glm::normalize(glm::cross(camRight, camForward));
 
         const bool* ks = SDL_GetKeyboardState(nullptr);
-        glm::vec3 move(0.0f);
+        glm::vec3   move(0.0f);
 
-        if (ks[SDL_SCANCODE_W]) move += camForward;
-        if (ks[SDL_SCANCODE_S]) move -= camForward;
-        if (ks[SDL_SCANCODE_D]) move += camRight;
-        if (ks[SDL_SCANCODE_A]) move -= camRight;
-        if (ks[SDL_SCANCODE_E]) move += worldUp;
-        if (ks[SDL_SCANCODE_Q]) move -= worldUp;
+        if (ks[SDL_SCANCODE_W])
+            move += camForward;
+        if (ks[SDL_SCANCODE_S])
+            move -= camForward;
+        if (ks[SDL_SCANCODE_D])
+            move += camRight;
+        if (ks[SDL_SCANCODE_A])
+            move -= camRight;
+        if (ks[SDL_SCANCODE_E])
+            move += worldUp;
+        if (ks[SDL_SCANCODE_Q])
+            move -= worldUp;
 
         if (glm::dot(move, move) > 1e-12f)
         {
-            move = glm::normalize(move);
+            move      = glm::normalize(move);
             float spd = baseSpeed * (ks[SDL_SCANCODE_LSHIFT] ? config::kShiftMul : 1.0f);
 
             glm::vec3 delta = move * spd * dt;
-            camPos    += delta;
+            camPos += delta;
             camTarget += delta;
             moved = true;
         }
@@ -1376,20 +1395,20 @@ try
         const float rebuildInterval = dragging ? config::kRebuildIntervalSecDrag : config::kRebuildIntervalSecStatic;
 
         bool needRebuild = false;
-        if (resized) needRebuild = true;
-        else if (moved && rebuildTimer >= rebuildInterval) needRebuild = true;
+        if (resized)
+            needRebuild = true;
+        else if (moved && rebuildTimer >= rebuildInterval)
+            needRebuild = true;
 
         // Push constants for graphics
         PushConstants pc {};
-        pc.view = view;
-        pc.proj = glm::vec4(proj[0][0], proj[1][1], proj[2][2], proj[3][2]);
-        pc.vp   = glm::vec4(W, H, 2.0f / W, 2.0f / H);
-        pc.cam  = glm::vec4(camPos, config::kAlphaCullThreshold);
+        pc.view             = view;
+        pc.proj             = glm::vec4(proj[0][0], proj[1][1], proj[2][2], proj[3][2]);
+        pc.vp               = glm::vec4(W, H, 2.0f / W, 2.0f / H);
+        pc.cam              = glm::vec4(camPos, config::kAlphaCullThreshold);
         float signedMaxAxis = (swapIsSRGB ? +config::kMaxAxisPx : -config::kMaxAxisPx);
-        pc.misc = glm::vec4(config::kAAInflationPx,
-                            config::kOpacityDiscardThreshold,
-                            signedMaxAxis,
-                            config::kExtentStdDev);
+        pc.misc =
+            glm::vec4(config::kAAInflationPx, config::kOpacityDiscardThreshold, signedMaxAxis, config::kExtentStdDev);
 
         // Record frame
         auto& cb = frameController.beginFrame();
@@ -1416,9 +1435,9 @@ try
                               .build(cullPipe.getDescriptorSetLayout(0));
 
             cb.bindPipeline(cullPipe)
-              .bindDescriptorSet(0, dsCull)
-              .pushConstants(rhi::ShaderStages::eCompute, 0, &cpc)
-              .dispatch(glm::uvec3((maxPoints + 255u) / 256u, 1u, 1u));
+                .bindDescriptorSet(0, dsCull)
+                .pushConstants(rhi::ShaderStages::eCompute, 0, &cpc)
+                .dispatch(glm::uvec3((maxPoints + 255u) / 256u, 1u, 1u));
 
             // barrier: cull writes -> radix reads
             bufferBarrier2(cb,
@@ -1449,7 +1468,7 @@ try
             for (uint32_t pass = 0; pass < config::kRadixPasses; ++pass)
             {
                 const uint32_t shift = pass * config::kRadixBitsPerPass;
-                SortPC spc {};
+                SortPC         spc {};
                 spc.misc = glm::uvec4(shift, maxBlocks, 0, 0);
 
                 // histogram
@@ -1460,9 +1479,9 @@ try
                                   .build(histPipe.getDescriptorSetLayout(0));
 
                 cb.bindPipeline(histPipe)
-                  .bindDescriptorSet(0, dsHist)
-                  .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
-                  .dispatch(glm::uvec3(maxBlocks, 1u, 1u));
+                    .bindDescriptorSet(0, dsHist)
+                    .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
+                    .dispatch(glm::uvec3(maxBlocks, 1u, 1u));
 
                 bufferBarrier2(cb,
                                vk::PipelineStageFlagBits2::eComputeShader,
@@ -1480,9 +1499,9 @@ try
                                   .build(scanPipe.getDescriptorSetLayout(0));
 
                 cb.bindPipeline(scanPipe)
-                  .bindDescriptorSet(0, dsScan)
-                  .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
-                  .dispatch(glm::uvec3(256u, 1u, 1u));
+                    .bindDescriptorSet(0, dsScan)
+                    .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
+                    .dispatch(glm::uvec3(256u, 1u, 1u));
 
                 bufferBarrier2(cb,
                                vk::PipelineStageFlagBits2::eComputeShader,
@@ -1503,9 +1522,7 @@ try
                                   .bind(1, rhi::bindings::StorageBuffer {.buffer = &bucketBase})
                                   .build(basePipe.getDescriptorSetLayout(0));
 
-                cb.bindPipeline(basePipe)
-                  .bindDescriptorSet(0, dsBase)
-                  .dispatch(glm::uvec3(1u, 1u, 1u));
+                cb.bindPipeline(basePipe).bindDescriptorSet(0, dsBase).dispatch(glm::uvec3(1u, 1u, 1u));
 
                 bufferBarrier2(cb,
                                vk::PipelineStageFlagBits2::eComputeShader,
@@ -1526,9 +1543,9 @@ try
                                   .build(scatPipe.getDescriptorSetLayout(0));
 
                 cb.bindPipeline(scatPipe)
-                  .bindDescriptorSet(0, dsScat)
-                  .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
-                  .dispatch(glm::uvec3(maxBlocks, 1u, 1u));
+                    .bindDescriptorSet(0, dsScat)
+                    .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
+                    .dispatch(glm::uvec3(maxBlocks, 1u, 1u));
 
                 // barrier: scatter writes -> next pass reads
                 bufferBarrier2(cb,
@@ -1545,7 +1562,7 @@ try
                                idsOut->getHandle());
 
                 std::swap(keysIn, keysOut);
-                std::swap(idsIn,  idsOut);
+                std::swap(idsIn, idsOut);
             }
 
             // After 4 passes, keysIn/idsIn points back to A (even number of swaps)
@@ -1590,7 +1607,7 @@ try
             .bindDescriptorSet(0, ds)
             .pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pc)
             // instanceCount = maxPoints; vertex shader will early-out instances >= visibleCount
-            .draw(rhi::GeometryInfo {.vertexBuffer = &quadVB, .numVertices = (uint32_t)kQuad.size()},
+            .draw(rhi::GeometryInfo {.vertexBuffer = &quadVB, .numVertices = static_cast<uint32_t>(kQuad.size())},
                   maxPoints)
             .endRendering();
 

@@ -1150,8 +1150,9 @@ namespace vultra
             VULTRA_CORE_INFO("[RenderDevice] Supported features:");
 
 #define PRINT_FEATURE(f) \
-    VULTRA_CORE_INFO( \
-        "   {:<30} {}", #f, HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::f) ? "yes" : "no")
+    VULTRA_CORE_INFO("   {:<30} {}", \
+                     std::string_view(#f).substr(1), \
+                     HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::f) ? "yes" : "no")
             VULTRA_CORE_INFO("[RenderDevice] Feature support report:");
             PRINT_FEATURE(eOpenXR);
             PRINT_FEATURE(eRayTracingPipeline);

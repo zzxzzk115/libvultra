@@ -24,11 +24,7 @@ class DebugDrawApp final : public ImGuiApp
 {
 public:
     explicit DebugDrawApp(const std::span<char*>& args) :
-        ImGuiApp(args,
-                 {.title = "Debug Draw Example",
-                  .renderDeviceFeatureFlag =
-                      rhi::RenderDeviceFeatureFlagBits::eRayTracing | rhi::RenderDeviceFeatureFlagBits::eMeshShader},
-                 {.enableDocking = false}),
+        ImGuiApp(args, {.title = "Debug Draw Example"}, {.enableDocking = false}),
         m_Renderer(*m_RenderDevice, m_Swapchain.getFormat())
     {
         // Setup scene
@@ -73,10 +69,10 @@ public:
 #endif
         ImGui::End();
 
-        auto        model   = m_LogicScene.getEntityWithName(MODEL_ENTITY_NAME);
-        auto&       rawMesh = model.getComponent<RawMeshComponent>().mesh;
-        const auto& aabb    = rawMesh->aabb;
-        const ddVec3 boxColor  = {0.0f, 1.0f, 0.0f};
+        auto         model    = m_LogicScene.getEntityWithName(MODEL_ENTITY_NAME);
+        auto&        rawMesh  = model.getComponent<RawMeshComponent>().mesh;
+        const auto&  aabb     = rawMesh->aabb;
+        const ddVec3 boxColor = {0.0f, 1.0f, 0.0f};
         dd::aabb(glm::value_ptr(aabb.min), glm::value_ptr(aabb.max), boxColor);
 
         // const ddVec3 boxColor  = {0.0f, 1.0f, 0.0f};
