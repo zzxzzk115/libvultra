@@ -168,7 +168,7 @@ namespace vultra
                                                             AllocationHints = AllocationHints::eNone,
                                                             bool indirect   = false) const;
 
-            [[nodiscard]] DrawIndirectBuffer createDrawIndirectBuffer(vk::DeviceSize   size,
+            [[nodiscard]] DrawIndirectBuffer createDrawIndirectBuffer(uint32_t         commandCount,
                                                                       DrawIndirectType type,
                                                                       AllocationHints = AllocationHints::eNone) const;
 

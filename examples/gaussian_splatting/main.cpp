@@ -57,9 +57,9 @@ namespace config
     constexpr float kExtentStdDev = 2.8284271247461903f; // sqrt(8)
     constexpr float kMaxAxisPx    = 512.0f;
 
-    constexpr float kMipVarPx2                = 0.10f;
-    constexpr float kAlphaCullThreshold       = 1.0f / 64.0f;
-    constexpr float kOpacityDiscardThreshold  = 1.0f / 512.0f;
+    constexpr float kMipVarPx2               = 0.10f;
+    constexpr float kAlphaCullThreshold      = 1.0f / 64.0f;
+    constexpr float kOpacityDiscardThreshold = 1.0f / 512.0f;
 
     constexpr float kCenterQuantileLo = 0.01f;
     constexpr float kCenterQuantileHi = 0.99f;
@@ -82,10 +82,10 @@ namespace config
 
     // Radix sort config.
     constexpr uint32_t kRadixBitsPerPass    = 8;
-    constexpr uint32_t kRadixBuckets        = 1u << kRadixBitsPerPass;               // 256
-    constexpr uint32_t kRadixPasses         = 32 / kRadixBitsPerPass;                // 4
-    constexpr uint32_t kRadixLocalSize      = 256;                                   // threads/workgroup
-    constexpr uint32_t kRadixItemsPerThread = 16;                                    // 16*256 = 4096 items per block
+    constexpr uint32_t kRadixBuckets        = 1u << kRadixBitsPerPass;                // 256
+    constexpr uint32_t kRadixPasses         = 32 / kRadixBitsPerPass;                 // 4
+    constexpr uint32_t kRadixLocalSize      = 256;                                    // threads/workgroup
+    constexpr uint32_t kRadixItemsPerThread = 16;                                     // 16*256 = 4096 items per block
     constexpr uint32_t kRadixBlockItems     = kRadixLocalSize * kRadixItemsPerThread; // 4096
 
     // Center-only cull slack in NDC (cheap; no covariance inflation here).
@@ -1311,8 +1311,7 @@ try
     auto countBuf = renderDevice.createStorageBuffer(sizeof(uint32_t), rhi::AllocationHints::eNone);
 
     // Indirect draw command buffer (one vk::DrawIndirectCommand). Size parameter is in BYTES.
-    rhi::DrawIndirectBuffer diB =
-        renderDevice.createDrawIndirectBuffer(sizeof(vk::DrawIndirectCommand), rhi::DrawIndirectType::eNonIndexed);
+    rhi::DrawIndirectBuffer diB = renderDevice.createDrawIndirectBuffer(1, rhi::DrawIndirectType::eNonIndexed);
 
     // Optional init (instanceCount=0). Overwritten by compute when rebuild runs.
     {
@@ -1410,10 +1409,10 @@ try
 
         // Push constants for graphics.
         PushConstants pc {};
-        pc.view = view;
-        pc.proj = glm::vec4(proj[0][0], proj[1][1], proj[2][2], proj[3][2]);
-        pc.vp   = glm::vec4(W, H, 2.0f / W, 2.0f / H);
-        pc.cam  = glm::vec4(camPos, config::kAlphaCullThreshold);
+        pc.view             = view;
+        pc.proj             = glm::vec4(proj[0][0], proj[1][1], proj[2][2], proj[3][2]);
+        pc.vp               = glm::vec4(W, H, 2.0f / W, 2.0f / H);
+        pc.cam              = glm::vec4(camPos, config::kAlphaCullThreshold);
         float signedMaxAxis = (swapIsSRGB ? +config::kMaxAxisPx : -config::kMaxAxisPx);
         pc.misc = glm::vec4(config::kMipVarPx2, config::kOpacityDiscardThreshold, signedMaxAxis, config::kExtentStdDev);
 
@@ -1613,9 +1612,16 @@ try
             .bindPipeline(pipeline)
             .bindDescriptorSet(0, ds)
             .pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pc)
-            // Vultra quirk: drawIndirect() does not bind vertex buffers. Force-bind VB via a zero-instance draw.
-            .draw(rhi::GeometryInfo {.vertexBuffer = &quadVB, .numVertices = static_cast<uint32_t>(kQuad.size())}, 0)
-            .drawIndirect(rhi::DrawIndirectInfo {.buffer = &diB, .firstCommand = 0, .commandCount = 1})
+            .drawIndirect(rhi::DrawIndirectInfo {
+                .buffer       = &diB,
+                .firstCommand = 0,
+                .commandCount = 1,
+                .gi =
+                    rhi::GeometryInfo {
+                        .vertexBuffer = &quadVB,
+                        .numVertices  = static_cast<uint32_t>(kQuad.size()),
+                    },
+            })
             .endRendering();
 
         frameController.endFrame();

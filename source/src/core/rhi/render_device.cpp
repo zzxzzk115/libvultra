@@ -497,7 +497,7 @@ namespace vultra
             };
         }
 
-        DrawIndirectBuffer RenderDevice::createDrawIndirectBuffer(const vk::DeviceSize   size,
+        DrawIndirectBuffer RenderDevice::createDrawIndirectBuffer(const uint32_t         commandCount,
                                                                   const DrawIndirectType type,
                                                                   const AllocationHints  allocationHint) const
         {
@@ -507,9 +507,12 @@ namespace vultra
                                          vk::BufferUsageFlagBits::eTransferDst |
                                          vk::BufferUsageFlagBits::eIndirectBuffer;
 
+            const auto stride = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
+                                                                     sizeof(vk::DrawIndirectCommand);
+
             return DrawIndirectBuffer {Buffer {
                                            m_MemoryAllocator,
-                                           size,
+                                           commandCount * stride,
                                            usage,
                                            makeAllocationFlags(allocationHint),
                                            vma::MemoryUsage::eCpuToGpu,

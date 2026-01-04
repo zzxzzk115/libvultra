@@ -432,9 +432,17 @@ namespace vultra
             TRACY_GPU_ZONE2_("DrawIndirect");
 
             const auto& drawIndirectType = dii.buffer->getDrawIndirectType();
+            const auto& gi               = dii.gi;
+
+            constexpr auto kFirstInstance = 0u;
+            setVertexBuffer(gi.vertexBuffer, 0);
 
             if (drawIndirectType == DrawIndirectType::eIndexed)
             {
+                assert(gi.indexBuffer);
+                assert(gi.numIndices > 0);
+
+                setIndexBuffer(gi.indexBuffer);
                 m_Handle.drawIndexedIndirect(dii.buffer->getHandle(),
                                              dii.firstCommand * dii.buffer->getStride(),
                                              dii.commandCount,
