@@ -153,10 +153,8 @@ namespace vultra
 
             [[nodiscard]] Buffer createStagingBuffer(vk::DeviceSize size, const void* data = nullptr) const;
 
-            [[nodiscard]] VertexBuffer createVertexBuffer(Buffer::Stride,
-                                                          vk::DeviceSize capacity,
-                                                          AllocationHints = AllocationHints::eNone,
-                                                          bool indirect   = false) const;
+            [[nodiscard]] VertexBuffer
+            createVertexBuffer(Buffer::Stride, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] IndexBuffer
             createIndexBuffer(IndexType, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone) const;
@@ -165,8 +163,7 @@ namespace vultra
                                                             AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] StorageBuffer createStorageBuffer(vk::DeviceSize size,
-                                                            AllocationHints = AllocationHints::eNone,
-                                                            bool indirect   = false) const;
+                                                            AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] DrawIndirectBuffer createDrawIndirectBuffer(uint32_t         commandCount,
                                                                       DrawIndirectType type,

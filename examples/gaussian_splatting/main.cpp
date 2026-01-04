@@ -1224,12 +1224,10 @@ try
     });
 
     // Upload static scene buffers.
-    auto centersBuf =
-        renderDevice.createStorageBuffer(sizeof(CenterGPU) * scene.centers.size(), rhi::AllocationHints::eNone);
-    auto covsBuf = renderDevice.createStorageBuffer(sizeof(CovGPU) * scene.covs.size(), rhi::AllocationHints::eNone);
-    auto colorsBuf =
-        renderDevice.createStorageBuffer(sizeof(ColorGPU) * scene.colors.size(), rhi::AllocationHints::eNone);
-    auto shBuf = renderDevice.createStorageBuffer(sizeof(float) * scene.shRest.size(), rhi::AllocationHints::eNone);
+    auto centersBuf = renderDevice.createStorageBuffer(sizeof(CenterGPU) * scene.centers.size());
+    auto covsBuf    = renderDevice.createStorageBuffer(sizeof(CovGPU) * scene.covs.size());
+    auto colorsBuf  = renderDevice.createStorageBuffer(sizeof(ColorGPU) * scene.colors.size());
+    auto shBuf      = renderDevice.createStorageBuffer(sizeof(float) * scene.shRest.size());
 
     auto uploadInit = [&](auto& dst, const void* data, size_t bytes) {
         if (bytes == 0)
@@ -1295,20 +1293,18 @@ try
         return 1;
     }
 
-    auto keysA = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxPoints, rhi::AllocationHints::eNone);
-    auto idsA  = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxPoints, rhi::AllocationHints::eNone);
-    auto keysB = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxPoints, rhi::AllocationHints::eNone);
-    auto idsB  = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxPoints, rhi::AllocationHints::eNone);
+    auto keysA = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxPoints);
+    auto idsA  = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxPoints);
+    auto keysB = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxPoints);
+    auto idsB  = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxPoints);
 
-    auto blockHisto =
-        renderDevice.createStorageBuffer(sizeof(uint32_t) * maxBlocks * 256u, rhi::AllocationHints::eNone);
-    auto blockPrefix =
-        renderDevice.createStorageBuffer(sizeof(uint32_t) * maxBlocks * 256u, rhi::AllocationHints::eNone);
+    auto blockHisto  = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxBlocks * 256u);
+    auto blockPrefix = renderDevice.createStorageBuffer(sizeof(uint32_t) * maxBlocks * 256u);
 
-    auto bucketTotals = renderDevice.createStorageBuffer(sizeof(uint32_t) * 256u, rhi::AllocationHints::eNone);
-    auto bucketBase   = renderDevice.createStorageBuffer(sizeof(uint32_t) * 256u, rhi::AllocationHints::eNone);
+    auto bucketTotals = renderDevice.createStorageBuffer(sizeof(uint32_t) * 256u);
+    auto bucketBase   = renderDevice.createStorageBuffer(sizeof(uint32_t) * 256u);
 
-    auto countBuf = renderDevice.createStorageBuffer(sizeof(uint32_t), rhi::AllocationHints::eNone);
+    auto countBuf = renderDevice.createStorageBuffer(sizeof(uint32_t));
 
     // Indirect draw command buffer (one vk::DrawIndirectCommand). Size parameter is in BYTES.
     rhi::DrawIndirectBuffer diB = renderDevice.createDrawIndirectBuffer(1, rhi::DrawIndirectType::eNonIndexed);

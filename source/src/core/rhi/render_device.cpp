@@ -379,17 +379,11 @@ namespace vultra
 
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
                                                       const vk::DeviceSize  capacity,
-                                                      const AllocationHints allocationHint,
-                                                      const bool            indirect) const
+                                                      const AllocationHints allocationHint) const
         {
             assert(m_MemoryAllocator);
 
             vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst;
-
-            if (indirect)
-            {
-                usage | vk::BufferUsageFlagBits::eIndirectBuffer;
-            }
 
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
@@ -462,18 +456,12 @@ namespace vultra
         }
 
         StorageBuffer RenderDevice::createStorageBuffer(const vk::DeviceSize  size,
-                                                        const AllocationHints allocationHint,
-                                                        const bool            indirect) const
+                                                        const AllocationHints allocationHint) const
         {
             assert(m_MemoryAllocator);
 
             vk::BufferUsageFlags usage =
                 vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
-
-            if (indirect)
-            {
-                usage | vk::BufferUsageFlagBits::eIndirectBuffer;
-            }
 
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
