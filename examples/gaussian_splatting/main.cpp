@@ -1,9 +1,20 @@
 // examples/gaussian_splatting/main.cpp
 // GPU-driven Gaussian Splatting renderer (Vultra / Vulkan).
-// Pipeline: compute cull+compact -> radix sort by view-space Z -> write VkDrawIndirectCommand -> vkCmdDrawIndirect.
-// Assumption: radix scan uses a 1024-thread workgroup, so maxBlocks must be <= 1024.
-// Note: this sample uses vkCmdDrawIndirect (not vkCmdDrawIndirectCount). If you switch later, ensure the count
-// buffer has VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT in your engine.
+//
+// Implements "no-drama" optimizations 1-6:
+//
+// (1) GPU-driven activeBlocks + vkCmdDispatchIndirect for radix HIST+SCAT (no CPU readback of count).
+//     - Adds CountBuf { uint count; uint activeBlocks; }
+//     - Adds DispatchIndirectCmd buffer written by compute.
+// (2) SH eval early-stop by actual degree (0..3) via compile-time defines (build 4 variants).
+// (3) SRGB conversion compile-time (build SRGB/NonSRGB pipelines, no per-vertex branch).
+// (4) Fewer barrier calls by grouping buffer barriers into one pipelineBarrier2 call where possible.
+// (5) Bandwidth cut: pack Color/Cov/SH into f16 pairs via packHalf2x16 (stored as uint/uvec).
+// (6) Cull improvement: conservative screen-space axis upper-bound (from covariance trace) + min-pixel cull.
+//
+// NOTE (IMPORTANT): vkCmdDispatchIndirect requires the dispatch buffer to have VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT.
+// If your engine's createStorageBuffer() doesn't include INDIRECT usage, add it for dispatchCmdBuf (and keep STORAGE).
+// This file compiles either way, but Vulkan validation/runtime will complain if usage is missing.
 
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/os/window.hpp>
@@ -21,6 +32,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/packing.hpp>   // packHalf2x16
 #include <glm/gtx/quaternion.hpp>
 
 #include <algorithm>
@@ -31,6 +43,7 @@
 #include <filesystem>
 #include <format>
 #include <limits>
+#include <string>
 #include <vector>
 
 #include <load-spz.h>
@@ -61,6 +74,10 @@ namespace config
     constexpr float kAlphaCullThreshold      = 1.0f / 64.0f;
     constexpr float kOpacityDiscardThreshold = 1.0f / 512.0f;
 
+    // (6) Conservative min pixel cull (general-purpose; not scene-tuned).
+    // Set to 0 to disable.
+    constexpr float kCullMinAxisPx = 0.35f;
+
     constexpr float kCenterQuantileLo = 0.01f;
     constexpr float kCenterQuantileHi = 0.99f;
     constexpr float kRadiusQuantile   = 0.98f;
@@ -88,29 +105,26 @@ namespace config
     constexpr uint32_t kRadixItemsPerThread = 16;                                     // 16*256 = 4096 items per block
     constexpr uint32_t kRadixBlockItems     = kRadixLocalSize * kRadixItemsPerThread; // 4096
 
-    // Center-only cull slack in NDC (cheap; no covariance inflation here).
+    // Center-only cull slack in NDC (cheap).
     constexpr float kCenterCullSlackNdc = 1.10f;
     constexpr float kViewZNearReject    = -0.02f;
 } // namespace config
 
-// GPU data layout (SSBOs / push constants).
+// GPU data layout.
 struct QuadVertex
 {
     glm::vec2 corner;
 };
+
 struct CenterGPU
 {
     glm::vec4 xyz1;
 };
-struct CovGPU
-{
-    glm::vec4 c0;
-    glm::vec4 c1;
-};
-struct ColorGPU
-{
-    glm::vec4 rgba;
-};
+
+// (5) Packed GPU buffers (bandwidth cut via packHalf2x16):
+// - Colors: uvec2 (rg, ba)
+// - Cov: uvec4 (m11,m12) (m13,m22) (m23,m33) unused
+// - SH: uvec2 per coeff: (r,g) (b,0). 15 coeffs per splat => N*15 entries.
 
 struct PushConstants
 {
@@ -118,20 +132,22 @@ struct PushConstants
     glm::vec4 proj; // P00, P11, P22, P32
     glm::vec4 vp;   // W, H, 2/W, 2/H
     glm::vec4 cam;  // camPos.xyz, alphaCullThreshold
-    glm::vec4 misc; // mipVarPx2, opacityDiscardThreshold, signedMaxAxisPx, extentStdDev
+    glm::vec4 misc; // mipVarPx2, opacityDiscardThreshold, maxAxisPx, extentStdDev
 };
 
+// (6) Cull now also needs viewport + extentStdDev + minAxisPx, but keep push-constant <= 128 bytes.
 struct CullPC
 {
     glm::mat4  view;
     glm::vec4  proj; // P00, P11, _, _
-    glm::vec4  cam;  // camPos.xyz, alphaCullThreshold
-    glm::uvec4 misc; // totalPoints, 0,0,0
+    glm::vec4  cam;  // camPos.xyz, alphaCull
+    glm::vec4  vp;   // W, H, extentStdDev, minAxisPx
+    glm::uvec2 misc; // totalPoints, pad
 };
 
 struct SortPC
 {
-    glm::uvec4 misc; // shift, maxBlocks, 0,0
+    glm::uvec2 misc; // shift, pad
 };
 
 // Simple free-look controller (yaw/pitch + wheel dolly).
@@ -264,20 +280,38 @@ static bool isSrgbPixelFormat(vultra::rhi::PixelFormat pf)
            v == static_cast<int>(vk::Format::eBc3SrgbBlock) || v == static_cast<int>(vk::Format::eBc7SrgbBlock);
 }
 
-// Scene loading: SPZ -> GPU-friendly buffers (nvpro-style layout).
+// (5) f16 packing helpers.
+static inline float clampToF16(float x)
+{
+    // IEEE half max finite is 65504.
+    return std::clamp(x, -65504.0f, 65504.0f);
+}
+static inline uint32_t packF16x2(float a, float b)
+{
+    return glm::packHalf2x16(glm::vec2(clampToF16(a), clampToF16(b)));
+}
+static inline uint32_t packF16x2_clamp01(float a, float b)
+{
+    a = std::clamp(a, 0.0f, 1.0f);
+    b = std::clamp(b, 0.0f, 1.0f);
+    return glm::packHalf2x16(glm::vec2(a, b));
+}
+
+// Scene loading: SPZ -> GPU-friendly buffers (packed).
 struct SceneData
 {
-    std::vector<CenterGPU> centers;
-    std::vector<CovGPU>    covs;
-    std::vector<ColorGPU>  colors;
-    std::vector<float>     shRest; // 45 floats per splat (15 * RGB)
+    std::vector<CenterGPU>  centers;
+    std::vector<glm::uvec4> covsPacked;   // uvec4 per splat
+    std::vector<glm::uvec2> colorsPacked; // uvec2 per splat
+    std::vector<glm::uvec2> shPacked;     // uvec2 per coeff, 15 per splat => size = N*15
 
+    int       shDegree = 0;
     glm::vec3 center {};
     float     radius  = 1.0f;
     bool      success = false;
 };
 
-static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
+static SceneData loadSPZ_Packed(const fs::path& path)
 {
     SceneData out {};
 
@@ -290,6 +324,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     }
 
     const uint32_t N = std::min<uint32_t>(cloud.numPoints, config::kMaxPoints);
+    out.shDegree = cloud.shDegree;
     VULTRA_CLIENT_INFO("Loaded SPZ: points={}, shDegree={}", cloud.numPoints, cloud.shDegree);
 
     // Detect alpha encoding (linear 0..1 vs logit).
@@ -467,9 +502,9 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     constexpr int kTargetRest = 15;
 
     out.centers.reserve(N);
-    out.covs.reserve(N);
-    out.colors.reserve(N);
-    out.shRest.reserve(static_cast<size_t>(N) * 45);
+    out.covsPacked.reserve(N);
+    out.colorsPacked.reserve(N);
+    out.shPacked.reserve(static_cast<size_t>(N) * kTargetRest);
 
     for (uint32_t i = 0; i < N; ++i)
     {
@@ -483,7 +518,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         out.centers.push_back({glm::vec4(p, 1.0f)});
 
         glm::vec3 rgb = decodeBaseRGB(i);
-        out.colors.push_back({glm::vec4(rgb, alpha)});
+        out.colorsPacked.push_back(glm::uvec2(packF16x2_clamp01(rgb.r, rgb.g), packF16x2_clamp01(rgb.b, alpha)));
 
         glm::quat q = getQuat(i);
         glm::mat3 R = glm::mat3_cast(q);
@@ -502,38 +537,31 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         const float m23 = Sigma[2][1];
         const float m33 = Sigma[2][2];
 
-        out.covs.push_back({glm::vec4(m11, m12, m13, m22), glm::vec4(m23, m33, 0.0f, 0.0f)});
+        out.covsPacked.push_back(glm::uvec4(packF16x2(m11, m12),
+                                            packF16x2(m13, m22),
+                                            packF16x2(m23, m33),
+                                            0u));
 
         int baseSh = i * fileRestCoeffs * 3;
         for (int k = 0; k < kTargetRest; ++k)
         {
+            float rr = 0.0f, gg = 0.0f, bb = 0.0f;
             if (hasSH && k < fileRestCoeffs)
             {
-                float rr = cloud.sh[baseSh + k * 3 + 0];
-                float gg = cloud.sh[baseSh + k * 3 + 1];
-                float bb = cloud.sh[baseSh + k * 3 + 2];
+                rr = cloud.sh[baseSh + k * 3 + 0];
+                gg = cloud.sh[baseSh + k * 3 + 1];
+                bb = cloud.sh[baseSh + k * 3 + 2];
 
-                if (!std::isfinite(rr))
-                    rr = 0.0f;
-                if (!std::isfinite(gg))
-                    gg = 0.0f;
-                if (!std::isfinite(bb))
-                    bb = 0.0f;
+                if (!std::isfinite(rr)) rr = 0.0f;
+                if (!std::isfinite(gg)) gg = 0.0f;
+                if (!std::isfinite(bb)) bb = 0.0f;
 
                 rr = std::clamp(rr, -10.0f, 10.0f);
                 gg = std::clamp(gg, -10.0f, 10.0f);
                 bb = std::clamp(bb, -10.0f, 10.0f);
+            }
 
-                out.shRest.push_back(rr);
-                out.shRest.push_back(gg);
-                out.shRest.push_back(bb);
-            }
-            else
-            {
-                out.shRest.push_back(0.0f);
-                out.shRest.push_back(0.0f);
-                out.shRest.push_back(0.0f);
-            }
+            out.shPacked.push_back(glm::uvec2(packF16x2(rr, gg), packF16x2(bb, 0.0f)));
         }
     }
 
@@ -543,7 +571,7 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
         return out;
     }
 
-    // Robust bounds (quantiles) to avoid outliers dominating the initial camera framing.
+    // Robust bounds (quantiles) to avoid outliers dominating initial camera framing.
     std::vector<float> xs, ys, zs;
     xs.reserve(out.centers.size());
     ys.reserve(out.centers.size());
@@ -568,8 +596,8 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     ds.reserve(out.centers.size());
     for (auto& c : out.centers)
     {
-        glm::vec3 p(c.xyz1.x, c.xyz1.y, c.xyz1.z);
-        float     d = glm::length(p - out.center);
+        glm::vec3 pp(c.xyz1.x, c.xyz1.y, c.xyz1.z);
+        float     d = glm::length(pp - out.center);
         if (std::isfinite(d))
             ds.push_back(d);
     }
@@ -587,22 +615,19 @@ static SceneData loadSPZ_AsNvproLayout(const fs::path& path)
     return out;
 }
 
-// Shaders (embedded GLSL). The draw is GPU-driven: instanceCount comes from the indirect command.
-static const char* const kVertGLSL = R"glsl(
-#version 460
+// ===== Shaders =====
+
+// Vertex shader body (no #version; we prepend compile-time defines for (2)(3)).
+static const char* const kVertBodyGLSL = R"glsl(
 #extension GL_ARB_separate_shader_objects : enable
 
 layout(location = 0) in vec2 a_Corner;
 
-struct CenterGPU { vec4 xyz1; };
-struct CovGPU    { vec4 c0; vec4 c1; };
-struct ColorGPU  { vec4 rgba; };
-
-layout(set=0, binding=0, std430) readonly buffer CentersBuf { CenterGPU centers[]; };
-layout(set=0, binding=1, std430) readonly buffer CovBuf     { CovGPU    covs[];    };
-layout(set=0, binding=2, std430) readonly buffer ColorBuf   { ColorGPU  colors[];  };
-layout(set=0, binding=3, std430) readonly buffer ShBuf      { float     sh[];      };
-layout(set=0, binding=4, std430) readonly buffer IdBuf      { uint      ids[];     };
+layout(set=0, binding=0, std430) readonly buffer CentersBuf { vec4 centers[]; }; // xyz1 as vec4
+layout(set=0, binding=1, std430) readonly buffer CovBuf     { uvec4 covs[];    }; // packed
+layout(set=0, binding=2, std430) readonly buffer ColorBuf   { uvec2 colors[];  }; // packed
+layout(set=0, binding=3, std430) readonly buffer ShBuf      { uvec2 sh[];      }; // packed: N*15 entries
+layout(set=0, binding=4, std430) readonly buffer IdBuf      { uint  ids[];     };
 
 layout(push_constant) uniform PC
 {
@@ -610,7 +635,7 @@ layout(push_constant) uniform PC
     vec4 proj;   // P00, P11, P22, P32
     vec4 vp;     // W, H, 2/W, 2/H
     vec4 cam;    // camPos.xyz, alphaCull
-    vec4 misc;   // mipVarPx2, opacityDiscardTh, signedMaxAxisPx, extentStdDev
+    vec4 misc;   // mipVarPx2, opacityDiscardTh, maxAxisPx, extentStdDev
 } pc;
 
 layout(location=0) out vec2 v_FragPos;
@@ -625,20 +650,35 @@ const float SH_C3[7] = float[7](
 
 vec3 shCoeff(uint gid, int k)
 {
-    uint base = gid * 45u + uint(k * 3);
-    return vec3(sh[base + 0], sh[base + 1], sh[base + 2]);
+    // sh is [gid*15 + k] => uvec2( pack(r,g), pack(b,0) )
+    uint idx = gid * 15u + uint(k);
+    uvec2 p  = sh[idx];
+    vec2 rg  = unpackHalf2x16(p.x);
+    vec2 b0  = unpackHalf2x16(p.y);
+    return vec3(rg.x, rg.y, b0.x);
 }
 
 vec3 evalShRest(uint gid, vec3 dir)
 {
     vec3 rgb = vec3(0.0);
 
+#if SH_DEGREE == 0
+    // Force the binding to stay alive across variants (avoid descriptor layout mismatch).
+    // A single dummy read is usually optimized into nothing meaningful but keeps reflection stable.
+    // (If you prefer, delete this and also delete binding=3 for SH in degree-0 pipelines.)
+    uvec2 _d = sh[gid * 15u];
+    (void)_d;
+    return rgb;
+#else
     float x = dir.x;
     float y = dir.y;
     float z = dir.z;
 
+    // L1 (3 coeffs)
     rgb += SH_C1 * (-shCoeff(gid,0) * y + shCoeff(gid,1) * z - shCoeff(gid,2) * x);
 
+#if SH_DEGREE >= 2
+    // L2 (5 coeffs)
     float xx = x*x, yy = y*y, zz = z*z;
     float xy = x*y, yz = y*z, xz = x*z;
 
@@ -647,7 +687,10 @@ vec3 evalShRest(uint gid, vec3 dir)
          + (SH_C2[2] * (2.0*zz - xx - yy)) * shCoeff(gid, 5)
          + (SH_C2[3] * xz) * shCoeff(gid, 6)
          + (SH_C2[4] * (xx - yy)) * shCoeff(gid, 7);
+#endif
 
+#if SH_DEGREE >= 3
+    // L3 (7 coeffs)
     rgb += SH_C3[0] * shCoeff(gid,  8) * (3.0*xx - yy) * y
          + SH_C3[1] * shCoeff(gid,  9) * (x*y*z)
          + SH_C3[2] * shCoeff(gid, 10) * (4.0*zz - xx - yy) * y
@@ -655,8 +698,10 @@ vec3 evalShRest(uint gid, vec3 dir)
          + SH_C3[4] * shCoeff(gid, 12) * x * (4.0*zz - xx - yy)
          + SH_C3[5] * shCoeff(gid, 13) * (xx - yy) * z
          + SH_C3[6] * shCoeff(gid, 14) * x * (xx - 3.0*yy);
+#endif
 
     return rgb;
+#endif
 }
 
 vec3 srgbToLinear(vec3 c)
@@ -671,9 +716,14 @@ void main()
 {
     uint gid = ids[gl_InstanceIndex];
 
-    vec3 centerW = centers[gid].xyz1.xyz;
-    vec4 base    = colors[gid].rgba;
-    float alpha  = base.a;
+    vec3 centerW = centers[gid].xyz;
+
+    // decode color (packed half)
+    uvec2 pcCol = colors[gid];
+    vec2 rg = unpackHalf2x16(pcCol.x);
+    vec2 ba = unpackHalf2x16(pcCol.y);
+    vec3 baseRgb = vec3(rg.x, rg.y, ba.x);
+    float alpha  = ba.y;
 
     if (alpha < pc.cam.w)
     {
@@ -695,15 +745,26 @@ void main()
 
     vec3 viewDir = normalize(centerW - pc.cam.xyz);
 
-    vec3 color = base.rgb + evalShRest(gid, viewDir);
+    vec3 color = baseRgb + evalShRest(gid, viewDir);
     color = max(color, vec3(0.0));
 
-    vec4 c0 = covs[gid].c0;
-    vec4 c1 = covs[gid].c1;
+    // decode covariance (packed half)
+    uvec4 cv = covs[gid];
+    vec2 v0 = unpackHalf2x16(cv.x); // m11, m12
+    vec2 v1 = unpackHalf2x16(cv.y); // m13, m22
+    vec2 v2 = unpackHalf2x16(cv.z); // m23, m33
+
+    float m11 = v0.x;
+    float m12 = v0.y;
+    float m13 = v1.x;
+    float m22 = v1.y;
+    float m23 = v2.x;
+    float m33 = v2.y;
+
     mat3 SigmaW = mat3(
-        c0.x, c0.y, c0.z,
-        c0.y, c0.w, c1.x,
-        c0.z, c1.x, c1.y
+        m11, m12, m13,
+        m12, m22, m23,
+        m13, m23, m33
     );
 
     mat3 V3 = mat3(pc.view);
@@ -730,7 +791,7 @@ void main()
     float b = dot(JxP, SC_Jy);
     float c = dot(JyP, SC_Jy);
 
-    // 2D mip filter: Σ' = Σ + sI, with energy compensation to keep perceived brightness stable.
+    // 2D mip filter: Σ' = Σ + sI, with energy compensation.
     float a2 = a;
     float b2 = b;
     float c2 = c;
@@ -768,10 +829,7 @@ void main()
     vec2 e2 = vec2(-e1.y, e1.x);
 
     float extentStdDev = pc.misc.w;
-
-    float signedMaxAxis = pc.misc.z;
-    float maxAxisPx = abs(signedMaxAxis);
-    bool swapchainIsSRGB = (signedMaxAxis > 0.0);
+    float maxAxisPx    = pc.misc.z;
 
     float ax1 = min(extentStdDev * sqrt(l1), maxAxisPx);
     float ax2 = min(extentStdDev * sqrt(l2), maxAxisPx);
@@ -797,8 +855,9 @@ void main()
     gl_Position = vec4((ndc0 + offsetNdc) * clip0.w, clip0.z, clip0.w);
     v_FragPos = fragPos * extentStdDev;
 
-    if (swapchainIsSRGB)
-        color = srgbToLinear(color);
+#if SWAPCHAIN_SRGB
+    color = srgbToLinear(color);
+#endif
 
     v_FragCol = vec4(color, alpha);
 }
@@ -835,29 +894,30 @@ void main()
 )glsl";
 
 // Compute: cull + compact (keys/ids) into a dense visible range [0..count).
+// (6) Now reads covariance trace to cull tiny splats conservatively.
 static const char* const kCullCompGLSL = R"glsl(
 #version 460
 #extension GL_ARB_separate_shader_objects : enable
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
-struct CenterGPU { vec4 xyz1; };
-struct ColorGPU  { vec4 rgba; };
+layout(set=0, binding=0, std430) readonly buffer CentersBuf { vec4 centers[]; };
+layout(set=0, binding=1, std430) readonly buffer CovBuf     { uvec4 covs[];    }; // packed
+layout(set=0, binding=2, std430) readonly buffer ColorBuf   { uvec2 colors[];  }; // packed
 
-layout(set=0, binding=0, std430) readonly buffer CentersBuf { CenterGPU centers[]; };
-layout(set=0, binding=1, std430) readonly buffer ColorBuf   { ColorGPU  colors[];  };
+layout(set=0, binding=3, std430) writeonly buffer KeysOut   { uint keys[]; };
+layout(set=0, binding=4, std430) writeonly buffer IdsOut    { uint ids[];  };
 
-layout(set=0, binding=2, std430) writeonly buffer KeysOut   { uint keys[]; };
-layout(set=0, binding=3, std430) writeonly buffer IdsOut    { uint ids[];  };
-
-layout(set=0, binding=4, std430) buffer CountBuf { uint count; };
+// (1) CountBuf now stores: count + activeBlocks (activeBlocks written later).
+layout(set=0, binding=5, std430) buffer CountBuf { uint count; uint activeBlocks; };
 
 layout(push_constant) uniform PC
 {
     mat4 view;
     vec4 proj; // P00, P11, _, _
     vec4 cam;  // camPos.xyz, alphaCull
-    uvec4 misc; // totalPoints
+    vec4 vp;   // W, H, extentStdDev, minAxisPx
+    uvec2 misc; // totalPoints
 } pc;
 
 uint floatToOrderedUint(float f)
@@ -873,10 +933,13 @@ void main()
     uint total = pc.misc.x;
     if (i >= total) return;
 
-    float alpha = colors[i].rgba.a;
+    // decode alpha (packed half)
+    uvec2 pcCol = colors[i];
+    vec2 ba = unpackHalf2x16(pcCol.y);
+    float alpha = ba.y;
     if (alpha < pc.cam.w) return;
 
-    vec3 pW = centers[i].xyz1.xyz;
+    vec3 pW = centers[i].xyz;
     vec3 meanC = (pc.view * vec4(pW, 1.0)).xyz;
 
     // Near reject.
@@ -888,10 +951,37 @@ void main()
     float ndcX = (pc.proj.x * meanC.x) / w;
     float ndcY = (pc.proj.y * meanC.y) / w;
 
-    // Center-only cull with slack.
+    // Center-only cull with slack (still cheap).
     const float slack = 1.10;
     if (ndcX < -slack || ndcX > slack || ndcY < -slack || ndcY > slack)
         return;
+
+    // (6) Conservative tiny-splat cull:
+    // Use covariance trace as a world-space stddev upper bound: sqrt(lambda_max) <= sqrt(trace).
+    // Then project to pixels with a conservative focal scale.
+    float minAxisPx = pc.vp.w;
+    if (minAxisPx > 0.0)
+    {
+        uvec4 cv = covs[i];
+        vec2 v0 = unpackHalf2x16(cv.x); // m11, m12
+        vec2 v1 = unpackHalf2x16(cv.y); // m13, m22
+        vec2 v2 = unpackHalf2x16(cv.z); // m23, m33
+
+        float m11 = v0.x;
+        float m22 = v1.y;
+        float m33 = v2.y;
+
+        float tr = max(m11 + m22 + m33, 0.0);
+        float sigmaW_bound = sqrt(max(tr, 1e-12)); // upper bound on stddev
+
+        float Pmax = max(abs(pc.proj.x), abs(pc.proj.y));
+        float minDim = min(pc.vp.x, pc.vp.y);
+        float pxPerWorld = Pmax * (0.5 * minDim) / w;
+
+        float axisPxUpper = pc.vp.z * sigmaW_bound * pxPerWorld; // extentStdDev * bound * projection
+        if (axisPxUpper < minAxisPx)
+            return;
+    }
 
     uint outIdx = atomicAdd(count, 1u);
 
@@ -902,7 +992,39 @@ void main()
 }
 )glsl";
 
-// Compute: radix sort (8 bits/pass). Note: scan kernel hard-caps maxBlocks at 1024.
+// (1) Compute: write activeBlocks and VkDispatchIndirectCommand (x=activeBlocks,y=1,z=1).
+static const char* const kWriteSortArgsGLSL = R"glsl(
+#version 460
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set=0, binding=0, std430) buffer CountBuf { uint count; uint activeBlocks; };
+
+layout(set=0, binding=1, std430) buffer DispatchBuf
+{
+    uint groupCountX;
+    uint groupCountY;
+    uint groupCountZ;
+} dispatchCmd;
+
+void main()
+{
+    uint c = count;
+    uint blocks = (c + 4095u) / 4096u;
+
+    // Ensure >=1 so dispatchIndirect stays valid even when c==0 (kernels will no-op).
+    if (blocks == 0u) blocks = 1u;
+
+    activeBlocks = blocks;
+
+    dispatchCmd.groupCountX = blocks;
+    dispatchCmd.groupCountY = 1u;
+    dispatchCmd.groupCountZ = 1u;
+}
+)glsl";
+
+// Compute: radix sort (8 bits/pass). Now reads activeBlocks from CountBuf.
 static const char* const kRadixHistGLSL = R"glsl(
 #version 460
 #extension GL_ARB_separate_shader_objects : enable
@@ -911,9 +1033,9 @@ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 layout(set=0, binding=0, std430) readonly buffer KeysIn   { uint keysIn[]; };
 layout(set=0, binding=1, std430) writeonly buffer BlockH  { uint blockHisto[]; }; // [block][256]
-layout(set=0, binding=2, std430) readonly buffer CountBuf { uint count; };
+layout(set=0, binding=2, std430) readonly buffer CountBuf { uint count; uint activeBlocks; };
 
-layout(push_constant) uniform PC { uvec4 misc; } pc; // shift, maxBlocks,0,0
+layout(push_constant) uniform PC { uvec2 misc; } pc; // shift, pad
 
 shared uint sHist[256];
 
@@ -922,8 +1044,8 @@ void main()
     uint tid   = gl_LocalInvocationID.x;
     uint block = gl_WorkGroupID.x;
 
-    uint maxBlocks = pc.misc.y;
-    if (block >= maxBlocks) return;
+    uint ab = activeBlocks;
+    if (block >= ab) return;
 
     sHist[tid] = 0u;
     barrier();
@@ -953,15 +1075,15 @@ static const char* const kRadixScanGLSL = R"glsl(
 #version 460
 #extension GL_ARB_separate_shader_objects : enable
 
-// One workgroup per bucket; scans across blocks (maxBlocks <= 1024).
+// One workgroup per bucket; scans across blocks (activeBlocks <= 1024 by design).
 layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
 
-layout(set=0, binding=0, std430) readonly buffer BlockH { uint blockHisto[]; };  // [block][256]
+layout(set=0, binding=0, std430) readonly buffer BlockH  { uint blockHisto[]; };  // [block][256]
 layout(set=0, binding=1, std430) writeonly buffer BlockP { uint blockPrefix[]; }; // [block][256]
 layout(set=0, binding=2, std430) writeonly buffer Totals { uint bucketTotals[]; }; // [256]
-layout(set=0, binding=3, std430) readonly buffer CountBuf { uint count; };
+layout(set=0, binding=3, std430) readonly buffer CountBuf { uint count; uint activeBlocks; };
 
-layout(push_constant) uniform PC { uvec4 misc; } pc; // shift unused, maxBlocks,0,0
+layout(push_constant) uniform PC { uvec2 misc; } pc; // unused
 
 shared uint s[1024];
 
@@ -970,10 +1092,10 @@ void main()
     uint bucket = gl_WorkGroupID.x; // 0..255
     uint t      = gl_LocalInvocationID.x;
 
-    uint maxBlocks = pc.misc.y;
+    uint ab = activeBlocks;
 
     uint v = 0u;
-    if (t < maxBlocks)
+    if (t < ab)
         v = blockHisto[t * 256u + bucket];
 
     s[t] = v;
@@ -989,14 +1111,14 @@ void main()
         barrier();
     }
 
-    if (t < maxBlocks)
+    if (t < ab)
     {
         uint inclusive = s[t];
         uint exclusive = inclusive - v;
         blockPrefix[t * 256u + bucket] = exclusive;
     }
 
-    if (t == maxBlocks - 1u)
+    if (t == ab - 1u)
     {
         bucketTotals[bucket] = s[t];
     }
@@ -1052,9 +1174,9 @@ layout(set=0, binding=3, std430) readonly buffer Base     { uint bucketBase[]; }
 layout(set=0, binding=4, std430) writeonly buffer KeysOut  { uint keysOut[]; };
 layout(set=0, binding=5, std430) writeonly buffer IdsOut   { uint idsOut[];  };
 
-layout(set=0, binding=6, std430) readonly buffer CountBuf  { uint count; };
+layout(set=0, binding=6, std430) readonly buffer CountBuf  { uint count; uint activeBlocks; };
 
-layout(push_constant) uniform PC { uvec4 misc; } pc; // shift, maxBlocks,0,0
+layout(push_constant) uniform PC { uvec2 misc; } pc; // shift, pad
 
 shared uint sOff[256];
 
@@ -1063,8 +1185,8 @@ void main()
     uint tid   = gl_LocalInvocationID.x;
     uint block = gl_WorkGroupID.x;
 
-    uint maxBlocks = pc.misc.y;
-    if (block >= maxBlocks) return;
+    uint ab = activeBlocks;
+    if (block >= ab) return;
 
     sOff[tid] = 0u;
     barrier();
@@ -1100,7 +1222,7 @@ static const char* const kWriteIndirectGLSL = R"glsl(
 
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
-layout(set=0, binding=0, std430) readonly buffer CountBuf { uint count; };
+layout(set=0, binding=0, std430) readonly buffer CountBuf { uint count; uint activeBlocks; };
 
 layout(set=0, binding=1, std430) buffer CmdBuf
 {
@@ -1119,28 +1241,39 @@ void main()
 }
 )glsl";
 
-// Buffer barrier helper (sync2).
-static inline void bufferBarrier2(vultra::rhi::CommandBuffer& cb,
-                                  vk::PipelineStageFlags2     srcStage,
-                                  vk::AccessFlags2            srcAccess,
-                                  vk::PipelineStageFlags2     dstStage,
-                                  vk::AccessFlags2            dstAccess,
-                                  const vk::Buffer&           buffer)
+// ===== Barrier helpers (4) =====
+
+static inline void pipelineBufferBarriers2(vultra::rhi::CommandBuffer& cb,
+                                           const std::vector<vk::BufferMemoryBarrier2>& barriers)
 {
-    vk::BufferMemoryBarrier2 b {};
-    b.srcStageMask  = srcStage;
-    b.srcAccessMask = srcAccess;
-    b.dstStageMask  = dstStage;
-    b.dstAccessMask = dstAccess;
-    b.buffer        = buffer;
-    b.offset        = 0;
-    b.size          = vk::WholeSize;
-
     vk::DependencyInfo dep {};
-    dep.bufferMemoryBarrierCount = 1;
-    dep.pBufferMemoryBarriers    = &b;
-
+    dep.bufferMemoryBarrierCount = static_cast<uint32_t>(barriers.size());
+    dep.pBufferMemoryBarriers    = barriers.data();
     cb.getHandle().pipelineBarrier2KHR(&dep);
+}
+
+static inline void bufferBarriers2Same(vultra::rhi::CommandBuffer& cb,
+                                       vk::PipelineStageFlags2     srcStage,
+                                       vk::AccessFlags2            srcAccess,
+                                       vk::PipelineStageFlags2     dstStage,
+                                       vk::AccessFlags2            dstAccess,
+                                       std::initializer_list<vk::Buffer> buffers)
+{
+    std::vector<vk::BufferMemoryBarrier2> bs;
+    bs.reserve(buffers.size());
+    for (auto& buf : buffers)
+    {
+        vk::BufferMemoryBarrier2 b {};
+        b.srcStageMask  = srcStage;
+        b.srcAccessMask = srcAccess;
+        b.dstStageMask  = dstStage;
+        b.dstAccessMask = dstAccess;
+        b.buffer        = buf;
+        b.offset        = 0;
+        b.size          = vk::WholeSize;
+        bs.push_back(b);
+    }
+    pipelineBufferBarriers2(cb, bs);
 }
 
 int main(int argc, char** argv)
@@ -1157,7 +1290,7 @@ try
         return 1;
     }
 
-    SceneData scene = loadSPZ_AsNvproLayout(spzPath);
+    SceneData scene = loadSPZ_Packed(spzPath);
     if (!scene.success)
         return 1;
 
@@ -1225,9 +1358,9 @@ try
 
     // Upload static scene buffers.
     auto centersBuf = renderDevice.createStorageBuffer(sizeof(CenterGPU) * scene.centers.size());
-    auto covsBuf    = renderDevice.createStorageBuffer(sizeof(CovGPU) * scene.covs.size());
-    auto colorsBuf  = renderDevice.createStorageBuffer(sizeof(ColorGPU) * scene.colors.size());
-    auto shBuf      = renderDevice.createStorageBuffer(sizeof(float) * scene.shRest.size());
+    auto covsBuf    = renderDevice.createStorageBuffer(sizeof(glm::uvec4) * scene.covsPacked.size());
+    auto colorsBuf  = renderDevice.createStorageBuffer(sizeof(glm::uvec2) * scene.colorsPacked.size());
+    auto shBuf      = renderDevice.createStorageBuffer(sizeof(glm::uvec2) * scene.shPacked.size());
 
     auto uploadInit = [&](auto& dst, const void* data, size_t bytes) {
         if (bytes == 0)
@@ -1237,9 +1370,9 @@ try
     };
 
     uploadInit(centersBuf, scene.centers.data(), sizeof(CenterGPU) * scene.centers.size());
-    uploadInit(covsBuf, scene.covs.data(), sizeof(CovGPU) * scene.covs.size());
-    uploadInit(colorsBuf, scene.colors.data(), sizeof(ColorGPU) * scene.colors.size());
-    uploadInit(shBuf, scene.shRest.data(), sizeof(float) * scene.shRest.size());
+    uploadInit(covsBuf, scene.covsPacked.data(), sizeof(glm::uvec4) * scene.covsPacked.size());
+    uploadInit(colorsBuf, scene.colorsPacked.data(), sizeof(glm::uvec2) * scene.colorsPacked.size());
+    uploadInit(shBuf, scene.shPacked.data(), sizeof(glm::uvec2) * scene.shPacked.size());
 
     // Fullscreen-aligned quad (per-instance billboard).
     constexpr auto kQuad = std::array {
@@ -1254,35 +1387,66 @@ try
     rhi::VertexBuffer quadVB = renderDevice.createVertexBuffer(sizeof(QuadVertex), static_cast<uint32_t>(kQuad.size()));
     uploadInit(quadVB, kQuad.data(), sizeof(QuadVertex) * kQuad.size());
 
-    // Graphics pipeline (alpha-blended splats).
-    auto pipeline = rhi::GraphicsPipeline::Builder {}
-                        .setColorFormats({swapchain.getPixelFormat()})
-                        .setInputAssembly({
-                            {0, {.type = rhi::VertexAttribute::Type::eFloat2, .offset = 0}},
-                        })
-                        .addShader(rhi::ShaderType::eVertex, {.code = kVertGLSL})
-                        .addShader(rhi::ShaderType::eFragment, {.code = kFragGLSL})
-                        .setDepthStencil({.depthTest = false, .depthWrite = false})
-                        .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
-                        .setBlending(0,
-                                     rhi::BlendState {
-                                         .enabled  = true,
-                                         .srcColor = rhi::BlendFactor::eOne,
-                                         .dstColor = rhi::BlendFactor::eOneMinusSrcAlpha,
-                                         .colorOp  = rhi::BlendOp::eAdd,
-                                         .srcAlpha = rhi::BlendFactor::eOne,
-                                         .dstAlpha = rhi::BlendFactor::eOneMinusSrcAlpha,
-                                         .alphaOp  = rhi::BlendOp::eAdd,
-                                     })
-                        .build(renderDevice);
+    // (2)(3) Build graphics pipeline variants:
+    // - SH_DEGREE = 0..3
+    // - SWAPCHAIN_SRGB = 0/1
+    auto makeVertGLSL = [&](int shDeg, bool srgb) -> std::string {
+        std::string head;
+        head += "#version 460\n";
+        head += std::format("#define SH_DEGREE {}\n", shDeg);
+        head += std::format("#define SWAPCHAIN_SRGB {}\n", srgb ? 1 : 0);
+        head += kVertBodyGLSL;
+        return head;
+    };
+
+    // Clamp to 0..3 (we still upload 15 rest coeffs; shader just uses subset).
+    const int effectiveShDeg = std::clamp(scene.shDegree, 0, 3);
+
+    rhi::GraphicsPipeline pipelines[2][4]; // [srgb?][deg]
+    bool pipelineBuilt[2][4] = {};
+
+    auto buildPipe = [&](bool srgb, int deg) {
+        if (pipelineBuilt[srgb ? 1 : 0][deg])
+            return;
+
+        std::string vcode = makeVertGLSL(deg, srgb);
+
+        pipelines[srgb ? 1 : 0][deg] =
+            rhi::GraphicsPipeline::Builder {}
+                .setColorFormats({swapchain.getPixelFormat()})
+                .setInputAssembly({
+                    {0, {.type = rhi::VertexAttribute::Type::eFloat2, .offset = 0}},
+                })
+                .addShader(rhi::ShaderType::eVertex,   {.code = vcode.c_str()})
+                .addShader(rhi::ShaderType::eFragment, {.code = kFragGLSL})
+                .setDepthStencil({.depthTest = false, .depthWrite = false})
+                .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
+                .setBlending(0,
+                             rhi::BlendState {
+                                 .enabled  = true,
+                                 .srcColor = rhi::BlendFactor::eOne,
+                                 .dstColor = rhi::BlendFactor::eOneMinusSrcAlpha,
+                                 .colorOp  = rhi::BlendOp::eAdd,
+                                 .srcAlpha = rhi::BlendFactor::eOne,
+                                 .dstAlpha = rhi::BlendFactor::eOneMinusSrcAlpha,
+                                 .alphaOp  = rhi::BlendOp::eAdd,
+                             })
+                .build(renderDevice);
+
+        pipelineBuilt[srgb ? 1 : 0][deg] = true;
+    };
+
+    // Build only what's needed for current swapchain, plus both for safety (format can recreate).
+    buildPipe(swapIsSRGB, effectiveShDeg);
 
     // Compute pipelines.
-    auto cullPipe     = renderDevice.createComputePipeline({.code = kCullCompGLSL});
-    auto histPipe     = renderDevice.createComputePipeline({.code = kRadixHistGLSL});
-    auto scanPipe     = renderDevice.createComputePipeline({.code = kRadixScanGLSL});
-    auto basePipe     = renderDevice.createComputePipeline({.code = kRadixBaseGLSL});
-    auto scatPipe     = renderDevice.createComputePipeline({.code = kRadixScatterGLSL});
-    auto writeIndPipe = renderDevice.createComputePipeline({.code = kWriteIndirectGLSL});
+    auto cullPipe        = renderDevice.createComputePipeline({.code = kCullCompGLSL});
+    auto writeSortArgs   = renderDevice.createComputePipeline({.code = kWriteSortArgsGLSL});
+    auto histPipe        = renderDevice.createComputePipeline({.code = kRadixHistGLSL});
+    auto scanPipe        = renderDevice.createComputePipeline({.code = kRadixScanGLSL});
+    auto basePipe        = renderDevice.createComputePipeline({.code = kRadixBaseGLSL});
+    auto scatPipe        = renderDevice.createComputePipeline({.code = kRadixScatterGLSL});
+    auto writeIndPipe    = renderDevice.createComputePipeline({.code = kWriteIndirectGLSL});
 
     // GPU sort buffers.
     const uint32_t maxPoints = static_cast<uint32_t>(scene.centers.size());
@@ -1304,7 +1468,12 @@ try
     auto bucketTotals = renderDevice.createStorageBuffer(sizeof(uint32_t) * 256u);
     auto bucketBase   = renderDevice.createStorageBuffer(sizeof(uint32_t) * 256u);
 
-    auto countBuf = renderDevice.createStorageBuffer(sizeof(uint32_t));
+    // (1) CountBuf now has 2 uints: count + activeBlocks.
+    auto countBuf = renderDevice.createStorageBuffer(sizeof(uint32_t) * 2u);
+
+    // (1) DispatchIndirectCmd buffer (VkDispatchIndirectCommand: 3 uints).
+    // NOTE: must have VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT in addition to STORAGE.
+    auto dispatchCmdBuf = renderDevice.createStorageBuffer(sizeof(uint32_t) * 3u);
 
     // Indirect draw command buffer (one vk::DrawIndirectCommand). Size parameter is in BYTES.
     rhi::DrawIndirectBuffer diB = renderDevice.createDrawIndirectBuffer(1, rhi::DrawIndirectType::eNonIndexed);
@@ -1331,6 +1500,9 @@ try
 
     float    rebuildTimer = 1e9f;
     uint32_t lastW = 0, lastH = 0;
+
+    // Track which ids buffer is currently sorted output (robust vs assuming even passes).
+    auto* sortedIdsBuf = &idsA;
 
     while (!window.shouldClose())
     {
@@ -1405,18 +1577,17 @@ try
 
         // Push constants for graphics.
         PushConstants pc {};
-        pc.view             = view;
-        pc.proj             = glm::vec4(proj[0][0], proj[1][1], proj[2][2], proj[3][2]);
-        pc.vp               = glm::vec4(W, H, 2.0f / W, 2.0f / H);
-        pc.cam              = glm::vec4(camPos, config::kAlphaCullThreshold);
-        float signedMaxAxis = (swapIsSRGB ? +config::kMaxAxisPx : -config::kMaxAxisPx);
-        pc.misc = glm::vec4(config::kMipVarPx2, config::kOpacityDiscardThreshold, signedMaxAxis, config::kExtentStdDev);
+        pc.view = view;
+        pc.proj = glm::vec4(proj[0][0], proj[1][1], proj[2][2], proj[3][2]);
+        pc.vp   = glm::vec4(W, H, 2.0f / W, 2.0f / H);
+        pc.cam  = glm::vec4(camPos, config::kAlphaCullThreshold);
+        pc.misc = glm::vec4(config::kMipVarPx2, config::kOpacityDiscardThreshold, config::kMaxAxisPx, config::kExtentStdDev);
 
         auto& cb = frameController.beginFrame();
 
         if (needRebuild)
         {
-            // Reset visible counter.
+            // Reset visible counter (+ activeBlocks) to zero.
             cb.clear(countBuf, 0);
 
             // Cull + compact to keysA/idsA.
@@ -1424,40 +1595,71 @@ try
             cpc.view = view;
             cpc.proj = glm::vec4(proj[0][0], proj[1][1], 0, 0);
             cpc.cam  = glm::vec4(camPos, config::kAlphaCullThreshold);
-            cpc.misc = glm::uvec4(maxPoints, 0, 0, 0);
+            cpc.vp   = glm::vec4(W, H, config::kExtentStdDev, config::kCullMinAxisPx);
+            cpc.misc = glm::uvec2(maxPoints, 0);
 
             auto dsCull = cb.createDescriptorSetBuilder()
                               .bind(0, rhi::bindings::StorageBuffer {.buffer = &centersBuf})
-                              .bind(1, rhi::bindings::StorageBuffer {.buffer = &colorsBuf})
-                              .bind(2, rhi::bindings::StorageBuffer {.buffer = &keysA})
-                              .bind(3, rhi::bindings::StorageBuffer {.buffer = &idsA})
-                              .bind(4, rhi::bindings::StorageBuffer {.buffer = &countBuf})
+                              .bind(1, rhi::bindings::StorageBuffer {.buffer = &covsBuf})
+                              .bind(2, rhi::bindings::StorageBuffer {.buffer = &colorsBuf})
+                              .bind(3, rhi::bindings::StorageBuffer {.buffer = &keysA})
+                              .bind(4, rhi::bindings::StorageBuffer {.buffer = &idsA})
+                              .bind(5, rhi::bindings::StorageBuffer {.buffer = &countBuf})
                               .build(cullPipe.getDescriptorSetLayout(0));
 
             cb.bindPipeline(cullPipe)
-                .bindDescriptorSet(0, dsCull)
-                .pushConstants(rhi::ShaderStages::eCompute, 0, &cpc)
-                .dispatch(glm::uvec3((maxPoints + 255u) / 256u, 1u, 1u));
+              .bindDescriptorSet(0, dsCull)
+              .pushConstants(rhi::ShaderStages::eCompute, 0, &cpc)
+              .dispatch(glm::uvec3((maxPoints + 255u) / 256u, 1u, 1u));
 
-            // Cull writes -> radix reads.
-            bufferBarrier2(cb,
-                           vk::PipelineStageFlagBits2::eComputeShader,
-                           vk::AccessFlagBits2::eShaderWrite,
-                           vk::PipelineStageFlagBits2::eComputeShader,
-                           vk::AccessFlagBits2::eShaderRead,
-                           countBuf.getHandle());
-            bufferBarrier2(cb,
-                           vk::PipelineStageFlagBits2::eComputeShader,
-                           vk::AccessFlagBits2::eShaderWrite,
-                           vk::PipelineStageFlagBits2::eComputeShader,
-                           vk::AccessFlagBits2::eShaderRead,
-                           keysA.getHandle());
-            bufferBarrier2(cb,
-                           vk::PipelineStageFlagBits2::eComputeShader,
-                           vk::AccessFlagBits2::eShaderWrite,
-                           vk::PipelineStageFlagBits2::eComputeShader,
-                           vk::AccessFlagBits2::eShaderRead,
-                           idsA.getHandle());
+            // Cull writes -> writeSortArgs reads + radix reads.
+            bufferBarriers2Same(cb,
+                                vk::PipelineStageFlagBits2::eComputeShader,
+                                vk::AccessFlagBits2::eShaderWrite,
+                                vk::PipelineStageFlagBits2::eComputeShader,
+                                vk::AccessFlagBits2::eShaderRead,
+                                {countBuf.getHandle(), keysA.getHandle(), idsA.getHandle()});
+
+            // (1) Write activeBlocks + dispatch cmd (for vkCmdDispatchIndirect).
+            auto dsArgs = cb.createDescriptorSetBuilder()
+                            .bind(0, rhi::bindings::StorageBuffer {.buffer = &countBuf})
+                            .bind(1, rhi::bindings::StorageBuffer {.buffer = &dispatchCmdBuf})
+                            .build(writeSortArgs.getDescriptorSetLayout(0));
+
+            cb.bindPipeline(writeSortArgs).bindDescriptorSet(0, dsArgs).dispatch(glm::uvec3(1u, 1u, 1u));
+
+            // writeSortArgs writes -> radix reads (compute) + dispatchIndirect reads (drawIndirect stage).
+            {
+                std::vector<vk::BufferMemoryBarrier2> bars;
+
+                // CountBuf.activeBlocks read by hist/scan/scat (compute)
+                {
+                    vk::BufferMemoryBarrier2 b {};
+                    b.srcStageMask  = vk::PipelineStageFlagBits2::eComputeShader;
+                    b.srcAccessMask = vk::AccessFlagBits2::eShaderWrite;
+                    b.dstStageMask  = vk::PipelineStageFlagBits2::eComputeShader;
+                    b.dstAccessMask = vk::AccessFlagBits2::eShaderRead;
+                    b.buffer        = countBuf.getHandle();
+                    b.offset        = 0;
+                    b.size          = vk::WholeSize;
+                    bars.push_back(b);
+                }
+
+                // dispatchCmdBuf read by vkCmdDispatchIndirect
+                {
+                    vk::BufferMemoryBarrier2 b {};
+                    b.srcStageMask  = vk::PipelineStageFlagBits2::eComputeShader;
+                    b.srcAccessMask = vk::AccessFlagBits2::eShaderWrite;
+                    b.dstStageMask  = vk::PipelineStageFlagBits2::eDrawIndirect;
+                    b.dstAccessMask = vk::AccessFlagBits2::eIndirectCommandRead;
+                    b.buffer        = dispatchCmdBuf.getHandle();
+                    b.offset        = 0;
+                    b.size          = vk::WholeSize;
+                    bars.push_back(b);
+                }
+
+                pipelineBufferBarriers2(cb, bars);
+            }
 
             // Radix sort ping-pong.
             auto* keysIn  = &keysA;
@@ -1468,8 +1670,8 @@ try
             for (uint32_t pass = 0; pass < config::kRadixPasses; ++pass)
             {
                 const uint32_t shift = pass * config::kRadixBitsPerPass;
-                SortPC         spc {};
-                spc.misc = glm::uvec4(shift, maxBlocks, 0, 0);
+                SortPC spc {};
+                spc.misc = glm::uvec2(shift, 0);
 
                 auto dsHist = cb.createDescriptorSetBuilder()
                                   .bind(0, rhi::bindings::StorageBuffer {.buffer = keysIn})
@@ -1478,16 +1680,18 @@ try
                                   .build(histPipe.getDescriptorSetLayout(0));
 
                 cb.bindPipeline(histPipe)
-                    .bindDescriptorSet(0, dsHist)
-                    .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
-                    .dispatch(glm::uvec3(maxBlocks, 1u, 1u));
+                  .bindDescriptorSet(0, dsHist)
+                  .pushConstants(rhi::ShaderStages::eCompute, 0, &spc);
 
-                bufferBarrier2(cb,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderWrite,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderRead,
-                               blockHisto.getHandle());
+                // (1) HIST: dispatchIndirect by activeBlocks
+                cb.getHandle().dispatchIndirect(dispatchCmdBuf.getHandle(), 0);
+
+                bufferBarriers2Same(cb,
+                                   vk::PipelineStageFlagBits2::eComputeShader,
+                                   vk::AccessFlagBits2::eShaderWrite,
+                                   vk::PipelineStageFlagBits2::eComputeShader,
+                                   vk::AccessFlagBits2::eShaderRead,
+                                   {blockHisto.getHandle()});
 
                 auto dsScan = cb.createDescriptorSetBuilder()
                                   .bind(0, rhi::bindings::StorageBuffer {.buffer = &blockHisto})
@@ -1497,22 +1701,16 @@ try
                                   .build(scanPipe.getDescriptorSetLayout(0));
 
                 cb.bindPipeline(scanPipe)
-                    .bindDescriptorSet(0, dsScan)
-                    .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
-                    .dispatch(glm::uvec3(256u, 1u, 1u));
+                  .bindDescriptorSet(0, dsScan)
+                  .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
+                  .dispatch(glm::uvec3(256u, 1u, 1u));
 
-                bufferBarrier2(cb,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderWrite,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderRead,
-                               bucketTotals.getHandle());
-                bufferBarrier2(cb,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderWrite,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderRead,
-                               blockPrefix.getHandle());
+                bufferBarriers2Same(cb,
+                                   vk::PipelineStageFlagBits2::eComputeShader,
+                                   vk::AccessFlagBits2::eShaderWrite,
+                                   vk::PipelineStageFlagBits2::eComputeShader,
+                                   vk::AccessFlagBits2::eShaderRead,
+                                   {bucketTotals.getHandle(), blockPrefix.getHandle()});
 
                 auto dsBase = cb.createDescriptorSetBuilder()
                                   .bind(0, rhi::bindings::StorageBuffer {.buffer = &bucketTotals})
@@ -1521,12 +1719,12 @@ try
 
                 cb.bindPipeline(basePipe).bindDescriptorSet(0, dsBase).dispatch(glm::uvec3(1u, 1u, 1u));
 
-                bufferBarrier2(cb,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderWrite,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderRead,
-                               bucketBase.getHandle());
+                bufferBarriers2Same(cb,
+                                   vk::PipelineStageFlagBits2::eComputeShader,
+                                   vk::AccessFlagBits2::eShaderWrite,
+                                   vk::PipelineStageFlagBits2::eComputeShader,
+                                   vk::AccessFlagBits2::eShaderRead,
+                                   {bucketBase.getHandle()});
 
                 auto dsScat = cb.createDescriptorSetBuilder()
                                   .bind(0, rhi::bindings::StorageBuffer {.buffer = keysIn})
@@ -1539,35 +1737,34 @@ try
                                   .build(scatPipe.getDescriptorSetLayout(0));
 
                 cb.bindPipeline(scatPipe)
-                    .bindDescriptorSet(0, dsScat)
-                    .pushConstants(rhi::ShaderStages::eCompute, 0, &spc)
-                    .dispatch(glm::uvec3(maxBlocks, 1u, 1u));
+                  .bindDescriptorSet(0, dsScat)
+                  .pushConstants(rhi::ShaderStages::eCompute, 0, &spc);
+
+                // (1) SCATTER: dispatchIndirect by activeBlocks
+                cb.getHandle().dispatchIndirect(dispatchCmdBuf.getHandle(), 0);
 
                 // Scatter writes -> next pass reads.
-                bufferBarrier2(cb,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderWrite,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderRead,
-                               keysOut->getHandle());
-                bufferBarrier2(cb,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderWrite,
-                               vk::PipelineStageFlagBits2::eComputeShader,
-                               vk::AccessFlagBits2::eShaderRead,
-                               idsOut->getHandle());
+                bufferBarriers2Same(cb,
+                                   vk::PipelineStageFlagBits2::eComputeShader,
+                                   vk::AccessFlagBits2::eShaderWrite,
+                                   vk::PipelineStageFlagBits2::eComputeShader,
+                                   vk::AccessFlagBits2::eShaderRead,
+                                   {keysOut->getHandle(), idsOut->getHandle()});
 
                 std::swap(keysIn, keysOut);
                 std::swap(idsIn, idsOut);
             }
 
-            // Make sorted ids visible to vertex shader (after the final pass).
-            bufferBarrier2(cb,
-                           vk::PipelineStageFlagBits2::eComputeShader,
-                           vk::AccessFlagBits2::eShaderWrite,
-                           vk::PipelineStageFlagBits2::eVertexShader,
-                           vk::AccessFlagBits2::eShaderRead,
-                           idsA.getHandle());
+            // Final sorted ids buffer (robust).
+            sortedIdsBuf = idsIn;
+
+            // Sorted ids visible to vertex shader (after final pass).
+            bufferBarriers2Same(cb,
+                                vk::PipelineStageFlagBits2::eComputeShader,
+                                vk::AccessFlagBits2::eShaderWrite,
+                                vk::PipelineStageFlagBits2::eVertexShader,
+                                vk::AccessFlagBits2::eShaderRead,
+                                {sortedIdsBuf->getHandle()});
 
             // Write indirect draw command (instanceCount = count).
             auto dsWriteInd = cb.createDescriptorSetBuilder()
@@ -1578,12 +1775,12 @@ try
             cb.bindPipeline(writeIndPipe).bindDescriptorSet(0, dsWriteInd).dispatch(glm::uvec3(1u, 1u, 1u));
 
             // Indirect command write -> drawIndirect read.
-            bufferBarrier2(cb,
-                           vk::PipelineStageFlagBits2::eComputeShader,
-                           vk::AccessFlagBits2::eShaderWrite,
-                           vk::PipelineStageFlagBits2::eDrawIndirect,
-                           vk::AccessFlagBits2::eIndirectCommandRead,
-                           diB.getHandle());
+            bufferBarriers2Same(cb,
+                                vk::PipelineStageFlagBits2::eComputeShader,
+                                vk::AccessFlagBits2::eShaderWrite,
+                                vk::PipelineStageFlagBits2::eDrawIndirect,
+                                vk::AccessFlagBits2::eIndirectCommandRead,
+                                {diB.getHandle()});
 
             rebuildTimer = 0.0f;
         }
@@ -1596,16 +1793,21 @@ try
             .colorAttachments = {{{.target = &backBuffer, .clearValue = glm::vec4(0, 0, 0, 1)}}},
         };
 
+        // Ensure pipeline exists (in case swapchain recreated and format changes).
+        const bool curIsSRGB = isSrgbPixelFormat(swapchain.getPixelFormat());
+        buildPipe(curIsSRGB, effectiveShDeg);
+        auto& gp = pipelines[curIsSRGB ? 1 : 0][effectiveShDeg];
+
         auto ds = cb.createDescriptorSetBuilder()
                       .bind(0, rhi::bindings::StorageBuffer {.buffer = &centersBuf})
                       .bind(1, rhi::bindings::StorageBuffer {.buffer = &covsBuf})
                       .bind(2, rhi::bindings::StorageBuffer {.buffer = &colorsBuf})
                       .bind(3, rhi::bindings::StorageBuffer {.buffer = &shBuf})
-                      .bind(4, rhi::bindings::StorageBuffer {.buffer = &idsA})
-                      .build(pipeline.getDescriptorSetLayout(0));
+                      .bind(4, rhi::bindings::StorageBuffer {.buffer = sortedIdsBuf})
+                      .build(gp.getDescriptorSetLayout(0));
 
         cb.beginRendering(fb)
-            .bindPipeline(pipeline)
+            .bindPipeline(gp)
             .bindDescriptorSet(0, ds)
             .pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pc)
             .drawIndirect(rhi::DrawIndirectInfo {
