@@ -1,6 +1,4 @@
 #include "vultra/function/app/xr_app.hpp"
-#include "vultra/function/openxr/ext/xr_eyetracker.hpp"
-#include "vultra/function/openxr/xr_controller.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
 #include "vultra/function/service/services.hpp"
 
