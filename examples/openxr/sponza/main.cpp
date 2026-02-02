@@ -84,6 +84,40 @@ public:
                         glm::degrees(gazeRotationEuler.z));
         }
 
+        // Controller Input Info
+        ImGui::Separator();
+
+        ImGui::Text("Controller Input Info:");
+        auto leftSelect = m_CommonAction.getInput()->getFloat("select", 0);
+        ImGui::Text("Left Controller Select Value : %.2f", leftSelect);
+
+        auto rightSelect = m_CommonAction.getInput()->getFloat("select", 1);
+        ImGui::Text("Right Controller Select Value: %.2f", rightSelect);
+
+        auto leftAimPose = m_CommonAction.getInput()->getPose("aim_pose", 0);
+        ImGui::Text("Left Controller Aim Position : (%.3f, %.3f, %.3f)",
+                    leftAimPose.position.x,
+                    leftAimPose.position.y,
+                    leftAimPose.position.z);
+        auto leftAimRotationQuat  = xrutils::toQuat(leftAimPose.orientation);
+        auto leftAimRotationEuler = glm::eulerAngles(leftAimRotationQuat);
+        ImGui::Text("Left Controller Aim Rotation : (%.3f, %.3f, %.3f) (degrees)",
+                    glm::degrees(leftAimRotationEuler.x),
+                    glm::degrees(leftAimRotationEuler.y),
+                    glm::degrees(leftAimRotationEuler.z));
+
+        auto rightAimPose = m_CommonAction.getInput()->getPose("aim_pose", 1);
+        ImGui::Text("Right Controller Aim Position: (%.3f, %.3f, %.3f)",
+                    rightAimPose.position.x,
+                    rightAimPose.position.y,
+                    rightAimPose.position.z);
+        auto rightAimRotationQuat  = xrutils::toQuat(rightAimPose.orientation);
+        auto rightAimRotationEuler = glm::eulerAngles(rightAimRotationQuat);
+        ImGui::Text("Right Controller Aim Rotation: (%.3f, %.3f, %.3f) (degrees)",
+                    glm::degrees(rightAimRotationEuler.x),
+                    glm::degrees(rightAimRotationEuler.y),
+                    glm::degrees(rightAimRotationEuler.z));
+
         m_Renderer.onImGui();
 
 #ifdef VULTRA_ENABLE_RENDERDOC
