@@ -1,6 +1,5 @@
 #include "vultra/function/openxr/xr_common_action.hpp"
 #include "vultra/function/openxr/ext/xr_eyetracker.hpp"
-#include "vultra/function/openxr/xr_controller.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
 
 namespace vultra
@@ -10,7 +9,8 @@ namespace vultra
         XRCommonAction::XRCommonAction(XrInstance instance, XrSession session, bool supportEyetracking) :
             m_XrInstance(instance), m_Session(session)
         {
-            m_Controllers = new XRControllers(instance, session);
+            m_Input = std::make_unique<XRInput>(instance, session);
+
             if (supportEyetracking)
             {
                 // Create the eye tracker if supported
@@ -18,35 +18,30 @@ namespace vultra
             }
 
             // Attach action sets
-            std::vector actionSets = {m_Controllers->getActionSet()};
+            std::vector<XrActionSet> actionSets;
+            actionSets.push_back(m_Input->getActionSet());
+
             if (supportEyetracking)
             {
                 actionSets.push_back(m_EyeTracker->getActionSet());
             }
+
             XrSessionActionSetsAttachInfo attachInfo {.type = XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
             attachInfo.countActionSets = static_cast<uint32_t>(actionSets.size());
             attachInfo.actionSets      = actionSets.data();
             OPENXR_CHECK(xrAttachSessionActionSets(session, &attachInfo), "Failed to attach session action sets");
         }
 
-        XRCommonAction::~XRCommonAction()
-        {
-            delete m_Controllers;
-            delete m_EyeTracker;
-        }
+        XRCommonAction::~XRCommonAction() { delete m_EyeTracker; }
 
         bool XRCommonAction::sync(XrSpace space, XrTime time)
         {
-            if (m_Controllers)
+            if (m_Input)
             {
-                if (!m_Controllers->sync(space, time))
+                if (!m_Input->sync(space, time))
                 {
                     return false;
                 }
-            }
-            else
-            {
-                return false;
             }
 
             if (m_EyeTracker)

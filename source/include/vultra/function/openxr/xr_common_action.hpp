@@ -1,10 +1,6 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
-
-#define XR_USE_GRAPHICS_API_VULKAN
-#include <openxr/openxr.h>
-#include <openxr/openxr_platform.h>
+#include "vultra/function/openxr/xr_input.hpp"
 
 namespace vultra
 {
@@ -25,15 +21,15 @@ namespace vultra
 
             bool sync(XrSpace space, XrTime time);
 
-            const XRControllers*     getControllers() const { return m_Controllers; }
+            XRInput*                 getInput() { return m_Input.get(); }
             const ext::XREyeTracker* getEyeTracker() const { return m_EyeTracker; }
 
         private:
             XrInstance m_XrInstance = nullptr;
             XrSession  m_Session    = nullptr;
 
-            XRControllers*     m_Controllers = nullptr;
-            ext::XREyeTracker* m_EyeTracker  = nullptr;
+            std::unique_ptr<XRInput> m_Input {nullptr};
+            ext::XREyeTracker*       m_EyeTracker = nullptr;
         };
     } // namespace openxr
 } // namespace vultra
