@@ -68,12 +68,21 @@ namespace vultra
             void beginFrame(rhi::CommandBuffer& cb) override;
             void endFrame() override;
 
+            // ---- UI functions ----
+
             void drawCircleFilled(rhi::Texture*    target,
                                   const glm::vec2& position,
                                   float            radius,
                                   const glm::vec4& fillColor,
                                   const glm::vec4& outlineColor     = glm::vec4(0.0f),
                                   float            outlineThickness = 0.0f);
+
+            void drawImage(rhi::Texture*    target,
+                           rhi::Texture*    image,
+                           const glm::vec2& position     = glm::vec2(0.0f),
+                           const glm::vec2& size         = glm::vec2(0.0f),
+                           bool             stretchToFit = false,
+                           const glm::vec4& tintColor    = glm::vec4(1.0f));
 
             CameraInfo& getCameraInfo() { return m_CameraInfo; }
             LightInfo&  getLightInfo() { return m_LightInfo; }

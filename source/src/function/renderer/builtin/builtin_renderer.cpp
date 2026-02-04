@@ -218,6 +218,16 @@ namespace vultra
             m_UIDrawList.addCircleFilled(target, position, radius, fillColor, outlineColor, outlineThickness);
         }
 
+        void BuiltinRenderer::drawImage(rhi::Texture*    target,
+                                        rhi::Texture*    image,
+                                        const glm::vec2& position,
+                                        const glm::vec2& size,
+                                        bool             stretchToFit,
+                                        const glm::vec4& tintColor)
+        {
+            m_UIDrawList.addImage(target, image, position, size, stretchToFit, tintColor);
+        }
+
         void BuiltinRenderer::setScene(LogicScene* scene)
         {
             m_LogicScene = scene;

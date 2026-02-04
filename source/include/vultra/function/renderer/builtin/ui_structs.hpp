@@ -13,17 +13,32 @@ namespace vultra
         {
             enum class Type
             {
-                eCircle
+                eCircle,
+                eImage
             } type;
 
             rhi::Texture* target {nullptr};
 
-            glm::vec2 position;
-            float     radius;
-            float     outlineThickness; // For outlined circles
-            glm::vec4 fillColor;
-            glm::vec4 outlineColor;
-            bool      filled;
+            union
+            {
+                struct
+                {
+                    glm::vec2 position;
+                    float     radius;
+                    float     outlineThickness; // For outlined circles
+                    glm::vec4 fillColor;
+                    glm::vec4 outlineColor;
+                    bool      filled;
+                } circle;
+                struct
+                {
+                    glm::vec2     position;
+                    glm::vec2     size;
+                    rhi::Texture* texture;
+                    glm::vec4     tintColor;
+                    bool          stretchToFit;
+                } image;
+            };
         };
 
         class UIDrawList
@@ -37,14 +52,14 @@ namespace vultra
                                  float         outlineThickness = 0.0f)
             {
                 UIDrawCommand cmd {};
-                cmd.type             = UIDrawCommand::Type::eCircle;
-                cmd.target           = target;
-                cmd.position         = position;
-                cmd.radius           = radius;
-                cmd.outlineThickness = outlineThickness;
-                cmd.fillColor        = fillColor;
-                cmd.outlineColor     = outlineColor;
-                cmd.filled           = true;
+                cmd.type                    = UIDrawCommand::Type::eCircle;
+                cmd.target                  = target;
+                cmd.circle.position         = position;
+                cmd.circle.radius           = radius;
+                cmd.circle.outlineThickness = outlineThickness;
+                cmd.circle.fillColor        = fillColor;
+                cmd.circle.outlineColor     = outlineColor;
+                cmd.circle.filled           = true;
                 commands.push_back(cmd);
             }
 
@@ -55,16 +70,39 @@ namespace vultra
                                       float         outlineThickness = 1.0f)
             {
                 UIDrawCommand cmd {};
-                cmd.type             = UIDrawCommand::Type::eCircle;
-                cmd.target           = target;
-                cmd.position         = position;
-                cmd.radius           = radius;
-                cmd.outlineThickness = outlineThickness;
-                cmd.fillColor        = glm::vec4(0.0f);
-                cmd.outlineColor     = outlineColor;
-                cmd.filled           = false;
+                cmd.type                    = UIDrawCommand::Type::eCircle;
+                cmd.target                  = target;
+                cmd.circle.position         = position;
+                cmd.circle.radius           = radius;
+                cmd.circle.outlineThickness = outlineThickness;
+                cmd.circle.fillColor        = glm::vec4(0.0f);
+                cmd.circle.outlineColor     = outlineColor;
+                cmd.circle.filled           = false;
                 commands.push_back(cmd);
             }
+
+            void addImage(rhi::Texture* target,
+                          rhi::Texture* texture,
+                          glm::vec2     position,
+                          glm::vec2     size,
+                          bool          stretchToFit = false,
+                          glm::vec4     tintColor    = glm::vec4(1.0f))
+            {
+                UIDrawCommand cmd {};
+
+                glm::vec2 targetSize =
+                    size != glm::vec2(0.0f) ? size : glm::vec2(texture->getExtent().width, texture->getExtent().height);
+
+                cmd.type               = UIDrawCommand::Type::eImage;
+                cmd.target             = target;
+                cmd.image.position     = position;
+                cmd.image.size         = targetSize;
+                cmd.image.texture      = texture;
+                cmd.image.tintColor    = tintColor;
+                cmd.image.stretchToFit = stretchToFit;
+                commands.push_back(cmd);
+            }
+
             std::vector<UIDrawCommand> commands;
         };
     } // namespace gfx
