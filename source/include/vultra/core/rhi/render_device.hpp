@@ -4,6 +4,8 @@
 #include "vultra/core/base/scoped_enum_flags.hpp"
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/compute_pipeline.hpp"
+#include "vultra/core/rhi/draw_indirect_buffer.hpp"
+#include "vultra/core/rhi/draw_indirect_command.hpp"
 #include "vultra/core/rhi/image_aspect.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
@@ -73,6 +75,7 @@ namespace vultra
             eMeshShader            = BIT(4),
             eBufferDeviceAddress   = BIT(5),
             eDescriptorIndexing    = BIT(6),
+            eDrawIndirectCount     = BIT(7),
         };
 
         struct RenderDeviceFeatureReport
@@ -162,6 +165,10 @@ namespace vultra
             [[nodiscard]] StorageBuffer createStorageBuffer(vk::DeviceSize size,
                                                             AllocationHints = AllocationHints::eNone) const;
 
+            [[nodiscard]] DrawIndirectBuffer createDrawIndirectBuffer(uint32_t         commandCount,
+                                                                      DrawIndirectType type,
+                                                                      AllocationHints = AllocationHints::eNone) const;
+
             [[nodiscard]] std::pair<std::size_t, vk::DescriptorSetLayout>
             createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>&);
 
@@ -201,6 +208,7 @@ namespace vultra
                                                                        std::optional<PipelineLayout> = std::nullopt);
 
             RenderDevice& upload(Buffer&, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data);
+            RenderDevice& uploadDrawIndirect(DrawIndirectBuffer&, const std::vector<DrawIndirectCommand>& commands);
 
             RenderDevice& destroy(vk::Fence&);
             RenderDevice& destroy(vk::Semaphore&);
