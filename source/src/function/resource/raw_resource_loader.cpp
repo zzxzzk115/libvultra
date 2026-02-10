@@ -161,11 +161,22 @@ namespace vultra
 
             switch (fileFormat)
             {
+                case vasset::VTextureFileFormat::eKTX:
+                case vasset::VTextureFileFormat::eDDS:
+                    return loadTextureKTX_DDS_Raw(vtexture.data, rd);
                 case vasset::VTextureFileFormat::eKTX2:
                     return loadTextureKTX2_Raw(vtexture.data, rd);
+                case vasset::VTextureFileFormat::eEXR:
+                    return loadTextureEXR_Raw(vtexture.data, rd);
                 case vasset::VTextureFileFormat::ePNG:
                 case vasset::VTextureFileFormat::eJPG:
+                case vasset::VTextureFileFormat::eJPEG:
                 case vasset::VTextureFileFormat::eHDR:
+                case vasset::VTextureFileFormat::eBMP:
+                case vasset::VTextureFileFormat::eGIF:
+                case vasset::VTextureFileFormat::ePIC:
+                case vasset::VTextureFileFormat::ePSD:
+                case vasset::VTextureFileFormat::eTGA:
                     return loadTextureSTB_Raw(vtexture.data, rd);
                 default:
                     return std::unexpected {"Unsupported VTexture file format."};
