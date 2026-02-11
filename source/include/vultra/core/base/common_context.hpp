@@ -1,7 +1,6 @@
 #pragma once
 
 #include "vultra/core/base/logger.hpp"
-#include "vultra/function/debug_draw/debug_draw_interface.hpp"
 
 namespace vultra
 {
@@ -12,7 +11,6 @@ namespace vultra
         void cleanup();
 
         Logger                  logger;
-        Ref<DebugDrawInterface> debugDraw;
     };
 
     extern CommonContext commonContext;

@@ -1,6 +1,6 @@
 #include "vultra/function/renderer/builtin/passes/debug_draw_pass.hpp"
-#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/function/debug_draw/debug_draw_interface.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/renderer/builtin/framegraph_common.hpp"
@@ -19,7 +19,9 @@ namespace vultra
     {
         constexpr auto PASS_NAME = "DebugDrawPass";
 
-        DebugDrawPass::DebugDrawPass(rhi::RenderDevice& rd) : rhi::RenderPass<DebugDrawPass>(rd) {}
+        DebugDrawPass::DebugDrawPass(rhi::RenderDevice& rd, DebugDrawInterface& debugDrawInterface) :
+            rhi::RenderPass<DebugDrawPass>(rd), m_DebugDrawInterface(debugDrawInterface)
+        {}
 
         void DebugDrawPass::addPass(FrameGraph&           fg,
                                     FrameGraphBlackboard& blackboard,
@@ -64,20 +66,20 @@ namespace vultra
                                                        .clearValue  = framegraph::ClearValue::eTransparentBlack,
                                                    });
                 },
-                [this, dt, &viewProjectionMatrix](const auto&, FrameGraphPassResources& resources, void* ctx) {
+                [this, dt, &viewProjectionMatrix](const auto&, FrameGraphPassResources& /*resources*/, void* ctx) {
                     auto& rc                                    = *static_cast<gfx::RendererRenderContext*>(ctx);
                     auto& [cb, framebufferInfo, sets, samplers] = rc;
 
                     RHI_GPU_ZONE(cb, PASS_NAME);
 
-                    commonContext.debugDraw->updateColorFormat(
+                    m_DebugDrawInterface.updateColorFormat(
                         framebufferInfo->colorAttachments[0].target->getPixelFormat());
-                    commonContext.debugDraw->bindDepthTexture(framebufferInfo->depthAttachment->target);
-                    commonContext.debugDraw->setViewProjectionMatrix(viewProjectionMatrix);
+                    m_DebugDrawInterface.bindDepthTexture(framebufferInfo->depthAttachment->target);
+                    m_DebugDrawInterface.setViewProjectionMatrix(viewProjectionMatrix);
 
-                    commonContext.debugDraw->beginFrame(cb, *framebufferInfo);
+                    m_DebugDrawInterface.beginFrame(cb, *framebufferInfo);
                     dd::flush();
-                    commonContext.debugDraw->endFrame();
+                    m_DebugDrawInterface.endFrame();
 
                     // after drawing, clear the depth attachment to avoid affecting subsequent passes
                     framebufferInfo->depthAttachment = std::nullopt;
