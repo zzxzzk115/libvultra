@@ -70,16 +70,17 @@ namespace vultra
 
                     RHI_GPU_ZONE(cb, PASS_NAME);
 
-                    auto* depthTexture = framebufferInfo->depthAttachment->target;
                     commonContext.debugDraw->updateColorFormat(
                         framebufferInfo->colorAttachments[0].target->getPixelFormat());
-                    commonContext.debugDraw->bindDepthTexture(depthTexture);
+                    commonContext.debugDraw->bindDepthTexture(framebufferInfo->depthAttachment->target);
                     commonContext.debugDraw->setViewProjectionMatrix(viewProjectionMatrix);
-                    commonContext.debugDraw->buildPipelineIfNeeded();
 
                     commonContext.debugDraw->beginFrame(cb, *framebufferInfo);
-                    dd::flush(dt.count());
+                    dd::flush();
                     commonContext.debugDraw->endFrame();
+
+                    // after drawing, clear the depth attachment to avoid affecting subsequent passes
+                    framebufferInfo->depthAttachment = std::nullopt;
                 });
 
             add(blackboard, debugDrawData);
