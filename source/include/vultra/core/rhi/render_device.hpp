@@ -118,7 +118,6 @@ namespace vultra
             friend class RayTracingPipeline;
             friend class imgui::ImGuiRenderer;
             friend class openxr::XRHeadset;
-            friend class gfx::MeshLoader;
 
         public:
             explicit RenderDevice(RenderDeviceFeatureFlagBits, std::string_view appName = "Untitled Vultra App");
@@ -266,6 +265,7 @@ namespace vultra
 
             // Bindless
             Ref<rhi::Texture>                getTextureByIndex(const uint32_t index);
+            void                             addLoadedTexture(const Ref<rhi::Texture>& texture);
             std::vector<const rhi::Texture*> getAllLoadedTextures();
             void                             clearLoadedTextures() { m_LoadedTextures.clear(); }
             Ref<rhi::Buffer>                 createBindlessStorageBuffer(AllocationHints = AllocationHints::eNone);

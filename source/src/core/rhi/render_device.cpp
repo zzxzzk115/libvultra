@@ -2258,6 +2258,8 @@ namespace vultra
             return m_LoadedTextures[index];
         }
 
+        void RenderDevice::addLoadedTexture(const Ref<rhi::Texture>& texture) { m_LoadedTextures.push_back(texture); }
+
         std::vector<const rhi::Texture*> RenderDevice::getAllLoadedTextures()
         {
             std::vector<const rhi::Texture*> textures;
