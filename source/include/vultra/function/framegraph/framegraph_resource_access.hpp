@@ -1,10 +1,11 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
-#include "vultra/core/base/scoped_enum_flags.hpp"
 #include "vultra/core/rhi/cube_face.hpp"
 #include "vultra/core/rhi/image_aspect.hpp"
 #include "vultra/core/rhi/pipeline_stage.hpp"
+
+#include <vbase/core/scoped_enum_flags.hpp>
 
 #include <cstdint>
 #include <optional>

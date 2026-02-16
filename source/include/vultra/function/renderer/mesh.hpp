@@ -2,322 +2,144 @@
 
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/math/aabb.hpp"
-#include "vultra/core/rhi/alpha_mode.hpp"
-#include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
-#include "vultra/core/rhi/primitive_topology.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/render_mesh.hpp"
+#include "vultra/core/rhi/storage_buffer.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
+#include "vultra/function/renderer/vertex_format.hpp"
 
+#include <vasset/vmesh.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
 #include <vector>
 
-namespace vultra
+namespace vultra::gfx
 {
-    namespace gfx
+    struct alignas(16) GPUMaterial
     {
-        class VertexFormat;
+        uint32_t albedoIndex;
+        uint32_t alphaMaskIndex;
+        uint32_t metallicIndex;
+        uint32_t roughnessIndex;
 
-        struct alignas(16) GPUMaterial
+        uint32_t specularIndex;
+        uint32_t normalIndex;
+        uint32_t aoIndex;
+        uint32_t emissiveIndex;
+
+        uint32_t metallicRoughnessIndex;
+        uint32_t paddingUI0;
+        uint32_t paddingUI1;
+        uint32_t paddingUI2;
+
+        glm::vec4 baseColor;
+        glm::vec4 emissiveColorIntensity;
+        glm::vec4 ambientColor;
+
+        float opacity;
+        float metallicFactor;
+        float roughnessFactor;
+        float ior;
+
+        float alphaCutoff;
+        float paddingF0;
+        float paddingF1;
+        float paddingF2;
+
+        int alphaMode;
+        int doubleSided;
+        int paddingI0;
+        int paddingI1;
+    };
+    static_assert(sizeof(GPUMaterial) % 16 == 0);
+
+    struct GPUGeometryNode
+    {
+        uint64_t vertexBufferAddress {0};
+        uint64_t indexBufferAddress {0};
+        uint32_t materialIndex {0};
+    };
+
+    using GPUMeshlet = vasset::VMeshlet;
+    static_assert(sizeof(GPUMeshlet) % 16 == 0);
+
+    struct MeshletGroup
+    {
+        Ref<rhi::StorageBuffer> meshletBuffer;
+        Ref<rhi::StorageBuffer> meshletVertexBuffer;
+        Ref<rhi::StorageBuffer> meshletTriangleBuffer;
+
+        uint32_t meshletCount {0};
+    };
+
+    struct SubMesh
+    {
+        std::string name;
+
+        uint32_t vertexOffset {0};
+        uint32_t vertexCount {0};
+
+        uint32_t indexOffset {0};
+        uint32_t indexCount {0};
+
+        uint32_t materialIndex {0};
+
+        AABB aabb;
+
+        MeshletGroup meshlets;
+    };
+
+    class Mesh
+    {
+    public:
+        // GPU buffers
+        struct GPUBuffers
         {
-            // --- texture indices ---
-            uint32_t albedoIndex;
-            uint32_t alphaMaskIndex;
-            uint32_t metallicIndex;
-            uint32_t roughnessIndex;
+            Ref<rhi::VertexBuffer>  vertexBuffer;
+            Ref<rhi::IndexBuffer>   indexBuffer;
+            Ref<rhi::StorageBuffer> materialBuffer;
+        } gpuBuffers;
 
-            uint32_t specularIndex;
-            uint32_t normalIndex;
-            uint32_t aoIndex;
-            uint32_t emissiveIndex;
-
-            uint32_t metallicRoughnessIndex;
-            uint32_t paddingUI0; // ensure 16-byte alignment
-            uint32_t paddingUI1; // ensure 16-byte alignment
-            uint32_t paddingUI2; // ensure 16-byte alignment
-
-            // --- color vectors ---
-            glm::vec4 baseColor;
-            glm::vec4 emissiveColorIntensity;
-            glm::vec4 ambientColor;
-
-            // --- scalars (unpacked) ---
-            float opacity;
-            float metallicFactor;
-            float roughnessFactor;
-            float ior;
-
-            float alphaCutoff;
-            float paddingF0; // ensure 16-byte alignment
-            float paddingF1; // ensure 16-byte alignment
-            float paddingF2; // ensure 16-byte alignment
-
-            int alphaMode;
-            int doubleSided;
-            int paddingI0;
-            int paddingI1; // ensure 16-byte alignment
-        };
-        static_assert(sizeof(GPUMaterial) % 16 == 0);
-
-        struct GPUGeometryNode
+        struct Info
         {
-            uint64_t vertexBufferAddress {0};
-            uint64_t indexBufferAddress {0};
-            uint32_t materialIndex {0};
-        };
+            vbase::UUID uuid {};
 
-        struct alignas(16) Meshlet
-        {
-            uint32_t vertexOffset {0};
+            uint32_t vertexStride {0};
             uint32_t vertexCount {0};
-            uint32_t triangleOffset {0};
-            uint32_t triangleCount {0};
-
-            uint32_t materialIndex {0};
-            uint32_t paddingU0 {0}; // ensure 16-byte alignment
-            uint32_t paddingU1 {0}; // ensure 16-byte alignment
-            uint32_t paddingU2 {0}; // ensure 16-byte alignment
-
-            glm::vec3 center;
-            float     radius {0.0f};
-
-            glm::vec3 coneAxis;
-            float     coneCutoff {0.0f}; // cosine of the cone cutoff angle
-
-            glm::vec3 coneApex;
-            float     paddingF0; // ensure 16-byte alignment
-        };
-        static_assert(sizeof(Meshlet) % 16 == 0);
-
-        struct MeshletGroup
-        {
-            std::vector<Meshlet>  meshlets;
-            std::vector<uint32_t> meshletVertices;
-            std::vector<uint8_t>  meshletTriangles;
-        };
-
-        struct SubMesh
-        {
-            std::string name;
-
-            rhi::PrimitiveTopology topology {rhi::PrimitiveTopology::eTriangleList};
-
-            uint32_t vertexOffset {0};
-            uint32_t vertexCount {0};
-
-            uint32_t indexOffset {0};
             uint32_t indexCount {0};
-
-            AABB aabb;
-
-            uint32_t materialIndex {0};
-
-            MeshletGroup meshletGroup;
-
-            Ref<rhi::StorageBuffer> meshletBuffer {nullptr};
-            Ref<rhi::StorageBuffer> meshletVertexBuffer {nullptr};
-            Ref<rhi::StorageBuffer> meshletTriangleBuffer {nullptr};
-
-            void buildMeshletBuffers(rhi::RenderDevice& rd)
-            {
-                // Create meshlet buffers
-                meshletBuffer = createRef<rhi::StorageBuffer>(
-                    std::move(rd.createStorageBuffer(sizeof(Meshlet) * meshletGroup.meshlets.size())));
-                meshletVertexBuffer = createRef<rhi::StorageBuffer>(
-                    std::move(rd.createStorageBuffer(sizeof(uint32_t) * meshletGroup.meshletVertices.size())));
-                meshletTriangleBuffer = createRef<rhi::StorageBuffer>(
-                    std::move(rd.createStorageBuffer(sizeof(uint8_t) * meshletGroup.meshletTriangles.size())));
-
-                auto stagingMeshletBuffer       = rd.createStagingBuffer(sizeof(Meshlet) * meshletGroup.meshlets.size(),
-                                                                   meshletGroup.meshlets.data());
-                auto stagingMeshletVertexBuffer = rd.createStagingBuffer(
-                    sizeof(uint32_t) * meshletGroup.meshletVertices.size(), meshletGroup.meshletVertices.data());
-                auto stagingMeshletTriangleBuffer = rd.createStagingBuffer(
-                    sizeof(uint8_t) * meshletGroup.meshletTriangles.size(), meshletGroup.meshletTriangles.data());
-
-                rd.execute(
-                    [&](rhi::CommandBuffer& cb) {
-                        cb.copyBuffer(stagingMeshletBuffer,
-                                      *meshletBuffer,
-                                      vk::BufferCopy {0, 0, stagingMeshletBuffer.getSize()});
-                        cb.copyBuffer(stagingMeshletVertexBuffer,
-                                      *meshletVertexBuffer,
-                                      vk::BufferCopy {0, 0, stagingMeshletVertexBuffer.getSize()});
-                        cb.copyBuffer(stagingMeshletTriangleBuffer,
-                                      *meshletTriangleBuffer,
-                                      vk::BufferCopy {0, 0, stagingMeshletTriangleBuffer.getSize()});
-                    },
-                    true);
-            }
-        };
-
-        template<typename VertexType, typename MaterialType>
-        struct Mesh
-        {
-            std::vector<VertexType> vertices;
-            std::vector<uint32_t>   indices;
-            AABB                    aabb;
-
-            std::vector<SubMesh>      subMeshes;
-            std::vector<MaterialType> materials;
-
-            Ref<rhi::VertexBuffer>  vertexBuffer {nullptr};
-            Ref<rhi::IndexBuffer>   indexBuffer {nullptr};
-            Ref<rhi::StorageBuffer> materialBuffer {nullptr};
+            uint32_t materialCount {0};
 
             Ref<VertexFormat> vertexFormat {nullptr};
+        } info;
 
-            rhi::PrimitiveTopology topology {rhi::PrimitiveTopology::eTriangleList};
+        std::vector<SubMesh> subMeshes;
+        rhi::RenderMesh      renderMesh {};
 
-            rhi::RenderMesh renderMesh {}; // Currently only used for ray tracing
+    public:
+        static Ref<Mesh> create(rhi::RenderDevice& rd, const vasset::VMesh& asset);
 
-            struct Light
-            {
-                std::vector<VertexType> vertices;
-                glm::vec4               colorIntensity {1.0f, 1.0f, 1.0f, 1.0f};
-            };
-            std::vector<Light> lights;
+        void rebuildRenderMesh(rhi::RenderDevice& rd); // for device feature changes / buffer rebind
 
-            [[nodiscard]] auto& getVertices() { return vertices; }
-            [[nodiscard]] auto& getIndices() { return indices; }
-            [[nodiscard]] auto& getSubMeshes() { return subMeshes; }
-            [[nodiscard]] auto& getVertexBuffer() { return vertexBuffer; }
-            [[nodiscard]] auto& getIndexBuffer() { return indexBuffer; }
-            [[nodiscard]] auto& getVertexFormat() { return vertexFormat; }
-            [[nodiscard]] auto& getTopology() { return topology; }
+    private:
+        void buildFromAsset(rhi::RenderDevice& rd, const vasset::VMesh& asset);
 
-            [[nodiscard]] auto        getVertexCount() const { return static_cast<uint32_t>(vertices.size()); }
-            [[nodiscard]] auto        getIndexCount() const { return static_cast<uint32_t>(indices.size()); }
-            [[nodiscard]] static auto getVertexStride() { return static_cast<uint32_t>(sizeof(VertexType)); }
-            [[nodiscard]] static auto getIndexStride() { return sizeof(uint32_t); }
+        void buildVertexFormat(vasset::VVertexFlags flags);
+        void buildVertexAndIndexBuffers(rhi::RenderDevice& rd, const vasset::VMesh& asset);
+        void buildMaterialBuffer(rhi::RenderDevice& rd, const vasset::VMesh& asset);
+        void buildSubMeshesAndMeshlets(rhi::RenderDevice& rd, const vasset::VMesh& asset);
+        void buildRenderMeshInternal(rhi::RenderDevice& rd);
 
-            void buildMaterialBuffer(rhi::RenderDevice& rd)
-            {
-                // Create material buffer
-                std::vector<GPUMaterial> gpuMaterials;
-                gpuMaterials.reserve(materials.size());
+    private:
+        // Helpers
+        static AABB computeAABBForRange(const std::vector<vasset::VPosition>& positions,
+                                        uint32_t                              vertexOffset,
+                                        uint32_t                              vertexCount);
 
-                for (const auto& mat : materials)
-                {
-                    GPUMaterial gpuMat {};
-                    gpuMat.albedoIndex            = mat.albedoIndex;
-                    gpuMat.alphaMaskIndex         = mat.alphaMaskIndex;
-                    gpuMat.metallicIndex          = mat.metallicIndex;
-                    gpuMat.roughnessIndex         = mat.roughnessIndex;
-                    gpuMat.specularIndex          = mat.specularIndex;
-                    gpuMat.normalIndex            = mat.normalIndex;
-                    gpuMat.aoIndex                = mat.aoIndex;
-                    gpuMat.emissiveIndex          = mat.emissiveIndex;
-                    gpuMat.metallicRoughnessIndex = mat.metallicRoughnessIndex;
-                    gpuMat.baseColor              = mat.baseColor;
-                    gpuMat.emissiveColorIntensity = mat.emissiveColorIntensity;
-                    gpuMat.ambientColor           = mat.ambientColor;
-                    gpuMat.opacity                = mat.opacity;
-                    gpuMat.metallicFactor         = mat.metallicFactor;
-                    gpuMat.roughnessFactor        = mat.roughnessFactor;
-                    gpuMat.ior                    = mat.ior;
-                    gpuMat.alphaCutoff            = mat.alphaCutoff;
-                    gpuMat.alphaMode              = static_cast<int>(mat.alphaMode);
-                    gpuMat.doubleSided            = mat.doubleSided ? 1 : 0;
-                    gpuMaterials.push_back(gpuMat);
-                }
+        static Ref<rhi::VertexBuffer> createVertexBufferRaw(rhi::RenderDevice& rd, size_t sizeBytes);
+        static Ref<rhi::IndexBuffer>  createIndexBufferRaw(rhi::RenderDevice& rd, size_t sizeBytes);
+    };
 
-                materialBuffer = createRef<rhi::StorageBuffer>(
-                    std::move(rd.createStorageBuffer(sizeof(GPUMaterial) * gpuMaterials.size())));
-
-                auto stagingBuffer =
-                    rd.createStagingBuffer(sizeof(GPUMaterial) * gpuMaterials.size(), gpuMaterials.data());
-
-                rd.execute(
-                    [&](rhi::CommandBuffer& cb) {
-                        cb.copyBuffer(stagingBuffer, *materialBuffer, vk::BufferCopy {0, 0, stagingBuffer.getSize()});
-                    },
-                    true);
-            }
-
-            void buildRenderMesh(rhi::RenderDevice& rd)
-            {
-                const auto& features = rd.getFeatureFlag();
-
-                renderMesh.subMeshes.clear();
-                renderMesh.subMeshes.reserve(subMeshes.size());
-
-                for (const auto& sm : subMeshes)
-                {
-                    rhi::RenderSubMesh rsm {};
-                    assert(vertexBuffer != nullptr);
-
-                    if (HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
-                        HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayQuery) ||
-                        HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eMeshShader))
-                    {
-                        rsm.vertexBufferAddress =
-                            rd.getBufferDeviceAddress(*vertexBuffer) + sm.vertexOffset * getVertexStride();
-                        rsm.indexBufferAddress =
-                            indexBuffer ?
-                                (rd.getBufferDeviceAddress(*indexBuffer) + sm.indexOffset * getIndexStride()) :
-                                0;
-                        rsm.transformBufferAddress = 0; // Optional
-                    }
-
-                    // Meshlet buffer addresses
-                    if (HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eMeshShader))
-                    {
-                        rsm.meshletBufferAddress = sm.meshletBuffer ? rd.getBufferDeviceAddress(*sm.meshletBuffer) : 0;
-                        rsm.meshletVertexBufferAddress =
-                            sm.meshletVertexBuffer ? rd.getBufferDeviceAddress(*sm.meshletVertexBuffer) : 0;
-                        rsm.meshletTriangleBufferAddress =
-                            sm.meshletTriangleBuffer ? rd.getBufferDeviceAddress(*sm.meshletTriangleBuffer) : 0;
-                        rsm.meshletCount = static_cast<uint32_t>(sm.meshletGroup.meshlets.size());
-                    }
-
-                    rsm.vertexStride = getVertexStride();
-                    rsm.vertexCount  = sm.vertexCount;
-
-                    rsm.indexCount = sm.indexCount;
-                    rsm.indexType  = indexBuffer ? indexBuffer->getIndexType() : rhi::IndexType::eUInt32;
-
-                    rsm.materialIndex = sm.materialIndex;
-                    rsm.opaque        = materials[sm.materialIndex].alphaMode == rhi::AlphaMode::eOpaque;
-
-                    renderMesh.subMeshes.push_back(rsm);
-                }
-
-                if (HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
-                    HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayQuery))
-                {
-                    renderMesh.createBuildBLAS(rd);
-
-                    // Create geometry node buffer (raytracing only)
-                    {
-                        std::vector<GPUGeometryNode> geometryNodes;
-                        geometryNodes.reserve(renderMesh.subMeshes.size());
-
-                        for (const auto& sm : renderMesh.subMeshes)
-                        {
-                            GPUGeometryNode node {};
-                            node.vertexBufferAddress = sm.vertexBufferAddress;
-                            node.indexBufferAddress  = sm.indexBufferAddress;
-                            node.materialIndex       = sm.materialIndex;
-                            geometryNodes.push_back(node);
-                        }
-
-                        renderMesh.geometryNodeBuffer = createRef<rhi::StorageBuffer>(
-                            std::move(rd.createStorageBuffer(sizeof(GPUGeometryNode) * geometryNodes.size())));
-
-                        auto stagingBuffer = rd.createStagingBuffer(sizeof(GPUGeometryNode) * geometryNodes.size(),
-                                                                    geometryNodes.data());
-
-                        rd.execute(
-                            [&](rhi::CommandBuffer& cb) {
-                                cb.copyBuffer(stagingBuffer,
-                                              *renderMesh.geometryNodeBuffer,
-                                              vk::BufferCopy {0, 0, stagingBuffer.getSize()});
-                            },
-                            true);
-                    }
-                }
-            }
-        };
-    } // namespace gfx
-} // namespace vultra
+} // namespace vultra::gfx

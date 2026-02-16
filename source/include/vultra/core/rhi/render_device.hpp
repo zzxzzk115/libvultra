@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
-#include "vultra/core/base/scoped_enum_flags.hpp"
+#include "vultra/core/profiling/tracy_wrapper.hpp"
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/compute_pipeline.hpp"
 #include "vultra/core/rhi/image_aspect.hpp"
@@ -22,7 +22,7 @@
 #include "vultra/core/rhi/uniform_buffer.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
-#include "vultra/core/profiling/tracy_wrapper.hpp"
+#include <vbase/core/scoped_enum_flags.hpp>
 
 #include <glm/fwd.hpp>
 

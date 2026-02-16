@@ -1,7 +1,8 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
-#include "vultra/core/base/scoped_enum_flags.hpp"
+
+#include <vbase/core/scoped_enum_flags.hpp>
 
 #include <vulkan/vulkan.hpp>
 

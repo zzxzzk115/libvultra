@@ -1,7 +1,6 @@
 #pragma once
 
-#include "vultra/core/base/base.hpp"
-#include <vultra/function/renderer/mesh_resource.hpp>
+#include <vultra/function/renderer/mesh.hpp>
 
 #include <glm/mat4x4.hpp>
 
@@ -13,8 +12,8 @@ namespace vultra
     {
         struct Renderable
         {
-            Ref<gfx::DefaultMesh> mesh {nullptr};
-            glm::mat4             modelMatrix {1.0f};
+            Ref<Mesh> mesh {nullptr};
+            glm::mat4    modelMatrix {1.0f};
         };
 
         struct RenderableGroup
@@ -79,7 +78,7 @@ namespace vultra
                     instanceData.geometryOffset = static_cast<uint32_t>(geometryNodes.size());
                     instanceData.geometryCount  = static_cast<uint32_t>(renderable.mesh->renderMesh.subMeshes.size());
                     instanceData.materialOffset = static_cast<uint32_t>(materials.size());
-                    instanceData.materialCount  = static_cast<uint32_t>(renderable.mesh->materials.size());
+                    instanceData.materialCount  = static_cast<uint32_t>(renderable.mesh->materialCount);
                     instances.push_back(instanceData);
 
                     // Append geometry nodes
@@ -93,7 +92,7 @@ namespace vultra
                     }
 
                     // Append materials
-                    for (const auto& mat : renderable.mesh->materials)
+                    for (const auto& mat : renderable.mesh->materialBuffer)
                     {
                         GPUMaterial gpuMat {};
                         gpuMat.albedoIndex            = mat.albedoIndex;
@@ -199,10 +198,10 @@ namespace vultra
 
         struct RenderPrimitive
         {
-            Ref<gfx::DefaultMesh> mesh {nullptr};
-            glm::mat4             modelMatrix {1.0f};
-            gfx::SubMesh          renderSubMesh;
-            uint32_t              renderSubMeshIndex {0};
+            Ref<GPUMesh> mesh {nullptr};
+            glm::mat4    modelMatrix {1.0f};
+            gfx::SubMesh renderSubMesh;
+            uint32_t     renderSubMeshIndex {0};
         };
 
         struct RenderPrimitiveGroup

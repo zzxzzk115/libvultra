@@ -1,7 +1,6 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
-#include "vultra/core/base/scoped_enum_flags.hpp"
 #include "vultra/core/rhi/barrier.hpp"
 #include "vultra/core/rhi/debug_marker.hpp"
 #include "vultra/core/rhi/descriptorset_allocator.hpp"
@@ -12,6 +11,8 @@
 #include "vultra/core/rhi/rect2d.hpp"
 #include "vultra/core/rhi/shader_type.hpp"
 #include "vultra/core/rhi/texel_filter.hpp"
+
+#include <vbase/core/scoped_enum_flags.hpp>
 
 #include <glm/ext/vector_uint3.hpp>
 
