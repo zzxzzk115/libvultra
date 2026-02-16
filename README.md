@@ -58,7 +58,7 @@ Step-by-Step:
 - Build the project:
   ```bash
   cd libvultra
-  git submodule update --init
+  git submodule update --init --recursive
   xmake -vD
   ```
 
