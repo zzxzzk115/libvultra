@@ -1,7 +1,7 @@
 #include "vultra/function/renderer/mesh.hpp"
-#include "vultra/core/rhi/alpha_mode.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/primitive_topology.hpp"
+#include "vultra/core/rhi/index_buffer.hpp"
+#include "vultra/core/rhi/vertex_attributes.hpp"
 
 #include <cassert>
 #include <cstring>
@@ -98,13 +98,13 @@ namespace vultra::gfx
     }
 
     AABB Mesh::computeAABBForRange(const std::vector<vasset::VPosition>& positions,
-                                      uint32_t                              vertexOffset,
-                                      uint32_t                              vertexCount)
+                                   uint32_t                              vertexOffset,
+                                   uint32_t                              vertexCount)
     {
         AABB aabb {};
         if (positions.empty() || vertexCount == 0)
         {
-            // define a "degenerate" AABB; adjust if your AABB has explicit invalid state
+            // define a "degenerate" AABB;
             aabb.min = glm::vec3(0.0f);
             aabb.max = glm::vec3(0.0f);
             return aabb;
@@ -128,7 +128,6 @@ namespace vultra::gfx
 
         for (uint32_t i = beginClamped; i < endClamped; ++i)
         {
-            // NOTE: adapt if VPosition is not glm::vec3 compatible
             const glm::vec3 p = *reinterpret_cast<const glm::vec3*>(&positions[i]);
             mn                = glm::min(mn, p);
             mx                = glm::max(mx, p);
@@ -139,82 +138,159 @@ namespace vultra::gfx
         return aabb;
     }
 
-    // -------------------------------------------------------------------------
-    // Buffer creation adapters — adapt to your RenderDevice API
-    // -------------------------------------------------------------------------
-    Ref<rhi::VertexBuffer> Mesh::createVertexBufferRaw(rhi::RenderDevice& rd, size_t sizeBytes)
-    {
-        // If you have: rd.createVertexBuffer(sizeBytes) -> rhi::VertexBuffer
-        // replace this whole function with that.
-        //
-        // Fallback: create a StorageBuffer then wrap it as VertexBuffer if your engine allows.
-        // If not possible, switch to your real API here.
-
-        auto vb = rd.createVertexBuffer(static_cast<uint64_t>(sizeBytes)); // <-- adjust if signature differs
-        return createRef<rhi::VertexBuffer>(std::move(vb));
-    }
-
-    Ref<rhi::IndexBuffer> Mesh::createIndexBufferRaw(rhi::RenderDevice& rd, size_t sizeBytes)
-    {
-        // If you have: rd.createIndexBuffer(sizeBytes, IndexType::eUInt32) -> rhi::IndexBuffer
-        // replace this whole function with that.
-
-        auto ib =
-            rd.createIndexBuffer(static_cast<uint64_t>(sizeBytes), rhi::IndexType::eUInt32); // <-- adjust if needed
-        return createRef<rhi::IndexBuffer>(std::move(ib));
-    }
-
-    // -------------------------------------------------------------------------
-    // Build vertex/index buffers
-    // -------------------------------------------------------------------------
     void Mesh::buildVertexAndIndexBuffers(rhi::RenderDevice& rd, const vasset::VMesh& asset)
     {
-        info.vertexStride = computePackedVertexStride(asset.vertexFlags);
+        assert(info.vertexFormat != nullptr);
 
-        std::vector<std::byte> vertexBytes;
-        packVerticesInterleaved(asset, vertexBytes, vertexStride);
+        info.vertexStride = info.vertexFormat->getStride();
 
-        // Create GPU buffers
-        vertexBuffer = createVertexBufferRaw(rd, vertexBytes.size());
-        if (!vertexBuffer)
+        const uint32_t vertexCount = info.vertexCount;
+
+        // ---------------------------------------------------------
+        // Interleave vertex data
+        // ---------------------------------------------------------
+
+        std::vector<uint8_t> interleaved;
+        interleaved.resize(info.vertexStride * vertexCount);
+
+        for (uint32_t i = 0; i < vertexCount; ++i)
         {
-            // You can replace this with your Result<> pipeline if preferred
-            assert(false && "Failed to create vertex buffer");
-            return;
+            uint8_t* dst = interleaved.data() + i * info.vertexStride;
+
+            for (const auto& attr : info.vertexFormat->getAttributes())
+            {
+                const auto  semantic = static_cast<AttributeLocation>(attr.first);
+                const auto& desc     = attr.second;
+
+                uint8_t* writePtr = dst + desc.offset;
+
+                switch (semantic)
+                {
+                    case AttributeLocation::ePosition:
+
+                        memcpy(writePtr, &asset.positions[i], sizeof(glm::vec3));
+
+                        break;
+
+                    case AttributeLocation::eNormal:
+
+                        memcpy(writePtr, &asset.normals[i], sizeof(glm::vec3));
+
+                        break;
+
+                    case AttributeLocation::eColor:
+
+                        if (!asset.colors.empty())
+                        {
+                            memcpy(writePtr, &asset.colors[i],
+                                   sizeof(glm::vec3)); // or vec4 depending
+                        }
+                        break;
+
+                    case AttributeLocation::eTexCoord0:
+
+                        if (!asset.texCoords0.empty())
+                        {
+                            memcpy(writePtr, &asset.texCoords0[i], sizeof(glm::vec2));
+                        }
+                        break;
+
+                    case AttributeLocation::eTexCoord1:
+
+                        if (!asset.texCoords1.empty())
+                        {
+                            memcpy(writePtr, &asset.texCoords1[i], sizeof(glm::vec2));
+                        }
+                        break;
+
+                    case AttributeLocation::eTangent:
+
+                        if (!asset.tangents.empty())
+                        {
+                            memcpy(writePtr, &asset.tangents[i], sizeof(glm::vec4));
+                        }
+                        break;
+
+                    case AttributeLocation::eJoints:
+
+                        if (!asset.jointIndices.empty())
+                        {
+                            memcpy(writePtr, &asset.jointIndices[i], sizeof(glm::vec4));
+                        }
+                        break;
+
+                    case AttributeLocation::eWeights:
+
+                        if (!asset.jointWeights.empty())
+                        {
+                            memcpy(writePtr, &asset.jointWeights[i], sizeof(glm::vec4));
+                        }
+                        break;
+
+                    case AttributeLocation::eBitangent:
+                        assert(false && "Bitangent semantic is not supported for now.");
+                        break;
+
+                    default:
+                        assert(false && "Unsupported vertex attribute");
+                        break;
+                }
+
+#ifndef NDEBUG
+                // Safety check
+                assert(rhi::getSize(desc.type) == (semantic == AttributeLocation::ePosition  ? sizeof(glm::vec3) :
+                                                   semantic == AttributeLocation::eNormal    ? sizeof(glm::vec3) :
+                                                   semantic == AttributeLocation::eColor     ? sizeof(glm::vec3) :
+                                                   semantic == AttributeLocation::eTexCoord0 ? sizeof(glm::vec2) :
+                                                   semantic == AttributeLocation::eTexCoord1 ? sizeof(glm::vec2) :
+                                                   semantic == AttributeLocation::eTangent   ? sizeof(glm::vec4) :
+                                                   semantic == AttributeLocation::eJoints    ? sizeof(glm::vec4) :
+                                                   semantic == AttributeLocation::eWeights   ? sizeof(glm::vec4) :
+                                                   semantic == AttributeLocation::eBitangent ? sizeof(glm::vec3) :
+                                                                                               0));
+
+#endif
+            }
         }
+
+        // ---------------------------------------------------------
+        // Create GPU vertex buffer
+        // ---------------------------------------------------------
+
+        gpuBuffers.vertexBuffer =
+            createRef<rhi::VertexBuffer>(std::move(rd.createVertexBuffer(info.vertexStride, vertexCount)));
+
+        auto stagingVertexBuffer = rd.createStagingBuffer(interleaved.size(), interleaved.data());
+
+        // ---------------------------------------------------------
+        // Index buffer
+        // ---------------------------------------------------------
+
+        rhi::Buffer stagingIndexBuffer {};
 
         if (!asset.indices.empty())
         {
-            const size_t indexBytes = asset.indices.size() * sizeof(uint32_t);
-            indexBuffer             = createIndexBufferRaw(rd, indexBytes);
-            if (!indexBuffer)
-            {
-                assert(false && "Failed to create index buffer");
-                return;
-            }
-        }
-        else
-        {
-            indexBuffer = nullptr;
+            gpuBuffers.indexBuffer = createRef<rhi::IndexBuffer>(
+                std::move(rd.createIndexBuffer(rhi::IndexType::eUInt32, asset.indices.size())));
+
+            stagingIndexBuffer = rd.createStagingBuffer(sizeof(uint32_t) * asset.indices.size(), asset.indices.data());
         }
 
-        // Upload with staging buffers
-        auto stagingVB = rd.createStagingBuffer(vertexBytes.size(), vertexBytes.data());
-
-        Ref<rhi::StagingBuffer> stagingIB = nullptr;
-        if (indexBuffer && !asset.indices.empty())
-        {
-            stagingIB = createRef<rhi::StagingBuffer>(
-                std::move(rd.createStagingBuffer(asset.indices.size() * sizeof(uint32_t), asset.indices.data())));
-        }
+        // ---------------------------------------------------------
+        // Upload
+        // ---------------------------------------------------------
 
         rd.execute(
             [&](rhi::CommandBuffer& cb) {
-                cb.copyBuffer(stagingVB, *vertexBuffer, vk::BufferCopy {0, 0, stagingVB.getSize()});
+                cb.copyBuffer(stagingVertexBuffer,
+                              *gpuBuffers.vertexBuffer,
+                              vk::BufferCopy {0, 0, stagingVertexBuffer.getSize()});
 
-                if (stagingIB && indexBuffer)
+                if (stagingIndexBuffer)
                 {
-                    cb.copyBuffer(*stagingIB, *indexBuffer, vk::BufferCopy {0, 0, stagingIB->getSize()});
+                    cb.copyBuffer(stagingIndexBuffer,
+                                  *gpuBuffers.indexBuffer,
+                                  vk::BufferCopy {0, 0, stagingIndexBuffer.getSize()});
                 }
             },
             true);
@@ -230,50 +306,51 @@ namespace vultra::gfx
 
         for (const auto& matRef : asset.materials)
         {
-            // TODO: Embedding material & 
+            // TODO: Load material from runtime asset registry using matRef's UUID info.
             GPUMaterial m {};
-            m.albedoIndex    = matRef.albedoIndex;
-            m.alphaMaskIndex = matRef.alphaMaskIndex;
-            m.metallicIndex  = matRef.metallicIndex;
-            m.roughnessIndex = matRef.roughnessIndex;
+            // m.albedoIndex    = matRef.albedoIndex;
+            // m.alphaMaskIndex = matRef.alphaMaskIndex;
+            // m.metallicIndex  = matRef.metallicIndex;
+            // m.roughnessIndex = matRef.roughnessIndex;
 
-            m.specularIndex = matRef.specularIndex;
-            m.normalIndex   = matRef.normalIndex;
-            m.aoIndex       = matRef.aoIndex;
-            m.emissiveIndex = matRef.emissiveIndex;
+            // m.specularIndex = matRef.specularIndex;
+            // m.normalIndex   = matRef.normalIndex;
+            // m.aoIndex       = matRef.aoIndex;
+            // m.emissiveIndex = matRef.emissiveIndex;
 
-            m.metallicRoughnessIndex = matRef.metallicRoughnessIndex;
+            // m.metallicRoughnessIndex = matRef.metallicRoughnessIndex;
 
-            m.baseColor              = matRef.baseColor;
-            m.emissiveColorIntensity = matRef.emissiveColorIntensity;
-            m.ambientColor           = matRef.ambientColor;
+            // m.baseColor              = matRef.baseColor;
+            // m.emissiveColorIntensity = matRef.emissiveColorIntensity;
+            // m.ambientColor           = matRef.ambientColor;
 
-            m.opacity         = matRef.opacity;
-            m.metallicFactor  = matRef.metallicFactor;
-            m.roughnessFactor = matRef.roughnessFactor;
-            m.ior             = matRef.ior;
+            // m.opacity         = matRef.opacity;
+            // m.metallicFactor  = matRef.metallicFactor;
+            // m.roughnessFactor = matRef.roughnessFactor;
+            // m.ior             = matRef.ior;
 
-            m.alphaCutoff = matRef.alphaCutoff;
-            m.alphaMode   = static_cast<int>(matRef.alphaMode);
-            m.doubleSided = matRef.doubleSided ? 1 : 0;
+            // m.alphaCutoff = matRef.alphaCutoff;
+            // m.alphaMode   = static_cast<int>(matRef.alphaMode);
+            // m.doubleSided = matRef.doubleSided ? 1 : 0;
 
             gpuMaterials.push_back(m);
         }
 
         if (gpuMaterials.empty())
         {
-            materialBuffer = nullptr;
+            gpuBuffers.materialBuffer = nullptr;
             return;
         }
 
-        materialBuffer =
+        gpuBuffers.materialBuffer =
             createRef<rhi::StorageBuffer>(std::move(rd.createStorageBuffer(sizeof(GPUMaterial) * gpuMaterials.size())));
+        createRef<rhi::StorageBuffer>(std::move(rd.createStorageBuffer(sizeof(GPUMaterial) * gpuMaterials.size())));
 
         auto staging = rd.createStagingBuffer(sizeof(GPUMaterial) * gpuMaterials.size(), gpuMaterials.data());
 
         rd.execute(
             [&](rhi::CommandBuffer& cb) {
-                cb.copyBuffer(staging, *materialBuffer, vk::BufferCopy {0, 0, staging.getSize()});
+                cb.copyBuffer(staging, *gpuBuffers.materialBuffer, vk::BufferCopy {0, 0, staging.getSize()});
             },
             true);
     }
@@ -281,14 +358,14 @@ namespace vultra::gfx
     // -------------------------------------------------------------------------
     // SubMeshes + meshlet buffers per submesh
     // -------------------------------------------------------------------------
-    void GPUMesh::buildSubMeshesAndMeshlets(rhi::RenderDevice& rd, const vasset::VMesh& asset)
+    void Mesh::buildSubMeshesAndMeshlets(rhi::RenderDevice& rd, const vasset::VMesh& asset)
     {
         subMeshes.clear();
         subMeshes.reserve(asset.subMeshes.size());
 
         for (const auto& sm : asset.subMeshes)
         {
-            GPUSubMesh out {};
+            SubMesh out {};
             out.name          = sm.name;
             out.vertexOffset  = sm.vertexOffset;
             out.vertexCount   = sm.vertexCount;
@@ -353,9 +430,8 @@ namespace vultra::gfx
 
     // -------------------------------------------------------------------------
     // RenderMesh build (ray tracing / mesh shader / BDA)
-    // Mirrors your previous buildRenderMesh() but works off GPUMesh.
     // -------------------------------------------------------------------------
-    void GPUMesh::buildRenderMeshInternal(rhi::RenderDevice& rd)
+    void Mesh::buildRenderMeshInternal(rhi::RenderDevice& rd)
     {
         const auto& features = rd.getFeatureFlag();
 
@@ -374,12 +450,13 @@ namespace vultra::gfx
 
             if (wantBDA)
             {
-                rsm.vertexBufferAddress =
-                    rd.getBufferDeviceAddress(*vertexBuffer) + static_cast<uint64_t>(sm.vertexOffset) * vertexStride;
+                rsm.vertexBufferAddress = rd.getBufferDeviceAddress(*gpuBuffers.vertexBuffer) +
+                                          static_cast<uint64_t>(sm.vertexOffset) * info.vertexStride;
 
-                rsm.indexBufferAddress = indexBuffer ? (rd.getBufferDeviceAddress(*indexBuffer) +
-                                                        static_cast<uint64_t>(sm.indexOffset) * sizeof(uint32_t)) :
-                                                       0;
+                rsm.indexBufferAddress = gpuBuffers.indexBuffer ?
+                                             (rd.getBufferDeviceAddress(*gpuBuffers.indexBuffer) +
+                                              static_cast<uint64_t>(sm.indexOffset) * sizeof(uint32_t)) :
+                                             0;
 
                 rsm.transformBufferAddress = 0; // Optional
             }
@@ -400,16 +477,15 @@ namespace vultra::gfx
                 rsm.meshletCount = sm.meshlets.meshletCount;
             }
 
-            rsm.vertexStride = vertexStride;
+            rsm.vertexStride = info.vertexStride;
             rsm.vertexCount  = sm.vertexCount;
 
             rsm.indexCount = sm.indexCount;
-            rsm.indexType  = indexBuffer ? indexBuffer->getIndexType() : rhi::IndexType::eUInt32;
+            rsm.indexType  = gpuBuffers.indexBuffer ? gpuBuffers.indexBuffer->getIndexType() : rhi::IndexType::eUInt32;
 
             rsm.materialIndex = sm.materialIndex;
 
-            // Opaque flag: if you want this in RenderSubMesh, map your alpha mode here.
-            // If you don’t have resolved materials yet, default to opaque.
+            // TODO: get material alpha mode and set opaque flag accordingly. For now, we assume all meshes are opaque.
             rsm.opaque = true;
 
             renderMesh.subMeshes.push_back(rsm);
@@ -447,5 +523,4 @@ namespace vultra::gfx
                 true);
         }
     }
-
 } // namespace vultra::gfx

@@ -98,9 +98,9 @@ namespace vultra::gfx
         // GPU buffers
         struct GPUBuffers
         {
-            Ref<rhi::VertexBuffer>  vertexBuffer;
-            Ref<rhi::IndexBuffer>   indexBuffer;
-            Ref<rhi::StorageBuffer> materialBuffer;
+            Ref<rhi::VertexBuffer>  vertexBuffer {nullptr};
+            Ref<rhi::IndexBuffer>   indexBuffer {nullptr};
+            Ref<rhi::StorageBuffer> materialBuffer {nullptr};
         } gpuBuffers;
 
         struct Info

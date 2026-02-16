@@ -1,8 +1,4 @@
 #include "vultra/function/renderer/area_light.hpp"
-#include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/render_device.hpp"
-#include "vultra/function/renderer/default_vertex.hpp"
-#include "vultra/function/renderer/mesh_utils.hpp"
 #include "vultra/function/scenegraph/components.hpp"
 
 #include <glm/ext/matrix_transform.hpp>
@@ -12,96 +8,73 @@ namespace vultra
 {
     namespace gfx
     {
-        Ref<DefaultMesh> createAreaLightMesh(rhi::RenderDevice&        rd,
-                                             const AreaLightComponent& lightComponent,
-                                             const TransformComponent& lightTransform)
+        Ref<Mesh> createAreaLightMesh(rhi::RenderDevice&        rd,
+                                      const AreaLightComponent& lightComponent,
+                                      const TransformComponent& lightTransform)
         {
-            auto outMesh = createRef<DefaultMesh>();
+            // Build procedural quad asset
+            vasset::VMesh asset {};
 
-            outMesh->subMeshes.clear();
-            outMesh->materials.clear();
-            outMesh->lights.clear();
-            outMesh->vertices.clear();
-            outMesh->indices.clear();
+            asset.vertexFlags =
+                vasset::VVertexFlags::ePosition | vasset::VVertexFlags::eNormal | vasset::VVertexFlags::eTexCoord0;
 
-            outMesh->vertexFormat = SimpleVertex::getVertexFormat();
+            constexpr uint32_t vertexCount = 4;
+            constexpr uint32_t indexCount  = 6;
 
-            outMesh->materials.push_back({
-                .name                   = "AreaLightMaterial",
-                .emissiveColorIntensity = glm::vec4(lightComponent.color, lightComponent.intensity),
-                .doubleSided            = lightComponent.twoSided,
-            });
+            asset.positions.resize(vertexCount);
+            asset.normals.resize(vertexCount);
+            asset.texCoords0.resize(vertexCount);
+            asset.indices.resize(indexCount);
 
-            // Create a simple quad mesh for the area light
-            outMesh->vertices.resize(4);
-            auto& vertices = outMesh->vertices;
+            // Quad corners in local space
+            const float w = lightComponent.width;
+            const float h = lightComponent.height;
 
-            // Set vertices with rotation
-            glm::mat4 transform = lightTransform.getTransform();
-            float     width     = lightComponent.width;
-            float     height    = lightComponent.height;
+            const glm::vec3 halfExtents(w * 0.5f, h * 0.5f, 0.0f);
 
-            glm::vec3 center      = lightTransform.position;
-            glm::vec3 halfExtents = glm::vec3(width * 0.5f, height * 0.5f, 0.0f);
+            const glm::vec3 p0(-halfExtents.x, -halfExtents.y, 0.0f);
+            const glm::vec3 p1(halfExtents.x, -halfExtents.y, 0.0f);
+            const glm::vec3 p2(halfExtents.x, halfExtents.y, 0.0f);
+            const glm::vec3 p3(-halfExtents.x, halfExtents.y, 0.0f);
 
-            vertices[0].position = glm::vec3(transform * glm::vec4(-halfExtents.x, -halfExtents.y, 0.0f, 1.0f));
-            vertices[1].position = glm::vec3(transform * glm::vec4(halfExtents.x, -halfExtents.y, 0.0f, 1.0f));
-            vertices[2].position = glm::vec3(transform * glm::vec4(halfExtents.x, halfExtents.y, 0.0f, 1.0f));
-            vertices[3].position = glm::vec3(transform * glm::vec4(-halfExtents.x, halfExtents.y, 0.0f, 1.0f));
+            const glm::mat4 M = lightTransform.getTransform();
 
-            outMesh->indices.resize(6);
-            auto& indices = outMesh->indices;
-            indices       = {0, 1, 2, 2, 3, 0};
+            asset.positions[0] = glm::vec3(M * glm::vec4(p0, 1.0f));
+            asset.positions[1] = glm::vec3(M * glm::vec4(p1, 1.0f));
+            asset.positions[2] = glm::vec3(M * glm::vec4(p2, 1.0f));
+            asset.positions[3] = glm::vec3(M * glm::vec4(p3, 1.0f));
 
-            SubMesh subMesh {};
-            subMesh.name          = "AreaLightQuad";
-            subMesh.vertexOffset  = 0;
-            subMesh.indexOffset   = 0;
-            subMesh.vertexCount   = 4;
-            subMesh.indexCount    = 6;
-            subMesh.materialIndex = 0;
-            outMesh->subMeshes.push_back(subMesh);
+            // Normal from transform
+            const glm::mat3 Nmat = glm::mat3(glm::transpose(glm::inverse(M)));
+            const glm::vec3 n    = glm::normalize(Nmat * glm::vec3(0, 0, 1));
 
-            outMesh->vertexBuffer =
-                createRef<rhi::VertexBuffer>(rd.createVertexBuffer(outMesh->getVertexStride(), vertices.size()));
-            outMesh->indexBuffer =
-                createRef<rhi::IndexBuffer>(rd.createIndexBuffer(rhi::IndexType::eUInt32, indices.size()));
+            asset.normals[0] = n;
+            asset.normals[1] = n;
+            asset.normals[2] = n;
+            asset.normals[3] = n;
 
-            auto stagingVertexBuffer = rd.createStagingBuffer(sizeof(SimpleVertex) * vertices.size(), vertices.data());
-            auto stagingIndexBuffer  = rd.createStagingBuffer(sizeof(uint32_t) * indices.size(), indices.data());
+            // UVs
+            asset.texCoords0[0] = glm::vec2(0, 0);
+            asset.texCoords0[1] = glm::vec2(1, 0);
+            asset.texCoords0[2] = glm::vec2(1, 1);
+            asset.texCoords0[3] = glm::vec2(0, 1);
 
-            rd.execute(
-                [&](rhi::CommandBuffer& cb) {
-                    cb.copyBuffer(stagingVertexBuffer,
-                                  *outMesh->vertexBuffer,
-                                  vk::BufferCopy {0, 0, stagingVertexBuffer.getSize()});
-                    cb.copyBuffer(
-                        stagingIndexBuffer, *outMesh->indexBuffer, vk::BufferCopy {0, 0, stagingIndexBuffer.getSize()});
-                },
-                true);
+            // Indices
+            asset.indices = {0, 1, 2, 2, 3, 0};
 
-            outMesh->aabb = AABB::build(vertices);
-
-            // Generate meshlets
-            generateMeshlets(*outMesh);
-
-            outMesh->buildMaterialBuffer(rd);
-
-            // Build meshlet buffers for each sub-mesh
-            for (auto& sm : outMesh->subMeshes)
+            // Optional material
+            if constexpr (requires { asset.materials; })
             {
-                sm.buildMeshletBuffers(rd);
+                asset.materials.resize(1);
+
+                asset.materials[0].name                   = "AreaLightMaterial";
+                asset.materials[0].emissiveColorIntensity = glm::vec4(lightComponent.color, lightComponent.intensity);
+
+                asset.materials[0].doubleSided = lightComponent.twoSided;
             }
 
-            // Build the render mesh for ray tracing, ray query or mesh shading if supported
-            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
-                HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayQuery) ||
-                HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eMeshShader))
-            {
-                outMesh->buildRenderMesh(rd);
-            }
-
-            return outMesh;
+            // Create mesh
+            return Mesh::create(rd, asset);
         }
     } // namespace gfx
 } // namespace vultra
