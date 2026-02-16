@@ -67,7 +67,7 @@ namespace vultra
         {
             if (hasComponent<SceneGraphComponent>())
             {
-                return !getComponent<SceneGraphComponent>().parentUUID.isNil();
+                return getComponent<SceneGraphComponent>().parentUUID.valid();
             }
             return false;
         }
@@ -146,7 +146,7 @@ namespace vultra
                 children.erase(std::remove(children.begin(), children.end(), getCoreUUID()), children.end());
             }
 
-            if (parentUUID.isNil())
+            if (!parentUUID.valid())
             {
                 // Clear parent
                 getComponent<SceneGraphComponent>().parentUUID = CoreUUID();

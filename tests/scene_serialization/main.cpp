@@ -31,7 +31,7 @@ int main()
     VULTRA_CLIENT_INFO("Entities in loaded scene:");
     for (auto& entity : loadedScene.getEntitiesSortedByName())
     {
-        VULTRA_CLIENT_INFO(" - {} {}", entity.getName(), entity.getCoreUUID().toString());
+        VULTRA_CLIENT_INFO(" - {} {}", entity.getName(), vbase::to_string(entity.getCoreUUID()));
     }
 
     return 0;

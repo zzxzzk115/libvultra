@@ -1,8 +1,12 @@
+add_requires("nlohmann_json")
+
 target("example-rendergraph")
     set_kind("binary")
     add_headerfiles("*.hpp")
     add_files("*.cpp")
     add_deps("vultra")
+
+    add_packages("nlohmann_json", {public = true})
 
     add_rules("vfg")
 

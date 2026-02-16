@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="mesh"
+uid="b51e0d7c911e053929d6e8fdc7af78be"
+
+[source]
+file="models\Sponza\Sponza.gltf"
+
+[output]
+file="imported/mesh/Sponza"
+
+[params]

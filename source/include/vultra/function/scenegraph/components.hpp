@@ -38,13 +38,13 @@ namespace vultra
         explicit IDComponent(CoreUUID aID) : id(aID) {}
         IDComponent(const IDComponent&) = default;
 
-        std::string getIdString() const { return id.toString(); }
+        std::string getIdString() const { return vbase::to_string(id); }
         void        setIdByString(std::string aID)
         {
-            auto optionalId = CoreUUID::fromString(aID);
-            if (!optionalId.isNil())
+            CoreUUID out {};
+            if (vbase::try_parse_uuid(aID.c_str(), out))
             {
-                id = optionalId;
+                id = out;
             }
         }
     };

@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="texture"
+uid="8c88d8919412a0f7117bbde63ab894f8"
+
+[source]
+file="models\DamagedHelmet\Default_albedo.jpg"
+
+[output]
+file="imported/texture/Default_albedo"
+
+[params]

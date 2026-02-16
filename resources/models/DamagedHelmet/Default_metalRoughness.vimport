@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="texture"
+uid="de6dbd35010d960dc366590557bf89d2"
+
+[source]
+file="models\DamagedHelmet\Default_metalRoughness.jpg"
+
+[output]
+file="imported/texture/Default_metalRoughness"
+
+[params]

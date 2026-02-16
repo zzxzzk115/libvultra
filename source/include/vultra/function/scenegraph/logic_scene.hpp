@@ -142,7 +142,7 @@ namespace vultra
     private:
         std::string                               m_Name;
         entt::registry                            m_Registry;
-        Ref<std::map<CoreUUID, Entity>>           m_EntityMap;
+        Ref<std::unordered_map<CoreUUID, Entity>> m_EntityMap;
         std::unordered_map<std::string, uint32_t> m_Name2CountMap;
         std::filesystem::path                     m_Path;
         bool                                      m_IsLoaded = false;

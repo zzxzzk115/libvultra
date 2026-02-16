@@ -13,7 +13,8 @@ namespace vultra
     void LogicScene::onComponentAdded<comp>(Entity entity, comp & component)
 
     template<typename... Component>
-    static void copyComponent(entt::registry& dst, entt::registry& src, Ref<std::map<CoreUUID, Entity>>& enttMap)
+    static void
+    copyComponent(entt::registry& dst, entt::registry& src, Ref<std::unordered_map<CoreUUID, Entity>>& enttMap)
     {
         (
             [&]() {
@@ -31,9 +32,9 @@ namespace vultra
 
     template<typename... Component>
     static void copyComponent(ComponentGroup<Component...>,
-                              entt::registry&                  dst,
-                              entt::registry&                  src,
-                              Ref<std::map<CoreUUID, Entity>>& enttMap)
+                              entt::registry&                            dst,
+                              entt::registry&                            src,
+                              Ref<std::unordered_map<CoreUUID, Entity>>& enttMap)
     {
         copyComponent<Component...>(dst, src, enttMap);
     }
@@ -85,7 +86,7 @@ namespace vultra
 
     LogicScene::LogicScene(const std::string& name, bool copy) : m_Name(name)
     {
-        m_EntityMap = createRef<std::map<CoreUUID, Entity>>();
+        m_EntityMap = createRef<std::unordered_map<CoreUUID, Entity>>();
 
         if (!copy)
         {
@@ -356,7 +357,7 @@ namespace vultra
     {
         Entity meshEntity = createEntity(name);
         meshEntity.addComponent<TransformComponent>();
-        meshEntity.addComponent<MeshComponent>(uuid.toString());
+        meshEntity.addComponent<MeshComponent>(vbase::to_string(uuid));
         return meshEntity;
     }
 

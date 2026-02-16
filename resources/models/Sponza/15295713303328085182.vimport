@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="texture"
+uid="0a3619aa8f001888972efc8fc18d0b49"
+
+[source]
+file="models\Sponza\15295713303328085182.jpg"
+
+[output]
+file="imported/texture/15295713303328085182"
+
+[params]
