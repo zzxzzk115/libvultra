@@ -145,7 +145,7 @@ void FrameGraphEditorPanel::drawContextMenus()
 
     if (ImGui::BeginPopup("CreateNodeMenu"))
     {
-        for (auto& [name, entry] : PassRegistry::instance().getEntries())
+        for (const auto& [name, entry] : PassRegistry::instance().getEntries())
         {
             if (ImGui::MenuItem(name.c_str()))
             {

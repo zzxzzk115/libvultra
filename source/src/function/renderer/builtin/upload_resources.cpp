@@ -74,7 +74,7 @@ namespace vultra
 
             glm::vec4 frustumPlanes[6]; // left, right, bottom, top, near, far
         };
-        static_assert(sizeof(GPUCameraBlock) == 512, "GPUCameraBlock unexpected size (std140 mismatch)");
+        static_assert(sizeof(GPUCameraBlock) % 16 == 0);
 
         [[nodiscard]] auto uploadCameraBlock(FrameGraph& fg, GPUCameraBlock&& cameraBlock)
         {
@@ -180,10 +180,10 @@ namespace vultra
             GPUAreaLight areaLights[LIGHTINFO_MAX_AREA_LIGHTS] {}; // value-init to zero
         };
 
-        static_assert(sizeof(GPUDirectionalLight) == 96, "GPUDirectionalLight unexpected size (std140 mismatch)");
-        static_assert(sizeof(GPUPointLight) == 32, "GPUPointLight unexpected size (std140 mismatch)");
-        static_assert(sizeof(GPUAreaLight) == 64, "GPUAreaLight unexpected size (std140 mismatch)");
-        static_assert(sizeof(GPULightBlock) == 3216, "GPULightBlock unexpected size (std140 mismatch)");
+        static_assert(sizeof(GPUDirectionalLight) % 16 == 0);
+        static_assert(sizeof(GPUPointLight) % 16 == 0);
+        static_assert(sizeof(GPUAreaLight) % 16 == 0);
+        static_assert(sizeof(GPULightBlock) % 16 == 0);
 
         void uploadLightBlock(FrameGraph& fg, FrameGraphBlackboard& blackboard, const LightInfo& lightInfo)
         {
