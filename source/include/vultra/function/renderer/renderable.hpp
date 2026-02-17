@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vultra/core/rhi/command_buffer.hpp>
 #include <vultra/function/renderer/mesh.hpp>
 
 #include <glm/mat4x4.hpp>
@@ -13,7 +14,7 @@ namespace vultra
         struct Renderable
         {
             Ref<Mesh> mesh {nullptr};
-            glm::mat4    modelMatrix {1.0f};
+            glm::mat4 modelMatrix {1.0f};
         };
 
         struct RenderableGroup
@@ -78,7 +79,7 @@ namespace vultra
                     instanceData.geometryOffset = static_cast<uint32_t>(geometryNodes.size());
                     instanceData.geometryCount  = static_cast<uint32_t>(renderable.mesh->renderMesh.subMeshes.size());
                     instanceData.materialOffset = static_cast<uint32_t>(materials.size());
-                    instanceData.materialCount  = static_cast<uint32_t>(renderable.mesh->materialCount);
+                    instanceData.materialCount  = static_cast<uint32_t>(renderable.mesh->info.materialCount);
                     instances.push_back(instanceData);
 
                     // Append geometry nodes
@@ -91,31 +92,31 @@ namespace vultra
                         geometryNodes.push_back(node);
                     }
 
-                    // Append materials
-                    for (const auto& mat : renderable.mesh->materialBuffer)
-                    {
-                        GPUMaterial gpuMat {};
-                        gpuMat.albedoIndex            = mat.albedoIndex;
-                        gpuMat.alphaMaskIndex         = mat.alphaMaskIndex;
-                        gpuMat.metallicIndex          = mat.metallicIndex;
-                        gpuMat.roughnessIndex         = mat.roughnessIndex;
-                        gpuMat.specularIndex          = mat.specularIndex;
-                        gpuMat.normalIndex            = mat.normalIndex;
-                        gpuMat.aoIndex                = mat.aoIndex;
-                        gpuMat.emissiveIndex          = mat.emissiveIndex;
-                        gpuMat.metallicRoughnessIndex = mat.metallicRoughnessIndex;
-                        gpuMat.baseColor              = mat.baseColor;
-                        gpuMat.emissiveColorIntensity = mat.emissiveColorIntensity;
-                        gpuMat.ambientColor           = mat.ambientColor;
-                        gpuMat.opacity                = mat.opacity;
-                        gpuMat.metallicFactor         = mat.metallicFactor;
-                        gpuMat.roughnessFactor        = mat.roughnessFactor;
-                        gpuMat.ior                    = mat.ior;
-                        gpuMat.alphaCutoff            = mat.alphaCutoff;
-                        gpuMat.alphaMode              = static_cast<int>(mat.alphaMode);
-                        gpuMat.doubleSided            = mat.doubleSided ? 1 : 0;
-                        materials.push_back(gpuMat);
-                    }
+                    // FIXME: Append materials
+                    // for (const auto& mat : renderable.mesh->info.materials)
+                    // {
+                    //     GPUMaterial gpuMat {};
+                    //     gpuMat.albedoIndex            = mat.albedoIndex;
+                    //     gpuMat.alphaMaskIndex         = mat.alphaMaskIndex;
+                    //     gpuMat.metallicIndex          = mat.metallicIndex;
+                    //     gpuMat.roughnessIndex         = mat.roughnessIndex;
+                    //     gpuMat.specularIndex          = mat.specularIndex;
+                    //     gpuMat.normalIndex            = mat.normalIndex;
+                    //     gpuMat.aoIndex                = mat.aoIndex;
+                    //     gpuMat.emissiveIndex          = mat.emissiveIndex;
+                    //     gpuMat.metallicRoughnessIndex = mat.metallicRoughnessIndex;
+                    //     gpuMat.baseColor              = mat.baseColor;
+                    //     gpuMat.emissiveColorIntensity = mat.emissiveColorIntensity;
+                    //     gpuMat.ambientColor           = mat.ambientColor;
+                    //     gpuMat.opacity                = mat.opacity;
+                    //     gpuMat.metallicFactor         = mat.metallicFactor;
+                    //     gpuMat.roughnessFactor        = mat.roughnessFactor;
+                    //     gpuMat.ior                    = mat.ior;
+                    //     gpuMat.alphaCutoff            = mat.alphaCutoff;
+                    //     gpuMat.alphaMode              = static_cast<int>(mat.alphaMode);
+                    //     gpuMat.doubleSided            = mat.doubleSided ? 1 : 0;
+                    //     materials.push_back(gpuMat);
+                    // }
                 }
 
                 // Create and upload buffers
@@ -198,7 +199,7 @@ namespace vultra
 
         struct RenderPrimitive
         {
-            Ref<GPUMesh> mesh {nullptr};
+            Ref<Mesh>    mesh {nullptr};
             glm::mat4    modelMatrix {1.0f};
             gfx::SubMesh renderSubMesh;
             uint32_t     renderSubMeshIndex {0};

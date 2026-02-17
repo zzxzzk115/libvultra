@@ -8,7 +8,7 @@ namespace vultra
 {
     namespace gfx
     {
-        std::expected<gfx::DefaultMesh, std::string> tryLoad(const std::filesystem::path& p, rhi::RenderDevice& rd)
+        std::expected<Mesh, std::string> tryLoad(const std::filesystem::path& p, rhi::RenderDevice& rd)
         {
             if (p.extension() == ".vmesh")
             {
@@ -41,7 +41,7 @@ namespace vultra
         }
 
         entt::resource_loader<MeshResource>::result_type MeshLoader::operator()(const std::string_view name,
-                                                                                DefaultMesh&&          mesh) const
+                                                                                Mesh&&                 mesh) const
         {
             return createRef<MeshResource>(std::move(mesh), name);
         }

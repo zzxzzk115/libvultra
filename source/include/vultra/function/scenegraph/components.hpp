@@ -4,7 +4,7 @@
 #include "vultra/core/math/math.hpp"
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
-#include "vultra/function/renderer/mesh_resource.hpp"
+#include "vultra/function/renderer/mesh.hpp"
 #include "vultra/function/scripting/internal/internal_script.hpp"
 
 #include <cereal/cereal.hpp>
@@ -344,7 +344,7 @@ namespace vultra
         std::string meshPath;
 
         // Runtime cache, not serializable
-        Ref<gfx::DefaultMesh> mesh {nullptr};
+        Ref<gfx::Mesh> mesh {nullptr};
 
         // NOLINTBEGIN
         template<class Archive>
@@ -374,7 +374,7 @@ namespace vultra
         // NOLINTEND
 
         // Runtime only, not serializable
-        Ref<gfx::MeshResource> meshResource {nullptr};
+        Ref<gfx::Mesh> mesh {nullptr};
 
         MeshComponent()                     = default;
         MeshComponent(const MeshComponent&) = default;

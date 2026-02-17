@@ -43,7 +43,7 @@ public:
 
         // Set camera far plane based on model's AABB
         auto& rawMesh     = model.getComponent<RawMeshComponent>().mesh;
-        camComponent.zFar = rawMesh->aabb.getRadius() * 10.0f;
+        camComponent.zFar = rawMesh->info.aabb.getRadius() * 10.0f;
     }
 
     void onImGui() override

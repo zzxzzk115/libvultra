@@ -22,7 +22,7 @@ namespace vultra
             ~MeshManager() = default;
 
             [[nodiscard]] MeshResourceHandle load(const std::filesystem::path&);
-            void                             import(const std::string_view name, DefaultMesh&&);
+            void                             import(const std::string_view name, Mesh&&);
 
             static void                       setGlobalLoadingSettings(const MeshLoadingSettings& settings);
             static const MeshLoadingSettings& getGlobalLoadingSettings();

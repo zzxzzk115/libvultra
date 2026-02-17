@@ -68,7 +68,7 @@ namespace vultra
                     // Only draw opaque primitives in depth pre-pass
                     for (const auto& primitive : opaquePrimitives)
                     {
-                        passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
+                        passInfo.vertexFormat = primitive.mesh->info.vertexFormat.get();
                         MeshConstants meshConstants(primitive.modelMatrix, primitive.renderSubMesh.materialIndex);
                         const auto*   pipeline = getPipeline(passInfo);
 
@@ -78,10 +78,10 @@ namespace vultra
                         rc.bindDescriptorSets(*pipeline);
 
                         cb.draw({
-                            .vertexBuffer = primitive.mesh->vertexBuffer.get(),
+                            .vertexBuffer = primitive.mesh->gpuBuffers.vertexBuffer.get(),
                             .vertexOffset = primitive.renderSubMesh.vertexOffset,
                             .numVertices  = primitive.renderSubMesh.vertexCount,
-                            .indexBuffer  = primitive.mesh->indexBuffer.get(),
+                            .indexBuffer  = primitive.mesh->gpuBuffers.indexBuffer.get(),
                             .indexOffset  = primitive.renderSubMesh.indexOffset,
                             .numIndices   = primitive.renderSubMesh.indexCount,
                         });

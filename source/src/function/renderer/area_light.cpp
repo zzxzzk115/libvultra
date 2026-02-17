@@ -67,10 +67,11 @@ namespace vultra
             {
                 asset.materials.resize(1);
 
-                asset.materials[0].name                   = "AreaLightMaterial";
-                asset.materials[0].emissiveColorIntensity = glm::vec4(lightComponent.color, lightComponent.intensity);
+                asset.materials[0].name = "AreaLightMaterial";
+                asset.materials[0].pbrMR.emissiveColorIntensity =
+                    glm::vec4(lightComponent.color, lightComponent.intensity);
 
-                asset.materials[0].doubleSided = lightComponent.twoSided;
+                asset.materials[0].pbrMR.doubleSided = lightComponent.twoSided;
             }
 
             // Create mesh

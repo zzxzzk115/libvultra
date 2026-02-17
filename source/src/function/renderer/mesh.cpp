@@ -26,14 +26,17 @@ namespace vultra::gfx
     {
         info.uuid = asset.uuid;
 
-        info.vertexCount = asset.vertexCount;
-        info.indexCount  = static_cast<uint32_t>(asset.indices.size());
+        info.vertexCount   = asset.vertexCount;
+        info.indexCount    = static_cast<uint32_t>(asset.indices.size());
+        info.materialCount = static_cast<uint32_t>(asset.materials.size());
 
         buildVertexFormat(asset.vertexFlags);
         buildVertexAndIndexBuffers(rd, asset);
         buildMaterialBuffer(rd, asset);
         buildSubMeshesAndMeshlets(rd, asset);
         buildRenderMeshInternal(rd);
+
+        computeAABB(asset);
     }
 
     void Mesh::buildVertexFormat(vasset::VVertexFlags flags)
@@ -304,34 +307,35 @@ namespace vultra::gfx
         std::vector<GPUMaterial> gpuMaterials;
         gpuMaterials.reserve(asset.materials.size());
 
-        for (const auto& matRef : asset.materials)
+        for (const auto& material : asset.materials)
         {
-            // TODO: Load material from runtime asset registry using matRef's UUID info.
+            // NOTE: Only handle PBR material for now
+            // FIXME: AssetSystem / Loader
             GPUMaterial m {};
-            // m.albedoIndex    = matRef.albedoIndex;
-            // m.alphaMaskIndex = matRef.alphaMaskIndex;
-            // m.metallicIndex  = matRef.metallicIndex;
-            // m.roughnessIndex = matRef.roughnessIndex;
+            // m.albedoIndex    = material.albedoIndex;
+            // m.alphaMaskIndex = material.alphaMaskIndex;
+            // m.metallicIndex  = material.metallicIndex;
+            // m.roughnessIndex = material.roughnessIndex;
 
-            // m.specularIndex = matRef.specularIndex;
-            // m.normalIndex   = matRef.normalIndex;
-            // m.aoIndex       = matRef.aoIndex;
-            // m.emissiveIndex = matRef.emissiveIndex;
+            // m.specularIndex = material.specularIndex;
+            // m.normalIndex   = material.normalIndex;
+            // m.aoIndex       = material.aoIndex;
+            // m.emissiveIndex = material.emissiveIndex;
 
-            // m.metallicRoughnessIndex = matRef.metallicRoughnessIndex;
+            // m.metallicRoughnessIndex = material.metallicRoughnessIndex;
 
-            // m.baseColor              = matRef.baseColor;
-            // m.emissiveColorIntensity = matRef.emissiveColorIntensity;
-            // m.ambientColor           = matRef.ambientColor;
+            // m.baseColor              = material.baseColor;
+            // m.emissiveColorIntensity = material.emissiveColorIntensity;
+            // m.ambientColor           = material.ambientColor;
 
-            // m.opacity         = matRef.opacity;
-            // m.metallicFactor  = matRef.metallicFactor;
-            // m.roughnessFactor = matRef.roughnessFactor;
-            // m.ior             = matRef.ior;
+            // m.opacity         = material.opacity;
+            // m.metallicFactor  = material.metallicFactor;
+            // m.roughnessFactor = material.roughnessFactor;
+            // m.ior             = material.ior;
 
-            // m.alphaCutoff = matRef.alphaCutoff;
-            // m.alphaMode   = static_cast<int>(matRef.alphaMode);
-            // m.doubleSided = matRef.doubleSided ? 1 : 0;
+            // m.alphaCutoff = material.alphaCutoff;
+            // m.alphaMode   = static_cast<int>(material.alphaMode);
+            // m.doubleSided = material.doubleSided ? 1 : 0;
 
             gpuMaterials.push_back(m);
         }
@@ -522,5 +526,16 @@ namespace vultra::gfx
                 },
                 true);
         }
+    }
+
+    void Mesh::computeAABB(const vasset::VMesh& asset)
+    {
+        if (info.vertexCount == 0)
+        {
+            info.aabb = AABB {};
+            return;
+        }
+
+        info.aabb = computeAABBForRange(asset.positions, 0, info.vertexCount);
     }
 } // namespace vultra::gfx

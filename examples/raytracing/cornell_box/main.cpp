@@ -284,10 +284,11 @@ public:
 
         assert(m_MeshResource->lights.size() > 0);
         assert(m_MeshResource->lights[0].vertices.size() >= 4);
-        for (size_t i = 0; i < 4; ++i)
-        {
-            m_LightVertices[i] = glm::vec4(m_MeshResource->lights[0].vertices[i].position, 1.0f);
-        }
+        // FIXME: lights
+        // for (size_t i = 0; i < 4; ++i)
+        // {
+        //     m_LightVertices[i] = glm::vec4(m_MeshResource->lights[0].vertices[i].position, 1.0f);
+        // }
 
         // Create and build TLAS
         m_TLAS = m_RenderDevice->createBuildSingleInstanceTLAS(m_MeshResource->renderMesh.blas, kTransform);
@@ -320,16 +321,17 @@ public:
         // Create material buffer
         {
             std::vector<GPUMaterial> materials;
-            materials.reserve(m_MeshResource->materials.size());
+            materials.reserve(m_MeshResource->info.materialCount);
 
-            for (const auto& mat : m_MeshResource->materials)
-            {
-                GPUMaterial gpuMat {};
-                gpuMat.baseColor         = glm::vec4(mat.baseColor.r, mat.baseColor.g, mat.baseColor.b, 1.0f);
-                gpuMat.ambientColor      = mat.ambientColor;
-                gpuMat.emissiveIntensity = mat.emissiveColorIntensity;
-                materials.push_back(gpuMat);
-            }
+            // FIXME: materials
+            // for (const auto& mat : m_MeshResource->materials)
+            // {
+            //     GPUMaterial gpuMat {};
+            //     gpuMat.baseColor         = glm::vec4(mat.baseColor.r, mat.baseColor.g, mat.baseColor.b, 1.0f);
+            //     gpuMat.ambientColor      = mat.ambientColor;
+            //     gpuMat.emissiveIntensity = mat.emissiveColorIntensity;
+            //     materials.push_back(gpuMat);
+            // }
 
             m_MaterialBuffer = m_RenderDevice->createStorageBuffer(
                 sizeof(GPUMaterial) * static_cast<vk::DeviceSize>(materials.size()), rhi::AllocationHints::eNone);
@@ -454,7 +456,8 @@ public:
             missColor,
         };
 
-        pushConstants.lightColorIntensity = m_MeshResource->lights[0].colorIntensity;
+        // FIXME
+        // pushConstants.lightColorIntensity = m_MeshResource->lights[0].colorIntensity;
         for (size_t i = 0; i < 4; ++i)
         {
             pushConstants.lightVertices[i] = m_LightVertices[i];

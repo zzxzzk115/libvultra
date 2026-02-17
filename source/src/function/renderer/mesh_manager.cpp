@@ -14,7 +14,7 @@ namespace vultra
             return resource::load(*this, p, m_RenderDevice);
         }
 
-        void MeshManager::import(const std::string_view name, DefaultMesh&& mesh)
+        void MeshManager::import(const std::string_view name, Mesh&& mesh)
         {
             MeshCache::load(entt::hashed_string {name.data()}.value(), name, std::move(mesh));
         }

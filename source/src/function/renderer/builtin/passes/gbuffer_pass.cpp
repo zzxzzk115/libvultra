@@ -142,14 +142,16 @@ namespace vultra
                     // Phase 1: Draw opaque renderables
                     for (const auto& primitive : opaquePrimitives)
                     {
-                        passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
+                        passInfo.vertexFormat = primitive.mesh->info.vertexFormat.get();
 
-                        const auto&   material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
+                        // FIXME:
+                        // const auto&   material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
                         MeshConstants meshConstants(
                             primitive.modelMatrix, primitive.renderSubMesh.materialIndex, meshEnableNormalMapping);
 
                         // Enable earlyZ for opaque objects
-                        const auto* pipeline = getPipeline(passInfo, material.doubleSided, false, true);
+                        // FIXME: use correct double sided
+                        const auto* pipeline = getPipeline(passInfo, true, false, true);
 
                         cb.bindPipeline(*pipeline).pushConstants(rhi::ShaderStages::eVertex |
                                                                      rhi::ShaderStages::eFragment,
@@ -158,7 +160,7 @@ namespace vultra
                                                                  &meshConstants);
 
                         rc.resourceSet[3][0] = rhi::bindings::StorageBuffer {
-                             .buffer = primitive.mesh->materialBuffer.get(),
+                             .buffer = primitive.mesh->gpuBuffers.materialBuffer.get(),
                         };
 
                         rc.resourceSet[3][1] = rhi::bindings::CombinedImageSamplerArray {
@@ -169,10 +171,10 @@ namespace vultra
                         rc.bindDescriptorSets(*pipeline);
 
                         cb.draw({
-                             .vertexBuffer = primitive.mesh->vertexBuffer.get(),
+                             .vertexBuffer = primitive.mesh->gpuBuffers.vertexBuffer.get(),
                              .vertexOffset = primitive.renderSubMesh.vertexOffset,
                              .numVertices  = primitive.renderSubMesh.vertexCount,
-                             .indexBuffer  = primitive.mesh->indexBuffer.get(),
+                             .indexBuffer  = primitive.mesh->gpuBuffers.indexBuffer.get(),
                              .indexOffset  = primitive.renderSubMesh.indexOffset,
                              .numIndices   = primitive.renderSubMesh.indexCount,
                         });
@@ -182,13 +184,15 @@ namespace vultra
                     rc.resourceSet.erase(3);
                     for (const auto& primitive : alphaMaskingPrimitives)
                     {
-                        passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
+                        passInfo.vertexFormat = primitive.mesh->info.vertexFormat.get();
 
-                        const auto&   material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
+                        // FIXME:
+                        // const auto&   material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
                         MeshConstants meshConstants(
                             primitive.modelMatrix, primitive.renderSubMesh.materialIndex, meshEnableNormalMapping);
 
-                        const auto* pipeline = getPipeline(passInfo, material.doubleSided, true);
+                        // FIXME: 
+                        const auto* pipeline = getPipeline(passInfo, false, true);
 
                         cb.bindPipeline(*pipeline).pushConstants(rhi::ShaderStages::eVertex |
                                                                      rhi::ShaderStages::eFragment,
@@ -197,7 +201,7 @@ namespace vultra
                                                                  &meshConstants);
 
                         rc.resourceSet[3][0] = rhi::bindings::StorageBuffer {
-                             .buffer = primitive.mesh->materialBuffer.get(),
+                             .buffer = primitive.mesh->gpuBuffers.materialBuffer.get(),
                         };
                         rc.resourceSet[3][1] = rhi::bindings::CombinedImageSamplerArray {
                              .textures    = getRenderDevice().getAllLoadedTextures(),
@@ -207,10 +211,10 @@ namespace vultra
                         rc.bindDescriptorSets(*pipeline);
 
                         cb.draw({
-                             .vertexBuffer = primitive.mesh->vertexBuffer.get(),
+                             .vertexBuffer = primitive.mesh->gpuBuffers.vertexBuffer.get(),
                              .vertexOffset = primitive.renderSubMesh.vertexOffset,
                              .numVertices  = primitive.renderSubMesh.vertexCount,
-                             .indexBuffer  = primitive.mesh->indexBuffer.get(),
+                             .indexBuffer  = primitive.mesh->gpuBuffers.indexBuffer.get(),
                              .indexOffset  = primitive.renderSubMesh.indexOffset,
                              .numIndices   = primitive.renderSubMesh.indexCount,
                         });
@@ -255,9 +259,10 @@ namespace vultra
                     rc.resourceSet.erase(3);
                     for (const auto& primitive : decalPrimitives)
                     {
-                        passInfo.vertexFormat = primitive.mesh->vertexFormat.get();
+                        passInfo.vertexFormat = primitive.mesh->info.vertexFormat.get();
 
-                        const auto&   material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
+                        // FIXME:
+                        // const auto&   material = primitive.mesh->materials[primitive.renderSubMesh.materialIndex];
                         MeshConstants meshConstants(
                             primitive.modelMatrix, primitive.renderSubMesh.materialIndex, meshEnableNormalMapping);
                         if (!m_DecalPipelineCreated)
@@ -279,7 +284,8 @@ namespace vultra
                                     {.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eBack});
                             for (auto i = 0; i < passInfo.colorFormats.size(); ++i)
                             {
-                                builder.setBlending(i, material.blendState);
+                                // FIXME:
+                                builder.setBlending(i, {.enabled = false});
                             }
                             m_DecalPipeline        = builder.build(getRenderDevice());
                             m_DecalPipelineCreated = true;
@@ -292,7 +298,7 @@ namespace vultra
                                            &meshConstants);
 
                         rc.resourceSet[3][0] = rhi::bindings::StorageBuffer {
-                             .buffer = primitive.mesh->materialBuffer.get(),
+                             .buffer = primitive.mesh->gpuBuffers.materialBuffer.get(),
                         };
 
                         rc.resourceSet[3][1] = rhi::bindings::CombinedImageSamplerArray {
@@ -303,10 +309,10 @@ namespace vultra
                         rc.bindDescriptorSets(m_DecalPipeline);
 
                         cb.draw({
-                             .vertexBuffer = primitive.mesh->vertexBuffer.get(),
+                             .vertexBuffer = primitive.mesh->gpuBuffers.vertexBuffer.get(),
                              .vertexOffset = primitive.renderSubMesh.vertexOffset,
                              .numVertices  = primitive.renderSubMesh.vertexCount,
-                             .indexBuffer  = primitive.mesh->indexBuffer.get(),
+                             .indexBuffer  = primitive.mesh->gpuBuffers.indexBuffer.get(),
                              .indexOffset  = primitive.renderSubMesh.indexOffset,
                              .numIndices   = primitive.renderSubMesh.indexCount,
                         });

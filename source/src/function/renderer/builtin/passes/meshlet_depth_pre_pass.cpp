@@ -86,8 +86,8 @@ namespace vultra
 
                             cb.bindPipeline(*pipeline);
 
-                            rc.resourceSet[2][0] =
-                                rhi::bindings::StorageBuffer {.buffer = renderable.mesh->materialBuffer.get()};
+                            rc.resourceSet[2][0] = rhi::bindings::StorageBuffer {
+                                .buffer = renderable.mesh->gpuBuffers.materialBuffer.get()};
                             rc.bindDescriptorSets(*pipeline);
 
                             cb.pushConstants(rhi::ShaderStages::eTask | rhi::ShaderStages::eMesh, 0, &pushConstants)

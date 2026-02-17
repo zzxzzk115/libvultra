@@ -1,5 +1,6 @@
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/input/input.hpp>
+#include <vultra/core/rhi/graphics_pipeline.hpp>
 #include <vultra/core/rhi/raytracing/raytracing_pipeline.hpp>
 #include <vultra/function/app/imgui_app.hpp>
 #include <vultra/function/camera/fps_camera.hpp>
@@ -118,7 +119,7 @@ public:
                 .setDepthFormat(rhi::PixelFormat::eDepth24_Stencil8)
                 .setColorFormats({m_Swapchain.getPixelFormat()})
                 .setDepthStencil({.depthTest = true, .depthWrite = true, .depthCompareOp = rhi::CompareOp::eLess})
-                .setInputAssembly(gfx::SimpleVertex::getVertexFormat()->getAttributes())
+                .setInputAssembly(m_MeshResource->info.vertexFormat->getAttributes())
                 .setBlending(0, {.enabled = false})
                 .setTopology(rhi::PrimitiveTopology::eTriangleList)
                 .addShader(rhi::ShaderType::eVertex, {.code = vertexCode})
@@ -231,10 +232,10 @@ public:
         for (const auto& sm : m_MeshResource->subMeshes)
         {
             cb.draw(rhi::GeometryInfo {
-                .vertexBuffer = m_MeshResource->vertexBuffer.get(),
+                .vertexBuffer = m_MeshResource->gpuBuffers.vertexBuffer.get(),
                 .vertexOffset = sm.vertexOffset,
                 .numVertices  = sm.vertexCount,
-                .indexBuffer  = m_MeshResource->indexBuffer.get(),
+                .indexBuffer  = m_MeshResource->gpuBuffers.indexBuffer.get(),
                 .indexOffset  = sm.indexOffset,
                 .numIndices   = sm.indexCount,
             });

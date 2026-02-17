@@ -83,9 +83,9 @@ namespace vultra
         {
             auto& [opaquePrimitives, alphaMaskingPrimitives, decalPrimitives] = m_RenderPrimitiveGroup;
 
-            for (uint32_t i = 0; i < renderable.mesh->getSubMeshes().size(); ++i)
+            for (uint32_t i = 0; i < renderable.mesh->subMeshes.size(); ++i)
             {
-                const auto& subMesh = renderable.mesh->getSubMeshes()[i];
+                const auto& subMesh = renderable.mesh->subMeshes[i];
 
                 // Create primitive
                 {
@@ -95,25 +95,26 @@ namespace vultra
                     primitive.renderSubMesh      = subMesh;
                     primitive.renderSubMeshIndex = i;
 
-                    const auto& material = renderable.mesh->materials[subMesh.materialIndex];
+                    // FIXME: Materials
+                    // const auto& material = renderable.mesh->materials[subMesh.materialIndex];
 
-                    if (material.isDecal())
-                    {
-                        decalPrimitives.push_back(primitive);
-                    }
-                    else if (material.alphaMode == rhi::AlphaMode::eMask)
-                    {
-                        alphaMaskingPrimitives.push_back(primitive);
-                    }
-                    else if (material.alphaMode == rhi::AlphaMode::eOpaque)
-                    {
-                        opaquePrimitives.push_back(primitive);
-                    }
-                    else
-                    {
-                        // For now, ignore transparent objects
-                        VULTRA_CORE_WARN("[Renderer] Ignoring transparent object: {}", material.name);
-                    }
+                    // if (material.isDecal())
+                    // {
+                    //     decalPrimitives.push_back(primitive);
+                    // }
+                    // else if (material.alphaMode == rhi::AlphaMode::eMask)
+                    // {
+                    //     alphaMaskingPrimitives.push_back(primitive);
+                    // }
+                    // else if (material.alphaMode == rhi::AlphaMode::eOpaque)
+                    // {
+                    //     opaquePrimitives.push_back(primitive);
+                    // }
+                    // else
+                    // {
+                    //     // For now, ignore transparent objects
+                    //     VULTRA_CORE_WARN("[Renderer] Ignoring transparent object: {}", material.name);
+                    // }
                 }
             }
         }

@@ -161,7 +161,7 @@ namespace vultra
             MeshletDepthPrePass* m_MeshletDepthPrePass {nullptr};
             MeshletGBufferPass*  m_MeshletGBufferPass {nullptr};
 
-            std::vector<Ref<DefaultMesh>> m_AreaLightMeshes; // Keep alive for raytracing purposes
+            std::vector<Ref<gfx::Mesh>> m_AreaLightMeshes; // Keep alive for raytracing purposes
 
             DebugDrawInterface m_DebugDrawInterface;
         };

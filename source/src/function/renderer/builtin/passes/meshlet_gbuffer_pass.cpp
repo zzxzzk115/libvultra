@@ -181,8 +181,8 @@ namespace vultra
 
                             cb.bindPipeline(*pipeline);
 
-                            rc.resourceSet[2][0] =
-                                rhi::bindings::StorageBuffer {.buffer = renderable.mesh->materialBuffer.get()};
+                            rc.resourceSet[2][0] = rhi::bindings::StorageBuffer {
+                                 .buffer = renderable.mesh->gpuBuffers.materialBuffer.get()};
                             rc.resourceSet[2][1] = rhi::bindings::CombinedImageSamplerArray {
                                  .textures    = getRenderDevice().getAllLoadedTextures(),
                                  .imageAspect = rhi::ImageAspect::eColor,
@@ -226,8 +226,8 @@ namespace vultra
 
                             cb.bindPipeline(*pipeline);
 
-                            rc.resourceSet[2][0] =
-                                rhi::bindings::StorageBuffer {.buffer = renderable.mesh->materialBuffer.get()};
+                            rc.resourceSet[2][0] = rhi::bindings::StorageBuffer {
+                                 .buffer = renderable.mesh->gpuBuffers.materialBuffer.get()};
                             rc.resourceSet[2][1] = rhi::bindings::CombinedImageSamplerArray {
                                  .textures    = getRenderDevice().getAllLoadedTextures(),
                                  .imageAspect = rhi::ImageAspect::eColor,

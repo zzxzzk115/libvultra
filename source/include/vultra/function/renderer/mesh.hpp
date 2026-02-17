@@ -113,6 +113,8 @@ namespace vultra::gfx
             uint32_t materialCount {0};
 
             Ref<VertexFormat> vertexFormat {nullptr};
+
+            AABB aabb;
         } info;
 
         std::vector<SubMesh> subMeshes;
@@ -132,14 +134,13 @@ namespace vultra::gfx
         void buildSubMeshesAndMeshlets(rhi::RenderDevice& rd, const vasset::VMesh& asset);
         void buildRenderMeshInternal(rhi::RenderDevice& rd);
 
+        void computeAABB(const vasset::VMesh& asset);
+
     private:
         // Helpers
         static AABB computeAABBForRange(const std::vector<vasset::VPosition>& positions,
                                         uint32_t                              vertexOffset,
                                         uint32_t                              vertexCount);
-
-        static Ref<rhi::VertexBuffer> createVertexBufferRaw(rhi::RenderDevice& rd, size_t sizeBytes);
-        static Ref<rhi::IndexBuffer>  createIndexBufferRaw(rhi::RenderDevice& rd, size_t sizeBytes);
     };
 
 } // namespace vultra::gfx

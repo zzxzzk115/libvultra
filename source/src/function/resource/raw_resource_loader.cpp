@@ -1,10 +1,13 @@
 #include "vultra/function/resource/raw_resource_loader.hpp"
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/rhi/alpha_mode.hpp"
+#include "vultra/core/rhi/graphics_pipeline.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/function/renderer/mesh_manager.hpp"
-#include "vultra/function/renderer/mesh_utils.hpp"
 #include "vultra/function/renderer/texture_manager.hpp"
+
+#include <vasset/vasset.hpp>
 
 #include <assimp/GltfMaterial.h>
 #include <assimp/Importer.hpp>
@@ -1007,20 +1010,7 @@ namespace vultra
             }
         }
 
-        std::expected<vasset::VMaterial, std::string> loadMaterial_VMaterial(const std::filesystem::path& p)
-        {
-            vasset::VMaterial mat {};
-
-            if (!vasset::loadMaterial(p.generic_string(), mat))
-            {
-                return std::unexpected {"Failed to load VMaterial: " + p.generic_string()};
-            }
-
-            return mat;
-        }
-
-        std::expected<gfx::DefaultMesh, std::string> loadMesh_VMesh(const std::filesystem::path& p,
-                                                                    rhi::RenderDevice&           rd)
+        std::expected<gfx::Mesh, std::string> loadMesh_VMesh(const std::filesystem::path& p, rhi::RenderDevice& rd)
         {
             vasset::VMesh mesh {};
 
@@ -1030,13 +1020,12 @@ namespace vultra
             }
 
             // TODO: Convert VMesh to DefaultMesh
-            gfx::DefaultMesh defaultMesh {};
-            defaultMesh.vertexFormat = gfx::SimpleVertex::getVertexFormat();
+            gfx::Mesh gfxMesh {};
 
-            return defaultMesh;
+            return gfxMesh;
         }
 
-        std::expected<gfx::DefaultMesh, std::string> loadMesh_Raw(const std::filesystem::path& p, rhi::RenderDevice& rd)
+        std::expected<gfx::Mesh, std::string> loadMesh_Raw(const std::filesystem::path& p, rhi::RenderDevice& rd)
         {
             Assimp::Importer importer;
             const aiScene*   scene =
@@ -1050,359 +1039,8 @@ namespace vultra
                 return {};
             }
 
-            gfx::DefaultMesh mesh {};
-            mesh.vertexFormat = gfx::SimpleVertex::getVertexFormat();
-
-            uint32_t vertexOffset = 0;
-            uint32_t indexOffset  = 0;
-
-            const auto loadTexture = [&p, &rd](const aiMaterial* material, const aiTextureType type) -> uint32_t {
-                assert(material);
-
-                // lambda to load a texture from a path
-                auto loadTextureFromPath = [&rd](const std::filesystem::path& path) -> uint32_t {
-                    auto texture = resource::loadResource<gfx::TextureManager>(path.generic_string());
-                    if (texture)
-                    {
-                        // Find index if possible
-                        auto loadedTextures = rd.getAllLoadedTextures();
-                        for (uint32_t i = 0; i < loadedTextures.size(); ++i)
-                        {
-                            if (loadedTextures[i] == texture.get())
-                                return i;
-                        }
-
-                        // Cache as new
-                        rd.addLoadedTexture(texture);
-                        return static_cast<uint32_t>(rd.getAllLoadedTextures().size() - 1);
-                    }
-                    return 0;
-                };
-
-                if (material->GetTextureCount(type) > 0)
-                {
-                    aiString path {};
-                    material->GetTexture(type, 0, &path);
-                    // If using optimized textures, try to load .ktx2 first
-                    if (gfx::MeshManager::getGlobalLoadingSettings().useOptimizedTextures)
-                    {
-                        auto basisPath = ("imported" / p.parent_path() / path.data).replace_extension(".ktx2");
-                        if (std::filesystem::exists(basisPath))
-                        {
-                            return loadTextureFromPath(basisPath);
-                        }
-                    }
-
-                    // Fallback to original texture path
-                    return loadTextureFromPath((p.parent_path() / path.data).generic_string());
-                }
-
-                VULTRA_CORE_WARN("[MeshLoader] Material has no texture of type {}", magic_enum::enum_name(type).data());
-                return 0; // Fallback to white 1x1
-            };
-
-            const auto processMesh = [&mesh, &scene, loadTexture](
-                                         const aiMesh* aiMesh, uint32_t& vertexOffset, uint32_t& indexOffset) {
-                VULTRA_CORE_TRACE("[MeshLoader] Processing SubMesh: {}, with {} vertices, {} faces, material index {}, "
-                                  "material name {}",
-                                  aiMesh->mName.C_Str(),
-                                  aiMesh->mNumVertices,
-                                  aiMesh->mNumFaces,
-                                  aiMesh->mMaterialIndex,
-                                  aiMesh->mMaterialIndex < scene->mNumMaterials ?
-                                      scene->mMaterials[aiMesh->mMaterialIndex]->GetName().C_Str() :
-                                      "Unknown");
-
-                // Copy vertices
-                std::vector<gfx::SimpleVertex> subMeshVertices;
-                for (unsigned int v = 0; v < aiMesh->mNumVertices; ++v)
-                {
-                    gfx::SimpleVertex vertex {};
-                    vertex.position = {aiMesh->mVertices[v].x, aiMesh->mVertices[v].y, aiMesh->mVertices[v].z};
-
-                    if (aiMesh->HasVertexColors(0))
-                    {
-                        vertex.color = {aiMesh->mColors[0][v].r, aiMesh->mColors[0][v].g, aiMesh->mColors[0][v].b};
-                    }
-                    else
-                    {
-                        vertex.color = {1.0f, 1.0f, 1.0f};
-                    }
-
-                    if (aiMesh->HasNormals())
-                    {
-                        vertex.normal = {aiMesh->mNormals[v].x, aiMesh->mNormals[v].y, aiMesh->mNormals[v].z};
-                    }
-
-                    if (aiMesh->HasTextureCoords(0))
-                    {
-                        vertex.texCoord = {aiMesh->mTextureCoords[0][v].x, aiMesh->mTextureCoords[0][v].y};
-                    }
-
-                    if (aiMesh->HasTangentsAndBitangents())
-                    {
-                        glm::vec3 tangent   = {aiMesh->mTangents[v].x, aiMesh->mTangents[v].y, aiMesh->mTangents[v].z};
-                        glm::vec3 bitangent = {
-                            aiMesh->mBitangents[v].x, aiMesh->mBitangents[v].y, aiMesh->mBitangents[v].z};
-                        glm::vec4 tangentWithHandness = glm::vec4(
-                            tangent, glm::dot(glm::cross(vertex.normal, bitangent), tangent) < 0.0f ? -1.0f : 1.0f);
-                        vertex.tangent = tangentWithHandness;
-                    }
-
-                    mesh.vertices.push_back(vertex);
-                    subMeshVertices.push_back(vertex);
-                }
-
-                // Copy indices
-                for (unsigned int f = 0; f < aiMesh->mNumFaces; ++f)
-                {
-                    const aiFace& face = aiMesh->mFaces[f];
-                    assert(face.mNumIndices == 3); // Ensure the mesh is triangulated
-                    mesh.indices.push_back(face.mIndices[0]);
-                    mesh.indices.push_back(face.mIndices[1]);
-                    mesh.indices.push_back(face.mIndices[2]);
-                }
-
-                // Fill in sub-mesh data
-                gfx::SubMesh subMesh {};
-                // subMesh.topology = static_cast<rhi::PrimitiveTopology>(aiMesh->mPrimitiveTypes);
-                subMesh.name          = aiMesh->mName.C_Str();
-                subMesh.vertexOffset  = vertexOffset;
-                subMesh.indexOffset   = indexOffset;
-                subMesh.vertexCount   = aiMesh->mNumVertices;
-                subMesh.indexCount    = aiMesh->mNumFaces * 3;
-                subMesh.materialIndex = aiMesh->mMaterialIndex;
-
-                // Cook AABB
-                subMesh.aabb = AABB::build(subMeshVertices);
-
-                mesh.subMeshes.push_back(subMesh);
-
-                vertexOffset += subMesh.vertexCount;
-                indexOffset += subMesh.indexCount;
-            };
-
-            const auto processMaterials = [&mesh, &loadTexture](const aiScene* aiScene) {
-                mesh.materials.resize(aiScene->mNumMaterials);
-
-                for (unsigned int i = 0; i < aiScene->mNumMaterials; ++i)
-                {
-                    const aiMaterial* material = aiScene->mMaterials[i];
-                    if (!material)
-                        continue;
-
-                    auto             props = gfx::parseMaterialProperties(material);
-                    gfx::PBRMaterial pbrMat {};
-
-                    // Name
-                    aiString name;
-                    if (tryGet(props, AI_MATKEY_NAME, name))
-                    {
-                        pbrMat.name = name.C_Str();
-                    }
-
-                    // Read color properties
-                    aiColor3D kd(1, 1, 1), ks(0, 0, 0), ke(0, 0, 0), ka(0, 0, 0);
-                    tryGet(props, AI_MATKEY_COLOR_DIFFUSE, kd);
-                    tryGet(props, AI_MATKEY_COLOR_SPECULAR, ks);
-                    tryGet(props, AI_MATKEY_COLOR_EMISSIVE, ke);
-                    tryGet(props, AI_MATKEY_COLOR_AMBIENT, ka);
-
-                    // Read scalar properties
-                    float Ns = 0.0f, d = 1.0f, Ni = 1.5f, emissiveIntensity = 1.0f;
-                    tryGet(props, AI_MATKEY_EMISSIVE_INTENSITY, emissiveIntensity);
-                    tryGet(props, AI_MATKEY_SHININESS, Ns);
-                    tryGet(props, AI_MATKEY_OPACITY, d);
-                    tryGet(props, AI_MATKEY_REFRACTI, Ni);
-
-                    // Alpha masking & Blend mode
-                    aiString alphaMode;
-                    if (tryGet(props, AI_MATKEY_GLTF_ALPHAMODE, alphaMode))
-                    {
-                        auto alphaModeStr = std::string(alphaMode.C_Str());
-                        if (alphaModeStr == "MASK")
-                            pbrMat.alphaMode = rhi::AlphaMode::eMask;
-                        else if (alphaModeStr == "BLEND")
-                            pbrMat.alphaMode = rhi::AlphaMode::eBlend;
-                        else
-                            pbrMat.alphaMode = rhi::AlphaMode::eOpaque;
-                    }
-                    float alphaCutoff = 0.5f;
-                    if (tryGet(props, AI_MATKEY_GLTF_ALPHACUTOFF, alphaCutoff))
-                    {
-                        pbrMat.alphaCutoff = alphaCutoff;
-                    }
-                    aiBlendMode blendMode = aiBlendMode_Default;
-                    if (tryGet(props, AI_MATKEY_BLEND_FUNC, blendMode))
-                    {
-                        pbrMat.blendState = toBlendState(blendMode);
-                    }
-                    else
-                    {
-                        pbrMat.blendState = d < 1.0f ? toBlendState(aiBlendMode::aiBlendMode_Default) : kNoBlend;
-                    }
-
-                    pbrMat.baseColor = glm::vec4(kd.r, kd.g, kd.b, 1.0);
-                    pbrMat.opacity   = d;
-
-                    pbrMat.metallicFactor = std::clamp(
-                        (0.2126f * ks.r + 0.7152f * ks.g + 0.0722f * ks.b - 0.04f) / (1.0f - 0.04f), 0.0f, 1.0f);
-                    pbrMat.roughnessFactor        = glm::clamp(std::sqrt(2.0f / (Ns + 2.0f)), 0.04f, 1.0f);
-                    pbrMat.emissiveColorIntensity = glm::vec4(ke.r, ke.g, ke.b, emissiveIntensity);
-                    pbrMat.ior                    = Ni;
-                    pbrMat.ambientColor           = glm::vec4(ka.r, ka.g, ka.b, 1.0f);
-
-                    // Override with common PBR extensions if present
-                    aiColor4D baseColorFactorPBR(1, 1, 1, 1), emissiveIntensityPBR(0, 0, 0, 1);
-                    float     metallicFactorPBR  = 0.0f;
-                    float     roughnessFactorPBR = 0.5f;
-                    if (tryGet(props, AI_MATKEY_BASE_COLOR, baseColorFactorPBR))
-                    {
-                        pbrMat.baseColor =
-                            glm::vec4(baseColorFactorPBR.r, baseColorFactorPBR.g, baseColorFactorPBR.b, 1.0);
-                    }
-                    if (tryGet(props, AI_MATKEY_METALLIC_FACTOR, metallicFactorPBR))
-                    {
-                        pbrMat.metallicFactor = metallicFactorPBR;
-                    }
-                    if (tryGet(props, AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactorPBR))
-                    {
-                        pbrMat.roughnessFactor = roughnessFactorPBR;
-                    }
-                    if (tryGet(props, AI_MATKEY_EMISSIVE_INTENSITY, emissiveIntensityPBR))
-                    {
-                        pbrMat.emissiveColorIntensity = glm::vec4(emissiveIntensityPBR.r,
-                                                                  emissiveIntensityPBR.g,
-                                                                  emissiveIntensityPBR.b,
-                                                                  emissiveIntensityPBR.a);
-                    }
-
-                    // Textures
-                    pbrMat.albedoIndex            = loadTexture(material, aiTextureType_DIFFUSE);
-                    pbrMat.alphaMaskIndex         = loadTexture(material, aiTextureType_OPACITY);
-                    pbrMat.metallicIndex          = loadTexture(material, aiTextureType_METALNESS);
-                    pbrMat.roughnessIndex         = loadTexture(material, aiTextureType_DIFFUSE_ROUGHNESS);
-                    pbrMat.specularIndex          = loadTexture(material, aiTextureType_SPECULAR);
-                    pbrMat.normalIndex            = loadTexture(material, aiTextureType_NORMALS);
-                    pbrMat.aoIndex                = loadTexture(material, aiTextureType_LIGHTMAP);
-                    pbrMat.emissiveIndex          = loadTexture(material, aiTextureType_EMISSIVE);
-                    pbrMat.metallicRoughnessIndex = loadTexture(material, aiTextureType_GLTF_METALLIC_ROUGHNESS);
-
-                    // Double sided?
-                    bool doubleSided = false;
-                    if (tryGet(props, AI_MATKEY_TWOSIDED, doubleSided))
-                    {
-                        pbrMat.doubleSided = doubleSided;
-                    }
-
-                    // Unhandled properties warning
-                    for (auto& [k, v] : props)
-                    {
-                        if (!v.parsed)
-                        {
-                            VULTRA_CORE_WARN(
-                                "[MeshLoader] Material {} has unhandled property: key='{}' semantic={} index={}",
-                                pbrMat.name,
-                                k.key,
-                                k.semantic,
-                                k.index);
-                        }
-                    }
-
-                    // Log material info
-                    VULTRA_CORE_TRACE("[MeshLoader] Loaded Material[{}]: [{}]", i, pbrMat.toString());
-
-                    mesh.materials[i] = pbrMat;
-                }
-            };
-
-            std::function<void(const aiNode*, const aiScene*)> processNode;
-            processNode = [&processMesh, &processNode, &vertexOffset, &indexOffset, &mesh](const aiNode*  aiNode,
-                                                                                           const aiScene* aiScene) {
-                for (uint32_t i = 0; i < aiNode->mNumMeshes; ++i)
-                {
-                    aiMesh* aiMesh = aiScene->mMeshes[aiNode->mMeshes[i]];
-                    processMesh(aiMesh, vertexOffset, indexOffset);
-                }
-
-                for (uint32_t i = 0; i < aiNode->mNumChildren; ++i)
-                {
-                    processNode(aiNode->mChildren[i], aiScene);
-                }
-            };
-
-            processMaterials(scene);
-            processNode(scene->mRootNode, scene);
-
-            // Cook AABB
-            mesh.aabb = AABB::build(mesh.vertices);
-
-            // Generate meshlets
-            generateMeshlets(mesh);
-
-            mesh.vertexBuffer = createRef<rhi::VertexBuffer>(
-                std::move(rd.createVertexBuffer(mesh.getVertexStride(), mesh.getVertexCount())));
-            auto stagingVertexBuffer =
-                rd.createStagingBuffer(mesh.getVertexStride() * mesh.getVertexCount(), mesh.vertices.data());
-
-            rhi::Buffer stagingIndexBuffer {};
-            if (mesh.indices.size() > 0)
-            {
-                mesh.indexBuffer = createRef<rhi::IndexBuffer>(std::move(
-                    rd.createIndexBuffer(static_cast<rhi::IndexType>(mesh.getIndexStride()), mesh.getIndexCount())));
-                stagingIndexBuffer =
-                    rd.createStagingBuffer(mesh.getIndexStride() * mesh.getIndexCount(), mesh.indices.data());
-            }
-
-            rd.execute(
-                [&](rhi::CommandBuffer& cb) {
-                    cb.copyBuffer(
-                        stagingVertexBuffer, *mesh.vertexBuffer, vk::BufferCopy {0, 0, stagingVertexBuffer.getSize()});
-                    if (stagingIndexBuffer)
-                    {
-                        cb.copyBuffer(
-                            stagingIndexBuffer, *mesh.indexBuffer, vk::BufferCopy {0, 0, stagingIndexBuffer.getSize()});
-                    }
-                },
-                true);
-
-            // Build material buffer (for bindless descriptors)
-            mesh.buildMaterialBuffer(rd);
-
-            // Build meshlet buffers for each sub-mesh
-            for (auto& sm : mesh.subMeshes)
-            {
-                sm.buildMeshletBuffers(rd);
-            }
-
-            mesh.buildRenderMesh(rd);
-
-            // Find light meshes (meshes with emissive materials)
-            for (const auto& sm : mesh.subMeshes)
-            {
-                if (sm.materialIndex < mesh.materials.size())
-                {
-                    const auto& mat = mesh.materials[sm.materialIndex];
-                    if (mat.emissiveColorIntensity.r > 0.0f || mat.emissiveColorIntensity.g > 0.0f ||
-                        mat.emissiveColorIntensity.b > 0.0f || mat.emissiveIndex > 0)
-                    {
-                        // This sub-mesh is emissive, add its vertices to light mesh
-                        std::vector<gfx::SimpleVertex> vertices;
-                        for (uint32_t vi = 0; vi < sm.vertexCount; ++vi)
-                        {
-                            const auto& v = mesh.vertices[sm.vertexOffset + vi];
-                            vertices.push_back(v);
-                        }
-                        mesh.lights.push_back(
-                            {.vertices = std::move(vertices), .colorIntensity = mat.emissiveColorIntensity});
-                        VULTRA_CORE_INFO(
-                            "[MeshLoader] Found light mesh in sub-mesh {}, material {}, total light vertices {}",
-                            sm.name,
-                            mesh.materials[sm.materialIndex].name,
-                            mesh.lights.back().vertices.size());
-                    }
-                }
-            }
+            // TODO: load
+            gfx::Mesh mesh {};
 
             return mesh;
         }

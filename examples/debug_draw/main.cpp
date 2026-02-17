@@ -48,7 +48,7 @@ public:
 
         // Set camera far plane based on model's AABB
         auto& rawMesh     = model.getComponent<RawMeshComponent>().mesh;
-        camComponent.zFar = rawMesh->aabb.getRadius() * 10.0f;
+        camComponent.zFar = rawMesh->info.aabb.getRadius() * 10.0f;
     }
 
     void onImGui() override
@@ -71,7 +71,7 @@ public:
 
         auto         model    = m_LogicScene.getEntityWithName(MODEL_ENTITY_NAME);
         auto&        rawMesh  = model.getComponent<RawMeshComponent>().mesh;
-        const auto&  aabb     = rawMesh->aabb;
+        const auto&  aabb     = rawMesh->info.aabb;
         const ddVec3 boxColor = {0.0f, 1.0f, 0.0f};
         dd::aabb(glm::value_ptr(aabb.min), glm::value_ptr(aabb.max), boxColor);
 
