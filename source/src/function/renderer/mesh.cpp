@@ -446,7 +446,7 @@ namespace vultra::gfx
         {
             rhi::RenderSubMesh rsm {};
 
-            assert(vertexBuffer != nullptr);
+            assert(gpuBuffers.vertexBuffer != nullptr);
 
             const bool wantBDA = HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
                                  HasFlagValues(features, rhi::RenderDeviceFeatureFlagBits::eRayQuery) ||

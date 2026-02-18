@@ -14,27 +14,54 @@ namespace vultra
         Window* Window::s_ActiveWindow = nullptr;
 
         Window::Window(Window&& other) noexcept :
-            emitter {std::move(other)}, m_Title(std::move(other.m_Title)), m_Extent(other.m_Extent),
-            m_Position(other.m_Position), m_CursorVisibility(other.m_CursorVisibility)
-        {}
-
-        Window::~Window()
+            emitter(std::move(other)), m_Title(std::move(other.m_Title)), m_Extent(other.m_Extent),
+            m_FrameBufferExtent(other.m_FrameBufferExtent), m_Position(other.m_Position), m_Cursor(other.m_Cursor),
+            m_CursorVisibility(other.m_CursorVisibility), m_MouseRelativeMode(other.m_MouseRelativeMode),
+            m_Resizable(other.m_Resizable), m_Fullscreen(other.m_Fullscreen), m_ShouldClose(other.m_ShouldClose),
+            m_IsMinimized(other.m_IsMinimized)
         {
-            SDL_DestroyWindow(m_SDL3WindowHandle);
-            SDL_Quit();
+            if (m_SDL3WindowHandle)
+            {
+                SDL_DestroyWindow(m_SDL3WindowHandle);
+                m_SDL3WindowHandle = nullptr;
+            }
 
-            clear();
+            m_SDL3WindowHandle = other.m_SDL3WindowHandle;
+
+            other.m_SDL3WindowHandle = nullptr;
+
+            s_ActiveWindow = this;
         }
+
+        Window::~Window() { clear(); }
 
         Window& Window::operator=(Window&& rhs) noexcept
         {
             if (this != &rhs)
             {
+                if (m_SDL3WindowHandle)
+                {
+                    SDL_DestroyWindow(m_SDL3WindowHandle);
+                    m_SDL3WindowHandle = nullptr;
+                }
+
                 emitter::operator=(std::move(rhs));
-                m_Title            = std::move(rhs.m_Title);
-                m_Extent           = rhs.m_Extent;
-                m_Position         = rhs.m_Position;
-                m_CursorVisibility = rhs.m_CursorVisibility;
+                m_SDL3WindowHandle  = rhs.m_SDL3WindowHandle;
+                m_Title             = std::move(rhs.m_Title);
+                m_Extent            = rhs.m_Extent;
+                m_FrameBufferExtent = rhs.m_FrameBufferExtent;
+                m_Position          = rhs.m_Position;
+                m_Cursor            = rhs.m_Cursor;
+                m_CursorVisibility  = rhs.m_CursorVisibility;
+                m_MouseRelativeMode = rhs.m_MouseRelativeMode;
+                m_Resizable         = rhs.m_Resizable;
+                m_Fullscreen        = rhs.m_Fullscreen;
+                m_ShouldClose       = rhs.m_ShouldClose;
+                m_IsMinimized       = rhs.m_IsMinimized;
+
+                rhs.m_SDL3WindowHandle = nullptr;
+
+                s_ActiveWindow = this;
             }
 
             return *this;
@@ -255,7 +282,17 @@ namespace vultra
             }
         }
 
-        void Window::close() { m_ShouldClose = true; }
+        void Window::close()
+        {
+            m_ShouldClose = true;
+            if (m_SDL3WindowHandle)
+            {
+                SDL_DestroyWindow(m_SDL3WindowHandle);
+                m_SDL3WindowHandle = nullptr;
+            }
+        }
+
+        void Window::quit() { SDL_Quit(); }
 
         Window::Builder& Window::Builder::setTitle(std::string_view title)
         {
@@ -304,9 +341,8 @@ namespace vultra
                        const bool             cursorVisible,
                        const bool             resizable,
                        const bool             fullscreen) :
-            m_Title(title),
-            m_Extent(extent), m_Position(position), m_CursorVisibility(cursorVisible), m_Resizable(resizable),
-            m_Fullscreen(fullscreen)
+            m_Title(title), m_Extent(extent), m_Position(position), m_CursorVisibility(cursorVisible),
+            m_Resizable(resizable), m_Fullscreen(fullscreen)
         {
             // Setup SDL
             if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))

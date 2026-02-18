@@ -33,6 +33,10 @@ namespace vultra
 
                     case eTask:
                         return vk::ShaderStageFlagBits::eTaskEXT;
+
+                    default:
+                        assert(false);
+                        return static_cast<vk::ShaderStageFlagBits>(0);
                 }
                 assert(false);
                 return static_cast<vk::ShaderStageFlagBits>(0);

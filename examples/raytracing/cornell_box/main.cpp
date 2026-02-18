@@ -282,9 +282,9 @@ public:
         m_MeshResource =
             resource::loadResource<gfx::MeshManager>("resources/models/CornellBox/CornellBox-Original.obj");
 
-        assert(m_MeshResource->lights.size() > 0);
-        assert(m_MeshResource->lights[0].vertices.size() >= 4);
-        // FIXME: lights
+        // // FIXME: lights
+        // assert(m_MeshResource->lights.size() > 0);
+        // assert(m_MeshResource->lights[0].vertices.size() >= 4);
         // for (size_t i = 0; i < 4; ++i)
         // {
         //     m_LightVertices[i] = glm::vec4(m_MeshResource->lights[0].vertices[i].position, 1.0f);

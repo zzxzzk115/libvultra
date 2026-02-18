@@ -64,6 +64,8 @@ namespace vultra
             void pollEvents();
             void close();
 
+            static void quit();
+
             class Builder
             {
             public:

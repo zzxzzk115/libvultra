@@ -21,8 +21,8 @@ namespace vultra
         Engine& operator=(Engine&&)      = delete;
         ~Engine()                        = default;
 
-        EngineContext&       context() { return m_Ctx; }
-        const EngineContext& context() const { return m_Ctx; }
+        EngineContext&       ctx() { return m_Ctx; }
+        const EngineContext& ctx() const { return m_Ctx; }
 
         // Register a core subsystem BEFORE initCore().
         // Ownership stays with Engine via unique_ptr.

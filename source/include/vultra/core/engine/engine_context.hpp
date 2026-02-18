@@ -21,9 +21,17 @@ namespace vultra
         vbase::ServiceRegistry services;
 
         // Engine framework components
-        FramePipeline*  framePipeline  = nullptr; // non-owning
-        FeatureManager* featureManager = nullptr; // non-owning
-        PluginManager*  pluginManager  = nullptr; // non-owning
+        FramePipeline*  framePipeline {nullptr};  // non-owning
+        FeatureManager* featureManager {nullptr}; // non-owning
+        PluginManager*  pluginManager {nullptr};  // non-owning
+
+        struct Config
+        {
+            std::string title {"Vultra App"};
+            uint32_t    windowWidth {1280};
+            uint32_t    windowHeight {720};
+            bool        enableVsync {true};
+        } config;
 
         // Per-frame state (optional)
         uint64_t frameIndex = 0;
