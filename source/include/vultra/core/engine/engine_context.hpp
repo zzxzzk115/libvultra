@@ -3,7 +3,7 @@
 #include "vultra/core/base/api.hpp"
 
 #include <vbase/module/module_registry.hpp>
-#include <vbase/patterns/service_registry.hpp>
+#include <vbase/service/service_registry.hpp>
 
 #include <cstdint>
 
