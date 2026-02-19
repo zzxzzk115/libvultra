@@ -5,16 +5,16 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
+#endif
 
 #include <ranges>
-#endif
 
 namespace vultra
 {
     static void* openLib(const char* path)
     {
 #if defined(_WIN32)
-        return (void*)::LoadLibraryA(path);
+        return ::LoadLibraryA(path);
 #else
         return ::dlopen(path, RTLD_NOW);
 #endif
@@ -24,7 +24,7 @@ namespace vultra
     {
 #if defined(_WIN32)
         if (h)
-            ::FreeLibrary((HMODULE)h);
+            ::FreeLibrary(static_cast<HMODULE>(h));
 #else
         if (h)
             ::dlclose(h);
@@ -34,7 +34,7 @@ namespace vultra
     static void* getSym(void* h, const char* sym)
     {
 #if defined(_WIN32)
-        return (void*)::GetProcAddress((HMODULE)h, sym);
+        return reinterpret_cast<void*>(::GetProcAddress(static_cast<HMODULE>(h), sym));
 #else
         return ::dlsym(h, sym);
 #endif
