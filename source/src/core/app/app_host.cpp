@@ -10,6 +10,8 @@ namespace vultra
         if (!m_Engine.initCore())
             return 1;
 
+        onPostConfigure(m_Engine);
+
         while (!onShouldClose())
         {
             onPollEvents();

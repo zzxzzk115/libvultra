@@ -11,6 +11,9 @@ namespace vultra
 {
     using fsec = std::chrono::duration<float>;
 
+#define ENGINE_SUBSYSTEM(x) \
+    const char* name() const override { return #x; }
+
     class VULTRA_API EngineSubsystem : public vbase::IModule
     {
     public:

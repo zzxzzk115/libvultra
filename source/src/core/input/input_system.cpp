@@ -1,10 +1,8 @@
 #include "vultra/core/input/input_system.hpp"
-#include "vultra/core/os/window_service.hpp"
+#include "vultra/core/services/window_service.hpp"
 
 namespace vultra
 {
-    const char* InputSystem::name() const { return "InputSystem"; }
-
     bool InputSystem::onInit()
     {
         ctx().services.provide<IInputService>(this);

@@ -21,6 +21,7 @@ namespace vultra
     protected:
         // App configuration entry point
         virtual void onConfigure(Engine& engine) = 0;
+        virtual void onPostConfigure(Engine& engine) {}
 
         // Platform loop hooks
         virtual void onPollEvents()        = 0;
