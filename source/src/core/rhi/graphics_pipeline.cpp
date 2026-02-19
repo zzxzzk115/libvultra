@@ -34,9 +34,12 @@ namespace vultra
                     case eTask:
                         return vk::ShaderStageFlagBits::eTaskEXT;
 
-                    default:
-                        assert(false);
-                        return static_cast<vk::ShaderStageFlagBits>(0);
+                    case ShaderType::eRayGen:
+                    case ShaderType::eMiss:
+                    case ShaderType::eClosestHit:
+                    case ShaderType::eAnyHit:
+                    case ShaderType::eIntersect:
+                        break;
                 }
                 assert(false);
                 return static_cast<vk::ShaderStageFlagBits>(0);

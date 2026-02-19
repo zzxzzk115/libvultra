@@ -484,6 +484,29 @@ namespace vultra
             };
         }
 
+        DrawIndirectBuffer RenderDevice::createDrawIndirectBuffer(const uint32_t         commandCount,
+                                                                  const DrawIndirectType type,
+                                                                  const AllocationHints  allocationHint) const
+        {
+            assert(m_MemoryAllocator);
+
+            vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eStorageBuffer |
+                                         vk::BufferUsageFlagBits::eTransferDst |
+                                         vk::BufferUsageFlagBits::eIndirectBuffer;
+
+            const auto stride = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
+                                                                     sizeof(vk::DrawIndirectCommand);
+
+            return DrawIndirectBuffer {Buffer {
+                                           m_MemoryAllocator,
+                                           commandCount * stride,
+                                           usage,
+                                           makeAllocationFlags(allocationHint),
+                                           vma::MemoryUsage::eCpuToGpu,
+                                       },
+                                       type};
+        }
+
         std::pair<std::size_t, vk::DescriptorSetLayout>
         RenderDevice::createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>& bindings)
         {
@@ -790,6 +813,59 @@ namespace vultra
             auto* mappedMemory = std::bit_cast<std::byte*>(buffer.map());
             std::memcpy(mappedMemory + offset, data, size);
             buffer.flush().unmap();
+            return *this;
+        }
+
+        RenderDevice& RenderDevice::uploadDrawIndirect(DrawIndirectBuffer&                     buffer,
+                                                       const std::vector<DrawIndirectCommand>& commands)
+        {
+            if (commands.empty())
+            {
+                return *this;
+            }
+
+            assert(buffer);
+            assert(m_Device);
+
+            const uint32_t maxCommands = buffer.getSize();
+
+            assert(commands.size() <= maxCommands);
+
+            std::byte* dst = static_cast<std::byte*>(buffer.map());
+
+            const auto type   = buffer.getDrawIndirectType();
+            const auto stride = buffer.getStride();
+
+            for (uint32_t i = 0; i < commands.size(); ++i)
+            {
+                const DrawIndirectCommand& cmd = commands[i];
+                std::byte*                 ptr = dst + i * stride;
+
+                if (type == DrawIndirectType::eIndexed)
+                {
+                    vk::DrawIndexedIndirectCommand vkCmd {};
+                    vkCmd.indexCount    = cmd.count;
+                    vkCmd.instanceCount = cmd.instanceCount;
+                    vkCmd.firstIndex    = cmd.first;
+                    vkCmd.vertexOffset  = cmd.vertexOffset;
+                    vkCmd.firstInstance = cmd.firstInstance;
+
+                    std::memcpy(ptr, &vkCmd, sizeof(vkCmd));
+                }
+                else
+                {
+                    vk::DrawIndirectCommand vkCmd {};
+                    vkCmd.vertexCount   = cmd.count;
+                    vkCmd.instanceCount = cmd.instanceCount;
+                    vkCmd.firstVertex   = cmd.first;
+                    vkCmd.firstInstance = cmd.firstInstance;
+
+                    std::memcpy(ptr, &vkCmd, sizeof(vkCmd));
+                }
+            }
+
+            buffer.flush().unmap();
+
             return *this;
         }
 
@@ -1173,6 +1249,7 @@ namespace vultra
             PRINT_FEATURE(eMeshShader);
             PRINT_FEATURE(eBufferDeviceAddress);
             PRINT_FEATURE(eDescriptorIndexing);
+            PRINT_FEATURE(eDrawIndirectCount);
 #undef PRINT_FEATURE
 
             // === Assign & Check Feature Flags ===
@@ -1191,6 +1268,7 @@ namespace vultra
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eMeshShader;
             }
+
             if (useOpenXR)
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eOpenXR;
