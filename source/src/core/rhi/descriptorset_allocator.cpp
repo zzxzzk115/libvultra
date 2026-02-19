@@ -21,7 +21,7 @@ namespace vultra
                 // clang-format off
                 auto poolSizes = std::vector<vk::DescriptorPoolSize>{
                     POOL_SIZE(eSampler, 0.26f),
-                    POOL_SIZE(eCombinedImageSampler, 5.4f),
+                    POOL_SIZE(eCombinedImageSampler, 10.24f),
                     POOL_SIZE(eSampledImage, 1.81f),
                     POOL_SIZE(eStorageImage, 0.12f),
                     POOL_SIZE(eUniformBuffer, 2.2f),
@@ -40,6 +40,9 @@ namespace vultra
                 createInfo.maxSets       = DescriptorPool::s_kSetsPerPool;
                 createInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
                 createInfo.pPoolSizes    = poolSizes.data();
+#if __APPLE__
+                createInfo.flags = vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind;
+#endif
 
                 vk::DescriptorPool descriptorPool {nullptr};
                 VK_CHECK(device.createDescriptorPool(&createInfo, nullptr, &descriptorPool),

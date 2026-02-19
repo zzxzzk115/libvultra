@@ -2,13 +2,9 @@
 
 namespace vultra
 {
-    CommonContext::CommonContext() : logger(Logger::Builder {}.build()), debugDraw(createRef<DebugDrawInterface>()) {}
+    CommonContext::CommonContext() : logger(Logger::Builder {}.build()) {}
 
-    void CommonContext::cleanup()
-    {
-        debugDraw.reset();
-        debugDraw = nullptr;
-    }
+    void CommonContext::cleanup() {}
 
     CommonContext commonContext;
 } // namespace vultra

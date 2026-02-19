@@ -15,23 +15,9 @@ namespace vultra
     {
         m_RenderDevice = &renderDevice;
         m_ColorFormat  = colorFormat;
-
-        // No depth test/write, no blending, default pipeline
-        m_LineGraphicsPipeline = rhi::GraphicsPipeline::Builder {}
-                                     .setColorFormats({colorFormat})
-                                     .setInputAssembly({
-                                         {0, {.type = rhi::VertexAttribute::Type::eFloat3, .offset = 0}},
-                                         {1, {.type = rhi::VertexAttribute::Type::eFloat3, .offset = 12}},
-                                         {2, {.type = rhi::VertexAttribute::Type::eFloat, .offset = 24}},
-                                     })
-                                     .addBuiltinShader(rhi::ShaderType::eVertex, debug_draw_vert_spv)
-                                     .addBuiltinShader(rhi::ShaderType::eFragment, debug_draw_frag_spv)
-                                     .setDepthStencil({.depthTest = false, .depthWrite = false})
-                                     .setBlending(0, {.enabled = false})
-                                     .setTopology(rhi::PrimitiveTopology::eLineList)
-                                     .build(renderDevice);
-
         m_VertexBuffer = renderDevice.createVertexBuffer(sizeof(DrawVertex), 4 * 1024 * 1024 / sizeof(DrawVertex));
+
+        m_NeedsPipelineRebuild = true; // Lazy-build
     }
 
     void DebugDrawInterface::setViewProjectionMatrix(const glm::mat4& matrix) { m_ViewProjectionMatrix = matrix; }
@@ -99,7 +85,10 @@ namespace vultra
         {
             fbInfo.depthAttachment = {.target = m_DepthTexture};
         }
-        cb.beginRendering(fbInfo);
+
+        buildPipelineIfNeeded();
+
+        cb.bindPipeline(m_LineGraphicsPipeline).beginRendering(fbInfo);
     }
 
     void DebugDrawInterface::endFrame()
@@ -137,8 +126,7 @@ namespace vultra
         m_RenderDevice->execute(
             [&](auto& cb) { cb.copyBuffer(staging, m_VertexBuffer, vk::BufferCopy {0, 0, dataSize}); });
 
-        m_CurrentCommandBuffer->bindPipeline(m_LineGraphicsPipeline)
-            .pushConstants(rhi::ShaderStages::eVertex, 0, &m_ViewProjectionMatrix)
+        m_CurrentCommandBuffer->pushConstants(rhi::ShaderStages::eVertex, 0, &m_ViewProjectionMatrix)
             .draw({
                 .vertexBuffer = &m_VertexBuffer,
                 .numVertices  = static_cast<uint32_t>(count),

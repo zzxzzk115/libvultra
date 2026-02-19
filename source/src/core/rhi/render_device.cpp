@@ -540,6 +540,9 @@ namespace vultra
             createInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
             createInfo.pBindings    = vkBindings.data();
             createInfo.pNext        = &flagsInfo;
+#if __APPLE__
+            createInfo.flags = vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool;
+#endif
 
             vk::DescriptorSetLayout descriptorSetLayout {nullptr};
             VK_CHECK(m_Device.createDescriptorSetLayout(&createInfo, nullptr, &descriptorSetLayout),
@@ -1217,10 +1220,7 @@ namespace vultra
                 VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
                 vk12.descriptorIndexing && vk12.shaderSampledImageArrayNonUniformIndexing &&
                     vk12.runtimeDescriptorArray && vk12.descriptorBindingPartiallyBound &&
-                    vk12.descriptorBindingVariableDescriptorCount);
-            add(RenderDeviceFeatureReportFlagBits::eDrawIndirectCount,
-                VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME,
-                vk12.drawIndirectCount);
+                    vk12.descriptorBindingVariableDescriptorCount && vk12.descriptorBindingUpdateUnusedWhilePending);
 
             // Summarize selected device
             VULTRA_CORE_INFO("[RenderDevice] Selected GPU: {}", props.deviceName.data());
@@ -1360,6 +1360,7 @@ namespace vultra
                 vk12Features.descriptorIndexing                        = VK_TRUE;
                 vk12Features.descriptorBindingVariableDescriptorCount  = VK_TRUE;
                 vk12Features.descriptorBindingPartiallyBound           = VK_TRUE;
+                vk12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
                 vk12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
                 vk12Features.runtimeDescriptorArray                    = VK_TRUE;
             }
@@ -2334,6 +2335,8 @@ namespace vultra
                 return nullptr;
             return m_LoadedTextures[index];
         }
+
+        void RenderDevice::addLoadedTexture(const Ref<rhi::Texture>& texture) { m_LoadedTextures.push_back(texture); }
 
         std::vector<const rhi::Texture*> RenderDevice::getAllLoadedTextures()
         {

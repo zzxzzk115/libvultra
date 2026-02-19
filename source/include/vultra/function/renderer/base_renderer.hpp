@@ -33,6 +33,8 @@ namespace vultra
 
             virtual void onImGui() {}
 
+            virtual void onUpdate(const fsec dt) {}
+
             virtual void render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) = 0;
 
             virtual void setScene(LogicScene* scene) {}

@@ -1,6 +1,4 @@
 #include "vultra/function/app/xr_app.hpp"
-#include "vultra/function/openxr/ext/xr_eyetracker.hpp"
-#include "vultra/function/openxr/xr_controller.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
 #include "vultra/function/service/services.hpp"
 
@@ -106,24 +104,6 @@ namespace vultra
                     if (acquiredNextFrame)
                     {
                         onRender(cb, m_FrameController.getCurrentTarget(), deltaTime);
-
-                        if (dd::hasPendingDraws())
-                        {
-                            auto&                      backBuffer = m_FrameController.getCurrentTarget().texture;
-                            const rhi::FramebufferInfo framebufferInfo {
-                                .area             = rhi::Rect2D {.extent = backBuffer.getExtent()},
-                                .colorAttachments = {
-                                    {
-                                        .target = &backBuffer,
-                                    },
-                                }};
-                            commonContext.debugDraw->updateColorFormat(backBuffer.getPixelFormat());
-                            commonContext.debugDraw->bindDepthTexture(nullptr); // No depth texture bound
-                            commonContext.debugDraw->buildPipelineIfNeeded();
-                            commonContext.debugDraw->beginFrame(cb, framebufferInfo);
-                            dd::flush(deltaTime.count());
-                            commonContext.debugDraw->endFrame();
-                        }
                     }
                 }
             }
@@ -156,7 +136,6 @@ namespace vultra
             m_Headset.endFrame();
         }
 
-        dd::shutdown();
         commonContext.cleanup();
         m_RenderDevice->waitIdle();
         service::Services::reset();

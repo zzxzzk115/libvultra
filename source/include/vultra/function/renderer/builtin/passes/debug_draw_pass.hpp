@@ -7,6 +7,8 @@
 
 namespace vultra
 {
+    class DebugDrawInterface;
+
     namespace gfx
     {
         enum class DebugDrawMode
@@ -20,9 +22,12 @@ namespace vultra
             friend class BasePass;
 
         public:
-            explicit DebugDrawPass(rhi::RenderDevice&);
+            explicit DebugDrawPass(rhi::RenderDevice&, DebugDrawInterface& debugDrawInterface);
 
             void addPass(FrameGraph&, FrameGraphBlackboard&, const fsec, const glm::mat4& viewProjectionMatrix);
+
+        private:
+            DebugDrawInterface& m_DebugDrawInterface;
         };
     } // namespace gfx
 } // namespace vultra

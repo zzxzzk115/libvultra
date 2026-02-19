@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/function/debug_draw/debug_draw_interface.hpp"
 #include "vultra/function/framegraph/render_context.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
 #include "vultra/function/renderer/base_renderer.hpp"
@@ -67,6 +68,8 @@ namespace vultra
             ~BuiltinRenderer() override;
 
             virtual void onImGui() override;
+
+            virtual void onUpdate(const fsec dt) override;
 
             virtual void render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt) override final;
 
@@ -159,6 +162,8 @@ namespace vultra
             MeshletGBufferPass*  m_MeshletGBufferPass {nullptr};
 
             std::vector<Ref<DefaultMesh>> m_AreaLightMeshes; // Keep alive for raytracing purposes
+
+            DebugDrawInterface m_DebugDrawInterface;
         };
     } // namespace gfx
 } // namespace vultra

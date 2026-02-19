@@ -24,16 +24,33 @@ rule("vulkansdk")
 
             local utils = {}
             table.insert(utils, target:is_plat("windows") and "vulkan-1" or "vulkan")
-    
+
+            ----------------------------------------------------------------
+            -- macOS specific: add rpath so that executable can locate
+            -- libvulkan.dylib at runtime. Without this, the program may
+            -- fail to load Vulkan loader outside the SDK shell.
+            ----------------------------------------------------------------
+            if target:is_plat("macosx") then
+                target:add("rpathdirs", vulkansdk.linkdirs[1], { public = true })
+
+                -- Force linker to embed LC_RPATH entry
+                target:add("ldflags",
+                    "-Wl,-rpath," .. vulkansdk.linkdirs[1],
+                    { force = true, public = true })
+            end
+            ----------------------------------------------------------------
+
             for _, util in ipairs(utils) do
                 if not find_library(util, vulkansdk.linkdirs) then
                     wprint(format("The library %s for %s is not found!", util, target:arch()))
                     return
                 end
+
                 -- add vulkan library
                 lib_name = target:is_plat("windows") and util or "lib" .. util
                 lib_path = path.join(vulkansdk.linkdirs[1], lib_name .. suffix)
                 print("Linking Vulkan library: " .. lib_path .. " for target: " .. target:name())
+
                 target:add("links", lib_path, { public = true })
             end
         end

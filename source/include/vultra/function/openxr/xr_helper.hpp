@@ -106,7 +106,7 @@ namespace xrutils
         return path;
     }
 
-    // Creates an OpenXR action with a given names, returns false on error
+    // Creates an OpenXR action with given names, returns false on error
     inline bool createAction(const XrActionSet&         actionSet,
                              const std::vector<XrPath>& paths,
                              const std::string&         actionName,
@@ -121,13 +121,18 @@ namespace xrutils
         actionCreateInfo.subactionPaths      = paths.data();
 
         memcpy(actionCreateInfo.actionName, actionName.data(), actionName.length() + 1u);
+
         memcpy(actionCreateInfo.localizedActionName, localizedActionName.data(), localizedActionName.length() + 1u);
 
         XrResult result = xrCreateAction(actionSet, &actionCreateInfo, &action);
         return XR_SUCCEEDED(result);
     }
 
-    // Updates an action state for a given action and path in pose format, returns false on error
+    // -------------------------------------------------------
+    // Action State Updates
+    // -------------------------------------------------------
+
+    // Updates an action state for a given action and path in pose format
     inline bool updateActionStatePose(const XrSession&   session,
                                       const XrAction&    action,
                                       const XrPath&      path,
@@ -139,10 +144,11 @@ namespace xrutils
         actionStateGetInfo.subactionPath = path;
 
         const XrResult result = xrGetActionStatePose(session, &actionStateGetInfo, &state);
+
         return XR_SUCCEEDED(result);
     }
 
-    // Updates an action state for a given action and path in float format, returns false on error
+    // Updates an action state for a given action and path in float format
     inline bool updateActionStateFloat(const XrSession&    session,
                                        const XrAction&     action,
                                        const XrPath&       path,
@@ -154,8 +160,47 @@ namespace xrutils
         actionStateGetInfo.subactionPath = path;
 
         const XrResult result = xrGetActionStateFloat(session, &actionStateGetInfo, &state);
+
         return XR_SUCCEEDED(result);
     }
+
+    // -------------------------------------------------------
+    //  ADDED: Boolean Action State
+    // -------------------------------------------------------
+    inline bool updateActionStateBoolean(const XrSession&      session,
+                                         const XrAction&       action,
+                                         const XrPath&         path,
+                                         XrActionStateBoolean& state)
+    {
+        XrActionStateGetInfo actionStateGetInfo {};
+        actionStateGetInfo.type          = XR_TYPE_ACTION_STATE_GET_INFO;
+        actionStateGetInfo.action        = action;
+        actionStateGetInfo.subactionPath = path;
+
+        const XrResult result = xrGetActionStateBoolean(session, &actionStateGetInfo, &state);
+
+        return XR_SUCCEEDED(result);
+    }
+
+    // -------------------------------------------------------
+    //  ADDED: Vector2 Action State
+    // -------------------------------------------------------
+    inline bool updateActionStateVector2(const XrSession&       session,
+                                         const XrAction&        action,
+                                         const XrPath&          path,
+                                         XrActionStateVector2f& state)
+    {
+        XrActionStateGetInfo actionStateGetInfo {};
+        actionStateGetInfo.type          = XR_TYPE_ACTION_STATE_GET_INFO;
+        actionStateGetInfo.action        = action;
+        actionStateGetInfo.subactionPath = path;
+
+        const XrResult result = xrGetActionStateVector2f(session, &actionStateGetInfo, &state);
+
+        return XR_SUCCEEDED(result);
+    }
+
+    // -------------------------------------------------------
 
     inline std::string resultToString(XrInstance instance, XrResult result)
     {
@@ -163,4 +208,5 @@ namespace xrutils
         xrResultToString(instance, result, buffer);
         return std::string(buffer);
     }
+
 } // namespace xrutils

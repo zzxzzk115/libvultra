@@ -2,6 +2,8 @@
 #include "vultra/core/color/color.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
+#include "vultra/core/rhi/swapchain.hpp"
+#include "vultra/function/debug_draw/debug_draw_interface.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/renderer/area_light.hpp"
 #include "vultra/function/renderer/builtin/passes/blit_pass.hpp"
@@ -46,6 +48,13 @@ namespace vultra
             BaseRenderer(rd), m_SwapChainFormat(swapChainFormat), m_TransientResources(rd), m_CubemapConverter(rd),
             m_IBLDataGenerator(rd)
         {
+            // Initialize debug draw interface and library
+            m_DebugDrawInterface.initialize(rd,
+                                            swapChainFormat == rhi::Swapchain::Format::eLinear ?
+                                                rhi::PixelFormat::eRGBA8_UNorm :
+                                                rhi::PixelFormat::eRGBA8_sRGB);
+            dd::initialize(&m_DebugDrawInterface);
+
             m_DepthPrePass         = new DepthPrePass(rd);
             m_GBufferPass          = new GBufferPass(rd);
             m_DeferredLightingPass = new DeferredLightingPass(rd);
@@ -55,7 +64,7 @@ namespace vultra
             m_FXAAPass             = new FXAAPass(rd);
             m_FinalPass            = new FinalPass(rd);
             m_BlitPass             = new BlitPass(rd);
-            m_DebugDrawPass        = new DebugDrawPass(rd);
+            m_DebugDrawPass        = new DebugDrawPass(rd, m_DebugDrawInterface);
             m_ColorBlendPass       = new ColorBlendPass(rd);
 
             m_UIPass = new UIPass(rd);
@@ -100,6 +109,9 @@ namespace vultra
 
             delete m_MeshletDepthPrePass;
             delete m_MeshletGBufferPass;
+
+            // Shutdown debug draw library
+            dd::shutdown();
         }
 
         void BuiltinRenderer::onImGui()
@@ -191,6 +203,12 @@ namespace vultra
 
                 ImGui::Unindent(5.0f);
             }
+        }
+
+        void BuiltinRenderer::onUpdate(const fsec dt)
+        {
+            m_FrameInfo.deltaTime = dt.count();
+            m_FrameInfo.time += m_FrameInfo.deltaTime;
         }
 
         void BuiltinRenderer::render(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
@@ -597,13 +615,16 @@ namespace vultra
                     // FXAA
                     sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
 
-                    // Debug draw
-                    m_DebugDrawPass->addPass(fg, blackboard, dt, m_CameraInfo.viewProjection);
-                    auto& debugDrawData = blackboard.get<DebugDrawData>();
+                    if (dd::hasPendingDraws())
+                    {
+                        // Debug draw
+                        m_DebugDrawPass->addPass(fg, blackboard, dt, m_CameraInfo.viewProjection);
+                        auto& debugDrawData = blackboard.get<DebugDrawData>();
 
-                    // Color blend
-                    sceneColor.aa = m_ColorBlendPass->blend(
-                        fg, debugDrawData.debugDraw, sceneColor.aa, BlendType::eAdditive, ColorRange::eLDR);
+                        // Color blend
+                        sceneColor.aa = m_ColorBlendPass->blend(
+                            fg, debugDrawData.debugDraw, sceneColor.aa, BlendType::eAdditive, ColorRange::eLDR);
+                    }
 
                     // Final composition
                     m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
@@ -628,13 +649,10 @@ namespace vultra
 #endif
 
                 m_TransientResources.update();
-
-                m_FrameInfo.deltaTime = dt.count();
-                m_FrameInfo.time += m_FrameInfo.deltaTime;
             }
         }
 
-        void BuiltinRenderer::renderRayTracing(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec dt)
+        void BuiltinRenderer::renderRayTracing(rhi::CommandBuffer& cb, rhi::Texture* renderTarget, const fsec /*dt*/)
         {
             {
                 ZoneScopedN("Prepare Attachments");
@@ -708,9 +726,6 @@ namespace vultra
 #endif
 
                 m_TransientResources.update();
-
-                m_FrameInfo.deltaTime = dt.count();
-                m_FrameInfo.time += m_FrameInfo.deltaTime;
             }
         }
 
@@ -793,13 +808,16 @@ namespace vultra
                     // FXAA
                     sceneColor.aa = m_FXAAPass->aa(fg, sceneColor.ldr);
 
-                    // Debug draw
-                    m_DebugDrawPass->addPass(fg, blackboard, dt, m_CameraInfo.viewProjection);
-                    auto& debugDrawData = blackboard.get<DebugDrawData>();
+                    if (dd::hasPendingDraws())
+                    {
+                        // Debug draw
+                        m_DebugDrawPass->addPass(fg, blackboard, dt, m_CameraInfo.viewProjection);
+                        auto& debugDrawData = blackboard.get<DebugDrawData>();
 
-                    // Color blend
-                    sceneColor.aa = m_ColorBlendPass->blend(
-                        fg, debugDrawData.debugDraw, sceneColor.aa, BlendType::eAdditive, ColorRange::eLDR);
+                        // Color blend
+                        sceneColor.aa = m_ColorBlendPass->blend(
+                            fg, debugDrawData.debugDraw, sceneColor.aa, BlendType::eAdditive, ColorRange::eLDR);
+                    }
 
                     // Final composition
                     m_FinalPass->compose(fg, blackboard, m_Settings.outputMode, backBuffer);
@@ -824,9 +842,6 @@ namespace vultra
 #endif
 
                 m_TransientResources.update();
-
-                m_FrameInfo.deltaTime = dt.count();
-                m_FrameInfo.time += m_FrameInfo.deltaTime;
             }
         }
 
