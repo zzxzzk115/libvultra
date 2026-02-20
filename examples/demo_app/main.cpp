@@ -3,6 +3,7 @@
 #include <vultra/core/input/input_system.hpp>
 #include <vultra/core/os/window_system.hpp>
 #include <vultra/core/rhi/graphics_pipeline.hpp>
+#include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/camera/camera_system.hpp>
 #include <vultra/function/rendering/backend/render_backend_system.hpp>
 #include <vultra/function/rendering/render_system.hpp>
@@ -134,6 +135,8 @@ protected:
         auto& backendSystem = engine.emplaceSubsystem<RenderBackendSystem>();
         auto& renderSystem  = engine.emplaceSubsystem<RenderSystem>();
         renderSystem.registerRenderer(triangleRenderer);
+
+        engine.emplaceSubsystem<AssetSystem>();
     }
 
     void onPollEvents() override

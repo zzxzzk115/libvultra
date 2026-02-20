@@ -1,11 +1,9 @@
 #include "vultra/function/resource/raw_resource_loader.hpp"
 #include "vultra/core/base/common_context.hpp"
-#include "vultra/core/rhi/alpha_mode.hpp"
 #include "vultra/core/rhi/graphics_pipeline.hpp"
 #include "vultra/core/rhi/render_device.hpp"
+#include "vultra/core/rhi/texture.hpp"
 #include "vultra/core/rhi/util.hpp"
-#include "vultra/function/renderer/mesh_manager.hpp"
-#include "vultra/function/renderer/texture_manager.hpp"
 
 #include <vasset/vasset.hpp>
 
@@ -341,6 +339,11 @@ namespace vultra
                 return std::unexpected {"Failed to load VTexture."};
             }
 
+            return loadTextureVTexture(vtexture, rd);
+        }
+
+        std::expected<rhi::Texture, std::string> loadTextureVTexture(vasset::VTexture& vtexture, rhi::RenderDevice& rd)
+        {
             auto fileFormat = vtexture.fileFormat;
 
             switch (fileFormat)

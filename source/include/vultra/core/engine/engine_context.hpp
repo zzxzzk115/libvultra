@@ -39,6 +39,8 @@ namespace vultra
             Logger::Level                    logLevel {Logger::Level::eTrace};
             rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eAdaptive};
             rhi::Swapchain::Format           swapchainFormat {rhi::Swapchain::Format::eLinear};
+
+            bool loadFromVPK {false};
         } config;
 
         // Per-frame state (optional)

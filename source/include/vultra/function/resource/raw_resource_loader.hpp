@@ -21,6 +21,8 @@ namespace vultra
 
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureVTexture(const std::filesystem::path&,
                                                                                    rhi::RenderDevice&);
+        [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureVTexture(vasset::VTexture&,
+                                                                                   rhi::RenderDevice&);
 
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureSTB(const std::filesystem::path&,
                                                                               rhi::RenderDevice&);
