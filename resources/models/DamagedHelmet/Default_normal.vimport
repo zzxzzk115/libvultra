@@ -4,7 +4,7 @@ importer="texture"
 uid="9587beb4d33ab1ed0a7ca7850550a5f2"
 
 [source]
-file="models\DamagedHelmet\Default_normal.jpg"
+file="models/DamagedHelmet/Default_normal.jpg"
 
 [output]
 file="imported/texture/Default_normal"

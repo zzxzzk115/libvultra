@@ -264,11 +264,9 @@ namespace vultra
             openxr::XRDevice* getXRDevice() const { return m_XRDevice; }
 
             // Bindless
-            Ref<rhi::Texture>                getTextureByIndex(const uint32_t index);
-            void                             addLoadedTexture(const Ref<rhi::Texture>& texture);
-            std::vector<const rhi::Texture*> getAllLoadedTextures();
-            void                             clearLoadedTextures() { m_LoadedTextures.clear(); }
-            Ref<rhi::Buffer>                 createBindlessStorageBuffer(AllocationHints = AllocationHints::eNone);
+            // Bindless resource ownership is higher-level (e.g., resource::GpuScene).
+            // RenderDevice only provides helpers for creating bindless-capable resources.
+            Ref<rhi::Buffer> createBindlessStorageBuffer(AllocationHints = AllocationHints::eNone);
 
         private:
             void createXRDevice();
@@ -329,7 +327,6 @@ namespace vultra
             openxr::XRDevice* m_XRDevice {nullptr};
 
             // Textures loaded from files, used for bindless textures
-            std::vector<Ref<rhi::Texture>> m_LoadedTextures;
         };
     } // namespace rhi
 } // namespace vultra

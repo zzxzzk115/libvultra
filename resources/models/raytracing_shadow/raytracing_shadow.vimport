@@ -4,7 +4,7 @@ importer="mesh"
 uid="2f4eac020826e9fdac054a764ea45dc2"
 
 [source]
-file="models\raytracing_shadow\raytracing_shadow.gltf"
+file="models/raytracing_shadow/raytracing_shadow.gltf"
 
 [output]
 file="imported/mesh/raytracing_shadow"

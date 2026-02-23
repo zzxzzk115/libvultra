@@ -4,7 +4,7 @@ importer="texture"
 uid="794b8fb21e3d9eab66387687b04f912c"
 
 [source]
-file="models\Sponza\6593109234861095314.jpg"
+file="models/Sponza/6593109234861095314.jpg"
 
 [output]
 file="imported/texture/6593109234861095314"

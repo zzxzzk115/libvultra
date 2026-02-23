@@ -13,7 +13,7 @@ namespace vultra
         Logger()              = delete;
         Logger(const Logger&) = delete;
         Logger(Logger&&) noexcept;
-        ~Logger() override;
+        ~Logger();
 
         Logger& operator=(const Logger&) = delete;
         Logger& operator=(Logger&&) noexcept;

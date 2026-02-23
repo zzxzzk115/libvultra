@@ -200,21 +200,17 @@ namespace vultra
                 Builder& operator=(const Builder&)     = delete;
                 Builder& operator=(Builder&&) noexcept = delete;
 
-                // PixelFormat can contain stencil bits (might also be Undefined).
                 Builder& setDepthFormat(const PixelFormat);
                 Builder& setDepthBias(const DepthBias&);
-                // @param Can be empty
+
                 Builder& setColorFormats(std::initializer_list<PixelFormat>);
                 Builder& setColorFormats(std::span<const PixelFormat>);
 
-                // Do not omit vertex attributes that your shader does not use
-                // (in that case use kIgnoreVertexAttribute as an offset).
                 Builder& setInputAssembly(const VertexAttributes&);
                 Builder& setTopology(const PrimitiveTopology);
 
                 Builder& setPipelineLayout(PipelineLayout);
-                // If a shader of a given type is already specified, then its content will
-                // be overwritten with the given code.
+
                 Builder& addShader(const ShaderType, const ShaderStageInfo&);
                 Builder& addBuiltinShader(const ShaderType, const SPIRV&);
 

@@ -230,11 +230,6 @@ namespace vultra
                 m_Device.waitIdle();
             }
 
-            for (auto& texture : m_LoadedTextures)
-            {
-                texture.reset();
-            }
-
             for (auto [_, layout] : m_DescriptorSetLayouts)
             {
                 m_Device.destroyDescriptorSetLayout(layout);
@@ -1477,7 +1472,9 @@ namespace vultra
 #endif
         }
 
+        // NOLINTBEGIN
         void RenderDevice::createTracky() { TRACKY_STARTUP(m_Device, 64 * 1024); }
+        // NOLINTEND
 
         vk::CommandBuffer RenderDevice::allocateCommandBuffer() const
         {
@@ -2251,50 +2248,15 @@ namespace vultra
             };
         }
 
-        Ref<rhi::Texture> RenderDevice::getTextureByIndex(const uint32_t index)
-        {
-            if (index >= m_LoadedTextures.size())
-                return nullptr;
-            return m_LoadedTextures[index];
-        }
-
-        void RenderDevice::addLoadedTexture(const Ref<rhi::Texture>& texture) { m_LoadedTextures.push_back(texture); }
-
-        std::vector<const rhi::Texture*> RenderDevice::getAllLoadedTextures()
-        {
-            std::vector<const rhi::Texture*> textures;
-            textures.reserve(m_LoadedTextures.size());
-            for (const auto& tex : m_LoadedTextures)
-            {
-                if (tex)
-                    textures.push_back(tex.get());
-            }
-            return textures;
-        }
-
         Ref<rhi::Buffer> RenderDevice::createBindlessStorageBuffer(AllocationHints allocationHint)
         {
             assert(m_MemoryAllocator);
 
-            // Analyze texture memory usage
-            vk::DeviceSize totalTextureMemory = 0;
-            for (const auto& texture : m_LoadedTextures)
-            {
-                if (texture)
-                {
-                    const auto& extent = texture->getExtent();
-                    const auto& depth  = texture->getDepth() > 0 ? texture->getDepth() : 1;
-                    // Calculate the memory usage for this texture
-                    vk::DeviceSize textureSize =
-                        extent.width * extent.height * depth * getBytesPerPixel(texture->getPixelFormat());
-                    totalTextureMemory += textureSize;
-                }
-            }
-
-            // Create a large storage buffer for bindless resources
+            // Bindless ownership is managed at higher level (e.g., resource::GpuScene).
+            // Provide a minimal device-local storage buffer handle.
             Buffer buffer {
                 m_MemoryAllocator,
-                totalTextureMemory,
+                1,
                 vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,
                 makeAllocationFlags(allocationHint),
                 vma::MemoryUsage::eAutoPreferDevice,

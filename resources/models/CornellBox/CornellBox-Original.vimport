@@ -4,7 +4,7 @@ importer="mesh"
 uid="23d29e295e4ac658b881780ef040b999"
 
 [source]
-file="models\CornellBox\CornellBox-Original.obj"
+file="models/CornellBox/CornellBox-Original.obj"
 
 [output]
 file="imported/mesh/CornellBox-Original"

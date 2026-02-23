@@ -1,17 +1,40 @@
 #pragma once
 
+#include "vfilesystem/vfs/virtual_filesystem.hpp"
+#include "vultra/core/base/uuid.hpp"
 #include "vultra/core/engine/engine_subsystem.hpp"
+#include "vultra/function/asset/asset_cache.hpp"
+#include "vultra/function/asset/asset_handle.hpp"
+#include "vultra/function/resource/gpu_mesh.hpp"
+#include "vultra/function/resource/gpu_scene.hpp"
+#include "vultra/function/resource/gpu_texture.hpp"
 #include "vultra/function/services/asset_service.hpp"
 
 #include <vasset/uuid_resolver.hpp>
 #include <vasset/vasset_registry.hpp>
+#include <vasset/vmesh.hpp>
+#include <vasset/vtexture.hpp>
 
-#include <vfilesystem/vfs/virtual_filesystem.hpp>
-
+#include <filesystem>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace vultra
 {
+    struct AssetSystemDesc
+    {
+        std::string assetRoot {"resources"};
+        std::string importedFolder {"imported"};
+        std::string registryFile {"resources/imported/asset_registry.tsv"};
+        std::string scheme {"res"};
+        std::string vpkFile {"resources.vpk"};
+
+        // Whether to keep decoded CPU assets after GPU upload.
+        bool keepCpuCopy {false};
+    };
+
+    // Sync-only baseline. Async IO + main-thread upload will be added later without breaking APIs.
     class AssetSystem final : public EngineSubsystem, public IAssetService
     {
     public:
@@ -20,27 +43,55 @@ namespace vultra
         bool onInit() override;
         void onShutdown() override;
 
-        void setResolver(vasset::VUUIDResolver resolver);
+        void configure(const AssetSystemDesc& desc) override;
 
-        Ref<gfx::Mesh> loadMesh(std::string_view sourceUri) override;
-        Ref<gfx::Mesh> loadMesh(vbase::UUID uuid) override;
+        // ----- Sync loading -----
+        AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(const CoreUUID& uuid) override;
+        AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(const CoreUUID& uuid) override;
 
-        Ref<rhi::Texture> loadTexture(std::string_view sourceUri) override;
-        Ref<rhi::Texture> loadTexture(vbase::UUID uuid) override;
+        // Convenience: load by uri/path (must be resolvable by registry/resolver)
+        AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(std::string_view uri) override;
+        AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(std::string_view uri) override;
+
+        const vasset::VAssetRegistry& registry() const override { return m_Registry; }
+        const vasset::VUUIDResolver&  resolver() const override { return m_Resolver; }
+
+        resource::GpuScene&       gpuScene() override { return m_Scene; }
+        const resource::GpuScene& gpuScene() const override { return m_Scene; }
+
+        // Bindless texture index resolution.
+        // Returns 0 for invalid UUID.
+        uint32_t resolveBindlessTextureIndex(const CoreUUID& texUUID) override;
 
     private:
-        vbase::UUID resolveUUID(std::string_view sourceUri) const;
+        static std::vector<std::byte> readFileBytes(const std::filesystem::path& path);
 
-        Ref<gfx::Mesh>    loadMeshInternal(vbase::UUID uuid);
-        Ref<rhi::Texture> loadTextureInternal(vbase::UUID uuid);
+        uint32_t uploadTexture(const vasset::VTexture& cpuTex);
+        uint32_t uploadMesh(const vasset::VMesh& cpuMesh, uint32_t materialOffset);
+
+        // Creates a GpuMaterial entry and appends into gpuScene.materials.
+        // Returns index.
+        uint32_t createAndAppendGpuMaterial(const vasset::VMaterial& m);
+
+        bool resolveUUIDToPath(const CoreUUID& uuid, std::filesystem::path& outPath) const;
+        bool resolveUriToUUID(std::string_view uri, CoreUUID& outUUID) const;
 
     private:
-        vasset::VUUIDResolver  m_Resolver;
+        rhi::RenderDevice* m_RenderDevice {nullptr};
+        AssetSystemDesc    m_Desc;
+
         vasset::VAssetRegistry m_Registry;
-
-        std::unordered_map<vbase::UUID, Ref<gfx::Mesh>>    m_MeshCache;
-        std::unordered_map<vbase::UUID, Ref<rhi::Texture>> m_TextureCache;
+        vasset::VUUIDResolver  m_Resolver;
 
         vfilesystem::VirtualFileSystem m_VFS;
+
+        resource::GpuScene m_Scene;
+
+        // Caches (uuid -> record)
+        AssetCache<vasset::VMesh, resource::GpuMesh, 64>       m_MeshCache;
+        AssetCache<vasset::VTexture, resource::GpuTexture, 64> m_TextureCache;
+
+        // Texture UUID -> bindless index
+        std::unordered_map<CoreUUID, uint32_t> m_TexUUIDToBindlessIndex;
     };
 } // namespace vultra
