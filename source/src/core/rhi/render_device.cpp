@@ -211,6 +211,11 @@ namespace vultra
                 createXRDevice();
             }
 
+#if __APPLE__
+            m_FeatureFlag = m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eRayTracing;
+            m_FeatureFlag = m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eMeshShader;
+#endif
+
             createInstance();
             selectPhysicalDevice();
             findGenericQueue();
