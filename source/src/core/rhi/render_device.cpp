@@ -211,7 +211,7 @@ namespace vultra
                 createXRDevice();
             }
 
-#if __APPLE__
+#if __APPLE__ || (VULTRA_ENABLE_RENDERDOC && !NDEBUG)
             m_FeatureFlag = m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eRayTracing;
             m_FeatureFlag = m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eMeshShader;
 #endif
