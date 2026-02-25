@@ -470,4 +470,10 @@ namespace vultra
             return {};
         return loadMeshSync(uuid);
     }
+
+    std::string AssetSystem::resolveUri(const std::string_view uri) const
+    {
+        auto vbaseUri = vfilesystem::parse_uri(uri);
+        return m_Desc.assetRoot + vbaseUri.path.str().data();
+    }
 } // namespace vultra

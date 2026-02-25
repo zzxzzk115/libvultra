@@ -48,6 +48,8 @@ namespace vultra
         virtual const vasset::VAssetRegistry& registry() const = 0;
         virtual const vasset::VUUIDResolver&  resolver() const = 0;
 
+        virtual std::string resolveUri(const std::string_view uri) const = 0;
+
         // Allow overriding config (e.g., editor/runtime).
         virtual void configure(const AssetSystemDesc& desc) = 0;
     };

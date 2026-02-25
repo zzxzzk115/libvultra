@@ -1,0 +1,16 @@
+[vscn]
+version = 1
+root    = 1
+
+[node id=1 name="Root" parent=0]
+NameComponent/name = "Root"
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale    = (1, 1, 1)
+
+[node id=2 name="Cube" parent=1]
+NameComponent/name = "Cube"
+TransformComponent/position = (1, 2, 3)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale    = (1, 1, 1)
+MeshComponent/uuid = "123e4567-e89b-12d3-a456-426614174000"

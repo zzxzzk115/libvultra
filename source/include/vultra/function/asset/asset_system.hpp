@@ -56,6 +56,8 @@ namespace vultra
         const vasset::VAssetRegistry& registry() const override { return m_Registry; }
         const vasset::VUUIDResolver&  resolver() const override { return m_Resolver; }
 
+        std::string resolveUri(const std::string_view uri) const override;
+
         resource::GpuScene&       gpuScene() override { return m_Scene; }
         const resource::GpuScene& gpuScene() const override { return m_Scene; }
 

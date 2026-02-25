@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string_view>
 
 namespace vultra
 {
@@ -10,6 +11,7 @@ namespace vultra
         {
         public:
             static std::string readFileAllText(const std::filesystem::path& path);
+            static void        writeFileAllText(const std::filesystem::path& path, std::string_view text);
         };
     } // namespace os
 } // namespace vultra

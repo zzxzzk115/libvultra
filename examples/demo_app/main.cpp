@@ -8,6 +8,12 @@
 #include <vultra/function/rendering/backend/render_backend_system.hpp>
 #include <vultra/function/rendering/render_system.hpp>
 #include <vultra/function/rendering/srp/render_context.hpp>
+#include <vultra/function/scene/scene_system.hpp>
+#include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/scene_service.hpp>
+#include <vultra/function/world/components/mesh_component.hpp>
+#include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/world_system.hpp>
 
 using namespace vultra;
@@ -137,6 +143,43 @@ protected:
         renderSystem.registerRenderer(triangleRenderer);
 
         engine.emplaceSubsystem<AssetSystem>();
+        engine.emplaceSubsystem<SceneSystem>();
+    }
+
+    void onPostConfigure(Engine& engine) override
+    {
+        auto& assetService = engine.ctx().services.require<IAssetService>();
+        auto  mesh         = assetService.loadMeshSync("res://models/DamagedHelmet/DamagedHelmet.gltf");
+
+        VULTRA_CLIENT_INFO("Loaded mesh with uuid: {}", vbase::to_string(mesh.uuid()));
+
+        auto& sceneService = engine.ctx().services.require<ISceneService>();
+        auto  sceneLoaded  = sceneService.loadSceneSync("res://scenes/test.vscn");
+        if (!sceneLoaded)
+        {
+            return;
+        }
+
+        World world {};
+        bool  instantiated = sceneService.instantiateToWorld(world, true);
+        if (!instantiated)
+        {
+            return;
+        }
+
+        VULTRA_CLIENT_INFO("Loaded world from scene: \"res://scenes/test.vscn\"");
+
+        auto& registry = world.registry();
+        registry.view<NameComponent, TransformComponent>().each(
+            [](auto, NameComponent& name, TransformComponent& transform) {
+                std::cout << "Entity: " << name.name << "\n";
+
+                std::cout << " Position: " << transform.position.x << ", " << transform.position.y << ", "
+                          << transform.position.z << "\n";
+            });
+
+        registry.view<MeshComponent>().each(
+            [](auto, MeshComponent& mesh) { std::cout << " Mesh UUID: " << mesh.uuid << "\n"; });
     }
 
     void onPollEvents() override
