@@ -1,33 +1,57 @@
 #include "vultra/function/scene/vscn_writer.hpp"
 
 #include <sstream>
+#include <unordered_map>
 
 namespace vultra
 {
-    std::string VSceneWriter::write(const VSceneDocument& doc)
+    static void writeNode(std::ostringstream&                        out,
+                          const SceneNode&                           node,
+                          int                                        nodeId,
+                          int                                        parentId,
+                          std::unordered_map<const SceneNode*, int>& ids,
+                          int&                                       nextId)
     {
-        std::stringstream ss;
+        ids[&node] = nodeId;
 
-        ss << "[vscn]\n";
-        ss << "version = " << doc.version() << "\n";
-        ss << "root    = " << doc.rootId() << "\n\n";
+        out << "[node id=" << nodeId;
+        if (!node.name.empty())
+            out << " name=\"" << node.name << "\"";
+        out << " parent=" << parentId;
+        out << " uuid=\"" << node.id.toString() << "\"";
+        if (!node.prefabUri.empty())
+            out << " prefab=\"" << node.prefabUri << "\"";
+        out << "]\n";
 
-        for (const auto& n : doc.nodes())
+        for (const auto& p : node.properties)
         {
-            ss << "[node id=" << n.id;
-            if (!n.name.empty())
-                ss << " name=\"" << n.name << "\"";
-            ss << " parent=" << n.parent;
-            ss << "]\n";
-
-            for (const auto& p : n.properties)
-            {
-                ss << p.component << "/" << p.field << " = " << p.value << "\n";
-            }
-
-            ss << "\n";
+            out << p.component << "/" << p.field << " = " << p.value << "\n";
         }
 
-        return ss.str();
+        out << "\n";
+
+        for (const auto& ch : node.children)
+        {
+            const int cid = nextId++;
+            writeNode(out, *ch, cid, nodeId, ids, nextId);
+        }
+    }
+
+    std::string VscnWriter::writeToText(const SceneDocument& doc)
+    {
+        std::ostringstream out;
+
+        out << "[vscn]\n";
+        out << "version = " << doc.version << "\n";
+        out << "root    = 1\n\n";
+
+        if (!doc.root)
+            return out.str();
+
+        std::unordered_map<const SceneNode*, int> ids;
+        int                                       nextId = 2;
+        writeNode(out, *doc.root, 1, 0, ids, nextId);
+
+        return out.str();
     }
 } // namespace vultra

@@ -4,8 +4,8 @@
 
 namespace vultra
 {
-    struct MeshComponent
+    struct IDComponent
     {
-        CoreUUID mesh;
+        CoreUUID uuid;
     };
 } // namespace vultra

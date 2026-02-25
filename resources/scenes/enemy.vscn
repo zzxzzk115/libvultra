@@ -1,0 +1,9 @@
+[vscn]
+version = 1
+root    = 1
+
+[node id=1 name="Enemy" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0cbb"]
+NameComponent/name = "Enemy"
+TransformComponent/position = (1, 2, 3)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale    = (1, 1, 1)

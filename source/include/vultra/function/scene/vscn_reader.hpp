@@ -2,15 +2,14 @@
 
 #include "vultra/function/scene/vscn_document.hpp"
 
+#include <filesystem>
 #include <string_view>
 
 namespace vultra
 {
-    class VSceneReader
+    class VscnReader
     {
     public:
-        // Parse .vscn text into document.
-        // Throws std::runtime_error on malformed input.
-        static VSceneDocument parse(std::string_view text);
+        static SceneDocument readFromText(std::string_view text, const std::filesystem::path& baseDir = {});
     };
 } // namespace vultra

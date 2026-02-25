@@ -2,7 +2,10 @@
 
 namespace vultra
 {
-    CoreUUID CoreUUIDHelper::createStandardUUID() { return vbase::uuid_random(); }
+    CoreUUID CoreUUIDHelper::createStandardUUID() { return CoreUUID(vbase::uuid_random()); }
 
-    CoreUUID CoreUUIDHelper::getFromName(const std::string& name) { return vbase::uuid_from_string_key(name); }
+    CoreUUID CoreUUIDHelper::getFromName(const std::string& name)
+    {
+        return CoreUUID(vbase::uuid_from_string_key(name));
+    }
 } // namespace vultra

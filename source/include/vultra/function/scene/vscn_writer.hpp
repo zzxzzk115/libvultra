@@ -6,9 +6,9 @@
 
 namespace vultra
 {
-    class VSceneWriter
+    class VscnWriter
     {
     public:
-        static std::string write(const VSceneDocument& doc);
+        static std::string writeToText(const SceneDocument& doc);
     };
 } // namespace vultra

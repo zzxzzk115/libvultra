@@ -1,236 +1,270 @@
 #include "vultra/function/scene/vscn_reader.hpp"
+#include "vultra/core/base/uuid.hpp"
 
 #include <cctype>
+#include <filesystem>
+#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
 namespace vultra
 {
-    namespace
+    static inline std::string trim_copy(std::string_view s)
     {
-        inline void ltrim_inplace(std::string& s)
-        {
-            size_t i = 0;
-            while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
+        size_t b = 0;
+        while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])))
+            ++b;
+        size_t e = s.size();
+        while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
+            --e;
+        return std::string(s.substr(b, e - b));
+    }
+
+    static inline bool starts_with(std::string_view s, std::string_view p)
+    {
+        return s.size() >= p.size() && s.substr(0, p.size()) == p;
+    }
+
+    static inline std::unordered_map<std::string, std::string> parse_attrs(std::string_view inside)
+    {
+        // inside: "node id=1 name=\"Root\" parent=0 prefab=\"x\" uuid=\"...\""
+        std::unordered_map<std::string, std::string> out;
+
+        auto skip_ws = [&](size_t& i) {
+            while (i < inside.size() && std::isspace(static_cast<unsigned char>(inside[i])))
                 ++i;
-            s.erase(0, i);
-        }
+        };
 
-        inline void rtrim_inplace(std::string& s)
-        {
-            size_t i = s.size();
-            while (i > 0 && std::isspace(static_cast<unsigned char>(s[i - 1])))
-                --i;
-            s.erase(i);
-        }
+        size_t i = 0;
+        // first token (e.g. "node")
+        skip_ws(i);
+        while (i < inside.size() && !std::isspace(static_cast<unsigned char>(inside[i])))
+            ++i;
 
-        inline void trim_inplace(std::string& s)
+        while (i < inside.size())
         {
-            ltrim_inplace(s);
-            rtrim_inplace(s);
-        }
+            skip_ws(i);
+            if (i >= inside.size())
+                break;
 
-        inline bool starts_with(std::string_view s, std::string_view prefix)
-        {
-            return s.size() >= prefix.size() && s.substr(0, prefix.size()) == prefix;
-        }
+            size_t k0 = i;
+            while (i < inside.size() && inside[i] != '=' && !std::isspace(static_cast<unsigned char>(inside[i])))
+                ++i;
+            std::string key = std::string(inside.substr(k0, i - k0));
+            skip_ws(i);
+            if (i >= inside.size() || inside[i] != '=')
+                break;
+            ++i;
+            skip_ws(i);
 
-        std::string strip_comment(std::string line)
-        {
-            // '#' comments
-            if (auto pos = line.find('#'); pos != std::string::npos)
-                line = line.substr(0, pos);
-            // '//' comments
-            if (auto pos = line.find("//"); pos != std::string::npos)
-                line = line.substr(0, pos);
-            return line;
-        }
-
-        std::string unquote(std::string_view s)
-        {
-            if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') || (s.front() == '\'' && s.back() == '\'')))
+            std::string val;
+            if (i < inside.size() && inside[i] == '"')
             {
-                return std::string(s.substr(1, s.size() - 2));
+                ++i;
+                size_t v0 = i;
+                while (i < inside.size() && inside[i] != '"')
+                    ++i;
+                val = std::string(inside.substr(v0, i - v0));
+                if (i < inside.size() && inside[i] == '"')
+                    ++i;
             }
-            return std::string(s);
-        }
-
-        // Parse key=value pairs from something like: "node id=1 name=\"Root\" parent=0"
-        std::unordered_map<std::string, std::string> parse_kv_pairs(std::string_view header)
-        {
-            std::unordered_map<std::string, std::string> out;
-
-            size_t i = 0;
-            while (i < header.size())
+            else
             {
-                while (i < header.size() && std::isspace(static_cast<unsigned char>(header[i])))
+                size_t v0 = i;
+                while (i < inside.size() && !std::isspace(static_cast<unsigned char>(inside[i])))
                     ++i;
-                if (i >= header.size())
-                    break;
-
-                // key
-                size_t keyStart = i;
-                while (i < header.size() && header[i] != '=' && !std::isspace(static_cast<unsigned char>(header[i])))
-                    ++i;
-                size_t keyEnd = i;
-
-                while (i < header.size() && std::isspace(static_cast<unsigned char>(header[i])))
-                    ++i;
-                if (i >= header.size() || header[i] != '=')
-                {
-                    // token without '=' (e.g. "node")
-                    continue;
-                }
-                ++i; // '='
-
-                while (i < header.size() && std::isspace(static_cast<unsigned char>(header[i])))
-                    ++i;
-
-                // value (quoted or bare)
-                std::string value;
-                if (i < header.size() && (header[i] == '"' || header[i] == '\''))
-                {
-                    char   quote    = header[i++];
-                    size_t valStart = i;
-                    while (i < header.size() && header[i] != quote)
-                        ++i;
-                    if (i >= header.size())
-                        throw std::runtime_error("Unterminated quoted string in header");
-                    value = std::string(header.substr(valStart, i - valStart));
-                    ++i; // closing quote
-                }
-                else
-                {
-                    size_t valStart = i;
-                    while (i < header.size() && !std::isspace(static_cast<unsigned char>(header[i])))
-                        ++i;
-                    value = std::string(header.substr(valStart, i - valStart));
-                }
-
-                std::string key(header.substr(keyStart, keyEnd - keyStart));
-                if (!key.empty())
-                    out[std::move(key)] = std::move(value);
+                val = std::string(inside.substr(v0, i - v0));
             }
 
-            return out;
+            if (!key.empty())
+                out[key] = val;
         }
-    } // namespace
 
-    VSceneDocument VSceneReader::parse(std::string_view text)
+        return out;
+    }
+
+    SceneDocument VscnReader::readFromText(std::string_view text, const std::filesystem::path& /*baseDir*/)
     {
-        VSceneDocument doc;
-        doc.clear();
+        SceneDocument doc;
 
-        VSceneDocument::Node* currentNode = nullptr;
-        bool                  inVscn      = false;
+        std::unordered_map<int, std::unique_ptr<SceneNode>> nodes;
+        std::unordered_map<int, int>                        parentOf;
 
-        std::string line;
-        line.reserve(1024);
+        int         rootId        = -1;
+        int         currentNodeId = -1;
+        std::string currentSection;
 
-        size_t start = 0;
-        while (start <= text.size())
+        std::istringstream iss(text.data());
+        std::string        line;
+
+        while (std::getline(iss, line))
         {
-            size_t end = text.find('\n', start);
-            if (end == std::string_view::npos)
-                end = text.size();
-
-            line.assign(text.substr(start, end - start));
-            start = end + 1;
-
-            line = strip_comment(std::move(line));
-            trim_inplace(line);
-            if (line.empty())
+            std::string t = trim_copy(line);
+            if (t.empty() || t[0] == '#')
                 continue;
 
-            if (line.front() == '[' && line.back() == ']')
+            if (t.front() == '[' && t.back() == ']')
             {
-                std::string_view header = std::string_view(line).substr(1, line.size() - 2);
-                // Section name is first token
-                size_t           spacePos = header.find(' ');
-                std::string_view sectionName =
-                    (spacePos == std::string_view::npos) ? header : header.substr(0, spacePos);
-                std::string_view rest =
-                    (spacePos == std::string_view::npos) ? std::string_view {} : header.substr(spacePos + 1);
+                std::string inside = t.substr(1, t.size() - 2);
+                inside             = trim_copy(inside);
 
-                if (sectionName == "vscn")
+                if (inside == "vscn")
                 {
-                    inVscn      = true;
-                    currentNode = nullptr;
-                    continue;
-                }
-                if (sectionName == "node")
-                {
-                    if (!inVscn)
-                        throw std::runtime_error("[node] encountered before [vscn]");
-
-                    auto                 kv = parse_kv_pairs(rest);
-                    VSceneDocument::Node n;
-                    if (auto it = kv.find("id"); it != kv.end())
-                        n.id = std::stoi(it->second);
-                    else
-                        throw std::runtime_error("[node] missing id=");
-
-                    if (auto it = kv.find("parent"); it != kv.end())
-                        n.parent = std::stoi(it->second);
-                    else
-                        n.parent = 0;
-
-                    if (auto it = kv.find("name"); it != kv.end())
-                        n.name = it->second;
-
-                    doc.nodes().push_back(std::move(n));
-                    currentNode = &doc.nodes().back();
+                    currentSection = "vscn";
+                    currentNodeId  = -1;
                     continue;
                 }
 
-                throw std::runtime_error("Unknown section: [" + std::string(sectionName) + "]");
+                if (starts_with(inside, "node"))
+                {
+                    auto attrs = parse_attrs(inside);
+
+                    int id = 0;
+                    if (auto it = attrs.find("id"); it != attrs.end())
+                        id = std::stoi(it->second);
+                    else
+                        throw std::runtime_error("[node] missing id");
+
+                    currentNodeId  = id;
+                    currentSection = "node";
+
+                    auto node = std::make_unique<SceneNode>();
+
+                    // uuid
+                    if (auto it = attrs.find("uuid"); it != attrs.end())
+                    {
+                        vbase::UUID tmp {};
+                        vbase::try_parse_uuid(it->second.c_str(), tmp);
+                        node->id = CoreUUID(tmp);
+                    }
+                    else
+                    {
+                        node->id = CoreUUIDHelper::createStandardUUID();
+                    }
+
+                    if (auto it = attrs.find("name"); it != attrs.end())
+                        node->name = it->second;
+
+                    if (auto it = attrs.find("prefab"); it != attrs.end())
+                        node->prefabUri = it->second;
+
+                    int parent = 0;
+                    if (auto it = attrs.find("parent"); it != attrs.end())
+                        parent = std::stoi(it->second);
+                    parentOf[id] = parent;
+
+                    nodes[id] = std::move(node);
+                    continue;
+                }
+
+                // Unknown section, ignore
+                currentSection = inside;
+                currentNodeId  = -1;
+                continue;
             }
 
-            // Key-value under [vscn]
-            if (inVscn && !currentNode)
+            // key/value inside [vscn]
+            if (currentSection == "vscn")
             {
-                auto eq = line.find('=');
+                auto eq = t.find('=');
                 if (eq == std::string::npos)
-                    throw std::runtime_error("Malformed key=value in [vscn]");
-                std::string k = line.substr(0, eq);
-                std::string v = line.substr(eq + 1);
-                trim_inplace(k);
-                trim_inplace(v);
-
-                if (k == "version")
-                    doc.setVersion(std::stoi(v));
-                else if (k == "root")
-                    doc.setRootId(std::stoi(v));
+                    continue;
+                std::string key = trim_copy(std::string_view(t).substr(0, eq));
+                std::string val = trim_copy(std::string_view(t).substr(eq + 1));
+                if (key == "version")
+                    doc.version = static_cast<uint32_t>(std::stoul(val));
+                else if (key == "root")
+                    rootId = std::stoi(val);
                 continue;
             }
 
-            // Property under node: Component/field = value
-            if (!currentNode)
-                throw std::runtime_error("Property line outside of [node]");
+            // property line inside [node]
+            if (currentSection == "node" && currentNodeId != -1)
+            {
+                auto eq = t.find('=');
+                if (eq == std::string::npos)
+                    continue;
 
-            auto eq = line.find('=');
-            if (eq == std::string::npos)
-                throw std::runtime_error("Malformed property, expected '='");
+                std::string lhs = trim_copy(std::string_view(t).substr(0, eq));
+                std::string rhs = trim_copy(std::string_view(t).substr(eq + 1));
 
-            std::string lhs = line.substr(0, eq);
-            std::string rhs = line.substr(eq + 1);
-            trim_inplace(lhs);
-            trim_inplace(rhs);
+                auto slash = lhs.find('/');
+                if (slash == std::string::npos)
+                    continue;
 
-            auto slash = lhs.find('/');
-            if (slash == std::string::npos)
-                throw std::runtime_error("Malformed property, expected Component/field");
+                SceneProperty prop;
+                prop.component = trim_copy(std::string_view(lhs).substr(0, slash));
+                prop.field     = trim_copy(std::string_view(lhs).substr(slash + 1));
+                prop.value     = rhs;
 
-            VSceneDocument::Property p;
-            p.component = lhs.substr(0, slash);
-            p.field     = lhs.substr(slash + 1);
-            trim_inplace(p.component);
-            trim_inplace(p.field);
-            p.value = std::move(rhs);
+                nodes[currentNodeId]->properties.push_back(std::move(prop));
+            }
+        }
 
-            currentNode->properties.push_back(std::move(p));
+        if (nodes.empty())
+            return doc;
+
+        // Determine root
+        if (rootId <= 0)
+        {
+            // fallback: first node whose parent is 0
+            for (auto& [id, p] : parentOf)
+            {
+                if (p == 0)
+                {
+                    rootId = id;
+                    break;
+                }
+            }
+        }
+
+        if (rootId <= 0 || nodes.find(rootId) == nodes.end())
+        {
+            // fallback: smallest id
+            rootId = nodes.begin()->first;
+        }
+
+        // Build adjacency list: parentId -> [childIds]
+        std::unordered_map<int, std::vector<int>> children;
+        for (auto& [id, p] : parentOf)
+        {
+            children[p].push_back(id);
+        }
+
+        auto takeNode = [&](int id) -> std::unique_ptr<SceneNode> {
+            auto it = nodes.find(id);
+            if (it == nodes.end())
+                return nullptr;
+            auto ptr = std::move(it->second);
+            nodes.erase(it);
+            return ptr;
+        };
+
+        std::function<std::unique_ptr<SceneNode>(int)> build;
+        build = [&](int id) -> std::unique_ptr<SceneNode> {
+            auto n = takeNode(id);
+            if (!n)
+                return nullptr;
+            for (int cid : children[id])
+            {
+                if (cid == id)
+                    continue;
+                if (auto c = build(cid))
+                    n->children.push_back(std::move(c));
+            }
+            return n;
+        };
+
+        doc.root = build(rootId);
+
+        // Attach any other root-level nodes (parent=0) under doc.root.
+        for (int cid : children[0])
+        {
+            if (cid == rootId)
+                continue;
+            if (auto c = build(cid))
+                doc.root->children.push_back(std::move(c));
         }
 
         return doc;

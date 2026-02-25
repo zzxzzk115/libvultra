@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vbase/core/uuid.hpp>
+#include "vultra/core/base/uuid.hpp"
 
 #include <glm/mat4x4.hpp>
 #include <string>
@@ -16,7 +16,7 @@ namespace vultra
     // ECS CameraComponent should be cooked into this struct by CameraSystem.
     struct RenderCamera
     {
-        vbase::UUID uuid {};
+        CoreUUID uuid;
 
         // Debug / editor name (optional)
         std::string name;

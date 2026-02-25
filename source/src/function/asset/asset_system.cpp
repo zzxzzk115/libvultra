@@ -224,11 +224,11 @@ namespace vultra
                 p.baseColor       = m.core.pbrMR.baseColor;
                 p.metallicFactor  = m.core.pbrMR.metallicFactor;
                 p.roughnessFactor = m.core.pbrMR.roughnessFactor;
-                p.baseColorTex    = resolveBindlessTextureIndex(m.core.pbrMR.baseColorTexture.uuid);
-                p.normalTex       = resolveBindlessTextureIndex(m.core.pbrMR.normalTexture.uuid);
-                p.mrTex           = resolveBindlessTextureIndex(m.core.pbrMR.metallicRoughnessTexture.uuid);
-                p.occlusionTex    = resolveBindlessTextureIndex(m.core.pbrMR.ambientOcclusionTexture.uuid);
-                p.emissiveTex     = resolveBindlessTextureIndex(m.core.pbrMR.emissiveTexture.uuid);
+                p.baseColorTex    = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.baseColorTexture.uuid));
+                p.normalTex       = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.normalTexture.uuid));
+                p.mrTex           = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.metallicRoughnessTexture.uuid));
+                p.occlusionTex    = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.ambientOcclusionTexture.uuid));
+                p.emissiveTex     = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.emissiveTexture.uuid));
                 blockOffset       = allocBlock(&p, sizeof(p));
                 break;
             }
@@ -236,7 +236,7 @@ namespace vultra
                 gm.model = GpuMaterialModel::eUnlit;
                 MaterialParamsUnlit p;
                 p.color     = m.core.unlit.color;
-                p.colorTex  = resolveBindlessTextureIndex(m.core.unlit.colorTexture.uuid);
+                p.colorTex  = resolveBindlessTextureIndex(CoreUUID(m.core.unlit.colorTexture.uuid));
                 blockOffset = allocBlock(&p, sizeof(p));
                 break;
             }
@@ -246,7 +246,7 @@ namespace vultra
                 MaterialParamsPhong p;
                 p.diffuse           = m.core.phong.diffuse;
                 p.specularShininess = glm::vec4(m.core.phong.specular, m.core.phong.shininess);
-                p.diffuseTex        = resolveBindlessTextureIndex(m.core.phong.diffuseTexture.uuid);
+                p.diffuseTex        = resolveBindlessTextureIndex(CoreUUID(m.core.phong.diffuseTexture.uuid));
                 blockOffset         = allocBlock(&p, sizeof(p));
                 break;
             }

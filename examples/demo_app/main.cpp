@@ -154,32 +154,29 @@ protected:
         VULTRA_CLIENT_INFO("Loaded mesh with uuid: {}", vbase::to_string(mesh.uuid()));
 
         auto& sceneService = engine.ctx().services.require<ISceneService>();
-        auto  sceneLoaded  = sceneService.loadSceneSync("res://scenes/test.vscn");
-        if (!sceneLoaded)
-        {
-            return;
-        }
 
         World world {};
-        bool  instantiated = sceneService.instantiateToWorld(world, true);
-        if (!instantiated)
-        {
-            return;
-        }
+        auto  root = sceneService.instantiateScene(world, "res://scenes/test.vscn");
 
         VULTRA_CLIENT_INFO("Loaded world from scene: \"res://scenes/test.vscn\"");
 
         auto& registry = world.registry();
         registry.view<NameComponent, TransformComponent>().each(
             [](auto, NameComponent& name, TransformComponent& transform) {
-                std::cout << "Entity: " << name.name << "\n";
+                std::cout << "Entity with transform: " << name.name << "\n";
 
                 std::cout << " Position: " << transform.position.x << ", " << transform.position.y << ", "
                           << transform.position.z << "\n";
+                std::cout << " Rotation: " << transform.rotation.x << ", " << transform.rotation.y << ", "
+                          << transform.rotation.z << ", " << transform.rotation.w << "\n";
+                std::cout << " Scale:    " << transform.scale.x << ", " << transform.scale.y << ", "
+                          << transform.scale.z << "\n";
             });
 
-        registry.view<MeshComponent>().each(
-            [](auto, MeshComponent& mesh) { std::cout << " Mesh UUID: " << mesh.uuid << "\n"; });
+        registry.view<NameComponent, MeshComponent>().each([](auto, NameComponent& name, MeshComponent& mesh) {
+            std::cout << "Entity with mesh: " << name.name << "\n";
+            std::cout << " Mesh UUID: " << mesh.mesh.toString() << "\n";
+        });
     }
 
     void onPollEvents() override

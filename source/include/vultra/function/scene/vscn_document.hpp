@@ -1,48 +1,37 @@
 #pragma once
 
+#include "vultra/core/base/uuid.hpp"
+
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace vultra
 {
-    // ---------------------------------------------------------------------
-    // VSCN document (Scene Asset)
-    //
-    // - Textual scene asset representation (".vscn").
-    // - Holds nodes and raw property strings.
-    // - DOES NOT contain runtime World state.
-    // ---------------------------------------------------------------------
-    class VSceneDocument
+    struct SceneProperty
     {
-    public:
-        struct Property
-        {
-            std::string component;
-            std::string field;
-            std::string value; // raw text RHS, trimmed, without comments
-        };
+        std::string component; // e.g. "TransformComponent"
+        std::string field;     // e.g. "position"
+        std::string value;     // raw text (kept for readability/round-tripping)
+    };
 
-        struct Node
-        {
-            int                   id     = 0;
-            int                   parent = 0;
-            std::string           name;
-            std::vector<Property> properties;
-        };
+    struct SceneNode
+    {
+        CoreUUID    id;
+        std::string name;
 
-        int  version() const { return m_Version; }
-        int  rootId() const { return m_RootId; }
-        void setVersion(int v) { m_Version = v; }
-        void setRootId(int id) { m_RootId = id; }
+        // Prefab support: if set, this node is an instance of another .vscn.
+        // During instantiation we load and instantiate the prefab's root subtree,
+        // then apply this node's properties as overrides.
+        std::string prefabUri;
 
-        std::vector<Node>&       nodes() { return m_Nodes; }
-        const std::vector<Node>& nodes() const { return m_Nodes; }
+        std::vector<SceneProperty>              properties;
+        std::vector<std::unique_ptr<SceneNode>> children;
+    };
 
-        void clear();
-
-    private:
-        int               m_Version = 1;
-        int               m_RootId  = 1;
-        std::vector<Node> m_Nodes;
+    struct SceneDocument
+    {
+        uint32_t                   version {1};
+        std::unique_ptr<SceneNode> root;
     };
 } // namespace vultra

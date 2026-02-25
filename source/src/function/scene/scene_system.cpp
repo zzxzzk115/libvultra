@@ -1,390 +1,469 @@
 #include "vultra/function/scene/scene_system.hpp"
-#include "vultra/core/base/common_context.hpp"
+#include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/os/file_system.hpp"
+#include "vultra/function/scene/scene_reflection.hpp"
+#include "vultra/function/scene/vscn_document.hpp"
 #include "vultra/function/scene/vscn_reader.hpp"
 #include "vultra/function/scene/vscn_writer.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/world/components/hierarchy_component.hpp"
+#include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
+#include "vultra/function/world/components/prefab_instance_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
-#include "vultra/function/world/world.hpp"
 
-#include <vfilesystem/core/uri.hpp>
+#include <entt/entt.hpp>
 
 #include <cctype>
-#include <charconv>
+#include <filesystem>
 #include <sstream>
-#include <stdexcept>
-#include <unordered_map>
 
 namespace vultra
 {
-    namespace
+    static inline std::string trim_copy(std::string_view s)
     {
-        inline void ltrim_inplace(std::string& s)
-        {
-            size_t i = 0;
-            while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
-                ++i;
-            s.erase(0, i);
-        }
+        size_t b = 0;
+        while (b < s.size() && std::isspace(static_cast<unsigned char>(s[b])))
+            ++b;
+        size_t e = s.size();
+        while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
+            --e;
+        return std::string(s.substr(b, e - b));
+    }
 
-        inline void rtrim_inplace(std::string& s)
-        {
-            size_t i = s.size();
-            while (i > 0 && std::isspace(static_cast<unsigned char>(s[i - 1])))
-                --i;
-            s.erase(i);
-        }
+    std::string SceneSystem::trim(std::string_view s) { return trim_copy(s); }
 
-        inline void trim_inplace(std::string& s)
+    static inline bool parse_bool(std::string_view s, bool& out)
+    {
+        auto t = trim_copy(s);
+        if (t == "true" || t == "1")
         {
-            ltrim_inplace(s);
-            rtrim_inplace(s);
+            out = true;
+            return true;
         }
-
-        std::string unquote(std::string_view s)
+        if (t == "false" || t == "0")
         {
-            if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') || (s.front() == '\'' && s.back() == '\'')))
-            {
-                return std::string(s.substr(1, s.size() - 2));
-            }
-            return std::string(s);
+            out = false;
+            return true;
         }
+        return false;
+    }
 
-        bool parse_float(std::string_view s, float& out)
-        {
-            try
-            {
-                out = std::stof(std::string(s));
-                return true;
-            }
-            catch (...)
-            {
-                return false;
-            }
-        }
-
-        bool parse_int(std::string_view s, int& out)
-        {
-            std::string tmp(s);
-            trim_inplace(tmp);
-            const char* begin = tmp.data();
-            const char* end   = tmp.data() + tmp.size();
-            auto        res   = std::from_chars(begin, end, out);
-            return res.ec == std::errc {};
-        }
-
-        bool parse_bool(std::string_view s, bool& out)
-        {
-            std::string tmp(s);
-            trim_inplace(tmp);
-            for (auto& c : tmp)
-                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (tmp == "true" || tmp == "1")
-            {
-                out = true;
-                return true;
-            }
-            if (tmp == "false" || tmp == "0")
-            {
-                out = false;
-                return true;
-            }
+    static inline bool parse_vec(std::string_view s, std::vector<float>& out)
+    {
+        std::string t = trim_copy(s);
+        if (t.size() < 2 || t.front() != '(' || t.back() != ')')
             return false;
-        }
+        t = t.substr(1, t.size() - 2);
 
-        // Parse "(a, b, c)" or "a,b,c" into floats.
-        bool parse_float_list(std::string_view s, float* out, int count)
+        out.clear();
+        std::stringstream ss(t);
+        std::string       item;
+        while (std::getline(ss, item, ','))
         {
-            std::string tmp(s);
-            trim_inplace(tmp);
-            if (!tmp.empty() && tmp.front() == '(')
-                tmp.erase(tmp.begin());
-            if (!tmp.empty() && tmp.back() == ')')
-                tmp.pop_back();
-            trim_inplace(tmp);
-
-            int  idx = 0;
-            auto sv  = std::string_view(tmp);
-            while (idx < count)
-            {
-                size_t           comma = sv.find(',');
-                std::string_view token = (comma == std::string_view::npos) ? sv : sv.substr(0, comma);
-                float            v     = 0.0f;
-                if (!parse_float(token, v))
-                    return false;
-                out[idx++] = v;
-                if (comma == std::string_view::npos)
-                    break;
-                sv = sv.substr(comma + 1);
-            }
-            return idx == count;
+            item = trim_copy(item);
+            if (item.empty())
+                continue;
+            out.push_back(std::stof(item));
         }
+        return !out.empty();
+    }
 
-        entt::meta_any parse_value_for_type(entt::meta_type target, std::string_view text)
+    static inline bool parse_uuid(std::string_view s, CoreUUID& out)
+    {
+        std::string t = trim_copy(s);
+        if (!t.empty() && t.front() == '"' && t.back() == '"')
+            t = t.substr(1, t.size() - 2);
+        vbase::UUID tmp {};
+        vbase::try_parse_uuid(t.c_str(), tmp);
+        out = CoreUUID(tmp);
+        return true;
+    }
+
+    static entt::meta_any parse_value_to_any(entt::meta_type expected, std::string_view raw)
+    {
+        // Strings: "..."
+        std::string t = trim_copy(raw);
+
+        if (expected == entt::resolve<std::string>())
         {
-            // numbers/bool
-            if (target == entt::resolve<bool>())
-            {
-                bool v {};
-                if (!parse_bool(text, v))
-                    throw std::runtime_error("Failed to parse bool: " + std::string(text));
-                return entt::meta_any {v};
-            }
-            if (target == entt::resolve<int>())
-            {
-                int v {};
-                if (!parse_int(text, v))
-                    throw std::runtime_error("Failed to parse int: " + std::string(text));
-                return entt::meta_any {v};
-            }
-            if (target == entt::resolve<float>())
-            {
-                float v {};
-                if (!parse_float(text, v))
-                    throw std::runtime_error("Failed to parse float: " + std::string(text));
-                return entt::meta_any {v};
-            }
-            if (target == entt::resolve<double>())
-            {
-                float v {};
-                if (!parse_float(text, v))
-                    throw std::runtime_error("Failed to parse double: " + std::string(text));
-                return entt::meta_any {static_cast<double>(v)};
-            }
-            if (target == entt::resolve<std::string>())
-            {
-                return entt::meta_any {unquote(text)};
-            }
-            if (target == entt::resolve<glm::vec3>())
-            {
-                float a[3] {};
-                if (!parse_float_list(text, a, 3))
-                    throw std::runtime_error("Failed to parse vec3: " + std::string(text));
-                return entt::meta_any {glm::vec3 {a[0], a[1], a[2]}};
-            }
-            if (target == entt::resolve<glm::quat>())
-            {
-                float a[4] {};
-                if (!parse_float_list(text, a, 4))
-                    throw std::runtime_error("Failed to parse quat: " + std::string(text));
-                // file format uses (x,y,z,w)
-                glm::quat q;
-                q.x = a[0];
-                q.y = a[1];
-                q.z = a[2];
-                q.w = a[3];
-                return entt::meta_any {q};
-            }
-
-            throw std::runtime_error("Unsupported field type in .vscn (meta id=" + std::to_string(target.id()) + ")");
+            if (t.size() >= 2 && t.front() == '"' && t.back() == '"')
+                t = t.substr(1, t.size() - 2);
+            return entt::meta_any {t};
         }
 
-        // For writer: turn meta value into readable text.
-        std::string format_value(const entt::meta_any& v)
+        if (expected == entt::resolve<int>())
+            return entt::meta_any {std::stoi(t)};
+        if (expected == entt::resolve<uint32_t>())
+            return entt::meta_any {static_cast<uint32_t>(std::stoul(t))};
+        if (expected == entt::resolve<float>())
+            return entt::meta_any {std::stof(t)};
+        if (expected == entt::resolve<double>())
+            return entt::meta_any {std::stod(t)};
+
+        if (expected == entt::resolve<bool>())
         {
-            auto t = v.type();
-            if (t == entt::resolve<bool>())
-                return v.cast<bool>() ? "true" : "false";
-            if (t == entt::resolve<int>())
-                return std::to_string(v.cast<int>());
-            if (t == entt::resolve<float>())
-                return std::to_string(v.cast<float>());
-            if (t == entt::resolve<double>())
-                return std::to_string(v.cast<double>());
-            if (t == entt::resolve<std::string>())
-                return '"' + v.cast<std::string>() + '"';
-            if (t == entt::resolve<glm::vec3>())
-            {
-                auto              vv = v.cast<glm::vec3>();
-                std::stringstream ss;
-                ss << '(' << vv.x << ", " << vv.y << ", " << vv.z << ')';
-                return ss.str();
-            }
-            if (t == entt::resolve<glm::quat>())
-            {
-                auto              q = v.cast<glm::quat>();
-                std::stringstream ss;
-                ss << '(' << q.x << ", " << q.y << ", " << q.z << ", " << q.w << ')';
-                return ss.str();
-            }
-            return "<unsupported>";
+            bool b {};
+            if (parse_bool(t, b))
+                return entt::meta_any {b};
         }
-    } // namespace
 
+        if (expected == entt::resolve<glm::vec3>())
+        {
+            std::vector<float> v;
+            if (parse_vec(t, v) && v.size() == 3)
+                return entt::meta_any {glm::vec3 {v[0], v[1], v[2]}};
+        }
+
+        if (expected == entt::resolve<glm::quat>())
+        {
+            std::vector<float> v;
+            if (parse_vec(t, v) && v.size() == 4)
+                return entt::meta_any {glm::quat {v[3], v[0], v[1], v[2]}};
+        }
+
+        if (expected == entt::resolve<CoreUUID>())
+        {
+            CoreUUID id;
+            if (parse_uuid(t, id))
+                return entt::meta_any {id};
+        }
+
+        // If expected is a wrapper-like type, try parse as uuid anyway.
+        if (expected.id() == entt::resolve<CoreUUID>().id())
+        {
+            CoreUUID id;
+            if (parse_uuid(t, id))
+                return entt::meta_any {id};
+        }
+
+        // Best-effort: treat as string.
+        return entt::meta_any {t};
+    }
+
+    static std::string any_to_text(const entt::meta_any& v)
+    {
+        auto t = v.type();
+
+        if (t == entt::resolve<std::string>())
+        {
+            const auto& s = v.cast<const std::string&>();
+            return std::string("\"") + s + "\"";
+        }
+
+        if (t == entt::resolve<int>())
+            return std::to_string(v.cast<int>());
+        if (t == entt::resolve<uint32_t>())
+            return std::to_string(v.cast<uint32_t>());
+        if (t == entt::resolve<float>())
+            return std::to_string(v.cast<float>());
+        if (t == entt::resolve<double>())
+            return std::to_string(v.cast<double>());
+        if (t == entt::resolve<bool>())
+            return v.cast<bool>() ? "true" : "false";
+
+        if (t == entt::resolve<glm::vec3>())
+        {
+            auto               vv = v.cast<glm::vec3>();
+            std::ostringstream oss;
+            oss << "(" << vv.x << ", " << vv.y << ", " << vv.z << ")";
+            return oss.str();
+        }
+
+        if (t == entt::resolve<glm::quat>())
+        {
+            auto               q = v.cast<glm::quat>();
+            std::ostringstream oss;
+            oss << "(" << q.x << ", " << q.y << ", " << q.z << ", " << q.w << ")";
+            return oss.str();
+        }
+
+        if (t == entt::resolve<CoreUUID>())
+        {
+            auto id = v.cast<CoreUUID>();
+            return std::string("\"") + id.toString() + "\"";
+        }
+
+        // Fallback
+        return "\"<unsupported>\"";
+    }
+
+    // ------------------------------------------------------------
+    // Engine lifecycle
+    // ------------------------------------------------------------
     bool SceneSystem::onInit()
     {
-        // 1) Register meta for built-in scene components.
-        registerSceneComponentMeta();
+        registerSceneMeta();
 
-        // 2) Register bridge for string -> registry emplace/get.
-        m_ComponentRegistry.registerComponent<NameComponent>("NameComponent");
-        m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent");
-        m_ComponentRegistry.registerComponent<MeshComponent>("MeshComponent");
+        // Register components that we want to support in .vscn.
+        m_ComponentRegistry.registerComponent<IDComponent>("IDComponent", {"uuid"});
+        m_ComponentRegistry.registerComponent<NameComponent>("NameComponent", {"name"});
+        m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent",
+                                                                  {"position", "rotation", "scale"});
+        m_ComponentRegistry.registerComponent<MeshComponent>("MeshComponent", {"mesh"});
 
-        // 3) Cache other services
         m_AssetService = &ctx().services.require<IAssetService>();
 
         ctx().services.provide<ISceneService>(this);
         return true;
     }
 
-    void SceneSystem::onShutdown()
+    void SceneSystem::onShutdown() { m_Cache.clear(); }
+
+    // ------------------------------------------------------------
+    // Service
+    // ------------------------------------------------------------
+    std::filesystem::path SceneSystem::toPath(std::string_view uri)
     {
-        m_Doc.reset();
-        m_LoadedPath.clear();
+        // Current policy: treat uri as a file path.
+        return m_AssetService->resolveUri(uri);
     }
 
-    bool SceneSystem::hasSceneLoaded() const { return m_Doc.has_value(); }
+    std::shared_ptr<const SceneDocument> SceneSystem::loadSceneSync(std::string_view uri)
+    {
+        const std::string key(uri);
+        if (auto it = m_Cache.find(key); it != m_Cache.end())
+            return it->second;
 
-    const VSceneDocument* SceneSystem::loadedScene() const { return m_Doc ? &(*m_Doc) : nullptr; }
+        const auto path    = toPath(uri);
+        const auto baseDir = path.has_parent_path() ? path.parent_path() : std::filesystem::path {};
 
-    bool SceneSystem::loadSceneSync(std::string_view uri)
+        const std::string text = os::FileSystem::readFileAllText(path);
+        SceneDocument     doc  = VscnReader::readFromText(text, baseDir);
+
+        auto sp      = std::make_shared<SceneDocument>(std::move(doc));
+        m_Cache[key] = sp;
+        return sp;
+    }
+
+    bool SceneSystem::saveSceneSync(std::string_view uri, const SceneDocument& doc)
     {
         try
         {
-            auto                  loadPath = m_AssetService->resolveUri(uri);
-            std::filesystem::path path(loadPath);
-            auto                  text = os::FileSystem::readFileAllText(path);
-            auto                  doc  = VSceneReader::parse(text);
-
-            m_Doc        = std::move(doc);
-            m_LoadedPath = std::move(path);
-
-            VULTRA_CLIENT_INFO("Loaded scene asset: {}", m_LoadedPath.string());
-            return true;
-        }
-        catch (const std::exception& e)
-        {
-            VULTRA_CLIENT_ERROR("Failed to load scene '{}': {}", std::string(uri), e.what());
-            return false;
-        }
-    }
-
-    bool SceneSystem::saveSceneSync(std::string_view uri) const
-    {
-        if (!m_Doc)
-        {
-            VULTRA_CLIENT_WARN("saveSceneSync called without a loaded scene");
-            return false;
-        }
-
-        try
-        {
-            auto                  savePath = m_AssetService->resolveUri(uri);
-            std::filesystem::path path(savePath);
-            auto                  text = VSceneWriter::write(*m_Doc);
+            const auto path = toPath(uri);
+            const auto text = VscnWriter::writeToText(doc);
             os::FileSystem::writeFileAllText(path, text);
-            VULTRA_CLIENT_INFO("Saved scene asset: {}", path.string());
             return true;
         }
-        catch (const std::exception& e)
+        catch (...)
         {
-            VULTRA_CLIENT_ERROR("Failed to save scene '{}': {}", std::string(uri), e.what());
             return false;
         }
     }
 
-    bool
-    SceneSystem::instantiateNodeProps(entt::registry& reg, entt::entity ent, const VSceneDocument::Node& node) const
+    void SceneSystem::applyProperties(entt::registry& reg, entt::entity e, const SceneNode& node)
     {
-        // (Convenience) node header name -> NameComponent if present.
+        for (const auto& prop : node.properties)
+        {
+            const auto* entry = m_ComponentRegistry.find(prop.component);
+            if (!entry || !entry->meta)
+                continue;
+
+            void* ptr = entry->emplaceDefault(reg, e);
+            if (!ptr)
+                continue;
+
+            entt::meta_any instance = entry->meta.from_void(ptr);
+
+            auto data = entry->meta.data(entt::hashed_string {prop.field.c_str()});
+            if (!data)
+                continue;
+
+            entt::meta_any value = parse_value_to_any(data.type(), prop.value);
+            (void)data.set(instance, value);
+        }
+    }
+
+    entt::entity SceneSystem::instantiateNode(World&                       world,
+                                              const SceneNode&             node,
+                                              entt::entity                 parent,
+                                              const std::filesystem::path& baseDir)
+    {
+        entt::registry& reg = world.registry();
+
+        // Prefab: instantiate referenced scene and apply overrides.
+        if (!node.prefabUri.empty())
+        {
+            std::filesystem::path prefabPath = node.prefabUri;
+            if (prefabPath.is_relative() && !baseDir.empty())
+                prefabPath = baseDir / prefabPath;
+
+            auto         prefabDoc = loadSceneSync(prefabPath.string());
+            entt::entity rootEnt   = entt::null;
+            if (prefabDoc && prefabDoc->root)
+                rootEnt = instantiateNode(world, *prefabDoc->root, parent, prefabPath.parent_path());
+            else
+                rootEnt = world.createEntity();
+
+            world.setParent(rootEnt, parent);
+
+            // Mark prefab instance on root.
+            if (!reg.all_of<PrefabInstanceComponent>(rootEnt))
+                reg.emplace<PrefabInstanceComponent>(rootEnt, PrefabInstanceComponent {node.prefabUri, {}});
+            else
+                reg.get<PrefabInstanceComponent>(rootEnt).prefabUri = node.prefabUri;
+
+            // Apply overrides on the root entity.
+            applyProperties(reg, rootEnt, node);
+
+            // Instantiate extra children under prefab root.
+            for (const auto& ch : node.children)
+                instantiateNode(world, *ch, rootEnt, baseDir);
+
+            return rootEnt;
+        }
+
+        // Regular node
+        entt::entity e = world.createEntity();
+        world.setParent(e, parent);
+
+        // Set ID upfront (override-able from file)
+        if (reg.all_of<IDComponent>(e))
+            reg.get<IDComponent>(e).uuid = node.id;
+
+        // Apply properties
+        applyProperties(reg, e, node);
+
+        // Ensure name if provided by header but not via property
         if (!node.name.empty())
         {
-            if (const auto* entry = m_ComponentRegistry.findByName("NameComponent"))
-            {
-                entry->emplaceDefault(reg, ent);
-                auto* ptr = static_cast<NameComponent*>(entry->getPtr(reg, ent));
-                if (ptr && ptr->name.empty())
-                    ptr->name = node.name;
-            }
+            if (!reg.all_of<NameComponent>(e))
+                reg.emplace<NameComponent>(e, NameComponent {node.name});
+            else if (reg.get<NameComponent>(e).name.empty())
+                reg.get<NameComponent>(e).name = node.name;
         }
 
-        for (const auto& p : node.properties)
-        {
-            const auto* entry = m_ComponentRegistry.findByName(p.component);
-            if (!entry)
-            {
-                VULTRA_CLIENT_WARN("Unknown component '{}' in scene (node id={})", p.component, node.id);
-                continue;
-            }
+        for (const auto& ch : node.children)
+            instantiateNode(world, *ch, e, baseDir);
 
-            auto metaType = entt::resolve(entry->typeId);
-            if (!metaType)
-            {
-                VULTRA_CLIENT_WARN("Component '{}' has no meta type (node id={})", p.component, node.id);
-                continue;
-            }
-
-            // Ensure component exists.
-            entry->emplaceDefault(reg, ent);
-            void* compPtr = entry->getPtr(reg, ent);
-            if (!compPtr)
-            {
-                VULTRA_CLIENT_WARN("Failed to get component '{}' ptr (node id={})", p.component, node.id);
-                continue;
-            }
-
-            auto fieldId  = entt::hashed_string {p.field.c_str()}.value();
-            auto metaData = metaType.data(fieldId);
-            if (!metaData)
-            {
-                VULTRA_CLIENT_WARN("Unknown field '{}.{}' in scene (node id={})", p.component, p.field, node.id);
-                continue;
-            }
-            auto inst = metaType.from_void(compPtr);
-            if (!inst)
-            {
-                VULTRA_CLIENT_WARN("Failed to wrap component '{}' into meta_any (node id={})", p.component, node.id);
-                continue;
-            }
-
-            auto valueAny = parse_value_for_type(metaData.type(), p.value);
-            if (!metaData.set(inst, valueAny))
-            {
-                VULTRA_CLIENT_WARN("Failed to set '{}.{}' for node id={}", p.component, p.field, node.id);
-            }
-        }
-
-        return true;
+        return e;
     }
 
-    bool SceneSystem::instantiateToWorld(World& world, bool clearWorld) const
+    entt::entity SceneSystem::instantiateScene(World& world, std::string_view uri, entt::entity parent, bool clearWorld)
     {
-        if (!m_Doc)
+        auto doc = loadSceneSync(uri);
+        if (!doc || !doc->root)
+            return entt::null;
+
+        if (clearWorld)
+            world.clear();
+
+        const auto path    = toPath(uri);
+        const auto baseDir = path.has_parent_path() ? path.parent_path() : std::filesystem::path {};
+
+        return instantiateNode(world, *doc->root, parent, baseDir);
+    }
+
+    std::unique_ptr<SceneNode> SceneSystem::buildNodeFromWorld(World& world, entt::entity e)
+    {
+        entt::registry& reg = world.registry();
+        if (!reg.valid(e))
+            return nullptr;
+
+        auto node = std::make_unique<SceneNode>();
+
+        if (reg.all_of<IDComponent>(e))
+            node->id = reg.get<IDComponent>(e).uuid;
+        else
+            node->id = CoreUUIDHelper::createStandardUUID();
+
+        if (reg.all_of<NameComponent>(e))
+            node->name = reg.get<NameComponent>(e).name;
+
+        if (reg.all_of<PrefabInstanceComponent>(e))
+            node->prefabUri = reg.get<PrefabInstanceComponent>(e).prefabUri;
+
+        // Serialize supported components.
+        for (const auto& entry : m_ComponentRegistry.entries())
         {
-            VULTRA_CLIENT_WARN("instantiateToWorld called without a loaded scene");
+            // Don't emit IDComponent as property lines; it is in header uuid=.
+            if (entry.name == "IDComponent")
+                continue;
+
+            if (!entry.has(reg, e))
+                continue;
+
+            void* ptr = entry.getPtr(reg, e);
+            if (!ptr || !entry.meta)
+                continue;
+
+            entt::meta_any instance = entry.meta.from_void(ptr);
+            for (const auto& fieldName : entry.fields)
+            {
+                auto data = entry.meta.data(entt::hashed_string {fieldName.c_str()});
+                if (!data)
+                    continue;
+
+                entt::meta_any value = data.get(instance);
+                SceneProperty  prop;
+                prop.component = entry.name;
+                prop.field     = fieldName;
+                prop.value     = any_to_text(value);
+                node->properties.push_back(std::move(prop));
+            }
+        }
+
+        // Children
+        for (entt::entity c = world.firstChild(e); c != entt::null; c = world.nextSibling(c))
+        {
+            if (auto child = buildNodeFromWorld(world, c))
+                node->children.push_back(std::move(child));
+        }
+
+        return node;
+    }
+
+    bool SceneSystem::saveWorldAsSceneSync(std::string_view uri, World& world, entt::entity root)
+    {
+        try
+        {
+            entt::registry& reg = world.registry();
+
+            if (root == entt::null)
+            {
+                // Find a root entity (parent == null). If multiple, synthesize a root.
+                std::vector<entt::entity> roots;
+                auto                      view = reg.view<HierarchyComponent>();
+                for (auto e : view)
+                {
+                    auto& h = view.get<HierarchyComponent>(e);
+                    if (h.parent == entt::null)
+                        roots.push_back(e);
+                }
+
+                if (roots.empty())
+                    return false;
+
+                if (roots.size() == 1)
+                {
+                    root = roots[0];
+                }
+                else
+                {
+                    // Synthetic root (does not modify world).
+                    SceneDocument doc;
+                    doc.version    = 1;
+                    doc.root       = std::make_unique<SceneNode>();
+                    doc.root->id   = CoreUUIDHelper::createStandardUUID();
+                    doc.root->name = "SceneRoot";
+                    for (auto r : roots)
+                    {
+                        if (auto n = buildNodeFromWorld(world, r))
+                            doc.root->children.push_back(std::move(n));
+                    }
+                    return saveSceneSync(uri, doc);
+                }
+            }
+
+            SceneDocument doc;
+            doc.version = 1;
+            doc.root    = buildNodeFromWorld(world, root);
+            return saveSceneSync(uri, doc);
+        }
+        catch (...)
+        {
             return false;
         }
-
-        auto& reg = world.registry();
-        if (clearWorld)
-        {
-            reg.clear();
-        }
-
-        // 1) Create entities first (stable mapping from nodeId).
-        std::unordered_map<int, entt::entity> idToEntity;
-        idToEntity.reserve(m_Doc->nodes().size());
-
-        for (const auto& node : m_Doc->nodes())
-        {
-            entt::entity e      = reg.create();
-            idToEntity[node.id] = e;
-        }
-
-        // 2) Fill components/fields.
-        for (const auto& node : m_Doc->nodes())
-        {
-            auto it = idToEntity.find(node.id);
-            if (it == idToEntity.end())
-                continue;
-            instantiateNodeProps(reg, it->second, node);
-        }
-
-        VULTRA_CLIENT_INFO("Instantiated scene into world (entities={})", static_cast<int>(idToEntity.size()));
-        return true;
     }
-
 } // namespace vultra
