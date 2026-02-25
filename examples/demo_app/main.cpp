@@ -177,6 +177,8 @@ protected:
             std::cout << "Entity with mesh: " << name.name << "\n";
             std::cout << " Mesh UUID: " << mesh.mesh.toString() << "\n";
         });
+
+        sceneService.saveWorldAsSceneSync("res://scenes/test_saved.vscn", world);
     }
 
     void onPollEvents() override
