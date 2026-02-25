@@ -1,10 +1,11 @@
 #include "vultra/function/asset/asset_system.hpp"
-#include "vasset/editor_filesystem.hpp"
-#include "vasset/vasset_importers.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
+#include <vasset/editor_filesystem.hpp>
+#include <vasset/vasset_importers.hpp>
 #include <vasset/vmaterial.hpp>
 
 #include <fstream>
@@ -121,6 +122,8 @@ namespace vultra
         m_Scene.materialParams.reset();
 
         VULTRA_CLIENT_INFO("AssetSystem initialised. Registry entries: {}", m_Registry.getRegistry().size());
+
+        // auto mesh = loadMeshSync("res://models/DamagedHelmet/DamagedHelmet.gltf");
     }
 
     std::vector<std::byte> AssetSystem::readFileBytes(const std::filesystem::path& path)
@@ -181,33 +184,18 @@ namespace vultra
 
     uint32_t AssetSystem::uploadTexture(const vasset::VTexture& cpuTex)
     {
-        // NOTE: This is a minimal sync uploader.
-        // We assume cpuTex contains decoded pixels in RGBA8 (or BGRA8) for now.
-        // Extend later for KTX2/BCn.
-
-        if (!m_RenderDevice || cpuTex.width == 0 || cpuTex.height == 0)
-            return 0;
-
-        // Map vasset format to rhi PixelFormat (best-effort)
-        rhi::PixelFormat fmt = rhi::PixelFormat::eRGBA8_UNorm;
-        // vasset::VTextureFormat exists; keep minimal mapping
-        // TODO: raw loader
-
-        auto tex = createRef<rhi::Texture>(m_RenderDevice->createTexture2D(
-            {cpuTex.width, cpuTex.height}, fmt, 1, 1, rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst));
-
-        // Upload via staging buffer + command buffer
-        if (!cpuTex.data.empty())
+        auto tr = resource::loadTextureFromVTexture(cpuTex, *m_RenderDevice);
+        if (!tr)
         {
-            auto staging = m_RenderDevice->createStagingBuffer(cpuTex.data.size(), cpuTex.data.data());
-            m_RenderDevice->execute([&](rhi::CommandBuffer& cb) {
-                // TODO: copy buffer to texture
-            });
+            std::string uri;
+            m_Resolver.resolve(cpuTex.uuid, uri);
+            VULTRA_CORE_ERROR("[AssetSystem] Failed to load texture from VTexture {}", uri);
+            return 0;
         }
 
         // Bindless ownership is in GpuScene.
         resource::GpuTexture out;
-        out.texture = tex;
+        out.texture = createRef<rhi::Texture>(std::move(tr.value()));
         return m_Scene.addTexture(std::move(out));
     }
 
@@ -280,7 +268,6 @@ namespace vultra
         out.vertexCount = cpuMesh.vertexCount;
         out.indexCount  = static_cast<uint32_t>(cpuMesh.indices.size());
 
-        // Build a tightly packed vertex stream for now: position/normal/uv0
         struct Vertex
         {
             glm::vec3 pos;
@@ -288,60 +275,91 @@ namespace vultra
             glm::vec2 uv0;
         };
 
-        std::vector<Vertex> vertices;
-        vertices.resize(cpuMesh.vertexCount);
+        std::vector<Vertex> vertices(cpuMesh.vertexCount);
 
         for (uint32_t i = 0; i < cpuMesh.vertexCount; ++i)
         {
             vertices[i].pos = cpuMesh.positions[i];
-            if (!cpuMesh.normals.empty())
-                vertices[i].nrm = cpuMesh.normals[i];
-            else
-                vertices[i].nrm = {0, 1, 0};
 
-            if (!cpuMesh.texCoords0.empty())
-                vertices[i].uv0 = cpuMesh.texCoords0[i];
-            else
-                vertices[i].uv0 = {0, 0};
+            vertices[i].nrm = cpuMesh.normals.empty() ? glm::vec3(0, 1, 0) : cpuMesh.normals[i];
+
+            vertices[i].uv0 = cpuMesh.texCoords0.empty() ? glm::vec2(0, 0) : cpuMesh.texCoords0[i];
         }
 
-        out.vertexBuffer = m_RenderDevice->createVertexBuffer(sizeof(Vertex), vertices.size() * sizeof(Vertex));
-        m_RenderDevice->upload(out.vertexBuffer, 0, vertices.size() * sizeof(Vertex), vertices.data());
+        // ================================
+        // Vertex buffer
+        // ================================
 
-        out.indexBuffer =
-            m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, cpuMesh.indices.size() * sizeof(uint32_t));
-        m_RenderDevice->upload(out.indexBuffer, 0, cpuMesh.indices.size() * sizeof(uint32_t), cpuMesh.indices.data());
+        const size_t vertexSize = vertices.size() * sizeof(Vertex);
 
-        // Draw data buffer: one record per submesh (indexOffset/indexCount/materialIndex)
+        out.vertexBuffer = m_RenderDevice->createVertexBuffer(sizeof(Vertex), vertexSize);
+
+        auto vertexStaging = m_RenderDevice->createStagingBuffer(vertexSize, vertices.data());
+
+        m_RenderDevice->execute(
+            [&](rhi::CommandBuffer& cb) {
+                cb.copyBuffer(vertexStaging, out.vertexBuffer, vk::BufferCopy {0, 0, vertexSize});
+            },
+            true);
+
+        // ================================
+        // Index buffer
+        // ================================
+
+        const size_t indexSize = cpuMesh.indices.size() * sizeof(uint32_t);
+
+        out.indexBuffer = m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, indexSize);
+
+        auto indexStaging = m_RenderDevice->createStagingBuffer(indexSize, cpuMesh.indices.data());
+
+        m_RenderDevice->execute(
+            [&](rhi::CommandBuffer& cb) {
+                cb.copyBuffer(indexStaging, out.indexBuffer, vk::BufferCopy {0, 0, indexSize});
+            },
+            true);
+
+        // ================================
+        // Draw data buffer
+        // ================================
+
         struct DrawRange
         {
             uint32_t indexOffset;
             uint32_t indexCount;
-            uint32_t materialIndex; // scene material table index
+            uint32_t materialIndex;
             uint32_t pad;
         };
 
         std::vector<DrawRange> ranges;
         ranges.reserve(cpuMesh.subMeshes.size());
+
         for (const auto& sm : cpuMesh.subMeshes)
         {
-            DrawRange r;
-            r.indexOffset   = sm.indexOffset;
-            r.indexCount    = sm.indexCount;
-            r.materialIndex = materialOffset + sm.materialIndex;
-            r.pad           = 0;
-            ranges.push_back(r);
+            ranges.push_back({sm.indexOffset, sm.indexCount, materialOffset + sm.materialIndex, 0});
         }
 
-        out.drawDataBuffer = m_RenderDevice->createStorageBuffer(ranges.size() * sizeof(DrawRange));
-        if (!ranges.empty())
-            m_RenderDevice->upload(out.drawDataBuffer, 0, ranges.size() * sizeof(DrawRange), ranges.data());
+        const size_t drawSize = ranges.size() * sizeof(DrawRange);
+
+        out.drawDataBuffer = m_RenderDevice->createStorageBuffer(drawSize);
+
+        if (drawSize > 0)
+        {
+            auto staging = m_RenderDevice->createStagingBuffer(drawSize, ranges.data());
+
+            m_RenderDevice->execute(
+                [&](rhi::CommandBuffer& cb) {
+                    cb.copyBuffer(staging, out.drawDataBuffer, vk::BufferCopy {0, 0, drawSize});
+                },
+                true);
+        }
 
         out.materialOffset = materialOffset;
         out.materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
 
         const uint32_t idx = static_cast<uint32_t>(m_Scene.meshes.size());
+
         m_Scene.meshes.push_back(std::move(out));
+
         return idx;
     }
 
