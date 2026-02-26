@@ -120,15 +120,8 @@ void main() {
         auto& renderWorld = ctx.renderWorld;
         for (const auto& inst : renderWorld.instances)
         {
-            auto& mesh = renderWorld.gpuScene->meshes[inst.meshIndex];
-            auto& mat  = renderWorld.gpuScene->materials[inst.materialIndex];
-
-            // Bind mesh vertex/index buffers, material descriptor sets, push constants, etc.
-
-            // Issue draw call (drawIndexed, drawIndirect, etc.)
-
-            // Allow insert a breakpoint here to inspect the render world and GPU scene contents from the demo_app.
-            ctx.cb.pushConstants(rhi::ShaderStages::eFragment, 0, sizeof(inst), &inst);
+            auto& mesh = renderWorld.gpuResources->meshes[inst.meshIndex];
+            auto& mat  = renderWorld.gpuResources->materials[mesh.materialOffset];
         }
     }
 

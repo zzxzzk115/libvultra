@@ -192,7 +192,7 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[AssetSystem] Shutting down");
 
-        m_Scene.clear();
+        m_ResourcePool.clear();
         m_TexUUIDToBindlessIndex.clear();
         m_RenderDevice = nullptr;
     }
@@ -240,11 +240,11 @@ namespace vultra
 
         m_Resolver.setScheme(desc.scheme);
 
-        // Scene owns bindless texture table. Reserve slot 0 as fallback.
-        m_Scene.ensureBindlessSlot0();
+        // Gpu resource pool owns bindless texture table. Reserve slot 0 as fallback.
+        m_ResourcePool.ensureBindlessSlot0(*m_RenderDevice);
 
         // Reset global material param pool.
-        m_Scene.materialParams.reset();
+        m_ResourcePool.materialParams.reset();
 
         VULTRA_CORE_INFO("[AssetSystem] Asset registry configured. Registry entries: {}",
                          m_Registry.getRegistry().size());
@@ -280,14 +280,14 @@ namespace vultra
 
                     // TODO (deferred upload):
                     // - Create GPU materials (may trigger texture loads)
-                    // - Upload mesh buffers + append to m_Scene
+                    // - Upload mesh buffers + append to resource pool
                     // - Store gpuIndex and transition to eReady
                     //
                     // For now we keep the original sync upload logic here so rendering bring-up keeps working.
 
                     if (rec->cpu)
                     {
-                        const uint32_t materialOffset = static_cast<uint32_t>(m_Scene.materials.size());
+                        const uint32_t materialOffset = static_cast<uint32_t>(m_ResourcePool.materials.size());
                         for (const auto& mat : rec->cpu->materials)
                         {
                             createAndAppendGpuMaterial(mat);
@@ -400,7 +400,7 @@ namespace vultra
         // Bindless ownership is in GpuScene.
         resource::GpuTexture out;
         out.texture = createRef<rhi::Texture>(std::move(tr.value()));
-        return m_Scene.addTexture(std::move(out));
+        return m_ResourcePool.addTexture(std::move(out));
     }
 
     uint32_t AssetSystem::createAndAppendGpuMaterial(const vasset::VMaterial& m)
@@ -417,7 +417,7 @@ namespace vultra
         uint32_t blockOffset = 0;
 
         auto allocBlock = [&](const void* src, uint32_t size) {
-            return m_Scene.materialParams.allocAndUpload(*m_RenderDevice, src, size, 16);
+            return m_ResourcePool.materialParams.allocAndUpload(*m_RenderDevice, src, size, 16);
         };
 
         switch (m.model)
@@ -469,8 +469,8 @@ namespace vultra
         }
 
         gm.blockOffsetBytes = blockOffset;
-        gm.tableIndex       = static_cast<uint32_t>(m_Scene.materials.size());
-        m_Scene.materials.push_back(gm);
+        gm.tableIndex       = static_cast<uint32_t>(m_ResourcePool.materials.size());
+        m_ResourcePool.materials.push_back(gm);
         return gm.tableIndex;
     }
 
@@ -504,29 +504,6 @@ namespace vultra
         out.indexBuffer         = m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, indexCount);
 
         // ------------------------------------------------------------
-        // Build draw data buffer (ranges)
-        // ------------------------------------------------------------
-
-        struct DrawRange
-        {
-            uint32_t indexOffset;
-            uint32_t indexCount;
-            uint32_t materialIndex;
-            uint32_t pad;
-        };
-
-        std::vector<DrawRange> ranges;
-        ranges.reserve(cpuMesh.subMeshes.size());
-
-        for (const auto& sm : cpuMesh.subMeshes)
-        {
-            ranges.push_back({sm.indexOffset, sm.indexCount, materialOffset + sm.materialIndex, 0});
-        }
-
-        const size_t drawSize = ranges.size() * sizeof(DrawRange);
-        out.drawDataBuffer    = m_RenderDevice->createStorageBuffer(drawSize);
-
-        // ------------------------------------------------------------
         // Upload via a single one-time command buffer submission.
         // Staging is intentionally split by resource type:
         //   - vertex staging (AoS blob)
@@ -537,14 +514,10 @@ namespace vultra
 
         rhi::Buffer vertexStaging;
         rhi::Buffer indexStaging;
-        rhi::Buffer drawStaging;
-
         if (vertexSize > 0)
             vertexStaging = m_RenderDevice->createStagingBuffer(vertexSize, vertexData.data());
         if (indexSize > 0)
             indexStaging = m_RenderDevice->createStagingBuffer(indexSize, cpuMesh.indices.data());
-        if (drawSize > 0)
-            drawStaging = m_RenderDevice->createStagingBuffer(drawSize, ranges.data());
 
         m_RenderDevice->execute(
             [&](rhi::CommandBuffer& cb) {
@@ -556,10 +529,6 @@ namespace vultra
                 {
                     cb.copyBuffer(indexStaging, out.indexBuffer, vk::BufferCopy {0, 0, indexSize});
                 }
-                if (drawSize > 0)
-                {
-                    cb.copyBuffer(drawStaging, out.drawDataBuffer, vk::BufferCopy {0, 0, drawSize});
-                }
 
                 // TODO (upload pipeline):
                 // - add transfer->vertex/index/storage buffer barriers if required
@@ -567,11 +536,15 @@ namespace vultra
             },
             true);
 
+        // Fill buffer device addresses for GPU-driven vertex pulling.
+        out.vertexBufferAddress = m_RenderDevice->getBufferDeviceAddress(out.vertexBuffer);
+        out.indexBufferAddress  = m_RenderDevice->getBufferDeviceAddress(out.indexBuffer);
+
         out.materialOffset = materialOffset;
         out.materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
 
-        const uint32_t idx = static_cast<uint32_t>(m_Scene.meshes.size());
-        m_Scene.meshes.push_back(std::move(out));
+        const uint32_t idx = static_cast<uint32_t>(m_ResourcePool.meshes.size());
+        m_ResourcePool.meshes.push_back(std::move(out));
 
         return idx;
     }

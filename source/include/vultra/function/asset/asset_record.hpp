@@ -15,7 +15,7 @@ namespace vultra
         using CpuType = TCpu;
         using GpuType = TGpu;
 
-        CoreUUID uuid {};
+        CoreUUID uuid;
 
         std::atomic<AssetState> state {AssetState::eUnloaded};
         std::atomic<uint32_t>   refCount {0};
@@ -26,7 +26,7 @@ namespace vultra
         // CPU side (owned)
         std::unique_ptr<TCpu> cpu {};
 
-        // GPU side: index into the owning GPU table (GpuScene).
+        // GPU side: index into the owning GPU table (GpuResourcePool).
         // We intentionally do NOT own GPU resources here.
         // UINT32_MAX means "not resident".
         std::atomic<uint32_t> gpuIndex {std::numeric_limits<uint32_t>::max()};

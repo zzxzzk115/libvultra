@@ -6,7 +6,7 @@
 #include "vultra/function/asset/asset_cache.hpp"
 #include "vultra/function/asset/asset_handle.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
-#include "vultra/function/resource/gpu_scene.hpp"
+#include "vultra/function/resource/gpu_resource_pool.hpp"
 #include "vultra/function/resource/gpu_texture.hpp"
 #include "vultra/function/services/asset_service.hpp"
 
@@ -15,7 +15,6 @@
 #include <vasset/vmesh.hpp>
 #include <vasset/vtexture.hpp>
 
-#include <filesystem>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -61,19 +60,18 @@ namespace vultra
 
         std::string resolveUri(const std::string_view uri) const override;
 
-        resource::GpuScene&       gpuScene() override { return m_Scene; }
-        const resource::GpuScene& gpuScene() const override { return m_Scene; }
+        resource::GpuResourcePool&       gpuResourcePool() override { return m_ResourcePool; }
+        const resource::GpuResourcePool& gpuResourcePool() const override { return m_ResourcePool; }
 
         // Bindless texture index resolution.
         // Returns 0 for invalid UUID.
         uint32_t resolveBindlessTextureIndex(const CoreUUID& texUUID) override;
 
     private:
-
         uint32_t uploadTexture(const vasset::VTexture& cpuTex);
         uint32_t uploadMesh(const vasset::VMesh& cpuMesh, uint32_t materialOffset);
 
-        // Creates a GpuMaterial entry and appends into gpuScene.materials.
+        // Creates a GpuMaterial entry and appends into the global material table.
         // Returns index.
         uint32_t createAndAppendGpuMaterial(const vasset::VMaterial& m);
 
@@ -108,7 +106,7 @@ namespace vultra
 
         vfilesystem::VirtualFileSystem m_VFS;
 
-        resource::GpuScene m_Scene;
+        resource::GpuResourcePool m_ResourcePool;
 
         // Caches (uuid -> record)
         AssetCache<vasset::VMesh, resource::GpuMesh, 64>       m_MeshCache;

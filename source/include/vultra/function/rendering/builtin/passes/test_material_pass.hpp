@@ -13,7 +13,7 @@ namespace vultra
 {
     namespace resource
     {
-        struct GpuScene;
+        struct GpuResourcePool;
     }
 
     namespace rendering
@@ -62,10 +62,11 @@ namespace vultra
             static std::unordered_map<std::string, std::optional<std::string>>
             buildVertexDefines(const rhi::VertexAttributes& attrs);
 
-            rhi::GraphicsPipeline&
-            getOrCreatePipeline(rhi::RenderDevice& rd, const rhi::VertexAttributes& attrs, rhi::PixelFormat colorFormat);
+            rhi::GraphicsPipeline& getOrCreatePipeline(rhi::RenderDevice&           rd,
+                                                       const rhi::VertexAttributes& attrs,
+                                                       rhi::PixelFormat             colorFormat);
 
-            void ensureMaterialTableUploaded(rhi::RenderDevice& rd, const resource::GpuScene& scene);
+            void ensureMaterialTableUploaded(rhi::RenderDevice& rd, const resource::GpuResourcePool& pool);
 
         private:
             std::unordered_map<size_t, PipelineState> m_Pipelines;

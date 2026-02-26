@@ -1,9 +1,10 @@
 #pragma once
 
 #include "vultra/core/base/uuid.hpp"
-#include "vultra/function/resource/gpu_scene.hpp"
+#include "vultra/function/resource/gpu_resource_pool.hpp"
 
 #include <glm/mat4x4.hpp>
+
 #include <string>
 #include <vector>
 
@@ -61,7 +62,7 @@ namespace vultra
         std::vector<RenderCamera>   cameras;
         std::vector<RenderInstance> instances;
 
-        resource::GpuScene* gpuScene {nullptr};
+        resource::GpuResourcePool* gpuResources {nullptr};
 
         void clear()
         {

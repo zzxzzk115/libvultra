@@ -269,6 +269,10 @@ namespace vultra
             // RenderDevice only provides helpers for creating bindless-capable resources.
             Ref<rhi::Buffer> createBindlessStorageBuffer(AllocationHints = AllocationHints::eNone);
 
+            // Fallback texture for invalid bindless indices. This is owned by RenderDevice for simplicity, but it can
+            // be moved to a higher-level owner if needed.
+            Ref<rhi::Texture> createDefaultWhite1x1Texture2D();
+
         private:
             void createXRDevice();
             void createInstance();

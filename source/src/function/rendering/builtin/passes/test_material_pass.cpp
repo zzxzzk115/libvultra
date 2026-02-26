@@ -265,11 +265,11 @@ void main()
             return it->second.pipeline;
         }
 
-        void TestMaterialPass::ensureMaterialTableUploaded(rhi::RenderDevice& rd, const resource::GpuScene& scene)
+        void TestMaterialPass::ensureMaterialTableUploaded(rhi::RenderDevice& rd, const resource::GpuResourcePool& pool)
         {
             // Hash CPU table content so we can avoid redundant uploads.
             size_t h = 0;
-            for (const auto& m : scene.materials)
+            for (const auto& m : pool.materials)
             {
                 hashCombine(h, static_cast<uint32_t>(m.model), m.blockOffsetBytes);
             }
@@ -277,11 +277,11 @@ void main()
                 return;
 
             std::vector<MaterialTableEntry> table;
-            table.resize(scene.materials.size());
-            for (size_t i = 0; i < scene.materials.size(); ++i)
+            table.resize(pool.materials.size());
+            for (size_t i = 0; i < pool.materials.size(); ++i)
             {
-                table[i].model            = static_cast<uint32_t>(scene.materials[i].model);
-                table[i].blockOffsetBytes = scene.materials[i].blockOffsetBytes;
+                table[i].model            = static_cast<uint32_t>(pool.materials[i].model);
+                table[i].blockOffsetBytes = pool.materials[i].blockOffsetBytes;
             }
 
             const size_t bytes = table.size() * sizeof(MaterialTableEntry);
@@ -299,17 +299,10 @@ void main()
 
         void TestMaterialPass::addPasses(RenderContext& ctx)
         {
-            if (!ctx.renderWorld.gpuScene)
+            if (!ctx.renderWorld.gpuResources)
                 return;
 
-            auto* scene = ctx.renderWorld.gpuScene;
-            scene->ensureBindlessSlot0();
-
-            // Slot 0 must be a valid texture to safely bind arrays later.
-            if (scene->textures.size() > 0 && !scene->textures[0].texture)
-            {
-                scene->textures[0].texture = rhi::createDefaultTexture(255, 255, 255, 255, ctx.rd);
-            }
+            auto* pool = ctx.renderWorld.gpuResources;
 
             // Import the camera target into the graph.
             auto target = framegraph::importTexture(
@@ -334,8 +327,8 @@ void main()
                     if (!ctx.framebufferInfo)
                         return;
 
-                    ensureMaterialTableUploaded(rd, *ctx.renderWorld.gpuScene);
-                    if (!m_MaterialTableBuffer || !ctx.renderWorld.gpuScene->materialParams.gpu)
+                    ensureMaterialTableUploaded(rd, *ctx.renderWorld.gpuResources);
+                    if (!m_MaterialTableBuffer || !ctx.renderWorld.gpuResources->materialParams.gpu)
                         return;
 
                     cb.beginRendering(*ctx.framebufferInfo);
@@ -351,10 +344,10 @@ void main()
 
                     for (const auto& inst : ctx.renderWorld.instances)
                     {
-                        if (inst.meshIndex >= ctx.renderWorld.gpuScene->meshes.size())
+                        if (inst.meshIndex >= ctx.renderWorld.gpuResources->meshes.size())
                             continue;
 
-                        auto& mesh = ctx.renderWorld.gpuScene->meshes[inst.meshIndex];
+                        auto& mesh = ctx.renderWorld.gpuResources->meshes[inst.meshIndex];
                         auto& pipe =
                             getOrCreatePipeline(rd,
                                                 mesh.layout.attributes,
@@ -368,9 +361,10 @@ void main()
                         {
                             descBuilder.bind(
                                 0, rhi::bindings::StorageBuffer {m_MaterialTableBuffer.get(), 0, std::nullopt});
-                            descBuilder.bind(1,
-                                             rhi::bindings::StorageBuffer {
-                                                 ctx.renderWorld.gpuScene->materialParams.gpu.get(), 0, std::nullopt});
+                            descBuilder.bind(
+                                1,
+                                rhi::bindings::StorageBuffer {
+                                    ctx.renderWorld.gpuResources->materialParams.gpu.get(), 0, std::nullopt});
 
                             lastSet0    = descBuilder.build(layout0);
                             lastLayout0 = layout0;

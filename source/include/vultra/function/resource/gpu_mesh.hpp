@@ -1,7 +1,6 @@
 #pragma once
 
 #include "vultra/core/rhi/index_buffer.hpp"
-#include "vultra/core/rhi/storage_buffer.hpp"
 #include "vultra/core/rhi/vertex_attributes.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
@@ -25,16 +24,17 @@ namespace vultra::resource
         rhi::VertexBuffer vertexBuffer;
         rhi::IndexBuffer  indexBuffer;
 
-        GpuVertexLayout layout;
+        // Buffer device addresses for GPU-driven vertex pulling.
+        // Filled by AssetSystem at upload time using rhi::RenderDevice.
+        uint64_t vertexBufferAddress {0};
+        uint64_t indexBufferAddress {0};
 
-        // Optional: a GPU buffer that stores draw ranges / material indices.
-        // At this stage we keep it as a plain storage buffer for the future GPU-driven pipeline.
-        rhi::StorageBuffer drawDataBuffer;
+        GpuVertexLayout layout;
 
         uint32_t vertexCount {0};
         uint32_t indexCount {0};
 
-        // Offset/count into a scene material array (GpuScene), so instances can reference materials by index.
+        // Offset/count into the global material table (GpuResourcePool).
         uint32_t materialOffset {0};
         uint32_t materialCount {0};
     };

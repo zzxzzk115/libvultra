@@ -2278,5 +2278,20 @@ namespace vultra
 
             return createRef<rhi::Buffer>(std::move(buffer));
         }
+
+        Ref<rhi::Texture> RenderDevice::createDefaultWhite1x1Texture2D()
+        {
+            // Create a 1x1 white texture. This can be used as a fallback for invalid bindless indices.
+            uint32_t whitePixel = 0xFFFFFFFF; // RGBA8 white
+
+            auto texture = createTexture2D(
+                {1, 1}, rhi::PixelFormat::eRGBA8_UNorm, 1, 1, ImageUsage::eSampled | ImageUsage::eTransferDst);
+
+            // Upload the white pixel using a staging buffer
+            auto stagingBuffer = createStagingBuffer(sizeof(whitePixel));
+            rhi::upload(*this, stagingBuffer, {}, texture, false);
+
+            return createRef<rhi::Texture>(std::move(texture));
+        }
     } // namespace rhi
 } // namespace vultra

@@ -3,7 +3,7 @@
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/asset/asset_handle.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
-#include "vultra/function/resource/gpu_scene.hpp"
+#include "vultra/function/resource/gpu_resource_pool.hpp"
 #include "vultra/function/resource/gpu_texture.hpp"
 
 #include <vasset/uuid_resolver.hpp>
@@ -40,9 +40,9 @@ namespace vultra
         // Returns 0 for invalid UUID.
         virtual uint32_t resolveBindlessTextureIndex(const CoreUUID& texUUID) = 0;
 
-        // Scene GPU tables.
-        virtual resource::GpuScene&       gpuScene()       = 0;
-        virtual const resource::GpuScene& gpuScene() const = 0;
+        // Global GPU resource tables.
+        virtual resource::GpuResourcePool&       gpuResourcePool()       = 0;
+        virtual const resource::GpuResourcePool& gpuResourcePool() const = 0;
 
         // Optional: access registry/resolver for tooling.
         virtual const vasset::VAssetRegistry& registry() const = 0;

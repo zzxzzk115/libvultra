@@ -55,7 +55,7 @@ namespace vultra
 
         bool ready() const { return state() == AssetState::eReady; }
 
-        // Index into the owning GPU table (GpuScene).
+        // Index into the owning GPU table (GpuResourcePool).
         // UINT32_MAX means "not resident".
         uint32_t gpuIndex() const
         {
