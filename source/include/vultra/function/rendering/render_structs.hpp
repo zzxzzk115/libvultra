@@ -1,9 +1,11 @@
 #pragma once
 
 #include "vultra/core/base/uuid.hpp"
+#include "vultra/function/resource/gpu_scene.hpp"
 
 #include <glm/mat4x4.hpp>
 #include <string>
+#include <vector>
 
 namespace vultra
 {
@@ -40,5 +42,31 @@ namespace vultra
         bool isOverlay {false};
         bool clearColor {true};
         bool clearDepth {true};
+    };
+
+    // Cooked render instance extracted from World.
+    // Renderer consumes RenderWorld only.
+    struct RenderInstance
+    {
+        CoreUUID  entity;
+        uint32_t  meshIndex {0};
+        uint32_t  materialIndex {0};
+        glm::mat4 worldMatrix {1.0f};
+    };
+
+    // Double-buffered cooked scene for rendering.
+    struct RenderWorld
+    {
+        uint64_t                    frameIndex {0};
+        std::vector<RenderCamera>   cameras;
+        std::vector<RenderInstance> instances;
+
+        resource::GpuScene* gpuScene {nullptr};
+
+        void clear()
+        {
+            cameras.clear();
+            instances.clear();
+        }
     };
 } // namespace vultra

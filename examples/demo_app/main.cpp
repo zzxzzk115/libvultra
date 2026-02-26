@@ -3,6 +3,7 @@
 #include <vultra/core/input/input_system.hpp>
 #include <vultra/core/os/window_system.hpp>
 #include <vultra/core/rhi/graphics_pipeline.hpp>
+#include <vultra/core/rhi/shader_type.hpp>
 #include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/camera/camera_system.hpp>
 #include <vultra/function/rendering/backend/render_backend_system.hpp>
@@ -114,6 +115,21 @@ void main() {
                 .numVertices  = static_cast<uint32_t>(kTriangle.size()),
             })
             .endRendering();
+
+        // Normal example CPU-Driven rendering flow would be:
+        auto& renderWorld = ctx.renderWorld;
+        for (const auto& inst : renderWorld.instances)
+        {
+            auto& mesh = renderWorld.gpuScene->meshes[inst.meshIndex];
+            auto& mat  = renderWorld.gpuScene->materials[inst.materialIndex];
+
+            // Bind mesh vertex/index buffers, material descriptor sets, push constants, etc.
+
+            // Issue draw call (drawIndexed, drawIndirect, etc.)
+
+            // Allow insert a breakpoint here to inspect the render world and GPU scene contents from the demo_app.
+            ctx.cb.pushConstants(rhi::ShaderStages::eFragment, 0, sizeof(inst), &inst);
+        }
     }
 
 private:
@@ -154,9 +170,10 @@ protected:
         VULTRA_CLIENT_INFO("Loaded mesh with uuid: {}", vbase::to_string(mesh.uuid()));
 
         auto& sceneService = engine.ctx().services.require<ISceneService>();
+        auto& worldService = engine.ctx().services.require<IWorldService>();
 
-        World world {};
-        auto  root = sceneService.instantiateScene(world, "res://scenes/test.vscn");
+        auto& world = worldService.world();
+        auto  root  = sceneService.instantiateScene(world, "res://scenes/test.vscn");
 
         VULTRA_CLIENT_INFO("Loaded world from scene: \"res://scenes/test.vscn\"");
 

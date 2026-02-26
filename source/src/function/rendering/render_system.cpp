@@ -1,10 +1,15 @@
 #include "vultra/function/rendering/render_system.hpp"
 #include "vultra/core/engine/engine_context.hpp"
-#include "vultra/function/rendering/render_camera.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/render_context.hpp"
+#include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/world_service.hpp"
+#include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/mesh_component.hpp"
+#include "vultra/function/world/components/transform_component.hpp"
+#include "vultra/function/world/world.hpp"
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
@@ -13,6 +18,31 @@
 
 namespace vultra
 {
+    void RenderWorldCooker::cook(World& world, IAssetService& assets, RenderWorld& out)
+    {
+        out.clear();
+
+        auto& reg = world.registry();
+
+        auto view = reg.view<IDComponent, TransformComponent, MeshComponent>();
+        for (auto e : view)
+        {
+            const auto& id   = view.get<IDComponent>(e);
+            const auto& tr   = view.get<TransformComponent>(e);
+            const auto& mesh = view.get<MeshComponent>(e);
+
+            auto h = assets.loadMeshSync(mesh.mesh);
+            if (!h.ready())
+                continue;
+
+            RenderInstance inst {};
+            inst.entity      = id.uuid;
+            inst.meshIndex   = h.gpuIndex();
+            inst.worldMatrix = tr.worldMatrix;
+            out.instances.push_back(inst);
+        }
+    }
+
     bool RenderSystem::onInit()
     {
         ctx().services.provide<IRenderService>(this);
@@ -67,13 +97,32 @@ namespace vultra
         auto& backendService = ctx().services.require<IRenderBackendService>();
         auto* worldService   = ctx().services.tryGet<IWorldService>();
         auto* camService     = ctx().services.tryGet<ICameraService>();
+        auto* assetService   = ctx().services.tryGet<IAssetService>();
 
-        if (!worldService || !camService)
+        if (!worldService || !camService || !assetService)
             return;
 
         World& world = worldService->world();
 
-        auto cams = camService->cameras();
+        // Asset upload/update stage (main thread)
+        assetService->update(m_FrameCounter);
+
+        // Cook render instances
+        RenderWorldCooker cooker {};
+        cooker.cook(world, *assetService, m_RenderWorldBack);
+
+        // Cook render cameras
+        m_RenderWorldBack.frameIndex = m_FrameCounter;
+        m_RenderWorldBack.cameras    = camService->cameras();
+
+        // Bind GPU scene
+        m_RenderWorldBack.gpuScene = &assetService->gpuScene();
+
+        std::swap(m_RenderWorldFront, m_RenderWorldBack);
+
+        ++m_FrameCounter;
+
+        auto cams = m_RenderWorldFront.cameras;
         if (cams.empty())
             return;
 
@@ -115,11 +164,11 @@ namespace vultra
                         .area             = {.extent = target->getExtent()},
                         .colorAttachments = {rhi::AttachmentInfo {.target = target}},
                     },
-                .fg     = fg,
-                .bb     = bb,
-                .world  = world,
-                .camera = cam,
-                .dt     = dt,
+                .fg          = fg,
+                .bb          = bb,
+                .renderWorld = m_RenderWorldFront,
+                .camera      = cam,
+                .dt          = dt,
             };
 
             renderer->render(rc);

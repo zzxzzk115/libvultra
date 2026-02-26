@@ -149,11 +149,12 @@ namespace vultra
 
             [[nodiscard]] Buffer createStagingBuffer(vk::DeviceSize size, const void* data = nullptr) const;
 
-            [[nodiscard]] VertexBuffer
-            createVertexBuffer(Buffer::Stride, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone) const;
+            [[nodiscard]] VertexBuffer createVertexBuffer(Buffer::Stride,
+                                                          vk::DeviceSize vertexCount,
+                                                          AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] IndexBuffer
-            createIndexBuffer(IndexType, vk::DeviceSize capacity, AllocationHints = AllocationHints::eNone) const;
+            createIndexBuffer(IndexType, vk::DeviceSize indexCount, AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] UniformBuffer createUniformBuffer(vk::DeviceSize size,
                                                             AllocationHints = AllocationHints::eNone) const;

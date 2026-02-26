@@ -373,7 +373,7 @@ namespace vultra
         }
 
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
-                                                      const vk::DeviceSize  capacity,
+                                                      const vk::DeviceSize  vertexCount,
                                                       const AllocationHints allocationHint) const
         {
             assert(m_MemoryAllocator);
@@ -394,7 +394,7 @@ namespace vultra
             return VertexBuffer {
                 Buffer {
                     m_MemoryAllocator,
-                    stride * capacity,
+                    stride * vertexCount,
                     usage,
                     makeAllocationFlags(allocationHint),
                     vma::MemoryUsage::eAutoPreferDevice,
@@ -404,7 +404,7 @@ namespace vultra
         }
 
         IndexBuffer RenderDevice::createIndexBuffer(IndexType             indexType,
-                                                    const vk::DeviceSize  capacity,
+                                                    const vk::DeviceSize  indexCount,
                                                     const AllocationHints allocationHint) const
         {
             assert(m_MemoryAllocator);
@@ -427,7 +427,7 @@ namespace vultra
             return IndexBuffer {
                 Buffer {
                     m_MemoryAllocator,
-                    indexStride * capacity,
+                    indexStride * indexCount,
                     usage,
                     makeAllocationFlags(allocationHint),
                     vma::MemoryUsage::eAutoPreferDevice,

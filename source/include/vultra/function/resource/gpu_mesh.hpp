@@ -20,6 +20,8 @@ namespace vultra::resource
     // draw-indirect / meshlet dispatch buffers.
     struct GpuMesh
     {
+        rhi::VertexAttributes vertexAttributes;
+
         rhi::VertexBuffer vertexBuffer;
         rhi::IndexBuffer  indexBuffer;
 

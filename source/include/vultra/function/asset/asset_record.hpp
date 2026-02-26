@@ -31,6 +31,10 @@ namespace vultra
         // UINT32_MAX means "not resident".
         std::atomic<uint32_t> gpuIndex {std::numeric_limits<uint32_t>::max()};
 
+        // Upload scheduling (thread-safe).
+        // Multiple threads may request the same asset; this flag ensures we enqueue at most one GPU upload command.
+        std::atomic_bool uploadQueued {false};
+
         // Optional diagnostics
         std::atomic<int32_t> errorCode {0};
     };

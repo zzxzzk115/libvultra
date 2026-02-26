@@ -51,6 +51,12 @@ namespace vultra
         virtual std::string resolveUri(const std::string_view uri) const = 0;
 
         // Allow overriding config (e.g., editor/runtime).
+        // Per-frame update.
+        // - Drain GPU upload queue (main thread).
+        // - Perform garbage collection / eviction.
+        // Sync bring-up can still enqueue uploads and have update() execute them immediately.
+        virtual void update(uint64_t frameIndex) = 0;
+
         virtual void configure(const AssetSystemDesc& desc) = 0;
     };
 } // namespace vultra
