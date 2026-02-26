@@ -30,6 +30,7 @@ namespace vultra
 
     protected:
         bool onInit() override;
+        void onShutdown() override;
         void onPreUpdate(fsec) override;
 
     private:

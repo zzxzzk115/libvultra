@@ -7,19 +7,24 @@ namespace vultra
 {
     bool WindowSystem::onInit()
     {
+        VULTRA_CORE_INFO("[WindowSystem] Initializing...");
+
+        VULTRA_CORE_TRACE("[WindowSystem] Creating window");
         auto& cfg = ctx().config;
 
         m_Window = createRef<os::Window>(
             os::Window::Builder {}.setTitle(cfg.title).setExtent({cfg.windowWidth, cfg.windowHeight}).build());
 
+        VULTRA_CORE_TRACE("[WindowSystem] Providing IWindowService");
         ctx().services.provide<IWindowService>(this);
 
+        VULTRA_CORE_INFO("[WindowSystem] Initialized!");
         return true;
     }
 
     void WindowSystem::onShutdown()
     {
-        VULTRA_CORE_INFO("WindowSystem shutting down");
+        VULTRA_CORE_INFO("[WindowSystem] Shutting down");
         os::Window::quit(); // SDL_Quit()
     }
 } // namespace vultra

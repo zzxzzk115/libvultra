@@ -1,6 +1,6 @@
 #include "vultra/function/world/world_system.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
-
 #include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 
@@ -11,13 +11,24 @@ namespace vultra
 {
     bool WorldSystem::onInit()
     {
+        VULTRA_CORE_INFO("[WorldSystem] Initializing...");
+
+        VULTRA_CORE_TRACE("[WorldSystem] Creating world");
         m_World = std::make_unique<World>();
 
+        VULTRA_CORE_TRACE("[WorldSystem] Providing IWorldService");
         ctx().services.provide<IWorldService>(this);
+
+        VULTRA_CORE_INFO("[WorldSystem] Initialized!");
+
         return true;
     }
 
-    void WorldSystem::onShutdown() { m_World.reset(); }
+    void WorldSystem::onShutdown()
+    {
+        VULTRA_CORE_INFO("[WorldSystem] Shutting down");
+        m_World.reset();
+    }
 
     void WorldSystem::onPreRender() { updateWorldTransforms(); }
 

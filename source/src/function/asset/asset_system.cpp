@@ -171,18 +171,27 @@ namespace vultra
 
     bool AssetSystem::onInit()
     {
-        ctx().services.provide<IAssetService>(this);
+        VULTRA_CORE_INFO("[AssetSystem] Initializing...");
 
+        VULTRA_CORE_TRACE("[AssetSystem] Getting render backend");
         auto& backend  = ctx().services.require<IRenderBackendService>();
         m_RenderDevice = &backend.renderDevice();
 
         // Default config (can be overridden at runtime/editor).
         configure(AssetSystemDesc {});
+
+        VULTRA_CORE_TRACE("[AssetSystem] Providing IAssetService");
+        ctx().services.provide<IAssetService>(this);
+
+        VULTRA_CORE_INFO("[AssetSystem] Initialized!");
+
         return true;
     }
 
     void AssetSystem::onShutdown()
     {
+        VULTRA_CORE_INFO("[AssetSystem] Shutting down");
+
         m_Scene.clear();
         m_TexUUIDToBindlessIndex.clear();
         m_RenderDevice = nullptr;
@@ -207,7 +216,7 @@ namespace vultra
                                     .generic_string();
             if (!std::filesystem::exists(registryPath) || !m_Registry.load(registryPath))
             {
-                VULTRA_CORE_WARN("Failed to load asset registry from file: {}", registryPath);
+                VULTRA_CORE_WARN("[AssetSystem] Failed to load asset registry from file: {}", registryPath);
                 // Proceed with an empty registry, which will cause assets to be re-imported.
                 m_Registry.setAssetRootPath(desc.assetRoot);
                 m_Registry.setImportedFolderName(desc.importedFolder);
@@ -217,7 +226,7 @@ namespace vultra
             }
             else
             {
-                VULTRA_CORE_INFO("Loaded asset registry from file: {}", registryPath);
+                VULTRA_CORE_INFO("[AssetSystem] Loaded asset registry from file: {}", registryPath);
             }
 
             m_Resolver.loadFromAssetRegistry(m_Registry);
@@ -237,9 +246,8 @@ namespace vultra
         // Reset global material param pool.
         m_Scene.materialParams.reset();
 
-        VULTRA_CLIENT_INFO("AssetSystem initialised. Registry entries: {}", m_Registry.getRegistry().size());
-
-        // auto mesh = loadMeshSync("res://models/DamagedHelmet/DamagedHelmet.gltf");
+        VULTRA_CORE_INFO("[AssetSystem] Asset registry configured. Registry entries: {}",
+                         m_Registry.getRegistry().size());
     }
 
     void AssetSystem::update(uint64_t frameIndex)

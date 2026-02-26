@@ -1,4 +1,5 @@
 #include "vultra/function/rendering/render_system.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/render_context.hpp"
@@ -45,21 +46,33 @@ namespace vultra
 
     bool RenderSystem::onInit()
     {
-        ctx().services.provide<IRenderService>(this);
+        VULTRA_CORE_INFO("[RenderSystem] Initializing...");
 
+        VULTRA_CORE_TRACE("[RenderSystem] Getting render backend service");
         auto& backendService = ctx().services.require<IRenderBackendService>();
+        
+        VULTRA_CORE_TRACE("[RenderSystem] Creating transient resources");
         m_TransientResources = createScope<framegraph::TransientResources>(backendService.renderDevice());
 
+        VULTRA_CORE_TRACE("[RenderSystem] Initializing renderers");
         for (auto& [key, renderer] : m_Renderers)
         {
+            VULTRA_CORE_TRACE("[RenderSystem]     Initializing renderer: {}", key);
             renderer->init(backendService);
         }
+
+        VULTRA_CORE_TRACE("[RenderSystem] Providing IRenderService");
+        ctx().services.provide<IRenderService>(this);
+
+        VULTRA_CORE_INFO("[RenderSystem] Initialized!");
 
         return true;
     }
 
     void RenderSystem::onShutdown()
     {
+        VULTRA_CORE_INFO("[RenderSystem] Shutting down");
+
         auto& backendService = ctx().services.require<IRenderBackendService>();
         backendService.renderDevice().waitIdle();
 
