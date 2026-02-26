@@ -132,10 +132,8 @@ void main() {
         //     .commandCount = static_cast<uint32_t>(renderWorld.gpuScene->indirectCommands.size()),
         //     .gi =
         //         rhi::GeometryInfo {
-        //             .vertexBuffer = &renderWorld.gpuScene->resources->globalVertexBuffer,
-        //             .numVertices  = renderWorld.gpuScene->resources->globalVertexCount,
-        //             .indexBuffer  = &renderWorld.gpuScene->resources->globalIndexBuffer,
-        //             .numIndices   = renderWorld.gpuScene->resources->globalIndexCount,
+        //             .indexBuffer = &renderWorld.gpuScene->resources->geometry.index32,
+        //             .numIndices  = renderWorld.gpuScene->resources->geometry.indexCountUsed,
         //         },
         // });
     }

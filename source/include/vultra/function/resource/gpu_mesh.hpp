@@ -29,6 +29,10 @@ namespace vultra::resource
         uint64_t vertexBufferAddress {0};
         uint64_t indexBufferAddress {0};
 
+        // Range in the global geometry index buffer (GpuResourcePool::geometry).
+        // Used by indexed multi-draw indirect.
+        uint32_t indexBase {0}; // firstIndex
+
         GpuVertexLayout layout;
 
         uint32_t vertexCount {0};

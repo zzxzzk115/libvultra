@@ -136,14 +136,13 @@ namespace vultra::resource
             }
         }
 
-        // Build indirect commands for GPU-driven vertex pulling.
+        // Build indexed indirect commands.
         //
-        // Strategy:
-        // - Use DrawIndirectType::eNonIndexed so we can avoid binding index buffers.
+        // Notes:
+        // - Requires a single bound index buffer (GpuResourcePool::geometry.index32).
         // - cmd.count/first map to (indexCount/firstIndex).
-        // - The vertex shader treats gl_VertexIndex as an index-buffer element index.
-        // - cmd.firstInstance is set to drawId to provide a stable per-draw id when desired.
-        void buildIndirectNonIndexedFromDraws()
+        // - cmd.firstInstance is set to drawId to provide a stable per-draw id.
+        void buildIndirectIndexedFromDraws()
         {
             indirectCommands.clear();
             indirectCommands.reserve(draws.size());
@@ -153,10 +152,10 @@ namespace vultra::resource
                 const auto& d = draws[drawId];
 
                 rhi::DrawIndirectCommand cmd {};
-                cmd.type          = rhi::DrawIndirectType::eNonIndexed;
-                cmd.count         = d.indexCount; // vertexCount in non-indexed draw
+                cmd.type          = rhi::DrawIndirectType::eIndexed;
+                cmd.count         = d.indexCount; // indexCount
                 cmd.instanceCount = 1;
-                cmd.first         = d.firstIndex; // firstVertex in non-indexed draw
+                cmd.first         = d.firstIndex; // firstIndex
                 cmd.vertexOffset  = 0;
                 cmd.firstInstance = drawId;
 
@@ -169,10 +168,9 @@ namespace vultra::resource
             // Ensure a valid buffer even if empty.
             const uint32_t cmdCount = static_cast<uint32_t>(indirectCommands.empty() ? 1 : indirectCommands.size());
 
-            if (!indirectBuffer.has_value() ||
-                indirectBuffer->getDrawIndirectType() != rhi::DrawIndirectType::eNonIndexed)
+            if (!indirectBuffer.has_value() || indirectBuffer->getDrawIndirectType() != rhi::DrawIndirectType::eIndexed)
             {
-                indirectBuffer = rd.createDrawIndirectBuffer(cmdCount, rhi::DrawIndirectType::eNonIndexed);
+                indirectBuffer = rd.createDrawIndirectBuffer(cmdCount, rhi::DrawIndirectType::eIndexed);
             }
 
             rd.uploadDrawIndirect(*indirectBuffer, indirectCommands);

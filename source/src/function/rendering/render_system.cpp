@@ -149,10 +149,10 @@ namespace vultra
 
                 resource::GpuDrawRecord dr;
                 dr.vertexAddress = mesh.vertexBufferAddress;
-                dr.indexAddress  = mesh.indexBufferAddress;
+                dr.indexAddress  = pool.geometry.index32Address;
                 dr.model         = inst.worldMatrix;
                 dr.materialIndex = inst.materialIndex;
-                dr.firstIndex    = 0;
+                dr.firstIndex    = mesh.indexBase;
                 dr.indexCount    = mesh.indexCount;
                 dr.flags         = 0;
 
@@ -162,8 +162,8 @@ namespace vultra
             // Upload draw table.
             m_GpuSceneBack.uploadTables(rd);
 
-            // Build and upload indirect commands (non-indexed; shader does index pulling).
-            m_GpuSceneBack.buildIndirectNonIndexedFromDraws();
+            // Build and upload indirect commands (indexed; binds global geometry index buffer).
+            m_GpuSceneBack.buildIndirectIndexedFromDraws();
             m_GpuSceneBack.uploadIndirect(rd);
 
             m_RenderWorldBack.gpuScene = &m_GpuSceneBack;

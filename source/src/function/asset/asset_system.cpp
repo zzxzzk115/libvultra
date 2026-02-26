@@ -538,7 +538,19 @@ namespace vultra
 
         // Fill buffer device addresses for GPU-driven vertex pulling.
         out.vertexBufferAddress = m_RenderDevice->getBufferDeviceAddress(out.vertexBuffer);
-        out.indexBufferAddress  = m_RenderDevice->getBufferDeviceAddress(out.indexBuffer);
+
+        // ------------------------------------------------------------
+        // GPU-driven indexed multi-draw indirect
+        // ------------------------------------------------------------
+        // Append mesh indices into the global geometry index buffer owned by GpuResourcePool.
+        // This allows all draws to share a single bound index buffer.
+        out.indexBase = m_ResourcePool.geometry.appendIndices(*m_RenderDevice,
+                                                              reinterpret_cast<const uint32_t*>(cpuMesh.indices.data()),
+                                                              static_cast<uint32_t>(cpuMesh.indices.size()));
+
+        // For GPU-driven passes, the index buffer device address points to the global index buffer.
+        // CPU-driven passes may still bind out.indexBuffer directly.
+        out.indexBufferAddress = m_ResourcePool.geometry.index32Address;
 
         out.materialOffset = materialOffset;
         out.materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
