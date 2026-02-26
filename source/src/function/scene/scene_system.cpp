@@ -16,8 +16,11 @@
 #include <entt/entt.hpp>
 
 #include <cctype>
+#include <algorithm>
 #include <filesystem>
 #include <sstream>
+#include <stdexcept>
+#include <vector>
 
 namespace vultra
 {
@@ -298,6 +301,14 @@ namespace vultra
 
             world.setParent(rootEnt, parent);
 
+            // Override prefab root's IDComponent from this node's header uuid.
+            if (!node.id.valid())
+                throw std::runtime_error("Scene instantiate: prefab node is missing uuid");
+            if (!reg.all_of<IDComponent>(rootEnt))
+                reg.emplace<IDComponent>(rootEnt, IDComponent {node.id});
+            else
+                reg.get<IDComponent>(rootEnt).uuid = node.id;
+
             // Mark prefab instance on root.
             if (!reg.all_of<PrefabInstanceComponent>(rootEnt))
                 reg.emplace<PrefabInstanceComponent>(rootEnt, PrefabInstanceComponent {node.prefabUri, {}});
@@ -318,8 +329,13 @@ namespace vultra
         entt::entity e = world.createEntity();
         world.setParent(e, parent);
 
-        // Set ID upfront (override-able from file)
-        if (reg.all_of<IDComponent>(e))
+        // IDComponent is represented by the node header attribute `uuid`.
+        // It must always exist for nodes loaded from disk.
+        if (!node.id.valid())
+            throw std::runtime_error("Scene instantiate: node is missing uuid");
+        if (!reg.all_of<IDComponent>(e))
+            reg.emplace<IDComponent>(e, IDComponent {node.id});
+        else
             reg.get<IDComponent>(e).uuid = node.id;
 
         // Apply properties
@@ -363,10 +379,16 @@ namespace vultra
 
         auto node = std::make_unique<SceneNode>();
 
-        if (reg.all_of<IDComponent>(e))
+        // The node header attribute `uuid` is the serialized IDComponent.
+        // To keep scene files deterministic, saving requires a valid IDComponent.
+        if (reg.all_of<IDComponent>(e) && reg.get<IDComponent>(e).uuid.valid())
+        {
             node->id = reg.get<IDComponent>(e).uuid;
+        }
         else
-            node->id = CoreUUIDHelper::createStandardUUID();
+        {
+            throw std::runtime_error("Scene save: entity missing IDComponent.uuid");
+        }
 
         if (reg.all_of<NameComponent>(e))
             node->name = reg.get<NameComponent>(e).name;
@@ -404,8 +426,25 @@ namespace vultra
             }
         }
 
-        // Children
+        // Children (deterministic order): sort by child UUID string.
+        std::vector<entt::entity> children;
         for (entt::entity c = world.firstChild(e); c != entt::null; c = world.nextSibling(c))
+            children.push_back(c);
+
+        auto uuid_key = [&](entt::entity ent) -> std::string {
+            if (reg.all_of<IDComponent>(ent) && reg.get<IDComponent>(ent).uuid.valid())
+                return reg.get<IDComponent>(ent).uuid.toString();
+            // If a child is missing UUID, we still want a stable failure message.
+            return std::string();
+        };
+
+        std::stable_sort(children.begin(), children.end(), [&](entt::entity a, entt::entity b) {
+            const std::string ka = uuid_key(a);
+            const std::string kb = uuid_key(b);
+            return ka < kb;
+        });
+
+        for (entt::entity c : children)
         {
             if (auto child = buildNodeFromWorld(world, c))
                 node->children.push_back(std::move(child));
@@ -445,8 +484,22 @@ namespace vultra
                     SceneDocument doc;
                     doc.version    = 1;
                     doc.root       = std::make_unique<SceneNode>();
-                    doc.root->id   = CoreUUIDHelper::createStandardUUID();
+                    // Deterministic synthetic root UUID to keep file stable.
+                    doc.root->id   = CoreUUIDHelper::getFromName(std::string("SceneRoot:") + std::string(uri));
                     doc.root->name = "SceneRoot";
+
+                    // Deterministic root ordering (by UUID).
+                    for (auto r : roots)
+                    {
+                        if (!reg.all_of<IDComponent>(r) || !reg.get<IDComponent>(r).uuid.valid())
+                            throw std::runtime_error("Scene save: root entity missing IDComponent.uuid");
+                    }
+                    std::sort(roots.begin(), roots.end(), [&](entt::entity a, entt::entity b) {
+                        const auto& ua = reg.get<IDComponent>(a).uuid;
+                        const auto& ub = reg.get<IDComponent>(b).uuid;
+                        return ua.toString() < ub.toString();
+                    });
+
                     for (auto r : roots)
                     {
                         if (auto n = buildNodeFromWorld(world, r))
