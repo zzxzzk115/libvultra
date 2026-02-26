@@ -56,4 +56,3 @@ target("vrdx")
     add_packages("volk")
 
 includes("vasset")
-includes("vshadersystem")

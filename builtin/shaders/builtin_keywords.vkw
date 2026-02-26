@@ -1,0 +1,5 @@
+keyword permute global USE_SHADOW
+keyword runtime global DEBUG_VIEW=NONE|NORMAL|ALBEDO
+
+set USE_SHADOW=1
+set DEBUG_VIEW=NONE

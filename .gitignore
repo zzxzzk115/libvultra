@@ -28,3 +28,6 @@ vsxmake*/
 
 # imported files
 imported/
+
+# vshader cache
+.vshader_cache/
