@@ -4,6 +4,7 @@
 #include "vultra/function/framegraph/transient_resources.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
+#include "vultra/function/resource/gpu_scene.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/render_service.hpp"
@@ -59,6 +60,9 @@ namespace vultra
 
         RenderWorld m_RenderWorldFront {};
         RenderWorld m_RenderWorldBack {};
+
+        resource::GpuScene m_GpuSceneFront {};
+        resource::GpuScene m_GpuSceneBack {};
 
         uint64_t m_FrameCounter {0};
     };

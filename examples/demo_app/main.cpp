@@ -120,9 +120,24 @@ void main() {
         auto& renderWorld = ctx.renderWorld;
         for (const auto& inst : renderWorld.instances)
         {
-            auto& mesh = renderWorld.gpuResources->meshes[inst.meshIndex];
-            auto& mat  = renderWorld.gpuResources->materials[mesh.materialOffset];
+            auto& mesh = renderWorld.gpuScene->resources->meshes[inst.meshIndex];
+            auto& mat  = renderWorld.gpuScene->resources->materials[mesh.materialOffset];
         }
+
+        // GPU-Driven rendering flow would consume renderWorld.gpuScene->draws + indirectCommands with minimal CPU
+        // overhead. Issue indirect draw call.
+        // ctx.cb.drawIndirect(rhi::DrawIndirectInfo {
+        //     .buffer       = &renderWorld.gpuScene->indirectBuffer.value(),
+        //     .firstCommand = 0,
+        //     .commandCount = static_cast<uint32_t>(renderWorld.gpuScene->indirectCommands.size()),
+        //     .gi =
+        //         rhi::GeometryInfo {
+        //             .vertexBuffer = &renderWorld.gpuScene->resources->globalVertexBuffer,
+        //             .numVertices  = renderWorld.gpuScene->resources->globalVertexCount,
+        //             .indexBuffer  = &renderWorld.gpuScene->resources->globalIndexBuffer,
+        //             .numIndices   = renderWorld.gpuScene->resources->globalIndexCount,
+        //         },
+        // });
     }
 
 private:

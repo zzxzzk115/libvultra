@@ -50,7 +50,7 @@ namespace vultra
 
         VULTRA_CORE_TRACE("[RenderSystem] Getting render backend service");
         auto& backendService = ctx().services.require<IRenderBackendService>();
-        
+
         VULTRA_CORE_TRACE("[RenderSystem] Creating transient resources");
         m_TransientResources = createScope<framegraph::TransientResources>(backendService.renderDevice());
 
@@ -128,10 +128,51 @@ namespace vultra
         m_RenderWorldBack.frameIndex = m_FrameCounter;
         m_RenderWorldBack.cameras    = camService->cameras();
 
-        // Bind global GPU resource pool
-        m_RenderWorldBack.gpuResources = &assetService->gpuResourcePool();
+        // Build per-frame GPU-driven scene tables (draws + indirect commands).
+        // These tables are consumed by GPU-driven passes (gl_DrawID indexed).
+        {
+            // Bind global GPU resource pool
+            m_GpuSceneBack.resources = &assetService->gpuResourcePool();
+
+            auto&       rd   = backendService.renderDevice();
+            const auto& pool = *m_GpuSceneBack.resources;
+
+            m_GpuSceneBack.beginFrame(pool);
+
+            // Build one draw per render instance (no instancing yet).
+            for (const auto& inst : m_RenderWorldBack.instances)
+            {
+                if (inst.meshIndex >= pool.meshes.size())
+                    continue;
+
+                const auto& mesh = pool.meshes[inst.meshIndex];
+
+                resource::GpuDrawRecord dr;
+                dr.vertexAddress = mesh.vertexBufferAddress;
+                dr.indexAddress  = mesh.indexBufferAddress;
+                dr.model         = inst.worldMatrix;
+                dr.materialIndex = inst.materialIndex;
+                dr.firstIndex    = 0;
+                dr.indexCount    = mesh.indexCount;
+                dr.flags         = 0;
+
+                m_GpuSceneBack.pushDraw(dr);
+            }
+
+            // Upload draw table.
+            m_GpuSceneBack.uploadTables(rd);
+
+            // Build and upload indirect commands (non-indexed; shader does index pulling).
+            m_GpuSceneBack.buildIndirectNonIndexedFromDraws();
+            m_GpuSceneBack.uploadIndirect(rd);
+
+            m_RenderWorldBack.gpuScene = &m_GpuSceneBack;
+        }
 
         std::swap(m_RenderWorldFront, m_RenderWorldBack);
+        std::swap(m_GpuSceneFront, m_GpuSceneBack);
+        m_RenderWorldFront.gpuScene = &m_GpuSceneFront;
+        m_RenderWorldBack.gpuScene  = &m_GpuSceneBack;
 
         ++m_FrameCounter;
 

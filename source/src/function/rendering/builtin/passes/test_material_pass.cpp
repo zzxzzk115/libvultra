@@ -299,10 +299,10 @@ void main()
 
         void TestMaterialPass::addPasses(RenderContext& ctx)
         {
-            if (!ctx.renderWorld.gpuResources)
+            if (!ctx.renderWorld.gpuScene->resources)
                 return;
 
-            auto* pool = ctx.renderWorld.gpuResources;
+            const auto* pool = ctx.renderWorld.gpuScene->resources;
 
             // Import the camera target into the graph.
             auto target = framegraph::importTexture(
@@ -327,8 +327,8 @@ void main()
                     if (!ctx.framebufferInfo)
                         return;
 
-                    ensureMaterialTableUploaded(rd, *ctx.renderWorld.gpuResources);
-                    if (!m_MaterialTableBuffer || !ctx.renderWorld.gpuResources->materialParams.gpu)
+                    ensureMaterialTableUploaded(rd, *ctx.renderWorld.gpuScene->resources);
+                    if (!m_MaterialTableBuffer || !ctx.renderWorld.gpuScene->resources->materialParams.gpu)
                         return;
 
                     cb.beginRendering(*ctx.framebufferInfo);
@@ -344,11 +344,11 @@ void main()
 
                     for (const auto& inst : ctx.renderWorld.instances)
                     {
-                        if (inst.meshIndex >= ctx.renderWorld.gpuResources->meshes.size())
+                        if (inst.meshIndex >= ctx.renderWorld.gpuScene->resources->meshes.size())
                             continue;
 
-                        auto& mesh = ctx.renderWorld.gpuResources->meshes[inst.meshIndex];
-                        auto& pipe =
+                        const auto& mesh = ctx.renderWorld.gpuScene->resources->meshes[inst.meshIndex];
+                        auto&       pipe =
                             getOrCreatePipeline(rd,
                                                 mesh.layout.attributes,
                                                 ctx.framebufferInfo->colorAttachments[0].target->getPixelFormat());
@@ -364,7 +364,7 @@ void main()
                             descBuilder.bind(
                                 1,
                                 rhi::bindings::StorageBuffer {
-                                    ctx.renderWorld.gpuResources->materialParams.gpu.get(), 0, std::nullopt});
+                                    ctx.renderWorld.gpuScene->resources->materialParams.gpu.get(), 0, std::nullopt});
 
                             lastSet0    = descBuilder.build(layout0);
                             lastLayout0 = layout0;
