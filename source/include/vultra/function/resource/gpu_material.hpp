@@ -8,6 +8,7 @@ namespace vultra::resource
     {
         eInvalid = 0,
         ePBRMetallicRoughness,
+        ePBRSpecularGlossiness,
         eUnlit,
         ePhong,
     };

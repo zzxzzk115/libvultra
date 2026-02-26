@@ -8,7 +8,7 @@
 #include <vasset/vasset_importers.hpp>
 #include <vasset/vmaterial.hpp>
 
-#include <fstream>
+#include <cstring>
 #include <limits>
 
 namespace vultra
@@ -32,6 +32,18 @@ namespace vultra
         };
         static_assert(sizeof(MaterialParamsPBRMR) % 16 == 0);
 
+        struct alignas(16) MaterialParamsPBRSG
+        {
+            glm::vec4 diffuseColor {1, 1, 1, 1};
+            glm::vec3 specularFactor {1, 1, 1};
+            float     glossinessFactor {1.0f};
+            uint32_t  diffuseColorTex {0};
+            uint32_t  specularGlossinessTex {0};
+            uint32_t  pad0 {0};
+            uint32_t  pad1 {0};
+        };
+        static_assert(sizeof(MaterialParamsPBRSG) % 16 == 0);
+
         struct alignas(16) MaterialParamsUnlit
         {
             glm::vec4 color {1, 1, 1, 1};
@@ -52,6 +64,108 @@ namespace vultra
             uint32_t  pad2 {0};
         };
         static_assert(sizeof(MaterialParamsPhong) % 16 == 0);
+
+        using namespace resource;
+        using namespace rhi;
+        using namespace vasset;
+
+        rhi::VertexAttributes buildVertexAttributes(VVertexFlags flags, uint32_t& stride)
+        {
+            VertexAttributes attrs;
+
+            uint32_t offset = 0;
+
+            auto add = [&](LocationIndex loc, VertexAttribute::Type type) {
+                attrs[loc] = {type, offset};
+
+                offset += getSize(type);
+            };
+
+            if (flags & VVertexFlags::ePosition)
+                add(0, VertexAttribute::Type::eFloat3);
+
+            if (flags & VVertexFlags::eNormal)
+                add(1, VertexAttribute::Type::eFloat3);
+
+            if (flags & VVertexFlags::eColor)
+                add(2, VertexAttribute::Type::eFloat3);
+
+            if (flags & VVertexFlags::eTexCoord0)
+                add(3, VertexAttribute::Type::eFloat2);
+
+            if (flags & VVertexFlags::eTexCoord1)
+                add(4, VertexAttribute::Type::eFloat2);
+
+            if (flags & VVertexFlags::eTangent)
+                add(5, VertexAttribute::Type::eFloat4);
+
+            if (flags & VVertexFlags::eJointIndices)
+                add(6, VertexAttribute::Type::eFloat4);
+
+            if (flags & VVertexFlags::eJointWeights)
+                add(7, VertexAttribute::Type::eFloat4);
+
+            stride = offset;
+
+            return attrs;
+        }
+
+        std::vector<uint8_t> packVertices(const VMesh& mesh, const GpuVertexLayout& layout)
+        {
+            const auto&    attrs  = layout.attributes;
+            const uint32_t stride = layout.stride;
+
+            std::vector<uint8_t> buffer;
+
+            buffer.resize(mesh.vertexCount * stride);
+
+            for (uint32_t i = 0; i < mesh.vertexCount; i++)
+            {
+                uint8_t* dst = buffer.data() + i * stride;
+
+                for (const auto& [location, attr] : attrs)
+                {
+                    uint8_t* ptr = dst + attr.offset;
+
+                    switch (location)
+                    {
+                        case 0:
+                            memcpy(ptr, &mesh.positions[i], sizeof(glm::vec3));
+                            break;
+
+                        case 1:
+                            memcpy(ptr, &mesh.normals[i], sizeof(glm::vec3));
+                            break;
+
+                        case 2:
+                            memcpy(ptr, &mesh.colors[i], sizeof(glm::vec3));
+                            break;
+
+                        case 3:
+                            memcpy(ptr, &mesh.texCoords0[i], sizeof(glm::vec2));
+                            break;
+
+                        case 4:
+                            memcpy(ptr, &mesh.texCoords1[i], sizeof(glm::vec2));
+                            break;
+
+                        case 5:
+                            memcpy(ptr, &mesh.tangents[i], sizeof(glm::vec4));
+                            break;
+
+                        case 6:
+                            memcpy(ptr, &mesh.jointIndices[i], sizeof(glm::vec4));
+                            break;
+
+                        case 7:
+                            memcpy(ptr, &mesh.jointWeights[i], sizeof(glm::vec4));
+                            break;
+                    }
+                }
+            }
+
+            return buffer;
+        }
     } // namespace
 
     bool AssetSystem::onInit()
@@ -88,7 +202,8 @@ namespace vultra
         {
             // Try to load existing registry from disk. This will populate the registry with previously imported assets,
             // allowing us to load them without re-importing.
-            std::string registryPath = desc.registryFile;
+            auto registryPath = (std::filesystem::path(m_Desc.assetRoot) / m_Desc.importedFolder / m_Desc.registryFile)
+                                    .generic_string();
             if (!std::filesystem::exists(registryPath) || !m_Registry.load(registryPath))
             {
                 VULTRA_CORE_WARN("Failed to load asset registry from file: {}", registryPath);
@@ -126,33 +241,15 @@ namespace vultra
         // auto mesh = loadMeshSync("res://models/DamagedHelmet/DamagedHelmet.gltf");
     }
 
-    std::vector<std::byte> AssetSystem::readFileBytes(const std::filesystem::path& path)
-    {
-        std::ifstream f(path, std::ios::binary);
-        if (!f)
-            return {};
-
-        f.seekg(0, std::ios::end);
-        const auto size = static_cast<size_t>(f.tellg());
-        f.seekg(0, std::ios::beg);
-
-        std::vector<std::byte> data;
-        data.resize(size);
-        if (size > 0)
-            f.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(size));
-
-        return data;
-    }
-
-    bool AssetSystem::resolveUUIDToPath(const CoreUUID& uuid, std::filesystem::path& outPath) const
+    bool AssetSystem::resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const
     {
         auto entry = m_Registry.lookup(uuid);
         if (entry.type == vasset::VAssetType::eUnknown)
             return false;
 
-        // Prefer imported path if exists; otherwise fall back to source path.
-        std::filesystem::path p = entry.importedPath.empty() ? entry.sourcePath : entry.importedPath;
-        outPath                 = std::filesystem::path(m_Desc.assetRoot) / p;
+        // Must be the imported path, not the source path
+        // Hence why, we pack it ourselves rather than using UUIDResolver::resolve.
+        outUri = m_Desc.scheme + "://" + entry.importedPath;
         return true;
     }
 
@@ -232,6 +329,18 @@ namespace vultra
                 blockOffset       = allocBlock(&p, sizeof(p));
                 break;
             }
+            case vasset::VMaterialModel::ePBRSpecularGlossiness: {
+                gm.model = GpuMaterialModel::ePBRSpecularGlossiness;
+                MaterialParamsPBRSG p;
+                p.diffuseColor     = m.core.pbrSG.diffuseColor;
+                p.specularFactor   = m.core.pbrSG.specularFactor;
+                p.glossinessFactor = m.core.pbrSG.glossinessFactor;
+                p.diffuseColorTex  = resolveBindlessTextureIndex(CoreUUID(m.core.pbrSG.diffuseTexture.uuid));
+                p.specularGlossinessTex =
+                    resolveBindlessTextureIndex(CoreUUID(m.core.pbrSG.specularGlossinessTexture.uuid));
+                blockOffset = allocBlock(&p, sizeof(p));
+                break;
+            }
             case vasset::VMaterialModel::eUnlit: {
                 gm.model = GpuMaterialModel::eUnlit;
                 MaterialParamsUnlit p;
@@ -265,40 +374,21 @@ namespace vultra
 
         resource::GpuMesh out;
 
-        out.vertexCount = cpuMesh.vertexCount;
-        out.indexCount  = static_cast<uint32_t>(cpuMesh.indices.size());
+        out.vertexCount       = cpuMesh.vertexCount;
+        out.indexCount        = static_cast<uint32_t>(cpuMesh.indices.size());
+        out.layout.attributes = buildVertexAttributes(cpuMesh.vertexFlags, out.layout.stride);
 
-        struct Vertex
-        {
-            glm::vec3 pos;
-            glm::vec3 nrm;
-            glm::vec2 uv0;
-        };
-
-        std::vector<Vertex> vertices(cpuMesh.vertexCount);
-
-        for (uint32_t i = 0; i < cpuMesh.vertexCount; ++i)
-        {
-            vertices[i].pos = cpuMesh.positions[i];
-
-            vertices[i].nrm = cpuMesh.normals.empty() ? glm::vec3(0, 1, 0) : cpuMesh.normals[i];
-
-            vertices[i].uv0 = cpuMesh.texCoords0.empty() ? glm::vec2(0, 0) : cpuMesh.texCoords0[i];
-        }
-
+        auto vertexData = packVertices(cpuMesh, out.layout);
         // ================================
         // Vertex buffer
         // ================================
+        out.vertexBuffer = m_RenderDevice->createVertexBuffer(out.layout.stride, vertexData.size());
 
-        const size_t vertexSize = vertices.size() * sizeof(Vertex);
-
-        out.vertexBuffer = m_RenderDevice->createVertexBuffer(sizeof(Vertex), vertexSize);
-
-        auto vertexStaging = m_RenderDevice->createStagingBuffer(vertexSize, vertices.data());
+        auto vertexStaging = m_RenderDevice->createStagingBuffer(vertexData.size(), vertexData.data());
 
         m_RenderDevice->execute(
             [&](rhi::CommandBuffer& cb) {
-                cb.copyBuffer(vertexStaging, out.vertexBuffer, vk::BufferCopy {0, 0, vertexSize});
+                cb.copyBuffer(vertexStaging, out.vertexBuffer, vk::BufferCopy {0, 0, vertexData.size()});
             },
             true);
 
@@ -372,25 +462,27 @@ namespace vultra
         if (rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
             return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
 
-        std::filesystem::path path;
-        if (!resolveUUIDToPath(uuid, path))
+        std::string uri;
+        if (!resolveUUIDToUri(uuid, uri))
         {
             VULTRA_CLIENT_ERROR("loadTextureSync: cannot resolve uuid {}", vbase::to_string(uuid));
             return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
         }
 
-        auto bytes = readFileBytes(path);
-        if (bytes.empty())
+        auto br = m_VFS.readAll(uri);
+        if (!br)
         {
-            VULTRA_CLIENT_ERROR("loadTextureSync: failed to read {}", path.string());
+            VULTRA_CLIENT_ERROR("loadTextureSync: failed to read {}", uri);
             return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
         }
+
+        const auto& bytes = br.value();
 
         auto cpu = std::make_unique<vasset::VTexture>();
         auto r   = vasset::loadTextureFromMemory(bytes, *cpu);
         if (!r)
         {
-            VULTRA_CLIENT_ERROR("loadTextureSync: vasset::loadTextureFromMemory failed: {}", path.string());
+            VULTRA_CLIENT_ERROR("loadTextureSync: vasset::loadTextureFromMemory failed: {}", uri);
             return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
         }
 
@@ -424,25 +516,27 @@ namespace vultra
         if (rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
             return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
 
-        std::filesystem::path path;
-        if (!resolveUUIDToPath(uuid, path))
+        std::string uri;
+        if (!resolveUUIDToUri(uuid, uri))
         {
             VULTRA_CLIENT_ERROR("loadMeshSync: cannot resolve uuid {}", vbase::to_string(uuid));
             return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
         }
 
-        auto bytes = readFileBytes(path);
-        if (bytes.empty())
+        auto br = m_VFS.readAll(uri);
+        if (!br)
         {
-            VULTRA_CLIENT_ERROR("loadMeshSync: failed to read {}", path.string());
+            VULTRA_CLIENT_ERROR("loadMeshSync: failed to read {}", uri);
             return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
         }
+
+        const auto& bytes = br.value();
 
         auto cpu = std::make_unique<vasset::VMesh>();
         auto r   = vasset::loadMeshFromMemory(bytes, *cpu);
         if (!r)
         {
-            VULTRA_CLIENT_ERROR("loadMeshSync: vasset::loadMeshFromMemory failed: {}", path.string());
+            VULTRA_CLIENT_ERROR("loadMeshSync: vasset::loadMeshFromMemory failed: {}", uri);
             return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
         }
 

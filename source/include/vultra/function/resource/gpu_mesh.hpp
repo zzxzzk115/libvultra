@@ -2,12 +2,19 @@
 
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/storage_buffer.hpp"
+#include "vultra/core/rhi/vertex_attributes.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
 #include <cstdint>
 
 namespace vultra::resource
 {
+    struct GpuVertexLayout
+    {
+        uint32_t              stride = 0;
+        rhi::VertexAttributes attributes;
+    };
+
     // GPU-only mesh representation. No CPU-side VMesh / SubMesh is stored here.
     // This is intentionally renderer-agnostic and will later evolve into GPU-driven
     // draw-indirect / meshlet dispatch buffers.
@@ -15,6 +22,8 @@ namespace vultra::resource
     {
         rhi::VertexBuffer vertexBuffer;
         rhi::IndexBuffer  indexBuffer;
+
+        GpuVertexLayout layout;
 
         // Optional: a GPU buffer that stores draw ranges / material indices.
         // At this stage we keep it as a plain storage buffer for the future GPU-driven pipeline.

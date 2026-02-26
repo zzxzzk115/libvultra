@@ -88,6 +88,7 @@ namespace vultra
 
             eR32F    = VK_FORMAT_R32_SFLOAT,
             eRG32F   = VK_FORMAT_R32G32_SFLOAT,
+            eRGB32F   = VK_FORMAT_R32G32B32_SFLOAT,
             eRGBA32F = VK_FORMAT_R32G32B32A32_SFLOAT,
 
             // -- Integer:

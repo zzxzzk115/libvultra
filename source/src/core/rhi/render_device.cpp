@@ -422,10 +422,12 @@ namespace vultra
                 usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
             }
 
+            const auto indexStride = indexType == IndexType::eUInt16 ? 2 : 4;
+
             return IndexBuffer {
                 Buffer {
                     m_MemoryAllocator,
-                    static_cast<uint8_t>(indexType) * capacity,
+                    indexStride * capacity,
                     usage,
                     makeAllocationFlags(allocationHint),
                     vma::MemoryUsage::eAutoPreferDevice,

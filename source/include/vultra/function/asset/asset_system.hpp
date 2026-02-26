@@ -18,7 +18,6 @@
 #include <filesystem>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 namespace vultra
 {
@@ -26,7 +25,7 @@ namespace vultra
     {
         std::string assetRoot {"resources"};
         std::string importedFolder {"imported"};
-        std::string registryFile {"resources/imported/asset_registry.tsv"};
+        std::string registryFile {"asset_registry.tsv"};
         std::string scheme {"res"};
         std::string vpkFile {"resources.vpk"};
 
@@ -66,7 +65,6 @@ namespace vultra
         uint32_t resolveBindlessTextureIndex(const CoreUUID& texUUID) override;
 
     private:
-        static std::vector<std::byte> readFileBytes(const std::filesystem::path& path);
 
         uint32_t uploadTexture(const vasset::VTexture& cpuTex);
         uint32_t uploadMesh(const vasset::VMesh& cpuMesh, uint32_t materialOffset);
@@ -75,7 +73,7 @@ namespace vultra
         // Returns index.
         uint32_t createAndAppendGpuMaterial(const vasset::VMaterial& m);
 
-        bool resolveUUIDToPath(const CoreUUID& uuid, std::filesystem::path& outPath) const;
+        bool resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const;
         bool resolveUriToUUID(std::string_view uri, CoreUUID& outUUID) const;
 
     private:
