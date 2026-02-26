@@ -2,9 +2,12 @@
 
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
+#include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/render_service.hpp"
+#include "vultra/function/services/world_service.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -41,6 +44,9 @@ namespace vultra
         // Optional: set fallback backbuffer target (can be used for offline rendering)
         void setBackbufferTarget(rhi::Texture* tex) { m_Backbuffer = tex; }
 
+        // Cooked render world (read-only for renderer)
+        const RenderWorld& renderWorld() const { return m_RenderWorldFront; }
+
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
 
@@ -50,5 +56,17 @@ namespace vultra
 
         rhi::Texture*                                   m_Backbuffer {nullptr};
         std::unique_ptr<framegraph::TransientResources> m_TransientResources {nullptr};
+
+        RenderWorld m_RenderWorldFront {};
+        RenderWorld m_RenderWorldBack {};
+
+        uint64_t m_FrameCounter {0};
+    };
+
+    // Cook World into RenderWorld.
+    class RenderWorldCooker
+    {
+    public:
+        static void cook(World& world, IAssetService& assets, RenderWorld& out);
     };
 } // namespace vultra

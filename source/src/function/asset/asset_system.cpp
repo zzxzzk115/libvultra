@@ -1,6 +1,7 @@
 #include "vultra/function/asset/asset_system.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/vertex_attributes.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
@@ -8,6 +9,7 @@
 #include <vasset/vasset_importers.hpp>
 #include <vasset/vmaterial.hpp>
 
+#include <cstring>
 #include <fstream>
 #include <limits>
 
@@ -124,6 +126,104 @@ namespace vultra
         VULTRA_CLIENT_INFO("AssetSystem initialised. Registry entries: {}", m_Registry.getRegistry().size());
 
         // auto mesh = loadMeshSync("res://models/DamagedHelmet/DamagedHelmet.gltf");
+    }
+
+    void AssetSystem::update(uint64_t frameIndex)
+    {
+        // NOTE:
+        // GPU upload must happen on the main/render thread. Even in sync bring-up, we keep a queue + update() shape so
+        // the system can migrate to async loading later without breaking APIs.
+
+        // Drain upload commands
+        std::vector<UploadCmd> cmds;
+        {
+            std::scoped_lock lock(m_UploadQueueMutex);
+            cmds.swap(m_UploadQueue);
+        }
+
+        for (const auto& cmd : cmds)
+        {
+            switch (cmd.kind)
+            {
+                case UploadCmd::Kind::eMesh: {
+                    auto* rec = m_MeshCache.findOrCreate(cmd.uuid);
+                    if (!rec)
+                        break;
+
+                    auto st = rec->state.load(std::memory_order_acquire);
+                    if (st != AssetState::eUploadQueued && st != AssetState::eCPUReady)
+                        break;
+
+                    rec->state.store(AssetState::eUploadingGPU, std::memory_order_release);
+
+                    // TODO (deferred upload):
+                    // - Create GPU materials (may trigger texture loads)
+                    // - Upload mesh buffers + append to m_Scene
+                    // - Store gpuIndex and transition to eReady
+                    //
+                    // For now we keep the original sync upload logic here so rendering bring-up keeps working.
+
+                    if (rec->cpu)
+                    {
+                        const uint32_t materialOffset = static_cast<uint32_t>(m_Scene.materials.size());
+                        for (const auto& mat : rec->cpu->materials)
+                        {
+                            createAndAppendGpuMaterial(mat);
+                        }
+
+                        const uint32_t meshIndex = uploadMesh(*rec->cpu, materialOffset);
+
+                        rec->gpuIndex.store(meshIndex, std::memory_order_release);
+                        rec->state.store(AssetState::eReady, std::memory_order_release);
+
+                        // release CPU copy if not requested
+                        if (!m_Desc.keepCpuCopy)
+                            rec->cpu.reset();
+                    }
+                    else
+                    {
+                        rec->state.store(AssetState::eFailed, std::memory_order_release);
+                    }
+                }
+                break;
+
+                case UploadCmd::Kind::eTexture: {
+                    auto* rec = m_TextureCache.findOrCreate(cmd.uuid);
+                    if (!rec)
+                        break;
+
+                    auto st = rec->state.load(std::memory_order_acquire);
+                    if (st != AssetState::eUploadQueued && st != AssetState::eCPUReady)
+                        break;
+
+                    rec->state.store(AssetState::eUploadingGPU, std::memory_order_release);
+
+                    // TODO (deferred upload):
+                    // - Transcode/prepare texture formats if needed
+                    // - Upload to GPU and create bindless entry
+                    // - Store gpuIndex and transition to eReady
+
+                    if (rec->cpu)
+                    {
+                        const uint32_t texIndex = uploadTexture(*rec->cpu);
+
+                        rec->gpuIndex.store(texIndex, std::memory_order_release);
+                        rec->state.store(AssetState::eReady, std::memory_order_release);
+
+                        if (!m_Desc.keepCpuCopy)
+                            rec->cpu.reset();
+                    }
+                    else
+                    {
+                        rec->state.store(AssetState::eFailed, std::memory_order_release);
+                    }
+                }
+                break;
+            }
+        }
+
+        // GC hook (TODO): Use frameIndex + refCount/lastUsedFrame to evict CPU/GPU if desired.
+        (void)frameIndex;
     }
 
     std::vector<std::byte> AssetSystem::readFileBytes(const std::filesystem::path& path)
@@ -268,59 +368,189 @@ namespace vultra
         out.vertexCount = cpuMesh.vertexCount;
         out.indexCount  = static_cast<uint32_t>(cpuMesh.indices.size());
 
-        struct Vertex
+        // ------------------------------------------------------------
+        // Build dynamic AoS vertex layout from vasset::VMesh vertexFlags.
+        // Tightly-packed AoS reduces binds and copy commands.
+        // rhi::VertexAttributes is attached to GpuMesh for pipeline creation.
+        // ------------------------------------------------------------
+
+        rhi::VertexAttributes attribs;
+
+        // Stable semantic locations (match shader conventions).
+        constexpr uint32_t kLocPosition = 0;
+        constexpr uint32_t kLocNormal   = 1;
+        constexpr uint32_t kLocColor0   = 2;
+        constexpr uint32_t kLocUV0      = 3;
+        constexpr uint32_t kLocUV1      = 4;
+        constexpr uint32_t kLocTangent  = 5;
+        constexpr uint32_t kLocJoints0  = 6;
+        constexpr uint32_t kLocWeights0 = 7;
+
+        const auto flags      = cpuMesh.vertexFlags;
+        const bool hasPos     = (flags & vasset::VVertexFlags::ePosition);
+        const bool hasNormal  = (flags & vasset::VVertexFlags::eNormal);
+        const bool hasColor   = (flags & vasset::VVertexFlags::eColor);
+        const bool hasUV0     = (flags & vasset::VVertexFlags::eTexCoord0);
+        const bool hasUV1     = (flags & vasset::VVertexFlags::eTexCoord1);
+        const bool hasTangent = (flags & vasset::VVertexFlags::eTangent);
+        const bool hasJoints  = (flags & vasset::VVertexFlags::eJointIndices);
+        const bool hasWeights = (flags & vasset::VVertexFlags::eJointWeights);
+
+        uint32_t stride = 0;
+
+        // POSITION (required for renderable meshes)
+        if (hasPos)
         {
-            glm::vec3 pos;
-            glm::vec3 nrm;
-            glm::vec2 uv0;
-        };
-
-        std::vector<Vertex> vertices(cpuMesh.vertexCount);
-
-        for (uint32_t i = 0; i < cpuMesh.vertexCount; ++i)
+            attribs.emplace(kLocPosition, rhi::VertexAttribute {rhi::VertexAttribute::Type::eFloat3, stride});
+            stride += rhi::getSize(rhi::VertexAttribute::Type::eFloat3);
+        }
+        else
         {
-            vertices[i].pos = cpuMesh.positions[i];
-
-            vertices[i].nrm = cpuMesh.normals.empty() ? glm::vec3(0, 1, 0) : cpuMesh.normals[i];
-
-            vertices[i].uv0 = cpuMesh.texCoords0.empty() ? glm::vec2(0, 0) : cpuMesh.texCoords0[i];
+            VULTRA_CORE_WARN("VMesh has no positions; uploading an empty vertex layout.");
         }
 
-        // ================================
-        // Vertex buffer
-        // ================================
+        // NORMAL (optional)
+        if (hasNormal)
+        {
+            attribs.emplace(kLocNormal, rhi::VertexAttribute {rhi::VertexAttribute::Type::eFloat3, stride});
+            stride += rhi::getSize(rhi::VertexAttribute::Type::eFloat3);
+        }
 
-        const size_t vertexSize = vertices.size() * sizeof(Vertex);
+        // COLOR0 (optional)
+        if (hasColor)
+        {
+            attribs.emplace(kLocColor0, rhi::VertexAttribute {rhi::VertexAttribute::Type::eFloat3, stride});
+            stride += rhi::getSize(rhi::VertexAttribute::Type::eFloat3);
+        }
 
-        out.vertexBuffer = m_RenderDevice->createVertexBuffer(sizeof(Vertex), vertexSize);
+        // UV0 (optional)
+        if (hasUV0)
+        {
+            attribs.emplace(kLocUV0, rhi::VertexAttribute {rhi::VertexAttribute::Type::eFloat2, stride});
+            stride += rhi::getSize(rhi::VertexAttribute::Type::eFloat2);
+        }
 
-        auto vertexStaging = m_RenderDevice->createStagingBuffer(vertexSize, vertices.data());
+        // UV1 (optional)
+        if (hasUV1)
+        {
+            attribs.emplace(kLocUV1, rhi::VertexAttribute {rhi::VertexAttribute::Type::eFloat2, stride});
+            stride += rhi::getSize(rhi::VertexAttribute::Type::eFloat2);
+        }
 
-        m_RenderDevice->execute(
-            [&](rhi::CommandBuffer& cb) {
-                cb.copyBuffer(vertexStaging, out.vertexBuffer, vk::BufferCopy {0, 0, vertexSize});
-            },
-            true);
+        // TANGENT (optional)
+        if (hasTangent)
+        {
+            attribs.emplace(kLocTangent, rhi::VertexAttribute {rhi::VertexAttribute::Type::eFloat4, stride});
+            stride += rhi::getSize(rhi::VertexAttribute::Type::eFloat4);
+        }
 
-        // ================================
-        // Index buffer
-        // ================================
+        // JOINTS0 (optional)
+        if (hasJoints)
+        {
+            attribs.emplace(kLocJoints0, rhi::VertexAttribute {rhi::VertexAttribute::Type::eFloat4, stride});
+            stride += rhi::getSize(rhi::VertexAttribute::Type::eFloat4);
+        }
+
+        // WEIGHTS0 (optional)
+        if (hasWeights)
+        {
+            attribs.emplace(kLocWeights0, rhi::VertexAttribute {rhi::VertexAttribute::Type::eFloat4, stride});
+            stride += rhi::getSize(rhi::VertexAttribute::Type::eFloat4);
+        }
+
+        out.vertexAttributes = attribs;
+
+        // ------------------------------------------------------------
+        // Pack AoS vertex blob
+        // ------------------------------------------------------------
+
+        const uint32_t vertexCount = cpuMesh.vertexCount;
+        const size_t   vertexSize  = static_cast<size_t>(vertexCount) * static_cast<size_t>(stride);
+
+        std::vector<std::byte> vertexBlob;
+        vertexBlob.resize(vertexSize);
+
+        auto write_bytes = [&](std::byte* dst, const void* src, size_t n) { std::memcpy(dst, src, n); };
+
+        for (uint32_t i = 0; i < vertexCount; ++i)
+        {
+            std::byte* vdst = vertexBlob.data() + static_cast<size_t>(i) * stride;
+
+            // POSITION
+            if (auto it = attribs.find(kLocPosition); it != attribs.end())
+            {
+                const vasset::VPosition pos =
+                    (i < cpuMesh.positions.size()) ? cpuMesh.positions[i] : vasset::VPosition(0);
+                write_bytes(vdst + it->second.offset, &pos, sizeof(vasset::VPosition));
+            }
+
+            // NORMAL
+            if (auto it = attribs.find(kLocNormal); it != attribs.end())
+            {
+                const vasset::VNormal nrm =
+                    (i < cpuMesh.normals.size()) ? cpuMesh.normals[i] : vasset::VNormal(0, 1, 0);
+                write_bytes(vdst + it->second.offset, &nrm, sizeof(vasset::VNormal));
+            }
+
+            // COLOR0
+            if (auto it = attribs.find(kLocColor0); it != attribs.end())
+            {
+                const vasset::VColor c = (i < cpuMesh.colors.size()) ? cpuMesh.colors[i] : vasset::VColor(1, 1, 1);
+                write_bytes(vdst + it->second.offset, &c, sizeof(vasset::VColor));
+            }
+
+            // UV0
+            if (auto it = attribs.find(kLocUV0); it != attribs.end())
+            {
+                const vasset::VTexCoord uv0 =
+                    (i < cpuMesh.texCoords0.size()) ? cpuMesh.texCoords0[i] : vasset::VTexCoord(0);
+                write_bytes(vdst + it->second.offset, &uv0, sizeof(vasset::VTexCoord));
+            }
+
+            // UV1
+            if (auto it = attribs.find(kLocUV1); it != attribs.end())
+            {
+                const vasset::VTexCoord uv1 =
+                    (i < cpuMesh.texCoords1.size()) ? cpuMesh.texCoords1[i] : vasset::VTexCoord(0);
+                write_bytes(vdst + it->second.offset, &uv1, sizeof(vasset::VTexCoord));
+            }
+
+            // TANGENT
+            if (auto it = attribs.find(kLocTangent); it != attribs.end())
+            {
+                const vasset::VTangent t = (i < cpuMesh.tangents.size()) ? cpuMesh.tangents[i] : vasset::VTangent(0);
+                write_bytes(vdst + it->second.offset, &t, sizeof(vasset::VTangent));
+            }
+
+            // JOINTS0
+            if (auto it = attribs.find(kLocJoints0); it != attribs.end())
+            {
+                const vasset::VJointIndices ji =
+                    (i < cpuMesh.jointIndices.size()) ? cpuMesh.jointIndices[i] : vasset::VJointIndices(0);
+                write_bytes(vdst + it->second.offset, &ji, sizeof(vasset::VJointIndices));
+            }
+
+            // WEIGHTS0
+            if (auto it = attribs.find(kLocWeights0); it != attribs.end())
+            {
+                const vasset::VJointWeights jw =
+                    (i < cpuMesh.jointWeights.size()) ? cpuMesh.jointWeights[i] : vasset::VJointWeights(0);
+                write_bytes(vdst + it->second.offset, &jw, sizeof(vasset::VJointWeights));
+            }
+        }
+
+        // ------------------------------------------------------------
+        // Create GPU buffers
+        // ------------------------------------------------------------
+
+        out.vertexBuffer = m_RenderDevice->createVertexBuffer(stride, vertexSize);
 
         const size_t indexSize = cpuMesh.indices.size() * sizeof(uint32_t);
+        out.indexBuffer        = m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, indexSize);
 
-        out.indexBuffer = m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, indexSize);
-
-        auto indexStaging = m_RenderDevice->createStagingBuffer(indexSize, cpuMesh.indices.data());
-
-        m_RenderDevice->execute(
-            [&](rhi::CommandBuffer& cb) {
-                cb.copyBuffer(indexStaging, out.indexBuffer, vk::BufferCopy {0, 0, indexSize});
-            },
-            true);
-
-        // ================================
-        // Draw data buffer
-        // ================================
+        // ------------------------------------------------------------
+        // Build draw data buffer (ranges)
+        // ------------------------------------------------------------
 
         struct DrawRange
         {
@@ -339,25 +569,53 @@ namespace vultra
         }
 
         const size_t drawSize = ranges.size() * sizeof(DrawRange);
+        out.drawDataBuffer    = m_RenderDevice->createStorageBuffer(drawSize);
 
-        out.drawDataBuffer = m_RenderDevice->createStorageBuffer(drawSize);
+        // ------------------------------------------------------------
+        // Upload via a single one-time command buffer submission.
+        // Staging is intentionally split by resource type:
+        //   - vertex staging (AoS blob)
+        //   - index staging
+        //   - draw range staging
+        // This keeps lifetimes/updates decoupled (future GPU-driven & streaming).
+        // ------------------------------------------------------------
 
+        rhi::Buffer vertexStaging;
+        rhi::Buffer indexStaging;
+        rhi::Buffer drawStaging;
+
+        if (vertexSize > 0)
+            vertexStaging = m_RenderDevice->createStagingBuffer(vertexSize, vertexBlob.data());
+        if (indexSize > 0)
+            indexStaging = m_RenderDevice->createStagingBuffer(indexSize, cpuMesh.indices.data());
         if (drawSize > 0)
-        {
-            auto staging = m_RenderDevice->createStagingBuffer(drawSize, ranges.data());
+            drawStaging = m_RenderDevice->createStagingBuffer(drawSize, ranges.data());
 
-            m_RenderDevice->execute(
-                [&](rhi::CommandBuffer& cb) {
-                    cb.copyBuffer(staging, out.drawDataBuffer, vk::BufferCopy {0, 0, drawSize});
-                },
-                true);
-        }
+        m_RenderDevice->execute(
+            [&](rhi::CommandBuffer& cb) {
+                if (vertexSize > 0)
+                {
+                    cb.copyBuffer(vertexStaging, out.vertexBuffer, vk::BufferCopy {0, 0, vertexSize});
+                }
+                if (indexSize > 0)
+                {
+                    cb.copyBuffer(indexStaging, out.indexBuffer, vk::BufferCopy {0, 0, indexSize});
+                }
+                if (drawSize > 0)
+                {
+                    cb.copyBuffer(drawStaging, out.drawDataBuffer, vk::BufferCopy {0, 0, drawSize});
+                }
+
+                // TODO (upload pipeline):
+                // - add transfer->vertex/index/storage buffer barriers if required
+                // - optionally batch multiple assets per execute() when async CPU loading is introduced
+            },
+            true);
 
         out.materialOffset = materialOffset;
         out.materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
 
         const uint32_t idx = static_cast<uint32_t>(m_Scene.meshes.size());
-
         m_Scene.meshes.push_back(std::move(out));
 
         return idx;
@@ -369,40 +627,60 @@ namespace vultra
         if (!rec)
             return {};
 
-        if (rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
-            return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
-
-        std::filesystem::path path;
-        if (!resolveUUIDToPath(uuid, path))
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
+            rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
         {
-            VULTRA_CLIENT_ERROR("loadTextureSync: cannot resolve uuid {}", vbase::to_string(uuid));
             return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
         }
 
-        auto bytes = readFileBytes(path);
-        if (bytes.empty())
+        // CPU stage (sync baseline)
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
         {
-            VULTRA_CLIENT_ERROR("loadTextureSync: failed to read {}", path.string());
-            return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+            rec->state.store(AssetState::eLoadingCPU, std::memory_order_release);
+
+            std::filesystem::path path;
+            if (!resolveUUIDToPath(uuid, path))
+            {
+                VULTRA_CLIENT_ERROR("loadTextureSync: cannot resolve uuid {}", uuid.toString());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+            }
+
+            auto bytes = readFileBytes(path);
+            if (bytes.empty())
+            {
+                VULTRA_CLIENT_ERROR("loadTextureSync: failed to read {}", path.string());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+            }
+
+            auto cpu = std::make_unique<vasset::VTexture>();
+            auto r   = vasset::loadTextureFromMemory(bytes, *cpu);
+            if (!r)
+            {
+                VULTRA_CLIENT_ERROR("loadTextureSync: vasset::loadTextureFromMemory failed: {}", path.string());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+            }
+
+            rec->cpu = std::move(cpu);
+            rec->state.store(AssetState::eCPUReady, std::memory_order_release);
         }
 
-        auto cpu = std::make_unique<vasset::VTexture>();
-        auto r   = vasset::loadTextureFromMemory(bytes, *cpu);
-        if (!r)
+        // Enqueue GPU upload
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eCPUReady)
         {
-            VULTRA_CLIENT_ERROR("loadTextureSync: vasset::loadTextureFromMemory failed: {}", path.string());
-            return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+            bool expected = false;
+            if (rec->uploadQueued.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+            {
+                rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
+
+                std::scoped_lock lock(m_UploadQueueMutex);
+                m_UploadQueue.push_back(UploadCmd {UploadCmd::Kind::eTexture, uuid});
+            }
         }
 
-        const uint32_t gpuIndex = uploadTexture(*cpu);
-
-        // cache bindless (gpuIndex is the bindless slot)
-        m_TexUUIDToBindlessIndex[uuid] = gpuIndex;
-
-        // store
-        rec->cpu = m_Desc.keepCpuCopy ? std::move(cpu) : nullptr;
-        rec->gpuIndex.store(gpuIndex, std::memory_order_release);
-        rec->state.store(AssetState::eLoaded, std::memory_order_release);
+        update(/*frameIndex*/ 0);
 
         return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
     }
@@ -421,44 +699,64 @@ namespace vultra
         if (!rec)
             return {};
 
-        if (rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
-            return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
-
-        std::filesystem::path path;
-        if (!resolveUUIDToPath(uuid, path))
+        // Already resident on GPU
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
+            rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
         {
-            VULTRA_CLIENT_ERROR("loadMeshSync: cannot resolve uuid {}", vbase::to_string(uuid));
             return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
         }
 
-        auto bytes = readFileBytes(path);
-        if (bytes.empty())
+        // CPU stage (sync baseline)
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
         {
-            VULTRA_CLIENT_ERROR("loadMeshSync: failed to read {}", path.string());
-            return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
+            rec->state.store(AssetState::eLoadingCPU, std::memory_order_release);
+
+            std::filesystem::path path;
+            if (!resolveUUIDToPath(uuid, path))
+            {
+                VULTRA_CLIENT_ERROR("loadMeshSync: cannot resolve uuid {}", uuid.toString());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
+            }
+
+            auto bytes = readFileBytes(path);
+            if (bytes.empty())
+            {
+                VULTRA_CLIENT_ERROR("loadMeshSync: failed to read {}", path.string());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
+            }
+
+            auto cpu = std::make_unique<vasset::VMesh>();
+            auto r   = vasset::loadMeshFromMemory(bytes, *cpu);
+            if (!r)
+            {
+                VULTRA_CLIENT_ERROR("loadMeshSync: vasset::loadMeshFromMemory failed: {}", path.string());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
+            }
+
+            // Store CPU copy (needed for deferred GPU upload).
+            rec->cpu = std::move(cpu);
+            rec->state.store(AssetState::eCPUReady, std::memory_order_release);
         }
 
-        auto cpu = std::make_unique<vasset::VMesh>();
-        auto r   = vasset::loadMeshFromMemory(bytes, *cpu);
-        if (!r)
+        // Enqueue GPU upload (sync bring-up still goes through the queue so we can migrate to async later).
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eCPUReady)
         {
-            VULTRA_CLIENT_ERROR("loadMeshSync: vasset::loadMeshFromMemory failed: {}", path.string());
-            return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
+            bool expected = false;
+            if (rec->uploadQueued.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+            {
+                rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
+
+                std::scoped_lock lock(m_UploadQueueMutex);
+                m_UploadQueue.push_back(UploadCmd {UploadCmd::Kind::eMesh, uuid});
+            }
         }
 
-        // Create materials first (they may trigger texture loading)
-        const uint32_t materialOffset = static_cast<uint32_t>(m_Scene.materials.size());
-        for (const auto& mat : cpu->materials)
-        {
-            createAndAppendGpuMaterial(mat);
-        }
-
-        const uint32_t meshIndex = uploadMesh(*cpu, materialOffset);
-
-        // store
-        rec->cpu = m_Desc.keepCpuCopy ? std::move(cpu) : nullptr;
-        rec->gpuIndex.store(meshIndex, std::memory_order_release);
-        rec->state.store(AssetState::eLoaded, std::memory_order_release);
+        // Sync baseline: execute uploads immediately. In async mode, the engine main loop calls update() once per
+        // frame.
+        update(/*frameIndex*/ 0);
 
         return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
     }

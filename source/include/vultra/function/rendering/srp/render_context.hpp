@@ -4,8 +4,7 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/function/framegraph/render_context.hpp"
-#include "vultra/function/rendering/render_camera.hpp"
-#include "vultra/function/world/world.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
@@ -26,7 +25,7 @@ namespace vultra
         FrameGraph&           fg;
         FrameGraphBlackboard& bb;
 
-        World&        world;
+        RenderWorld&  renderWorld;
         RenderCamera& camera;
 
         fsec dt;

@@ -16,6 +16,7 @@
 #include <vasset/vtexture.hpp>
 
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -44,6 +45,9 @@ namespace vultra
         void onShutdown() override;
 
         void configure(const AssetSystemDesc& desc) override;
+
+        // Main-thread per-frame update: drain upload queue + GC.
+        void update(uint64_t frameIndex) override;
 
         // ----- Sync loading -----
         AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(const CoreUUID& uuid) override;
@@ -77,6 +81,25 @@ namespace vultra
 
         bool resolveUUIDToPath(const CoreUUID& uuid, std::filesystem::path& outPath) const;
         bool resolveUriToUUID(std::string_view uri, CoreUUID& outUUID) const;
+
+    private:
+        struct UploadCmd
+        {
+            enum class Kind : uint8_t
+            {
+                eMesh = 0,
+                eTexture,
+            };
+
+            Kind     kind {Kind::eMesh};
+            CoreUUID uuid;
+        };
+
+        // Thread-safe upload command queue (sync bring-up).
+        // NOTE: This is intentionally simple today (mutex + vector). It can be replaced with a lock-free MPSC ring
+        // buffer later without changing any public APIs.
+        std::mutex             m_UploadQueueMutex;
+        std::vector<UploadCmd> m_UploadQueue;
 
     private:
         rhi::RenderDevice* m_RenderDevice {nullptr};

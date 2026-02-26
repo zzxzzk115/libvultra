@@ -19,10 +19,14 @@ namespace vultra
         bool onInit() override;
         void onShutdown() override;
 
+        void onPreRender() override;
+
         // IWorldService
         World& world() override { return *m_World; }
 
     private:
         std::unique_ptr<World> m_World;
+
+        void updateWorldTransforms();
     };
 } // namespace vultra

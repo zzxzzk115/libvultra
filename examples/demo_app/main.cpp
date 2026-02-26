@@ -154,9 +154,10 @@ protected:
         VULTRA_CLIENT_INFO("Loaded mesh with uuid: {}", vbase::to_string(mesh.uuid()));
 
         auto& sceneService = engine.ctx().services.require<ISceneService>();
+        auto& worldService = engine.ctx().services.require<IWorldService>();
 
-        World world {};
-        auto  root = sceneService.instantiateScene(world, "res://scenes/test.vscn");
+        auto& world = worldService.world();
+        auto  root  = sceneService.instantiateScene(world, "res://scenes/test.vscn");
 
         VULTRA_CLIENT_INFO("Loaded world from scene: \"res://scenes/test.vscn\"");
 

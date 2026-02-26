@@ -1,10 +1,9 @@
 #pragma once
 
 #include "vultra/core/engine/engine_subsystem.hpp"
-#include "vultra/function/rendering/render_camera.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/services/camera_service.hpp"
 
-#include <span>
 #include <vector>
 
 namespace vultra
@@ -23,7 +22,7 @@ namespace vultra
         void onPreRender() override;
 
         // ICameraService
-        std::span<RenderCamera> cameras() override { return m_Cooked; }
+        std::vector<RenderCamera> cameras() override { return m_Cooked; }
 
         // Incremental helper (until ECS cooking is wired):
         // App can push cameras manually.
