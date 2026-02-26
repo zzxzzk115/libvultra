@@ -3,6 +3,7 @@
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/storage_buffer.hpp"
+#include "vultra/function/resource/gpu_draw.hpp"
 #include "vultra/function/resource/gpu_instance.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
@@ -31,6 +32,15 @@ namespace vultra::resource
         // GPU-driven instance table.
         std::vector<GpuInstance> instances;
         Ref<rhi::StorageBuffer>  instanceBuffer {nullptr};
+
+        // GPU-driven draw table (gl_DrawID indexed).
+        // This is uploaded as an SSBO and consumed by built-in GPU-driven shaders.
+        std::vector<GpuDrawRecord> draws;
+        Ref<rhi::StorageBuffer>    drawBuffer {nullptr};
+
+        // Material table buffer (GpuMaterial array).
+        // The shader-side MaterialEntry layout is a compact view derived from this.
+        Ref<rhi::StorageBuffer> materialTableBuffer {nullptr};
 
         struct PendingTextureFree
         {
@@ -123,6 +133,9 @@ namespace vultra::resource
             meshes.clear();
             instances.clear();
             instanceBuffer = nullptr;
+            draws.clear();
+            drawBuffer          = nullptr;
+            materialTableBuffer = nullptr;
             materialParams.reset();
             freeTextureSlots.clear();
             pendingTextureFrees.clear();
@@ -146,6 +159,44 @@ namespace vultra::resource
             }
 
             return index;
+        }
+
+        // Appends a draw record and (sync baseline) uploads the full draw table.
+        // Later: GPU culling builds indirect args + draw table.
+        uint32_t addDraw(rhi::RenderDevice& rd, const GpuDrawRecord& dr)
+        {
+            const uint32_t index = static_cast<uint32_t>(draws.size());
+            draws.push_back(dr);
+
+            const size_t bytes = draws.size() * sizeof(GpuDrawRecord);
+            if (!drawBuffer || drawBuffer->getSize() < bytes)
+            {
+                drawBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
+            }
+            if (bytes > 0)
+            {
+                rd.upload(*drawBuffer, 0, bytes, draws.data());
+            }
+
+            return index;
+        }
+
+        // Sync baseline upload for material table.
+        // Later: partial updates / append-only tables.
+        void uploadMaterialTable(rhi::RenderDevice& rd)
+        {
+            const size_t bytes = materials.size() * sizeof(GpuMaterial);
+            if (bytes == 0)
+            {
+                materialTableBuffer = nullptr;
+                return;
+            }
+
+            if (!materialTableBuffer || materialTableBuffer->getSize() < bytes)
+            {
+                materialTableBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
+            }
+            rd.upload(*materialTableBuffer, 0, bytes, materials.data());
         }
     };
 } // namespace vultra::resource
