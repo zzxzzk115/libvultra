@@ -115,6 +115,9 @@ namespace vultra
         m_RenderWorldBack.frameIndex = m_FrameCounter;
         m_RenderWorldBack.cameras    = camService->cameras();
 
+        // Bind GPU scene
+        m_RenderWorldBack.gpuScene = &assetService->gpuScene();
+
         std::swap(m_RenderWorldFront, m_RenderWorldBack);
 
         ++m_FrameCounter;
