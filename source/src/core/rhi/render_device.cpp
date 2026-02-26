@@ -8,6 +8,8 @@
 #include "vultra/core/rhi/vk/macro.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
 
+#include <vshadersystem/reflect.hpp>
+
 #include <SDL3/SDL_vulkan.h>
 #include <cpptrace/cpptrace.hpp>
 #include <glm/glm.hpp>
@@ -694,7 +696,17 @@ namespace vultra
 
             ShaderModule shaderModule {m_Device, spv};
             if (reflection)
-                reflection->accumulate(std::move(spv));
+            {
+                auto rr = vshadersystem::reflect_spirv(spv);
+                if (rr.isOk())
+                {
+                    reflection->accumulate(rr.value());
+                }
+                else
+                {
+                    VULTRA_CORE_ERROR("[RenderDevice] Failed to reflect SPIR-V: {}", rr.error().message);
+                }
+            }
             return shaderModule;
         }
 

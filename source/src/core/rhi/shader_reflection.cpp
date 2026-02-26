@@ -1,9 +1,8 @@
 #include "vultra/core/rhi/shader_reflection.hpp"
 
-#include <spirv_cross/spirv_glsl.hpp>
+#include <cassert>
 
-// https://github.com/KhronosGroup/SPIRV-Cross/wiki/Reflection-API-user-guide
-
+// Runtime-sized array fallback value used by legacy libvultra descriptor layout.
 #define MAX_ARRAY_SIZE 1024
 
 namespace vultra
@@ -12,128 +11,123 @@ namespace vultra
     {
         namespace
         {
-            [[nodiscard]] vk::ShaderStageFlags toVk(const spv::ExecutionModel executionModel)
+            [[nodiscard]] vk::ShaderStageFlags toVkStageFlags(const vshadersystem::ShaderStageFlags flags)
             {
-                switch (executionModel)
+                vk::ShaderStageFlags out = vk::ShaderStageFlagBits(0);
+
+                using namespace vshadersystem;
+                if (flags & ShaderStageFlagBits::eStageVert)
+                    out |= vk::ShaderStageFlagBits::eVertex;
+                if (flags & ShaderStageFlagBits::eStageFrag)
+                    out |= vk::ShaderStageFlagBits::eFragment;
+                if (flags & ShaderStageFlagBits::eStageComp)
+                    out |= vk::ShaderStageFlagBits::eCompute;
+                if (flags & ShaderStageFlagBits::eStageTask)
+                    out |= vk::ShaderStageFlagBits::eTaskEXT;
+                if (flags & ShaderStageFlagBits::eStageMesh)
+                    out |= vk::ShaderStageFlagBits::eMeshEXT;
+
+                if (flags & ShaderStageFlagBits::eStageRgen)
+                    out |= vk::ShaderStageFlagBits::eRaygenKHR;
+                if (flags & ShaderStageFlagBits::eStageRmiss)
+                    out |= vk::ShaderStageFlagBits::eMissKHR;
+                if (flags & ShaderStageFlagBits::eStageRchit)
+                    out |= vk::ShaderStageFlagBits::eClosestHitKHR;
+                if (flags & ShaderStageFlagBits::eStageRahit)
+                    out |= vk::ShaderStageFlagBits::eAnyHitKHR;
+                if (flags & ShaderStageFlagBits::eStageRint)
+                    out |= vk::ShaderStageFlagBits::eIntersectionKHR;
+
+                return out;
+            }
+
+            [[nodiscard]] vk::DescriptorType toVkDescriptorType(const vshadersystem::DescriptorKind k)
+            {
+                using DK = vshadersystem::DescriptorKind;
+                switch (k)
                 {
-                    case spv::ExecutionModelVertex:
-                        return vk::ShaderStageFlagBits::eVertex;
-                    case spv::ExecutionModelGeometry:
-                        return vk::ShaderStageFlagBits::eGeometry;
-                    case spv::ExecutionModelFragment:
-                        return vk::ShaderStageFlagBits::eFragment;
-
-                    case spv::ExecutionModelGLCompute:
-                        return vk::ShaderStageFlagBits::eCompute;
-
-                    case spv::ExecutionModelRayGenerationKHR:
-                        return vk::ShaderStageFlagBits::eRaygenKHR;
-                    case spv::ExecutionModelMissKHR:
-                        return vk::ShaderStageFlagBits::eMissKHR;
-                    case spv::ExecutionModelClosestHitKHR:
-                        return vk::ShaderStageFlagBits::eClosestHitKHR;
-                    case spv::ExecutionModelAnyHitKHR:
-                        return vk::ShaderStageFlagBits::eAnyHitKHR;
-                    case spv::ExecutionModelIntersectionKHR:
-                        return vk::ShaderStageFlagBits::eIntersectionKHR;
-
-                    case spv::ExecutionModelMeshEXT:
-                        return vk::ShaderStageFlagBits::eMeshEXT;
-                    case spv::ExecutionModelTaskEXT:
-                        return vk::ShaderStageFlagBits::eTaskEXT;
-
+                    case DK::eUniformBuffer:
+                        return vk::DescriptorType::eUniformBuffer;
+                    case DK::eStorageBuffer:
+                        return vk::DescriptorType::eStorageBuffer;
+                    case DK::eSampledImage:
+                        return vk::DescriptorType::eSampledImage;
+                    case DK::eStorageImage:
+                        return vk::DescriptorType::eStorageImage;
+                    case DK::eSampler:
+                        return vk::DescriptorType::eSampler;
+                    case DK::eCombinedImageSampler:
+                        return vk::DescriptorType::eCombinedImageSampler;
+                    case DK::eAccelerationStructure:
+                        return vk::DescriptorType::eAccelerationStructureKHR;
                     default:
-                        assert(false);
-                        return vk::ShaderStageFlagBits::eVertex;
+                        return vk::DescriptorType::eSampler;
                 }
             }
-
-            [[nodiscard]] auto getLocalSize(const spirv_cross::CompilerGLSL& compiler)
-            {
-                glm::uvec3 localSize {};
-                for (auto i = 0; i < decltype(localSize)::length(); ++i)
-                {
-                    localSize[i] = compiler.get_execution_mode_argument(spv::ExecutionModeLocalSize, i);
-                }
-                return localSize;
-            }
-
         } // namespace
 
-        void ShaderReflection::accumulate(SPIRV&& spv)
+        void ShaderReflection::accumulate(const vshadersystem::ShaderReflection& r)
         {
-            spirv_cross::CompilerGLSL compiler {std::move(spv)};
-
-            const auto stageFlag = toVk(compiler.get_execution_model());
-            if (stageFlag & vk::ShaderStageFlagBits::eCompute)
+            // Local size
+            if (r.hasLocalSize)
             {
-                localSize = getLocalSize(compiler);
+                localSize = glm::uvec3 {r.localSizeX, r.localSizeY, r.localSizeZ};
             }
-            const auto shaderResources = compiler.get_shader_resources();
 
-            const auto addResource = [&](const spirv_cross::Resource& r, vk::DescriptorType descriptorType) {
-                const auto& type    = compiler.get_type(r.type_id);
-                const auto  set     = compiler.get_decoration(r.id, spv::DecorationDescriptorSet);
-                const auto  binding = compiler.get_decoration(r.id, spv::DecorationBinding);
-
-                auto [it, emplaced] = descriptorSets[set].try_emplace(binding, descriptorType);
-                auto& resource      = it->second;
-                if (emplaced)
-                    resource.count = type.array.empty() ? 1 : type.array[0];
-                resource.stageFlags |= stageFlag;
-                if (!type.array.empty())
-                {
-                    if (type.array[0] == 0)
-                    {
-                        // Runtime-sized array
-                        // Set to a large value as placeholder
-                        resource.count = MAX_ARRAY_SIZE;
-#ifdef __APPLE__
-                        // On macOS, VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT is not supported
-                        // We set the UPDATE_AFTER_BIND_POOL_BIT to avoid validation errors
-                        resource.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-#else
-                        // Other platforms support variable descriptor count
-                        // Actual count will be specified during descriptor set allocation
-                        resource.flags = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
-#endif
-                    }
-                }
-            };
-
-#define ADD_RESOURCES(Member, EnumValue) \
-    for (const auto& r : shaderResources.Member) \
-    { \
-        addResource(r, vk::DescriptorType::e##EnumValue); \
-    }
-
-            ADD_RESOURCES(separate_samplers, Sampler)
-            ADD_RESOURCES(sampled_images, CombinedImageSampler)
-            ADD_RESOURCES(separate_images, SampledImage)
-            ADD_RESOURCES(storage_images, StorageImage)
-            ADD_RESOURCES(uniform_buffers, UniformBuffer)
-            ADD_RESOURCES(storage_buffers, StorageBuffer)
-            ADD_RESOURCES(acceleration_structures, AccelerationStructureKHR)
-
-#undef ADD_RESOURCES
-
-            if (!shaderResources.push_constant_buffers.empty())
+            // Descriptors
+            for (const auto& d : r.descriptors)
             {
-                const auto& pc   = shaderResources.push_constant_buffers.front();
-                const auto& type = compiler.get_type(pc.base_type_id);
+                if (d.set >= descriptorSets.size())
+                    continue;
+
+                auto [it, emplaced] = descriptorSets[d.set].try_emplace(d.binding, toVkDescriptorType(d.kind));
+                auto& out           = it->second;
+
+                if (emplaced)
+                {
+                    out.count = d.count;
+                }
+                out.stageFlags |= toVkStageFlags(d.stageFlags);
+
+                if (d.runtimeSized)
+                {
+                    out.count = MAX_ARRAY_SIZE;
+#ifdef __APPLE__
+                    // On macOS, VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT is not supported.
+                    // Keep legacy behavior to avoid validation errors.
+                    out.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+#else
+                    out.flags = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
+#endif
+                }
+            }
+
+            // Push constants
+            for (const auto& b : r.blocks)
+            {
+                if (!b.isPushConstant)
+                    continue;
 
                 vk::PushConstantRange range {};
                 range.offset     = 0;
-                range.size       = 0;
-                range.stageFlags = stageFlag;
+                range.size       = b.size;
+                range.stageFlags = toVkStageFlags(b.stageFlags);
 
-                for (auto i = 0u; i < type.member_types.size(); ++i)
+                // Merge with existing ranges if they match (offset+size).
+                bool merged = false;
+                for (auto& existing : pushConstantRanges)
                 {
-                    if (i == 0)
-                        range.offset = compiler.type_struct_member_offset(type, i);
-                    range.size += static_cast<uint32_t>(compiler.get_declared_struct_member_size(type, i));
+                    if (existing.offset == range.offset && existing.size == range.size)
+                    {
+                        existing.stageFlags |= range.stageFlags;
+                        merged = true;
+                        break;
+                    }
                 }
-                pushConstantRanges.emplace_back(range);
+                if (!merged)
+                {
+                    pushConstantRanges.emplace_back(range);
+                }
             }
         }
     } // namespace rhi

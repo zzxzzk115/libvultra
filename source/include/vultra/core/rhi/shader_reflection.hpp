@@ -1,10 +1,13 @@
 #pragma once
 
 #include "vultra/core/rhi/resource_indices.hpp"
-#include "vultra/core/rhi/shader_type.hpp"
+
+#include <vshadersystem/types.hpp>
 
 #include <glm/ext/vector_uint3.hpp>
+#include <vulkan/vulkan.hpp>
 
+#include <optional>
 #include <unordered_map>
 
 namespace vultra
@@ -13,7 +16,8 @@ namespace vultra
     {
         struct ShaderReflection
         {
-            void accumulate(SPIRV&&);
+            // Accumulate reflection information computed by vshadersystem.
+            void accumulate(const vshadersystem::ShaderReflection&);
 
             std::optional<glm::uvec3> localSize; // ComputeShader only.
 

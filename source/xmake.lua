@@ -94,9 +94,6 @@ if has_config("tracy") then
 end
 add_requireconfs("imgui.libsdl3", {system = false}) -- we don't use system's SDL3 to avoid version conflicts
 add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
--- note: spirv-cross & glslang must require the same vulkan sdk version
-add_requires("spirv-cross vulkan-sdk-1.4.309", {configs = { shared = true, debug = is_mode("debug")}, system = false})
-add_requires("glslang 1.4.309+0", {configs = {debug = is_mode("debug")}, system = false})
 
 -- target defination, name: vultra
 target("vultra")
@@ -113,14 +110,14 @@ target("vultra")
     add_files("src/**.cpp")
 
     -- add deps
-    add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vultra_builtin_assets", "miniply", "spz")
+    add_deps("vasset", "vshadersystem", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vultra_builtin_assets", "miniply", "spz")
 
     -- add rules
     add_rules("vulkansdk")
 
     -- add packages
     add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vulkan-headers", "vulkan-memory-allocator-hpp", "fg", "cpptrace", "tinyexr", { public = true })
-    add_packages("libsdl3", "spirv-cross", "glslang", "openxr", { public = true })
+    add_packages("libsdl3", "openxr", { public = true })
     if has_config("tracy") then
         add_packages("tracy", { public = true })
     end

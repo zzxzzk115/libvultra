@@ -2,3 +2,6 @@
 	path = external/vasset
 	url = https://github.com/zzxzzk115/vasset.git
 	branch = dev
+[submodule "external/vshadersystem"]
+	path = external/vshadersystem
+	url = https://github.com/zzxzzk115/vshadersystem.git
