@@ -162,8 +162,6 @@ task("shader_task")
             local filename = path.filename(file)
             local stage = filename:match("%.([^.]+)%.vshader$")
 
-            print(stage)
-
             if not stages[stage] then
                 raise("Unknown shader stage: %s", rel)
             end

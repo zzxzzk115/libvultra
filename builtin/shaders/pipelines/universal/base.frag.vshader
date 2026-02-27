@@ -11,7 +11,7 @@
 //
 // ============================================================================
 
-layout(location = 6) flat in uint v_MaterialIndex;
+layout(location = 7) flat in uint v_MaterialIndex;
 
 layout(location = 0) out vec4 FragColor;
 

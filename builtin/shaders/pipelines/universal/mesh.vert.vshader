@@ -24,18 +24,22 @@ layout(location = 0) out vec3 v_Color;
 #endif
 
 #if VTX_HAS_UV0
-layout(location = 1) out vec2 v_TexCoord;
+layout(location = 1) out vec2 v_TexCoord0;
 #endif
 
-layout(location = 2) out vec3 v_FragPos;
+#if VTX_HAS_UV1
+layout(location = 2) out vec2 v_TexCoord1;
+#endif
 
-#if VTX_HAS_TANGENT
-layout(location = 3) out mat3 v_TBN;
+layout(location = 3) out vec3 v_FragPos;
+
+#if VTX_HAS_TANGENT && VTX_HAS_NORMAL
+layout(location = 4) out mat3 v_TBN;
 #elif VTX_HAS_NORMAL
-layout(location = 3) out vec3 v_Normal;
+layout(location = 4) out vec3 v_Normal;
 #endif
 
-layout(location = 6) flat out uint v_MaterialIndex;
+layout(location = 7) flat out uint v_MaterialIndex;
 
 void main()
 {
@@ -47,8 +51,17 @@ void main()
     uint   idx = ib.indices[uint(gl_VertexIndex)];
     Vertex v   = vb.vertices[idx];
 
+#if VTX_HAS_COLOR
     v_Color    = v.color;
-    v_TexCoord = v.texCoord0;
+#endif
+
+#if VTX_HAS_UV0
+    v_TexCoord0 = v.texCoord0;
+#endif
+
+#if VTX_HAS_UV1
+	v_TexCoord1 = v.texCoord1;
+#endif
 
     vec4 worldPos4 = d.model * vec4(v.position, 1.0);
     v_FragPos      = worldPos4.xyz;
@@ -56,7 +69,7 @@ void main()
     // Legacy-compatible normal matrix
     mat3 normalMatrix = transpose(inverse(mat3(d.model)));
 
-#if VTX_HAS_TANGENT
+#if VTX_HAS_TANGENT && VTX_HAS_NORMAL
     vec3 T = normalize(normalMatrix * v.tangent.xyz);
     vec3 N = normalize(normalMatrix * v.normal);
 
