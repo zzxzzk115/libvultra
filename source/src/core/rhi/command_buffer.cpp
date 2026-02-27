@@ -509,7 +509,7 @@ namespace vultra
             return *this;
         }
 
-        CommandBuffer& CommandBuffer::copyBuffer(const Buffer& src, Buffer& dst, const vk::BufferCopy& copyRegion)
+        CommandBuffer& CommandBuffer::copyBuffer(const Buffer& src, Buffer& dst, const rhi::BufferCopy& copyRegion)
         {
             assert(src && dst);
             assert(invariant(State::eRecording, InvariantFlags::eOutsideRenderPass));

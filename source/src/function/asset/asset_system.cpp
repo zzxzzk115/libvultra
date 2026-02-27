@@ -111,7 +111,13 @@ namespace vultra
             return attrs;
         }
 
-        std::vector<uint8_t> packVertices(const VMesh& mesh, const GpuVertexLayout& layout)
+        struct PackedVertexLayout
+        {
+            uint32_t              stride {0};
+            rhi::VertexAttributes attributes;
+        };
+
+        std::vector<uint8_t> packVertices(const VMesh& mesh, const PackedVertexLayout& layout)
         {
             const auto&    attrs  = layout.attributes;
             const uint32_t stride = layout.stride;
@@ -177,6 +183,9 @@ namespace vultra
         auto& backend  = ctx().services.require<IRenderBackendService>();
         m_RenderDevice = &backend.renderDevice();
 
+        VULTRA_CORE_TRACE("[AssetSystem] Getting GPU resource service");
+        m_GpuResourceService = &ctx().services.require<IGpuResourceService>();
+
         // Default config (can be overridden at runtime/editor).
         configure(AssetSystemDesc {});
 
@@ -192,9 +201,9 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[AssetSystem] Shutting down");
 
-        m_ResourcePool.clear();
         m_TexUUIDToBindlessIndex.clear();
-        m_RenderDevice = nullptr;
+        m_RenderDevice       = nullptr;
+        m_GpuResourceService = nullptr;
     }
 
     void AssetSystem::configure(const AssetSystemDesc& desc)
@@ -240,11 +249,13 @@ namespace vultra
 
         m_Resolver.setScheme(desc.scheme);
 
-        // Gpu resource pool owns bindless texture table. Reserve slot 0 as fallback.
-        m_ResourcePool.ensureBindlessSlot0(*m_RenderDevice);
+        auto& pool = m_GpuResourceService->pool();
+
+        // Global bindless texture table: reserve slot 0 as fallback.
+        pool.ensureBindlessSlot0(*m_RenderDevice);
 
         // Reset global material param pool.
-        m_ResourcePool.materialParams.reset();
+        pool.materialParams.reset();
 
         VULTRA_CORE_INFO("[AssetSystem] Asset registry configured. Registry entries: {}",
                          m_Registry.getRegistry().size());
@@ -287,7 +298,8 @@ namespace vultra
 
                     if (rec->cpu)
                     {
-                        const uint32_t materialOffset = static_cast<uint32_t>(m_ResourcePool.materials.size());
+                        auto&          pool           = m_GpuResourceService->pool();
+                        const uint32_t materialOffset = static_cast<uint32_t>(pool.materials.size());
                         for (const auto& mat : rec->cpu->materials)
                         {
                             createAndAppendGpuMaterial(mat);
@@ -397,10 +409,9 @@ namespace vultra
             return 0;
         }
 
-        // Bindless ownership is in GpuScene.
         resource::GpuTexture out;
         out.texture = createRef<rhi::Texture>(std::move(tr.value()));
-        return m_ResourcePool.addTexture(std::move(out));
+        return m_GpuResourceService->createTexture(*m_RenderDevice, std::move(out));
     }
 
     uint32_t AssetSystem::createAndAppendGpuMaterial(const vasset::VMaterial& m)
@@ -416,8 +427,10 @@ namespace vultra
 
         uint32_t blockOffset = 0;
 
+        auto& pool = m_GpuResourceService->pool();
+
         auto allocBlock = [&](const void* src, uint32_t size) {
-            return m_ResourcePool.materialParams.allocAndUpload(*m_RenderDevice, src, size, 16);
+            return pool.materialParams.allocAndUpload(*m_RenderDevice, src, size, 16);
         };
 
         switch (m.model)
@@ -469,8 +482,8 @@ namespace vultra
         }
 
         gm.blockOffsetBytes = blockOffset;
-        gm.tableIndex       = static_cast<uint32_t>(m_ResourcePool.materials.size());
-        m_ResourcePool.materials.push_back(gm);
+        gm.tableIndex       = static_cast<uint32_t>(pool.materials.size());
+        pool.materials.push_back(gm);
         return gm.tableIndex;
     }
 
@@ -479,86 +492,40 @@ namespace vultra
         if (!m_RenderDevice)
             return std::numeric_limits<uint32_t>::max();
 
-        resource::GpuMesh out;
+        auto& pool = m_GpuResourceService->pool();
 
-        out.vertexCount       = cpuMesh.vertexCount;
-        out.indexCount        = static_cast<uint32_t>(cpuMesh.indices.size());
-        out.layout.attributes = buildVertexAttributes(cpuMesh.vertexFlags, out.layout.stride);
+        uint32_t strideBytes = 0;
+        auto     attrs       = buildVertexAttributes(cpuMesh.vertexFlags, strideBytes);
 
-        auto vertexData = packVertices(cpuMesh, out.layout);
+        // Pack CPU mesh into an AoS byte stream based on vertex flags.
+        auto vertexData = packVertices(cpuMesh, {.stride = strideBytes, .attributes = attrs});
 
-        const size_t vertexCount = cpuMesh.vertexCount;
-        const size_t vertexSize  = vertexData.size();
+        GpuMeshCreateDesc desc;
+        desc.vertexData        = vertexData.data();
+        desc.vertexDataBytes   = static_cast<uint64_t>(vertexData.size());
+        desc.vertexCount       = cpuMesh.vertexCount;
+        desc.vertexAttributes  = attrs;
+        desc.vertexStrideBytes = strideBytes;
 
-        // ================================
-        // Vertex buffer
-        // ================================
-        out.vertexBuffer = m_RenderDevice->createVertexBuffer(out.layout.stride, vertexCount);
+        if (!cpuMesh.indices.empty())
+        {
+            desc.indexData  = cpuMesh.indices.data();
+            desc.indexCount = static_cast<uint32_t>(cpuMesh.indices.size());
+            desc.indexType  = rhi::IndexType::eUInt32;
+        }
 
-        // ================================
-        // Index buffer
-        // ================================
+        // Asset meshes are generally useful in both CPU-driven and GPU-driven passes.
+        desc.usage = GpuMeshUsageFlags::eAll;
 
-        const size_t indexCount = cpuMesh.indices.size();
-        const size_t indexSize  = indexCount * sizeof(uint32_t);
-        out.indexBuffer         = m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, indexCount);
+        const uint32_t meshIndex = m_GpuResourceService->createMesh(*m_RenderDevice, desc);
+        if (meshIndex == std::numeric_limits<uint32_t>::max())
+            return meshIndex;
 
-        // ------------------------------------------------------------
-        // Upload via a single one-time command buffer submission.
-        // Staging is intentionally split by resource type:
-        //   - vertex staging (AoS blob)
-        //   - index staging
-        //   - draw range staging
-        // This keeps lifetimes/updates decoupled (future GPU-driven & streaming).
-        // ------------------------------------------------------------
+        // Fill material linkage
+        pool.meshes[meshIndex].materialOffset = materialOffset;
+        pool.meshes[meshIndex].materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
 
-        rhi::Buffer vertexStaging;
-        rhi::Buffer indexStaging;
-        if (vertexSize > 0)
-            vertexStaging = m_RenderDevice->createStagingBuffer(vertexSize, vertexData.data());
-        if (indexSize > 0)
-            indexStaging = m_RenderDevice->createStagingBuffer(indexSize, cpuMesh.indices.data());
-
-        m_RenderDevice->execute(
-            [&](rhi::CommandBuffer& cb) {
-                if (vertexSize > 0)
-                {
-                    cb.copyBuffer(vertexStaging, out.vertexBuffer, vk::BufferCopy {0, 0, vertexSize});
-                }
-                if (indexSize > 0)
-                {
-                    cb.copyBuffer(indexStaging, out.indexBuffer, vk::BufferCopy {0, 0, indexSize});
-                }
-
-                // TODO (upload pipeline):
-                // - add transfer->vertex/index/storage buffer barriers if required
-                // - optionally batch multiple assets per execute() when async CPU loading is introduced
-            },
-            true);
-
-        // Fill buffer device addresses for GPU-driven vertex pulling.
-        out.vertexBufferAddress = m_RenderDevice->getBufferDeviceAddress(out.vertexBuffer);
-
-        // ------------------------------------------------------------
-        // GPU-driven indexed multi-draw indirect
-        // ------------------------------------------------------------
-        // Append mesh indices into the global geometry index buffer owned by GpuResourcePool.
-        // This allows all draws to share a single bound index buffer.
-        out.indexBase = m_ResourcePool.geometry.appendIndices(*m_RenderDevice,
-                                                              reinterpret_cast<const uint32_t*>(cpuMesh.indices.data()),
-                                                              static_cast<uint32_t>(cpuMesh.indices.size()));
-
-        // For GPU-driven passes, the index buffer device address points to the global index buffer.
-        // CPU-driven passes may still bind out.indexBuffer directly.
-        out.indexBufferAddress = m_ResourcePool.geometry.index32Address;
-
-        out.materialOffset = materialOffset;
-        out.materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
-
-        const uint32_t idx = static_cast<uint32_t>(m_ResourcePool.meshes.size());
-        m_ResourcePool.meshes.push_back(std::move(out));
-
-        return idx;
+        return meshIndex;
     }
 
     AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureSync(const CoreUUID& uuid)

@@ -816,6 +816,19 @@ namespace vultra
             return *this;
         }
 
+        RenderDevice&
+        RenderDevice::uploadS(Buffer& buffer, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data)
+        {
+            assert(buffer && data);
+            assert(m_Device);
+
+            auto stagingBuffer = createStagingBuffer(size, data);
+
+            return execute(
+                [&](CommandBuffer& cb) { cb.copyBuffer(stagingBuffer, buffer, rhi::BufferCopy {0, offset, size}); },
+                true);
+        }
+
         RenderDevice& RenderDevice::uploadDrawIndirect(DrawIndirectBuffer&                     buffer,
                                                        const std::vector<DrawIndirectCommand>& commands)
         {

@@ -207,7 +207,14 @@ namespace vultra
             [[nodiscard]] ComputePipeline createComputePipelineBuiltin(const SPIRV& spv,
                                                                        std::optional<PipelineLayout> = std::nullopt);
 
+            // Direct mapping without staging buffer. Use with host-coherent memory or persistent mapped memory.
             RenderDevice& upload(Buffer&, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data);
+
+            // Upload with staging buffer. Use for non-host-visible memory. This is a helper that creates a staging
+            // buffer,
+            RenderDevice& uploadS(Buffer&, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data);
+
+            // Upload draw indirect commands.
             RenderDevice& uploadDrawIndirect(DrawIndirectBuffer&, const std::vector<DrawIndirectCommand>& commands);
 
             RenderDevice& destroy(vk::Fence&);

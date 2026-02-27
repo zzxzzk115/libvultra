@@ -65,10 +65,7 @@ namespace vultra::resource
             // ============================================================
             // STAGING upload
             // ============================================================
-            auto staging = rd.createStagingBuffer(cpu.size(), cpu.data());
-
-            rd.execute([&](rhi::CommandBuffer& cb) { cb.copyBuffer(staging, *gpu, vk::BufferCopy {0, 0, cpu.size()}); },
-                       true);
+            rd.uploadS(*gpu, 0, static_cast<uint64_t>(cpu.size()), cpu.data());
 
             return offset;
         }

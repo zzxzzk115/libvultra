@@ -113,26 +113,13 @@ namespace vultra::resource
             const size_t instBytes = instances.size() * sizeof(GpuInstance);
             if (instBytes > 0)
             {
-                auto instanceStagingBuffer = rd.createStagingBuffer(instBytes, instances.data());
-                rd.execute(
-                    [&](auto& cb) {
-                        cb.copyBuffer(instanceStagingBuffer,
-                                      *instanceBuffer,
-                                      vk::BufferCopy {0, 0, instanceStagingBuffer.getSize()});
-                    },
-                    true);
+                rd.uploadS(*instanceBuffer, 0, static_cast<uint64_t>(instBytes), instances.data());
             }
 
             const size_t drawBytes = draws.size() * sizeof(GpuDrawRecord);
             if (drawBytes > 0)
             {
-                auto drawStagingBuffer = rd.createStagingBuffer(drawBytes, draws.data());
-                rd.execute(
-                    [&](auto& cb) {
-                        cb.copyBuffer(
-                            drawStagingBuffer, *drawBuffer, vk::BufferCopy {0, 0, drawStagingBuffer.getSize()});
-                    },
-                    true);
+                rd.uploadS(*drawBuffer, 0, static_cast<uint64_t>(drawBytes), draws.data());
             }
         }
 

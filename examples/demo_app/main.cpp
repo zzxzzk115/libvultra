@@ -9,6 +9,7 @@
 #include <vultra/function/rendering/backend/render_backend_system.hpp>
 #include <vultra/function/rendering/render_system.hpp>
 #include <vultra/function/rendering/srp/render_context.hpp>
+#include <vultra/function/resource/gpu_resource_system.hpp>
 #include <vultra/function/scene/scene_system.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
@@ -50,12 +51,8 @@ public:
 
         // Upload vertex buffer
         {
-            constexpr auto kVerticesSize       = sizeof(SimpleVertex) * kTriangle.size();
-            auto           stagingVertexBuffer = rd.createStagingBuffer(kVerticesSize, kTriangle.data());
-
-            rd.execute([&](auto& cb) {
-                cb.copyBuffer(stagingVertexBuffer, m_VertexBuffer, vk::BufferCopy {0, 0, kVerticesSize});
-            });
+            constexpr auto kVerticesSize = sizeof(SimpleVertex) * kTriangle.size();
+            rd.uploadS(m_VertexBuffer, 0, kVerticesSize, kTriangle.data());
         }
 
         const auto* const vertCode = R"(
@@ -164,6 +161,7 @@ protected:
         auto& renderSystem  = engine.emplaceSubsystem<RenderSystem>();
         renderSystem.registerRenderer(triangleRenderer);
 
+        engine.emplaceSubsystem<GpuResourceSystem>();
         engine.emplaceSubsystem<AssetSystem>();
         engine.emplaceSubsystem<SceneSystem>();
     }

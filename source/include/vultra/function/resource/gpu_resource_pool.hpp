@@ -9,6 +9,7 @@
 #include "vultra/function/resource/material_buffer.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace vultra::resource
@@ -43,6 +44,9 @@ namespace vultra::resource
             uint64_t                vertexBytesAddress {0};
             uint32_t                vertexBytesUsed {0};
 
+            // CPU mirror for deterministic (re)uploads when buffers grow.
+            std::vector<uint8_t> cpuVertexBytes;
+
             // Global index buffer for indexed multi-draw indirect (uint32 indices).
             rhi::IndexBuffer index32;
             uint64_t         index32Address {0};
@@ -58,11 +62,65 @@ namespace vultra::resource
                 vertexBytesAddress = 0;
                 vertexBytesUsed    = 0;
 
+                cpuVertexBytes.clear();
+
                 index32        = {};
                 index32Address = 0;
                 indexCountUsed = 0;
 
                 cpuIndex32.clear();
+            }
+
+            struct VertexAlloc
+            {
+                uint32_t byteOffset {0};
+                uint32_t byteSize {0};
+            };
+
+            // Append raw vertex bytes into the global vertex byte buffer.
+            // Returns the byte offset for this appended range.
+            VertexAlloc appendVertexBytes(rhi::RenderDevice& rd, uint64_t bytes, const void* data)
+            {
+                VertexAlloc out;
+                if (bytes == 0)
+                    return out;
+
+                const uint32_t base     = vertexBytesUsed;
+                const uint64_t required = static_cast<uint64_t>(vertexBytesUsed) + bytes;
+
+                out.byteOffset = base;
+                out.byteSize   = static_cast<uint32_t>(bytes);
+
+                // Append into CPU mirror
+                const auto oldSize = cpuVertexBytes.size();
+                cpuVertexBytes.resize(oldSize + static_cast<size_t>(bytes));
+                std::memcpy(cpuVertexBytes.data() + oldSize, data, static_cast<size_t>(bytes));
+
+                bool grew = false;
+
+                if (!vertexBytes || static_cast<uint64_t>(vertexBytes->getSize()) < required)
+                {
+                    const uint64_t oldCap = vertexBytes ? static_cast<uint64_t>(vertexBytes->getSize()) : 0;
+                    uint64_t       newCap = oldCap == 0 ? 256ull * 1024ull : (oldCap * 2ull);
+                    if (newCap < required)
+                        newCap = required;
+
+                    vertexBytes        = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(newCap));
+                    vertexBytesAddress = rd.getBufferDeviceAddress(*vertexBytes);
+                    grew               = true;
+                }
+
+                if (grew)
+                {
+                    rd.uploadS(*vertexBytes, 0, static_cast<uint64_t>(required), cpuVertexBytes.data());
+                }
+                else
+                {
+                    rd.uploadS(*vertexBytes, base, static_cast<uint64_t>(bytes), data);
+                }
+
+                vertexBytesUsed = static_cast<uint32_t>(required);
+                return out;
             }
 
             // Append indices into the global index buffer.
@@ -100,24 +158,14 @@ namespace vultra::resource
                 // Otherwise, upload only the appended range.
                 if (grew)
                 {
-                    const size_t bytes         = static_cast<size_t>(requiredCount) * sizeof(uint32_t);
-                    auto         stagingBuffer = rd.createStagingBuffer(bytes, cpuIndex32.data());
-                    rd.execute(
-                        [&](rhi::CommandBuffer& cb) {
-                            cb.copyBuffer(stagingBuffer, index32, vk::BufferCopy {0, 0, bytes});
-                        },
-                        true);
+                    const size_t bytes = static_cast<size_t>(requiredCount) * sizeof(uint32_t);
+                    rd.uploadS(index32, 0, bytes, cpuIndex32.data());
                 }
                 else
                 {
-                    const size_t bytes         = static_cast<size_t>(count) * sizeof(uint32_t);
-                    const size_t dstBytes      = static_cast<size_t>(base) * sizeof(uint32_t);
-                    auto         stagingBuffer = rd.createStagingBuffer(bytes, indices);
-                    rd.execute(
-                        [&](rhi::CommandBuffer& cb) {
-                            cb.copyBuffer(stagingBuffer, index32, vk::BufferCopy {0, dstBytes, bytes});
-                        },
-                        true);
+                    const size_t bytes    = static_cast<size_t>(count) * sizeof(uint32_t);
+                    const size_t dstBytes = static_cast<size_t>(base) * sizeof(uint32_t);
+                    rd.uploadS(index32, dstBytes, bytes, indices);
                 }
 
                 indexCountUsed = requiredCount;
@@ -234,13 +282,7 @@ namespace vultra::resource
                 materialTableBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
             }
 
-            auto stagingBuffer = rd.createStagingBuffer(bytes, materials.data());
-
-            rd.execute(
-                [&](rhi::CommandBuffer& cb) {
-                    cb.copyBuffer(stagingBuffer, *materialTableBuffer, vk::BufferCopy {0, 0, bytes});
-                },
-                true);
+            rd.uploadS(*materialTableBuffer, 0, bytes, materials.data());
         }
     };
 } // namespace vultra::resource

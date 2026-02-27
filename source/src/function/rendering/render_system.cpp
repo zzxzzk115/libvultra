@@ -5,6 +5,7 @@
 #include "vultra/function/rendering/srp/render_context.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
+#include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/id_component.hpp"
@@ -107,12 +108,13 @@ namespace vultra
 
     void RenderSystem::renderFrame()
     {
-        auto& backendService = ctx().services.require<IRenderBackendService>();
-        auto* worldService   = ctx().services.tryGet<IWorldService>();
-        auto* camService     = ctx().services.tryGet<ICameraService>();
-        auto* assetService   = ctx().services.tryGet<IAssetService>();
+        auto& backendService     = ctx().services.require<IRenderBackendService>();
+        auto* worldService       = ctx().services.tryGet<IWorldService>();
+        auto* camService         = ctx().services.tryGet<ICameraService>();
+        auto* gpuResourceService = ctx().services.tryGet<IGpuResourceService>();
+        auto* assetService       = ctx().services.tryGet<IAssetService>();
 
-        if (!worldService || !camService || !assetService)
+        if (!worldService || !camService || !gpuResourceService || !assetService)
             return;
 
         World& world = worldService->world();
@@ -132,7 +134,7 @@ namespace vultra
         // These tables are consumed by GPU-driven passes (gl_DrawID indexed).
         {
             // Bind global GPU resource pool
-            m_GpuSceneBack.resources = &assetService->gpuResourcePool();
+            m_GpuSceneBack.resources = &gpuResourceService->pool();
 
             auto&       rd   = backendService.renderDevice();
             const auto& pool = *m_GpuSceneBack.resources;

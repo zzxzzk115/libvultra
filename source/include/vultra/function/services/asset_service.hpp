@@ -40,10 +40,6 @@ namespace vultra
         // Returns 0 for invalid UUID.
         virtual uint32_t resolveBindlessTextureIndex(const CoreUUID& texUUID) = 0;
 
-        // Global GPU resource tables.
-        virtual resource::GpuResourcePool&       gpuResourcePool()       = 0;
-        virtual const resource::GpuResourcePool& gpuResourcePool() const = 0;
-
         // Optional: access registry/resolver for tooling.
         virtual const vasset::VAssetRegistry& registry() const = 0;
         virtual const vasset::VUUIDResolver&  resolver() const = 0;

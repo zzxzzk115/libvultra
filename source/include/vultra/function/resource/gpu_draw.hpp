@@ -22,15 +22,23 @@ namespace vultra::resource
         uint64_t vertexAddress {0};
         uint64_t indexAddress {0};
 
+        // Vertex pulling view into the global vertex byte buffer.
+        uint32_t vertexByteOffset {0};
+        uint32_t vertexStrideBytes {0};
+
         glm::mat4 model {1.0f};
 
         uint32_t materialIndex {0};
+
+        // For non-indexed draws, vertexCount maps to DrawIndirectCommand.count.
+        uint32_t vertexCount {0};
 
         // Index range in the index buffer (uint32 indices).
         uint32_t firstIndex {0};
         uint32_t indexCount {0};
 
         uint32_t flags {0};
+        uint32_t padding0 {0};
     };
 
     static_assert(sizeof(GpuDrawRecord) % 16 == 0, "GpuDrawRecord must be 16-byte aligned");

@@ -8,19 +8,16 @@
 
 namespace vultra::resource
 {
-    struct GpuVertexLayout
-    {
-        uint32_t              stride = 0;
-        rhi::VertexAttributes attributes;
-    };
-
     // GPU-only mesh representation. No CPU-side VMesh / SubMesh is stored here.
     // This is intentionally renderer-agnostic and will later evolve into GPU-driven
     // draw-indirect / meshlet dispatch buffers.
     struct GpuMesh
     {
+        // Vertex layout (single source of truth for both CPU & GPU driven paths)
         rhi::VertexAttributes vertexAttributes;
+        uint32_t              vertexStrideBytes {0};
 
+        // CPU-driven buffers (optional)
         rhi::VertexBuffer vertexBuffer;
         rhi::IndexBuffer  indexBuffer;
 
@@ -33,7 +30,9 @@ namespace vultra::resource
         // Used by indexed multi-draw indirect.
         uint32_t indexBase {0}; // firstIndex
 
-        GpuVertexLayout layout;
+        // Range in the global vertex byte buffer (GpuResourcePool::geometry).
+        // Used by vertex pulling.
+        uint32_t vertexByteOffset {0};
 
         uint32_t vertexCount {0};
         uint32_t indexCount {0};

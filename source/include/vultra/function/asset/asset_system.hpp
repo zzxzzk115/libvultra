@@ -6,9 +6,9 @@
 #include "vultra/function/asset/asset_cache.hpp"
 #include "vultra/function/asset/asset_handle.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
-#include "vultra/function/resource/gpu_resource_pool.hpp"
 #include "vultra/function/resource/gpu_texture.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/services/gpu_resource_service.hpp"
 
 #include <vasset/uuid_resolver.hpp>
 #include <vasset/vasset_registry.hpp>
@@ -60,9 +60,6 @@ namespace vultra
 
         std::string resolveUri(const std::string_view uri) const override;
 
-        resource::GpuResourcePool&       gpuResourcePool() override { return m_ResourcePool; }
-        const resource::GpuResourcePool& gpuResourcePool() const override { return m_ResourcePool; }
-
         // Bindless texture index resolution.
         // Returns 0 for invalid UUID.
         uint32_t resolveBindlessTextureIndex(const CoreUUID& texUUID) override;
@@ -106,7 +103,7 @@ namespace vultra
 
         vfilesystem::VirtualFileSystem m_VFS;
 
-        resource::GpuResourcePool m_ResourcePool;
+        IGpuResourceService* m_GpuResourceService {nullptr};
 
         // Caches (uuid -> record)
         AssetCache<vasset::VMesh, resource::GpuMesh, 64>       m_MeshCache;

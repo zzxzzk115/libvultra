@@ -122,9 +122,7 @@ namespace vultra
             m_VertexBuffer = m_RenderDevice->createVertexBuffer(sizeof(DrawVertex), count);
         }
 
-        auto staging = m_RenderDevice->createStagingBuffer(dataSize, lines);
-        m_RenderDevice->execute(
-            [&](auto& cb) { cb.copyBuffer(staging, m_VertexBuffer, vk::BufferCopy {0, 0, dataSize}); });
+        m_RenderDevice->uploadS(m_VertexBuffer, 0, dataSize, lines);
 
         m_CurrentCommandBuffer->pushConstants(rhi::ShaderStages::eVertex, 0, &m_ViewProjectionMatrix)
             .draw({

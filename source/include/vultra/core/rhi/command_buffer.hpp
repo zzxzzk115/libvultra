@@ -130,7 +130,7 @@ namespace vultra
             // Texture image must be created with TRANSFER_DST.
             CommandBuffer& clear(Texture&, const ClearValue&);
 
-            CommandBuffer& copyBuffer(const Buffer& src, Buffer& dst, const vk::BufferCopy&);
+            CommandBuffer& copyBuffer(const Buffer& src, Buffer& dst, const rhi::BufferCopy&);
             CommandBuffer& copyBuffer(const Buffer& src, Texture& dst);
             // Inserts layout transition barrier for dst.
             CommandBuffer& copyBuffer(const Buffer& src, Texture& dst, std::span<const vk::BufferImageCopy>);

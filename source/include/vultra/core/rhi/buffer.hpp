@@ -56,5 +56,7 @@ namespace vultra
             void*          m_MappedMemory {nullptr};
         };
 
+        using BufferCopy = vk::BufferCopy;
+
     } // namespace rhi
 } // namespace vultra
