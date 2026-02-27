@@ -77,9 +77,12 @@ namespace vultra
         auto& backendService = ctx().services.require<IRenderBackendService>();
         backendService.renderDevice().waitIdle();
 
+        m_GpuSceneBack.clear();
+        m_GpuSceneFront.clear();
+
         for (auto& [key, renderer] : m_Renderers)
         {
-            renderer.reset();
+            renderer = nullptr;
         }
         m_Renderers.clear();
     }

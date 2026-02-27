@@ -1,4 +1,5 @@
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/services/window_service.hpp"
 
@@ -7,23 +8,35 @@ namespace vultra
 
     bool RenderBackendSystem::onInit()
     {
+        VULTRA_CORE_INFO("[RenderBackendSystem] Initializing...");
+
+        VULTRA_CORE_TRACE("[RenderBackendSystem] Getting window service");
         auto& windowService = ctx().services.require<IWindowService>();
+        auto& window        = windowService.window();
 
-        auto& window = windowService.window();
-
+        VULTRA_CORE_TRACE("[RenderBackendSystem] Creating render device");
         m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.renderDeviceFeatureFlag, ctx().config.title);
 
+        VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");
         m_Swapchain = m_RenderDevice->createSwapchain(window, rhi::Swapchain::Format::esRGB, ctx().config.vSyncConfig);
 
+        VULTRA_CORE_TRACE("[RenderBackendSystem] Creating frame controller");
         m_FrameController =
             std::make_unique<rhi::FrameController>(*m_RenderDevice, m_Swapchain, ctx().config.numFramesInFlight);
 
+        VULTRA_CORE_TRACE("[RenderBackendSystem] Providing IRenderBackendService");
         ctx().services.provide<IRenderBackendService>(this);
+
+        VULTRA_CORE_INFO("[RenderBackendSystem] Initialized!");
 
         return true;
     }
 
-    void RenderBackendSystem::onShutdown() { m_RenderDevice->waitIdle(); }
+    void RenderBackendSystem::onShutdown()
+    {
+        VULTRA_CORE_INFO("[RenderBackendSystem] Shutting down");
+        m_RenderDevice->waitIdle();
+    }
 
     rhi::RenderDevice& RenderBackendSystem::renderDevice() { return *m_RenderDevice; }
 
