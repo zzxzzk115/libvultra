@@ -1243,6 +1243,9 @@ namespace vultra
                 vk12.descriptorIndexing && vk12.shaderSampledImageArrayNonUniformIndexing &&
                     vk12.runtimeDescriptorArray && vk12.descriptorBindingPartiallyBound &&
                     vk12.descriptorBindingVariableDescriptorCount && vk12.descriptorBindingUpdateUnusedWhilePending);
+            add(RenderDeviceFeatureReportFlagBits::eDrawIndirectCount,
+                VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME,
+                vk12.drawIndirectCount);
 
 #ifdef VULTRA_ENABLE_RENDERDOC
             VULTRA_CORE_WARN("[RenderDevice] RenderDoc is enabled, raytracing will be disabled");
@@ -1379,8 +1382,10 @@ namespace vultra
             vk::PhysicalDeviceVulkan12Features vk12Features {};
             if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
-                vk12Features.bufferDeviceAddress              = VK_TRUE;
+                vk12Features.bufferDeviceAddress = VK_TRUE;
+#ifdef VULTRA_ENABLE_RENDERDOC
                 vk12Features.bufferDeviceAddressCaptureReplay = VK_TRUE;
+#endif
 
                 vk12Features.scalarBlockLayout       = VK_TRUE;
                 vk12Features.storageBuffer8BitAccess = VK_TRUE;
@@ -1393,6 +1398,10 @@ namespace vultra
                 vk12Features.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
                 vk12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
                 vk12Features.runtimeDescriptorArray                    = VK_TRUE;
+            }
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDrawIndirectCount))
+            {
+                vk12Features.drawIndirectCount = VK_TRUE;
             }
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk12Features));
 
@@ -1418,8 +1427,10 @@ namespace vultra
             if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
             {
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
-                rayTracingFeatures.rayTracingPipeline                               = VK_TRUE;
-                rayTracingFeatures.rayTracingPipelineShaderGroupHandleCaptureReplay = VK_TRUE;
+                rayTracingFeatures.rayTracingPipeline = VK_TRUE;
+
+                // RenderDoc doesn't support raytracing capture replay.
+                // rayTracingFeatures.rayTracingPipelineShaderGroupHandleCaptureReplay = VK_TRUE;
 
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
             }
