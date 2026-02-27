@@ -1,11 +1,11 @@
 #version 460
 
-#include "include/gpu_scene.glsl"
+#include "include/common/gpu_scene.glsl"
 
 // ============================================================================
-// geometry.vert.vshader
+// mesh.vert.vshader
 //
-// Built-in GPU-driven geometry vertex shader.
+// Built-in GPU-driven mesh vertex shader.
 //
 // - Multi-draw indirect: gl_DrawID selects DrawRecord
 // - Vertex pulling: buffer device address for vertex/index buffers
@@ -13,16 +13,25 @@
 //
 // ============================================================================
 
-#pragma keyword permute HAS_TANGENT=0|1
-#pragma keyword permute PASS=TEST_MATERIAL
+#pragma keyword permute VTX_HAS_COLOR=0|1
+#pragma keyword permute VTX_HAS_NORMAL=0|1
+#pragma keyword permute VTX_HAS_UV0=0|1
+#pragma keyword permute VTX_HAS_UV1=0|1
+#pragma keyword permute VTX_HAS_TANGENT=0|1
 
+#if VTX_HAS_COLOR
 layout(location = 0) out vec3 v_Color;
+#endif
+
+#if VTX_HAS_UV0
 layout(location = 1) out vec2 v_TexCoord;
+#endif
+
 layout(location = 2) out vec3 v_FragPos;
 
-#if HAS_TANGENT
+#if VTX_HAS_TANGENT
 layout(location = 3) out mat3 v_TBN;
-#else
+#elif VTX_HAS_NORMAL
 layout(location = 3) out vec3 v_Normal;
 #endif
 
@@ -47,7 +56,7 @@ void main()
     // Legacy-compatible normal matrix
     mat3 normalMatrix = transpose(inverse(mat3(d.model)));
 
-#if HAS_TANGENT
+#if VTX_HAS_TANGENT
     vec3 T = normalize(normalMatrix * v.tangent.xyz);
     vec3 N = normalize(normalMatrix * v.normal);
 
@@ -57,7 +66,7 @@ void main()
     vec3 B = cross(N, T) * v.tangent.w;
 
     v_TBN = mat3(T, B, N);
-#else
+#elif VTX_HAS_NORMAL
     v_Normal = normalize(normalMatrix * v.normal);
 #endif
 

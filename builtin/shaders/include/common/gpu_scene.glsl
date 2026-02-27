@@ -90,7 +90,6 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_DRAW_BINDING, std430) readonly b
 
 struct MaterialEntry
 {
-    // uint64 shaderIdHash; // optional (not required for TestMaterialPass)
     uint model;            // VULTRA_MAT_*
     uint blockOffsetBytes; // byte offset into MaterialParams
     uint tableIndex;       // optional

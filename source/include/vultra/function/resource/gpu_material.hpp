@@ -4,7 +4,7 @@
 
 namespace vultra::resource
 {
-    enum class GpuMaterialModel : uint8_t
+    enum class GpuMaterialModel : uint32_t
     {
         eInvalid = 0,
         ePBRMetallicRoughness,
@@ -15,9 +15,6 @@ namespace vultra::resource
 
     struct GpuMaterial
     {
-        // In the future this will be provided by vshadersystem (shader library key hash / permutation hash).
-        uint64_t shaderIdHash {0};
-
         // Material model routing (fast-path). Extension/custom parameters are handled by MaterialBlock.
         GpuMaterialModel model {GpuMaterialModel::eInvalid};
 
@@ -26,5 +23,10 @@ namespace vultra::resource
 
         // Optional index into a GPU-side material table.
         uint32_t tableIndex {0};
+
+        // Reserved for future use
+        uint32_t padding {0};
     };
+
+    static_assert(sizeof(GpuMaterial) % 16 == 0, "GpuMaterial must be 16-byte aligned for std430 buffer layout");
 } // namespace vultra::resource
