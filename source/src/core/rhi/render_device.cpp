@@ -1429,7 +1429,7 @@ namespace vultra
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
                 rayTracingFeatures.rayTracingPipeline = VK_TRUE;
 
-                // RenderDoc doesn't support raytracing capture replay.
+                // RenderDoc & RELEASE mode doesn't support raytracing capture replay.
                 // rayTracingFeatures.rayTracingPipelineShaderGroupHandleCaptureReplay = VK_TRUE;
 
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
