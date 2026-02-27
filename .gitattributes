@@ -1,0 +1,26 @@
+* text=auto eol=lf
+
+*.txt text eol=lf
+*.vreg text eol=lf
+*.vimport text eol=lf
+*.vscn text eol=lf
+*.ini text eol=lf
+*.json text eol=lf
+*.xml text eol=lf
+*.md text eol=lf
+*.glsl text eol=lf
+*.vshader text eol=lf
+*.hpp text eol=lf
+*.cpp text eol=lf
+
+# binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.exr binary
+*.hdr binary
+*.ktx2 binary
+*.dds binary
+*.vpk binary
+*.vshbin binary
+*.vshlib binary
