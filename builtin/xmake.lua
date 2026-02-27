@@ -175,7 +175,7 @@ task("shader_task")
 
             table.insert(vshbins, out)
 
-            if os.exists(out) and os.mtime(out) >= os.mtime(file)
+            if os.exists(out) and os.mtime(out) >= os.mtime(file) and os.mtime(out) >= os.mtime(keywords_file)
             then
 
                 cprint("${cyan}[OK]${clear}   %s", rel)
