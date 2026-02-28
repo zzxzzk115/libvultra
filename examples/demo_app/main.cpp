@@ -6,14 +6,13 @@
 #include <vultra/core/rhi/shader_type.hpp>
 #include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/camera/camera_system.hpp>
+#include <vultra/function/imgui/imgui_system.hpp>
 #include <vultra/function/rendering/backend/render_backend_system.hpp>
 #include <vultra/function/rendering/render_system.hpp>
 #include <vultra/function/rendering/shader/shader_system.hpp>
 #include <vultra/function/rendering/srp/render_context.hpp>
 #include <vultra/function/resource/gpu_resource_system.hpp>
 #include <vultra/function/scene/scene_system.hpp>
-#include <vultra/function/services/asset_service.hpp>
-#include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
@@ -202,6 +201,15 @@ public:
             .endRendering();
     }
 
+    void onImGui() override
+    {
+        ImGui::Begin("Base Color Renderer");
+        ImGui::Text("This renderer demonstrates using built-in shaders and GPU-driven rendering flow.");
+        ImGui::End();
+
+        ImGui::ShowDemoWindow();
+    }
+
 private:
     rhi::GraphicsPipeline m_GraphicsPipeline;
 };
@@ -227,6 +235,7 @@ protected:
 
         engine.emplaceSubsystem<ShaderSystem>();
         auto& backendSystem = engine.emplaceSubsystem<RenderBackendSystem>();
+        auto& imguiSystem   = engine.emplaceSubsystem<ImGuiSystem>();
         auto& renderSystem  = engine.emplaceSubsystem<RenderSystem>();
         renderSystem.registerRenderer(triangleRenderer);
         renderSystem.registerRenderer(baseColorRenderer);

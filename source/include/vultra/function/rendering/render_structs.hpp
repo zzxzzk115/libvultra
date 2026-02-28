@@ -4,6 +4,7 @@
 #include "vultra/function/resource/gpu_scene.hpp"
 
 #include <glm/mat4x4.hpp>
+#include <glm/vec4.hpp>
 
 #include <string>
 #include <vector>
@@ -34,15 +35,11 @@ namespace vultra
 
         // Render target (nullptr => backbuffer or XR-provided target)
         rhi::Texture* target {nullptr};
+        glm::vec4     clearValue {0, 0, 0, 1};
 
         // SRP binding (string key, resolved to a Renderer instance by RenderSystem)
         // Example: "builtin", "forward", "pathtracer", "xr_builtin"
         std::string rendererKey {"builtin"};
-
-        // Optional flags
-        bool isOverlay {false};
-        bool clearColor {true};
-        bool clearDepth {true};
     };
 
     // Cooked render instance extracted from World.

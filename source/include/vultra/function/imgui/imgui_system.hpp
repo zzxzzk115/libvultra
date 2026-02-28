@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/engine/engine_subsystem.hpp"
+#include "vultra/core/os/window.hpp"
 #include "vultra/function/services/imgui_service.hpp"
 
 // NOLINTBEGIN
@@ -18,15 +19,14 @@ namespace vultra
         bool onInit() override;
         void onShutdown() override;
 
-        void onRender() override;
-
-        virtual void processEvent(const os::GeneralWindowEvent& event) override;
         virtual void begin() override;
         virtual void render(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& framebufferInfo) override;
         virtual void end() override;
         virtual void postRender() override;
 
     private:
+        static void processEvent(const os::GeneralWindowEvent& event);
+
         static void initImGui(const rhi::RenderDevice&,
                               const rhi::Swapchain&,
                               const os::Window&,
@@ -34,7 +34,9 @@ namespace vultra
                               bool                                    enableDocking,
                               const char*                             imguiIniFile,
                               std::function<void(ImGuiDockNodeFlags)> setDockSpace = nullptr);
-        static void shutdownImGui();
+
+        static void shutdownImGui(const char* imguiIniFile);
+
         static void setImGuiStyle();
 
     private:

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "vultra/core/os/window.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 
 #include <vbase/service/service_registry.hpp>
@@ -12,7 +11,6 @@ namespace vultra
     public:
         SERVICE_REGISTER(IImGuiService);
 
-        virtual void processEvent(const os::GeneralWindowEvent& event)                = 0;
         virtual void begin()                                                          = 0;
         virtual void render(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& info) = 0;
         virtual void end()                                                            = 0;

@@ -33,7 +33,9 @@ namespace vultra
         bool onInit() override;
         void onShutdown() override;
 
+        void onPreRender() override;
         void onRender() override;
+        void onPostRender() override;
 
         // IRenderService
         void registerRenderer(Ref<Renderer> renderer) override;

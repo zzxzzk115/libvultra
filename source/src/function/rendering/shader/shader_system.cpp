@@ -7,12 +7,12 @@ namespace vultra
 {
     bool ShaderSystem::onInit()
     {
-        VULTRA_CLIENT_INFO("[ShaderSystem] Initializing...");
+        VULTRA_CORE_INFO("[ShaderSystem] Initializing...");
 
         // Load builtin shader library from embedded header.
         if (!m_BuiltinShaderLibrary.loadFromMemory(builtin_shaders_vshlib, builtin_shaders_vshlib_size))
         {
-            VULTRA_CLIENT_ERROR("[ShaderSystem] Failed to load builtin shader library");
+            VULTRA_CORE_ERROR("[ShaderSystem] Failed to load builtin shader library");
             return false;
         }
 
@@ -22,5 +22,5 @@ namespace vultra
         return true;
     }
 
-    void ShaderSystem::onShutdown() { VULTRA_CLIENT_INFO("[ShaderSystem] Shutting down"); }
+    void ShaderSystem::onShutdown() { VULTRA_CORE_INFO("[ShaderSystem] Shutting down"); }
 } // namespace vultra

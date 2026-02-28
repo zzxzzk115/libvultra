@@ -6,6 +6,7 @@
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/gpu_resource_service.hpp"
+#include "vultra/function/services/imgui_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
 #include "vultra/function/services/world_service.hpp"
@@ -116,33 +117,34 @@ namespace vultra
 
     void RenderSystem::renderFrame()
     {
+        // Required services
         auto& backendService     = ctx().services.require<IRenderBackendService>();
-        auto* worldService       = ctx().services.tryGet<IWorldService>();
-        auto* camService         = ctx().services.tryGet<ICameraService>();
-        auto* gpuResourceService = ctx().services.tryGet<IGpuResourceService>();
-        auto* assetService       = ctx().services.tryGet<IAssetService>();
+        auto& worldService       = ctx().services.require<IWorldService>();
+        auto& camService         = ctx().services.require<ICameraService>();
+        auto& gpuResourceService = ctx().services.require<IGpuResourceService>();
+        auto& assetService       = ctx().services.require<IAssetService>();
 
-        if (!worldService || !camService || !gpuResourceService || !assetService)
-            return;
+        // Optional ImGui service for rendering ImGui on top of frame.
+        auto* imguiService = ctx().services.tryGet<IImGuiService>();
 
-        World& world = worldService->world();
+        World& world = worldService.world();
 
         // Asset upload/update stage (main thread)
-        assetService->update(m_FrameCounter);
+        assetService.update(m_FrameCounter);
 
         // Cook render instances
         RenderWorldCooker cooker {};
-        cooker.cook(world, *assetService, m_RenderWorldBack);
+        cooker.cook(world, assetService, m_RenderWorldBack);
 
         // Cook render cameras
         m_RenderWorldBack.frameIndex = m_FrameCounter;
-        m_RenderWorldBack.cameras    = camService->cameras();
+        m_RenderWorldBack.cameras    = camService.cameras();
 
         // Build per-frame GPU-driven scene tables (draws + indirect commands).
         // These tables are consumed by GPU-driven passes (gl_DrawID indexed).
         {
             // Bind global GPU resource pool
-            m_GpuSceneBack.resources = &gpuResourceService->pool();
+            m_GpuSceneBack.resources = &gpuResourceService.pool();
 
             auto&       rd   = backendService.renderDevice();
             const auto& pool = *m_GpuSceneBack.resources;
@@ -226,7 +228,7 @@ namespace vultra
                 .framebufferInfo =
                     rhi::FramebufferInfo {
                         .area             = {.extent = target->getExtent()},
-                        .colorAttachments = {rhi::AttachmentInfo {.target = target}},
+                        .colorAttachments = {rhi::AttachmentInfo {.target = target, .clearValue = cam.clearValue}},
                     },
                 .fg          = fg,
                 .bb          = bb,
@@ -240,11 +242,43 @@ namespace vultra
             // Compile and execute the frame graph
             fg.compile();
             fg.execute(&rc, m_TransientResources.get());
+
+            // Optional ImGui rendering per camera
+            if (imguiService)
+            {
+                imguiService->render(cb, *rc.framebufferInfo);
+            }
         }
 
         backendService.endFrame();
         backendService.present();
     }
 
+    void RenderSystem::onPreRender()
+    {
+        auto* imguiService = ctx().services.tryGet<IImGuiService>();
+
+        if (imguiService)
+        {
+            imguiService->begin();
+            for (auto& [key, renderer] : m_Renderers)
+            {
+                if (renderer)
+                    renderer->onImGui();
+            }
+            imguiService->end();
+        }
+    }
+
     void RenderSystem::onRender() { renderFrame(); }
+
+    void RenderSystem::onPostRender()
+    {
+        auto* imguiService = ctx().services.tryGet<IImGuiService>();
+
+        if (imguiService)
+        {
+            imguiService->postRender();
+        }
+    }
 } // namespace vultra

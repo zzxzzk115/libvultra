@@ -1,8 +1,11 @@
 #include "vultra/function/imgui/imgui_system.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
-#include "font_headers/materialdesignicons_webfont.ttf.binfont.h"
+#include <font_headers/materialdesignicons_webfont.ttf.binfont.h>
+
+#include <vbase/core/exe_path.hpp>
 
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiAl/fonts/RobotoBold.inl>
@@ -14,10 +17,20 @@
 #include <imgui_internal.h>
 #include <implot/implot.h>
 
+namespace
+{
+    std::string get_imgui_config_file_full_path(const char* imguiIniFile)
+    {
+        return (vbase::executable_dir() / imguiIniFile).generic_string();
+    }
+} // namespace
+
 namespace vultra
 {
     bool ImGuiSystem::onInit()
     {
+        VULTRA_CORE_INFO("[ImGuiSystem] Initializing...");
+
         auto& renderBackendService = ctx().services.require<IRenderBackendService>();
         auto& windowService        = ctx().services.require<IWindowService>();
 
@@ -29,18 +42,20 @@ namespace vultra
                   config.enableDocking,
                   config.imguiIniFile.c_str());
 
+        VULTRA_CORE_TRACE("[ImGuiSystem] Registering window event callback");
+        // Register event: window poll event
+        windowService.window().on<os::GeneralWindowEvent>([this](const auto& event, auto&) { processEvent(event); });
+
+        VULTRA_CORE_TRACE("[ImGuiSystem] Providing IImGuiService");
         ctx().services.provide<IImGuiService>(this);
 
         return true;
     }
 
-    void ImGuiSystem::onShutdown() { shutdownImGui(); }
-
-    void ImGuiSystem::onRender() {}
-
-    void ImGuiSystem::processEvent(const os::GeneralWindowEvent& event)
+    void ImGuiSystem::onShutdown()
     {
-        ImGui_ImplSDL3_ProcessEvent(&event.internalEvent);
+        VULTRA_CORE_INFO("[ImGuiSystem] Shutting down");
+        shutdownImGui(ctx().config.imgui.imguiIniFile.c_str());
     }
 
     void ImGuiSystem::begin()
@@ -134,6 +149,11 @@ namespace vultra
 #endif
     }
 
+    void ImGuiSystem::processEvent(const os::GeneralWindowEvent& event)
+    {
+        ImGui_ImplSDL3_ProcessEvent(&event.internalEvent);
+    }
+
     std::function<void(ImGuiDockNodeFlags)> ImGuiSystem::s_SetDockSpace;
 
     void ImGuiSystem::initImGui(const rhi::RenderDevice&                rd,
@@ -165,7 +185,9 @@ namespace vultra
             io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
         }
 #endif
-        io.IniFilename = imguiIniFile;
+        io.IniFilename = nullptr; // Disable automatic .ini saving, we will handle it ourselves.
+        ImGui::LoadIniSettingsFromDisk(get_imgui_config_file_full_path(imguiIniFile).c_str());
+
         s_SetDockSpace = setDockSpace;
 
 #ifdef IMGUI_HAS_VIEWPORT
@@ -205,11 +227,13 @@ namespace vultra
         iconsConfig.MergeMode            = true;
         iconsConfig.PixelSnapH           = true;
         iconsConfig.FontDataOwnedByAtlas = false;
+        // NOLINTBEGIN
         io.Fonts->AddFontFromMemoryTTF((void*)materialdesignicons_webfont_ttf_data,
                                        materialdesignicons_webfont_ttf_size,
                                        16.0f,
                                        &iconsConfig,
                                        iconsRanges);
+        // NOLINTEND
 
         io.Fonts->AddFontFromMemoryCompressedTTF(
             RobotoBold_compressed_data, RobotoBold_compressed_size, fontSize + 2.0f, &fontConfig, ranges);
@@ -251,8 +275,11 @@ namespace vultra
         ImGui_ImplVulkan_Init(&initInfo);
     }
 
-    void ImGuiSystem::shutdownImGui()
+    void ImGuiSystem::shutdownImGui(const char* imguiIniFile)
     {
+        // Before shutting down, save .ini settings to disk.
+        ImGui::SaveIniSettingsToDisk(get_imgui_config_file_full_path(imguiIniFile).c_str());
+
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplSDL3_Shutdown();
         ImPlot::DestroyContext();

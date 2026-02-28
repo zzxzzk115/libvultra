@@ -29,6 +29,8 @@ namespace vultra
         virtual void init(RendererServices& services) {}
 
         virtual void render(RenderContext& ctx) = 0;
+
+        virtual void onImGui() {}
     };
 
     // Optional helper: a feature-driven renderer base.
