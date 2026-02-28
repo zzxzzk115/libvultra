@@ -11,6 +11,6 @@ namespace vultra
     public:
         SERVICE_REGISTER(IShaderService)
 
-        virtual rendering::ShaderLibraryRuntime& bulitinLibrary() = 0;
+        virtual rendering::ShaderLibraryRuntime& builtinLibrary() = 0;
     };
 } // namespace vultra

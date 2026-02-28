@@ -14,7 +14,7 @@ namespace vultra
         void onShutdown() override;
 
     public:
-        rendering::ShaderLibraryRuntime& bulitinLibrary() override { return m_BuiltinShaderLibrary; }
+        rendering::ShaderLibraryRuntime& builtinLibrary() override { return m_BuiltinShaderLibrary; }
 
     private:
         rendering::ShaderLibraryRuntime m_BuiltinShaderLibrary;

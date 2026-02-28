@@ -6,6 +6,7 @@
 #include <vultra/core/rhi/shader_type.hpp>
 #include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/camera/camera_system.hpp>
+#include <vultra/function/debugging/frame_debugger_system.hpp>
 #include <vultra/function/imgui/imgui_system.hpp>
 #include <vultra/function/rendering/backend/render_backend_system.hpp>
 #include <vultra/function/rendering/render_system.hpp>
@@ -13,6 +14,7 @@
 #include <vultra/function/rendering/srp/render_context.hpp>
 #include <vultra/function/resource/gpu_resource_system.hpp>
 #include <vultra/function/scene/scene_system.hpp>
+#include <vultra/function/services/frame_debugger_service.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
@@ -41,10 +43,10 @@ class TriangleRenderer : public Renderer
 public:
     virtual std::string_view name() const override { return "triangle"; }
 
-    virtual void init(RendererServices& services) override
+    virtual void init(Services services) override
     {
-        auto& rd        = services.backendService.renderDevice();
-        auto& swapchain = services.backendService.swapchain();
+        auto& rd        = services.require<IRenderBackendService>().renderDevice();
+        auto& swapchain = services.require<IRenderBackendService>().swapchain();
 
         // Create vertex buffer
         m_VertexBuffer = rd.createVertexBuffer(sizeof(SimpleVertex), 3);
@@ -124,13 +126,15 @@ class BaseColorRenderer : public Renderer
 public:
     virtual std::string_view name() const override { return "base_color"; }
 
-    virtual void init(RendererServices& services) override
+    virtual void init(Services services) override
     {
-        auto& rd        = services.backendService.renderDevice();
-        auto& swapchain = services.backendService.swapchain();
+        m_FrameDebuggerService = &services.require<IFrameDebuggerService>();
+
+        auto& rd        = services.require<IRenderBackendService>().renderDevice();
+        auto& swapchain = services.require<IRenderBackendService>().swapchain();
 
         // Retrieve the shader from the built-in shader library.
-        auto shaderLib         = services.shaderService.bulitinLibrary();
+        auto shaderLib         = services.require<IShaderService>().builtinLibrary();
         auto vertexVariantHash = shaderLib.computeVariantHash("mesh.vert",
                                                               vshadersystem::ShaderStage::eVert,
                                                               {
@@ -205,6 +209,15 @@ public:
     {
         ImGui::Begin("Base Color Renderer");
         ImGui::Text("This renderer demonstrates using built-in shaders and GPU-driven rendering flow.");
+
+#ifdef VULTRA_ENABLE_RENDERDOC
+        ImGui::Button("Capture One Frame");
+        if (ImGui::IsItemClicked())
+        {
+            m_FrameDebuggerService->captureSingleFrame();
+        }
+#endif
+
         ImGui::End();
 
         ImGui::ShowDemoWindow();
@@ -212,6 +225,8 @@ public:
 
 private:
     rhi::GraphicsPipeline m_GraphicsPipeline;
+
+    IFrameDebuggerService* m_FrameDebuggerService;
 };
 
 class DemoAppHost : public AppHost
@@ -234,9 +249,11 @@ protected:
         engine.emplaceSubsystem<WorldSystem>();
 
         engine.emplaceSubsystem<ShaderSystem>();
-        auto& backendSystem = engine.emplaceSubsystem<RenderBackendSystem>();
-        auto& imguiSystem   = engine.emplaceSubsystem<ImGuiSystem>();
-        auto& renderSystem  = engine.emplaceSubsystem<RenderSystem>();
+        engine.emplaceSubsystem<RenderBackendSystem>();
+        engine.emplaceSubsystem<ImGuiSystem>();
+        engine.emplaceSubsystem<FrameDebuggerSystem>();
+
+        auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
         renderSystem.registerRenderer(triangleRenderer);
         renderSystem.registerRenderer(baseColorRenderer);
 

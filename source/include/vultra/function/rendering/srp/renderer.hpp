@@ -2,6 +2,8 @@
 
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
+#include <vbase/service/service_registry.hpp>
+
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -10,14 +12,7 @@ namespace vultra
 {
     struct RenderContext;
 
-    class IRenderBackendService;
-    class IShaderService;
-
-    struct RendererServices
-    {
-        IRenderBackendService& backendService;
-        IShaderService&        shaderService;
-    };
+    using Services = vbase::ServiceRegistry&;
 
     class Renderer
     {
@@ -26,7 +21,7 @@ namespace vultra
 
         virtual std::string_view name() const = 0;
 
-        virtual void init(RendererServices& services) {}
+        virtual void init(Services services) {}
 
         virtual void render(RenderContext& ctx) = 0;
 
