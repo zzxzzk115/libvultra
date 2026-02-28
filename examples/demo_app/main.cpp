@@ -8,6 +8,7 @@
 #include <vultra/function/camera/camera_system.hpp>
 #include <vultra/function/rendering/backend/render_backend_system.hpp>
 #include <vultra/function/rendering/render_system.hpp>
+#include <vultra/function/rendering/shader/shader_system.hpp>
 #include <vultra/function/rendering/srp/render_context.hpp>
 #include <vultra/function/resource/gpu_resource_system.hpp>
 #include <vultra/function/scene/scene_system.hpp>
@@ -41,10 +42,10 @@ class TriangleRenderer : public Renderer
 public:
     virtual std::string_view name() const override { return "triangle"; }
 
-    virtual void init(IRenderBackendService& backendService) override
+    virtual void init(RendererServices& services) override
     {
-        auto& rd        = backendService.renderDevice();
-        auto& swapchain = backendService.swapchain();
+        auto& rd        = services.backendService.renderDevice();
+        auto& swapchain = services.backendService.swapchain();
 
         // Create vertex buffer
         m_VertexBuffer = rd.createVertexBuffer(sizeof(SimpleVertex), 3);
@@ -112,31 +113,96 @@ void main() {
                 .numVertices  = static_cast<uint32_t>(kTriangle.size()),
             })
             .endRendering();
-
-        // Normal example CPU-Driven rendering flow would be:
-        auto& renderWorld = ctx.renderWorld;
-        for (const auto& inst : renderWorld.instances)
-        {
-            auto& mesh = renderWorld.gpuScene->resources->meshes[inst.meshIndex];
-            auto& mat  = renderWorld.gpuScene->resources->materials[mesh.materialOffset];
-        }
-
-        // GPU-Driven rendering flow would consume renderWorld.gpuScene->draws + indirectCommands with minimal CPU
-        // overhead. Issue indirect draw call.
-        // ctx.cb.drawIndirect(rhi::DrawIndirectInfo {
-        //     .buffer       = &renderWorld.gpuScene->indirectBuffer.value(),
-        //     .firstCommand = 0,
-        //     .commandCount = static_cast<uint32_t>(renderWorld.gpuScene->indirectCommands.size()),
-        //     .gi =
-        //         rhi::GeometryInfo {
-        //             .indexBuffer = &renderWorld.gpuScene->resources->geometry.index32,
-        //             .numIndices  = renderWorld.gpuScene->resources->geometry.indexCountUsed,
-        //         },
-        // });
     }
 
 private:
     rhi::VertexBuffer     m_VertexBuffer;
+    rhi::GraphicsPipeline m_GraphicsPipeline;
+};
+
+class BaseColorRenderer : public Renderer
+{
+public:
+    virtual std::string_view name() const override { return "base_color"; }
+
+    virtual void init(RendererServices& services) override
+    {
+        auto& rd        = services.backendService.renderDevice();
+        auto& swapchain = services.backendService.swapchain();
+
+        // Retrieve the shader from the built-in shader library.
+        auto shaderLib         = services.shaderService.bulitinLibrary();
+        auto vertexVariantHash = shaderLib.computeVariantHash("mesh.vert",
+                                                              vshadersystem::ShaderStage::eVert,
+                                                              {
+                                                                  {"VTX_HAS_COLOR", 1},
+                                                                  {"VTX_HAS_NORMAL", 1},
+                                                                  {"VTX_HAS_UV0", 1},
+                                                                  {"VTX_HAS_UV1", 1},
+                                                                  {"VTX_HAS_TANGENT", 1},
+                                                              });
+        auto vertexShader      = shaderLib.load(vertexVariantHash, vshadersystem::ShaderStage::eVert);
+
+        auto fragmentVariantHash = shaderLib.computeVariantHash("base.frag", vshadersystem::ShaderStage::eFrag, {});
+        auto fragmentShader      = shaderLib.load(fragmentVariantHash, vshadersystem::ShaderStage::eFrag);
+
+        // Create graphics pipeline
+        m_GraphicsPipeline = rhi::GraphicsPipeline::Builder {}
+                                 .setColorFormats({swapchain.getPixelFormat()})
+                                 .setDepthStencil({
+                                     .depthTest  = true,
+                                     .depthWrite = true,
+                                 })
+                                 .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
+                                 .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
+                                 .setRasterizer({.polygonMode = rhi::PolygonMode::eFill})
+                                 .setBlending(0, {.enabled = false})
+                                 .build(rd);
+    }
+
+    virtual void render(RenderContext& ctx) override
+    {
+        auto& renderWorld = ctx.renderWorld;
+
+        // Normal example CPU-Driven rendering flow would be:
+        // for (const auto& inst : renderWorld.instances)
+        // {
+        //     auto& mesh = renderWorld.gpuScene->resources->meshes[inst.meshIndex];
+        //     auto& mat  = renderWorld.gpuScene->resources->materials[mesh.materialOffset];
+        // }
+
+        // GPU-Driven rendering flow would consume renderWorld.gpuScene->draws + indirectCommands with minimal CPU
+        // overhead. Issue indirect draw call.
+        auto ds =
+            ctx.cb
+                .createDescriptorSetBuilder()
+                //   .bind(0, rhi::bindings::StorageBuffer {.buffer = &renderWorld.gpuScene->resources->})
+                .bind(1, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->drawBuffer.get()})
+                .bind(
+                    2,
+                    rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialTableBuffer.get()})
+                .bind(
+                    3,
+                    rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialParams.gpu.get()})
+                .build(m_GraphicsPipeline.getDescriptorSetLayout(0));
+
+        ctx.cb.beginRendering(*ctx.framebufferInfo)
+            .bindPipeline(m_GraphicsPipeline)
+            .bindDescriptorSet(0, ds)
+            .drawIndirect(rhi::DrawIndirectInfo {
+                .buffer       = &renderWorld.gpuScene->indirectBuffer.value(),
+                .firstCommand = 0,
+                .commandCount = static_cast<uint32_t>(renderWorld.gpuScene->indirectCommands.size()),
+                .gi =
+                    rhi::GeometryInfo {
+                        .indexBuffer = &renderWorld.gpuScene->resources->geometry.index32,
+                        .numIndices  = renderWorld.gpuScene->resources->geometry.indexCountUsed,
+                    },
+            })
+            .endRendering();
+    }
+
+private:
     rhi::GraphicsPipeline m_GraphicsPipeline;
 };
 
@@ -150,16 +216,20 @@ protected:
         engine.emplaceSubsystem<WindowSystem>();
         engine.emplaceSubsystem<InputSystem>();
 
-        auto triangleRenderer = createRef<TriangleRenderer>();
+        auto triangleRenderer  = createRef<TriangleRenderer>();
+        auto baseColorRenderer = createRef<BaseColorRenderer>();
 
         auto& camSystem = engine.emplaceSubsystem<CameraSystem>();
-        camSystem.addManualCamera({.rendererKey = triangleRenderer->name().data()});
+        // camSystem.addManualCamera({.rendererKey = triangleRenderer->name().data()});
+        camSystem.addManualCamera({.rendererKey = baseColorRenderer->name().data()});
 
         engine.emplaceSubsystem<WorldSystem>();
 
+        engine.emplaceSubsystem<ShaderSystem>();
         auto& backendSystem = engine.emplaceSubsystem<RenderBackendSystem>();
         auto& renderSystem  = engine.emplaceSubsystem<RenderSystem>();
         renderSystem.registerRenderer(triangleRenderer);
+        renderSystem.registerRenderer(baseColorRenderer);
 
         engine.emplaceSubsystem<GpuResourceSystem>();
         engine.emplaceSubsystem<AssetSystem>();

@@ -14,31 +14,6 @@
 // Use compile-time macros to match the exact packing performed by the uploader.
 // ============================================================================
 
-#ifndef VTX_HAS_COLOR
-#define VTX_HAS_COLOR 1
-#endif
-
-#ifndef VTX_HAS_NORMAL
-#define VTX_HAS_NORMAL 1
-#endif
-
-#ifndef VTX_HAS_UV0
-#define VTX_HAS_UV0 1
-#endif
-
-#ifndef VTX_HAS_UV1
-#define VTX_HAS_UV1 1
-#endif
-
-#ifndef VTX_HAS_TANGENT
-#define VTX_HAS_TANGENT 1
-#endif
-
-// Optional: index width
-#ifndef INDEX_U16
-#define INDEX_U16 0
-#endif
-
 // ---- Vertex struct matches CPU packing for the selected variant ----
 // IMPORTANT: scalar layout packs vec3 tightly (12 bytes), so CPU side must match.
 struct Vertex

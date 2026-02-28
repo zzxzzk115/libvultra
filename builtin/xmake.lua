@@ -91,30 +91,32 @@
 -- task_end()
 
 task("shader_task")
-
     on_run(function ()
         import("core.project.config")
         import("core.project.project")
-        import("lib.detect.find_tool")
 
         local target = project.target("vultra_builtin_assets")
-        assert(target, "target not found")
+        assert(target)
 
         local pkg = target:pkg("vshadersystem")
-        assert(pkg, "vshadersystem package not found")
+        assert(pkg)
 
-        local vshaderc_exe = path.join(pkg:installdir(), "bin", "vshaderc")
-        assert(vshaderc_exe, "vshaderc not found in package")
+        local vshaderc =
+            path.join(pkg:installdir(), "bin", "vshaderc")
 
         local projectdir = get_config("project_dir")
 
-        local shader_root = path.join(projectdir, "builtin/shaders")
-        local bin_root    = path.join(projectdir, "builtin/shader_bins")
-        local lib_root    = path.join(projectdir, "builtin/shader_lib")
-        local header_root = path.join(projectdir, "builtin/generated/include")
+        local shader_root =
+            path.join(projectdir, "builtin/shaders")
 
-        local keywords_file =
-            path.join(projectdir, "builtin/shaders/builtin_keywords.vkw")
+        local lib_root =
+            path.join(projectdir, "builtin/shader_lib")
+
+        local header_root =
+            path.join(projectdir, "builtin/generated/include")
+
+        local keywords =
+            path.join(shader_root, "builtin_keywords.vkw")
 
         local vshlib =
             path.join(lib_root, "builtin.vshlib")
@@ -122,143 +124,77 @@ task("shader_task")
         local header =
             path.join(header_root, "builtin_shaders.hpp")
 
-        os.mkdir(bin_root)
         os.mkdir(lib_root)
         os.mkdir(header_root)
 
-        ------------------------------------------------------------
-        -- find .vshader files
-        ------------------------------------------------------------
+        ------------------------------------------------
+        -- check rebuild
+        ------------------------------------------------
 
-        local stages =
-        {
-            vert = true,
-            frag = true,
-            comp = true,
-            task = true,
-            mesh = true,
-            rgen = true,
-            rmiss = true,
-            rchit = true,
-            rahit = true,
-            rint = true
-        }
+        local rebuild = false
 
-        local shader_files =
-            os.files(path.join(shader_root, "**.vshader"))
+        if not os.exists(vshlib) then
+            rebuild = true
+        else
+            local libtime = os.mtime(vshlib)
 
-        local vshbins = {}
-
-        ------------------------------------------------------------
-        -- compile .vshader → .vshbin
-        ------------------------------------------------------------
-
-        for _, file in ipairs(shader_files)
-        do
-
-            local rel =
-                path.relative(file, shader_root)
-
-            local filename = path.filename(file)
-            local stage = filename:match("%.([^.]+)%.vshader$")
-
-            if not stages[stage] then
-                raise("Unknown shader stage: %s", rel)
-            end
-
-            local out =
-                path.join(bin_root, rel .. ".vshbin")
-
-            os.mkdir(path.directory(out))
-
-            table.insert(vshbins, out)
-
-            if os.exists(out) and os.mtime(out) >= os.mtime(file) and os.mtime(out) >= os.mtime(keywords_file)
-            then
-
-                cprint("${cyan}[OK]${clear}   %s", rel)
-
-            else
-
-                cprint("${green}[BUILD]${clear} %s", rel)
-
-                os.execv(vshaderc_exe,
-                {
-                    "compile",
-
-                    "-i", file,
-
-                    "-o", out,
-
-                    "-S", stage,
-
-                    "-I", shader_root,
-
-                    "--keywords-file", keywords_file
-                })
-
-            end
-        end
-
-        ------------------------------------------------------------
-        -- pack → builtin.vshlib
-        ------------------------------------------------------------
-
-        local rebuild_lib = true
-
-        if os.exists(vshlib)
-        then
-            rebuild_lib = false
-
-            for _, bin in ipairs(vshbins)
+            -- check shader files
+            for _, file in ipairs(
+                os.files(path.join(shader_root, "**.vshader")))
             do
-                if os.mtime(bin) > os.mtime(vshlib)
-                then
-                    rebuild_lib = true
+                if os.mtime(file) > libtime then
+                    rebuild = true
                     break
+                end
+            end
+
+            -- check keywords
+            if not rebuild and os.exists(keywords) then
+                if os.mtime(keywords) > libtime then
+                    rebuild = true
                 end
             end
         end
 
-        if rebuild_lib then
+        ------------------------------------------------
+        -- build
+        ------------------------------------------------
 
-            cprint("${green}[PACK]${clear} builtin.vshlib")
-
-            local argv =
+        if rebuild then
+            cprint("${green}[BUILD]${clear} builtin.vshlib")
+            os.execv(vshaderc,
             {
-                "packlib",
-                "-o", vshlib,
-                "--keywords-file", keywords_file
-            }
+                "build",
 
-            table.join2(argv, vshbins)
+                "--shader_root", shader_root,
 
-            os.execv(vshaderc_exe, argv)
+                "-I", shader_root,
 
+                "--keywords-file", keywords,
+
+                "-o", vshlib
+            })
         else
-
-            cprint("${cyan}[OK]${clear}   builtin.vshlib")
-
+            cprint("${cyan}[OK]${clear} builtin.vshlib")
         end
 
-        ------------------------------------------------------------
-        -- embed → builtin_shaders.hpp
-        ------------------------------------------------------------
+        ------------------------------------------------
+        -- embed header
+        ------------------------------------------------
 
         local rebuild_header = true
 
         if os.exists(header)
-            and os.mtime(header) >= os.mtime(vshlib)
+        and os.mtime(header) >= os.mtime(vshlib)
         then
             rebuild_header = false
         end
 
         if rebuild_header then
-
             cprint("${green}[EMBED]${clear} builtin_shaders.hpp")
 
             local data =
-                io.readfile(vshlib, {encoding = "binary"})
+                io.readfile(vshlib, {encoding="binary"})
 
             local f =
                 io.open(header, "w")
@@ -269,8 +205,7 @@ task("shader_task")
 
             f:write("inline constexpr uint8_t builtin_shaders_vshlib[] = {\n")
 
-            for i = 1, #data
-            do
+            for i = 1, #data do
 
                 if i % 12 == 1 then
                     f:write("    ")
@@ -285,24 +220,19 @@ task("shader_task")
                 if i % 12 == 0 then
                     f:write("\n")
                 end
-
             end
 
             f:write("\n};\n\n")
 
             f:write(
                 string.format(
-                    "inline constexpr size_t builtin_shaders_vshlib_size = %d;\n",
-                    #data))
+                "inline constexpr size_t builtin_shaders_vshlib_size = %d;\n",
+                #data))
 
             f:close()
-
         else
-
-            cprint("${cyan}[OK]${clear}   builtin_shaders.hpp")
-
+            cprint("${cyan}[OK]${clear} builtin_shaders.hpp")
         end
-
     end)
 task_end()
 

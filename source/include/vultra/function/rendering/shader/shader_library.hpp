@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/shader_reflection.hpp"
 #include "vultra/core/rhi/shader_type.hpp"
 
+#include <cstdint>
 #include <vshadersystem/binary.hpp>
 #include <vshadersystem/engine_keywords.hpp>
 #include <vshadersystem/library.hpp>
@@ -12,7 +13,6 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 
 namespace vultra
 {
@@ -48,6 +48,7 @@ namespace vultra
             ~ShaderLibraryRuntime() = default;
 
             bool loadFromFile(const std::string& filePath);
+            bool loadFromMemory(const uint8_t* data, size_t size);
 
             [[nodiscard]] bool                                     hasEngineKeywords() const;
             [[nodiscard]] const vshadersystem::EngineKeywordsFile* engineKeywords() const;

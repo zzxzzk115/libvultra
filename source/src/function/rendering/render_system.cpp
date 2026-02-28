@@ -7,6 +7,7 @@
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
+#include "vultra/function/services/shader_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
@@ -52,6 +53,9 @@ namespace vultra
         VULTRA_CORE_TRACE("[RenderSystem] Getting render backend service");
         auto& backendService = ctx().services.require<IRenderBackendService>();
 
+        VULTRA_CORE_TRACE("[RenderSystem] Getting shader service");
+        auto& shaderService = ctx().services.require<IShaderService>();
+
         VULTRA_CORE_TRACE("[RenderSystem] Creating transient resources");
         m_TransientResources = createScope<framegraph::TransientResources>(backendService.renderDevice());
 
@@ -59,7 +63,8 @@ namespace vultra
         for (auto& [key, renderer] : m_Renderers)
         {
             VULTRA_CORE_TRACE("[RenderSystem]     Initializing renderer: {}", key);
-            renderer->init(backendService);
+            RendererServices services {.backendService = backendService, .shaderService = shaderService};
+            renderer->init(services);
         }
 
         VULTRA_CORE_TRACE("[RenderSystem] Providing IRenderService");

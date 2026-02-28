@@ -187,6 +187,7 @@ namespace vultra::resource
         // Material table buffer (GpuMaterial array).
         // The shader-side MaterialEntry layout is a compact view derived from this.
         Ref<rhi::StorageBuffer> materialTableBuffer {nullptr};
+        bool                    materialTableDirty {false};
 
         struct PendingTextureFree
         {
@@ -270,10 +271,14 @@ namespace vultra::resource
 
         void uploadMaterialTable(rhi::RenderDevice& rd)
         {
+            if (!materialTableDirty)
+                return;
+
             const size_t bytes = materials.size() * sizeof(GpuMaterial);
             if (bytes == 0)
             {
                 materialTableBuffer = nullptr;
+                materialTableDirty  = false;
                 return;
             }
 
@@ -283,6 +288,7 @@ namespace vultra::resource
             }
 
             rd.uploadS(*materialTableBuffer, 0, bytes, materials.data());
+            materialTableDirty = false;
         }
     };
 } // namespace vultra::resource

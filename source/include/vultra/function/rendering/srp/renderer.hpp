@@ -9,8 +9,16 @@
 namespace vultra
 {
     struct RenderContext;
+
     class IRenderBackendService;
-    
+    class IShaderService;
+
+    struct RendererServices
+    {
+        IRenderBackendService& backendService;
+        IShaderService&        shaderService;
+    };
+
     class Renderer
     {
     public:
@@ -18,7 +26,7 @@ namespace vultra
 
         virtual std::string_view name() const = 0;
 
-        virtual void init(IRenderBackendService& backendService) {}
+        virtual void init(RendererServices& services) {}
 
         virtual void render(RenderContext& ctx) = 0;
     };

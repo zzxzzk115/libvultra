@@ -13,11 +13,12 @@
 //
 // ============================================================================
 
-#pragma keyword permute VTX_HAS_COLOR=0|1
-#pragma keyword permute VTX_HAS_NORMAL=0|1
-#pragma keyword permute VTX_HAS_UV0=0|1
-#pragma keyword permute VTX_HAS_UV1=0|1
-#pragma keyword permute VTX_HAS_TANGENT=0|1
+// Keywords for compile-time vertex struct permutation.
+#pragma keyword permute global VTX_HAS_COLOR=0|1
+#pragma keyword permute global VTX_HAS_NORMAL=0|1
+#pragma keyword permute global VTX_HAS_UV0=0|1
+#pragma keyword permute global VTX_HAS_UV1=0|1
+#pragma keyword permute global VTX_HAS_TANGENT=0|1
 
 #if VTX_HAS_COLOR
 layout(location = 0) out vec3 v_Color;
@@ -43,7 +44,7 @@ layout(location = 7) flat out uint v_MaterialIndex;
 
 void main()
 {
-    DrawRecord d = s_Draws.draws[gl_DrawID];
+    DrawRecord d = s_Draws.draws[gl_InstanceIndex];
 
     VertexBuffer vb = VertexBuffer(d.vertexAddress);
     IndexBuffer  ib = IndexBuffer(d.indexAddress);

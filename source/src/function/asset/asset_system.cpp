@@ -356,6 +356,12 @@ namespace vultra
             }
         }
 
+        auto& pool = m_GpuResourceService->pool();
+        if (pool.materialTableDirty)
+        {
+            pool.uploadMaterialTable(*m_RenderDevice);
+        }
+
         // GC hook (TODO): Use frameIndex + refCount/lastUsedFrame to evict CPU/GPU if desired.
         (void)frameIndex;
     }
@@ -484,6 +490,7 @@ namespace vultra
         gm.blockOffsetBytes = blockOffset;
         gm.tableIndex       = static_cast<uint32_t>(pool.materials.size());
         pool.materials.push_back(gm);
+        pool.materialTableDirty = true;
         return gm.tableIndex;
     }
 

@@ -1,5 +1,6 @@
-keyword permute global USE_SHADOW
-keyword runtime global DEBUG_VIEW=NONE|NORMAL|ALBEDO
-
-set USE_SHADOW=1
-set DEBUG_VIEW=NONE
+# vertex attributes
+keyword permute global VTX_HAS_COLOR=0|1
+keyword permute global VTX_HAS_NORMAL=0|1
+keyword permute global VTX_HAS_UV0=0|1
+keyword permute global VTX_HAS_UV1=0|1
+keyword permute global VTX_HAS_TANGENT=0|1

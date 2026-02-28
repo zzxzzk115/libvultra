@@ -121,7 +121,6 @@ vec4 load_vec4_bytes(uint baseByteOffset, uint byteOffset)
                 _load_f32(s_MaterialParams.words[addr + 3u]));
 }
 
-// TestMaterialPass convention:
 //   offset + 0 : vec4 mainColor (baseColor / diffuseColor / phong diffuse)
 vec4 material_main_color(uint materialIndex)
 {

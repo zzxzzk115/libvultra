@@ -1,7 +1,18 @@
-#include "vultra/function/rendering/shader_library.hpp"
+#include "vultra/function/rendering/shader/shader_library.hpp"
 #include "vultra/core/base/common_context.hpp"
 
 #include <vshadersystem/engine_keywords.hpp>
+
+#include <fstream>
+
+namespace
+{
+    bool write_all(std::ofstream& f, const void* data, size_t size)
+    {
+        f.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
+        return f.good();
+    }
+} // namespace
 
 namespace vultra
 {
@@ -38,6 +49,27 @@ namespace vultra
             }
 
             return true;
+        }
+
+        bool ShaderLibraryRuntime::loadFromMemory(const uint8_t* data, size_t size)
+        {
+            const std::string tempFilePath = "temp_vshlib.bin";
+            {
+                std::ofstream f(tempFilePath, std::ios::binary);
+                if (!f)
+                    return false;
+
+                auto r = write_all(f, data, size);
+                if (!r)
+                    return false;
+            }
+
+            auto result = loadFromFile(tempFilePath);
+
+            // Clean up the temp file.
+            std::filesystem::remove(tempFilePath);
+
+            return result;
         }
 
         bool ShaderLibraryRuntime::hasEngineKeywords() const { return m_EngineKeywords.has_value(); }

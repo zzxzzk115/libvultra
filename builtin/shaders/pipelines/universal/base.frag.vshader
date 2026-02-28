@@ -17,5 +17,6 @@ layout(location = 0) out vec4 FragColor;
 
 void main()
 {
-    FragColor = material_main_color(v_MaterialIndex);
+    // FragColor = material_main_color(v_MaterialIndex);
+	FragColor = vec4(float(v_MaterialIndex) / 255.0, 0.0, 0.0, 1.0);
 }
