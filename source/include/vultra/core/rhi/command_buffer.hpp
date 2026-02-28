@@ -22,10 +22,7 @@
 
 namespace vultra
 {
-    namespace imgui
-    {
-        class ImGuiRenderer;
-    }
+    class ImGuiSystem;
 
     namespace rhi
     {
@@ -41,7 +38,7 @@ namespace vultra
         {
             friend class RenderDevice;
             friend class DebugMarker;
-            friend class imgui::ImGuiRenderer;
+            friend class vultra::ImGuiSystem;
 
             enum class State
             {

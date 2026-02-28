@@ -35,10 +35,7 @@
 
 namespace vultra
 {
-    namespace imgui
-    {
-        class ImGuiRenderer;
-    }
+    class ImGuiSystem;
 
     namespace openxr
     {
@@ -119,7 +116,7 @@ namespace vultra
         {
             friend class GraphicsPipeline;
             friend class RayTracingPipeline;
-            friend class imgui::ImGuiRenderer;
+            friend class vultra::ImGuiSystem;
             friend class openxr::XRHeadset;
 
         public:

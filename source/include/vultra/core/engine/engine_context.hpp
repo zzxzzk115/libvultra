@@ -41,6 +41,13 @@ namespace vultra
             rhi::Swapchain::Format           swapchainFormat {rhi::Swapchain::Format::eLinear};
 
             bool loadFromVPK {false};
+
+            struct ImGuiConfig
+            {
+                bool        enableMultiview {true};
+                bool        enableDocking {false};
+                std::string imguiIniFile {"imgui.ini"};
+            } imgui;
         } config;
 
         // Per-frame state (optional)
