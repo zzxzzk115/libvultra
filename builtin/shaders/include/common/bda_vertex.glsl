@@ -16,16 +16,17 @@
 
 // ---- Vertex struct matches CPU packing for the selected variant ----
 // IMPORTANT: scalar layout packs vec3 tightly (12 bytes), so CPU side must match.
+
 struct Vertex
 {
     vec3 position;
 
-#if VTX_HAS_COLOR
-    vec3 color;
-#endif
-
 #if VTX_HAS_NORMAL
     vec3 normal;
+#endif
+
+#if VTX_HAS_COLOR
+    vec3 color;
 #endif
 
 #if VTX_HAS_UV0

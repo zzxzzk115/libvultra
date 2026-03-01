@@ -30,17 +30,32 @@ namespace vultra
 
         struct Config
         {
-            std::string title {"Vultra App"};
-            uint32_t    windowWidth {1024};
-            uint32_t    windowHeight {768};
+            struct WindowConfig
+            {
+                std::string title {"Vultra App"};
+                uint32_t    width {1024};
+                uint32_t    height {768};
+                bool        resizable {false};
+                bool        fullscreen {false};
+            } window;
 
-            rhi::FrameIndex::ValueType       numFramesInFlight {2};
-            rhi::RenderDeviceFeatureFlagBits renderDeviceFeatureFlag {rhi::RenderDeviceFeatureFlagBits::eNormal};
-            Logger::Level                    logLevel {Logger::Level::eTrace};
-            rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eAdaptive};
-            rhi::Swapchain::Format           swapchainFormat {rhi::Swapchain::Format::eLinear};
+            struct RenderConfig
+            {
+                rhi::FrameIndex::ValueType       numFramesInFlight {2};
+                rhi::RenderDeviceFeatureFlagBits renderDeviceFeatureFlag {rhi::RenderDeviceFeatureFlagBits::eNormal};
+                rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eAdaptive};
+                rhi::Swapchain::Format           swapchainFormat {rhi::Swapchain::Format::eLinear};
+            } render;
 
-            bool loadFromVPK {false};
+            struct LogConfig
+            {
+                Logger::Level level {Logger::Level::eTrace};
+            } log;
+
+            struct AssetConfig
+            {
+                bool loadFromVPK {false};
+            } asset;
 
             struct ImGuiConfig
             {

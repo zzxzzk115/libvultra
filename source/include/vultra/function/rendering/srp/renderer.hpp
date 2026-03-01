@@ -12,7 +12,8 @@ namespace vultra
 {
     struct RenderContext;
 
-    using Services = vbase::ServiceRegistry&;
+    using Services    = vbase::ServiceRegistry&;
+    using ServicesPtr = vbase::ServiceRegistry*;
 
     class Renderer
     {
@@ -26,6 +27,8 @@ namespace vultra
         virtual void render(RenderContext& ctx) = 0;
 
         virtual void onImGui() {}
+
+        virtual void onResize(uint32_t width, uint32_t height) {}
     };
 
     // Optional helper: a feature-driven renderer base.

@@ -3,6 +3,8 @@
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/resource/gpu_scene.hpp"
 
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
@@ -40,6 +42,22 @@ namespace vultra
         // SRP binding (string key, resolved to a Renderer instance by RenderSystem)
         // Example: "builtin", "forward", "pathtracer", "xr_builtin"
         std::string rendererKey {"builtin"};
+
+        // Temp: remove. use frame graph blackboard for per-camera data.
+        Ref<rhi::UniformBuffer> uniformBuffer {nullptr};
+        void                    ensureUniformBuffer(rhi::RenderDevice& rd)
+        {
+            if (!uniformBuffer)
+            {
+                // Test: hard-coded view projection
+                view       = glm::lookAt(glm::vec3(0, 0, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+                projection = glm::perspective(glm::radians(60.0f), 16.0f / 9.0f, 0.1f, 100.0f);
+                projection[1][1] *= -1; // GL to Vulkan clip space
+                viewProjection = projection * view;
+                uniformBuffer  = createRef<rhi::UniformBuffer>(rd.createUniformBuffer(sizeof(glm::mat4)));
+                rd.uploadS(*uniformBuffer, 0, sizeof(glm::mat4), &viewProjection);
+            }
+        }
     };
 
     // Cooked render instance extracted from World.

@@ -12,8 +12,12 @@ namespace vultra
         VULTRA_CORE_TRACE("[WindowSystem] Creating window");
         auto& cfg = ctx().config;
 
-        m_Window = createRef<os::Window>(
-            os::Window::Builder {}.setTitle(cfg.title).setExtent({cfg.windowWidth, cfg.windowHeight}).build());
+        m_Window = createRef<os::Window>(os::Window::Builder {}
+                                             .setTitle(cfg.window.title)
+                                             .setExtent({cfg.window.width, cfg.window.height})
+                                             .setResizable(cfg.window.resizable)
+                                             .setFullscreen(cfg.window.fullscreen)
+                                             .build());
 
         VULTRA_CORE_TRACE("[WindowSystem] Providing IWindowService");
         ctx().services.provide<IWindowService>(this);

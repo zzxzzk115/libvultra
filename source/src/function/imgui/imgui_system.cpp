@@ -113,7 +113,19 @@ namespace vultra
     void ImGuiSystem::render(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& framebufferInfo)
     {
         RHI_GPU_ZONE(cb, "ImGuiRenderer::render");
-        cb.beginRendering(framebufferInfo);
+
+        rhi::FramebufferInfo fbInfoCopy = framebufferInfo;
+        // Clear value is handled by the RenderSystem, we don't want ImGui to clear again.
+        if (fbInfoCopy.colorAttachments[0].clearValue.has_value())
+        {
+            fbInfoCopy.colorAttachments[0].clearValue = std::nullopt;
+        }
+        else
+        {
+            fbInfoCopy.colorAttachments[0].clearValue = glm::vec4 {0, 0, 0, 1};
+        }
+
+        cb.beginRendering(fbInfoCopy);
 
         ImGui::Render();
         ImDrawData* drawData = ImGui::GetDrawData();

@@ -1,10 +1,12 @@
 #include "vultra/function/rendering/render_system.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
+#include "vultra/core/services/window_service.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/render_context.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
+#include "vultra/function/services/frame_debugger_service.hpp"
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/imgui_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
@@ -52,6 +54,9 @@ namespace vultra
 
         VULTRA_CORE_TRACE("[RenderSystem] Getting render backend service");
         auto& backendService = ctx().services.require<IRenderBackendService>();
+
+        VULTRA_CORE_TRACE("[RenderSystem] Getting window service");
+        auto& windowService = ctx().services.require<IWindowService>();
 
         VULTRA_CORE_TRACE("[RenderSystem] Creating transient resources");
         m_TransientResources = createScope<framegraph::TransientResources>(backendService.renderDevice());
@@ -111,6 +116,15 @@ namespace vultra
         return nullptr;
     }
 
+    void RenderSystem::onResize(uint32_t width, uint32_t height)
+    {
+        for (auto& [key, renderer] : m_Renderers)
+        {
+            if (renderer)
+                renderer->onResize(width, height);
+        }
+    }
+
     void RenderSystem::renderFrame()
     {
         // Required services
@@ -123,6 +137,14 @@ namespace vultra
         // Optional ImGui service for rendering ImGui on top of frame.
         auto* imguiService = ctx().services.tryGet<IImGuiService>();
 
+        // Optional frame debugger service for GPU capture.
+        auto* frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>();
+
+<<<<<<< HEAD
+        auto& rd = backendService.renderDevice();
+
+=======
+>>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
         World& world = worldService.world();
 
         // Asset upload/update stage (main thread)
@@ -142,7 +164,6 @@ namespace vultra
             // Bind global GPU resource pool
             m_GpuSceneBack.resources = &gpuResourceService.pool();
 
-            auto&       rd   = backendService.renderDevice();
             const auto& pool = *m_GpuSceneBack.resources;
 
             m_GpuSceneBack.beginFrame(pool);
@@ -163,6 +184,7 @@ namespace vultra
                 dr.firstIndex    = mesh.indexBase;
                 dr.indexCount    = mesh.indexCount;
                 dr.flags         = 0;
+                dr.padding0      = 0;
 
                 m_GpuSceneBack.pushDraw(dr);
             }
@@ -192,6 +214,12 @@ namespace vultra
             return a.priority < b.priority;
         });
 
+        // Capture start
+        if (frameDebuggerService)
+        {
+            frameDebuggerService->captureStart();
+        }
+
         // Begin frame once (desktop backbuffer case).
         // XR backend later can override policy (e.g., beginFrame per XR frame).
         if (!backendService.beginFrame())
@@ -210,6 +238,8 @@ namespace vultra
             auto renderer = resolveRenderer(cam);
             if (!renderer)
                 continue;
+
+            cam.ensureUniformBuffer(rd);
 
             FrameGraph           fg {};
             FrameGraphBlackboard bb {};
@@ -247,7 +277,15 @@ namespace vultra
         }
 
         backendService.endFrame();
-        backendService.present();
+<<<<<<< HEAD
+=======
+
+        // Capture end
+        if (frameDebuggerService)
+        {
+            frameDebuggerService->captureEnd();
+        }
+>>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
     }
 
     void RenderSystem::onPreRender()
@@ -270,11 +308,29 @@ namespace vultra
 
     void RenderSystem::onPostRender()
     {
-        auto* imguiService = ctx().services.tryGet<IImGuiService>();
+<<<<<<< HEAD
+        auto& backendService       = ctx().services.require<IRenderBackendService>();
+        auto* imguiService         = ctx().services.tryGet<IImGuiService>();
+        auto* frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>();
+=======
+        auto& backendService = ctx().services.require<IRenderBackendService>();
+        auto* imguiService   = ctx().services.tryGet<IImGuiService>();
+>>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
 
         if (imguiService)
         {
             imguiService->postRender();
         }
+
+        backendService.present();
+<<<<<<< HEAD
+
+        // Capture end
+        if (frameDebuggerService)
+        {
+            frameDebuggerService->captureEnd();
+        }
+=======
+>>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
     }
 } // namespace vultra

@@ -124,6 +124,9 @@ task("shader_task")
         local header =
             path.join(header_root, "builtin_shaders.hpp")
 
+        local include_root =
+            path.join(shader_root, "include")
+
         os.mkdir(lib_root)
         os.mkdir(header_root)
 
@@ -152,6 +155,18 @@ task("shader_task")
             if not rebuild and os.exists(keywords) then
                 if os.mtime(keywords) > libtime then
                     rebuild = true
+                end
+            end
+
+            -- check include library files (*.glsl)
+            if not rebuild then
+                for _, file in ipairs(os.files(path.join(include_root, "**.glsl"))) do
+                    if os.mtime(file) > libtime then
+                        rebuild = true
+                        -- delete cache folder to force recompile, since vshaderc doesn't support dependency tracking yet
+                        os.rmdir(path.join(os.projectdir(), ".vshader_cache"))
+                        break
+                    end
                 end
             end
         end

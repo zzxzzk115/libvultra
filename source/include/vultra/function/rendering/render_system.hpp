@@ -53,6 +53,8 @@ namespace vultra
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
 
+        void onResize(uint32_t width, uint32_t height);
+
     private:
         std::unordered_map<std::string, Ref<Renderer>> m_Renderers;
         std::string                                    m_DefaultRendererKey {"builtin"};

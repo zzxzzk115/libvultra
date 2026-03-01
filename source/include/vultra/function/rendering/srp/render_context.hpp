@@ -29,5 +29,19 @@ namespace vultra
         RenderCamera& camera;
 
         fsec dt;
+
+        void bindDescriptorSets(const rhi::BasePipeline& pipeline)
+        {
+            auto descriptorSetBuilder = cb.createDescriptorSetBuilder();
+            for (const auto& [set, bindings] : resourceSet)
+            {
+                for (const auto& [index, info] : bindings)
+                {
+                    descriptorSetBuilder.bind(index, info);
+                }
+                const auto descriptors = descriptorSetBuilder.build(pipeline.getDescriptorSetLayout(set));
+                cb.bindDescriptorSet(set, descriptors);
+            }
+        }
     };
 } // namespace vultra

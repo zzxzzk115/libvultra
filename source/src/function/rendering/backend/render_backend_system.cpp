@@ -5,7 +5,6 @@
 
 namespace vultra
 {
-
     bool RenderBackendSystem::onInit()
     {
         VULTRA_CORE_INFO("[RenderBackendSystem] Initializing...");
@@ -15,14 +14,16 @@ namespace vultra
         auto& window        = windowService.window();
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating render device");
-        m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.renderDeviceFeatureFlag, ctx().config.title);
+        m_RenderDevice =
+            std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag, ctx().config.window.title);
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");
-        m_Swapchain = m_RenderDevice->createSwapchain(window, rhi::Swapchain::Format::esRGB, ctx().config.vSyncConfig);
+        m_Swapchain =
+            m_RenderDevice->createSwapchain(window, rhi::Swapchain::Format::esRGB, ctx().config.render.vSyncConfig);
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating frame controller");
         m_FrameController =
-            std::make_unique<rhi::FrameController>(*m_RenderDevice, m_Swapchain, ctx().config.numFramesInFlight);
+            std::make_unique<rhi::FrameController>(*m_RenderDevice, m_Swapchain, ctx().config.render.numFramesInFlight);
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Providing IRenderBackendService");
         ctx().services.provide<IRenderBackendService>(this);

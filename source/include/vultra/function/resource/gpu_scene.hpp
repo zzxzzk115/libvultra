@@ -26,7 +26,7 @@ namespace vultra::resource
     // Global mesh/material/texture tables live in GpuResourcePool.
     //
     // IMPORTANT:
-    // This struct is designed for "build → upload" usage (batch uploads).
+    // This struct is designed for "build -> upload" usage (batch uploads).
     // Do NOT upload on every push, otherwise it degenerates into O(N^2) traffic.
     struct GpuScene
     {

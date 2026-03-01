@@ -15,14 +15,16 @@ namespace vultra
         bool onInit() override;
         void onShutdown() override;
 
-        void onPreRender() override;
-        void onPostRender() override;
-
         void captureSingleFrame() override;
+
+    protected:
+        void captureStart() override;
+        void captureEnd() override;
 
     private:
         RenderDocAPI* m_RenderDocAPI {nullptr};
 
         bool m_CaptureRequested {false};
+        bool m_ShowCaptureUIRequested {false};
     };
 } // namespace vultra

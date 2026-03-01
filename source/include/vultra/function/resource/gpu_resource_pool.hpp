@@ -39,7 +39,7 @@ namespace vultra::resource
         //   GPU-driven shaders may use per-mesh vertex buffer device addresses.
         struct GeometryBuffer
         {
-            // Optional global vertex byte buffer for future fully pooled vertex pulling.
+            // Global vertex buffer for gpu-driven rendering.
             Ref<rhi::StorageBuffer> vertexBytes {nullptr};
             uint64_t                vertexBytesAddress {0};
             uint32_t                vertexBytesUsed {0};
@@ -289,6 +289,21 @@ namespace vultra::resource
 
             rd.uploadS(*materialTableBuffer, 0, bytes, materials.data());
             materialTableDirty = false;
+        }
+
+        std::vector<const rhi::Texture*> getBindlessTextureHandles() const
+        {
+            std::vector<const rhi::Texture*> out;
+            out.reserve(textures.size());
+            // insert by the bindless index order, which is the same as the vector order.
+            for (const auto& tex : textures)
+            {
+                uint32_t idx = tex.bindlessIndex;
+                if (idx >= out.size())
+                    out.resize(idx + 1, nullptr);
+                out[idx] = tex.texture.get();
+            }
+            return out;
         }
     };
 } // namespace vultra::resource

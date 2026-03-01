@@ -1,5 +1,12 @@
 #version 460
 
+// Keywords for compile-time vertex struct permutation.
+#pragma keyword permute global VTX_HAS_COLOR=0|1
+#pragma keyword permute global VTX_HAS_NORMAL=0|1
+#pragma keyword permute global VTX_HAS_UV0=0|1
+#pragma keyword permute global VTX_HAS_UV1=0|1
+#pragma keyword permute global VTX_HAS_TANGENT=0|1
+
 #include "include/common/gpu_scene.glsl"
 
 // ============================================================================
@@ -12,13 +19,6 @@
 // - Legacy-compatible TBN construction (Gram-Schmidt + handedness)
 //
 // ============================================================================
-
-// Keywords for compile-time vertex struct permutation.
-#pragma keyword permute global VTX_HAS_COLOR=0|1
-#pragma keyword permute global VTX_HAS_NORMAL=0|1
-#pragma keyword permute global VTX_HAS_UV0=0|1
-#pragma keyword permute global VTX_HAS_UV1=0|1
-#pragma keyword permute global VTX_HAS_TANGENT=0|1
 
 #if VTX_HAS_COLOR
 layout(location = 0) out vec3 v_Color;
@@ -42,15 +42,18 @@ layout(location = 4) out vec3 v_Normal;
 
 layout(location = 7) flat out uint v_MaterialIndex;
 
+layout(location = 8) out vec4 v_Debug;
+
 void main()
 {
     DrawRecord d = s_Draws.draws[gl_InstanceIndex];
 
-    VertexBuffer vb = VertexBuffer(d.vertexAddress);
-    IndexBuffer  ib = IndexBuffer(d.indexAddress);
+    v_Debug = d.model[1]; // Debug: visualize model matrix first column
 
-    uint   idx = ib.indices[uint(gl_VertexIndex)];
-    Vertex v   = vb.vertices[idx];
+    VertexBuffer vb = VertexBuffer(d.vertexAddress);
+
+    // Indexed, gl_VertexIndex is the final vertex index that we want to pull.
+    Vertex v   = vb.vertices[gl_VertexIndex];
 
 #if VTX_HAS_COLOR
     v_Color    = v.color;

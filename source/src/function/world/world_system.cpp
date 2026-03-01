@@ -34,11 +34,11 @@ namespace vultra
 
     static glm::mat4 makeLocalMatrix(const TransformComponent& t)
     {
-        glm::mat4 m {1.0f};
-        m = glm::translate(m, t.position);
-        m *= glm::mat4_cast(t.rotation);
-        m = glm::scale(m, t.scale);
-        return m;
+        const glm::mat4 T = glm::translate(glm::mat4(1.0f), t.position);
+        const glm::mat4 R = glm::mat4_cast(t.rotation);
+        const glm::mat4 S = glm::scale(glm::mat4(1.0f), t.scale);
+
+        return T * R * S;
     }
 
     void WorldSystem::updateWorldTransforms()

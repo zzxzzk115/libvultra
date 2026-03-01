@@ -210,7 +210,7 @@ namespace vultra
     {
         m_Desc = desc;
 
-        if (ctx().config.loadFromVPK)
+        if (ctx().config.asset.loadFromVPK)
         {
             // For production, mount the VPK file (read-only).
             auto vpkFileSystem = createRef<vasset::VpkFileSystem>(desc.vpkFile);

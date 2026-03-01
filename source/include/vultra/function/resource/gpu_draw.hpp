@@ -26,10 +26,7 @@ namespace vultra::resource
         uint32_t vertexByteOffset {0};
         uint32_t vertexStrideBytes {0};
 
-        glm::mat4 model {1.0f};
-
         uint32_t materialIndex {0};
-
         // For non-indexed draws, vertexCount maps to DrawIndirectCommand.count.
         uint32_t vertexCount {0};
 
@@ -39,6 +36,8 @@ namespace vultra::resource
 
         uint32_t flags {0};
         uint32_t padding0 {0};
+
+        glm::mat4 model {1.0f};
     };
 
     static_assert(sizeof(GpuDrawRecord) % 16 == 0, "GpuDrawRecord must be 16-byte aligned");

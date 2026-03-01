@@ -128,7 +128,7 @@ public:
 
     virtual void init(Services services) override
     {
-        m_FrameDebuggerService = &services.require<IFrameDebuggerService>();
+        m_ServiceCache = &services;
 
         auto& rd        = services.require<IRenderBackendService>().renderDevice();
         auto& swapchain = services.require<IRenderBackendService>().swapchain();
@@ -138,60 +138,76 @@ public:
         auto vertexVariantHash = shaderLib.computeVariantHash("mesh.vert",
                                                               vshadersystem::ShaderStage::eVert,
                                                               {
-                                                                  {"VTX_HAS_COLOR", 1},
                                                                   {"VTX_HAS_NORMAL", 1},
+                                                                  {"VTX_HAS_COLOR", 0},
                                                                   {"VTX_HAS_UV0", 1},
-                                                                  {"VTX_HAS_UV1", 1},
+                                                                  {"VTX_HAS_UV1", 0},
                                                                   {"VTX_HAS_TANGENT", 1},
                                                               });
         auto vertexShader      = shaderLib.load(vertexVariantHash, vshadersystem::ShaderStage::eVert);
 
-        auto fragmentVariantHash = shaderLib.computeVariantHash("base.frag", vshadersystem::ShaderStage::eFrag, {});
-        auto fragmentShader      = shaderLib.load(fragmentVariantHash, vshadersystem::ShaderStage::eFrag);
+        auto fragmentVariantHash =
+            shaderLib.computeVariantHash("base.frag", vshadersystem::ShaderStage::eFrag, {{"VTX_HAS_UV0", 1}});
+        auto fragmentShader = shaderLib.load(fragmentVariantHash, vshadersystem::ShaderStage::eFrag);
 
         // Create graphics pipeline
-        m_GraphicsPipeline = rhi::GraphicsPipeline::Builder {}
-                                 .setColorFormats({swapchain.getPixelFormat()})
-                                 .setDepthStencil({
-                                     .depthTest  = true,
-                                     .depthWrite = true,
-                                 })
-                                 .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
-                                 .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
-                                 .setRasterizer({.polygonMode = rhi::PolygonMode::eFill})
-                                 .setBlending(0, {.enabled = false})
-                                 .build(rd);
+        m_GraphicsPipeline =
+            rhi::GraphicsPipeline::Builder {}
+                .setColorFormats({swapchain.getPixelFormat()})
+                .setDepthFormat(rhi::PixelFormat::eDepth32F)
+                .setDepthStencil({
+                    .depthTest  = true,
+                    .depthWrite = true,
+                })
+                .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
+                .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
+                .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
+                .setBlending(0, {.enabled = false})
+                .build(rd);
+
+        m_DepthTexture =
+            rd.createTexture2D(swapchain.getExtent(), rhi::PixelFormat::eDepth32F, 1, 1, rhi::ImageUsage::eTransfer);
     }
 
     virtual void render(RenderContext& ctx) override
     {
+        rhi::prepareForAttachment(ctx.cb, *ctx.framebufferInfo.value().colorAttachments[0].target, false);
+
+        ctx.framebufferInfo->depthAttachment = rhi::AttachmentInfo {
+            .target     = &m_DepthTexture,
+            .clearValue = 1.0f,
+        };
+
         auto& renderWorld = ctx.renderWorld;
 
         // Normal example CPU-Driven rendering flow would be:
-        // for (const auto& inst : renderWorld.instances)
-        // {
-        //     auto& mesh = renderWorld.gpuScene->resources->meshes[inst.meshIndex];
-        //     auto& mat  = renderWorld.gpuScene->resources->materials[mesh.materialOffset];
-        // }
+        for (const auto& inst : renderWorld.instances)
+        {
+            const auto& mesh = renderWorld.gpuScene->resources->meshes[inst.meshIndex];
+            const auto& mat  = renderWorld.gpuScene->resources->materials[mesh.materialOffset];
+        }
 
         // GPU-Driven rendering flow would consume renderWorld.gpuScene->draws + indirectCommands with minimal CPU
         // overhead. Issue indirect draw call.
-        auto ds =
-            ctx.cb
-                .createDescriptorSetBuilder()
-                //   .bind(0, rhi::bindings::StorageBuffer {.buffer = &renderWorld.gpuScene->resources->})
-                .bind(1, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->drawBuffer.get()})
-                .bind(
-                    2,
-                    rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialTableBuffer.get()})
-                .bind(
-                    3,
-                    rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialParams.gpu.get()})
-                .build(m_GraphicsPipeline.getDescriptorSetLayout(0));
+        ctx.cb.beginRendering(*ctx.framebufferInfo).bindPipeline(m_GraphicsPipeline);
 
-        ctx.cb.beginRendering(*ctx.framebufferInfo)
-            .bindPipeline(m_GraphicsPipeline)
-            .bindDescriptorSet(0, ds)
+        ctx.resourceSet[0] = {
+            {0, rhi::bindings::UniformBuffer {.buffer = ctx.camera.uniformBuffer.get()}},
+            {1, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->drawBuffer.get()}},
+            {2, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialTableBuffer.get()}},
+            {3, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialParams.gpu.get()}},
+        };
+        ctx.resourceSet[3] = {
+            {4,
+             rhi::bindings::CombinedImageSamplerArray {
+                 .textures    = renderWorld.gpuScene->resources->getBindlessTextureHandles(),
+                 .imageAspect = rhi::ImageAspect::eColor,
+             }},
+        };
+
+        ctx.bindDescriptorSets(m_GraphicsPipeline);
+
+        ctx.cb
             .drawIndirect(rhi::DrawIndirectInfo {
                 .buffer       = &renderWorld.gpuScene->indirectBuffer.value(),
                 .firstCommand = 0,
@@ -214,7 +230,7 @@ public:
         ImGui::Button("Capture One Frame");
         if (ImGui::IsItemClicked())
         {
-            m_FrameDebuggerService->captureSingleFrame();
+            m_ServiceCache->require<IFrameDebuggerService>().captureSingleFrame();
         }
 #endif
 
@@ -223,10 +239,19 @@ public:
         ImGui::ShowDemoWindow();
     }
 
+    void onResize(uint32_t width, uint32_t height) override
+    {
+        auto& rd = m_ServiceCache->require<IRenderBackendService>().renderDevice();
+
+        m_DepthTexture =
+            rd.createTexture2D({width, height}, rhi::PixelFormat::eDepth32F, 1, 1, rhi::ImageUsage::eTransfer);
+    }
+
 private:
     rhi::GraphicsPipeline m_GraphicsPipeline;
+    rhi::Texture          m_DepthTexture;
 
-    IFrameDebuggerService* m_FrameDebuggerService;
+    ServicesPtr m_ServiceCache {nullptr};
 };
 
 class DemoAppHost : public AppHost
@@ -234,7 +259,8 @@ class DemoAppHost : public AppHost
 protected:
     void onConfigure(Engine& engine) override
     {
-        engine.ctx().config.title = "Vultra Demo App - Triangle Renderer";
+        engine.ctx().config.window.title     = "Vultra Demo App";
+        engine.ctx().config.window.resizable = false;
 
         engine.emplaceSubsystem<WindowSystem>();
         engine.emplaceSubsystem<InputSystem>();
@@ -248,10 +274,10 @@ protected:
 
         engine.emplaceSubsystem<WorldSystem>();
 
+        engine.emplaceSubsystem<FrameDebuggerSystem>();
         engine.emplaceSubsystem<ShaderSystem>();
         engine.emplaceSubsystem<RenderBackendSystem>();
         engine.emplaceSubsystem<ImGuiSystem>();
-        engine.emplaceSubsystem<FrameDebuggerSystem>();
 
         auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
         renderSystem.registerRenderer(triangleRenderer);

@@ -382,15 +382,14 @@ namespace vultra
 
             vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst;
 
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            {
+                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
+            }
+
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
                 usage |= vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
-            }
-
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
-                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
-            {
-                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
             }
 
             return VertexBuffer {
@@ -413,15 +412,14 @@ namespace vultra
 
             vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst;
 
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            {
+                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
+            }
+
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
                 usage |= vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
-            }
-
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
-                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
-            {
-                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
             }
 
             const auto indexStride = indexType == IndexType::eUInt16 ? 2 : 4;
@@ -462,15 +460,14 @@ namespace vultra
             vk::BufferUsageFlags usage =
                 vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst;
 
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            {
+                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
+            }
+
             if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
             {
                 usage |= vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
-            }
-
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
-                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
-            {
-                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
             }
 
             return StorageBuffer {
@@ -1528,10 +1525,8 @@ namespace vultra
             allocatorInfo.instance         = m_Instance;
             allocatorInfo.pVulkanFunctions = &functions;
 
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag) ||
-                HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eMeshShader))
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
-                // When using raytracing/query or mesh shading, enable the buffer device address feature in VMA
                 allocatorInfo.flags |= vma::AllocatorCreateFlagBits::eBufferDeviceAddress;
             }
 
@@ -2393,8 +2388,12 @@ namespace vultra
             // Create a 1x1 white texture. This can be used as a fallback for invalid bindless indices.
             uint32_t whitePixel = 0xFFFFFFFF; // RGBA8 white
 
-            auto texture = createTexture2D(
-                {1, 1}, rhi::PixelFormat::eRGBA8_UNorm, 1, 1, ImageUsage::eSampled | ImageUsage::eTransferDst);
+            auto texture = Texture::Builder {}
+                               .setExtent({1, 1})
+                               .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
+                               .setUsageFlags(ImageUsage::eSampled | ImageUsage::eTransferDst)
+                               .setupOptimalSampler(true)
+                               .build(*this);
 
             // Upload the white pixel using a staging buffer
             auto stagingBuffer = createStagingBuffer(sizeof(whitePixel));

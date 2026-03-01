@@ -1,6 +1,9 @@
 #include "vultra/core/profiling/renderdoc_api.hpp"
-#include "renderdoc_app.h"
 #include "vultra/core/base/common_context.hpp"
+
+#include <vbase/core/exe_path.hpp>
+
+#include <renderdoc_app.h>
 
 #ifdef WIN32
 #include <Windows.h>
@@ -238,7 +241,8 @@ namespace vultra
                 m_RenderDocAPI->SetCaptureOptionU32(eRENDERDOC_Option_DebugOutputMute, 0);
                 m_RenderDocAPI->SetCaptureOptionU32(eRENDERDOC_Option_APIValidation, 1);
 #endif
-                m_RenderDocAPI->SetCaptureFilePathTemplate("captures/myframe");
+                m_RenderDocAPI->SetCaptureFilePathTemplate(
+                    (vbase::executable_dir() / "captures" / "myframe").generic_string().c_str());
                 m_RenderDocAPI->MaskOverlayBits(eRENDERDOC_Overlay_None, eRENDERDOC_Overlay_None);
             }
         }

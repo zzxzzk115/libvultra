@@ -25,21 +25,47 @@ namespace vultra
         m_RenderDocAPI = nullptr;
     }
 
-    void FrameDebuggerSystem::onPreRender()
+    void FrameDebuggerSystem::captureSingleFrame()
+    {
+        VULTRA_CORE_INFO("[FrameDebuggerSystem] Capturing single frame requested");
+<<<<<<< HEAD
+        if (m_RenderDocAPI->isAvailable())
+        {
+            if (!m_RenderDocAPI->isTargetControlConnected() && !m_ShowCaptureUIRequested)
+            {
+                m_RenderDocAPI->launchReplayUI();
+                m_ShowCaptureUIRequested = true;
+            }
+        }
+=======
+>>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
+        m_CaptureRequested = true;
+    }
+
+    void FrameDebuggerSystem::captureStart()
     {
         if (m_CaptureRequested && !m_RenderDocAPI->isFrameCapturing())
         {
             if (m_RenderDocAPI->isAvailable())
             {
-                if (!m_RenderDocAPI->isTargetControlConnected())
-                {
-                    m_RenderDocAPI->launchReplayUI();
-                }
-
+<<<<<<< HEAD
                 m_RenderDocAPI->startFrameCapture();
                 m_RenderDocAPI->setCaptureTitle("Vultra FrameDebug");
+=======
+                if (!m_RenderDocAPI->isTargetControlConnected() && !m_ShowCaptureUIRequested)
+                {
+                    m_RenderDocAPI->launchReplayUI();
+                    m_ShowCaptureUIRequested = true;
+                }
 
-                VULTRA_CORE_INFO("[FrameDebuggerSystem] Renderdoc Capture started");
+                if (m_RenderDocAPI->isTargetControlConnected())
+                {
+                    m_RenderDocAPI->startFrameCapture();
+                    m_RenderDocAPI->setCaptureTitle("Vultra FrameDebug");
+>>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
+
+                    VULTRA_CORE_INFO("[FrameDebuggerSystem] Renderdoc Capture started");
+                }
             }
             else
             {
@@ -49,7 +75,7 @@ namespace vultra
         }
     }
 
-    void FrameDebuggerSystem::onPostRender()
+    void FrameDebuggerSystem::captureEnd()
     {
         if (m_CaptureRequested && m_RenderDocAPI->isFrameCapturing())
         {
@@ -57,7 +83,8 @@ namespace vultra
             {
                 m_RenderDocAPI->endFrameCapture();
                 m_RenderDocAPI->showReplayUI();
-                m_CaptureRequested = false;
+                m_ShowCaptureUIRequested = false;
+                m_CaptureRequested       = false;
 
                 VULTRA_CORE_INFO("[FrameDebuggerSystem] Renderdoc Capture ended");
             }
@@ -67,11 +94,5 @@ namespace vultra
                 m_CaptureRequested = false;
             }
         }
-    }
-
-    void FrameDebuggerSystem::captureSingleFrame()
-    {
-        VULTRA_CORE_INFO("[FrameDebuggerSystem] Capturing single frame requested");
-        m_CaptureRequested = true;
     }
 } // namespace vultra
