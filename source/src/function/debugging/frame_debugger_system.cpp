@@ -28,7 +28,6 @@ namespace vultra
     void FrameDebuggerSystem::captureSingleFrame()
     {
         VULTRA_CORE_INFO("[FrameDebuggerSystem] Capturing single frame requested");
-<<<<<<< HEAD
         if (m_RenderDocAPI->isAvailable())
         {
             if (!m_RenderDocAPI->isTargetControlConnected() && !m_ShowCaptureUIRequested)
@@ -37,8 +36,16 @@ namespace vultra
                 m_ShowCaptureUIRequested = true;
             }
         }
-=======
->>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
+        else
+        {
+#if __APPLE__
+            VULTRA_CORE_WARN(
+                "[FrameDebuggerSystem] RenderDoc is not supported on macOS. Frame capture is unavailable.");
+#else
+            VULTRA_CORE_ERROR("[FrameDebuggerSystem] RenderDoc API is not available. Ensure RenderDoc is installed and "
+                              "properly configured.");
+#endif
+        }
         m_CaptureRequested = true;
     }
 
@@ -48,30 +55,15 @@ namespace vultra
         {
             if (m_RenderDocAPI->isAvailable())
             {
-<<<<<<< HEAD
                 m_RenderDocAPI->startFrameCapture();
                 m_RenderDocAPI->setCaptureTitle("Vultra FrameDebug");
-=======
-                if (!m_RenderDocAPI->isTargetControlConnected() && !m_ShowCaptureUIRequested)
-                {
-                    m_RenderDocAPI->launchReplayUI();
-                    m_ShowCaptureUIRequested = true;
-                }
 
-                if (m_RenderDocAPI->isTargetControlConnected())
-                {
-                    m_RenderDocAPI->startFrameCapture();
-                    m_RenderDocAPI->setCaptureTitle("Vultra FrameDebug");
->>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
-
-                    VULTRA_CORE_INFO("[FrameDebuggerSystem] Renderdoc Capture started");
-                }
+                VULTRA_CORE_INFO("[FrameDebuggerSystem] Renderdoc Capture started");
             }
-            else
-            {
-                VULTRA_CORE_WARN("[FrameDebuggerSystem] Renderdoc is not available, cannot capture frame");
-                m_CaptureRequested = false;
-            }
+        }
+        else
+        {
+            m_CaptureRequested = false;
         }
     }
 
@@ -90,7 +82,6 @@ namespace vultra
             }
             else
             {
-                VULTRA_CORE_WARN("[FrameDebuggerSystem] Renderdoc is not available, cannot end capture");
                 m_CaptureRequested = false;
             }
         }

@@ -140,11 +140,8 @@ namespace vultra
         // Optional frame debugger service for GPU capture.
         auto* frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>();
 
-<<<<<<< HEAD
         auto& rd = backendService.renderDevice();
 
-=======
->>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
         World& world = worldService.world();
 
         // Asset upload/update stage (main thread)
@@ -277,15 +274,6 @@ namespace vultra
         }
 
         backendService.endFrame();
-<<<<<<< HEAD
-=======
-
-        // Capture end
-        if (frameDebuggerService)
-        {
-            frameDebuggerService->captureEnd();
-        }
->>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
     }
 
     void RenderSystem::onPreRender()
@@ -308,14 +296,9 @@ namespace vultra
 
     void RenderSystem::onPostRender()
     {
-<<<<<<< HEAD
         auto& backendService       = ctx().services.require<IRenderBackendService>();
         auto* imguiService         = ctx().services.tryGet<IImGuiService>();
         auto* frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>();
-=======
-        auto& backendService = ctx().services.require<IRenderBackendService>();
-        auto* imguiService   = ctx().services.tryGet<IImGuiService>();
->>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
 
         if (imguiService)
         {
@@ -323,14 +306,11 @@ namespace vultra
         }
 
         backendService.present();
-<<<<<<< HEAD
 
         // Capture end
         if (frameDebuggerService)
         {
             frameDebuggerService->captureEnd();
         }
-=======
->>>>>>> 2489d6ae3c882f802a8b749987b772836d053b88
     }
 } // namespace vultra
