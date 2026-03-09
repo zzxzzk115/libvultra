@@ -88,12 +88,13 @@ option_end()
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "vrendergraph", "cpptrace")
+add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "cpptrace")
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
 add_requireconfs("imgui.libsdl3", {system = false}) -- we don't use system's SDL3 to avoid version conflicts
 add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
+add_requires("vrendergraph", {configs = { debug = is_mode("debug") }})
 
 -- target defination, name: vultra
 target("vultra")
