@@ -3,8 +3,8 @@
 #include "vultra/core/base/string_util.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/texture.hpp"
+#include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
-#include "vultra/function/framegraph/render_context.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
 
 #include <cmath>
@@ -104,7 +104,7 @@ namespace vultra
         {
             ZoneScopedN("T*");
 
-            auto& [cb, framebufferInfo, sets, _] = *static_cast<RenderContext*>(ctx);
+            auto& [cb, _, framebufferInfo, sets, __, ___] = *static_cast<FrameGraphExecContext*>(ctx);
 
             if (holdsAttachment(bits))
             {
@@ -198,7 +198,7 @@ namespace vultra
         {
             ZoneScopedN("+T");
 
-            auto& [cb, framebufferInfo, sets, _] = *static_cast<RenderContext*>(ctx);
+            auto& [cb, _, framebufferInfo, sets, __, ___] = *static_cast<FrameGraphExecContext*>(ctx);
 
             if (holdsAttachment(bits))
             {

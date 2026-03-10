@@ -23,7 +23,7 @@ namespace vultra
     // RenderSystem (SRP host):
     // - Reads cooked cameras from CameraSystem
     // - Resolves renderer per camera.rendererKey
-    // - Builds FrameGraph per camera using RenderContext
+    // - Builds FrameGraph per camera using RenderView + build/exec contexts
     // - Compiles & executes
     class RenderSystem final : public EngineSubsystem, public IRenderService
     {

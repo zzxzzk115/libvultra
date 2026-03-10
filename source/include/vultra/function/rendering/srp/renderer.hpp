@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/function/rendering/srp/render_context.hpp"
 #include "vultra/function/rendering/srp/render_feature.hpp"
 
 #include <vbase/service/service_registry.hpp>
@@ -10,8 +11,6 @@
 
 namespace vultra
 {
-    struct RenderContext;
-
     using Services    = vbase::ServiceRegistry&;
     using ServicesPtr = vbase::ServiceRegistry*;
 
@@ -24,14 +23,15 @@ namespace vultra
 
         virtual void init(Services services) {}
 
-        virtual void render(RenderContext& ctx) = 0;
+        virtual void render(ImmediateRenderContext& ctx) {}
+
+        virtual void buildFrameGraph(FrameGraphBuildContext& ctx) {}
 
         virtual void onImGui() {}
 
         virtual void onResize(uint32_t width, uint32_t height) {}
     };
 
-    // Optional helper: a feature-driven renderer base.
     class FeatureRenderer : public Renderer
     {
     public:
@@ -45,8 +45,10 @@ namespace vultra
             return r;
         }
 
+        void buildFrameGraph(FrameGraphBuildContext& ctx) override { setupFeatures(ctx); }
+
     protected:
-        void renderFeatures(RenderContext& ctx)
+        void setupFeatures(FrameGraphBuildContext& ctx)
         {
             for (auto& f : m_Features)
                 f->addPasses(ctx);

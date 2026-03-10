@@ -1,12 +1,15 @@
-#version 460
+[vshader]
+language = glsl
+version = 460
 
-// Keywords for compile-time vertex struct permutation.
-#pragma keyword permute global VTX_HAS_COLOR=0|1
-#pragma keyword permute global VTX_HAS_NORMAL=0|1
-#pragma keyword permute global VTX_HAS_UV0=0|1
-#pragma keyword permute global VTX_HAS_UV1=0|1
-#pragma keyword permute global VTX_HAS_TANGENT=0|1
+[keywords]
+VTX_HAS_COLOR : bool permute
+VTX_HAS_NORMAL : bool permute
+VTX_HAS_UV0 : bool permute
+VTX_HAS_UV1 : bool permute
+VTX_HAS_TANGENT : bool permute
 
+[vert]
 #include "include/common/gpu_scene.glsl"
 
 // ============================================================================

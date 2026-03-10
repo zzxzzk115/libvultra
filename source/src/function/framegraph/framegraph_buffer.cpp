@@ -1,9 +1,8 @@
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/base/string_util.hpp"
-#include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
-#include "vultra/function/framegraph/render_context.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
 
 namespace vultra
@@ -25,7 +24,7 @@ namespace vultra
         {
             ZoneScopedN("B*");
 
-            auto&             rc = *static_cast<RenderContext*>(ctx);
+            auto&             rc = *static_cast<FrameGraphExecContext*>(ctx);
             rhi::BarrierScope dst {};
 
             const auto bindingInfo = decodeBindingInfo(flags);
@@ -71,14 +70,14 @@ namespace vultra
                 }
             }
             dst.stageMask |= convert(bindingInfo.pipelineStage);
-            rc.commandBuffer.getBarrierBuilder().bufferBarrier({.buffer = *buffer}, dst);
+            rc.cb.getBarrierBuilder().bufferBarrier({.buffer = *buffer}, dst);
         }
 
         void FrameGraphBuffer::preWrite(const Desc& desc, uint32_t flags, void* ctx)
         {
             ZoneScopedN("+B");
 
-            auto& rc                             = *static_cast<RenderContext*>(ctx);
+            auto& rc                             = *static_cast<FrameGraphExecContext*>(ctx);
             const auto [location, pipelineStage] = decodeBindingInfo(flags);
 
             rhi::BarrierScope dst {};
@@ -98,7 +97,7 @@ namespace vultra
                 const auto [set, binding]    = location;
                 rc.resourceSet[set][binding] = rhi::bindings::StorageBuffer {.buffer = buffer};
             }
-            rc.commandBuffer.getBarrierBuilder().bufferBarrier({.buffer = *buffer}, dst);
+            rc.cb.getBarrierBuilder().bufferBarrier({.buffer = *buffer}, dst);
         }
 
         std::string FrameGraphBuffer::toString(const Desc& desc)

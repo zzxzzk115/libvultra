@@ -16,7 +16,7 @@
 
 namespace vultra
 {
-    namespace rendering
+    namespace rhi
     {
         // ------------------------------------------------------------
         // Runtime .vshlib loader
@@ -69,5 +69,5 @@ namespace vultra
             std::optional<vshadersystem::EngineKeywordsFile> m_EngineKeywords;
             bool                                             m_Loaded = false;
         };
-    } // namespace rendering
+    } // namespace rhi
 } // namespace vultra

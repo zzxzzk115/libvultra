@@ -1,40 +1,25 @@
 #pragma once
 
-#include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/texture.hpp"
-#include "vultra/function/framegraph/render_context.hpp"
-#include "vultra/function/rendering/render_structs.hpp"
-
-#include <fg/Blackboard.hpp>
-#include <fg/FrameGraph.hpp>
+#include "vultra/core/rhi/descriptorset_builder.hpp"
+#include "vultra/core/rhi/render_device.hpp"
+#include "vultra/function/rendering/srp/render_view.hpp"
 
 namespace vultra
 {
-    using ResourceBindings = std::unordered_map<rhi::BindingIndex, rhi::ResourceBinding>;
-    using ResourceSet      = std::unordered_map<rhi::DescriptorSetIndex, ResourceBindings>;
-
-    // Single-parameter render context passed across Renderer/Features/Passes.
-    struct RenderContext
+    struct ImmediateRenderContext
     {
-        rhi::CommandBuffer&                 cb;
-        rhi::RenderDevice&                  rd;
-        std::optional<rhi::FramebufferInfo> framebufferInfo;
-        ResourceSet                         resourceSet;
+        rhi::CommandBuffer& cb;
+        rhi::RenderDevice&  rd;
+        const RenderView&   view;
 
-        FrameGraph&           fg;
-        FrameGraphBlackboard& bb;
-
-        RenderWorld&  renderWorld;
-        RenderCamera& camera;
-
-        fsec dt;
+        ResourceSet resourceSet;
 
         void bindDescriptorSets(const rhi::BasePipeline& pipeline)
         {
-            auto descriptorSetBuilder = cb.createDescriptorSetBuilder();
             for (const auto& [set, bindings] : resourceSet)
             {
+                auto descriptorSetBuilder = cb.createDescriptorSetBuilder();
                 for (const auto& [index, info] : bindings)
                 {
                     descriptorSetBuilder.bind(index, info);
@@ -43,5 +28,7 @@ namespace vultra
                 cb.bindDescriptorSet(set, descriptors);
             }
         }
+
+        void clear() { resourceSet.clear(); }
     };
 } // namespace vultra

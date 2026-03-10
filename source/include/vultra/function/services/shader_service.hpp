@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/function/rendering/shader/shader_library.hpp"
+#include "vultra/core/rhi/shader_library.hpp"
 
 #include <vbase/service/service_registry.hpp>
 
@@ -11,6 +11,6 @@ namespace vultra
     public:
         SERVICE_REGISTER(IShaderService)
 
-        virtual rendering::ShaderLibraryRuntime& builtinLibrary() = 0;
+        virtual rhi::ShaderLibraryRuntime& builtinLibrary() = 0;
     };
 } // namespace vultra

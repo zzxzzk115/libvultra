@@ -373,7 +373,7 @@ task("font_task")
     end)
 task_end()
 
-add_requires("vshadersystem", { configs = { debug = is_mode("debug") }})
+add_requires("vshadersystem v0.5.0", { configs = { debug = is_mode("debug") }})
 
 target("vultra_builtin_assets")
     -- https://xmake.io/zh/api/description/project-target.html#headeronly

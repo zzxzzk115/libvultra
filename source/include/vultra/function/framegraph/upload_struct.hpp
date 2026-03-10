@@ -1,8 +1,8 @@
 #pragma once
 
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
-#include "vultra/function/framegraph/render_context.hpp"
 #include "vultra/function/framegraph/transient_buffer.hpp"
 
 #include <fg/FrameGraph.hpp>
@@ -38,7 +38,7 @@ namespace vultra
                     data.buffer = builder.write(data.buffer, BindingInfo {.pipelineStage = PipelineStage::eTransfer});
                 },
                 [passName, payload](const Data& data, FrameGraphPassResources& resources, void* ctx) {
-                    auto& cb = static_cast<RenderContext*>(ctx)->commandBuffer;
+                    auto& cb = static_cast<FrameGraphExecContext*>(ctx)->cb;
                     RHI_GPU_ZONE(cb, passName.data());
                     cb.update(*resources.get<FrameGraphBuffer>(data.buffer).buffer, 0, kDataSize, payload.get());
                 });

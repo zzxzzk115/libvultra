@@ -2,6 +2,7 @@
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/input/input_system.hpp>
 #include <vultra/core/os/window_system.hpp>
+#include <vultra/core/rhi/framebuffer_info.hpp>
 #include <vultra/core/rhi/graphics_pipeline.hpp>
 #include <vultra/core/rhi/shader_type.hpp>
 #include <vultra/function/asset/asset_system.hpp>
@@ -10,7 +11,8 @@
 #include <vultra/function/imgui/imgui_system.hpp>
 #include <vultra/function/rendering/backend/render_backend_system.hpp>
 #include <vultra/function/rendering/render_system.hpp>
-#include <vultra/function/rendering/shader/shader_system.hpp>
+#include <vultra/function/rendering/shader_system.hpp>
+#include <vultra/function/rendering/srp/builtin/universal_renderer.hpp>
 #include <vultra/function/rendering/srp/render_context.hpp>
 #include <vultra/function/resource/gpu_resource_system.hpp>
 #include <vultra/function/scene/scene_system.hpp>
@@ -103,11 +105,19 @@ void main() {
                                  .build(rd);
     }
 
-    virtual void render(RenderContext& ctx) override
+    virtual void render(ImmediateRenderContext& ctx) override
     {
-        auto& backBuffer = *ctx.framebufferInfo.value().colorAttachments[0].target;
+        auto& backBuffer = *ctx.view.target;
+        auto  extent     = ctx.view.extent;
         rhi::prepareForAttachment(ctx.cb, backBuffer, false);
-        ctx.cb.beginRendering(ctx.framebufferInfo.value())
+        ctx.cb
+            .beginRendering(rhi::FramebufferInfo {
+                .area = {.offset = {0, 0}, .extent = extent},
+                .colorAttachments =
+                    {
+                        rhi::AttachmentInfo {.target = &backBuffer, .clearValue = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f)},
+                    },
+            })
             .bindPipeline(m_GraphicsPipeline)
             .draw({
                 .vertexBuffer = &m_VertexBuffer,
@@ -169,16 +179,23 @@ public:
             rd.createTexture2D(swapchain.getExtent(), rhi::PixelFormat::eDepth32F, 1, 1, rhi::ImageUsage::eTransfer);
     }
 
-    virtual void render(RenderContext& ctx) override
+    virtual void render(ImmediateRenderContext& ctx) override
     {
-        rhi::prepareForAttachment(ctx.cb, *ctx.framebufferInfo.value().colorAttachments[0].target, false);
+        auto& backBuffer = *ctx.view.target;
+        rhi::prepareForAttachment(ctx.cb, backBuffer, false);
 
-        ctx.framebufferInfo->depthAttachment = rhi::AttachmentInfo {
+        rhi::FramebufferInfo fbInfo {};
+        fbInfo.area             = {.offset = {0, 0}, .extent = ctx.view.extent};
+        fbInfo.colorAttachments = {
+            rhi::AttachmentInfo {.target = &backBuffer, .clearValue = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f)},
+        };
+
+        fbInfo.depthAttachment = rhi::AttachmentInfo {
             .target     = &m_DepthTexture,
             .clearValue = 1.0f,
         };
 
-        auto& renderWorld = ctx.renderWorld;
+        const auto& renderWorld = *ctx.view.renderWorld;
 
         // Normal example CPU-Driven rendering flow would be:
         for (const auto& inst : renderWorld.instances)
@@ -189,10 +206,10 @@ public:
 
         // GPU-Driven rendering flow would consume renderWorld.gpuScene->draws + indirectCommands with minimal CPU
         // overhead. Issue indirect draw call.
-        ctx.cb.beginRendering(*ctx.framebufferInfo).bindPipeline(m_GraphicsPipeline);
+        ctx.cb.beginRendering(fbInfo).bindPipeline(m_GraphicsPipeline);
 
         ctx.resourceSet[0] = {
-            {0, rhi::bindings::UniformBuffer {.buffer = ctx.camera.uniformBuffer.get()}},
+            {0, rhi::bindings::UniformBuffer {.buffer = ctx.view.cameraUniformBuffer}},
             {1, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->drawBuffer.get()}},
             {2, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialTableBuffer.get()}},
             {3, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialParams.gpu.get()}},
@@ -267,10 +284,12 @@ protected:
 
         auto triangleRenderer  = createRef<TriangleRenderer>();
         auto baseColorRenderer = createRef<BaseColorRenderer>();
+        auto universalRenderer = createRef<UniversalRenderer>();
 
         auto& camSystem = engine.emplaceSubsystem<CameraSystem>();
         // camSystem.addManualCamera({.rendererKey = triangleRenderer->name().data()});
-        camSystem.addManualCamera({.rendererKey = baseColorRenderer->name().data()});
+        // camSystem.addManualCamera({.rendererKey = baseColorRenderer->name().data()});
+        camSystem.addManualCamera({.rendererKey = universalRenderer->name().data()});
 
         engine.emplaceSubsystem<WorldSystem>();
 
@@ -282,6 +301,7 @@ protected:
         auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
         renderSystem.registerRenderer(triangleRenderer);
         renderSystem.registerRenderer(baseColorRenderer);
+        renderSystem.registerRenderer(universalRenderer);
 
         engine.emplaceSubsystem<GpuResourceSystem>();
         engine.emplaceSubsystem<AssetSystem>();

@@ -1,0 +1,26 @@
+#pragma once
+
+#include "vultra/function/rendering/render_structs.hpp"
+
+#include <glm/vec4.hpp>
+
+namespace vultra
+{
+    namespace rhi
+    {
+        class Texture;
+    }
+
+    struct RenderView
+    {
+        const RenderWorld* renderWorld {nullptr};
+        const RenderCamera* camera {nullptr};
+
+        rhi::Texture* target {nullptr};
+        rhi::Extent2D extent {};
+        glm::vec4     clearValue {0, 0, 0, 1};
+
+        resource::GpuScene* gpuScene {nullptr};
+        rhi::UniformBuffer* cameraUniformBuffer {nullptr};
+    };
+} // namespace vultra

@@ -1,4 +1,4 @@
-#include "vultra/function/rendering/shader/shader_system.hpp"
+#include "vultra/function/rendering/shader_system.hpp"
 #include "vultra/core/base/common_context.hpp"
 
 #include <builtin_shaders.hpp>

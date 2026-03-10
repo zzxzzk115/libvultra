@@ -1,4 +1,4 @@
-#include "vultra/function/rendering/shader/shader_library.hpp"
+#include "vultra/core/rhi/shader_library.hpp"
 #include "vultra/core/base/common_context.hpp"
 
 #include <vshadersystem/engine_keywords.hpp>
@@ -16,7 +16,7 @@ namespace
 
 namespace vultra
 {
-    namespace rendering
+    namespace rhi
     {
         bool ShaderLibraryRuntime::loadFromFile(const std::string& filePath)
         {
@@ -128,5 +128,5 @@ namespace vultra
 
             return vk.build();
         }
-    } // namespace rendering
+    } // namespace rhi
 } // namespace vultra

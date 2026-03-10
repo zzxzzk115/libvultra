@@ -4,9 +4,8 @@
 
 namespace vultra
 {
-    struct RenderContext;
+    struct FrameGraphBuildContext;
 
-    // RenderFeature injects FrameGraph passes into ctx.fg using ctx.bb for shared data.
     class RenderFeature
     {
     public:
@@ -14,6 +13,10 @@ namespace vultra
 
         virtual std::string_view name() const = 0;
 
-        virtual void addPasses(RenderContext& ctx) = 0;
+        virtual void addPasses(FrameGraphBuildContext& ctx) = 0;
     };
+
+#define DEFINE_RENDER_FEATURE(x) \
+public: \
+    virtual std::string_view name() const override { return #x; }
 } // namespace vultra

@@ -2,6 +2,7 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/services/window_service.hpp"
+#include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/render_context.hpp"
 #include "vultra/function/services/asset_service.hpp"
@@ -10,6 +11,7 @@
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/imgui_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
+#include "vultra/function/services/shader_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
@@ -133,6 +135,7 @@ namespace vultra
         auto& camService         = ctx().services.require<ICameraService>();
         auto& gpuResourceService = ctx().services.require<IGpuResourceService>();
         auto& assetService       = ctx().services.require<IAssetService>();
+        auto& shaderService      = ctx().services.require<IShaderService>();
 
         // Optional ImGui service for rendering ImGui on top of frame.
         auto* imguiService = ctx().services.tryGet<IImGuiService>();
@@ -238,40 +241,72 @@ namespace vultra
 
             cam.ensureUniformBuffer(rd);
 
-            FrameGraph           fg {};
-            FrameGraphBlackboard bb {};
+            FrameGraph             fg {};
+            FrameGraphBlackboard   bb {};
+            FrameGraphDataRegistry dataRegistry {};
 
             rhi::Texture* target = cam.target ? cam.target : &defaultTarget;
             if (!target)
                 continue;
 
-            RenderContext rc {
+            RenderView view {
+                .renderWorld         = &m_RenderWorldFront,
+                .camera              = &cam,
+                .target              = target,
+                .extent              = target->getExtent(),
+                .clearValue          = cam.clearValue,
+                .gpuScene            = m_RenderWorldFront.gpuScene,
+                .cameraUniformBuffer = cam.uniformBuffer.get(),
+            };
+
+            FrameGraphExecContext frameGraphExecCtx {
                 .cb = cb,
-                .rd = backendService.renderDevice(),
+                .rd = rd,
                 .framebufferInfo =
                     rhi::FramebufferInfo {
                         .area             = {.extent = target->getExtent()},
                         .colorAttachments = {rhi::AttachmentInfo {.target = target, .clearValue = cam.clearValue}},
                     },
-                .fg          = fg,
-                .bb          = bb,
-                .renderWorld = m_RenderWorldFront,
-                .camera      = cam,
-                .dt          = dt,
+                .view = view,
+                .ext =
+                    {
+                        .builtinShaderLib = &shaderService.builtinLibrary(),
+                    },
             };
 
-            renderer->render(rc);
+            ImmediateRenderContext immediateCtx {
+                .cb          = cb,
+                .rd          = rd,
+                .view        = view,
+                .resourceSet = {}, // Optional, can be populated by renderer for render() path. buildFrameGraph() should
+                                   // prefer FrameGraphBlackboard for data sharing.
+            };
 
-            // Compile and execute the frame graph
+            // Immediate path is optional. FrameGraph-capable renderers should prefer buildFrameGraph().
+            renderer->render(immediateCtx);
+
+            FrameGraphBuildContext buildCtx {
+                .fg   = fg,
+                .bb   = bb,
+                .rd   = rd,
+                .data = dataRegistry,
+                .view = view,
+            };
+
+            // This sets up the frame graph using a feature renderer or a custom graph-aware renderer.
+            renderer->buildFrameGraph(buildCtx);
+
             fg.compile();
-            fg.execute(&rc, m_TransientResources.get());
+            fg.execute(&frameGraphExecCtx, m_TransientResources.get());
 
             // Optional ImGui rendering per camera
-            if (imguiService)
+            if (imguiService && frameGraphExecCtx.framebufferInfo)
             {
-                imguiService->render(cb, *rc.framebufferInfo);
+                imguiService->render(cb, *frameGraphExecCtx.framebufferInfo);
             }
         }
+
+        m_TransientResources->update();
 
         backendService.endFrame();
     }

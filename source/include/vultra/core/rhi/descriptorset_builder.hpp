@@ -135,4 +135,7 @@ namespace vultra
 
         [[nodiscard]] std::string_view toString(const ResourceBinding&);
     } // namespace rhi
+
+    using ResourceBindings = std::unordered_map<rhi::BindingIndex, rhi::ResourceBinding>;
+    using ResourceSet      = std::unordered_map<rhi::DescriptorSetIndex, ResourceBindings>;
 } // namespace vultra

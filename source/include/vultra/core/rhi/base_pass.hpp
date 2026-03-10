@@ -1,8 +1,10 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/base/hash.hpp"
 #include "vultra/core/rhi/base_pipeline.hpp"
+#include "vultra/core/rhi/shader_library.hpp"
 
 #include <memory>
 #include <unordered_map>
@@ -18,15 +20,13 @@ namespace vultra
         class BasePass
         {
         public:
-            explicit BasePass(RenderDevice& rd) : m_RenderDevice {rd} {}
+            BasePass()                    = default;
             BasePass(const BasePass&)     = delete;
             BasePass(BasePass&&) noexcept = default;
             ~BasePass()                   = default;
 
             BasePass& operator=(const BasePass&) noexcept = delete;
             BasePass& operator=(BasePass&&) noexcept      = default;
-
-            RenderDevice& getRenderDevice() const { return m_RenderDevice; }
 
             [[nodiscard]] auto count() const { return static_cast<uint32_t>(m_Pipelines.size()); }
             void               clear() { m_Pipelines.clear(); }
@@ -35,6 +35,9 @@ namespace vultra
             template<typename... Args>
             PipelineType* getPipeline(Args&&... args)
             {
+                VULTRA_CORE_ASSERT(m_RenderDevice && m_ShaderLib,
+                                   "RenderDevice and ShaderLib must be set before calling getPipeline");
+
                 std::size_t hash {0};
                 (hashCombine(hash, args), ...);
 
@@ -49,9 +52,17 @@ namespace vultra
                 return inserted->second.get();
             }
 
-        private:
-            RenderDevice& m_RenderDevice;
+            void          setRenderDevice(RenderDevice& rd) { m_RenderDevice = &rd; }
+            RenderDevice& getRenderDevice() const { return *m_RenderDevice; }
 
+            void                  setShaderLib(ShaderLibraryRuntime& shaderLib) { m_ShaderLib = &shaderLib; }
+            ShaderLibraryRuntime& getShaderLib() const { return *m_ShaderLib; }
+
+        protected:
+            RenderDevice*         m_RenderDevice {nullptr};
+            ShaderLibraryRuntime* m_ShaderLib {nullptr};
+
+        private:
             // Key = Hashed args passed to _createPipeline.
             using PipelineCache = std::unordered_map<std::size_t, Scope<PipelineType>>;
             PipelineCache m_Pipelines;
