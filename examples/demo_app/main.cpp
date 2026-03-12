@@ -198,8 +198,8 @@ public:
         // Normal example CPU-Driven rendering flow would be:
         for (const auto& inst : renderWorld.instances)
         {
-            const auto& mesh = renderWorld.gpuScene->resources->meshes[inst.meshIndex];
-            const auto& mat  = renderWorld.gpuScene->resources->materials[mesh.materialOffset];
+            const auto& mesh = renderWorld.gpuSceneDatabase->resources->meshes[inst.meshIndex];
+            const auto& mat  = renderWorld.gpuSceneDatabase->resources->materials[mesh.materialOffset];
         }
 
         // GPU-Driven rendering flow would consume renderWorld.gpuScene->draws + indirectCommands with minimal CPU
@@ -208,14 +208,18 @@ public:
 
         ctx.resourceSet[0] = {
             // {0, rhi::bindings::UniformBuffer {.buffer = ctx.view.cameraUniformBuffer}},
-            {1, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->drawBuffer.get()}},
-            {2, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialTableBuffer.get()}},
-            {3, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialParams.gpu.get()}},
+            {1, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuSceneView->drawBuffer.get()}},
+            {2,
+             rhi::bindings::StorageBuffer {.buffer =
+                                               renderWorld.gpuSceneDatabase->resources->materialTableBuffer.get()}},
+            {3,
+             rhi::bindings::StorageBuffer {.buffer =
+                                               renderWorld.gpuSceneDatabase->resources->materialParams.gpu.get()}},
         };
         ctx.resourceSet[3] = {
             {4,
              rhi::bindings::CombinedImageSamplerArray {
-                 .textures    = renderWorld.gpuScene->resources->getBindlessTextureHandles(),
+                 .textures    = renderWorld.gpuSceneDatabase->resources->getBindlessTextureHandles(),
                  .imageAspect = rhi::ImageAspect::eColor,
              }},
         };
@@ -224,13 +228,13 @@ public:
 
         ctx.cb
             .drawIndirect(rhi::DrawIndirectInfo {
-                .buffer       = &renderWorld.gpuScene->indirectBuffer.value(),
+                .buffer       = &renderWorld.gpuSceneView->indirectBuffer.value(),
                 .firstCommand = 0,
-                .commandCount = static_cast<uint32_t>(renderWorld.gpuScene->indirectCommands.size()),
+                .commandCount = static_cast<uint32_t>(renderWorld.gpuSceneView->indirectCommands.size()),
                 .gi =
                     rhi::GeometryInfo {
-                        .indexBuffer = &renderWorld.gpuScene->resources->geometry.index32,
-                        .numIndices  = renderWorld.gpuScene->resources->geometry.indexCountUsed,
+                        .indexBuffer = &renderWorld.gpuSceneDatabase->resources->geometry.index32,
+                        .numIndices  = renderWorld.gpuSceneDatabase->resources->geometry.indexCountUsed,
                     },
             })
             .endRendering();

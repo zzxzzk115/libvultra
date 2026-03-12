@@ -22,7 +22,7 @@ namespace vultra::resource
     //
     // Non-responsibilities:
     // - Per-frame/per-view draw lists
-    // - Instance/draw buffers (GpuScene owns those)
+    // - Scene/view transient buffers (GpuSceneDatabase / GpuSceneView own those)
     struct GpuResourcePool
     {
         // ------------------------------------------------------------

@@ -1,7 +1,8 @@
 #pragma once
 
 #include "vultra/core/base/uuid.hpp"
-#include "vultra/function/resource/gpu_scene.hpp"
+#include "vultra/function/resource/gpu_scene_database.hpp"
+#include "vultra/function/resource/gpu_scene_view.hpp"
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -76,7 +77,8 @@ namespace vultra
         std::vector<RenderCamera>   cameras;
         std::vector<RenderInstance> instances;
 
-        resource::GpuScene* gpuScene {nullptr};
+        resource::GpuSceneDatabase* gpuSceneDatabase {nullptr};
+        resource::GpuSceneView*     gpuSceneView {nullptr};
 
         void clear()
         {

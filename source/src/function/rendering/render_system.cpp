@@ -98,8 +98,10 @@ namespace vultra
         auto& backendService = ctx().services.require<IRenderBackendService>();
         backendService.renderDevice().waitIdle();
 
-        m_GpuSceneBack.clear();
-        m_GpuSceneFront.clear();
+        m_GpuSceneViewBack.clear();
+        m_GpuSceneViewFront.clear();
+        m_GpuSceneDatabaseBack.clear();
+        m_GpuSceneDatabaseFront.clear();
 
         for (auto& [key, renderer] : m_Renderers)
             renderer = nullptr;
@@ -169,17 +171,36 @@ namespace vultra
         m_RenderWorldBack.frameIndex = m_FrameCounter;
         m_RenderWorldBack.cameras    = camService.cameras();
 
-        // Build per-frame GPU-driven scene tables (draws + indirect commands).
-        // These tables are consumed by GPU-driven passes (gl_DrawID indexed).
+        // Build GPU scene database + per-view draw state.
+        //
+        // Database layer:
+        // - stable pointer to global resource pool
+        // - scene/instance tables
+        //
+        // View layer:
+        // - draw table
+        // - indirect commands
         {
-            // Bind global GPU resource pool
-            m_GpuSceneBack.resources = &gpuResourceService.pool();
+            const auto& pool = gpuResourceService.pool();
 
-            const auto& pool = *m_GpuSceneBack.resources;
+            m_GpuSceneDatabaseBack.beginFrame(pool);
 
-            m_GpuSceneBack.beginFrame(pool);
+            // Current renderer still emits one draw per cooked render instance.
+            // The important refactor is structural: instance data lives in the
+            // database layer, while draw/indirect state lives in the view layer.
+            for (const auto& inst : m_RenderWorldBack.instances)
+            {
+                resource::GpuInstance gpuInst {};
+                gpuInst.meshIndex      = inst.meshIndex;
+                gpuInst.materialIndex  = inst.materialIndex;
+                gpuInst.transformIndex = 0;
+                gpuInst.flags          = 0;
+                m_GpuSceneDatabaseBack.pushInstance(gpuInst);
+            }
+            m_GpuSceneDatabaseBack.uploadInstances(rd);
 
-            // Build one draw per render instance (no instancing yet).
+            m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack);
+
             for (const auto& inst : m_RenderWorldBack.instances)
             {
                 if (inst.meshIndex >= pool.meshes.size())
@@ -197,23 +218,24 @@ namespace vultra
                 dr.flags         = 0;
                 dr.padding0      = 0;
 
-                m_GpuSceneBack.pushDraw(dr);
+                m_GpuSceneViewBack.pushDraw(dr);
             }
 
-            // Upload draw table.
-            m_GpuSceneBack.uploadTables(rd);
+            m_GpuSceneViewBack.uploadDraws(rd);
+            m_GpuSceneViewBack.buildIndirectIndexedFromDraws();
+            m_GpuSceneViewBack.uploadIndirect(rd);
 
-            // Build and upload indirect commands (indexed; binds global geometry index buffer).
-            m_GpuSceneBack.buildIndirectIndexedFromDraws();
-            m_GpuSceneBack.uploadIndirect(rd);
-
-            m_RenderWorldBack.gpuScene = &m_GpuSceneBack;
+            m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;
+            m_RenderWorldBack.gpuSceneView     = &m_GpuSceneViewBack;
         }
 
         std::swap(m_RenderWorldFront, m_RenderWorldBack);
-        std::swap(m_GpuSceneFront, m_GpuSceneBack);
-        m_RenderWorldFront.gpuScene = &m_GpuSceneFront;
-        m_RenderWorldBack.gpuScene  = &m_GpuSceneBack;
+        std::swap(m_GpuSceneDatabaseFront, m_GpuSceneDatabaseBack);
+        std::swap(m_GpuSceneViewFront, m_GpuSceneViewBack);
+        m_RenderWorldFront.gpuSceneDatabase = &m_GpuSceneDatabaseFront;
+        m_RenderWorldFront.gpuSceneView     = &m_GpuSceneViewFront;
+        m_RenderWorldBack.gpuSceneDatabase  = &m_GpuSceneDatabaseBack;
+        m_RenderWorldBack.gpuSceneView      = &m_GpuSceneViewBack;
 
         m_FrameResources.beginFrame(m_FrameCounter);
         {
@@ -268,12 +290,13 @@ namespace vultra
                 continue;
 
             RenderView view {
-                .renderWorld = &m_RenderWorldFront,
-                .camera      = &cam,
-                .target      = target,
-                .extent      = target->getExtent(),
-                .clearValue  = cam.clearValue,
-                .gpuScene    = m_RenderWorldFront.gpuScene,
+                .renderWorld      = &m_RenderWorldFront,
+                .camera           = &cam,
+                .target           = target,
+                .extent           = target->getExtent(),
+                .clearValue       = cam.clearValue,
+                .gpuSceneDatabase = m_RenderWorldFront.gpuSceneDatabase,
+                .gpuSceneView     = m_RenderWorldFront.gpuSceneView,
             };
 
             rhi::FramebufferInfo fbInfo {

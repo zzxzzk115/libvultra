@@ -70,11 +70,12 @@ namespace vultra
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
-                const auto* renderWorld = rc.view().renderWorld;
-                const auto* gpuScene    = rc.view().gpuScene;
-                auto*       cameraUbo   = resources.get<framegraph::FrameGraphBuffer>(data.camera).buffer;
+                const auto* renderWorld      = rc.view().renderWorld;
+                const auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
+                const auto* gpuSceneView     = rc.view().gpuSceneView;
+                auto*       cameraUbo        = resources.get<framegraph::FrameGraphBuffer>(data.camera).buffer;
 
-                if (!renderWorld || !gpuScene || !cameraUbo)
+                if (!renderWorld || !gpuSceneDatabase || !gpuSceneView || !cameraUbo)
                     return;
 
                 assert(rc.framebufferInfo().has_value());
@@ -86,15 +87,16 @@ namespace vultra
 
                 rc.resourceSet[0] = {
                     {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
-                    {1, rhi::bindings::StorageBuffer {.buffer = gpuScene->drawBuffer.get()}},
-                    {2, rhi::bindings::StorageBuffer {.buffer = gpuScene->resources->materialTableBuffer.get()}},
-                    {3, rhi::bindings::StorageBuffer {.buffer = gpuScene->resources->materialParams.gpu.get()}},
+                    {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawBuffer.get()}},
+                    {2,
+                     rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
+                    {3, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
                 };
 
                 rc.resourceSet[3] = {
                     {4,
                      rhi::bindings::CombinedImageSamplerArray {
-                         .textures    = gpuScene->resources->getBindlessTextureHandles(),
+                         .textures    = gpuSceneDatabase->resources->getBindlessTextureHandles(),
                          .imageAspect = rhi::ImageAspect::eColor,
                      }},
                 };
@@ -103,13 +105,13 @@ namespace vultra
 
                 rc.cb
                     .drawIndirect(rhi::DrawIndirectInfo {
-                        .buffer       = &gpuScene->indirectBuffer.value(),
+                        .buffer       = &gpuSceneView->indirectBuffer.value(),
                         .firstCommand = 0,
-                        .commandCount = static_cast<uint32_t>(gpuScene->indirectCommands.size()),
+                        .commandCount = static_cast<uint32_t>(gpuSceneView->indirectCommands.size()),
                         .gi =
                             rhi::GeometryInfo {
-                                .indexBuffer = &gpuScene->resources->geometry.index32,
-                                .numIndices  = gpuScene->resources->geometry.indexCountUsed,
+                                .indexBuffer = &gpuSceneDatabase->resources->geometry.index32,
+                                .numIndices  = gpuSceneDatabase->resources->geometry.indexCountUsed,
                             },
                     })
                     .endRendering();
