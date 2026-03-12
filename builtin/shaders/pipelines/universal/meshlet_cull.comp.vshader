@@ -34,7 +34,6 @@ void main()
 
     vec3 cameraPosWS = u_Camera.inverseView[3].xyz;
     float maxScale = extract_max_scale(model);
-    mat3 normalMatrix = mat3(model);
 
     for (uint i = 0u; i < mesh.meshletCount; ++i)
     {
@@ -44,24 +43,30 @@ void main()
         vec3 centerWS = (model * vec4(m.center, 1.0)).xyz;
         float radiusWS = m.radius * maxScale;
 
-        if (!sphere_frustum_test(u_Camera, centerWS, radiusWS))
-            continue;
+        // // 1. Frustum test
+        // if (!sphere_frustum_test(u_Camera, centerWS, radiusWS))
+        //     continue;
 
+        // // 2. Cone culling
         // if (u_PC.enableConeCull != 0u)
         // {
-        //     vec3 coneApexWS = (model * vec4(m.coneApex, 1.0)).xyz;
-        //     vec3 coneAxisWS = normalize(normalMatrix * m.coneAxis);
-        //     if (!cone_backface_cull(coneApexWS, coneAxisWS, m.coneCutoff, cameraPosWS))
-        //         continue;
+        //     // transform direction with w=0, then normalize.
+        //     vec3 coneAxisWS = normalize((model * vec4(m.coneAxis, 0.0)).xyz);
+        //     // Usually coneCutoff == 1 means invalid / disabled cone.
+        //     if (m.coneCutoff < 1.0)
+        //     {
+        //         if (!cone_visible_alanwake2(coneAxisWS, m.coneCutoff, centerWS, radiusWS, cameraPosWS))
+        //             continue;
+        //     }
         // }
 
         uint outIndex = atomicAdd(s_VisibleCount.visibleCount, 1u);
-        if (outIndex >= u_PC.maxVisibleMeshlets)
-            return;
-
-        s_VisibleMeshlets.visibleMeshlets[outIndex].meshletIndex = meshletIndex;
-        s_VisibleMeshlets.visibleMeshlets[outIndex].instanceIndex = instanceIndex;
-        s_VisibleMeshlets.visibleMeshlets[outIndex].materialIndex = m.materialIndex;
-        s_VisibleMeshlets.visibleMeshlets[outIndex].flags = 0u;
+        if (outIndex < u_PC.maxVisibleMeshlets)
+        {
+            s_VisibleMeshlets.visibleMeshlets[outIndex].meshletIndex = meshletIndex;
+            s_VisibleMeshlets.visibleMeshlets[outIndex].instanceIndex = instanceIndex;
+            s_VisibleMeshlets.visibleMeshlets[outIndex].materialIndex = m.materialIndex;
+            s_VisibleMeshlets.visibleMeshlets[outIndex].flags = 0u;
+        }
     }
 }

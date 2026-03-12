@@ -327,11 +327,22 @@ bool sphere_frustum_test(CameraData cam, vec3 centerWS, float radiusWS)
     return true;
 }
 
-bool cone_backface_cull(vec3 coneApexWS, vec3 coneAxisWS, float coneCutoff, vec3 cameraPosWS)
+// Alternative cone culling method inspired by Alan Wake 2 tech talk
+bool cone_visible_alanwake2(
+    vec3 coneAxisWS,
+    float coneCutoff,
+    vec3 centerWS,
+    float radiusWS,
+    vec3 cameraPosWS)
 {
-    vec3 toCamera = normalize(cameraPosWS - coneApexWS);
-    float d = dot(toCamera, normalize(coneAxisWS));
-    return d >= coneCutoff;
+    vec3 toCenter = centerWS - cameraPosWS;
+    float distToCenter = length(toCenter);
+
+    if (distToCenter <= 1e-6)
+        return true;
+
+    float cutoff = coneCutoff + distToCenter + radiusWS;
+    return dot(toCenter, coneAxisWS) < cutoff;
 }
 
 float extract_max_scale(mat4 model)

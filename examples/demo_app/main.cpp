@@ -148,7 +148,7 @@ protected:
         auto& camSystem = engine.emplaceSubsystem<CameraSystem>();
         // camSystem.addManualCamera({.rendererKey = triangleRenderer->name().data()});
         auto& cam      = camSystem.addManualCamera({.rendererKey = universalRenderer->name().data()});
-        cam.view       = glm::lookAt(glm::vec3(0, 0, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        cam.view       = glm::lookAt(glm::vec3(0, 1, 1.5), glm::vec3(0, 1, 0), glm::vec3(0, 1, 0));
         cam.projection = glm::perspective(glm::radians(45.0f),
                                           1.0f * engine.ctx().config.window.width / engine.ctx().config.window.height,
                                           0.1f,
