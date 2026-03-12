@@ -6,6 +6,9 @@ version = 460
 VTX_HAS_UV0 : bool permute
 
 [frag]
+#define VULTRA_DECLARE_MATERIAL_TABLE
+#define VULTRA_DECLARE_MATERIAL_PARAMS
+#define VULTRA_DECLARE_BINDLESS_TEXTURES
 #include "include/common/gpu_scene.glsl"
 
 // ============================================================================
@@ -30,7 +33,7 @@ layout(location = 0) out vec4 FragColor;
 void main()
 {
 	uint materialModel = get_material_model(v_MaterialIndex);
-	
+
 	if (materialModel == VULTRA_MAT_PBRMR)
 	{
 		MaterialParamsPBRMR params = get_pbrmr_params(v_MaterialIndex);

@@ -4,6 +4,7 @@
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -19,19 +20,26 @@ namespace vultra
         struct PassData
         {
             FrameGraphResource camera;
+            FrameGraphResource buildDone;
             FrameGraphResource depth;
             FrameGraphResource color;
         };
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution, cameraBlock](FrameGraph::Builder& builder, PassData& data) {
+            [resolution, cameraBlock, buildDone = ctx.data.get(kResKey_MeshletBuildDone)](FrameGraph::Builder& builder,
+                                                                                          PassData&            data) {
                 PASS_SETUP_ZONE;
 
-                data.camera = builder.read(cameraBlock,
+                data.camera    = builder.read(cameraBlock,
                                            framegraph::BindingInfo {
-                                               .location      = {.set = 0, .binding = 0},
-                                               .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                                  .location      = {.set = 0, .binding = 0},
+                                                  .pipelineStage = framegraph::PipelineStage::eVertexShader,
                                            });
+                data.buildDone = builder.read(buildDone,
+                                              framegraph::BindingInfo {
+                                                  .location      = {.set = 0, .binding = 31},
+                                                  .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                              });
 
                 data.color = builder.create<framegraph::FrameGraphTexture>(
                     "Test Pass Color",
@@ -86,6 +94,17 @@ namespace vultra
                     !gpuSceneView->indirectBuffer.has_value())
                     return;
 
+                if (gpuSceneView->getDispatchableDrawCount() == 0)
+                    return;
+
+                rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
+                rhi::prepareForComputing(rc.cb, gpuSceneView->indirectBuffer.value());
+                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
+                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialParams.gpu);
+                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
+                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer);
+                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer);
+
                 assert(rc.framebufferInfo().has_value());
                 const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
                 if (!pipeline)
@@ -96,16 +115,17 @@ namespace vultra
                 rc.resourceSet[0] = {
                     {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
                     {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawBuffer.get()}},
-                    {2,
-                     rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
-                    {3, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
                     {4,
                      rhi::bindings::StorageBuffer {.buffer =
                                                        gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
-                    {5,
+                    {8,
+                     rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
+                    {9, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
+
+                    {10,
                      rhi::bindings::StorageBuffer {
                          .buffer = gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer.get()}},
-                    {6,
+                    {11,
                      rhi::bindings::StorageBuffer {
                          .buffer = gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer.get()}},
                 };
@@ -120,18 +140,30 @@ namespace vultra
 
                 rc.bindDescriptorSets(*pipeline);
 
-                rc.cb
-                    .drawIndirect(rhi::DrawIndirectInfo {
+                if (HasFlagValues(rc.rd.getFeatureReport().flags,
+                                  vultra::rhi::RenderDeviceFeatureReportFlagBits::eMultiDraw))
+                {
+                    rc.cb.drawIndirect(rhi::DrawIndirectInfo {
                         .buffer       = &gpuSceneView->indirectBuffer.value(),
                         .firstCommand = 0,
                         .commandCount = gpuSceneView->getDispatchableDrawCount(),
-                        .gi =
-                            rhi::GeometryInfo {
-                                .numVertices = 3,
-                            },
-                    })
-                    .endRendering();
+                    });
+                }
+                else
+                {
+                    const uint32_t drawCount = gpuSceneView->getDispatchableDrawCount();
 
+                    for (uint32_t i = 0; i < drawCount; ++i)
+                    {
+                        rc.cb.drawIndirect(rhi::DrawIndirectInfo {
+                            .buffer       = &gpuSceneView->indirectBuffer.value(),
+                            .firstCommand = i,
+                            .commandCount = 1,
+                        });
+                    }
+                }
+
+                rc.cb.endRendering();
                 rc.clear();
             });
 

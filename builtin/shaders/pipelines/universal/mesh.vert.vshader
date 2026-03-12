@@ -10,6 +10,11 @@ VTX_HAS_UV1 : bool permute
 VTX_HAS_TANGENT : bool permute
 
 [vert]
+#define VULTRA_DECLARE_CAMERA
+#define VULTRA_DECLARE_DRAW_BUFFER_READONLY
+#define VULTRA_DECLARE_MESHLET_BUFFER
+#define VULTRA_DECLARE_MESHLET_VERTEX_BUFFER
+#define VULTRA_DECLARE_MESHLET_TRIANGLE_BUFFER
 #include "include/common/gpu_scene.glsl"
 
 // ============================================================================
@@ -49,7 +54,7 @@ layout(location = 8) out vec4 v_Debug;
 
 void main()
 {
-    uint drawId = gl_InstanceIndex;
+    uint drawId = gl_BaseInstance;
     DrawRecord d = s_Draws.draws[drawId];
     Meshlet meshlet = s_Meshlets.meshlets[d.meshletIndex];
 

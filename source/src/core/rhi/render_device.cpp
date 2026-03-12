@@ -1197,6 +1197,8 @@ namespace vultra
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracing {
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
             vk::PhysicalDeviceMeshShaderFeaturesEXT mesh {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
+            vk::PhysicalDeviceMultiDrawFeaturesEXT  multidraw {
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTI_DRAW_FEATURES_EXT};
 
             features2.pNext  = &vk13;
             vk13.pNext       = &vk12;
@@ -1204,7 +1206,7 @@ namespace vultra
             accel.pNext      = &rayQuery;
             rayQuery.pNext   = &rayTracing;
             rayTracing.pNext = &mesh;
-
+            mesh.pNext       = &multidraw;
             m_PhysicalDevice.getFeatures2(&features2);
 
             // Fill feature report
@@ -1243,6 +1245,7 @@ namespace vultra
             add(RenderDeviceFeatureReportFlagBits::eDrawIndirectCount,
                 VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME,
                 vk12.drawIndirectCount);
+            add(RenderDeviceFeatureReportFlagBits::eMultiDraw, VK_EXT_MULTI_DRAW_EXTENSION_NAME, multidraw.multiDraw);
 
 #ifdef VULTRA_ENABLE_RENDERDOC
             VULTRA_CORE_WARN("[RenderDevice] RenderDoc is enabled, raytracing will be disabled");
@@ -1272,6 +1275,7 @@ namespace vultra
             PRINT_FEATURE(eBufferDeviceAddress);
             PRINT_FEATURE(eDescriptorIndexing);
             PRINT_FEATURE(eDrawIndirectCount);
+            PRINT_FEATURE(eMultiDraw);
 #undef PRINT_FEATURE
 
             // === Assign & Check Feature Flags ===
@@ -1290,7 +1294,6 @@ namespace vultra
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eMeshShader;
             }
-
             if (useOpenXR)
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eOpenXR;
@@ -1401,6 +1404,14 @@ namespace vultra
                 vk12Features.drawIndirectCount = VK_TRUE;
             }
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk12Features));
+
+            // Multi-draw
+            vk::PhysicalDeviceMultiDrawFeaturesEXT multidraw;
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMultiDraw))
+            {
+                multidraw.multiDraw = VK_TRUE;
+                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&multidraw));
+            }
 
             // Ray Tracing & Ray Query
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};

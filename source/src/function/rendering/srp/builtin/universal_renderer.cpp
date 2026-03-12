@@ -1,7 +1,7 @@
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
+#include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/test_feature.hpp"
-#include "vultra/function/services/frame_debugger_service.hpp"
 
 #include <imgui.h>
 
@@ -10,6 +10,7 @@ namespace vultra
     void UniversalRenderer::init()
     {
         // Add features in the desired order.
+        emplaceFeature<MeshletFeature>();
         emplaceFeature<TestFeature>();
         emplaceFeature<FinalCompositionFeature>();
     }

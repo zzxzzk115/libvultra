@@ -73,6 +73,7 @@ namespace vultra
             eBufferDeviceAddress   = BIT(5),
             eDescriptorIndexing    = BIT(6),
             eDrawIndirectCount     = BIT(7),
+            eMultiDraw             = BIT(8),
         };
 
         struct RenderDeviceFeatureReport

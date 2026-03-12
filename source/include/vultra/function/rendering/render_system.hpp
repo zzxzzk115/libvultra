@@ -83,6 +83,8 @@ namespace vultra
         FrameRenderData      m_PreparedFrameData {};
 
         Samplers m_Samplers;
+
+        bool m_EnableGpuDrivenMeshletPipeline {true};
     };
 
     // Cook World into RenderWorld.

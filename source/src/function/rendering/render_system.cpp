@@ -202,59 +202,75 @@ namespace vultra
             }
             m_GpuSceneDatabaseBack.uploadSceneTables(rd);
 
-            m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack, resource::GpuSceneBuildMode::eCpuDriven);
-            m_GpuSceneViewBack.setGpuDrivenCaps(static_cast<uint32_t>(pool.meshlets.cpuMeshlets.size()),
-                                                static_cast<uint32_t>(pool.meshlets.cpuMeshlets.size()));
-            m_GpuSceneViewBack.ensureVisibleMeshletBuffers(rd);
-
-            std::vector<resource::GpuDrawRecord> stagedDraws;
-            for (uint32_t instanceIndex = 0; instanceIndex < static_cast<uint32_t>(m_RenderWorldBack.instances.size());
-                 ++instanceIndex)
+            uint32_t maxMeshletDraws = 0;
+            for (const auto& inst : m_RenderWorldBack.instances)
             {
-                const auto& inst = m_RenderWorldBack.instances[instanceIndex];
                 if (inst.meshIndex >= pool.meshes.size())
                     continue;
-                if (instanceIndex >= m_GpuSceneDatabaseBack.instances.size())
-                    continue;
-
-                const auto& gpuInst = m_GpuSceneDatabaseBack.instances[instanceIndex];
-                const auto& mesh    = pool.meshes[inst.meshIndex];
-                if (mesh.meshletCount == 0)
-                    continue;
-
-                for (uint32_t localMeshlet = 0; localMeshlet < mesh.meshletCount; ++localMeshlet)
-                {
-                    const uint32_t globalMeshletIndex = mesh.meshletOffset + localMeshlet;
-                    if (globalMeshletIndex >= pool.meshlets.cpuMeshlets.size())
-                        continue;
-
-                    const auto& meshlet = pool.meshlets.cpuMeshlets[globalMeshletIndex];
-
-                    resource::GpuDrawRecord dr;
-                    dr.meshletIndex      = globalMeshletIndex;
-                    dr.materialIndex     = meshlet.materialIndex;
-                    dr.vertexStrideBytes = mesh.vertexStrideBytes;
-                    dr.flags             = 0;
-                    dr.vertexAddress     = pool.geometry.vertexBytesAddress;
-                    dr.transformIndex    = gpuInst.transformIndex;
-                    dr.padding0          = 0;
-                    dr.model             = inst.worldMatrix;
-                    stagedDraws.push_back(dr);
-                }
+                maxMeshletDraws += pool.meshes[inst.meshIndex].meshletCount;
             }
 
-            std::stable_sort(stagedDraws.begin(), stagedDraws.end(), [](const auto& a, const auto& b) {
-                if (a.materialIndex != b.materialIndex)
-                    return a.materialIndex < b.materialIndex;
-                return a.meshletIndex < b.meshletIndex;
-            });
+            if (m_EnableGpuDrivenMeshletPipeline)
+            {
+                m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack, resource::GpuSceneBuildMode::eGpuDriven);
+                m_GpuSceneViewBack.prepareGpuDrivenBuffers(rd, maxMeshletDraws, maxMeshletDraws);
+            }
+            else
+            {
+                m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack, resource::GpuSceneBuildMode::eCpuDriven);
+                m_GpuSceneViewBack.setGpuDrivenCaps(maxMeshletDraws, maxMeshletDraws);
+                m_GpuSceneViewBack.ensureVisibleMeshletBuffers(rd);
 
-            for (const auto& dr : stagedDraws)
-                m_GpuSceneViewBack.pushDraw(dr);
+                std::vector<resource::GpuDrawRecord> stagedDraws;
+                for (uint32_t instanceIndex = 0;
+                     instanceIndex < static_cast<uint32_t>(m_RenderWorldBack.instances.size());
+                     ++instanceIndex)
+                {
+                    const auto& inst = m_RenderWorldBack.instances[instanceIndex];
+                    if (inst.meshIndex >= pool.meshes.size())
+                        continue;
+                    if (instanceIndex >= m_GpuSceneDatabaseBack.instances.size())
+                        continue;
 
-            m_GpuSceneViewBack.uploadDraws(rd);
-            m_GpuSceneViewBack.buildIndirectFromDraws(pool);
-            m_GpuSceneViewBack.uploadIndirect(rd);
+                    const auto& gpuInst = m_GpuSceneDatabaseBack.instances[instanceIndex];
+                    const auto& mesh    = pool.meshes[inst.meshIndex];
+                    if (mesh.meshletCount == 0)
+                        continue;
+
+                    for (uint32_t localMeshlet = 0; localMeshlet < mesh.meshletCount; ++localMeshlet)
+                    {
+                        const uint32_t globalMeshletIndex = mesh.meshletOffset + localMeshlet;
+                        if (globalMeshletIndex >= pool.meshlets.cpuMeshlets.size())
+                            continue;
+
+                        const auto& meshlet = pool.meshlets.cpuMeshlets[globalMeshletIndex];
+
+                        resource::GpuDrawRecord dr;
+                        dr.meshletIndex      = globalMeshletIndex;
+                        dr.materialIndex     = meshlet.materialIndex;
+                        dr.vertexStrideBytes = mesh.vertexStrideBytes;
+                        dr.flags             = 0;
+                        dr.vertexAddress     = pool.geometry.vertexBytesAddress;
+                        dr.transformIndex    = gpuInst.transformIndex;
+                        dr.padding0          = 0;
+                        dr.model             = inst.worldMatrix;
+                        stagedDraws.push_back(dr);
+                    }
+                }
+
+                std::stable_sort(stagedDraws.begin(), stagedDraws.end(), [](const auto& a, const auto& b) {
+                    if (a.materialIndex != b.materialIndex)
+                        return a.materialIndex < b.materialIndex;
+                    return a.meshletIndex < b.meshletIndex;
+                });
+
+                for (const auto& dr : stagedDraws)
+                    m_GpuSceneViewBack.pushDraw(dr);
+
+                m_GpuSceneViewBack.uploadDraws(rd);
+                m_GpuSceneViewBack.buildIndirectFromDraws(pool);
+                m_GpuSceneViewBack.uploadIndirect(rd);
+            }
 
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;
             m_RenderWorldBack.gpuSceneView     = &m_GpuSceneViewBack;
