@@ -92,5 +92,5 @@ void main()
 
     v_MaterialIndex = d.materialIndex;
 
-    gl_Position = u_Camera.viewProj * vec4(v_FragPos, 1.0);
+    gl_Position = u_Camera.viewProjection * vec4(v_FragPos, 1.0);
 }

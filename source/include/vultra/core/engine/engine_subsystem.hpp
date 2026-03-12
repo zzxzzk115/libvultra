@@ -39,6 +39,7 @@ namespace vultra
         virtual void onPreRender() {}
         virtual void onRender() {}
         virtual void onPostRender() {}
+        virtual void onPresent() {}
 
     protected:
         EngineContext& ctx() const { return *m_Ctx; }
@@ -47,6 +48,6 @@ namespace vultra
         virtual void onShutdown() {}
 
     private:
-        EngineContext* m_Ctx = nullptr; // non-owning
+        EngineContext* m_Ctx {nullptr}; // non-owning
     };
 } // namespace vultra

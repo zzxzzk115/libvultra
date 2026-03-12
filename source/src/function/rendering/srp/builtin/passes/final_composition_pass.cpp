@@ -1,7 +1,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/final_composition_pass.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
-// #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -11,10 +11,23 @@ namespace vultra
 
     FrameGraphResource FinalCompositionPass::compose(FrameGraphBuildContext& ctx, FrameGraphResource target)
     {
+        auto source = ctx.data.get(kResKey_FinalCompositionSource);
+
         ctx.fg.addCallbackPass(
             PASS_NAME,
-            [&target](FrameGraph::Builder& builder, auto&) {
+            [source, &target](FrameGraph::Builder& builder, auto&) {
                 PASS_SETUP_ZONE;
+
+                builder.read(source,
+                             framegraph::TextureRead {
+                                 .binding =
+                                     {
+                                         .location      = {.set = 3, .binding = 0},
+                                         .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                     },
+                                 .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                 .imageAspect = rhi::ImageAspect::eColor,
+                             });
 
                 target = builder.write(target,
                                        framegraph::Attachment {
@@ -22,10 +35,8 @@ namespace vultra
                                            .imageAspect = rhi::ImageAspect::eColor,
                                            .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                        });
-
-                builder.setSideEffect();
             },
-            [this, target](const auto&, FrameGraphPassResources& /*resources*/, void* ctx) {
+            [this, target](const auto&, FrameGraphPassResources&, void* ctx) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctx);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -34,16 +45,16 @@ namespace vultra
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
-                const auto* pipeline =
-                    rc.framebufferInfo ? getPipeline(rhi::getColorFormat(*rc.framebufferInfo, 0)) : nullptr;
-                if (pipeline && rc.framebufferInfo)
+                assert(rc.framebufferInfo().has_value());
+                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
+                if (pipeline)
                 {
+                    rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["nearest"]);
                     rc.cb.bindPipeline(*pipeline);
-                    rc.cb.beginRendering(*rc.framebufferInfo).drawFullScreenTriangle().endRendering();
+                    rc.bindDescriptorSets(*pipeline);
+                    rc.cb.beginRendering(rc.framebufferInfo().value()).drawFullScreenTriangle().endRendering();
                     rc.clear();
                 }
-                // auto* targetTexture = resources.get<framegraph::FrameGraphTexture>(target).texture;
-                // rhi::prepareForReading(rc.cb, *targetTexture);
             });
 
         return target;

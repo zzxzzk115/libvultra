@@ -2,11 +2,10 @@
 
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/descriptorset_builder.hpp"
-#include "vultra/core/rhi/framebuffer_info.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/shader_library.hpp"
 #include "vultra/function/framegraph/framegraph_data_registry.hpp"
-#include "vultra/function/rendering/srp/render_view.hpp"
+#include "vultra/function/rendering/framework/prepared_render_data.hpp"
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
@@ -20,21 +19,28 @@ namespace vultra
 
         rhi::RenderDevice&      rd;
         FrameGraphDataRegistry& data;
-        const RenderView&       view;
+        const FrameRenderData&  frame;
+        const ViewRenderData&   viewData;
+
+        [[nodiscard]] const RenderView& view() const { return viewData.view; }
     };
 
     struct FrameGraphExecContext
     {
-        rhi::CommandBuffer&                 cb;
-        rhi::RenderDevice&                  rd;
-        std::optional<rhi::FramebufferInfo> framebufferInfo;
-        ResourceSet                         resourceSet;
-        const RenderView&                   view;
+        rhi::CommandBuffer&    cb;
+        rhi::RenderDevice&     rd;
+        const FrameRenderData& frame;
+        ViewRenderData         viewData;
+        ResourceSet            resourceSet;
 
         struct Extra
         {
             rhi::ShaderLibraryRuntime* builtinShaderLib {nullptr};
+            Samplers                   samplers;
         } ext;
+
+        [[nodiscard]] const RenderView&                   view() const { return viewData.view; }
+        [[nodiscard]] std::optional<rhi::FramebufferInfo> framebufferInfo() const { return viewData.framebufferInfo; }
 
         void bindDescriptorSets(const rhi::BasePipeline& pipeline)
         {
@@ -42,18 +48,19 @@ namespace vultra
             {
                 auto descriptorSetBuilder = cb.createDescriptorSetBuilder();
                 for (const auto& [index, info] : bindings)
-                {
                     descriptorSetBuilder.bind(index, info);
-                }
                 const auto descriptors = descriptorSetBuilder.build(pipeline.getDescriptorSetLayout(set));
                 cb.bindDescriptorSet(set, descriptors);
             }
         }
 
-        void clear()
+        void clear() { resourceSet.clear(); }
+
+        inline static void overrideSampler(rhi::ResourceBinding& v, const vk::Sampler sampler)
         {
-            framebufferInfo.reset();
-            resourceSet.clear();
+            assert(sampler);
+            if (std::holds_alternative<rhi::bindings::CombinedImageSampler>(v))
+                std::get<rhi::bindings::CombinedImageSampler>(v).sampler = sampler;
         }
     };
 } // namespace vultra

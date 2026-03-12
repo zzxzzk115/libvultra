@@ -1,6 +1,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/test_pass.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/pixel_format.hpp"
+#include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 
@@ -12,17 +13,25 @@ namespace vultra
 
     FrameGraphResource TestPass::addPass(FrameGraphBuildContext& ctx)
     {
-        const auto resolution = ctx.view.extent;
+        const auto resolution  = ctx.view().extent;
+        const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
 
         struct PassData
         {
+            FrameGraphResource camera;
             FrameGraphResource depth;
             FrameGraphResource color;
         };
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution](FrameGraph::Builder& builder, PassData& data) {
+            [resolution, cameraBlock](FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
+
+                data.camera = builder.read(cameraBlock,
+                                           framegraph::BindingInfo {
+                                               .location      = {.set = 0, .binding = 0},
+                                               .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                           });
 
                 data.color = builder.create<framegraph::FrameGraphTexture>(
                     "Test Pass Color",
@@ -52,7 +61,7 @@ namespace vultra
                                                .clearValue  = framegraph::ClearValue::eOne,
                                            });
             },
-            [this](const auto&, FrameGraphPassResources&, void* ctx) {
+            [this](const PassData& data, FrameGraphPassResources& resources, void* ctx) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctx);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -61,18 +70,19 @@ namespace vultra
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
-                const auto* renderWorld = rc.view.renderWorld;
-                const auto* gpuScene    = rc.view.gpuScene;
-                auto*       cameraUbo   = rc.view.cameraUniformBuffer;
+                const auto* renderWorld = rc.view().renderWorld;
+                const auto* gpuScene    = rc.view().gpuScene;
+                auto*       cameraUbo   = resources.get<framegraph::FrameGraphBuffer>(data.camera).buffer;
 
-                if (!renderWorld || !gpuScene || !cameraUbo || !rc.framebufferInfo)
+                if (!renderWorld || !gpuScene || !cameraUbo)
                     return;
 
-                const auto* pipeline = getPipeline(rhi::getColorFormat(*rc.framebufferInfo, 0));
+                assert(rc.framebufferInfo().has_value());
+                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
                 if (!pipeline)
                     return;
 
-                rc.cb.beginRendering(*rc.framebufferInfo).bindPipeline(*pipeline);
+                rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
 
                 rc.resourceSet[0] = {
                     {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
@@ -80,6 +90,7 @@ namespace vultra
                     {2, rhi::bindings::StorageBuffer {.buffer = gpuScene->resources->materialTableBuffer.get()}},
                     {3, rhi::bindings::StorageBuffer {.buffer = gpuScene->resources->materialParams.gpu.get()}},
                 };
+
                 rc.resourceSet[3] = {
                     {4,
                      rhi::bindings::CombinedImageSamplerArray {

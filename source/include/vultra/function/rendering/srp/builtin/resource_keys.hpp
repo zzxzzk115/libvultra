@@ -6,5 +6,5 @@
 
 namespace vultra
 {
-    constexpr FrameGraphResourceKey kResKey_FinalCompositionTarget {.id = vbase::hashLiteral("FinalCompositionTarget")};
+    constexpr FrameGraphResourceKey kResKey_FinalCompositionSource {.id = vbase::hashLiteral("FinalCompositionSource")};
 }

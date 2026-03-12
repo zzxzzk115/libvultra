@@ -2,6 +2,8 @@
 
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
+#include "vultra/function/rendering/framework/prepared_render_data.hpp"
+#include "vultra/function/rendering/framework/render_frame_resources.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
 #include "vultra/function/resource/gpu_scene.hpp"
@@ -36,6 +38,7 @@ namespace vultra
         void onPreRender() override;
         void onRender() override;
         void onPostRender() override;
+        void onPresent() override;
 
         // IRenderService
         void registerRenderer(Ref<Renderer> renderer) override;
@@ -56,6 +59,8 @@ namespace vultra
         void onResize(uint32_t width, uint32_t height);
 
     private:
+        bool m_SkipRender {false};
+
         std::unordered_map<std::string, Ref<Renderer>> m_Renderers;
         std::string                                    m_DefaultRendererKey {"builtin"};
 
@@ -69,6 +74,11 @@ namespace vultra
         resource::GpuScene m_GpuSceneBack {};
 
         uint64_t m_FrameCounter {0};
+
+        RenderFrameResources m_FrameResources {};
+        FrameRenderData      m_PreparedFrameData {};
+
+        Samplers m_Samplers;
     };
 
     // Cook World into RenderWorld.

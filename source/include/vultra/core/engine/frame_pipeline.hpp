@@ -53,6 +53,8 @@ namespace vultra
                 s->onRender();
             for (auto* s : m_Subsystems)
                 s->onPostRender();
+            for (auto* s : m_Subsystems)
+                s->onPresent();
 
             // Feature frame end
             for (auto* f : m_Features)

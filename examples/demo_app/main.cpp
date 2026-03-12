@@ -45,10 +45,10 @@ class TriangleRenderer : public Renderer
 public:
     virtual std::string_view name() const override { return "triangle"; }
 
-    virtual void init(Services services) override
+    virtual void init() override
     {
-        auto& rd        = services.require<IRenderBackendService>().renderDevice();
-        auto& swapchain = services.require<IRenderBackendService>().swapchain();
+        auto& rd        = getServices()->require<IRenderBackendService>().renderDevice();
+        auto& swapchain = getServices()->require<IRenderBackendService>().swapchain();
 
         // Create vertex buffer
         m_VertexBuffer = rd.createVertexBuffer(sizeof(SimpleVertex), 3);
@@ -107,8 +107,8 @@ void main() {
 
     virtual void render(ImmediateRenderContext& ctx) override
     {
-        auto& backBuffer = *ctx.view.target;
-        auto  extent     = ctx.view.extent;
+        auto& backBuffer = *ctx.view().target;
+        auto  extent     = ctx.view().extent;
         rhi::prepareForAttachment(ctx.cb, backBuffer, false);
         ctx.cb
             .beginRendering(rhi::FramebufferInfo {
@@ -136,15 +136,13 @@ class BaseColorRenderer : public Renderer
 public:
     virtual std::string_view name() const override { return "base_color"; }
 
-    virtual void init(Services services) override
+    virtual void init() override
     {
-        m_ServiceCache = &services;
-
-        auto& rd        = services.require<IRenderBackendService>().renderDevice();
-        auto& swapchain = services.require<IRenderBackendService>().swapchain();
+        auto& rd        = getServices()->require<IRenderBackendService>().renderDevice();
+        auto& swapchain = getServices()->require<IRenderBackendService>().swapchain();
 
         // Retrieve the shader from the built-in shader library.
-        auto shaderLib         = services.require<IShaderService>().builtinLibrary();
+        auto shaderLib         = getServices()->require<IShaderService>().builtinLibrary();
         auto vertexVariantHash = shaderLib.computeVariantHash("mesh.vert",
                                                               vshadersystem::ShaderStage::eVert,
                                                               {
@@ -181,11 +179,11 @@ public:
 
     virtual void render(ImmediateRenderContext& ctx) override
     {
-        auto& backBuffer = *ctx.view.target;
+        auto& backBuffer = *ctx.view().target;
         rhi::prepareForAttachment(ctx.cb, backBuffer, false);
 
         rhi::FramebufferInfo fbInfo {};
-        fbInfo.area             = {.offset = {0, 0}, .extent = ctx.view.extent};
+        fbInfo.area             = {.offset = {0, 0}, .extent = ctx.view().extent};
         fbInfo.colorAttachments = {
             rhi::AttachmentInfo {.target = &backBuffer, .clearValue = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f)},
         };
@@ -195,7 +193,7 @@ public:
             .clearValue = 1.0f,
         };
 
-        const auto& renderWorld = *ctx.view.renderWorld;
+        const auto& renderWorld = *ctx.view().renderWorld;
 
         // Normal example CPU-Driven rendering flow would be:
         for (const auto& inst : renderWorld.instances)
@@ -209,7 +207,7 @@ public:
         ctx.cb.beginRendering(fbInfo).bindPipeline(m_GraphicsPipeline);
 
         ctx.resourceSet[0] = {
-            {0, rhi::bindings::UniformBuffer {.buffer = ctx.view.cameraUniformBuffer}},
+            // {0, rhi::bindings::UniformBuffer {.buffer = ctx.view.cameraUniformBuffer}},
             {1, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->drawBuffer.get()}},
             {2, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialTableBuffer.get()}},
             {3, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuScene->resources->materialParams.gpu.get()}},
@@ -236,6 +234,8 @@ public:
                     },
             })
             .endRendering();
+
+        rhi::prepareForPresent(ctx.cb, backBuffer);
     }
 
     void onImGui() override
@@ -267,8 +267,6 @@ public:
 private:
     rhi::GraphicsPipeline m_GraphicsPipeline;
     rhi::Texture          m_DepthTexture;
-
-    ServicesPtr m_ServiceCache {nullptr};
 };
 
 class DemoAppHost : public AppHost
@@ -289,7 +287,13 @@ protected:
         auto& camSystem = engine.emplaceSubsystem<CameraSystem>();
         // camSystem.addManualCamera({.rendererKey = triangleRenderer->name().data()});
         // camSystem.addManualCamera({.rendererKey = baseColorRenderer->name().data()});
-        camSystem.addManualCamera({.rendererKey = universalRenderer->name().data()});
+        auto& cam      = camSystem.addManualCamera({.rendererKey = universalRenderer->name().data()});
+        cam.view       = glm::lookAt(glm::vec3(0, 0, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        cam.projection = glm::perspective(glm::radians(45.0f),
+                                          1.0f * engine.ctx().config.window.width / engine.ctx().config.window.height,
+                                          0.1f,
+                                          100.0f);
+        cam.projection[1][1] *= -1; // Flip Y for Vulkan
 
         engine.emplaceSubsystem<WorldSystem>();
 

@@ -26,8 +26,8 @@ namespace vultra
 
         // Incremental helper (until ECS cooking is wired):
         // App can push cameras manually.
-        void clearManualCameras();
-        void addManualCamera(const RenderCamera& cam);
+        void          clearManualCameras();
+        RenderCamera& addManualCamera(const RenderCamera& cam);
 
     private:
         // Cooked list for current frame

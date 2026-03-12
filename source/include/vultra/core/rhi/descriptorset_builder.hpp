@@ -138,4 +138,5 @@ namespace vultra
 
     using ResourceBindings = std::unordered_map<rhi::BindingIndex, rhi::ResourceBinding>;
     using ResourceSet      = std::unordered_map<rhi::DescriptorSetIndex, ResourceBindings>;
+    using Samplers         = std::unordered_map<std::string, vk::Sampler>;
 } // namespace vultra

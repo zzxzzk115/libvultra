@@ -50,7 +50,23 @@
 
 layout(set = VULTRA_SCENE_SET, binding = VULTRA_CAMERA_BINDING) uniform Camera
 {
-    mat4 viewProj;
+    mat4 projection;
+    mat4 inverseProjection;
+
+    mat4 view;
+    mat4 inverseView;
+
+    mat4 viewProjection;
+    mat4 inverseViewProjection;
+
+    vec4 resolution;      // xy = size, zw = 1/size
+
+    float zNear;
+    float zFar;
+    float fovY;
+    float _padding;
+
+    vec4 frustumPlanes[6];
 } u_Camera;
 
 // --------------------------------------------------------------------------

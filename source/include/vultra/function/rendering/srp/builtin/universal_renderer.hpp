@@ -9,6 +9,8 @@ namespace vultra
     public:
         std::string_view name() const override { return "universal"; }
 
-		void init(Services services) override;
+        void init() override;
+
+        virtual void onImGui() override;
     };
 } // namespace vultra

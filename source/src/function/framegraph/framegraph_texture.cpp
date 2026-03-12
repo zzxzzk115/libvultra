@@ -104,24 +104,24 @@ namespace vultra
         {
             ZoneScopedN("T*");
 
-            auto& [cb, _, framebufferInfo, sets, __, ___] = *static_cast<FrameGraphExecContext*>(ctx);
+            auto& [cb, _, __, viewData, sets, ___] = *static_cast<FrameGraphExecContext*>(ctx);
 
             if (holdsAttachment(bits))
             {
-                if (!framebufferInfo)
-                    framebufferInfo.emplace().area = {.extent = texture->getExtent()};
+                if (!viewData.framebufferInfo)
+                    viewData.framebufferInfo.emplace().area = {.extent = texture->getExtent()};
 
                 switch (decodeAttachment(bits).imageAspect)
                 {
                     using enum rhi::ImageAspect;
 
                     case eDepth:
-                        framebufferInfo->depthAttachment = rhi::AttachmentInfo {.target = texture};
-                        framebufferInfo->depthReadOnly   = true;
+                        viewData.framebufferInfo->depthAttachment = rhi::AttachmentInfo {.target = texture};
+                        viewData.framebufferInfo->depthReadOnly   = true;
                         break;
                     case eStencil:
-                        framebufferInfo->stencilAttachment = rhi::AttachmentInfo {.target = texture};
-                        framebufferInfo->stencilReadOnly   = true;
+                        viewData.framebufferInfo->stencilAttachment = rhi::AttachmentInfo {.target = texture};
+                        viewData.framebufferInfo->stencilReadOnly   = true;
                         break;
 
                     default:
@@ -198,12 +198,12 @@ namespace vultra
         {
             ZoneScopedN("+T");
 
-            auto& [cb, _, framebufferInfo, sets, __, ___] = *static_cast<FrameGraphExecContext*>(ctx);
+            auto& [cb, _, __, viewData, sets, ___] = *static_cast<FrameGraphExecContext*>(ctx);
 
             if (holdsAttachment(bits))
             {
-                if (!framebufferInfo)
-                    framebufferInfo.emplace().area = {.extent = texture->getExtent()};
+                if (!viewData.framebufferInfo)
+                    viewData.framebufferInfo.emplace().area = {.extent = texture->getExtent()};
 
                 const auto attachment = decodeAttachment(bits);
 
@@ -212,15 +212,15 @@ namespace vultra
                     using enum rhi::ImageAspect;
 
                     case eDepth:
-                        framebufferInfo->depthAttachment = makeAttachment(attachment, texture);
-                        framebufferInfo->depthReadOnly   = false;
+                        viewData.framebufferInfo->depthAttachment = makeAttachment(attachment, texture);
+                        viewData.framebufferInfo->depthReadOnly   = false;
                         break;
                     case eStencil:
-                        framebufferInfo->stencilAttachment = makeAttachment(attachment, texture);
-                        framebufferInfo->stencilReadOnly   = false;
+                        viewData.framebufferInfo->stencilAttachment = makeAttachment(attachment, texture);
+                        viewData.framebufferInfo->stencilReadOnly   = false;
                         break;
                     case eColor: {
-                        auto& v = framebufferInfo->colorAttachments;
+                        auto& v = viewData.framebufferInfo->colorAttachments;
                         v.resize(attachment.index + 1);
                         v[attachment.index] = makeAttachment(attachment, texture);
                     }

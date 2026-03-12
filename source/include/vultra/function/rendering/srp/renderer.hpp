@@ -21,7 +21,7 @@ namespace vultra
 
         virtual std::string_view name() const = 0;
 
-        virtual void init(Services services) {}
+        virtual void init() {}
 
         virtual void render(ImmediateRenderContext& ctx) {}
 
@@ -30,11 +30,27 @@ namespace vultra
         virtual void onImGui() {}
 
         virtual void onResize(uint32_t width, uint32_t height) {}
+
+    protected:
+        ServicesPtr getServices() { return m_ServiceCache; }
+
+    private:
+        friend class RenderSystem;
+        void setupServices(Services services) { m_ServiceCache = &services; }
+
+    protected:
+        ServicesPtr m_ServiceCache {nullptr};
     };
 
     class FeatureRenderer : public Renderer
     {
     public:
+        ~FeatureRenderer()
+        {
+            for (auto& f : m_Features)
+                f.reset();
+        }
+
         template<class T, class... Args>
         T& emplaceFeature(Args&&... args)
         {

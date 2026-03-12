@@ -13,7 +13,7 @@ namespace vultra
 
     struct RenderView
     {
-        const RenderWorld* renderWorld {nullptr};
+        const RenderWorld*  renderWorld {nullptr};
         const RenderCamera* camera {nullptr};
 
         rhi::Texture* target {nullptr};
@@ -21,6 +21,5 @@ namespace vultra
         glm::vec4     clearValue {0, 0, 0, 1};
 
         resource::GpuScene* gpuScene {nullptr};
-        rhi::UniformBuffer* cameraUniformBuffer {nullptr};
     };
 } // namespace vultra
