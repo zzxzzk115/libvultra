@@ -13,6 +13,12 @@ TransformComponent/position = (1, 0, 0)   # override
 
 [node id=3 name="DamagedHelmet" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0cba"]
 NameComponent/name = "DamagedHelmet"
-TransformComponent/position = (0, 0, 0)
+TransformComponent/position = (-1, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+MeshComponent/mesh = "206733c1f880193cbd1dd2b65e0d0cbd"
+
+[node id=4 name="DamagedHelmet1" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0cbe"]
+NameComponent/name = "DamagedHelmet"
+TransformComponent/position = (1, 0, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 MeshComponent/mesh = "206733c1f880193cbd1dd2b65e0d0cbd"

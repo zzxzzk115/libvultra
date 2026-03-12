@@ -131,148 +131,6 @@ private:
     rhi::GraphicsPipeline m_GraphicsPipeline;
 };
 
-class BaseColorRenderer : public Renderer
-{
-public:
-    virtual std::string_view name() const override { return "base_color"; }
-
-    virtual void init() override
-    {
-        auto& rd        = getServices()->require<IRenderBackendService>().renderDevice();
-        auto& swapchain = getServices()->require<IRenderBackendService>().swapchain();
-
-        // Retrieve the shader from the built-in shader library.
-        auto shaderLib         = getServices()->require<IShaderService>().builtinLibrary();
-        auto vertexVariantHash = shaderLib.computeVariantHash("mesh.vert",
-                                                              vshadersystem::ShaderStage::eVert,
-                                                              {
-                                                                  {"VTX_HAS_NORMAL", 1},
-                                                                  {"VTX_HAS_COLOR", 0},
-                                                                  {"VTX_HAS_UV0", 1},
-                                                                  {"VTX_HAS_UV1", 0},
-                                                                  {"VTX_HAS_TANGENT", 1},
-                                                              });
-        auto vertexShader      = shaderLib.load(vertexVariantHash, vshadersystem::ShaderStage::eVert);
-
-        auto fragmentVariantHash =
-            shaderLib.computeVariantHash("base.frag", vshadersystem::ShaderStage::eFrag, {{"VTX_HAS_UV0", 1}});
-        auto fragmentShader = shaderLib.load(fragmentVariantHash, vshadersystem::ShaderStage::eFrag);
-
-        // Create graphics pipeline
-        m_GraphicsPipeline =
-            rhi::GraphicsPipeline::Builder {}
-                .setColorFormats({swapchain.getPixelFormat()})
-                .setDepthFormat(rhi::PixelFormat::eDepth32F)
-                .setDepthStencil({
-                    .depthTest  = true,
-                    .depthWrite = true,
-                })
-                .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
-                .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
-                .setRasterizer({.polygonMode = rhi::PolygonMode::eFill, .cullMode = rhi::CullMode::eNone})
-                .setBlending(0, {.enabled = false})
-                .build(rd);
-
-        m_DepthTexture =
-            rd.createTexture2D(swapchain.getExtent(), rhi::PixelFormat::eDepth32F, 1, 1, rhi::ImageUsage::eTransfer);
-    }
-
-    virtual void render(ImmediateRenderContext& ctx) override
-    {
-        auto& backBuffer = *ctx.view().target;
-        rhi::prepareForAttachment(ctx.cb, backBuffer, false);
-
-        rhi::FramebufferInfo fbInfo {};
-        fbInfo.area             = {.offset = {0, 0}, .extent = ctx.view().extent};
-        fbInfo.colorAttachments = {
-            rhi::AttachmentInfo {.target = &backBuffer, .clearValue = glm::vec4(0.1f, 0.1f, 0.1f, 1.0f)},
-        };
-
-        fbInfo.depthAttachment = rhi::AttachmentInfo {
-            .target     = &m_DepthTexture,
-            .clearValue = 1.0f,
-        };
-
-        const auto& renderWorld = *ctx.view().renderWorld;
-
-        // Normal example CPU-Driven rendering flow would be:
-        for (const auto& inst : renderWorld.instances)
-        {
-            const auto& mesh = renderWorld.gpuSceneDatabase->resources->meshes[inst.meshIndex];
-            const auto& mat  = renderWorld.gpuSceneDatabase->resources->materials[mesh.materialOffset];
-        }
-
-        // GPU-Driven rendering flow would consume renderWorld.gpuScene->draws + indirectCommands with minimal CPU
-        // overhead. Issue indirect draw call.
-        ctx.cb.beginRendering(fbInfo).bindPipeline(m_GraphicsPipeline);
-
-        ctx.resourceSet[0] = {
-            // {0, rhi::bindings::UniformBuffer {.buffer = ctx.view.cameraUniformBuffer}},
-            {1, rhi::bindings::StorageBuffer {.buffer = renderWorld.gpuSceneView->drawBuffer.get()}},
-            {2,
-             rhi::bindings::StorageBuffer {.buffer =
-                                               renderWorld.gpuSceneDatabase->resources->materialTableBuffer.get()}},
-            {3,
-             rhi::bindings::StorageBuffer {.buffer =
-                                               renderWorld.gpuSceneDatabase->resources->materialParams.gpu.get()}},
-        };
-        ctx.resourceSet[3] = {
-            {4,
-             rhi::bindings::CombinedImageSamplerArray {
-                 .textures    = renderWorld.gpuSceneDatabase->resources->getBindlessTextureHandles(),
-                 .imageAspect = rhi::ImageAspect::eColor,
-             }},
-        };
-
-        ctx.bindDescriptorSets(m_GraphicsPipeline);
-
-        ctx.cb
-            .drawIndirect(rhi::DrawIndirectInfo {
-                .buffer       = &renderWorld.gpuSceneView->indirectBuffer.value(),
-                .firstCommand = 0,
-                .commandCount = static_cast<uint32_t>(renderWorld.gpuSceneView->indirectCommands.size()),
-                .gi =
-                    rhi::GeometryInfo {
-                        .indexBuffer = &renderWorld.gpuSceneDatabase->resources->geometry.index32,
-                        .numIndices  = renderWorld.gpuSceneDatabase->resources->geometry.indexCountUsed,
-                    },
-            })
-            .endRendering();
-
-        rhi::prepareForPresent(ctx.cb, backBuffer);
-    }
-
-    void onImGui() override
-    {
-        ImGui::Begin("Base Color Renderer");
-        ImGui::Text("This renderer demonstrates using built-in shaders and GPU-driven rendering flow.");
-
-#ifdef VULTRA_ENABLE_RENDERDOC
-        ImGui::Button("Capture One Frame");
-        if (ImGui::IsItemClicked())
-        {
-            m_ServiceCache->require<IFrameDebuggerService>().captureSingleFrame();
-        }
-#endif
-
-        ImGui::End();
-
-        ImGui::ShowDemoWindow();
-    }
-
-    void onResize(uint32_t width, uint32_t height) override
-    {
-        auto& rd = m_ServiceCache->require<IRenderBackendService>().renderDevice();
-
-        m_DepthTexture =
-            rd.createTexture2D({width, height}, rhi::PixelFormat::eDepth32F, 1, 1, rhi::ImageUsage::eTransfer);
-    }
-
-private:
-    rhi::GraphicsPipeline m_GraphicsPipeline;
-    rhi::Texture          m_DepthTexture;
-};
-
 class DemoAppHost : public AppHost
 {
 protected:
@@ -285,12 +143,10 @@ protected:
         engine.emplaceSubsystem<InputSystem>();
 
         auto triangleRenderer  = createRef<TriangleRenderer>();
-        auto baseColorRenderer = createRef<BaseColorRenderer>();
         auto universalRenderer = createRef<UniversalRenderer>();
 
         auto& camSystem = engine.emplaceSubsystem<CameraSystem>();
         // camSystem.addManualCamera({.rendererKey = triangleRenderer->name().data()});
-        // camSystem.addManualCamera({.rendererKey = baseColorRenderer->name().data()});
         auto& cam      = camSystem.addManualCamera({.rendererKey = universalRenderer->name().data()});
         cam.view       = glm::lookAt(glm::vec3(0, 0, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
         cam.projection = glm::perspective(glm::radians(45.0f),
@@ -308,7 +164,6 @@ protected:
 
         auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
         renderSystem.registerRenderer(triangleRenderer);
-        renderSystem.registerRenderer(baseColorRenderer);
         renderSystem.registerRenderer(universalRenderer);
 
         engine.emplaceSubsystem<GpuResourceSystem>();
