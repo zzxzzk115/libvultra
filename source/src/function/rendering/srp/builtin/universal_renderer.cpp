@@ -2,6 +2,9 @@
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/test_feature.hpp"
+#ifdef VULTRA_ENABLE_RENDERDOC
+#include "vultra/function/services/frame_debugger_service.hpp"
+#endif
 
 #include <imgui.h>
 
