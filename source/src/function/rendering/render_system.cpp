@@ -184,30 +184,41 @@ namespace vultra
             const auto& pool = gpuResourceService.pool();
 
             m_GpuSceneDatabaseBack.beginFrame(pool);
+            m_GpuSceneDatabaseBack.rebuildMeshTableFromResources();
 
-            // Current renderer still emits one draw per cooked render instance.
-            // The important refactor is structural: instance data lives in the
-            // database layer, while draw/indirect state lives in the view layer.
+            // Keep CPU staging mirrors even though the current render path is still
+            // CPU-driven. The upcoming GPU-driven cluster pipeline will consume the
+            // same scene database buffers directly.
             for (const auto& inst : m_RenderWorldBack.instances)
             {
+                const uint32_t transformIndex = m_GpuSceneDatabaseBack.pushTransform(inst.worldMatrix);
+
                 resource::GpuInstance gpuInst {};
                 gpuInst.meshIndex      = inst.meshIndex;
                 gpuInst.materialIndex  = inst.materialIndex;
-                gpuInst.transformIndex = 0;
+                gpuInst.transformIndex = transformIndex;
                 gpuInst.flags          = 0;
                 m_GpuSceneDatabaseBack.pushInstance(gpuInst);
             }
-            m_GpuSceneDatabaseBack.uploadInstances(rd);
+            m_GpuSceneDatabaseBack.uploadSceneTables(rd);
 
-            m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack);
+            m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack, resource::GpuSceneBuildMode::eCpuDriven);
+            m_GpuSceneViewBack.setGpuDrivenCaps(static_cast<uint32_t>(pool.meshlets.cpuMeshlets.size()),
+                                                static_cast<uint32_t>(pool.meshlets.cpuMeshlets.size()));
+            m_GpuSceneViewBack.ensureVisibleMeshletBuffers(rd);
 
             std::vector<resource::GpuDrawRecord> stagedDraws;
-            for (const auto& inst : m_RenderWorldBack.instances)
+            for (uint32_t instanceIndex = 0; instanceIndex < static_cast<uint32_t>(m_RenderWorldBack.instances.size());
+                 ++instanceIndex)
             {
+                const auto& inst = m_RenderWorldBack.instances[instanceIndex];
                 if (inst.meshIndex >= pool.meshes.size())
                     continue;
+                if (instanceIndex >= m_GpuSceneDatabaseBack.instances.size())
+                    continue;
 
-                const auto& mesh = pool.meshes[inst.meshIndex];
+                const auto& gpuInst = m_GpuSceneDatabaseBack.instances[instanceIndex];
+                const auto& mesh    = pool.meshes[inst.meshIndex];
                 if (mesh.meshletCount == 0)
                     continue;
 
@@ -225,7 +236,7 @@ namespace vultra
                     dr.vertexStrideBytes = mesh.vertexStrideBytes;
                     dr.flags             = 0;
                     dr.vertexAddress     = pool.geometry.vertexBytesAddress;
-                    dr.transformIndex    = 0;
+                    dr.transformIndex    = gpuInst.transformIndex;
                     dr.padding0          = 0;
                     dr.model             = inst.worldMatrix;
                     stagedDraws.push_back(dr);

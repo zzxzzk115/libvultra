@@ -77,10 +77,13 @@ namespace vultra
 
                 if (!renderWorld || !gpuSceneDatabase || !gpuSceneView || !cameraUbo)
                     return;
-                if (!gpuSceneView->drawBuffer || !gpuSceneDatabase->resources || !gpuSceneDatabase->resources->materialTableBuffer ||
-                    !gpuSceneDatabase->resources->materialParams.gpu || !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
+                if (!gpuSceneView->drawBuffer || !gpuSceneDatabase->resources ||
+                    !gpuSceneDatabase->resources->materialTableBuffer ||
+                    !gpuSceneDatabase->resources->materialParams.gpu ||
+                    !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
                     !gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer ||
-                    !gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer || !gpuSceneView->indirectBuffer.has_value())
+                    !gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer ||
+                    !gpuSceneView->indirectBuffer.has_value())
                     return;
 
                 assert(rc.framebufferInfo().has_value());
@@ -96,9 +99,15 @@ namespace vultra
                     {2,
                      rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
                     {3, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
-                    {4, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
-                    {5, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer.get()}},
-                    {6, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer.get()}},
+                    {4,
+                     rhi::bindings::StorageBuffer {.buffer =
+                                                       gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
+                    {5,
+                     rhi::bindings::StorageBuffer {
+                         .buffer = gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer.get()}},
+                    {6,
+                     rhi::bindings::StorageBuffer {
+                         .buffer = gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer.get()}},
                 };
 
                 rc.resourceSet[3] = {
@@ -115,7 +124,7 @@ namespace vultra
                     .drawIndirect(rhi::DrawIndirectInfo {
                         .buffer       = &gpuSceneView->indirectBuffer.value(),
                         .firstCommand = 0,
-                        .commandCount = static_cast<uint32_t>(gpuSceneView->indirectCommands.size()),
+                        .commandCount = gpuSceneView->getDispatchableDrawCount(),
                         .gi =
                             rhi::GeometryInfo {
                                 .numVertices = 3,

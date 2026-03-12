@@ -8,6 +8,12 @@ namespace vultra::resource
 {
     // Meshlet-first per-draw record.
     // One indirect draw == one visible meshlet.
+    //
+    // Notes:
+    // - transformIndex is the canonical path for the future GPU-driven compute
+    //   build-indirect pipeline.
+    // - model is intentionally retained for the existing CPU-driven path and
+    //   for debugging/inspection while both pipelines coexist.
     struct GpuDrawRecord
     {
         uint32_t meshletIndex {0};
