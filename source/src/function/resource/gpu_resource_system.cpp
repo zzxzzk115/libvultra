@@ -4,6 +4,7 @@
 #include "vultra/core/engine/engine_context.hpp"
 
 #include <limits>
+#include <vector>
 
 namespace vultra
 {
@@ -81,12 +82,25 @@ namespace vultra
 
             if (desc.meshletCount > 0 && desc.meshletData)
             {
-                mesh.meshletOffset = m_Pool.meshlets.appendMeshlets(rd, desc.meshletData, desc.meshletCount);
+                const uint32_t globalMeshletVertexBase =
+                    (desc.meshletVertexCount > 0 && desc.meshletVertexData)
+                        ? m_Pool.meshlets.appendMeshletVertices(rd, desc.meshletVertexData, desc.meshletVertexCount)
+                        : static_cast<uint32_t>(m_Pool.meshlets.cpuMeshletVertices.size());
+
+                const uint32_t globalMeshletTriangleBase =
+                    (desc.meshletTriangleCount > 0 && desc.meshletTriangleData)
+                        ? m_Pool.meshlets.appendMeshletTriangles(rd, desc.meshletTriangleData, desc.meshletTriangleCount)
+                        : static_cast<uint32_t>(m_Pool.meshlets.cpuMeshletTriangles.size());
+
+                std::vector<resource::GpuMeshlet> rebasedMeshlets(desc.meshletData, desc.meshletData + desc.meshletCount);
+                for (auto& meshlet : rebasedMeshlets)
+                {
+                    meshlet.vertexOffset += globalMeshletVertexBase;
+                    meshlet.triangleOffset += globalMeshletTriangleBase;
+                }
+
+                mesh.meshletOffset = m_Pool.meshlets.appendMeshlets(rd, rebasedMeshlets.data(), desc.meshletCount);
                 mesh.meshletCount  = desc.meshletCount;
-                if (desc.meshletVertexCount > 0 && desc.meshletVertexData)
-                    m_Pool.meshlets.appendMeshletVertices(rd, desc.meshletVertexData, desc.meshletVertexCount);
-                if (desc.meshletTriangleCount > 0 && desc.meshletTriangleData)
-                    m_Pool.meshlets.appendMeshletTriangles(rd, desc.meshletTriangleData, desc.meshletTriangleCount);
             }
         }
 
