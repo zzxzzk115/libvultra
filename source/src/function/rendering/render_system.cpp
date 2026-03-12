@@ -201,28 +201,48 @@ namespace vultra
 
             m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack);
 
+            std::vector<resource::GpuDrawRecord> stagedDraws;
             for (const auto& inst : m_RenderWorldBack.instances)
             {
                 if (inst.meshIndex >= pool.meshes.size())
                     continue;
 
                 const auto& mesh = pool.meshes[inst.meshIndex];
+                if (mesh.meshletCount == 0)
+                    continue;
 
-                resource::GpuDrawRecord dr;
-                dr.vertexAddress = mesh.vertexBufferAddress;
-                dr.indexAddress  = pool.geometry.index32Address;
-                dr.model         = inst.worldMatrix;
-                dr.materialIndex = inst.materialIndex;
-                dr.firstIndex    = mesh.indexBase;
-                dr.indexCount    = mesh.indexCount;
-                dr.flags         = 0;
-                dr.padding0      = 0;
+                for (uint32_t localMeshlet = 0; localMeshlet < mesh.meshletCount; ++localMeshlet)
+                {
+                    const uint32_t globalMeshletIndex = mesh.meshletOffset + localMeshlet;
+                    if (globalMeshletIndex >= pool.meshlets.cpuMeshlets.size())
+                        continue;
 
-                m_GpuSceneViewBack.pushDraw(dr);
+                    const auto& meshlet = pool.meshlets.cpuMeshlets[globalMeshletIndex];
+
+                    resource::GpuDrawRecord dr;
+                    dr.meshletIndex      = globalMeshletIndex;
+                    dr.materialIndex     = meshlet.materialIndex;
+                    dr.vertexStrideBytes = mesh.vertexStrideBytes;
+                    dr.flags             = 0;
+                    dr.vertexAddress     = pool.geometry.vertexBytesAddress;
+                    dr.transformIndex    = 0;
+                    dr.padding0          = 0;
+                    dr.model             = inst.worldMatrix;
+                    stagedDraws.push_back(dr);
+                }
             }
 
+            std::stable_sort(stagedDraws.begin(), stagedDraws.end(), [](const auto& a, const auto& b) {
+                if (a.materialIndex != b.materialIndex)
+                    return a.materialIndex < b.materialIndex;
+                return a.meshletIndex < b.meshletIndex;
+            });
+
+            for (const auto& dr : stagedDraws)
+                m_GpuSceneViewBack.pushDraw(dr);
+
             m_GpuSceneViewBack.uploadDraws(rd);
-            m_GpuSceneViewBack.buildIndirectIndexedFromDraws();
+            m_GpuSceneViewBack.buildIndirectFromDraws(pool);
             m_GpuSceneViewBack.uploadIndirect(rd);
 
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;

@@ -77,6 +77,11 @@ namespace vultra
 
                 if (!renderWorld || !gpuSceneDatabase || !gpuSceneView || !cameraUbo)
                     return;
+                if (!gpuSceneView->drawBuffer || !gpuSceneDatabase->resources || !gpuSceneDatabase->resources->materialTableBuffer ||
+                    !gpuSceneDatabase->resources->materialParams.gpu || !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
+                    !gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer ||
+                    !gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer || !gpuSceneView->indirectBuffer.has_value())
+                    return;
 
                 assert(rc.framebufferInfo().has_value());
                 const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
@@ -91,6 +96,9 @@ namespace vultra
                     {2,
                      rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
                     {3, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
+                    {4, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
+                    {5, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer.get()}},
+                    {6, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer.get()}},
                 };
 
                 rc.resourceSet[3] = {
@@ -110,8 +118,7 @@ namespace vultra
                         .commandCount = static_cast<uint32_t>(gpuSceneView->indirectCommands.size()),
                         .gi =
                             rhi::GeometryInfo {
-                                .indexBuffer = &gpuSceneDatabase->resources->geometry.index32,
-                                .numIndices  = gpuSceneDatabase->resources->geometry.indexCountUsed,
+                                .numVertices = 3,
                             },
                     })
                     .endRendering();

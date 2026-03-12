@@ -49,48 +49,47 @@ layout(location = 8) out vec4 v_Debug;
 
 void main()
 {
-    DrawRecord d = s_Draws.draws[gl_InstanceIndex];
+    uint drawId = gl_InstanceIndex;
+    DrawRecord d = s_Draws.draws[drawId];
+    Meshlet meshlet = s_Meshlets.meshlets[d.meshletIndex];
 
-    v_Debug = d.model[1]; // Debug: visualize model matrix first column
+    uint packedTriVertex = uint(gl_VertexIndex);
+    uint triIndex = packedTriVertex / 3u;
+    uint corner = packedTriVertex % 3u;
+    uint triDataIndex = meshlet.triangleOffset + triIndex * 3u + corner;
+    uint localVertex = load_meshlet_triangle_index(triDataIndex);
+    uint globalVertex = s_MeshletVertices.meshletVertices[meshlet.vertexOffset + localVertex];
 
     VertexBuffer vb = VertexBuffer(d.vertexAddress);
-
-    // Indexed, gl_VertexIndex is the final vertex index that we want to pull.
-    Vertex v   = vb.vertices[gl_VertexIndex];
+    Vertex v = vb.vertices[globalVertex];
 
 #if VTX_HAS_COLOR
-    v_Color    = v.color;
+    v_Color = v.color;
 #endif
-
 #if VTX_HAS_UV0
     v_TexCoord0 = v.texCoord0;
 #endif
-
 #if VTX_HAS_UV1
-	v_TexCoord1 = v.texCoord1;
+    v_TexCoord1 = v.texCoord1;
 #endif
 
     vec4 worldPos4 = d.model * vec4(v.position, 1.0);
-    v_FragPos      = worldPos4.xyz;
+    v_FragPos = worldPos4.xyz;
 
-    // Legacy-compatible normal matrix
     mat3 normalMatrix = transpose(inverse(mat3(d.model)));
-
 #if VTX_HAS_TANGENT && VTX_HAS_NORMAL
     vec3 T = normalize(normalMatrix * v.tangent.xyz);
     vec3 N = normalize(normalMatrix * v.normal);
 
     // Gram-Schmidt orthogonalize
     T = normalize(T - dot(T, N) * N);
-
     vec3 B = cross(N, T) * v.tangent.w;
-
     v_TBN = mat3(T, B, N);
 #elif VTX_HAS_NORMAL
     v_Normal = normalize(normalMatrix * v.normal);
 #endif
 
     v_MaterialIndex = d.materialIndex;
-
+    v_Debug = vec4(float(localVertex) / max(1.0, float(meshlet.vertexCount)), 0.0, 0.0, 1.0);
     gl_Position = u_Camera.viewProjection * vec4(v_FragPos, 1.0);
 }

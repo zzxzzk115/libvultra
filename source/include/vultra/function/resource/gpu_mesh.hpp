@@ -4,41 +4,58 @@
 #include "vultra/core/rhi/vertex_attributes.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
+#include <glm/glm.hpp>
+
 #include <cstdint>
 
 namespace vultra::resource
 {
+    struct alignas(16) GpuMeshlet
+    {
+        uint32_t vertexOffset {0};
+        uint32_t vertexCount {0};
+        uint32_t triangleOffset {0};
+        uint32_t triangleCount {0};
+
+        uint32_t materialIndex {0};
+        uint32_t paddingU0 {0};
+        uint32_t paddingU1 {0};
+        uint32_t paddingU2 {0};
+
+        glm::vec3 center {0.0f};
+        float     radius {0.0f};
+
+        glm::vec3 coneAxis {0.0f};
+        float     coneCutoff {0.0f};
+
+        glm::vec3 coneApex {0.0f};
+        float     paddingF0 {0.0f};
+    };
+    static_assert(sizeof(GpuMeshlet) % 16 == 0, "GpuMeshlet must be 16-byte aligned");
+
     // GPU-only mesh representation. No CPU-side VMesh / SubMesh is stored here.
-    // This is intentionally renderer-agnostic and will later evolve into GPU-driven
-    // draw-indirect / meshlet dispatch buffers.
     struct GpuMesh
     {
-        // Vertex layout (single source of truth for both CPU & GPU driven paths)
         rhi::VertexAttributes vertexAttributes;
         uint32_t              vertexStrideBytes {0};
 
-        // CPU-driven buffers (optional)
         rhi::VertexBuffer vertexBuffer;
         rhi::IndexBuffer  indexBuffer;
 
-        // Buffer device addresses for GPU-driven vertex pulling.
-        // Filled by AssetSystem at upload time using rhi::RenderDevice.
         uint64_t vertexBufferAddress {0};
         uint64_t indexBufferAddress {0};
 
-        // Range in the global geometry index buffer (GpuResourcePool::geometry).
-        // Used by indexed multi-draw indirect.
-        uint32_t indexBase {0}; // firstIndex
-
-        // Range in the global vertex byte buffer (GpuResourcePool::geometry).
-        // Used by vertex pulling.
+        uint32_t indexBase {0};
         uint32_t vertexByteOffset {0};
 
         uint32_t vertexCount {0};
         uint32_t indexCount {0};
 
-        // Offset/count into the global material table (GpuResourcePool).
         uint32_t materialOffset {0};
         uint32_t materialCount {0};
+
+        // Global meshlet-table range inside GpuResourcePool::meshlets.
+        uint32_t meshletOffset {0};
+        uint32_t meshletCount {0};
     };
 } // namespace vultra::resource

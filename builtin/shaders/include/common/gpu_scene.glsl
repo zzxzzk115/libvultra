@@ -44,18 +44,24 @@
 #define VULTRA_MATERIAL_PARAMS_BINDING 3
 #endif
 
-// --------------------------------------------------------------------------
-// Camera
-// --------------------------------------------------------------------------
+#ifndef VULTRA_MESHLET_BINDING
+#define VULTRA_MESHLET_BINDING 4
+#endif
+
+#ifndef VULTRA_MESHLET_VERTEX_BINDING
+#define VULTRA_MESHLET_VERTEX_BINDING 5
+#endif
+
+#ifndef VULTRA_MESHLET_TRIANGLE_BINDING
+#define VULTRA_MESHLET_TRIANGLE_BINDING 6
+#endif
 
 layout(set = VULTRA_SCENE_SET, binding = VULTRA_CAMERA_BINDING) uniform Camera
 {
     mat4 projection;
     mat4 inverseProjection;
-
     mat4 view;
     mat4 inverseView;
-
     mat4 viewProjection;
     mat4 inverseViewProjection;
 
@@ -65,7 +71,6 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_CAMERA_BINDING) uniform Camera
     float zFar;
     float fovY;
     float _padding;
-
     vec4 frustumPlanes[6];
 } u_Camera;
 
@@ -77,34 +82,50 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_CAMERA_BINDING) uniform Camera
 // Keep host-side struct layout identical.
 struct DrawRecord
 {
-    uint64_t vertexAddress;   // VkDeviceAddress of VertexBuffer
-    uint64_t indexAddress;    // VkDeviceAddress of IndexBuffer
-
-    uint vertexByteOffset;
+    uint meshletIndex;
+    uint materialIndex;
     uint vertexStrideBytes;
-
-    uint materialIndex;       // index into MaterialTable
-    uint vertexCount;
-
-    uint firstIndex;
-    uint indexCount;
-
     uint flags;
+    uint64_t vertexAddress;
+    uint transformIndex;
     uint padding0;
-
-    // Per-draw transform
     mat4 model;
 };
-
 layout(set = VULTRA_SCENE_SET, binding = VULTRA_DRAW_BINDING, std430) readonly buffer DrawBuffer
 {
     DrawRecord draws[];
 } s_Draws;
-// --------------------------------------------------------------------------
-// Material table + parameter pool
-// --------------------------------------------------------------------------
 
-// Keep enum values aligned with vultra::resource::GpuMaterialModel.
+struct Meshlet
+{
+    uint vertexOffset;
+    uint vertexCount;
+    uint triangleOffset;
+    uint triangleCount;
+    uint materialIndex;
+    uint paddingU0;
+    uint paddingU1;
+    uint paddingU2;
+    vec3 center;
+    float radius;
+    vec3 coneAxis;
+    float coneCutoff;
+    vec3 coneApex;
+    float paddingF0;
+};
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_MESHLET_BINDING, std430) readonly buffer MeshletBuffer
+{
+    Meshlet meshlets[];
+} s_Meshlets;
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_MESHLET_VERTEX_BINDING, std430) readonly buffer MeshletVertexBuffer
+{
+    uint meshletVertices[];
+} s_MeshletVertices;
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_MESHLET_TRIANGLE_BINDING, std430) readonly buffer MeshletTriangleBuffer
+{
+    uint meshletTriangles[];
+} s_MeshletTriangles;
+
 #define VULTRA_MAT_INVALID 0u
 #define VULTRA_MAT_PBRMR   1u
 #define VULTRA_MAT_PBRSG   2u
@@ -129,30 +150,24 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_MATERIAL_PARAMS_BINDING, std430)
     uint words[]; // byte-addressed via 32-bit words
 } s_MaterialParams;
 
-// --------------------------------------------------------------------------
-// Byte-address load helpers for parameter pool
-// --------------------------------------------------------------------------
-
-float _load_f32(uint w)
+uint load_meshlet_triangle_index(uint triIndex)
 {
-    return uintBitsToFloat(w);
+    return s_MeshletTriangles.meshletTriangles[triIndex];
 }
 
+float _load_f32(uint w) { return uintBitsToFloat(w); }
 uint _load_u32(uint baseByteOffset, uint byteOffset)
 {
     uint addr = (baseByteOffset + byteOffset) >> 2u;
     return s_MaterialParams.words[addr];
 }
-
 float _load_f32_bytes(uint baseByteOffset, uint byteOffset)
 {
     return uintBitsToFloat(_load_u32(baseByteOffset, byteOffset));
 }
-
 vec4 load_vec4_bytes(uint baseByteOffset, uint byteOffset)
 {
     uint addr = (baseByteOffset + byteOffset) >> 2u;
-
     return vec4(
         uintBitsToFloat(s_MaterialParams.words[addr + 0u]),
         uintBitsToFloat(s_MaterialParams.words[addr + 1u]),
@@ -168,45 +183,34 @@ vec4 load_vec4_bytes(uint baseByteOffset, uint byteOffset)
 struct MaterialParamsPBRMR
 {
     vec4 baseColor;
-
     float metallicFactor;
     float roughnessFactor;
-
     uint baseColorTex;
     uint normalTex;
     uint mrTex;
     uint occlusionTex;
     uint emissiveTex;
-
     uint pad0;
     uint pad1;
 };
-
 struct MaterialParamsPBRSG
 {
     vec4 diffuseColor;
-
     vec3 specularFactor;
     float glossinessFactor;
-
     uint diffuseColorTex;
     uint specularGlossinessTex;
-
     uint pad0;
     uint pad1;
 };
-
 struct MaterialParamsUnlit
 {
     vec4 color;
-
     uint colorTex;
-
     uint pad0;
     uint pad1;
     uint pad2;
 };
-
 struct MaterialParamsPhong
 {
     vec4 diffuse;
@@ -214,7 +218,6 @@ struct MaterialParamsPhong
     vec4 specularShininess; // xyz = specular, w = shininess
 
     uint diffuseTex;
-
     uint pad0;
     uint pad1;
     uint pad2;

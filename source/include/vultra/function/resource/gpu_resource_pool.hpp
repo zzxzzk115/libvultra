@@ -173,6 +173,110 @@ namespace vultra::resource
             }
         } geometry;
 
+        struct MeshletBuffers
+        {
+            Ref<rhi::StorageBuffer> meshletsBuffer {nullptr};
+            uint64_t                meshletsAddress {0};
+            std::vector<GpuMeshlet> cpuMeshlets;
+
+            Ref<rhi::StorageBuffer> meshletVerticesBuffer {nullptr};
+            uint64_t                meshletVerticesAddress {0};
+            std::vector<uint32_t>   cpuMeshletVertices;
+
+            Ref<rhi::StorageBuffer> meshletTrianglesBuffer {nullptr};
+            uint64_t                meshletTrianglesAddress {0};
+            std::vector<uint32_t>   cpuMeshletTriangles;
+
+            void reset()
+            {
+                meshletsBuffer = nullptr;
+                meshletsAddress = 0;
+                cpuMeshlets.clear();
+                meshletVerticesBuffer = nullptr;
+                meshletVerticesAddress = 0;
+                cpuMeshletVertices.clear();
+                meshletTrianglesBuffer = nullptr;
+                meshletTrianglesAddress = 0;
+                cpuMeshletTriangles.clear();
+            }
+
+            uint32_t appendMeshlets(rhi::RenderDevice& rd, const GpuMeshlet* data, uint32_t count)
+            {
+                if (!data || count == 0)
+                    return static_cast<uint32_t>(cpuMeshlets.size());
+
+                const uint32_t base = static_cast<uint32_t>(cpuMeshlets.size());
+                cpuMeshlets.insert(cpuMeshlets.end(), data, data + count);
+                const uint64_t requiredBytes = static_cast<uint64_t>(cpuMeshlets.size() * sizeof(GpuMeshlet));
+                bool grew = false;
+                if (!meshletsBuffer || static_cast<uint64_t>(meshletsBuffer->getSize()) < requiredBytes)
+                {
+                    uint64_t oldCap = meshletsBuffer ? static_cast<uint64_t>(meshletsBuffer->getSize()) : 0;
+                    uint64_t newCap = oldCap == 0 ? 64ull * 1024ull : oldCap * 2ull;
+                    if (newCap < requiredBytes)
+                        newCap = requiredBytes;
+                    meshletsBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(newCap));
+                    meshletsAddress = rd.getBufferDeviceAddress(*meshletsBuffer);
+                    grew = true;
+                }
+                if (grew)
+                    rd.uploadS(*meshletsBuffer, 0, requiredBytes, cpuMeshlets.data());
+                else
+                    rd.uploadS(*meshletsBuffer, static_cast<uint64_t>(base) * sizeof(GpuMeshlet), static_cast<uint64_t>(count) * sizeof(GpuMeshlet), data);
+                return base;
+            }
+
+            uint32_t appendMeshletVertices(rhi::RenderDevice& rd, const uint32_t* data, uint32_t count)
+            {
+                if (!data || count == 0)
+                    return static_cast<uint32_t>(cpuMeshletVertices.size());
+                const uint32_t base = static_cast<uint32_t>(cpuMeshletVertices.size());
+                cpuMeshletVertices.insert(cpuMeshletVertices.end(), data, data + count);
+                const uint64_t requiredBytes = static_cast<uint64_t>(cpuMeshletVertices.size() * sizeof(uint32_t));
+                bool grew = false;
+                if (!meshletVerticesBuffer || static_cast<uint64_t>(meshletVerticesBuffer->getSize()) < requiredBytes)
+                {
+                    uint64_t oldCap = meshletVerticesBuffer ? static_cast<uint64_t>(meshletVerticesBuffer->getSize()) : 0;
+                    uint64_t newCap = oldCap == 0 ? 64ull * 1024ull : oldCap * 2ull;
+                    if (newCap < requiredBytes)
+                        newCap = requiredBytes;
+                    meshletVerticesBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(newCap));
+                    meshletVerticesAddress = rd.getBufferDeviceAddress(*meshletVerticesBuffer);
+                    grew = true;
+                }
+                if (grew)
+                    rd.uploadS(*meshletVerticesBuffer, 0, requiredBytes, cpuMeshletVertices.data());
+                else
+                    rd.uploadS(*meshletVerticesBuffer, static_cast<uint64_t>(base) * sizeof(uint32_t), static_cast<uint64_t>(count) * sizeof(uint32_t), data);
+                return base;
+            }
+
+            uint32_t appendMeshletTriangles(rhi::RenderDevice& rd, const uint32_t* data, uint32_t count)
+            {
+                if (!data || count == 0)
+                    return static_cast<uint32_t>(cpuMeshletTriangles.size());
+                const uint32_t base = static_cast<uint32_t>(cpuMeshletTriangles.size());
+                cpuMeshletTriangles.insert(cpuMeshletTriangles.end(), data, data + count);
+                const uint64_t requiredBytes = static_cast<uint64_t>(cpuMeshletTriangles.size() * sizeof(uint32_t));
+                bool grew = false;
+                if (!meshletTrianglesBuffer || static_cast<uint64_t>(meshletTrianglesBuffer->getSize()) < requiredBytes)
+                {
+                    uint64_t oldCap = meshletTrianglesBuffer ? static_cast<uint64_t>(meshletTrianglesBuffer->getSize()) : 0;
+                    uint64_t newCap = oldCap == 0 ? 64ull * 1024ull : oldCap * 2ull;
+                    if (newCap < requiredBytes)
+                        newCap = requiredBytes;
+                    meshletTrianglesBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(newCap));
+                    meshletTrianglesAddress = rd.getBufferDeviceAddress(*meshletTrianglesBuffer);
+                    grew = true;
+                }
+                if (grew)
+                    rd.uploadS(*meshletTrianglesBuffer, 0, requiredBytes, cpuMeshletTriangles.data());
+                else
+                    rd.uploadS(*meshletTrianglesBuffer, static_cast<uint64_t>(base) * sizeof(uint32_t), static_cast<uint64_t>(count) * sizeof(uint32_t), data);
+                return base;
+            }
+        } meshlets;
+
         // Global material parameter pool (GPU buffer + CPU mirror).
         // Materials store offsets into this buffer.
         MaterialBuffer materialParams;
@@ -260,6 +364,7 @@ namespace vultra::resource
         void clear()
         {
             geometry.reset();
+            meshlets.reset();
             textures.clear();
             materials.clear();
             meshes.clear();

@@ -36,6 +36,13 @@ namespace vultra
         uint32_t       indexCount {0};
         rhi::IndexType indexType {rhi::IndexType::eUInt32};
 
+        const resource::GpuMeshlet* meshletData {nullptr};
+        uint32_t                    meshletCount {0};
+        const uint32_t*             meshletVertexData {nullptr};
+        uint32_t                    meshletVertexCount {0};
+        const uint32_t*             meshletTriangleData {nullptr};
+        uint32_t                    meshletTriangleCount {0};
+
         GpuMeshUsageFlags usage {GpuMeshUsageFlags::eAll};
     };
 

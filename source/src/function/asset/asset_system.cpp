@@ -521,6 +521,49 @@ namespace vultra
             desc.indexType  = rhi::IndexType::eUInt32;
         }
 
+        std::vector<resource::GpuMeshlet> gpuMeshlets;
+        std::vector<uint32_t>             gpuMeshletVertices;
+        std::vector<uint32_t>             gpuMeshletTriangles;
+
+        const uint32_t baseVertex = strideBytes > 0 ? 0u : 0u;
+        for (const auto& subMesh : cpuMesh.subMeshes)
+        {
+            const uint32_t subVertexBase = subMesh.vertexOffset;
+            const uint32_t subMaterialIndex = materialOffset + subMesh.materialIndex;
+            const uint32_t meshletVertexBase = static_cast<uint32_t>(gpuMeshletVertices.size());
+            const uint32_t meshletTriBase    = static_cast<uint32_t>(gpuMeshletTriangles.size());
+
+            for (uint32_t v : subMesh.meshletGroup.meshletVertices)
+                gpuMeshletVertices.push_back(subVertexBase + v);
+            for (uint8_t tri : subMesh.meshletGroup.meshletTriangles)
+                gpuMeshletTriangles.push_back(static_cast<uint32_t>(tri));
+
+            for (const auto& ml : subMesh.meshletGroup.meshlets)
+            {
+                resource::GpuMeshlet gm {};
+                gm.vertexOffset  = meshletVertexBase + ml.vertexOffset;
+                gm.vertexCount   = ml.vertexCount;
+                gm.triangleOffset = meshletTriBase + ml.triangleOffset;
+                gm.triangleCount  = ml.triangleCount;
+                gm.materialIndex  = materialOffset + ml.materialIndex;
+                gm.center         = ml.center;
+                gm.radius         = ml.radius;
+                gm.coneAxis       = ml.coneAxis;
+                gm.coneCutoff     = ml.coneCutoff;
+                gm.coneApex       = ml.coneApex;
+                if (subMesh.meshletGroup.meshlets.empty())
+                    gm.materialIndex = subMaterialIndex;
+                gpuMeshlets.push_back(gm);
+            }
+        }
+
+        desc.meshletData          = gpuMeshlets.data();
+        desc.meshletCount         = static_cast<uint32_t>(gpuMeshlets.size());
+        desc.meshletVertexData    = gpuMeshletVertices.data();
+        desc.meshletVertexCount   = static_cast<uint32_t>(gpuMeshletVertices.size());
+        desc.meshletTriangleData  = gpuMeshletTriangles.data();
+        desc.meshletTriangleCount = static_cast<uint32_t>(gpuMeshletTriangles.size());
+
         // Asset meshes are generally useful in both CPU-driven and GPU-driven passes.
         desc.usage = GpuMeshUsageFlags::eAll;
 
@@ -528,9 +571,23 @@ namespace vultra
         if (meshIndex == std::numeric_limits<uint32_t>::max())
             return meshIndex;
 
-        // Fill material linkage
         pool.meshes[meshIndex].materialOffset = materialOffset;
         pool.meshes[meshIndex].materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
+
+        // Remap meshlet vertex indices from local mesh space to global packed-vertex space.
+        auto& gpuMesh = pool.meshes[meshIndex];
+        const uint32_t globalBaseVertex = gpuMesh.vertexStrideBytes > 0 ? (gpuMesh.vertexByteOffset / gpuMesh.vertexStrideBytes) : 0u;
+        for (uint32_t i = 0; i < gpuMesh.meshletCount; ++i)
+        {
+            auto& gm = pool.meshlets.cpuMeshlets[gpuMesh.meshletOffset + i];
+            for (uint32_t j = 0; j < gm.vertexCount; ++j)
+                pool.meshlets.cpuMeshletVertices[gm.vertexOffset + j] += globalBaseVertex;
+        }
+        if (pool.meshlets.meshletVerticesBuffer && !pool.meshlets.cpuMeshletVertices.empty())
+            m_RenderDevice->uploadS(*pool.meshlets.meshletVerticesBuffer,
+                                    0,
+                                    static_cast<uint64_t>(pool.meshlets.cpuMeshletVertices.size() * sizeof(uint32_t)),
+                                    pool.meshlets.cpuMeshletVertices.data());
 
         return meshIndex;
     }

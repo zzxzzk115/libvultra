@@ -6,35 +6,17 @@
 
 namespace vultra::resource
 {
-    // GPU-driven per-draw record.
-    //
-    // Consumed by GPU-driven shaders for vertex pulling and per-draw state lookup.
-    //
-    // Notes:
-    // - vertexAddress / indexAddress are buffer device addresses (uint64_t) produced by rhi::RenderDevice.
-    // - index buffer is uint32 indices.
-    // - For non-indexed indirect drawing, indexCount/firstIndex map to DrawIndirectCommand.count/first
-    //   and the vertex shader treats gl_VertexIndex as the index-buffer element index.
-    //
-    // Layout: std430 friendly (16-byte aligned).
+    // Meshlet-first per-draw record.
+    // One indirect draw == one visible meshlet.
     struct GpuDrawRecord
     {
-        uint64_t vertexAddress {0};
-        uint64_t indexAddress {0};
-
-        // Vertex pulling view into the global vertex byte buffer.
-        uint32_t vertexByteOffset {0};
-        uint32_t vertexStrideBytes {0};
-
+        uint32_t meshletIndex {0};
         uint32_t materialIndex {0};
-        // For non-indexed draws, vertexCount maps to DrawIndirectCommand.count.
-        uint32_t vertexCount {0};
-
-        // Index range in the index buffer (uint32 indices).
-        uint32_t firstIndex {0};
-        uint32_t indexCount {0};
-
+        uint32_t vertexStrideBytes {0};
         uint32_t flags {0};
+
+        uint64_t vertexAddress {0};
+        uint32_t transformIndex {0};
         uint32_t padding0 {0};
 
         glm::mat4 model {1.0f};

@@ -75,7 +75,7 @@ namespace vultra::resource
                 rd.uploadS(*drawBuffer, 0, static_cast<uint64_t>(drawBytes), draws.data());
         }
 
-        void buildIndirectIndexedFromDraws()
+        void buildIndirectFromDraws(const GpuResourcePool& pool)
         {
             indirectCommands.clear();
             indirectCommands.reserve(draws.size());
@@ -83,12 +83,15 @@ namespace vultra::resource
             for (uint32_t drawId = 0; drawId < static_cast<uint32_t>(draws.size()); ++drawId)
             {
                 const auto& d = draws[drawId];
+                if (d.meshletIndex >= pool.meshlets.cpuMeshlets.size())
+                    continue;
+                const auto& m = pool.meshlets.cpuMeshlets[d.meshletIndex];
 
                 rhi::DrawIndirectCommand cmd {};
-                cmd.type          = rhi::DrawIndirectType::eIndexed;
-                cmd.count         = d.indexCount;
+                cmd.type          = rhi::DrawIndirectType::eNonIndexed;
+                cmd.count         = m.triangleCount * 3u;
                 cmd.instanceCount = 1;
-                cmd.first         = d.firstIndex;
+                cmd.first         = 0;
                 cmd.vertexOffset  = 0;
                 cmd.firstInstance = drawId; // MoltenVK-friendly drawId path
 
@@ -100,8 +103,8 @@ namespace vultra::resource
         {
             const uint32_t cmdCount = static_cast<uint32_t>(indirectCommands.empty() ? 1 : indirectCommands.size());
 
-            if (!indirectBuffer.has_value() || indirectBuffer->getDrawIndirectType() != rhi::DrawIndirectType::eIndexed)
-                indirectBuffer = rd.createDrawIndirectBuffer(cmdCount, rhi::DrawIndirectType::eIndexed);
+            if (!indirectBuffer.has_value() || indirectBuffer->getDrawIndirectType() != rhi::DrawIndirectType::eNonIndexed)
+                indirectBuffer = rd.createDrawIndirectBuffer(cmdCount, rhi::DrawIndirectType::eNonIndexed);
 
             rd.uploadDrawIndirect(*indirectBuffer, indirectCommands);
         }

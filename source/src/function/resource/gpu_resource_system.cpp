@@ -78,6 +78,16 @@ namespace vultra
                     mesh.indexBufferAddress = m_Pool.geometry.index32Address;
                 }
             }
+
+            if (desc.meshletCount > 0 && desc.meshletData)
+            {
+                mesh.meshletOffset = m_Pool.meshlets.appendMeshlets(rd, desc.meshletData, desc.meshletCount);
+                mesh.meshletCount  = desc.meshletCount;
+                if (desc.meshletVertexCount > 0 && desc.meshletVertexData)
+                    m_Pool.meshlets.appendMeshletVertices(rd, desc.meshletVertexData, desc.meshletVertexCount);
+                if (desc.meshletTriangleCount > 0 && desc.meshletTriangleData)
+                    m_Pool.meshlets.appendMeshletTriangles(rd, desc.meshletTriangleData, desc.meshletTriangleCount);
+            }
         }
 
         const uint32_t idx = static_cast<uint32_t>(m_Pool.meshes.size());
