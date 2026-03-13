@@ -17,7 +17,7 @@ namespace vultra
         {
             uint32_t instanceCount {0};
             uint32_t maxVisibleMeshlets {0};
-            uint32_t enableConeCull {1};
+            uint32_t enableConeCull {0};
             uint32_t padding0 {0};
         };
     } // namespace
@@ -114,7 +114,7 @@ namespace vultra
                 CullPushConstants pc {};
                 pc.instanceCount      = instanceCount;
                 pc.maxVisibleMeshlets = maxVisible;
-                pc.enableConeCull     = 1u;
+                pc.enableConeCull     = 0u;
 
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);

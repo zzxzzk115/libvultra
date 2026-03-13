@@ -44,8 +44,8 @@ void main()
         float radiusWS = m.radius * maxScale;
 
         // 1. Frustum test
-        // if (!sphere_frustum_test(u_Camera, centerWS, radiusWS))
-        //     continue;
+        if (!sphere_frustum_test(u_Camera, centerWS, radiusWS))
+            continue;
 
         // 2. Cone culling
         if (u_PC.enableConeCull != 0u)
