@@ -525,11 +525,10 @@ namespace vultra
         std::vector<uint32_t>             gpuMeshletVertices;
         std::vector<uint32_t>             gpuMeshletTriangles;
 
-        const uint32_t baseVertex = strideBytes > 0 ? 0u : 0u;
         for (const auto& subMesh : cpuMesh.subMeshes)
         {
-            const uint32_t subVertexBase = subMesh.vertexOffset;
-            const uint32_t subMaterialIndex = materialOffset + subMesh.materialIndex;
+            const uint32_t subVertexBase     = subMesh.vertexOffset;
+            const uint32_t subMaterialIndex  = materialOffset + subMesh.materialIndex;
             const uint32_t meshletVertexBase = static_cast<uint32_t>(gpuMeshletVertices.size());
             const uint32_t meshletTriBase    = static_cast<uint32_t>(gpuMeshletTriangles.size());
 
@@ -541,8 +540,8 @@ namespace vultra
             for (const auto& ml : subMesh.meshletGroup.meshlets)
             {
                 resource::GpuMeshlet gm {};
-                gm.vertexOffset  = meshletVertexBase + ml.vertexOffset;
-                gm.vertexCount   = ml.vertexCount;
+                gm.vertexOffset   = meshletVertexBase + ml.vertexOffset;
+                gm.vertexCount    = ml.vertexCount;
                 gm.triangleOffset = meshletTriBase + ml.triangleOffset;
                 gm.triangleCount  = ml.triangleCount;
                 gm.materialIndex  = materialOffset + ml.materialIndex;
@@ -575,8 +574,9 @@ namespace vultra
         pool.meshes[meshIndex].materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
 
         // Remap meshlet vertex indices from local mesh space to global packed-vertex space.
-        auto& gpuMesh = pool.meshes[meshIndex];
-        const uint32_t globalBaseVertex = gpuMesh.vertexStrideBytes > 0 ? (gpuMesh.vertexByteOffset / gpuMesh.vertexStrideBytes) : 0u;
+        auto&          gpuMesh = pool.meshes[meshIndex];
+        const uint32_t globalBaseVertex =
+            gpuMesh.vertexStrideBytes > 0 ? (gpuMesh.vertexByteOffset / gpuMesh.vertexStrideBytes) : 0u;
         for (uint32_t i = 0; i < gpuMesh.meshletCount; ++i)
         {
             auto& gm = pool.meshlets.cpuMeshlets[gpuMesh.meshletOffset + i];
@@ -586,7 +586,7 @@ namespace vultra
         if (pool.meshlets.meshletVerticesBuffer && !pool.meshlets.cpuMeshletVertices.empty())
             m_RenderDevice->uploadS(*pool.meshlets.meshletVerticesBuffer,
                                     0,
-                                    static_cast<uint64_t>(pool.meshlets.cpuMeshletVertices.size() * sizeof(uint32_t)),
+                                    pool.meshlets.cpuMeshletVertices.size() * sizeof(uint32_t),
                                     pool.meshlets.cpuMeshletVertices.data());
 
         return meshIndex;

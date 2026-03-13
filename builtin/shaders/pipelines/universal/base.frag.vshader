@@ -37,8 +37,8 @@ vec3 hashColor(uint id)
 
 void main()
 {
-	FragColor = vec4(hashColor(v_MaterialIndex), 1.0); // Debug: visualize material index with hashed color
-	return; // Early return for debugging. Remove this to enable actual material sampling.
+	FragColor = vec4(hashColor(v_MeshletIndex), 1.0);
+	return;
 
 	uint materialModel = get_material_model(v_MaterialIndex);
 

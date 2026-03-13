@@ -47,18 +47,18 @@ void main()
         // if (!sphere_frustum_test(u_Camera, centerWS, radiusWS))
         //     continue;
 
-        // // 2. Cone culling
-        // if (u_PC.enableConeCull != 0u)
-        // {
-        //     // transform direction with w=0, then normalize.
-        //     vec3 coneAxisWS = normalize((model * vec4(m.coneAxis, 0.0)).xyz);
-        //     // Usually coneCutoff == 1 means invalid / disabled cone.
-        //     if (m.coneCutoff < 1.0)
-        //     {
-        //         if (!cone_visible_alanwake2(coneAxisWS, m.coneCutoff, centerWS, radiusWS, cameraPosWS))
-        //             continue;
-        //     }
-        // }
+        // 2. Cone culling
+        if (u_PC.enableConeCull != 0u)
+        {
+            // transform direction with w=0, then normalize.
+            vec3 coneAxisWS = normalize((model * vec4(m.coneAxis, 0.0)).xyz);
+            // Usually coneCutoff == 1 means invalid / disabled cone.
+            if (m.coneCutoff < 1.0)
+            {
+                if (!cone_visible_alanwake2(coneAxisWS, m.coneCutoff, centerWS, radiusWS, cameraPosWS))
+                    continue;
+            }
+        }
 
         uint outIndex = atomicAdd(s_VisibleCount.visibleCount, 1u);
         if (outIndex < u_PC.maxVisibleMeshlets)
