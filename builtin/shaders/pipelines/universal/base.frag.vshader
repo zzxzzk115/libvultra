@@ -26,6 +26,7 @@ layout(location = 1) in vec2 v_TexCoord0;
 
 layout(location = 7) flat in uint v_MaterialIndex;
 layout(location = 8) flat in uint v_MeshletIndex;
+layout(location = 9) flat in uint v_TriangleIndex;
 
 layout(location = 0) out vec4 FragColor;
 
@@ -37,7 +38,8 @@ vec3 hashColor(uint id)
 
 void main()
 {
-	FragColor = vec4(hashColor(v_MeshletIndex), 1.0);
+	// FragColor = vec4(hashColor(v_MeshletIndex), 1.0);
+	FragColor = vec4(hashColor(v_TriangleIndex), 1.0);
 	return;
 
 	uint materialModel = get_material_model(v_MaterialIndex);

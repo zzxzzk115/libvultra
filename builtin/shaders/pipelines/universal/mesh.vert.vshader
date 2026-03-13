@@ -49,8 +49,8 @@ layout(location = 4) out vec3 v_Normal;
 #endif
 
 layout(location = 7) flat out uint v_MaterialIndex;
-
 layout(location = 8) flat out uint v_MeshletIndex;
+layout(location = 9) flat out uint v_TriangleIndex;
 
 void main()
 {
@@ -96,5 +96,6 @@ void main()
 
     v_MaterialIndex = d.materialIndex;
     v_MeshletIndex = d.meshletIndex;
+    v_TriangleIndex = triIndex;
     gl_Position = u_Camera.viewProjection * vec4(v_FragPos, 1.0);
 }
