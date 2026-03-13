@@ -50,7 +50,7 @@ layout(location = 4) out vec3 v_Normal;
 
 layout(location = 7) flat out uint v_MaterialIndex;
 
-layout(location = 8) out vec4 v_Debug;
+layout(location = 8) flat out uint v_MeshletIndex;
 
 void main()
 {
@@ -95,6 +95,6 @@ void main()
 #endif
 
     v_MaterialIndex = d.materialIndex;
-    v_Debug = vec4(float(localVertex) / max(1.0, float(meshlet.vertexCount)), 0.0, 0.0, 1.0);
+    v_MeshletIndex = d.meshletIndex;
     gl_Position = u_Camera.viewProjection * vec4(v_FragPos, 1.0);
 }

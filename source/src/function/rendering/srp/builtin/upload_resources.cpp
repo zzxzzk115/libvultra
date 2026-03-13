@@ -4,15 +4,6 @@
 
 namespace vultra
 {
-    namespace
-    {
-        [[nodiscard]] glm::vec4 normalizePlane(const glm::vec4 p)
-        {
-            const float len = glm::length(glm::vec3(p));
-            return len > 0.0f ? p / len : p;
-        }
-    } // namespace
-
     GPUCameraBlock::GPUCameraBlock(const rhi::Extent2D extent, const RenderCamera& camera) :
         projection(camera.projection), inverseProjection(camera.inverseProjection), view(camera.view),
         inverseView(camera.inverseView), viewProjection(camera.viewProjection),

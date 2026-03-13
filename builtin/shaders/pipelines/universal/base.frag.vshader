@@ -25,13 +25,21 @@ layout(location = 1) in vec2 v_TexCoord0;
 #endif
 
 layout(location = 7) flat in uint v_MaterialIndex;
-
-layout(location = 8) in vec4 v_Debug;
+layout(location = 8) flat in uint v_MeshletIndex;
 
 layout(location = 0) out vec4 FragColor;
 
+vec3 hashColor(uint id)
+{
+    uint n = id * 1664525u + 1013904223u;
+    return vec3((n & 0xFFu), (n >> 8) & 0xFFu, (n >> 16) & 0xFFu) / 255.0;
+}
+
 void main()
 {
+	FragColor = vec4(hashColor(v_MaterialIndex), 1.0); // Debug: visualize material index with hashed color
+	return; // Early return for debugging. Remove this to enable actual material sampling.
+
 	uint materialModel = get_material_model(v_MaterialIndex);
 
 	if (materialModel == VULTRA_MAT_PBRMR)

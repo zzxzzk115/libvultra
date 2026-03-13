@@ -43,7 +43,7 @@ void main()
         vec3 centerWS = (model * vec4(m.center, 1.0)).xyz;
         float radiusWS = m.radius * maxScale;
 
-        // // 1. Frustum test
+        // 1. Frustum test
         // if (!sphere_frustum_test(u_Camera, centerWS, radiusWS))
         //     continue;
 
