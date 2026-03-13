@@ -1189,6 +1189,7 @@ namespace vultra
 
             // Query supported features
             vk::PhysicalDeviceFeatures2        features2 {};
+            vk::PhysicalDeviceVulkan11Features vk11 {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
             vk::PhysicalDeviceVulkan12Features vk12 {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
             vk::PhysicalDeviceVulkan13Features vk13 {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR accel {
@@ -1202,7 +1203,8 @@ namespace vultra
 
             features2.pNext  = &vk13;
             vk13.pNext       = &vk12;
-            vk12.pNext       = &accel;
+            vk12.pNext       = &vk11;
+            vk11.pNext       = &accel;
             accel.pNext      = &rayQuery;
             rayQuery.pNext   = &rayTracing;
             rayTracing.pNext = &mesh;
@@ -1246,6 +1248,9 @@ namespace vultra
                 VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME,
                 vk12.drawIndirectCount);
             add(RenderDeviceFeatureReportFlagBits::eMultiDraw, VK_EXT_MULTI_DRAW_EXTENSION_NAME, multidraw.multiDraw);
+            add(RenderDeviceFeatureReportFlagBits::eDrawParameters,
+                VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
+                vk11.shaderDrawParameters);
 
 #ifdef VULTRA_ENABLE_RENDERDOC
             VULTRA_CORE_WARN("[RenderDevice] RenderDoc is enabled, raytracing will be disabled");
@@ -1276,6 +1281,7 @@ namespace vultra
             PRINT_FEATURE(eDescriptorIndexing);
             PRINT_FEATURE(eDrawIndirectCount);
             PRINT_FEATURE(eMultiDraw);
+            PRINT_FEATURE(eDrawParameters);
 #undef PRINT_FEATURE
 
             // === Assign & Check Feature Flags ===
@@ -1377,6 +1383,13 @@ namespace vultra
             vk13Features.synchronization2 = VK_TRUE;
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk13Features));
 #endif
+            // Vulkan 1.1 features
+            vk::PhysicalDeviceVulkan11Features vk11Features {};
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDrawParameters))
+            {
+                vk11Features.shaderDrawParameters = VK_TRUE;
+            }
+            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk11Features));
 
             // Vulkan 1.2 features
             vk::PhysicalDeviceVulkan12Features vk12Features {};
