@@ -246,6 +246,18 @@ namespace vultra
             return *this;
         }
 
+        CommandBuffer& CommandBuffer::dispatchIndirect(const Buffer& buffer, const vk::DeviceSize offset)
+        {
+            assert(buffer);
+            assert(invariant(State::eRecording, InvariantFlags::eValidComputePipeline));
+
+            TRACY_GPU_ZONE2_("DispatchIndirect");
+            flushBarriers();
+            m_Handle.dispatchIndirect(buffer.getHandle(), offset);
+
+            return *this;
+        }
+
         CommandBuffer& CommandBuffer::insertComputeUavBarrier()
         {
             assert(invariant(State::eRecording, InvariantFlags::eOutsideRenderPass));

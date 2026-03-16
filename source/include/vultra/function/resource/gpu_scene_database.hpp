@@ -9,6 +9,10 @@
 
 #include <glm/mat4x4.hpp>
 
+#include <glm/common.hpp>
+
+#include <limits>
+
 #include <cstdint>
 #include <vector>
 
@@ -91,6 +95,27 @@ namespace vultra::resource
                 e.vertexByteOffset  = mesh.vertexByteOffset;
                 e.indexBase         = mesh.indexBase;
                 e.flags             = 0;
+
+                // Build conservative mesh-space bounds from meshlet bounds.
+                if (mesh.meshletCount > 0 &&
+                    mesh.meshletOffset + mesh.meshletCount <= resources->meshlets.cpuMeshlets.size())
+                {
+                    glm::vec3 bmin(std::numeric_limits<float>::max());
+                    glm::vec3 bmax(std::numeric_limits<float>::lowest());
+
+                    for (uint32_t i = 0; i < mesh.meshletCount; ++i)
+                    {
+                        const auto& ml = resources->meshlets.cpuMeshlets[mesh.meshletOffset + i];
+                        const glm::vec3 r(ml.radius);
+                        bmin = glm::min(bmin, ml.center - r);
+                        bmax = glm::max(bmax, ml.center + r);
+                    }
+
+                    const glm::vec3 center = (bmin + bmax) * 0.5f;
+                    e.boundsCenter         = center;
+                    e.boundsRadius         = glm::length(bmax - center);
+                }
+
                 meshTable.push_back(e);
             }
         }

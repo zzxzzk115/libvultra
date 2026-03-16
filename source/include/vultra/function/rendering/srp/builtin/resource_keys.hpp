@@ -7,6 +7,7 @@
 namespace vultra
 {
     constexpr FrameGraphResourceKey kResKey_FinalCompositionSource {.id = vbase::hashLiteral("FinalCompositionSource")};
+    constexpr FrameGraphResourceKey kResKey_CoarseInstanceCullDone {.id = vbase::hashLiteral("CoarseInstanceCullDone")};
     constexpr FrameGraphResourceKey kResKey_MeshletCullDone {.id = vbase::hashLiteral("MeshletCullDone")};
     constexpr FrameGraphResourceKey kResKey_MeshletBuildDone {.id = vbase::hashLiteral("MeshletBuildDone")};
     constexpr FrameGraphResourceKey kResKey_GaussianSplatCullDone {.id = vbase::hashLiteral("GaussianSplatCullDone")};

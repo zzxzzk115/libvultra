@@ -25,6 +25,8 @@ layout(push_constant) uniform BuildPushConstants
 
 void main()
 {
+    const uint kMeshletVisibleFlag = 1u;
+
     uint drawId = gl_GlobalInvocationID.x;
     if (drawId >= u_PC.maxDraws)
         return;
@@ -39,6 +41,15 @@ void main()
     }
 
     GpuVisibleMeshlet vis = s_VisibleMeshlets.visibleMeshlets[drawId];
+    if ((vis.flags & kMeshletVisibleFlag) == 0u)
+    {
+        s_Indirect.commands[drawId].count = 0u;
+        s_Indirect.commands[drawId].instanceCount = 0u;
+        s_Indirect.commands[drawId].first = 0u;
+        s_Indirect.commands[drawId].firstInstance = 0u;
+        return;
+    }
+
     GpuInstance inst = s_Instances.instances[vis.instanceIndex];
     GpuMeshEntry mesh = s_MeshTable.meshes[inst.meshIndex];
     Meshlet meshlet = s_Meshlets.meshlets[vis.meshletIndex];

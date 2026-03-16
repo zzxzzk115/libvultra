@@ -27,6 +27,7 @@ namespace vultra
     namespace rhi
     {
         class RenderDevice;
+        class Buffer;
         class VertexBuffer;
         class IndexBuffer;
         class Texture;
@@ -92,6 +93,7 @@ namespace vultra
 
             CommandBuffer& dispatch(const ComputePipeline&, const glm::uvec3&);
             CommandBuffer& dispatch(const glm::uvec3&);
+            CommandBuffer& dispatchIndirect(const Buffer&, vk::DeviceSize offset = 0);
             CommandBuffer& insertComputeUavBarrier();
 
             CommandBuffer& traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent);

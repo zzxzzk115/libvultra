@@ -47,6 +47,9 @@ namespace vultra::resource
 
         // GPU buffers (per-view/per-frame)
         // Meshlet path
+        Ref<rhi::StorageBuffer>                visibleInstanceBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                visibleInstanceCountBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                meshletCullDispatchArgsBuffer {nullptr};
         Ref<rhi::StorageBuffer>                visibleMeshletBuffer {nullptr};
         Ref<rhi::StorageBuffer>                visibleMeshletCountBuffer {nullptr};
         Ref<rhi::StorageBuffer>                drawBuffer {nullptr};
@@ -61,6 +64,7 @@ namespace vultra::resource
         Ref<rhi::StorageBuffer> gaussianSplatVisibleCountBuffer {nullptr};
         std::optional<rhi::DrawIndirectBuffer> gaussianSplatIndirectBuffer;
 
+        uint32_t maxVisibleInstances {0};
         uint32_t maxVisibleMeshlets {0};
         uint32_t maxDraws {0};
         uint32_t maxGaussianSplatDraws {0};
@@ -74,6 +78,9 @@ namespace vultra::resource
             indirectCommands.clear();
             gaussianSplatDraws.clear();
             visibleMeshlets.clear();
+            visibleInstanceBuffer      = nullptr;
+            visibleInstanceCountBuffer = nullptr;
+            meshletCullDispatchArgsBuffer = nullptr;
             visibleMeshletBuffer      = nullptr;
             visibleMeshletCountBuffer = nullptr;
             drawBuffer                = nullptr;
@@ -85,6 +92,7 @@ namespace vultra::resource
             gaussianSplatProjectedBuffer   = nullptr;
             gaussianSplatVisibleCountBuffer = nullptr;
             gaussianSplatIndirectBuffer.reset();
+            maxVisibleInstances = 0;
             maxVisibleMeshlets = 0;
             maxDraws           = 0;
             maxGaussianSplatDraws = 0;
@@ -99,6 +107,7 @@ namespace vultra::resource
             indirectCommands.clear();
             gaussianSplatDraws.clear();
             visibleMeshlets.clear();
+            maxVisibleInstances = 0;
             maxVisibleMeshlets = 0;
             maxDraws           = 0;
             maxGaussianSplatDraws = 0;
@@ -108,10 +117,34 @@ namespace vultra::resource
         [[nodiscard]] bool isCpuDriven() const { return mode == GpuSceneBuildMode::eCpuDriven; }
         [[nodiscard]] bool isGpuDriven() const { return mode == GpuSceneBuildMode::eGpuDriven; }
 
-        void setGpuDrivenCaps(uint32_t maxVisible, uint32_t maxDrawCount)
+        void setGpuDrivenCaps(uint32_t maxVisibleInstancesCount, uint32_t maxVisible, uint32_t maxDrawCount)
         {
+            maxVisibleInstances = maxVisibleInstancesCount;
             maxVisibleMeshlets = maxVisible;
             maxDraws           = maxDrawCount;
+        }
+
+        void ensureVisibleInstanceBuffers(rhi::RenderDevice& rd)
+        {
+            if (maxVisibleInstances == 0)
+                return;
+
+            const uint64_t idsBytes = static_cast<uint64_t>(maxVisibleInstances) * sizeof(uint32_t);
+            if (!visibleInstanceBuffer || static_cast<uint64_t>(visibleInstanceBuffer->getSize()) < idsBytes)
+                visibleInstanceBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(idsBytes));
+
+            if (!visibleInstanceCountBuffer || visibleInstanceCountBuffer->getSize() < sizeof(uint32_t))
+                visibleInstanceCountBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(sizeof(uint32_t)));
+
+            constexpr uint64_t kDispatchArgsBytes = sizeof(uint32_t) * 3ull;
+            if (!meshletCullDispatchArgsBuffer ||
+                static_cast<uint64_t>(meshletCullDispatchArgsBuffer->getSize()) < kDispatchArgsBytes)
+            {
+                meshletCullDispatchArgsBuffer =
+                    createRef<rhi::StorageBuffer>(rd.createStorageBufferWithUsage(
+                        kDispatchArgsBytes,
+                        vk::BufferUsageFlagBits::eIndirectBuffer));
+            }
         }
 
         [[nodiscard]] uint32_t getDispatchableDrawCount() const
@@ -245,10 +278,14 @@ namespace vultra::resource
             }
         }
 
-        void prepareGpuDrivenBuffers(rhi::RenderDevice& rd, uint32_t maxVisible, uint32_t maxDrawCount)
+        void prepareGpuDrivenBuffers(rhi::RenderDevice& rd,
+                                     uint32_t maxVisibleInstancesCount,
+                                     uint32_t maxVisible,
+                                     uint32_t maxDrawCount)
         {
             mode = GpuSceneBuildMode::eGpuDriven;
-            setGpuDrivenCaps(maxVisible, maxDrawCount);
+            setGpuDrivenCaps(maxVisibleInstancesCount, maxVisible, maxDrawCount);
+            ensureVisibleInstanceBuffers(rd);
             ensureVisibleMeshletBuffers(rd);
             ensureDrawBuffer(rd);
             ensureIndirectBuffer(rd);

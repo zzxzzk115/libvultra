@@ -1,5 +1,7 @@
 #pragma once
 
+#include <glm/glm.hpp>
+
 #include <cstdint>
 
 namespace vultra::resource
@@ -17,5 +19,9 @@ namespace vultra::resource
         uint32_t vertexByteOffset {0};
         uint32_t indexBase {0};
         uint32_t flags {0};
+
+        // Mesh-space bounds used by coarse culling in meshlet passes.
+        glm::vec3 boundsCenter {0.0f};
+        float     boundsRadius {0.0f};
     };
 } // namespace vultra::resource

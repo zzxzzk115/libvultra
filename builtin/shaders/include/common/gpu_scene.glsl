@@ -98,6 +98,18 @@
 #define VULTRA_SPLAT_SH_BINDING 16
 #endif
 
+#ifndef VULTRA_VISIBLE_INSTANCE_BINDING
+#define VULTRA_VISIBLE_INSTANCE_BINDING 24
+#endif
+
+#ifndef VULTRA_VISIBLE_INSTANCE_COUNT_BINDING
+#define VULTRA_VISIBLE_INSTANCE_COUNT_BINDING 25
+#endif
+
+#ifndef VULTRA_DISPATCH_ARGS_BINDING
+#define VULTRA_DISPATCH_ARGS_BINDING 26
+#endif
+
 #ifndef VULTRA_TEXTURE_SET
 #define VULTRA_TEXTURE_SET 3
 #endif
@@ -185,6 +197,9 @@ struct GpuMeshEntry
     uint vertexByteOffset;
     uint indexBase;
     uint flags;
+
+    vec3 boundsCenter;
+    float boundsRadius;
 };
 
 struct GpuVisibleMeshlet
@@ -284,6 +299,30 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_VISIBLE_COUNT_BINDING, std430) b
 } s_VisibleCount;
 #endif
 
+#ifdef VULTRA_DECLARE_VISIBLE_INSTANCE_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_VISIBLE_INSTANCE_BINDING, std430) buffer VisibleInstanceBuffer
+{
+    uint instanceIndices[];
+} s_VisibleInstances;
+#endif
+
+#ifdef VULTRA_DECLARE_VISIBLE_INSTANCE_COUNT_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_VISIBLE_INSTANCE_COUNT_BINDING, std430)
+buffer VisibleInstanceCountBuffer
+{
+    uint visibleInstanceCount;
+} s_VisibleInstanceCount;
+#endif
+
+#ifdef VULTRA_DECLARE_DISPATCH_ARGS_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_DISPATCH_ARGS_BINDING, std430) buffer DispatchArgsBuffer
+{
+    uint groupCountX;
+    uint groupCountY;
+    uint groupCountZ;
+} s_DispatchArgs;
+#endif
+
 #ifdef VULTRA_DECLARE_MESHLET_VERTEX_BUFFER
 layout(set = VULTRA_SCENE_SET, binding = VULTRA_MESHLET_VERTEX_BINDING, std430) readonly buffer MeshletVertexBuffer
 {
@@ -374,11 +413,11 @@ uint load_meshlet_triangle_index(uint triIndex)
 }
 #endif
 
-bool sphere_frustum_test(CameraData cam, vec3 centerWS, float radiusWS)
+bool sphere_frustum_test(vec3 centerWS, float radiusWS)
 {
     for (uint i = 0u; i < 6u; ++i)
     {
-        vec4 p = cam.frustumPlanes[i];
+        vec4 p = u_Camera.frustumPlanes[i];
         float d = dot(p.xyz, centerWS) + p.w;
         if (d < -radiusWS)
             return false;

@@ -7,12 +7,12 @@
 
 namespace vultra
 {
-    class MeshletCullPass final : public rhi::ComputePass<MeshletCullPass>
+    class CoarseInstanceCullPass final : public rhi::ComputePass<CoarseInstanceCullPass>
     {
         friend class BasePass;
 
     public:
-        FrameGraphResource addPass(FrameGraphBuildContext& ctx, FrameGraphResource coarseToken);
+        FrameGraphResource addPass(FrameGraphBuildContext& ctx);
 
     private:
         rhi::ComputePipeline createPipeline(uint64_t variantHash) const;

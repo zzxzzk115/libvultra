@@ -1,9 +1,9 @@
-#include "vultra/function/rendering/srp/builtin/passes/meshlet_cull_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/coarse_instance_cull_pass.hpp"
+
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
-#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -11,36 +11,35 @@ namespace vultra
 {
     namespace
     {
-        constexpr auto PASS_NAME = "MeshletCullPass";
+        constexpr auto PASS_NAME = "CoarseInstanceCullPass";
 
-        struct CullPushConstants
+        struct CoarseCullPushConstants
         {
             uint32_t instanceCount {0};
-            uint32_t maxVisibleMeshlets {0};
-            uint32_t enableConeCull {0};
+            uint32_t maxVisibleInstances {0};
             uint32_t padding0 {0};
+            uint32_t padding1 {0};
         };
     } // namespace
 
-    FrameGraphResource MeshletCullPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource coarseToken)
+    FrameGraphResource CoarseInstanceCullPass::addPass(FrameGraphBuildContext& ctx)
     {
         struct PassData
         {
             FrameGraphResource camera;
-            FrameGraphResource coarseDone;
             FrameGraphResource token;
         };
 
         const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
 
-        auto*      gpuSceneDatabase = ctx.view().gpuSceneDatabase;
-        auto*      gpuSceneView     = ctx.view().gpuSceneView;
-        const auto maxVisibleInstances = gpuSceneView ? gpuSceneView->maxVisibleInstances : 0u;
-        const auto maxVisible       = gpuSceneView ? gpuSceneView->maxVisibleMeshlets : 0u;
+        auto*      gpuSceneDatabase   = ctx.view().gpuSceneDatabase;
+        auto*      gpuSceneView       = ctx.view().gpuSceneView;
+        const auto instanceCount      = gpuSceneDatabase ? static_cast<uint32_t>(gpuSceneDatabase->instances.size()) : 0u;
+        const auto maxVisibleInstance = gpuSceneView ? gpuSceneView->maxVisibleInstances : 0u;
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [cameraBlock, coarseToken](FrameGraph::Builder& builder, PassData& pd) {
+            [cameraBlock](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.camera = builder.read(cameraBlock,
@@ -49,18 +48,8 @@ namespace vultra
                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                          });
 
-                pd.coarseDone = coarseToken;
-                if (pd.coarseDone)
-                {
-                    pd.coarseDone = builder.read(pd.coarseDone,
-                                                framegraph::BindingInfo {
-                                                    .location      = {.set = 0, .binding = 31},
-                                                    .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                });
-                }
-
                 pd.token =
-                    builder.create<framegraph::FrameGraphBuffer>("MeshletCullToken",
+                    builder.create<framegraph::FrameGraphBuffer>("CoarseInstanceCullToken",
                                                                  {
                                                                      .type     = framegraph::BufferType::eStorageBuffer,
                                                                      .stride   = sizeof(uint32_t),
@@ -72,7 +61,7 @@ namespace vultra
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },
-            [this, maxVisibleInstances, maxVisible](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+            [this, instanceCount, maxVisibleInstance](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -81,7 +70,7 @@ namespace vultra
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
-                if (maxVisibleInstances == 0 || maxVisible == 0)
+                if (instanceCount == 0 || maxVisibleInstance == 0)
                 {
                     rc.clear();
                     return;
@@ -89,15 +78,13 @@ namespace vultra
 
                 auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
                 auto* gpuSceneView     = rc.view().gpuSceneView;
-                if (!gpuSceneDatabase || !gpuSceneView || !gpuSceneDatabase->resources)
+                if (!gpuSceneDatabase || !gpuSceneView)
                     return;
 
                 gpuSceneView->ensureVisibleInstanceBuffers(rc.rd);
 
-                if (!gpuSceneDatabase->instanceBuffer || !gpuSceneDatabase->meshTableBuffer ||
-                    !gpuSceneDatabase->transformBuffer || !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
+                if (!gpuSceneDatabase->instanceBuffer || !gpuSceneDatabase->meshTableBuffer || !gpuSceneDatabase->transformBuffer ||
                     !gpuSceneView->visibleInstanceBuffer || !gpuSceneView->visibleInstanceCountBuffer ||
-                    !gpuSceneView->visibleMeshletBuffer || !gpuSceneView->visibleMeshletCountBuffer ||
                     !gpuSceneView->meshletCullDispatchArgsBuffer)
                     return;
 
@@ -106,68 +93,58 @@ namespace vultra
                     return;
 
                 auto variantHash =
-                    getShaderLib().computeVariantHash("meshlet_cull.comp", vshadersystem::ShaderStage::eComp, {});
+                    getShaderLib().computeVariantHash("coarse_instance_cull.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
                     return;
 
                 uint32_t zero = 0;
-                rc.rd.uploadS(*gpuSceneView->visibleMeshletCountBuffer, 0, sizeof(uint32_t), &zero);
+                rc.rd.uploadS(*gpuSceneView->visibleInstanceCountBuffer, 0, sizeof(uint32_t), &zero);
+                struct DispatchArgsInit
+                {
+                    uint32_t x;
+                    uint32_t y;
+                    uint32_t z;
+                } argsInit {0u, 1u, 1u};
+                rc.rd.uploadS(*gpuSceneView->meshletCullDispatchArgsBuffer, 0, sizeof(DispatchArgsInit), &argsInit);
 
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->instanceBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->meshTableBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->transformBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleMeshletBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleMeshletCountBuffer);
+                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleInstanceBuffer);
+                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleInstanceCountBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->meshletCullDispatchArgsBuffer);
 
                 rc.resourceSet[0] = {
                     {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
                     {2, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->instanceBuffer.get()}},
                     {3, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->meshTableBuffer.get()}},
-                    {4,
-                     rhi::bindings::StorageBuffer {.buffer =
-                                                       gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
                     {5, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->transformBuffer.get()}},
-                    {6, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleMeshletBuffer.get()}},
-                    {7, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleMeshletCountBuffer.get()}},
                     {24, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleInstanceBuffer.get()}},
                     {25, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleInstanceCountBuffer.get()}},
+                    {26, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->meshletCullDispatchArgsBuffer.get()}},
                 };
 
-                CullPushConstants pc {};
-                pc.instanceCount      = maxVisibleInstances;
-                pc.maxVisibleMeshlets = maxVisible;
-                pc.enableConeCull     = 0u;
+                CoarseCullPushConstants pc {};
+                pc.instanceCount        = instanceCount;
+                pc.maxVisibleInstances  = maxVisibleInstance;
 
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
-                rc.cb.getBarrierBuilder().bufferBarrier(
-                    {
-                        .buffer = *gpuSceneView->meshletCullDispatchArgsBuffer,
-                        .offset = 0,
-                        .size   = sizeof(uint32_t) * 3u,
-                    },
-                    {
-                        .stageMask  = rhi::PipelineStages::eAllCommands,
-                        .accessMask = rhi::Access::eMemoryRead,
-                    });
-                rc.cb.dispatchIndirect(*gpuSceneView->meshletCullDispatchArgsBuffer);
+                rc.cb.dispatch({(instanceCount + 63u) / 64u, 1u, 1u});
                 rc.clear();
             });
 
-        ctx.data.set(kResKey_MeshletCullDone, data.token);
         return data.token;
     }
 
-    rhi::ComputePipeline MeshletCullPass::createPipeline(uint64_t variantHash) const
+    rhi::ComputePipeline CoarseInstanceCullPass::createPipeline(uint64_t variantHash) const
     {
         auto shader = getShaderLib().load(variantHash, vshadersystem::ShaderStage::eComp);
         if (!shader)
         {
-            VULTRA_CORE_ERROR("[MeshletCullPass] Failed to load compute shader variant");
+            VULTRA_CORE_ERROR("[CoarseInstanceCullPass] Failed to load compute shader variant");
             return {};
         }
         return getRenderDevice().createComputePipelineBuiltin(shader->spirv);

@@ -8,6 +8,8 @@ version = 460
 #define VULTRA_DECLARE_MESH_TABLE_BUFFER
 #define VULTRA_DECLARE_MESHLET_BUFFER
 #define VULTRA_DECLARE_MODEL_BUFFER
+#define VULTRA_DECLARE_VISIBLE_INSTANCE_BUFFER
+#define VULTRA_DECLARE_VISIBLE_INSTANCE_COUNT_BUFFER
 #define VULTRA_DECLARE_VISIBLE_MESHLET_BUFFER
 #define VULTRA_DECLARE_VISIBLE_COUNT_BUFFER
 #include "include/common/gpu_scene.glsl"
@@ -24,16 +26,38 @@ layout(push_constant) uniform CullPushConstants
 
 void main()
 {
-    uint instanceIndex = gl_GlobalInvocationID.x;
-    if (instanceIndex >= u_PC.instanceCount)
+    const uint kMeshletVisibleFlag = 1u;
+
+    uint visibleSlot = gl_GlobalInvocationID.x;
+    if (visibleSlot >= u_PC.instanceCount)
         return;
+
+    uint visibleCount = s_VisibleInstanceCount.visibleInstanceCount;
+    if (visibleSlot >= visibleCount)
+        return;
+
+    uint instanceIndex = s_VisibleInstances.instanceIndices[visibleSlot];
 
     GpuInstance inst = s_Instances.instances[instanceIndex];
     GpuMeshEntry mesh = s_MeshTable.meshes[inst.meshIndex];
+    if (mesh.meshletCount == 0u)
+        return;
+
     mat4 model = s_Models.models[inst.transformIndex];
 
-    vec3 cameraPosWS = u_Camera.inverseView[3].xyz;
     float maxScale = extract_max_scale(model);
+
+    // Aggressive coarse cull: if whole mesh bound is off-frustum, skip all meshlets.
+    vec3 meshCenterWS = (model * vec4(mesh.boundsCenter, 1.0)).xyz;
+    float meshRadiusWS = mesh.boundsRadius * maxScale;
+    if (!sphere_frustum_test(meshCenterWS, meshRadiusWS))
+        return;
+
+    vec3 cameraPosWS = vec3(0.0);
+    if (u_PC.enableConeCull != 0u)
+        cameraPosWS = u_Camera.inverseView[3].xyz;
+
+    uint  baseOut = atomicAdd(s_VisibleCount.visibleCount, mesh.meshletCount);
 
     for (uint i = 0u; i < mesh.meshletCount; ++i)
     {
@@ -43,12 +67,14 @@ void main()
         vec3 centerWS = (model * vec4(m.center, 1.0)).xyz;
         float radiusWS = m.radius * maxScale;
 
+        bool isVisible = true;
+
         // 1. Frustum test
-        if (!sphere_frustum_test(u_Camera, centerWS, radiusWS))
-            continue;
+        if (!sphere_frustum_test(centerWS, radiusWS))
+            isVisible = false;
 
         // 2. Cone culling
-        if (u_PC.enableConeCull != 0u)
+        if (isVisible && u_PC.enableConeCull != 0u)
         {
             // transform direction with w=0, then normalize.
             vec3 coneAxisWS = normalize((model * vec4(m.coneAxis, 0.0)).xyz);
@@ -56,17 +82,17 @@ void main()
             if (m.coneCutoff < 1.0)
             {
                 if (!cone_visible_alanwake2(coneAxisWS, m.coneCutoff, centerWS, radiusWS, cameraPosWS))
-                    continue;
+                    isVisible = false;
             }
         }
 
-        uint outIndex = atomicAdd(s_VisibleCount.visibleCount, 1u);
+        uint outIndex = baseOut + i;
         if (outIndex < u_PC.maxVisibleMeshlets)
         {
             s_VisibleMeshlets.visibleMeshlets[outIndex].meshletIndex = meshletIndex;
             s_VisibleMeshlets.visibleMeshlets[outIndex].instanceIndex = instanceIndex;
             s_VisibleMeshlets.visibleMeshlets[outIndex].materialIndex = m.materialIndex;
-            s_VisibleMeshlets.visibleMeshlets[outIndex].flags = 0u;
+            s_VisibleMeshlets.visibleMeshlets[outIndex].flags = isVisible ? kMeshletVisibleFlag : 0u;
         }
     }
 }

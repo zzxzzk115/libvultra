@@ -251,12 +251,17 @@ namespace vultra
             if (m_EnableGpuDrivenMeshletPipeline)
             {
                 m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack, resource::GpuSceneBuildMode::eGpuDriven);
-                m_GpuSceneViewBack.prepareGpuDrivenBuffers(rd, maxMeshletDraws, maxMeshletDraws);
+                m_GpuSceneViewBack.prepareGpuDrivenBuffers(rd,
+                                                           static_cast<uint32_t>(m_GpuSceneDatabaseBack.instances.size()),
+                                                           maxMeshletDraws,
+                                                           maxMeshletDraws);
             }
             else
             {
                 m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack, resource::GpuSceneBuildMode::eCpuDriven);
-                m_GpuSceneViewBack.setGpuDrivenCaps(maxMeshletDraws, maxMeshletDraws);
+                m_GpuSceneViewBack.setGpuDrivenCaps(static_cast<uint32_t>(m_GpuSceneDatabaseBack.instances.size()),
+                                                    maxMeshletDraws,
+                                                    maxMeshletDraws);
                 m_GpuSceneViewBack.ensureVisibleMeshletBuffers(rd);
 
                 std::vector<resource::GpuDrawRecord> stagedDraws;
