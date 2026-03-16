@@ -38,9 +38,9 @@ vec3 hashColor(uint id)
 
 void main()
 {
-	FragColor = vec4(hashColor(v_MeshletIndex), 1.0);
+	// FragColor = vec4(hashColor(v_MeshletIndex), 1.0);
 	// FragColor = vec4(hashColor(v_TriangleIndex), 1.0);
-	return;
+	// return;
 
 	uint materialModel = get_material_model(v_MaterialIndex);
 

@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace vultra
@@ -32,6 +33,8 @@ namespace vultra
     struct SceneDocument
     {
         uint32_t                   version {1};
+        bool                       isManifest {false};
+        std::unordered_map<std::string, std::string> assets;
         std::unique_ptr<SceneNode> root;
     };
 } // namespace vultra

@@ -49,7 +49,14 @@ namespace vultra
         entt::entity
         instantiateNode(World& world, const SceneNode& node, entt::entity parent, const std::filesystem::path& baseDir);
 
-        void applyProperties(entt::registry& reg, entt::entity e, const SceneNode& node);
+        void applyProperties(entt::registry& reg,
+                     entt::entity e,
+                     const SceneNode& node,
+                     const std::unordered_map<std::string, std::string>& assets);
+
+        entt::meta_any parseValueToAny(entt::meta_type expected,
+                           std::string_view raw,
+                           const std::unordered_map<std::string, std::string>& assets) const;
 
         static std::string trim(std::string_view s);
 
@@ -57,7 +64,12 @@ namespace vultra
         using BuildNodeResult       = vbase::Result<std::unique_ptr<SceneNode>, std::string>;
 
         InstantiateNodeResult
-        instantiateNodeR(World& world, const SceneNode& node, entt::entity parent, const std::filesystem::path& baseDir);
+        instantiateNodeR(World& world,
+                 const SceneNode& node,
+                 entt::entity parent,
+                 const std::filesystem::path& baseDir,
+                 bool allowPrefab,
+                 const std::unordered_map<std::string, std::string>& assets);
 
         // World -> Scene
         BuildNodeResult buildNodeFromWorldR(World& world, entt::entity e);

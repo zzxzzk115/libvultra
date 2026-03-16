@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <sstream>
+#include <unordered_set>
 #include <vector>
 
 namespace vultra
@@ -74,18 +75,113 @@ namespace vultra
         return !out.empty();
     }
 
-    static inline bool parse_uuid(std::string_view s, CoreUUID& out)
+    static inline bool parse_uuid_text(std::string_view s, CoreUUID& out)
     {
         std::string t = trim_copy(s);
         if (!t.empty() && t.front() == '"' && t.back() == '"')
             t = t.substr(1, t.size() - 2);
+
         vbase::UUID tmp {};
-        vbase::try_parse_uuid(t.c_str(), tmp);
+        if (!vbase::try_parse_uuid(t.c_str(), tmp))
+            return false;
         out = CoreUUID(tmp);
         return true;
     }
 
-    static entt::meta_any parse_value_to_any(entt::meta_type expected, std::string_view raw)
+    static std::string strip_quotes_copy(std::string s)
+    {
+        s = trim_copy(s);
+        if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+            s = s.substr(1, s.size() - 2);
+        return s;
+    }
+
+    static std::string uri_path_copy(std::string_view uri)
+    {
+        std::string s = trim_copy(uri);
+        auto        p = s.find("://");
+        if (p != std::string::npos)
+            return s.substr(p + 3);
+        return s;
+    }
+
+    bool try_resolve_asset_ref_to_uuid(IAssetService* assetService,
+                                       const std::unordered_map<std::string, std::string>& assets,
+                                       std::string_view raw,
+                                       CoreUUID& out)
+    {
+        if (!assetService)
+            return false;
+
+        std::string token = strip_quotes_copy(std::string(raw));
+        if (token.empty())
+            return false;
+
+        if (token.front() == '@')
+        {
+            const std::string alias = token.substr(1);
+            if (auto it = assets.find(alias); it != assets.end())
+                token = strip_quotes_copy(it->second);
+        }
+
+        std::vector<std::string> candidates;
+        candidates.reserve(8);
+        candidates.push_back(token);
+
+        const std::string pathOnly = uri_path_copy(token);
+        if (pathOnly != token)
+            candidates.push_back(pathOnly);
+
+        if (!pathOnly.empty() && pathOnly.front() == '/')
+            candidates.push_back(pathOnly.substr(1));
+
+        const auto add_scheme_candidate = [&](const std::string& p) {
+            if (!p.empty() && p.find("://") == std::string::npos)
+                candidates.push_back(std::string("res://") + p);
+        };
+
+        add_scheme_candidate(pathOnly);
+        if (!pathOnly.empty() && pathOnly.rfind("imported/", 0) != 0)
+            add_scheme_candidate(std::string("imported/") + pathOnly);
+
+        std::unordered_set<std::string> visited;
+        for (const auto& c : candidates)
+        {
+            if (!visited.insert(c).second)
+                continue;
+
+            CoreUUID resolved;
+            if (assetService->resolver().reverseResolve(c, resolved))
+            {
+                out = resolved;
+                return true;
+            }
+        }
+
+        const auto& table = assetService->registry().getRegistry();
+        for (const auto& [uuidStr, entry] : table)
+        {
+            for (const auto& c : visited)
+            {
+                const std::string cPath = uri_path_copy(c);
+                if (entry.sourcePath == cPath || entry.importedPath == cPath)
+                {
+                    vbase::UUID tmp {};
+                    if (vbase::try_parse_uuid(uuidStr.c_str(), tmp))
+                    {
+                        out = CoreUUID(tmp);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    entt::meta_any SceneSystem::parseValueToAny(entt::meta_type expected,
+                                                 std::string_view raw,
+                                                 const std::unordered_map<std::string, std::string>& assets) const
     {
         // Strings: "..."
         std::string t = trim_copy(raw);
@@ -130,7 +226,10 @@ namespace vultra
         if (expected == entt::resolve<CoreUUID>())
         {
             CoreUUID id;
-            if (parse_uuid(t, id))
+            if (parse_uuid_text(t, id))
+                return entt::meta_any {id};
+
+            if (try_resolve_asset_ref_to_uuid(m_AssetService, assets, t, id))
                 return entt::meta_any {id};
         }
 
@@ -138,7 +237,10 @@ namespace vultra
         if (expected.id() == entt::resolve<CoreUUID>().id())
         {
             CoreUUID id;
-            if (parse_uuid(t, id))
+            if (parse_uuid_text(t, id))
+                return entt::meta_any {id};
+
+            if (try_resolve_asset_ref_to_uuid(m_AssetService, assets, t, id))
                 return entt::meta_any {id};
         }
 
@@ -257,7 +359,10 @@ namespace vultra
         }
     }
 
-    void SceneSystem::applyProperties(entt::registry& reg, entt::entity e, const SceneNode& node)
+    void SceneSystem::applyProperties(entt::registry& reg,
+                                      entt::entity e,
+                                      const SceneNode& node,
+                                      const std::unordered_map<std::string, std::string>& assets)
     {
         for (const auto& prop : node.properties)
         {
@@ -275,21 +380,42 @@ namespace vultra
             if (!data)
                 continue;
 
-            entt::meta_any value = parse_value_to_any(data.type(), prop.value);
-            (void)data.set(instance, value);
+            entt::meta_any value = parseValueToAny(data.type(), prop.value, assets);
+            if (data.type() == entt::resolve<CoreUUID>() && value.type() != entt::resolve<CoreUUID>())
+            {
+                VULTRA_CORE_WARN("[SceneSystem] Unresolved asset reference for {} / {}: '{}'",
+                                 prop.component,
+                                 prop.field,
+                                 prop.value);
+                continue;
+            }
+
+            if (!data.set(instance, value))
+            {
+                VULTRA_CORE_WARN("[SceneSystem] Failed to apply property {} / {} = '{}'",
+                                 prop.component,
+                                 prop.field,
+                                 prop.value);
+            }
         }
     }
 
-    SceneSystem::InstantiateNodeResult SceneSystem::instantiateNodeR(World& world,
-                                                                      const SceneNode& node,
-                                                                      entt::entity parent,
-                                                                      const std::filesystem::path& baseDir)
+    SceneSystem::InstantiateNodeResult SceneSystem::instantiateNodeR(
+        World& world,
+        const SceneNode& node,
+        entt::entity parent,
+        const std::filesystem::path& baseDir,
+        bool allowPrefab,
+        const std::unordered_map<std::string, std::string>& assets)
     {
         entt::registry& reg = world.registry();
 
         // Prefab: instantiate referenced scene and apply overrides.
         if (!node.prefabUri.empty())
         {
+            if (!allowPrefab)
+                return InstantiateNodeResult::err("Scene instantiate: prefab is not allowed in .vmanifest scenes");
+
             std::filesystem::path prefabPath = node.prefabUri;
             if (prefabPath.is_relative() && !baseDir.empty())
                 prefabPath = baseDir / prefabPath;
@@ -298,7 +424,12 @@ namespace vultra
             entt::entity rootEnt   = entt::null;
             if (prefabDoc && prefabDoc->root)
             {
-                auto instantiatedRoot = instantiateNodeR(world, *prefabDoc->root, parent, prefabPath.parent_path());
+                auto instantiatedRoot = instantiateNodeR(world,
+                                                         *prefabDoc->root,
+                                                         parent,
+                                                         prefabPath.parent_path(),
+                                                         !prefabDoc->isManifest,
+                                                         prefabDoc->assets);
                 if (!instantiatedRoot)
                     return InstantiateNodeResult::err(std::move(instantiatedRoot).error());
                 rootEnt = std::move(instantiatedRoot).value();
@@ -323,12 +454,12 @@ namespace vultra
                 reg.get<PrefabInstanceComponent>(rootEnt).prefabUri = node.prefabUri;
 
             // Apply overrides on the root entity.
-            applyProperties(reg, rootEnt, node);
+            applyProperties(reg, rootEnt, node, assets);
 
             // Instantiate extra children under prefab root.
             for (const auto& ch : node.children)
             {
-                auto childResult = instantiateNodeR(world, *ch, rootEnt, baseDir);
+                auto childResult = instantiateNodeR(world, *ch, rootEnt, baseDir, allowPrefab, assets);
                 if (!childResult)
                     return InstantiateNodeResult::err(std::move(childResult).error());
             }
@@ -350,7 +481,7 @@ namespace vultra
             reg.get<IDComponent>(e).uuid = node.id;
 
         // Apply properties
-        applyProperties(reg, e, node);
+        applyProperties(reg, e, node, assets);
 
         // Ensure name if provided by header but not via property
         if (!node.name.empty())
@@ -363,7 +494,7 @@ namespace vultra
 
         for (const auto& ch : node.children)
         {
-            auto childResult = instantiateNodeR(world, *ch, e, baseDir);
+            auto childResult = instantiateNodeR(world, *ch, e, baseDir, allowPrefab, assets);
             if (!childResult)
                 return InstantiateNodeResult::err(std::move(childResult).error());
         }
@@ -383,7 +514,7 @@ namespace vultra
         const auto path    = toPath(uri);
         const auto baseDir = path.has_parent_path() ? path.parent_path() : std::filesystem::path {};
 
-        auto rootResult = instantiateNodeR(world, *doc->root, parent, baseDir);
+        auto rootResult = instantiateNodeR(world, *doc->root, parent, baseDir, !doc->isManifest, doc->assets);
         if (!rootResult)
         {
             VULTRA_CORE_ERROR("[SceneSystem] Failed to instantiate scene '{}': {}", uri, std::move(rootResult).error());

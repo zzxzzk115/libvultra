@@ -106,6 +106,14 @@ namespace vultra
         int         rootId        = -1;
         int         currentNodeId = -1;
         std::string currentSection;
+        bool        isManifest = false;
+
+        auto strip_quotes = [](std::string s) {
+            s = trim_copy(s);
+            if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+                s = s.substr(1, s.size() - 2);
+            return s;
+        };
 
         std::istringstream iss(text.data());
         std::string        line;
@@ -124,6 +132,29 @@ namespace vultra
                 if (inside == "vscn")
                 {
                     currentSection = "vscn";
+                    currentNodeId  = -1;
+                    continue;
+                }
+
+                if (inside == "vmanifest")
+                {
+                    currentSection  = "vmanifest";
+                    currentNodeId   = -1;
+                    doc.isManifest  = true;
+                    isManifest      = true;
+                    continue;
+                }
+
+                if (inside == "assets")
+                {
+                    currentSection = "assets";
+                    currentNodeId  = -1;
+                    continue;
+                }
+
+                if (inside == "node")
+                {
+                    currentSection = "node";
                     currentNodeId  = -1;
                     continue;
                 }
@@ -155,6 +186,10 @@ namespace vultra
                         vbase::try_parse_uuid(it->second.c_str(), tmp);
                         node->id = CoreUUID(tmp);
                     }
+                    else if (isManifest)
+                    {
+                        node->id = CoreUUIDHelper::getFromName(std::string("vmanifest:node:") + std::to_string(id));
+                    }
                     else
                     {
                         node->id = CoreUUIDHelper::createStandardUUID();
@@ -185,7 +220,7 @@ namespace vultra
             }
 
             // key/value inside [vscn]
-            if (currentSection == "vscn")
+            if (currentSection == "vscn" || currentSection == "vmanifest")
             {
                 auto eq = t.find('=');
                 if (eq == std::string::npos)
@@ -207,6 +242,19 @@ namespace vultra
                 continue;
             }
 
+            if (currentSection == "assets")
+            {
+                auto eq = t.find('=');
+                if (eq == std::string::npos)
+                    continue;
+
+                std::string key = trim_copy(std::string_view(t).substr(0, eq));
+                std::string val = strip_quotes(std::string(trim_copy(std::string_view(t).substr(eq + 1))));
+                if (!key.empty() && !val.empty())
+                    doc.assets[key] = val;
+                continue;
+            }
+
             // property line inside [node]
             if (currentSection == "node" && currentNodeId != -1)
             {
@@ -224,7 +272,19 @@ namespace vultra
                 SceneProperty prop;
                 prop.component = trim_copy(std::string_view(lhs).substr(0, slash));
                 prop.field     = trim_copy(std::string_view(lhs).substr(slash + 1));
-                prop.value     = rhs;
+
+                if (isManifest)
+                {
+                    std::string rhsNoQuotes = strip_quotes(rhs);
+                    if (!rhsNoQuotes.empty() && rhsNoQuotes.front() == '@')
+                    {
+                        std::string alias = rhsNoQuotes.substr(1);
+                        if (auto it = doc.assets.find(alias); it != doc.assets.end())
+                            rhs = it->second;
+                    }
+                }
+
+                prop.value = rhs;
 
                 nodes[currentNodeId]->properties.push_back(std::move(prop));
             }

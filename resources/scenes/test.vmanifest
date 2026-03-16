@@ -1,0 +1,25 @@
+[vmanifest]
+version = 1
+root = 1
+
+[assets]
+mesh.Sponza = "res://models/Sponza/Sponza.gltf"
+gaussian_splat.Lizard = "res://models/hornedlizard.spz"
+
+[node id=1 name="Root" parent=0]
+NameComponent/name = "Root"
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale    = (1, 1, 1)
+
+[node id=2 name="Sponza" parent=1]
+NameComponent/name = "Sponza"
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+MeshComponent/mesh = @mesh.Sponza
+
+; [node id=3 name="LizardSplat" parent=1]
+; NameComponent/name = "LizardSplat"
+; TransformComponent/position = (0, 0, -1)
+; TransformComponent/rotation = (0, 0, 0, 1)
+; GaussianSplatComponent/gaussianSplat = @gaussian_splat.Lizard

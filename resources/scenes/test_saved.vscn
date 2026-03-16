@@ -2,22 +2,16 @@
 version = 1
 root    = 1
 
-[node id=1 name="Root" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0cbc"]
+[node id=1 name="Root" parent=0 uuid="adb61cc6f7f9572932aef9b35e93caae"]
 NameComponent/name = "Root"
 TransformComponent/position = (0, 0, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (1, 1, 1)
 
-[node id=2 name="LizardSplat" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0caa"]
-NameComponent/name = "LizardSplat"
-TransformComponent/position = (0, 0, -1)
+[node id=2 name="Sponza" parent=1 uuid="adb619c6f7f9521032aefcb35e93c5d1"]
+NameComponent/name = "Sponza"
+TransformComponent/position = (0, 0, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (1, 1, 1)
-GaussianSplatComponent/gaussianSplat = "3acfb36237062821a78452d799871ba6"
-
-[node id=3 name="Enemy" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0cbb" prefab="res://scenes/enemy.vscn"]
-NameComponent/name = "Enemy"
-TransformComponent/position = (1, 2, 3)
-TransformComponent/rotation = (0, 0, 0, 1)
-TransformComponent/scale = (1, 1, 1)
+MeshComponent/mesh = "b51e0d7c911e053929d6e8fdc7af78be"
 
