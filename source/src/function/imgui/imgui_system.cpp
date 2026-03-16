@@ -42,10 +42,6 @@ namespace vultra
                   config.enableDocking,
                   config.imguiIniFile.c_str());
 
-        VULTRA_CORE_TRACE("[ImGuiSystem] Registering window event callback");
-        // Register event: window poll event
-        windowService.window().on<os::GeneralWindowEvent>([this](const auto& event, auto&) { processEvent(event); });
-
         VULTRA_CORE_TRACE("[ImGuiSystem] Providing IImGuiService");
         ctx().services.provide<IImGuiService>(this);
 

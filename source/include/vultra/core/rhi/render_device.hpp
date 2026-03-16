@@ -9,6 +9,7 @@
 #include "vultra/core/rhi/image_aspect.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
+#include "vultra/core/rhi/radix_sorter.hpp"
 #include "vultra/core/rhi/raytracing/acceleration_structure.hpp"
 #include "vultra/core/rhi/raytracing/raytracing_instance.hpp"
 #include "vultra/core/rhi/raytracing/raytracing_pipeline.hpp"
@@ -164,6 +165,10 @@ namespace vultra
             [[nodiscard]] StorageBuffer createStorageBuffer(vk::DeviceSize size,
                                                             AllocationHints = AllocationHints::eNone) const;
 
+            [[nodiscard]] StorageBuffer createStorageBufferWithUsage(vk::DeviceSize      size,
+                                                                     vk::BufferUsageFlags extraUsage,
+                                                                     AllocationHints = AllocationHints::eNone) const;
+
             [[nodiscard]] DrawIndirectBuffer createDrawIndirectBuffer(uint32_t         commandCount,
                                                                       DrawIndirectType type,
                                                                       AllocationHints = AllocationHints::eNone) const;
@@ -202,6 +207,8 @@ namespace vultra
 
             [[nodiscard]] ComputePipeline createComputePipeline(const ShaderStageInfo& shaderStageInfo,
                                                                 std::optional<PipelineLayout> = std::nullopt);
+
+            [[nodiscard]] RadixSorter createRadixSorter(uint32_t maxElementCount);
 
             [[nodiscard]] ComputePipeline createComputePipelineBuiltin(const SPIRV& spv,
                                                                        std::optional<PipelineLayout> = std::nullopt);

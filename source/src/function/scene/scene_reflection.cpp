@@ -1,6 +1,7 @@
 #include "vultra/function/scene/scene_reflection.hpp"
 
 #include "vultra/core/base/uuid.hpp"
+#include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
@@ -31,5 +32,8 @@ namespace vultra
             .data<&TransformComponent::scale>("scale"_hs);
 
         entt::meta_factory<MeshComponent>().type("MeshComponent"_hs).data<&MeshComponent::mesh>("mesh"_hs);
+        entt::meta_factory<GaussianSplatComponent>()
+            .type("GaussianSplatComponent"_hs)
+            .data<&GaussianSplatComponent::gaussianSplat>("gaussianSplat"_hs);
     }
 } // namespace vultra

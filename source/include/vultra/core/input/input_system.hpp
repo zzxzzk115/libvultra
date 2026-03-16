@@ -28,14 +28,14 @@ namespace vultra
         glm::vec2 getMousePositionDelta() const override;
         glm::vec2 getMouseScrollDelta() const override;
 
+        void handleEvent(const SDL_Event& e) override;
+
     protected:
         bool onInit() override;
         void onShutdown() override;
-        void onPreUpdate(fsec) override;
+        void onPostUpdate(fsec) override;
 
     private:
-        void handleEvent(const SDL_Event& e);
-
         void setKeyState(KeyCode key, InputAction action);
         void setMouseButtonState(MouseCode button, MouseButtonState state);
 

@@ -27,7 +27,7 @@ namespace vultra
         virtual void onPollEvents()        = 0;
         virtual bool onShouldClose() const = 0;
 
-        virtual fsec onFrameDelta() { return fsec {1.0f / 60.0f}; }
+        virtual fsec onFrameDelta();
 
         // Optional
         virtual void onBeforeEngineTick(fsec /*dt*/) {}

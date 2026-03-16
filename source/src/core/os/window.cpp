@@ -285,11 +285,6 @@ namespace vultra
         void Window::close()
         {
             m_ShouldClose = true;
-            if (m_SDL3WindowHandle)
-            {
-                SDL_DestroyWindow(m_SDL3WindowHandle);
-                m_SDL3WindowHandle = nullptr;
-            }
         }
 
         void Window::quit() { SDL_Quit(); }

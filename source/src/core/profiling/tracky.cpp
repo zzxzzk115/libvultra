@@ -167,7 +167,7 @@ namespace
 #ifdef TRACKY_OPENGL
 			Tracky_();
 #elifdef TRACKY_VULKAN
-	        Tracky_(vk::Device aDevice, uint32_t aQueryCount);
+	        Tracky_(vk::Device aDevice, uint32_t aQueryCount, float aTimestampPeriodNs);
 #endif
 
 	        ~Tracky_();
@@ -246,6 +246,7 @@ namespace
 	        uint32_t mQueryIndex = 0;
 	        uint32_t mMaxQueries = 0;
 	        bool mVkInitialized = false;
+	        float mTimestampPeriodNs = 1.0f;
 #endif
 
 			// Internal statistics
@@ -314,7 +315,7 @@ namespace tracky
 		gTracky = std::make_unique<Tracky_>();
 	}
 #elifdef TRACKY_VULKAN
-    void startup(vk::Device aDevice, uint32_t aQueryCount)
+	void startup(vk::Device aDevice, uint32_t aQueryCount, float aTimestampPeriodNs)
     {
         if( gTracky )
         {
@@ -322,7 +323,7 @@ namespace tracky
             return;
         }
 
-        gTracky = std::make_unique<Tracky_>(aDevice, aQueryCount);
+		gTracky = std::make_unique<Tracky_>(aDevice, aQueryCount, aTimestampPeriodNs);
     }
     void bind_cmd_buffer( vk::CommandBuffer aCmdBuffer )
     {
@@ -343,11 +344,15 @@ namespace
 #ifdef TRACKY_OPENGL
     Tracky_::Tracky_()
 #elifdef TRACKY_VULKAN
-	Tracky_::Tracky_(vk::Device aDevice, uint32_t aQueryCount)
+	Tracky_::Tracky_(vk::Device aDevice, uint32_t aQueryCount, float aTimestampPeriodNs)
 #endif
 		: mEpoch( Clock_::now() )
 	{
 		set_frame_lag();
+
+#if defined(__APPLE__) && defined(TRACKY_VULKAN)
+		set_frame_lag(0);
+#endif
 
 		for( std::size_t i = 0; i < mFrameLag+1; ++i )
 		{
@@ -369,6 +374,7 @@ namespace
 	    mMaxQueries = aQueryCount;
 	    mQueryIndex = 0;
 	    mVkInitialized = true;
+	    mTimestampPeriodNs = aTimestampPeriodNs > 0.0f ? aTimestampPeriodNs : 1.0f;
 
 	    vk::QueryPoolCreateInfo qinfo{};
 	    qinfo.queryType = vk::QueryType::eTimestamp;
@@ -617,7 +623,7 @@ namespace
             auto& frame = *mPending.front();
             assert( !frame.empty() && ERecord_::frameBegin == frame[0].type );
 
-            if( !aThisIsTheEnd && mFrameNumber - frame[0].frame.number <= mFrameLag )
+			if( !aThisIsTheEnd && mFrameNumber - frame[0].frame.number < mFrameLag )
                 break;
 
 #ifdef TRACKY_OPENGL
@@ -951,9 +957,10 @@ namespace
 					auto const scopeDuration = partner->scope.early - rec.scope.late;
 					auto const scopeOverhead = rec.scope.late - rec.scope.early;
 
-					auto const scopeGL = partner->scope.gpu.result - rec.scope.gpu.result;
+					auto const scopeTicks = static_cast<double>(partner->scope.gpu.result - rec.scope.gpu.result);
+					auto const scopeGpuUs = (scopeTicks * static_cast<double>(mTimestampPeriodNs)) / 1000.0;
 
-					std::fprintf( aFof, "\"%s\", %f, %f, %f, \"%s\"\n", rec.scope.name, timestamp_(rec.scope.late), duration_(scopeDuration), scopeGL/1000.0, parent );
+					std::fprintf( aFof, "\"%s\", %f, %f, %f, \"%s\"\n", rec.scope.name, timestamp_(rec.scope.late), duration_(scopeDuration), scopeGpuUs, parent );
 
 					totalOverhead += duration_(scopeOverhead);
 				} break;
@@ -1012,10 +1019,11 @@ namespace
 					auto const scopeDuration = partner->scope.early - rec.scope.late;
 					auto const scopeOverhead = rec.scope.late - rec.scope.early;
 
-					auto const scopeGL = partner->scope.gpu.result - rec.scope.gpu.result;
+					auto const scopeTicks = static_cast<double>(partner->scope.gpu.result - rec.scope.gpu.result);
+					auto const scopeGpuUs = (scopeTicks * static_cast<double>(mTimestampPeriodNs)) / 1000.0;
 
 					aggregatesCPU[rec.scope.name] += duration_(scopeDuration);
-					aggregatesGL[rec.scope.name] += scopeGL / 1000.0;
+					aggregatesGL[rec.scope.name] += scopeGpuUs;
 
 					totalOverhead += duration_(scopeOverhead);
 				} break;

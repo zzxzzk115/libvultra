@@ -56,7 +56,7 @@ void main()
 {
     uint drawId = gl_BaseInstance;
     DrawRecord d = s_Draws.draws[drawId];
-    Meshlet meshlet = s_Meshlets.meshlets[d.meshletIndex];
+    Meshlet meshlet = s_Meshlets.meshlets[d.primitiveIndex];
 
     uint packedTriVertex = uint(gl_VertexIndex);
     uint triIndex = packedTriVertex / 3u;
@@ -95,7 +95,7 @@ void main()
 #endif
 
     v_MaterialIndex = d.materialIndex;
-    v_MeshletIndex = d.meshletIndex;
+    v_MeshletIndex = d.primitiveIndex;
     v_TriangleIndex = triIndex;
     gl_Position = u_Camera.viewProjection * vec4(v_FragPos, 1.0);
 }

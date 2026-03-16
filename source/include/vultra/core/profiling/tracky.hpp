@@ -161,9 +161,9 @@ namespace tracky
 #	define TRACKY_NEXT_FRAME() ::tracky::next_frame()
 
 #ifdef TRACKY_OPENGL
-#	define TRACKY_STARTUP() ::tracky::startup()
+#	define TRACKY_STARTUP(...) ::tracky::startup()
 #elifdef TRACKY_VULKAN
-#	define TRACKY_STARTUP(device, queryCount) ::tracky::startup(device, queryCount)
+#	define TRACKY_STARTUP(...) ::tracky::startup(__VA_ARGS__)
 #   define TRACKY_BIND_CMD_BUFFER(cmdBuf) ::tracky::bind_cmd_buffer(cmdBuf)
 #endif
 #	define TRACKY_TEARDOWN() ::tracky::teardown()
@@ -196,9 +196,9 @@ namespace tracky
 
 #	define TRACKY_NEXT_FRAME() do {} while(0)
 #ifdef TRACKY_OPENGL
-#	define TRACKY_STARTUP() do {} while(0)
+#	define TRACKY_STARTUP(...) do {} while(0)
 #elifdef TRACKY_VULKAN
-#	define TRACKY_STARTUP(device, queryCount) do {} while(0)
+#	define TRACKY_STARTUP(...) do {} while(0)
 #   define TRACKY_BIND_CMD_BUFFER(cmdBuf) do {} while(0)
 #endif
 #	define TRACKY_TEARDOWN() do {} while(0)
@@ -246,7 +246,7 @@ namespace tracky
 #ifdef TRACKY_OPENGL
 	void startup(); //TODO: options for what output etc., where to store, ...
 #elifdef TRACKY_VULKAN
-    void startup(vk::Device aDevice, uint32_t aQueryCount);
+	void startup(vk::Device aDevice, uint32_t aQueryCount, float aTimestampPeriodNs = 1.0f);
     void bind_cmd_buffer(vk::CommandBuffer aCmdBuffer);
 #endif
 	void teardown();

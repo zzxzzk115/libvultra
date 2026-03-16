@@ -5,6 +5,7 @@
 namespace vultra
 {
     class TestPass;
+    class SplatCompositePass;
 
     class TestFeature : public RenderFeature
     {
@@ -17,6 +18,7 @@ namespace vultra
         virtual void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        TestPass* m_TestPass {nullptr};
+        TestPass*            m_TestPass {nullptr};
+        SplatCompositePass*  m_SplatCompositePass {nullptr};
     };
 } // namespace vultra

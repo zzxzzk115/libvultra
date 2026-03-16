@@ -31,3 +31,6 @@ imported/
 
 # vshader cache
 .vshader_cache/
+
+# tracky
+tracky*.csv

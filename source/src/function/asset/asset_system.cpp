@@ -7,8 +7,14 @@
 
 #include <vasset/editor_filesystem.hpp>
 #include <vasset/vasset_importers.hpp>
+#include <vasset/vgaussiansplat.hpp>
 #include <vasset/vmaterial.hpp>
 
+#include <glm/gtc/packing.hpp>
+#include <glm/gtx/quaternion.hpp>
+
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
 
@@ -172,6 +178,37 @@ namespace vultra
             }
 
             return buffer;
+        }
+
+        float sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
+
+        float clampToF16(float x)
+        {
+            // IEEE half max finite value.
+            return std::clamp(x, -65504.0f, 65504.0f);
+        }
+
+        uint32_t packF16x2(float a, float b)
+        {
+            return glm::packHalf2x16(glm::vec2(clampToF16(a), clampToF16(b)));
+        }
+
+        uint32_t packF16x2Clamp01(float a, float b)
+        {
+            return glm::packHalf2x16(glm::vec2(std::clamp(a, 0.0f, 1.0f), std::clamp(b, 0.0f, 1.0f)));
+        }
+
+        glm::quat sanitizeAndNormalizeQuat(const glm::vec4& xyzw)
+        {
+            if (!std::isfinite(xyzw.x) || !std::isfinite(xyzw.y) || !std::isfinite(xyzw.z) || !std::isfinite(xyzw.w))
+                return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+
+            glm::quat q(xyzw.w, xyzw.x, xyzw.y, xyzw.z);
+            const float len2 = glm::dot(q, q);
+            if (!(len2 > 1e-12f))
+                return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+
+            return glm::normalize(q);
         }
     } // namespace
 
@@ -342,6 +379,33 @@ namespace vultra
                         const uint32_t texIndex = uploadTexture(*rec->cpu);
 
                         rec->gpuIndex.store(texIndex, std::memory_order_release);
+                        rec->state.store(AssetState::eReady, std::memory_order_release);
+
+                        if (!m_Desc.keepCpuCopy)
+                            rec->cpu.reset();
+                    }
+                    else
+                    {
+                        rec->state.store(AssetState::eFailed, std::memory_order_release);
+                    }
+                }
+                break;
+
+                case UploadCmd::Kind::eGaussianSplat: {
+                    auto* rec = m_GaussianSplatCache.findOrCreate(cmd.uuid);
+                    if (!rec)
+                        break;
+
+                    const auto st = rec->state.load(std::memory_order_acquire);
+                    if (st != AssetState::eUploadQueued && st != AssetState::eCPUReady)
+                        break;
+
+                    rec->state.store(AssetState::eUploadingGPU, std::memory_order_release);
+
+                    if (rec->cpu)
+                    {
+                        const uint32_t splatIndex = uploadGaussianSplat(*rec->cpu);
+                        rec->gpuIndex.store(splatIndex, std::memory_order_release);
                         rec->state.store(AssetState::eReady, std::memory_order_release);
 
                         if (!m_Desc.keepCpuCopy)
@@ -592,6 +656,268 @@ namespace vultra
         return meshIndex;
     }
 
+    uint32_t AssetSystem::uploadGaussianSplat(const vasset::VGaussianSplat& cpuSplat)
+    {
+        if (!m_RenderDevice)
+            return std::numeric_limits<uint32_t>::max();
+
+        auto& pool = m_GpuResourceService->pool();
+
+        constexpr float kShC0       = 0.28209479177f;
+        constexpr int   kTargetRest = static_cast<int>(resource::GpuGaussianSplat::s_PackedShRestCoeffs);
+        constexpr float kAlphaMinKeep          = 0.001f;
+        constexpr float kAlphaLogitMin         = -20.0f;
+        constexpr float kAlphaLogitMax         = 20.0f;
+        constexpr float kLogScaleMin           = -20.0f;
+        constexpr float kLogScaleMax           = 4.0f;
+        constexpr uint32_t kDetectSampleBudget = 200000u;
+
+        const int fileDegree     = std::clamp(cpuSplat.shDegree, 0, 3);
+        const int fileRestCoeffs = fileDegree > 0 ? (((fileDegree + 1) * (fileDegree + 1)) - 1) : 0;
+
+        const uint32_t detectCount = std::min<uint32_t>(static_cast<uint32_t>(cpuSplat.splats.size()), kDetectSampleBudget);
+
+        float alphaMin = std::numeric_limits<float>::infinity();
+        float alphaMax = -std::numeric_limits<float>::infinity();
+        float scaleMin = std::numeric_limits<float>::infinity();
+        float scaleMax = -std::numeric_limits<float>::infinity();
+        double colorMin = std::numeric_limits<double>::infinity();
+        double colorMax = -std::numeric_limits<double>::infinity();
+
+        for (uint32_t i = 0; i < detectCount; ++i)
+        {
+            const auto& p = cpuSplat.splats[i];
+
+            if (std::isfinite(p.opacity))
+            {
+                alphaMin = std::min(alphaMin, p.opacity);
+                alphaMax = std::max(alphaMax, p.opacity);
+            }
+
+            const float scales[3] = {p.scale.x, p.scale.y, p.scale.z};
+            for (float s : scales)
+            {
+                if (!std::isfinite(s))
+                    continue;
+                scaleMin = std::min(scaleMin, s);
+                scaleMax = std::max(scaleMax, s);
+            }
+
+            const float sh0[3] = {p.shDC.x, p.shDC.y, p.shDC.z};
+            for (float c : sh0)
+            {
+                if (!std::isfinite(c))
+                    continue;
+                colorMin = std::min(colorMin, static_cast<double>(c));
+                colorMax = std::max(colorMax, static_cast<double>(c));
+            }
+        }
+
+        bool looksLogitAlpha = true;
+        if (std::isfinite(alphaMin) && std::isfinite(alphaMax))
+            looksLogitAlpha = (alphaMin < -0.05f) || (alphaMax > 1.05f);
+
+        bool looksLogScale = true;
+        if (std::isfinite(scaleMin) && std::isfinite(scaleMax))
+            looksLogScale = (scaleMin < -1.0f) || (scaleMax > 3.0f);
+
+        const bool looksByteRGB    = std::isfinite(colorMax) && (colorMax > 4.0);
+        const bool looksFloatRGB01 = std::isfinite(colorMin) && std::isfinite(colorMax) && (colorMin >= -1e-3) &&
+                                     (colorMax <= 1.5);
+        const bool looksSH0 = (!looksByteRGB && !looksFloatRGB01);
+
+        bool sh0AddBias = true;
+        if (looksSH0 && detectCount > 0u)
+        {
+            uint64_t outOfRangeWithBias = 0u;
+            uint64_t outOfRangeNoBias   = 0u;
+            uint64_t totalChannels      = 0u;
+
+            for (uint32_t i = 0; i < detectCount; ++i)
+            {
+                const auto& p = cpuSplat.splats[i];
+                if (!std::isfinite(p.shDC.x) || !std::isfinite(p.shDC.y) || !std::isfinite(p.shDC.z))
+                    continue;
+
+                const glm::vec3 dc = kShC0 * p.shDC;
+                const glm::vec3 rgbWithBias = dc + glm::vec3(0.5f);
+                const glm::vec3 rgbNoBias   = dc;
+
+                outOfRangeWithBias += (rgbWithBias.x < 0.0f || rgbWithBias.x > 1.0f) ? 1u : 0u;
+                outOfRangeWithBias += (rgbWithBias.y < 0.0f || rgbWithBias.y > 1.0f) ? 1u : 0u;
+                outOfRangeWithBias += (rgbWithBias.z < 0.0f || rgbWithBias.z > 1.0f) ? 1u : 0u;
+
+                outOfRangeNoBias += (rgbNoBias.x < 0.0f || rgbNoBias.x > 1.0f) ? 1u : 0u;
+                outOfRangeNoBias += (rgbNoBias.y < 0.0f || rgbNoBias.y > 1.0f) ? 1u : 0u;
+                outOfRangeNoBias += (rgbNoBias.z < 0.0f || rgbNoBias.z > 1.0f) ? 1u : 0u;
+
+                totalChannels += 3u;
+            }
+
+            if (totalChannels > 0u)
+                sh0AddBias = outOfRangeWithBias <= outOfRangeNoBias;
+        }
+
+        auto decodeAlpha = [&](const vasset::VGaussianSplatPoint& p) -> float {
+            if (!std::isfinite(p.opacity))
+                return 0.0f;
+
+            if (looksLogitAlpha)
+                return sigmoid(std::clamp(p.opacity, kAlphaLogitMin, kAlphaLogitMax));
+
+            return std::clamp(p.opacity, 0.0f, 1.0f);
+        };
+
+        auto decodeScaleLin = [&](const vasset::VGaussianSplatPoint& p) -> glm::vec3 {
+            if (!std::isfinite(p.scale.x) || !std::isfinite(p.scale.y) || !std::isfinite(p.scale.z))
+                return glm::vec3(1e-6f);
+
+            if (looksLogScale)
+            {
+                return glm::vec3(std::exp(std::clamp(p.scale.x, kLogScaleMin, kLogScaleMax)),
+                                 std::exp(std::clamp(p.scale.y, kLogScaleMin, kLogScaleMax)),
+                                 std::exp(std::clamp(p.scale.z, kLogScaleMin, kLogScaleMax)));
+            }
+
+            return glm::vec3(std::max(p.scale.x, 1e-6f), std::max(p.scale.y, 1e-6f), std::max(p.scale.z, 1e-6f));
+        };
+
+        auto decodeBaseRgb = [&](const vasset::VGaussianSplatPoint& p) -> glm::vec3 {
+            if (!std::isfinite(p.shDC.x) || !std::isfinite(p.shDC.y) || !std::isfinite(p.shDC.z))
+                return glm::vec3(0.0f);
+
+            if (looksByteRGB)
+                return glm::clamp(p.shDC * (1.0f / 255.0f), glm::vec3(0.0f), glm::vec3(1.0f));
+
+            if (looksFloatRGB01)
+                return glm::clamp(p.shDC, glm::vec3(0.0f), glm::vec3(1.0f));
+
+            return glm::clamp(kShC0 * p.shDC + (sh0AddBias ? glm::vec3(0.5f) : glm::vec3(0.0f)),
+                              glm::vec3(0.0f),
+                              glm::vec3(1.0f));
+        };
+
+        std::vector<glm::vec4> packedCenters;
+        std::vector<glm::uvec4> packedCovariances;
+        std::vector<glm::uvec2> packedColors;
+        std::vector<glm::uvec2> packedSh;
+
+        packedCenters.reserve(cpuSplat.splats.size());
+        packedCovariances.reserve(cpuSplat.splats.size());
+        packedColors.reserve(cpuSplat.splats.size());
+        packedSh.reserve(cpuSplat.splats.size() * resource::GpuGaussianSplat::s_PackedShRestCoeffs);
+
+        for (size_t i = 0; i < cpuSplat.splats.size(); ++i)
+        {
+            const auto& p = cpuSplat.splats[i];
+            if (!std::isfinite(p.position.x) || !std::isfinite(p.position.y) || !std::isfinite(p.position.z))
+                continue;
+
+            const float alpha = decodeAlpha(p);
+            if (alpha < kAlphaMinKeep)
+                continue;
+
+            packedCenters.push_back(glm::vec4(p.position, 1.0f));
+
+            const glm::vec3 baseRgb = decodeBaseRgb(p);
+            packedColors.emplace_back(packF16x2Clamp01(baseRgb.r, baseRgb.g), packF16x2Clamp01(baseRgb.b, alpha));
+
+            const glm::vec3 scaleLin = decodeScaleLin(p);
+            const glm::quat q = sanitizeAndNormalizeQuat(p.rotation);
+            const glm::mat3 R = glm::mat3_cast(q);
+
+            glm::mat3 D(0.0f);
+            D[0][0] = scaleLin.x * scaleLin.x;
+            D[1][1] = scaleLin.y * scaleLin.y;
+            D[2][2] = scaleLin.z * scaleLin.z;
+
+            const glm::mat3 Sigma = R * D * glm::transpose(R);
+
+            const float m11 = Sigma[0][0];
+            const float m12 = Sigma[1][0];
+            const float m13 = Sigma[2][0];
+            const float m22 = Sigma[1][1];
+            const float m23 = Sigma[2][1];
+            const float m33 = Sigma[2][2];
+
+            packedCovariances.emplace_back(packF16x2(m11, m12), packF16x2(m13, m22), packF16x2(m23, m33), 0u);
+
+            const size_t pointBase = i * static_cast<size_t>(fileRestCoeffs) * 3ull;
+            for (int k = 0; k < kTargetRest; ++k)
+            {
+                float rr = 0.0f;
+                float gg = 0.0f;
+                float bb = 0.0f;
+                if (fileRestCoeffs > 0 && k < fileRestCoeffs)
+                {
+                    const size_t coeffBase = pointBase + static_cast<size_t>(k) * 3ull;
+                    if (coeffBase + 2ull < cpuSplat.sh.size())
+                    {
+                        rr = cpuSplat.sh[coeffBase + 0ull];
+                        gg = cpuSplat.sh[coeffBase + 1ull];
+                        bb = cpuSplat.sh[coeffBase + 2ull];
+                    }
+
+                    if (!std::isfinite(rr))
+                        rr = 0.0f;
+                    if (!std::isfinite(gg))
+                        gg = 0.0f;
+                    if (!std::isfinite(bb))
+                        bb = 0.0f;
+
+                    rr = std::clamp(rr, -10.0f, 10.0f);
+                    gg = std::clamp(gg, -10.0f, 10.0f);
+                    bb = std::clamp(bb, -10.0f, 10.0f);
+                }
+
+                packedSh.emplace_back(packF16x2(rr, gg), packF16x2(bb, 0.0f));
+            }
+        }
+
+        if (packedCenters.empty())
+        {
+            VULTRA_CORE_ERROR("[AssetSystem] uploadGaussianSplat: no valid points in '{}'.", cpuSplat.name);
+            return std::numeric_limits<uint32_t>::max();
+        }
+
+        glm::vec3 center(0.0f);
+        glm::vec3 minP(std::numeric_limits<float>::infinity());
+        glm::vec3 maxP(-std::numeric_limits<float>::infinity());
+        for (const auto& c : packedCenters)
+        {
+            minP = glm::min(minP, glm::vec3(c));
+            maxP = glm::max(maxP, glm::vec3(c));
+        }
+        center = 0.5f * (minP + maxP);
+
+        float radius = 0.0f;
+        for (const auto& c : packedCenters)
+            radius = std::max(radius, glm::length(glm::vec3(c) - center));
+
+        resource::GpuGaussianSplat out;
+        out.pointCount = static_cast<uint32_t>(packedCenters.size());
+        out.shDegree   = fileDegree;
+        out.center     = center;
+        out.radius     = radius;
+
+        const auto uploadBuffer = [&](auto& dst, const auto& src) {
+            if (src.empty())
+                return;
+            const uint64_t bytes = static_cast<uint64_t>(src.size()) * static_cast<uint64_t>(sizeof(src[0]));
+            dst = createRef<rhi::StorageBuffer>(m_RenderDevice->createStorageBuffer(bytes));
+            m_RenderDevice->uploadS(*dst, 0, bytes, src.data());
+        };
+
+        uploadBuffer(out.centersBuffer, packedCenters);
+        uploadBuffer(out.covarianceBuffer, packedCovariances);
+        uploadBuffer(out.colorBuffer, packedColors);
+        uploadBuffer(out.shBuffer, packedSh);
+
+        const uint32_t index = static_cast<uint32_t>(pool.gaussianSplats.size());
+        pool.gaussianSplats.push_back(std::move(out));
+        return index;
+    }
+
     AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureSync(const CoreUUID& uuid)
     {
         auto* rec = m_TextureCache.findOrCreate(uuid);
@@ -738,6 +1064,77 @@ namespace vultra
         if (!resolveUriToUUID(uri, uuid))
             return {};
         return loadMeshSync(uuid);
+    }
+
+    AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+    AssetSystem::loadGaussianSplatSync(const CoreUUID& uuid)
+    {
+        auto* rec = m_GaussianSplatCache.findOrCreate(uuid);
+        if (!rec)
+            return {};
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
+            rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
+        {
+            return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
+        }
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
+        {
+            rec->state.store(AssetState::eLoadingCPU, std::memory_order_release);
+
+            std::string uri;
+            if (!resolveUUIDToUri(uuid, uri))
+            {
+                VULTRA_CLIENT_ERROR("loadGaussianSplatSync: cannot resolve uuid {}", uuid.toString());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
+            }
+
+            auto br = m_VFS.readAll(uri);
+            if (!br)
+            {
+                VULTRA_CLIENT_ERROR("loadGaussianSplatSync: failed to read {}", uri);
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
+            }
+
+            auto cpu = std::make_unique<vasset::VGaussianSplat>();
+            auto r   = vasset::loadGaussianSplatFromMemory(br.value(), *cpu);
+            if (!r)
+            {
+                VULTRA_CLIENT_ERROR("loadGaussianSplatSync: vasset::loadGaussianSplatFromMemory failed: {}", uri);
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
+            }
+
+            rec->cpu = std::move(cpu);
+            rec->state.store(AssetState::eCPUReady, std::memory_order_release);
+        }
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eCPUReady)
+        {
+            bool expected = false;
+            if (rec->uploadQueued.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+            {
+                rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
+
+                std::scoped_lock lock(m_UploadQueueMutex);
+                m_UploadQueue.push_back(UploadCmd {UploadCmd::Kind::eGaussianSplat, uuid});
+            }
+        }
+
+        update(/*frameIndex*/ 0);
+        return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
+    }
+
+    AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+    AssetSystem::loadGaussianSplatSync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadGaussianSplatSync(uuid);
     }
 
     std::string AssetSystem::resolveUri(const std::string_view uri) const

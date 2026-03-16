@@ -82,6 +82,22 @@
 #define VULTRA_INDIRECT_BINDING 12
 #endif
 
+#ifndef VULTRA_SPLAT_CENTER_BINDING
+#define VULTRA_SPLAT_CENTER_BINDING 13
+#endif
+
+#ifndef VULTRA_SPLAT_COVARIANCE_BINDING
+#define VULTRA_SPLAT_COVARIANCE_BINDING 14
+#endif
+
+#ifndef VULTRA_SPLAT_COLOR_BINDING
+#define VULTRA_SPLAT_COLOR_BINDING 15
+#endif
+
+#ifndef VULTRA_SPLAT_SH_BINDING
+#define VULTRA_SPLAT_SH_BINDING 16
+#endif
+
 #ifndef VULTRA_TEXTURE_SET
 #define VULTRA_TEXTURE_SET 3
 #endif
@@ -116,12 +132,14 @@ struct CameraData
 // Keep host-side struct layout identical.
 struct DrawRecord
 {
-    uint meshletIndex;
+    // Primitive payload index (meshlet index, splat index, ...)
+    uint primitiveIndex;
     uint materialIndex;
     uint vertexStrideBytes;
     uint flags;
     uint64_t vertexAddress;
-    uint transformIndex;
+    // Scene instance payload index (or transform index for legacy path)
+    uint instanceIndex;
     uint padding0;
     mat4 model;
 };
@@ -177,12 +195,25 @@ struct GpuVisibleMeshlet
     uint flags;
 };
 
+// Generic non-indexed indirect command (matches Vulkan VkDrawIndirectCommand).
+// Used by both meshlet and gaussian-splat pipelines.
 struct DrawIndirectCommand
 {
-    uint count;
-    uint instanceCount;
-    uint first;
-    uint firstInstance;
+    uint count;         // vertexCount
+    uint instanceCount; // instanceCount
+    uint first;         // firstVertex
+    uint firstInstance; // firstInstance (used as drawId in current shaders)
+};
+
+// Generic indexed indirect command (matches Vulkan VkDrawIndexedIndirectCommand).
+// Included for completeness when indexed pipelines are added to shader-side builders.
+struct DrawIndexedIndirectCommand
+{
+    uint count;         // indexCount
+    uint instanceCount; // instanceCount
+    uint first;         // firstIndex
+    int  vertexOffset;  // vertexOffset
+    uint firstInstance; // firstInstance
 };
 
 // --------------------------------------------------------------------------
@@ -272,6 +303,34 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_INDIRECT_BINDING, std430) buffer
 {
     DrawIndirectCommand commands[];
 } s_Indirect;
+#endif
+
+#ifdef VULTRA_DECLARE_SPLAT_CENTER_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_CENTER_BINDING, std430) readonly buffer SplatCenterBuffer
+{
+    vec4 centers[];
+} s_SplatCenters;
+#endif
+
+#ifdef VULTRA_DECLARE_SPLAT_COVARIANCE_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_COVARIANCE_BINDING, std430) readonly buffer SplatCovarianceBuffer
+{
+    uvec4 covariances[];
+} s_SplatCovariances;
+#endif
+
+#ifdef VULTRA_DECLARE_SPLAT_COLOR_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_COLOR_BINDING, std430) readonly buffer SplatColorBuffer
+{
+    uvec2 colors[];
+} s_SplatColors;
+#endif
+
+#ifdef VULTRA_DECLARE_SPLAT_SH_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_SH_BINDING, std430) readonly buffer SplatSHBuffer
+{
+    uvec2 sh[];
+} s_SplatSH;
 #endif
 
 #define VULTRA_MAT_INVALID 0u

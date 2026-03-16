@@ -481,6 +481,36 @@ namespace vultra
             };
         }
 
+        StorageBuffer RenderDevice::createStorageBufferWithUsage(const vk::DeviceSize      size,
+                                                                 const vk::BufferUsageFlags extraUsage,
+                                                                 const AllocationHints allocationHint) const
+        {
+            assert(m_MemoryAllocator);
+
+            vk::BufferUsageFlags usage =
+                vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | extraUsage;
+
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            {
+                usage |= vk::BufferUsageFlagBits::eShaderDeviceAddress;
+            }
+
+            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            {
+                usage |= vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR;
+            }
+
+            return StorageBuffer {
+                Buffer {
+                    m_MemoryAllocator,
+                    size,
+                    usage,
+                    makeAllocationFlags(allocationHint),
+                    vma::MemoryUsage::eAutoPreferDevice,
+                },
+            };
+        }
+
         DrawIndirectBuffer RenderDevice::createDrawIndirectBuffer(const uint32_t         commandCount,
                                                                   const DrawIndirectType type,
                                                                   const AllocationHints  allocationHint) const
@@ -799,6 +829,11 @@ namespace vultra
                 reflection ? reflection->localSize.value() : glm::uvec3 {},
                 computePipeline,
             };
+        }
+
+        RadixSorter RenderDevice::createRadixSorter(const uint32_t maxElementCount)
+        {
+            return RadixSorter::create(*this, maxElementCount);
         }
 
         RenderDevice&
@@ -1615,7 +1650,16 @@ namespace vultra
         }
 
         // NOLINTBEGIN
-        void RenderDevice::createTracky() { TRACKY_STARTUP(m_Device, 64 * 1024); }
+        void RenderDevice::createTracky()
+        {
+    #ifdef __APPLE__
+            const float timestampPeriodNs = m_PhysicalDevice.getProperties().limits.timestampPeriod;
+            TRACKY_STARTUP(m_Device, 4 * 1024, timestampPeriodNs);
+    #else
+            const float timestampPeriodNs = m_PhysicalDevice.getProperties().limits.timestampPeriod;
+            TRACKY_STARTUP(m_Device, 64 * 1024, timestampPeriodNs);
+    #endif
+        }
         // NOLINTEND
 
         vk::CommandBuffer RenderDevice::allocateCommandBuffer() const

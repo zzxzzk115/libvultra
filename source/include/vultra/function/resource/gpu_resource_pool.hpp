@@ -3,6 +3,7 @@
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/storage_buffer.hpp"
+#include "vultra/function/resource/gpu_gaussian_splat.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
 #include "vultra/function/resource/gpu_texture.hpp"
@@ -298,6 +299,7 @@ namespace vultra::resource
         std::vector<GpuTexture>  textures;
         std::vector<GpuMaterial> materials;
         std::vector<GpuMesh>     meshes;
+        std::vector<GpuGaussianSplat> gaussianSplats;
 
         // Material table buffer (GpuMaterial array).
         // The shader-side MaterialEntry layout is a compact view derived from this.
@@ -379,6 +381,7 @@ namespace vultra::resource
             textures.clear();
             materials.clear();
             meshes.clear();
+            gaussianSplats.clear();
             materialTableBuffer = nullptr;
             materialParams.reset();
             freeTextureSlots.clear();

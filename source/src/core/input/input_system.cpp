@@ -1,18 +1,11 @@
 #include "vultra/core/input/input_system.hpp"
 #include "vultra/core/base/common_context.hpp"
-#include "vultra/core/services/window_service.hpp"
 
 namespace vultra
 {
     bool InputSystem::onInit()
     {
         VULTRA_CORE_INFO("[InputSystem] Initializing...");
-
-        VULTRA_CORE_TRACE("[InputSystem] Setting up window event handler");
-        auto& window = ctx().services.require<IWindowService>().window();
-
-        window.on<os::GeneralWindowEvent>(
-            [this](const os::GeneralWindowEvent& e, os::Window&) { handleEvent(e.internalEvent); });
 
         VULTRA_CORE_TRACE("[InputSystem] Providing IInputService");
         ctx().services.provide<IInputService>(this);
@@ -24,7 +17,7 @@ namespace vultra
 
     void InputSystem::onShutdown() { VULTRA_CORE_INFO("[InputSystem] Shutting down"); }
 
-    void InputSystem::onPreUpdate(fsec) { clearStates(); }
+    void InputSystem::onPostUpdate(fsec) { clearStates(); }
 
     void InputSystem::handleEvent(const SDL_Event& e)
     {

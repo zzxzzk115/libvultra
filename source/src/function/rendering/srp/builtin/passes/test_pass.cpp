@@ -83,28 +83,6 @@ namespace vultra
                 const auto* gpuSceneView     = rc.view().gpuSceneView;
                 auto*       cameraUbo        = resources.get<framegraph::FrameGraphBuffer>(data.camera).buffer;
 
-                if (!renderWorld || !gpuSceneDatabase || !gpuSceneView || !cameraUbo)
-                    return;
-                if (!gpuSceneView->drawBuffer || !gpuSceneDatabase->resources ||
-                    !gpuSceneDatabase->resources->materialTableBuffer ||
-                    !gpuSceneDatabase->resources->materialParams.gpu ||
-                    !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
-                    !gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer ||
-                    !gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer ||
-                    !gpuSceneView->indirectBuffer.has_value())
-                    return;
-
-                if (gpuSceneView->getDispatchableDrawCount() == 0)
-                    return;
-
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
-                rhi::prepareForComputing(rc.cb, gpuSceneView->indirectBuffer.value());
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialParams.gpu);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer);
-
                 assert(rc.framebufferInfo().has_value());
                 const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
                 if (!pipeline)
@@ -112,54 +90,78 @@ namespace vultra
 
                 rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
 
-                rc.resourceSet[0] = {
-                    {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
-                    {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawBuffer.get()}},
-                    {4,
-                     rhi::bindings::StorageBuffer {.buffer =
-                                                       gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
-                    {8,
-                     rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
-                    {9, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
+                const bool canDrawMeshlets = renderWorld && gpuSceneDatabase && gpuSceneView && cameraUbo &&
+                                             gpuSceneView->drawBuffer && gpuSceneDatabase->resources &&
+                                             gpuSceneDatabase->resources->materialTableBuffer &&
+                                             gpuSceneDatabase->resources->materialParams.gpu &&
+                                             gpuSceneDatabase->resources->meshlets.meshletsBuffer &&
+                                             gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer &&
+                                             gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer &&
+                                             gpuSceneView->indirectBuffer.has_value() &&
+                                             gpuSceneView->getDispatchableDrawCount() > 0;
 
-                    {10,
-                     rhi::bindings::StorageBuffer {
-                         .buffer = gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer.get()}},
-                    {11,
-                     rhi::bindings::StorageBuffer {
-                         .buffer = gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer.get()}},
-                };
-
-                rc.resourceSet[3] = {
-                    {4,
-                     rhi::bindings::CombinedImageSamplerArray {
-                         .textures    = gpuSceneDatabase->resources->getBindlessTextureHandles(),
-                         .imageAspect = rhi::ImageAspect::eColor,
-                     }},
-                };
-
-                rc.bindDescriptorSets(*pipeline);
-
-                if (HasFlagValues(rc.rd.getFeatureReport().flags,
-                                  vultra::rhi::RenderDeviceFeatureReportFlagBits::eMultiDraw))
+                if (canDrawMeshlets)
                 {
-                    rc.cb.drawIndirect(rhi::DrawIndirectInfo {
-                        .buffer       = &gpuSceneView->indirectBuffer.value(),
-                        .firstCommand = 0,
-                        .commandCount = gpuSceneView->getDispatchableDrawCount(),
-                    });
-                }
-                else
-                {
-                    const uint32_t drawCount = gpuSceneView->getDispatchableDrawCount();
+                    rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
+                    rhi::prepareForComputing(rc.cb, gpuSceneView->indirectBuffer.value());
+                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
+                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialParams.gpu);
+                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
+                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer);
+                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer);
 
-                    for (uint32_t i = 0; i < drawCount; ++i)
+                    rc.resourceSet[0] = {
+                        {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
+                        {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawBuffer.get()}},
+                        {4,
+                         rhi::bindings::StorageBuffer {.buffer =
+                                                           gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
+                        {8,
+                         rhi::bindings::StorageBuffer {.buffer =
+                                                           gpuSceneDatabase->resources->materialTableBuffer.get()}},
+                        {9,
+                         rhi::bindings::StorageBuffer {
+                             .buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
+
+                        {10,
+                         rhi::bindings::StorageBuffer {
+                             .buffer = gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer.get()}},
+                        {11,
+                         rhi::bindings::StorageBuffer {
+                             .buffer = gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer.get()}},
+                    };
+
+                    rc.resourceSet[3] = {
+                        {4,
+                         rhi::bindings::CombinedImageSamplerArray {
+                             .textures    = gpuSceneDatabase->resources->getBindlessTextureHandles(),
+                             .imageAspect = rhi::ImageAspect::eColor,
+                         }},
+                    };
+
+                    rc.bindDescriptorSets(*pipeline);
+
+                    if (HasFlagValues(rc.rd.getFeatureReport().flags,
+                                      vultra::rhi::RenderDeviceFeatureReportFlagBits::eMultiDraw))
                     {
                         rc.cb.drawIndirect(rhi::DrawIndirectInfo {
                             .buffer       = &gpuSceneView->indirectBuffer.value(),
-                            .firstCommand = i,
-                            .commandCount = 1,
+                            .firstCommand = 0,
+                            .commandCount = gpuSceneView->getDispatchableDrawCount(),
                         });
+                    }
+                    else
+                    {
+                        const uint32_t drawCount = gpuSceneView->getDispatchableDrawCount();
+
+                        for (uint32_t i = 0; i < drawCount; ++i)
+                        {
+                            rc.cb.drawIndirect(rhi::DrawIndirectInfo {
+                                .buffer       = &gpuSceneView->indirectBuffer.value(),
+                                .firstCommand = i,
+                                .commandCount = 1,
+                            });
+                        }
                     }
                 }
 

@@ -6,23 +6,43 @@
 
 namespace vultra::resource
 {
-    // Meshlet-first per-draw record.
-    // One indirect draw == one visible meshlet.
+    enum class GpuDrawFlags : uint32_t
+    {
+        eNone = 0,
+        eMeshlet = 1u << 0,
+        eGaussianSplat = 1u << 1,
+    };
+
+    inline constexpr uint32_t gpuDrawFlagsToMask(GpuDrawFlags f)
+    {
+        return static_cast<uint32_t>(f);
+    }
+
+    inline constexpr bool gpuDrawHasFlag(uint32_t flags, GpuDrawFlags f)
+    {
+        return (flags & gpuDrawFlagsToMask(f)) != 0u;
+    }
+
+    // Primitive-agnostic per-draw record.
+    // One indirect draw == one primitive instance (meshlet/splat/...)
     //
     // Notes:
-    // - transformIndex is the canonical path for the future GPU-driven compute
+    // - instanceIndex is the canonical path for the future GPU-driven compute
     //   build-indirect pipeline.
     // - model is intentionally retained for the existing CPU-driven path and
     //   for debugging/inspection while both pipelines coexist.
     struct GpuDrawRecord
     {
-        uint32_t meshletIndex {0};
+        // Primitive payload index (meshlet index, splat index, ...)
+        uint32_t primitiveIndex {0};
         uint32_t materialIndex {0};
         uint32_t vertexStrideBytes {0};
-        uint32_t flags {0};
+        // Bitmask from GpuDrawFlags.
+        uint32_t flags {gpuDrawFlagsToMask(GpuDrawFlags::eNone)};
 
         uint64_t vertexAddress {0};
-        uint32_t transformIndex {0};
+        // Scene instance payload index (or transform index for legacy CPU-driven path).
+        uint32_t instanceIndex {0};
         uint32_t padding0 {0};
 
         glm::mat4 model {1.0f};

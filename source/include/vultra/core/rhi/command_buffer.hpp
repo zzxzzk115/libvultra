@@ -92,6 +92,7 @@ namespace vultra
 
             CommandBuffer& dispatch(const ComputePipeline&, const glm::uvec3&);
             CommandBuffer& dispatch(const glm::uvec3&);
+            CommandBuffer& insertComputeUavBarrier();
 
             CommandBuffer& traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent);
 

@@ -1,4 +1,5 @@
 #include "vultra/function/scene/scene_system.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/os/file_system.hpp"
 #include "vultra/function/scene/scene_reflection.hpp"
@@ -7,6 +8,7 @@
 #include "vultra/function/scene/vscn_writer.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
+#include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
@@ -19,7 +21,6 @@
 #include <algorithm>
 #include <filesystem>
 #include <sstream>
-#include <stdexcept>
 #include <vector>
 
 namespace vultra
@@ -205,6 +206,7 @@ namespace vultra
         m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent",
                                                                   {"position", "rotation", "scale"});
         m_ComponentRegistry.registerComponent<MeshComponent>("MeshComponent", {"mesh"});
+        m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});
 
         m_AssetService = &ctx().services.require<IAssetService>();
 
@@ -278,10 +280,10 @@ namespace vultra
         }
     }
 
-    entt::entity SceneSystem::instantiateNode(World&                       world,
-                                              const SceneNode&             node,
-                                              entt::entity                 parent,
-                                              const std::filesystem::path& baseDir)
+    SceneSystem::InstantiateNodeResult SceneSystem::instantiateNodeR(World& world,
+                                                                      const SceneNode& node,
+                                                                      entt::entity parent,
+                                                                      const std::filesystem::path& baseDir)
     {
         entt::registry& reg = world.registry();
 
@@ -295,7 +297,12 @@ namespace vultra
             auto         prefabDoc = loadSceneSync(prefabPath.string());
             entt::entity rootEnt   = entt::null;
             if (prefabDoc && prefabDoc->root)
-                rootEnt = instantiateNode(world, *prefabDoc->root, parent, prefabPath.parent_path());
+            {
+                auto instantiatedRoot = instantiateNodeR(world, *prefabDoc->root, parent, prefabPath.parent_path());
+                if (!instantiatedRoot)
+                    return InstantiateNodeResult::err(std::move(instantiatedRoot).error());
+                rootEnt = std::move(instantiatedRoot).value();
+            }
             else
                 rootEnt = world.createEntity();
 
@@ -303,7 +310,7 @@ namespace vultra
 
             // Override prefab root's IDComponent from this node's header uuid.
             if (!node.id.valid())
-                throw std::runtime_error("Scene instantiate: prefab node is missing uuid");
+                return InstantiateNodeResult::err("Scene instantiate: prefab node is missing uuid");
             if (!reg.all_of<IDComponent>(rootEnt))
                 reg.emplace<IDComponent>(rootEnt, IDComponent {node.id});
             else
@@ -320,9 +327,13 @@ namespace vultra
 
             // Instantiate extra children under prefab root.
             for (const auto& ch : node.children)
-                instantiateNode(world, *ch, rootEnt, baseDir);
+            {
+                auto childResult = instantiateNodeR(world, *ch, rootEnt, baseDir);
+                if (!childResult)
+                    return InstantiateNodeResult::err(std::move(childResult).error());
+            }
 
-            return rootEnt;
+            return InstantiateNodeResult::ok(rootEnt);
         }
 
         // Regular node
@@ -332,7 +343,7 @@ namespace vultra
         // IDComponent is represented by the node header attribute `uuid`.
         // It must always exist for nodes loaded from disk.
         if (!node.id.valid())
-            throw std::runtime_error("Scene instantiate: node is missing uuid");
+            return InstantiateNodeResult::err("Scene instantiate: node is missing uuid");
         if (!reg.all_of<IDComponent>(e))
             reg.emplace<IDComponent>(e, IDComponent {node.id});
         else
@@ -351,9 +362,13 @@ namespace vultra
         }
 
         for (const auto& ch : node.children)
-            instantiateNode(world, *ch, e, baseDir);
+        {
+            auto childResult = instantiateNodeR(world, *ch, e, baseDir);
+            if (!childResult)
+                return InstantiateNodeResult::err(std::move(childResult).error());
+        }
 
-        return e;
+        return InstantiateNodeResult::ok(e);
     }
 
     entt::entity SceneSystem::instantiateScene(World& world, std::string_view uri, entt::entity parent, bool clearWorld)
@@ -368,14 +383,20 @@ namespace vultra
         const auto path    = toPath(uri);
         const auto baseDir = path.has_parent_path() ? path.parent_path() : std::filesystem::path {};
 
-        return instantiateNode(world, *doc->root, parent, baseDir);
+        auto rootResult = instantiateNodeR(world, *doc->root, parent, baseDir);
+        if (!rootResult)
+        {
+            VULTRA_CORE_ERROR("[SceneSystem] Failed to instantiate scene '{}': {}", uri, std::move(rootResult).error());
+            return entt::null;
+        }
+        return std::move(rootResult).value();
     }
 
-    std::unique_ptr<SceneNode> SceneSystem::buildNodeFromWorld(World& world, entt::entity e)
+    SceneSystem::BuildNodeResult SceneSystem::buildNodeFromWorldR(World& world, entt::entity e)
     {
         entt::registry& reg = world.registry();
         if (!reg.valid(e))
-            return nullptr;
+            return BuildNodeResult::err("Scene save: invalid entity");
 
         auto node = std::make_unique<SceneNode>();
 
@@ -387,7 +408,7 @@ namespace vultra
         }
         else
         {
-            throw std::runtime_error("Scene save: entity missing IDComponent.uuid");
+            return BuildNodeResult::err("Scene save: entity missing IDComponent.uuid");
         }
 
         if (reg.all_of<NameComponent>(e))
@@ -446,18 +467,18 @@ namespace vultra
 
         for (entt::entity c : children)
         {
-            if (auto child = buildNodeFromWorld(world, c))
-                node->children.push_back(std::move(child));
+            auto childResult = buildNodeFromWorldR(world, c);
+            if (!childResult)
+                return BuildNodeResult::err(std::move(childResult).error());
+            node->children.push_back(std::move(childResult).value());
         }
 
-        return node;
+        return BuildNodeResult::ok(std::move(node));
     }
 
     bool SceneSystem::saveWorldAsSceneSync(std::string_view uri, World& world, entt::entity root)
     {
-        try
-        {
-            entt::registry& reg = world.registry();
+        entt::registry& reg = world.registry();
 
             if (root == entt::null)
             {
@@ -471,15 +492,15 @@ namespace vultra
                         roots.push_back(e);
                 }
 
-                if (roots.empty())
-                    return false;
+        if (roots.empty())
+            return false;
 
-                if (roots.size() == 1)
-                {
-                    root = roots[0];
-                }
-                else
-                {
+        if (roots.size() == 1)
+        {
+            root = roots[0];
+        }
+        else
+        {
                     // Synthetic root (does not modify world).
                     SceneDocument doc;
                     doc.version    = 1;
@@ -492,7 +513,10 @@ namespace vultra
                     for (auto r : roots)
                     {
                         if (!reg.all_of<IDComponent>(r) || !reg.get<IDComponent>(r).uuid.valid())
-                            throw std::runtime_error("Scene save: root entity missing IDComponent.uuid");
+                        {
+                            VULTRA_CORE_ERROR("[SceneSystem] Scene save: root entity missing IDComponent.uuid");
+                            return false;
+                        }
                     }
                     std::sort(roots.begin(), roots.end(), [&](entt::entity a, entt::entity b) {
                         const auto& ua = reg.get<IDComponent>(a).uuid;
@@ -502,21 +526,27 @@ namespace vultra
 
                     for (auto r : roots)
                     {
-                        if (auto n = buildNodeFromWorld(world, r))
-                            doc.root->children.push_back(std::move(n));
+                        auto nodeResult = buildNodeFromWorldR(world, r);
+                        if (!nodeResult)
+                        {
+                            VULTRA_CORE_ERROR("[SceneSystem] {}", std::move(nodeResult).error());
+                            return false;
+                        }
+                        doc.root->children.push_back(std::move(nodeResult).value());
                     }
                     return saveSceneSync(uri, doc);
-                }
-            }
+        }
+        }
 
             SceneDocument doc;
             doc.version = 1;
-            doc.root    = buildNodeFromWorld(world, root);
-            return saveSceneSync(uri, doc);
-        }
-        catch (...)
+        auto rootNodeResult = buildNodeFromWorldR(world, root);
+        if (!rootNodeResult)
         {
+            VULTRA_CORE_ERROR("[SceneSystem] {}", std::move(rootNodeResult).error());
             return false;
         }
+            doc.root    = std::move(rootNodeResult).value();
+            return saveSceneSync(uri, doc);
     }
 } // namespace vultra

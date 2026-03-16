@@ -70,6 +70,12 @@ namespace vultra
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
+                if (instanceCount == 0 || maxVisible == 0)
+                {
+                    rc.clear();
+                    return;
+                }
+
                 auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
                 auto* gpuSceneView     = rc.view().gpuSceneView;
                 if (!gpuSceneDatabase || !gpuSceneView || !gpuSceneDatabase->resources)

@@ -20,6 +20,15 @@ namespace vultra
 
     void MeshletFeature::addPasses(FrameGraphBuildContext& ctx)
     {
+        auto* gpuSceneView = ctx.view().gpuSceneView;
+        if (!gpuSceneView)
+            return;
+
+        const bool hasMeshletDraws = gpuSceneView->isGpuDriven() ? (gpuSceneView->maxDraws > 0u) :
+                                                                   (gpuSceneView->countMeshletDraws() > 0u);
+        if (!hasMeshletDraws)
+            return;
+
         auto cullDone  = m_MeshletCullPass->addPass(ctx);
         auto buildDone = m_BuildIndirectPass->addPass(ctx, cullDone);
         ctx.data.set(kResKey_MeshletBuildDone, buildDone);

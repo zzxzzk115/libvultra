@@ -4,6 +4,8 @@
 #include "vultra/function/scene/scene_component_registry.hpp"
 #include "vultra/function/services/scene_service.hpp"
 
+#include <vbase/core/result.hpp>
+
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -51,7 +53,13 @@ namespace vultra
 
         static std::string trim(std::string_view s);
 
+        using InstantiateNodeResult = vbase::Result<entt::entity, std::string>;
+        using BuildNodeResult       = vbase::Result<std::unique_ptr<SceneNode>, std::string>;
+
+        InstantiateNodeResult
+        instantiateNodeR(World& world, const SceneNode& node, entt::entity parent, const std::filesystem::path& baseDir);
+
         // World -> Scene
-        std::unique_ptr<SceneNode> buildNodeFromWorld(World& world, entt::entity e);
+        BuildNodeResult buildNodeFromWorldR(World& world, entt::entity e);
     };
 } // namespace vultra

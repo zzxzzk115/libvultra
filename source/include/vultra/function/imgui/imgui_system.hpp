@@ -24,9 +24,9 @@ namespace vultra
         virtual void end() override;
         virtual void postRender() override;
 
-    private:
         static void processEvent(const os::GeneralWindowEvent& event);
 
+    private:
         static void initImGui(const rhi::RenderDevice&,
                               const rhi::Swapchain&,
                               const os::Window&,

@@ -2,6 +2,7 @@
 
 #include "vultra/core/input/input_structs.hpp"
 
+#include <SDL3/SDL_events.h>
 #include <vbase/service/service_registry.hpp>
 
 #include <glm/glm.hpp>
@@ -12,6 +13,8 @@ namespace vultra
     {
     public:
         SERVICE_REGISTER(IInputService)
+
+        virtual void handleEvent(const SDL_Event& e) = 0;
 
         virtual bool getKey(KeyCode key) const       = 0;
         virtual bool getKeyDown(KeyCode key) const   = 0;

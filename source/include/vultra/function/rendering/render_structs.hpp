@@ -70,12 +70,21 @@ namespace vultra
         glm::mat4 worldMatrix {1.0f};
     };
 
+    // Cooked gaussian splat instance extracted from World.
+    struct RenderSplatInstance
+    {
+        CoreUUID  entity;
+        uint32_t  splatIndex {0}; // index into GpuResourcePool::gaussianSplats
+        glm::mat4 worldMatrix {1.0f};
+    };
+
     // Double-buffered cooked scene for rendering.
     struct RenderWorld
     {
-        uint64_t                    frameIndex {0};
-        std::vector<RenderCamera>   cameras;
-        std::vector<RenderInstance> instances;
+        uint64_t                         frameIndex {0};
+        std::vector<RenderCamera>        cameras;
+        std::vector<RenderInstance>      instances;
+        std::vector<RenderSplatInstance> splatInstances;
 
         resource::GpuSceneDatabase* gpuSceneDatabase {nullptr};
         resource::GpuSceneView*     gpuSceneView {nullptr};
@@ -84,6 +93,7 @@ namespace vultra
         {
             cameras.clear();
             instances.clear();
+            splatInstances.clear();
         }
     };
 } // namespace vultra

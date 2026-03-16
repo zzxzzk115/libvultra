@@ -2,12 +2,13 @@
 
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/asset/asset_handle.hpp"
+#include "vultra/function/resource/gpu_gaussian_splat.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
-#include "vultra/function/resource/gpu_resource_pool.hpp"
 #include "vultra/function/resource/gpu_texture.hpp"
 
 #include <vasset/uuid_resolver.hpp>
 #include <vasset/vasset_registry.hpp>
+#include <vasset/vgaussiansplat.hpp>
 #include <vasset/vmesh.hpp>
 #include <vasset/vtexture.hpp>
 
@@ -31,10 +32,14 @@ namespace vultra
         // (Sync baseline) Load assets by UUID.
         virtual AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(const CoreUUID& uuid)    = 0;
         virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(const CoreUUID& uuid) = 0;
+        virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+        loadGaussianSplatSync(const CoreUUID& uuid) = 0;
 
         // Convenience: load by uri/path (must be resolvable by registry/resolver)
         virtual AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(std::string_view uri)    = 0;
         virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(std::string_view uri) = 0;
+        virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+        loadGaussianSplatSync(std::string_view uri) = 0;
 
         // Bindless texture index resolution.
         // Returns 0 for invalid UUID.

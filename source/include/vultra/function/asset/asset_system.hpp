@@ -5,6 +5,7 @@
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/function/asset/asset_cache.hpp"
 #include "vultra/function/asset/asset_handle.hpp"
+#include "vultra/function/resource/gpu_gaussian_splat.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
 #include "vultra/function/resource/gpu_texture.hpp"
 #include "vultra/function/services/asset_service.hpp"
@@ -12,6 +13,7 @@
 
 #include <vasset/uuid_resolver.hpp>
 #include <vasset/vasset_registry.hpp>
+#include <vasset/vgaussiansplat.hpp>
 #include <vasset/vmesh.hpp>
 #include <vasset/vtexture.hpp>
 
@@ -50,10 +52,14 @@ namespace vultra
         // ----- Sync loading -----
         AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(const CoreUUID& uuid) override;
         AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(const CoreUUID& uuid) override;
+        AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+        loadGaussianSplatSync(const CoreUUID& uuid) override;
 
         // Convenience: load by uri/path (must be resolvable by registry/resolver)
         AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(std::string_view uri) override;
         AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(std::string_view uri) override;
+        AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+        loadGaussianSplatSync(std::string_view uri) override;
 
         const vasset::VAssetRegistry& registry() const override { return m_Registry; }
         const vasset::VUUIDResolver&  resolver() const override { return m_Resolver; }
@@ -67,6 +73,7 @@ namespace vultra
     private:
         uint32_t uploadTexture(const vasset::VTexture& cpuTex);
         uint32_t uploadMesh(const vasset::VMesh& cpuMesh, uint32_t materialOffset);
+        uint32_t uploadGaussianSplat(const vasset::VGaussianSplat& cpuSplat);
 
         // Creates a GpuMaterial entry and appends into the global material table.
         // Returns index.
@@ -82,6 +89,7 @@ namespace vultra
             {
                 eMesh = 0,
                 eTexture,
+                eGaussianSplat,
             };
 
             Kind     kind {Kind::eMesh};
@@ -106,8 +114,9 @@ namespace vultra
         IGpuResourceService* m_GpuResourceService {nullptr};
 
         // Caches (uuid -> record)
-        AssetCache<vasset::VMesh, resource::GpuMesh, 64>       m_MeshCache;
-        AssetCache<vasset::VTexture, resource::GpuTexture, 64> m_TextureCache;
+        AssetCache<vasset::VMesh, resource::GpuMesh, 64>                   m_MeshCache;
+        AssetCache<vasset::VTexture, resource::GpuTexture, 64>             m_TextureCache;
+        AssetCache<vasset::VGaussianSplat, resource::GpuGaussianSplat, 32> m_GaussianSplatCache;
 
         // Texture UUID -> bindless index
         std::unordered_map<CoreUUID, uint32_t> m_TexUUIDToBindlessIndex;

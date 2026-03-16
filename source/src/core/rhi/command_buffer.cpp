@@ -246,6 +246,27 @@ namespace vultra
             return *this;
         }
 
+        CommandBuffer& CommandBuffer::insertComputeUavBarrier()
+        {
+            assert(invariant(State::eRecording));
+
+            vk::MemoryBarrier barrier {};
+            barrier.srcAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite;
+            barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite;
+
+            m_Handle.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                     vk::PipelineStageFlagBits::eComputeShader,
+                                     vk::DependencyFlags {},
+                                     1,
+                                     &barrier,
+                                     0,
+                                     nullptr,
+                                     0,
+                                     nullptr);
+
+            return *this;
+        }
+
         CommandBuffer& CommandBuffer::traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent)
         {
             assert(invariant(State::eRecording, InvariantFlags::eValidRayTracingPipeline));

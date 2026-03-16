@@ -44,12 +44,12 @@ void main()
     Meshlet meshlet = s_Meshlets.meshlets[vis.meshletIndex];
 
     DrawRecord dr;
-    dr.meshletIndex = vis.meshletIndex;
+    dr.primitiveIndex = vis.meshletIndex;
     dr.materialIndex = vis.materialIndex;
     dr.vertexStrideBytes = mesh.vertexStrideBytes;
     dr.flags = 0u;
     dr.vertexAddress = make_u64(u_PC.vertexAddressLo, u_PC.vertexAddressHi);
-    dr.transformIndex = inst.transformIndex;
+    dr.instanceIndex = vis.instanceIndex;
     dr.padding0 = 0u;
     dr.model = s_Models.models[inst.transformIndex];
     s_Draws.draws[drawId] = dr;

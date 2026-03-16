@@ -2,9 +2,9 @@
 #include "vultra/core/base/uuid.hpp"
 
 #include <cctype>
+#include <charconv>
 #include <filesystem>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 
@@ -24,6 +24,18 @@ namespace vultra
     static inline bool starts_with(std::string_view s, std::string_view p)
     {
         return s.size() >= p.size() && s.substr(0, p.size()) == p;
+    }
+
+    static inline bool try_parse_int(std::string_view s, int& out)
+    {
+        std::string trimmed = trim_copy(s);
+        if (trimmed.empty())
+            return false;
+
+        const char* begin = trimmed.data();
+        const char* end   = trimmed.data() + trimmed.size();
+        auto [ptr, ec]    = std::from_chars(begin, end, out);
+        return ec == std::errc {} && ptr == end;
     }
 
     static inline std::unordered_map<std::string, std::string> parse_attrs(std::string_view inside)
@@ -101,7 +113,7 @@ namespace vultra
         while (std::getline(iss, line))
         {
             std::string t = trim_copy(line);
-            if (t.empty() || t[0] == '#')
+            if (t.empty() || t[0] == '#' || t[0] == ';')
                 continue;
 
             if (t.front() == '[' && t.back() == ']')
@@ -122,9 +134,14 @@ namespace vultra
 
                     int id = 0;
                     if (auto it = attrs.find("id"); it != attrs.end())
-                        id = std::stoi(it->second);
+                    {
+                        if (!try_parse_int(it->second, id))
+                            continue;
+                    }
                     else
-                        throw std::runtime_error("[node] missing id");
+                    {
+                        continue;
+                    }
 
                     currentNodeId  = id;
                     currentSection = "node";
@@ -151,7 +168,10 @@ namespace vultra
 
                     int parent = 0;
                     if (auto it = attrs.find("parent"); it != attrs.end())
-                        parent = std::stoi(it->second);
+                    {
+                        if (!try_parse_int(it->second, parent))
+                            parent = 0;
+                    }
                     parentOf[id] = parent;
 
                     nodes[id] = std::move(node);
@@ -173,9 +193,17 @@ namespace vultra
                 std::string key = trim_copy(std::string_view(t).substr(0, eq));
                 std::string val = trim_copy(std::string_view(t).substr(eq + 1));
                 if (key == "version")
-                    doc.version = static_cast<uint32_t>(std::stoul(val));
+                {
+                    int v = 1;
+                    if (try_parse_int(val, v) && v > 0)
+                        doc.version = static_cast<uint32_t>(v);
+                }
                 else if (key == "root")
-                    rootId = std::stoi(val);
+                {
+                    int parsedRoot = -1;
+                    if (try_parse_int(val, parsedRoot))
+                        rootId = parsedRoot;
+                }
                 continue;
             }
 

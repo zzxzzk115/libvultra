@@ -16,6 +16,7 @@
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
 #include "vultra/function/services/world_service.hpp"
+#include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
@@ -27,7 +28,6 @@
 #include <fg/FrameGraph.hpp>
 
 #include <algorithm>
-#include <fstream>
 
 namespace vultra
 {
@@ -53,6 +53,24 @@ namespace vultra
             inst.meshIndex   = h.gpuIndex();
             inst.worldMatrix = tr.worldMatrix;
             out.instances.push_back(inst);
+        }
+
+        auto splatView = reg.view<IDComponent, TransformComponent, GaussianSplatComponent>();
+        for (auto e : splatView)
+        {
+            const auto& id     = splatView.get<IDComponent>(e);
+            const auto& tr     = splatView.get<TransformComponent>(e);
+            const auto& gsplat = splatView.get<GaussianSplatComponent>(e);
+
+            auto h = assets.loadGaussianSplatSync(gsplat.gaussianSplat);
+            if (!h.ready())
+                continue;
+
+            RenderSplatInstance inst {};
+            inst.entity      = id.uuid;
+            inst.splatIndex  = h.gpuIndex();
+            inst.worldMatrix = tr.worldMatrix;
+            out.splatInstances.push_back(inst);
         }
     }
 
@@ -80,6 +98,8 @@ namespace vultra
 
         VULTRA_CORE_TRACE("[RenderSystem] Initializing samplers");
         m_Samplers["default"] = backendService.renderDevice().getSampler(rhi::SamplerInfo {});
+        m_Samplers["linear"]  = backendService.renderDevice().getSampler(
+            rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eLinear, .minFilter = rhi::TexelFilter::eLinear});
         m_Samplers["nearest"] = backendService.renderDevice().getSampler(
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eNearest, .minFilter = rhi::TexelFilter::eNearest});
 
@@ -246,12 +266,12 @@ namespace vultra
                         const auto& meshlet = pool.meshlets.cpuMeshlets[globalMeshletIndex];
 
                         resource::GpuDrawRecord dr;
-                        dr.meshletIndex      = globalMeshletIndex;
+                        dr.primitiveIndex    = globalMeshletIndex;
                         dr.materialIndex     = meshlet.materialIndex;
                         dr.vertexStrideBytes = mesh.vertexStrideBytes;
-                        dr.flags             = 0;
+                        dr.flags             = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eMeshlet);
                         dr.vertexAddress     = pool.geometry.vertexBytesAddress;
-                        dr.transformIndex    = gpuInst.transformIndex;
+                        dr.instanceIndex     = instanceIndex;
                         dr.padding0          = 0;
                         dr.model             = inst.worldMatrix;
                         stagedDraws.push_back(dr);
@@ -261,15 +281,59 @@ namespace vultra
                 std::stable_sort(stagedDraws.begin(), stagedDraws.end(), [](const auto& a, const auto& b) {
                     if (a.materialIndex != b.materialIndex)
                         return a.materialIndex < b.materialIndex;
-                    return a.meshletIndex < b.meshletIndex;
+                    return a.primitiveIndex < b.primitiveIndex;
                 });
 
                 for (const auto& dr : stagedDraws)
-                    m_GpuSceneViewBack.pushDraw(dr);
+                    m_GpuSceneViewBack.pushMeshletDraw(dr);
 
                 m_GpuSceneViewBack.uploadDraws(rd);
                 m_GpuSceneViewBack.buildIndirectFromDraws(pool);
                 m_GpuSceneViewBack.uploadIndirect(rd);
+            }
+
+            // Stage gaussian splat draws (GPU-driven: cull shader writes the indirect buffer).
+            {
+                const uint32_t maxSplatDraws =
+                    static_cast<uint32_t>(m_RenderWorldBack.splatInstances.size());
+
+                static bool s_LoggedGaussianSplatStage = false;
+
+                m_GpuSceneViewBack.setGaussianSplatGpuDrivenCaps(maxSplatDraws);
+                m_GpuSceneViewBack.ensureGaussianSplatDrawBuffer(rd);
+
+                for (const auto& inst : m_RenderWorldBack.splatInstances)
+                {
+                    if (inst.splatIndex >= pool.gaussianSplats.size())
+                        continue;
+
+                    resource::GpuDrawRecord dr;
+                    dr.primitiveIndex = inst.splatIndex;
+                    dr.materialIndex = 0;
+                    dr.flags         = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eGaussianSplat);
+                    dr.model         = inst.worldMatrix;
+                    dr.padding0      = pool.gaussianSplats[inst.splatIndex].pointCount;
+                    m_GpuSceneViewBack.pushGaussianSplatDraw(dr);
+
+                    if (!s_LoggedGaussianSplatStage)
+                    {
+                        VULTRA_CORE_INFO("[GaussianSplat] stage draw splatIndex={} pointCount={} totalPoolSplats={}",
+                                         inst.splatIndex,
+                                         pool.gaussianSplats[inst.splatIndex].pointCount,
+                                         pool.gaussianSplats.size());
+                    }
+                }
+
+                if (!s_LoggedGaussianSplatStage)
+                {
+                    VULTRA_CORE_INFO("[GaussianSplat] staged instances={} gpuDraws={} maxDraws={}",
+                                     m_RenderWorldBack.splatInstances.size(),
+                                     m_GpuSceneViewBack.gaussianSplatDraws.size(),
+                                     maxSplatDraws);
+                    s_LoggedGaussianSplatStage = true;
+                }
+
+                m_GpuSceneViewBack.uploadGaussianSplatDraws(rd);
             }
 
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;

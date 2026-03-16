@@ -70,6 +70,11 @@ namespace vultra
                 auto* gpuSceneView     = rc.view().gpuSceneView;
                 if (!gpuSceneDatabase || !gpuSceneView || !gpuSceneDatabase->resources)
                     return;
+                if (gpuSceneView->maxDraws == 0)
+                {
+                    rc.clear();
+                    return;
+                }
                 if (!gpuSceneView->visibleMeshletBuffer || !gpuSceneView->visibleMeshletCountBuffer ||
                     !gpuSceneView->drawBuffer || !gpuSceneView->indirectBuffer.has_value() ||
                     !gpuSceneDatabase->instanceBuffer || !gpuSceneDatabase->meshTableBuffer ||
