@@ -248,21 +248,18 @@ namespace vultra
 
         CommandBuffer& CommandBuffer::insertComputeUavBarrier()
         {
-            assert(invariant(State::eRecording));
+            assert(invariant(State::eRecording, InvariantFlags::eOutsideRenderPass));
 
-            vk::MemoryBarrier barrier {};
-            barrier.srcAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite;
-            barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite;
-
-            m_Handle.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                     vk::PipelineStageFlagBits::eComputeShader,
-                                     vk::DependencyFlags {},
-                                     1,
-                                     &barrier,
-                                     0,
-                                     nullptr,
-                                     0,
-                                     nullptr);
+            m_BarrierBuilder.memoryBarrier(
+                {
+                    .stageMask  = PipelineStages::eComputeShader,
+                    .accessMask = Access::eShaderRead | Access::eShaderWrite,
+                },
+                {
+                    .stageMask  = PipelineStages::eComputeShader,
+                    .accessMask = Access::eShaderRead | Access::eShaderWrite,
+                });
+            flushBarriers();
 
             return *this;
         }

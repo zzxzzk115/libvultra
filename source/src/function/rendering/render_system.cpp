@@ -28,6 +28,7 @@
 #include <fg/FrameGraph.hpp>
 
 #include <algorithm>
+#include <fstream>
 
 namespace vultra
 {
@@ -294,8 +295,7 @@ namespace vultra
 
             // Stage gaussian splat draws (GPU-driven: cull shader writes the indirect buffer).
             {
-                const uint32_t maxSplatDraws =
-                    static_cast<uint32_t>(m_RenderWorldBack.splatInstances.size());
+                const uint32_t maxSplatDraws = static_cast<uint32_t>(m_RenderWorldBack.splatInstances.size());
 
                 static bool s_LoggedGaussianSplatStage = false;
 
@@ -309,10 +309,10 @@ namespace vultra
 
                     resource::GpuDrawRecord dr;
                     dr.primitiveIndex = inst.splatIndex;
-                    dr.materialIndex = 0;
-                    dr.flags         = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eGaussianSplat);
-                    dr.model         = inst.worldMatrix;
-                    dr.padding0      = pool.gaussianSplats[inst.splatIndex].pointCount;
+                    dr.materialIndex  = 0;
+                    dr.flags          = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eGaussianSplat);
+                    dr.model          = inst.worldMatrix;
+                    dr.padding0       = pool.gaussianSplats[inst.splatIndex].pointCount;
                     m_GpuSceneViewBack.pushGaussianSplatDraw(dr);
 
                     if (!s_LoggedGaussianSplatStage)
