@@ -53,6 +53,13 @@ namespace vultra
 
         Barrier::Builder& Barrier::Builder::imageBarrier(ImageInfo info, const BarrierScope& dst)
         {
+            if (info.subresourceRange.baseArrayLayer == 0u &&
+                info.subresourceRange.layerCount == vk::RemainingArrayLayers && info.image.m_NumLayers == 1u)
+            {
+                info.subresourceRange.baseArrayLayer = info.image.m_BaseArrayLayer;
+                info.subresourceRange.layerCount     = 1u;
+            }
+
             auto [layout, lastScope] = std::tie(info.image.m_Layout, info.image.m_LastScope);
 
             if (layout != info.newLayout || lastScope != dst)

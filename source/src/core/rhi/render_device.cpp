@@ -16,6 +16,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
+#include <exception>
 #include <set>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
@@ -271,9 +272,10 @@ namespace vultra
                 m_Instance.destroy();
             }
 
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
+            if (m_XRDevice)
             {
                 delete m_XRDevice;
+                m_XRDevice = nullptr;
             }
         }
 
@@ -481,9 +483,9 @@ namespace vultra
             };
         }
 
-        StorageBuffer RenderDevice::createStorageBufferWithUsage(const vk::DeviceSize      size,
+        StorageBuffer RenderDevice::createStorageBufferWithUsage(const vk::DeviceSize       size,
                                                                  const vk::BufferUsageFlags extraUsage,
-                                                                 const AllocationHints allocationHint) const
+                                                                 const AllocationHints      allocationHint) const
         {
             assert(m_MemoryAllocator);
 
@@ -938,7 +940,16 @@ namespace vultra
         {
             assert(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR));
 
-            m_XRDevice = new openxr::XRDevice(openxr::XRDeviceFeatureFlagBits::eVR, m_AppName);
+            try
+            {
+                m_XRDevice = new openxr::XRDevice(openxr::XRDeviceFeatureFlagBits::eVR, m_AppName);
+            }
+            catch (const std::exception& e)
+            {
+                VULTRA_CORE_ERROR("[RenderDevice] Failed to initialize OpenXR device: {}", e.what());
+                m_XRDevice    = nullptr;
+                m_FeatureFlag = m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eOpenXR;
+            }
         }
 
         void RenderDevice::createInstance()
@@ -1652,13 +1663,13 @@ namespace vultra
         // NOLINTBEGIN
         void RenderDevice::createTracky()
         {
-    #ifdef __APPLE__
+#ifdef __APPLE__
             const float timestampPeriodNs = m_PhysicalDevice.getProperties().limits.timestampPeriod;
             TRACKY_STARTUP(m_Device, 4 * 1024, timestampPeriodNs);
-    #else
+#else
             const float timestampPeriodNs = m_PhysicalDevice.getProperties().limits.timestampPeriod;
             TRACKY_STARTUP(m_Device, 64 * 1024, timestampPeriodNs);
-    #endif
+#endif
         }
         // NOLINTEND
 

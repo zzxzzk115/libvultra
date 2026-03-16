@@ -45,7 +45,7 @@ namespace vultra
         void onPreRender() override;
 
         // ICameraService
-        std::vector<RenderCamera> cameras() override { return m_Cooked; }
+        std::vector<RenderCamera> cameras() override;
 
         // Incremental helper (until ECS cooking is wired):
         // App can push cameras manually.

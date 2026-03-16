@@ -8,10 +8,26 @@
 
 #include <fmt/format.h>
 
+#include <cstdio>
+#include <cstring>
+
 namespace vultra
 {
     namespace openxr
     {
+        namespace
+        {
+            void throwOnXrFailure(const XrResult result, const std::string_view message)
+            {
+                if (XR_FAILED(result))
+                {
+                    const auto msg = fmt::format("[OpenXR] {} (code: {})", message, static_cast<int>(result));
+                    VULTRA_CORE_ERROR(msg);
+                    throw std::runtime_error(msg);
+                }
+            }
+        } // namespace
+
         XRDevice::XRDevice(const XRDeviceFeatureFlagBits flagBits, std::string_view appName) :
             m_FeatureFlagBits(flagBits), m_AppName(appName.data())
         {
@@ -51,10 +67,10 @@ namespace vultra
 
         void XRDevice::createXrInstance()
         {
-            XrApplicationInfo ai;
-            strncpy(ai.applicationName, m_AppName.c_str(), XR_MAX_APPLICATION_NAME_SIZE);
+            XrApplicationInfo ai {};
+            std::snprintf(ai.applicationName, XR_MAX_APPLICATION_NAME_SIZE, "%s", m_AppName.c_str());
             ai.applicationVersion = 1;
-            strncpy(ai.engineName, "Vultra", XR_MAX_ENGINE_NAME_SIZE);
+            std::snprintf(ai.engineName, XR_MAX_ENGINE_NAME_SIZE, "%s", "Vultra");
             ai.engineVersion = 1;
             ai.apiVersion    = XR_API_VERSION_1_0;
 
@@ -133,6 +149,11 @@ namespace vultra
                 }
             }
 
+            if (!IsStringInVector(m_XrActiveInstanceExtensions, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME))
+            {
+                throw std::runtime_error("[OpenXR] Required extension XR_KHR_vulkan_enable2 is not supported");
+            }
+
             XrInstanceCreateInfo instanceCI {};
             instanceCI.type                  = XR_TYPE_INSTANCE_CREATE_INFO;
             instanceCI.createFlags           = 0;
@@ -141,12 +162,23 @@ namespace vultra
             instanceCI.enabledApiLayerNames  = m_XrActiveAPILayers.data();
             instanceCI.enabledExtensionCount = static_cast<uint32_t>(m_XrActiveInstanceExtensions.size());
             instanceCI.enabledExtensionNames = m_XrActiveInstanceExtensions.data();
-            OPENXR_CHECK(xrCreateInstance(&instanceCI, &m_XrInstance), "Failed to create Instance.");
+            throwOnXrFailure(xrCreateInstance(&instanceCI, &m_XrInstance), "Failed to create OpenXR instance");
         }
 
-        void XRDevice::destroyXrInstance() const
+        void XRDevice::destroyXrInstance()
         {
-            OPENXR_CHECK(xrDestroyInstance(m_XrInstance), "Failed to destroy Instance.");
+            if (m_XrInstance == XR_NULL_HANDLE)
+            {
+                return;
+            }
+
+            const auto result = xrDestroyInstance(m_XrInstance);
+            if (XR_FAILED(result))
+            {
+                VULTRA_CORE_WARN("[OpenXR] Failed to destroy instance (code: {})", static_cast<int>(result));
+            }
+            m_XrInstance = XR_NULL_HANDLE;
+            m_XrSystemId = 0;
         }
 
         void XRDevice::createXrDebugUtilsMessenger()
@@ -159,13 +191,14 @@ namespace vultra
             }
         }
 
-        void XRDevice::destroyXrDebugUtilsMessenger() const
+        void XRDevice::destroyXrDebugUtilsMessenger()
         {
             // Check that "XR_EXT_debug_utils" is in the active Instance Extensions before destroying the
             // XrDebugUtilsMessengerEXT.
             if (m_XrDebugUtilsMessenger != XR_NULL_HANDLE)
             {
                 DestroyOpenXRDebugUtilsMessenger(m_XrInstance, m_XrDebugUtilsMessenger);
+                m_XrDebugUtilsMessenger = XR_NULL_HANDLE;
             }
         }
 
@@ -257,28 +290,35 @@ namespace vultra
 
         void XRDevice::loadXrFunctions()
         {
-            OPENXR_CHECK(xrGetInstanceProcAddr(m_XrInstance,
-                                               "xrCreateVulkanInstanceKHR",
-                                               reinterpret_cast<PFN_xrVoidFunction*>(&xrCreateVulkanInstanceKHR)),
-                         "Failed to get InstanceProcAddr for xrCreateVulkanInstanceKHR.");
-            OPENXR_CHECK(xrGetInstanceProcAddr(m_XrInstance,
-                                               "xrCreateVulkanDeviceKHR",
-                                               reinterpret_cast<PFN_xrVoidFunction*>(&xrCreateVulkanDeviceKHR)),
-                         "Failed to get InstanceProcAddr for xrCreateVulkanDeviceKHR.");
-            OPENXR_CHECK(
+            throwOnXrFailure(xrGetInstanceProcAddr(m_XrInstance,
+                                                   "xrCreateVulkanInstanceKHR",
+                                                   reinterpret_cast<PFN_xrVoidFunction*>(&xrCreateVulkanInstanceKHR)),
+                             "Failed to load xrCreateVulkanInstanceKHR");
+            throwOnXrFailure(xrGetInstanceProcAddr(m_XrInstance,
+                                                   "xrCreateVulkanDeviceKHR",
+                                                   reinterpret_cast<PFN_xrVoidFunction*>(&xrCreateVulkanDeviceKHR)),
+                             "Failed to load xrCreateVulkanDeviceKHR");
+            throwOnXrFailure(
                 xrGetInstanceProcAddr(m_XrInstance,
                                       "xrGetVulkanGraphicsRequirements2KHR",
                                       reinterpret_cast<PFN_xrVoidFunction*>(&xrGetVulkanGraphicsRequirements2KHR)),
-                "Failed to get InstanceProcAddr for xrGetVulkanGraphicsRequirements2KHR.");
-            OPENXR_CHECK(xrGetInstanceProcAddr(m_XrInstance,
-                                               "xrGetVulkanGraphicsDevice2KHR",
-                                               reinterpret_cast<PFN_xrVoidFunction*>(&xrGetVulkanGraphicsDevice2KHR)),
-                         "Failed to get InstanceProcAddr for xrGetVulkanGraphicsDevice2KHR.");
+                "Failed to load xrGetVulkanGraphicsRequirements2KHR");
+            throwOnXrFailure(
+                xrGetInstanceProcAddr(m_XrInstance,
+                                      "xrGetVulkanGraphicsDevice2KHR",
+                                      reinterpret_cast<PFN_xrVoidFunction*>(&xrGetVulkanGraphicsDevice2KHR)),
+                "Failed to load xrGetVulkanGraphicsDevice2KHR");
+
+            if (!xrCreateVulkanInstanceKHR || !xrCreateVulkanDeviceKHR || !xrGetVulkanGraphicsRequirements2KHR ||
+                !xrGetVulkanGraphicsDevice2KHR)
+            {
+                throw std::runtime_error("[OpenXR] Vulkan interop function pointer is null");
+            }
 
             XrGraphicsRequirementsVulkanKHR graphicsRequirements {};
             graphicsRequirements.type = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR;
-            OPENXR_CHECK(xrGetVulkanGraphicsRequirements2KHR(m_XrInstance, m_XrSystemId, &graphicsRequirements),
-                         "Failed to get Graphics Requirements for Vulkan.");
+            throwOnXrFailure(xrGetVulkanGraphicsRequirements2KHR(m_XrInstance, m_XrSystemId, &graphicsRequirements),
+                             "Failed to get Vulkan graphics requirements");
         }
     } // namespace openxr
 } // namespace vultra

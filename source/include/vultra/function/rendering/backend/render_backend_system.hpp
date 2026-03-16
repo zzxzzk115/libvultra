@@ -1,9 +1,11 @@
 #pragma once
 
 #include "vultra/core/engine/engine_subsystem.hpp"
+#include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
 #include <memory>
+#include <vector>
 
 namespace vultra
 {
@@ -23,13 +25,28 @@ namespace vultra
         bool                beginFrame() override;
         rhi::CommandBuffer& commandBuffer() override;
         rhi::Texture&       backbuffer() override;
-        void                endFrame() override;
-        void                present() override;
+
+        bool                       isXREnabled() const override;
+        bool                       isXRMirrorEnabled() const override;
+        std::span<const XREyeView> xrEyeViews() const override;
+
+        void endFrame() override;
+        void present() override;
 
     private:
         std::unique_ptr<rhi::RenderDevice>    m_RenderDevice;
         std::unique_ptr<rhi::FrameController> m_FrameController;
+        std::unique_ptr<openxr::XRHeadset>    m_XRBackend;
 
         rhi::Swapchain m_Swapchain;
+
+        rhi::CommandBuffer* m_ActiveCommandBuffer {nullptr};
+
+        bool     m_XRFrameActive {false};
+        bool     m_XRShouldRender {false};
+        bool     m_XRMirrorEnabled {false};
+        uint32_t m_XRSwapchainImageIndex {0};
+
+        std::vector<XREyeView> m_XREyeViews;
     };
 } // namespace vultra

@@ -135,14 +135,29 @@ XrDebugUtilsMessengerEXT CreateOpenXRDebugUtilsMessenger(XrInstance m_XrInstance
 
 void DestroyOpenXRDebugUtilsMessenger(XrInstance m_XrInstance, XrDebugUtilsMessengerEXT debugUtilsMessenger)
 {
+    if (m_XrInstance == XR_NULL_HANDLE || debugUtilsMessenger == XR_NULL_HANDLE)
+    {
+        return;
+    }
+
     // Load xrDestroyDebugUtilsMessengerEXT() function pointer as it is not default loaded by the OpenXR loader.
-    PFN_xrDestroyDebugUtilsMessengerEXT xrDestroyDebugUtilsMessengerEXT;
-    OPENXR_CHECK(xrGetInstanceProcAddr(m_XrInstance,
-                                       "xrDestroyDebugUtilsMessengerEXT",
-                                       reinterpret_cast<PFN_xrVoidFunction*>(&xrDestroyDebugUtilsMessengerEXT)),
-                 "Failed to get InstanceProcAddr.");
+    PFN_xrDestroyDebugUtilsMessengerEXT xrDestroyDebugUtilsMessengerEXT = nullptr;
+    const XrResult                      getProcResult =
+        xrGetInstanceProcAddr(m_XrInstance,
+                              "xrDestroyDebugUtilsMessengerEXT",
+                              reinterpret_cast<PFN_xrVoidFunction*>(&xrDestroyDebugUtilsMessengerEXT));
+    if (XR_FAILED(getProcResult) || xrDestroyDebugUtilsMessengerEXT == nullptr)
+    {
+        VULTRA_CORE_WARN("[OpenXR] Failed to load xrDestroyDebugUtilsMessengerEXT (code: {})",
+                         static_cast<int>(getProcResult));
+        return;
+    }
 
     // Destroy the provided XrDebugUtilsMessengerEXT.
-    OPENXR_CHECK(xrDestroyDebugUtilsMessengerEXT(debugUtilsMessenger), "Failed to destroy DebugUtilsMessenger.");
+    const XrResult destroyResult = xrDestroyDebugUtilsMessengerEXT(debugUtilsMessenger);
+    if (XR_FAILED(destroyResult))
+    {
+        VULTRA_CORE_WARN("[OpenXR] Failed to destroy DebugUtilsMessenger (code: {})", static_cast<int>(destroyResult));
+    }
 }
 // NOLINTEND

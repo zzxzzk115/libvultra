@@ -151,7 +151,8 @@ namespace vultra
             m_Type(other.m_Type), m_Layout(other.m_Layout), m_LastScope(std::move(other.m_LastScope)),
             m_Aspects(std::move(other.m_Aspects)), m_Sampler(other.m_Sampler), m_Extent(other.m_Extent),
             m_Depth(other.m_Depth), m_Format(other.m_Format), m_NumMipLevels(other.m_NumMipLevels),
-            m_NumLayers(other.m_NumLayers), m_LayerFaces(other.m_LayerFaces), m_UsageFlags(other.m_UsageFlags)
+            m_NumLayers(other.m_NumLayers), m_LayerFaces(other.m_LayerFaces), m_BaseArrayLayer(other.m_BaseArrayLayer),
+            m_UsageFlags(other.m_UsageFlags)
         {
             other.m_DeviceOrAllocator = {};
             other.m_Image             = {};
@@ -185,6 +186,7 @@ namespace vultra
                 std::swap(m_NumMipLevels, rhs.m_NumMipLevels);
                 std::swap(m_NumLayers, rhs.m_NumLayers);
                 std::swap(m_LayerFaces, rhs.m_LayerFaces);
+                std::swap(m_BaseArrayLayer, rhs.m_BaseArrayLayer);
                 std::swap(m_UsageFlags, rhs.m_UsageFlags);
             }
 
@@ -452,7 +454,8 @@ namespace vultra
                          PixelFormat pixelFormat,
                          uint32_t    baseLayer) :
             m_DeviceOrAllocator(device), m_Image(handle), m_Type(TextureType::eTexture2D), m_Extent(extent),
-            m_Format(pixelFormat), m_UsageFlags(kSwapchainDefaultUsageFlags)
+            m_Format(pixelFormat), m_NumLayers(1u), m_LayerFaces(1u), m_BaseArrayLayer(baseLayer),
+            m_UsageFlags(kSwapchainDefaultUsageFlags)
         {
             m_Aspects[static_cast<uint32_t>(vk::ImageAspectFlagBits::eColor)].imageView =
                 createImageView(device,
@@ -511,12 +514,13 @@ namespace vultra
 
             m_Layout = ImageLayout::eUndefined;
 
-            m_Extent       = {};
-            m_Depth        = 0u;
-            m_Format       = PixelFormat::eUndefined;
-            m_NumMipLevels = 0u;
-            m_NumLayers    = 0u;
-            m_LayerFaces   = 0u;
+            m_Extent         = {};
+            m_Depth          = 0u;
+            m_Format         = PixelFormat::eUndefined;
+            m_NumMipLevels   = 0u;
+            m_NumLayers      = 0u;
+            m_LayerFaces     = 0u;
+            m_BaseArrayLayer = 0u;
         }
 
         vk::Device Texture::getDeviceHandle() const

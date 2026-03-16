@@ -179,7 +179,25 @@ namespace vultra
 
         auto& rd = backendService.renderDevice();
 
+        // Begin frame first so downstream systems can consume per-frame backend state (e.g. XR eye views).
+        if (!backendService.beginFrame())
+        {
+            m_SkipRender = true;
+            return;
+        }
+
+        auto& cb = backendService.commandBuffer();
+
+        // Default target for cameras without explicit RT
+        auto& defaultTarget = backendService.backbuffer();
+
+        if (frameDebuggerService)
+        {
+            frameDebuggerService->captureStart();
+        }
+
         World& world = worldService.world();
+        auto   cams  = camService.cameras();
 
         // Asset upload/update stage (main thread)
         assetService.update(m_FrameCounter);
@@ -188,9 +206,8 @@ namespace vultra
         RenderWorldCooker cooker {};
         cooker.cook(world, assetService, m_RenderWorldBack);
 
-        // Cook render cameras
         m_RenderWorldBack.frameIndex = m_FrameCounter;
-        m_RenderWorldBack.cameras    = camService.cameras();
+        m_RenderWorldBack.cameras    = cams;
 
         // Build GPU scene database + per-view draw state.
         //
@@ -356,32 +373,12 @@ namespace vultra
 
         ++m_FrameCounter;
 
-        auto cams = m_RenderWorldFront.cameras;
-        if (cams.empty())
-            return;
-
-        std::stable_sort(cams.begin(), cams.end(), [](const RenderCamera& a, const RenderCamera& b) {
-            return a.priority < b.priority;
-        });
-
-        // Capture start
-        if (frameDebuggerService)
+        if (!cams.empty())
         {
-            frameDebuggerService->captureStart();
+            std::stable_sort(cams.begin(), cams.end(), [](const RenderCamera& a, const RenderCamera& b) {
+                return a.priority < b.priority;
+            });
         }
-
-        // Begin frame once (desktop backbuffer case).
-        // XR backend later can override policy (e.g., beginFrame per XR frame).
-        if (!backendService.beginFrame())
-        {
-            m_SkipRender = true;
-            return;
-        }
-
-        auto& cb = backendService.commandBuffer();
-
-        // Default target for cameras without explicit RT
-        auto& defaultTarget = backendService.backbuffer();
 
         // TODO: TimeSystem, for now use 0
         const fsec dt {0};
@@ -479,8 +476,8 @@ namespace vultra
 
             fg.execute(&frameGraphExecCtx, m_TransientResources.get());
 
-            // Optional ImGui rendering per camera
-            if (imguiService)
+            // Optional ImGui rendering per non-XR camera
+            if (imguiService && !cam.isXRView)
             {
                 imguiService->begin();
                 renderer->onImGui();

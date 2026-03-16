@@ -24,7 +24,9 @@
 
 inline bool IsStringInVector(const std::vector<const char*>& list, const char* name)
 {
-    return std::find(list.begin(), list.end(), name) != list.end();
+    return std::any_of(list.begin(), list.end(), [name](const char* entry) {
+        return entry != nullptr && name != nullptr && std::strcmp(entry, name) == 0;
+    });
 }
 
 template<typename T>

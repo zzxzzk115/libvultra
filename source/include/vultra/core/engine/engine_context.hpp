@@ -45,6 +45,11 @@ namespace vultra
                 rhi::RenderDeviceFeatureFlagBits renderDeviceFeatureFlag {rhi::RenderDeviceFeatureFlagBits::eNormal};
                 rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eAdaptive};
                 rhi::Swapchain::Format           swapchainFormat {rhi::Swapchain::Format::eLinear};
+
+                struct XRConfig
+                {
+                    bool mirror {true};
+                } xr;
             } render;
 
             struct LogConfig

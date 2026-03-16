@@ -57,10 +57,10 @@ namespace vultra
 
         private:
             void createXrInstance();
-            void destroyXrInstance() const;
+            void destroyXrInstance();
 
             void createXrDebugUtilsMessenger();
-            void destroyXrDebugUtilsMessenger() const;
+            void destroyXrDebugUtilsMessenger();
 
             void getInstanceProperties();
             void getSystemID();

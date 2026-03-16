@@ -32,6 +32,11 @@ namespace vultra
         // Sorting
         int priority {0};
 
+        // Multi-view metadata (mono: viewCount=1, stereo: viewCount=2)
+        uint32_t viewIndex {0};
+        uint32_t viewCount {1};
+        bool     isXRView {false};
+
         // Matrices
         glm::mat4 view {1.0f};
         glm::mat4 projection {1.0f};

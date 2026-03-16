@@ -643,7 +643,7 @@ namespace vultra
                                 aspectMask,
                                 srcMipLevel,
                                 1u,
-                                0u,
+                                src.m_BaseArrayLayer,
                                 1u,
                             },
                     },
@@ -660,7 +660,7 @@ namespace vultra
                                 aspectMask,
                                 dstMipLevel,
                                 1u,
-                                0u,
+                                dst.m_BaseArrayLayer,
                                 1u,
                             },
                     },
@@ -681,14 +681,16 @@ namespace vultra
             };
 
             vk::ImageBlit region {};
-            region.srcSubresource.aspectMask = aspectMask;
-            region.srcSubresource.mipLevel   = srcMipLevel;
-            region.srcSubresource.layerCount = 1;
-            region.srcOffsets                = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(src)};
-            region.dstSubresource.aspectMask = aspectMask;
-            region.dstSubresource.mipLevel   = dstMipLevel;
-            region.dstSubresource.layerCount = 1;
-            region.dstOffsets                = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(src)};
+            region.srcSubresource.aspectMask     = aspectMask;
+            region.srcSubresource.mipLevel       = srcMipLevel;
+            region.srcSubresource.baseArrayLayer = src.m_BaseArrayLayer;
+            region.srcSubresource.layerCount     = 1;
+            region.srcOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(src)};
+            region.dstSubresource.aspectMask     = aspectMask;
+            region.dstSubresource.mipLevel       = dstMipLevel;
+            region.dstSubresource.baseArrayLayer = dst.m_BaseArrayLayer;
+            region.dstSubresource.layerCount     = 1;
+            region.dstOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(dst)};
 
             m_Handle.blitImage(src.getImageHandle(),
                                static_cast<vk::ImageLayout>(src.getImageLayout()),

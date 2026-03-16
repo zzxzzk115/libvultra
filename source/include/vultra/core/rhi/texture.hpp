@@ -178,6 +178,7 @@ namespace vultra
             uint32_t    m_NumMipLevels {1u};
             uint32_t    m_NumLayers {0u};  // 0 = Non-layered.
             uint32_t    m_LayerFaces {0u}; // Internal use.
+            uint32_t    m_BaseArrayLayer {0u};
             ImageUsage  m_UsageFlags {ImageUsage::eSampled};
         };
 

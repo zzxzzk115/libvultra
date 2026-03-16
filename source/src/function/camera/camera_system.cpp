@@ -4,6 +4,7 @@
 #include "vultra/core/math/math.hpp"
 #include "vultra/core/services/input_service.hpp"
 #include "vultra/core/services/window_service.hpp"
+#include "vultra/function/services/render_backend_service.hpp"
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
@@ -76,9 +77,61 @@ namespace vultra
 
     void CameraSystem::onPreRender()
     {
-        m_Cooked = m_Manual;
-        for (auto& cam : m_Cooked)
+        // Camera cooking is deferred to cameras() so XR data can be consumed after beginFrame.
+    }
+
+    std::vector<RenderCamera> CameraSystem::cameras()
+    {
+        m_Cooked.clear();
+
+        auto*      backendService = ctx().services.tryGet<IRenderBackendService>();
+        const auto xrEyeViews     = (backendService && backendService->isXREnabled()) ?
+                                        backendService->xrEyeViews() :
+                                        std::span<const IRenderBackendService::XREyeView> {};
+
+        const std::size_t viewMultiplier = xrEyeViews.empty() ? 1u : xrEyeViews.size();
+        m_Cooked.reserve(m_Manual.size() * viewMultiplier);
+
+        for (const auto& srcCam : m_Manual)
+        {
+            if (!xrEyeViews.empty())
+            {
+                for (const auto& eyeView : xrEyeViews)
+                {
+                    RenderCamera cam = srcCam;
+                    cam.view         = eyeView.view;
+                    cam.projection   = eyeView.projection;
+                    cam.target       = eyeView.target;
+                    cam.viewIndex    = eyeView.eyeIndex;
+                    cam.viewCount    = static_cast<uint32_t>(xrEyeViews.size());
+                    cam.isXRView     = true;
+                    finalizeCamera(cam);
+                    m_Cooked.push_back(std::move(cam));
+                }
+
+                // Add a mirror camera if XR mirror mode is on.
+                if (backendService && backendService->isXRMirrorEnabled())
+                {
+                    RenderCamera cam = srcCam;
+                    cam.viewIndex    = 0;
+                    cam.viewCount    = 1;
+                    cam.isXRView     = false;
+                    finalizeCamera(cam);
+                    m_Cooked.push_back(std::move(cam));
+                }
+
+                continue;
+            }
+
+            RenderCamera cam = srcCam;
+            cam.viewIndex    = 0;
+            cam.viewCount    = 1;
+            cam.isXRView     = false;
             finalizeCamera(cam);
+            m_Cooked.push_back(std::move(cam));
+        }
+
+        return m_Cooked;
     }
 
     void CameraSystem::clearManualCameras() { m_Manual.clear(); }

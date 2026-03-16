@@ -25,6 +25,8 @@ namespace vultra
 
         virtual void render(ImmediateRenderContext& ctx) {}
 
+        virtual void renderXR(ImmediateRenderContext& ctx) {}
+
         virtual void buildFrameGraph(FrameGraphBuildContext& ctx) {}
 
         virtual void onImGui() {}

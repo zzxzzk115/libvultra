@@ -62,8 +62,9 @@ namespace vultra
 
     void DemoAppHost::onConfigure(Engine& engine)
     {
-        engine.ctx().config.window.title     = demoWindowTitle();
-        engine.ctx().config.window.resizable = demoWindowResizable();
+        engine.ctx().config.window.title                   = demoWindowTitle();
+        engine.ctx().config.window.resizable               = demoWindowResizable();
+        engine.ctx().config.render.renderDeviceFeatureFlag = demoRenderDeviceFeatureFlag();
 
         engine.emplaceSubsystem<WindowSystem>();
         engine.emplaceSubsystem<InputSystem>();
