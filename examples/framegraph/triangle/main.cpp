@@ -3,8 +3,8 @@
 #include <vultra/core/rhi/frame_controller.hpp>
 #include <vultra/core/rhi/render_device.hpp>
 #include <vultra/core/rhi/render_pass.hpp>
+#include <vultra/function/framegraph/framegraph_context.hpp>
 #include <vultra/function/framegraph/transient_resources.hpp>
-#include <vultra/function/renderer/renderer_render_context.hpp>
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
@@ -57,10 +57,8 @@ using namespace vultra;
 
 class TriangleSinglePass final : public rhi::RenderPass<TriangleSinglePass>
 {
-    friend class BasePass;
-
 public:
-    explicit TriangleSinglePass(rhi::RenderDevice& rd) : rhi::RenderPass<TriangleSinglePass>(rd)
+    explicit TriangleSinglePass(rhi::RenderDevice& rd) : m_RenderDevice(rd)
     {
         // Create vertex buffer
         m_VertexBuffer = std::move(rd.createVertexBuffer(sizeof(SimpleVertex), 3));
@@ -82,12 +80,18 @@ public:
             "TriangleSinglePass",
             [this](FrameGraph::Builder& builder, auto&) { builder.setSideEffect(); },
             [this, swapchainPixelFormat](const auto&, auto&, void* ctx) {
-                auto& rc                            = *static_cast<gfx::RendererRenderContext*>(ctx);
-                auto& [cb, framebufferInfo, _0, _1] = rc;
-                RHI_GPU_ZONE(cb, "TriangleSinglePass");
+                auto& rc = *static_cast<FrameGraphExecContext*>(ctx);
+                auto  fb = rc.framebufferInfo();
+                if (!fb)
+                    return;
 
-                const auto* pipeline = getPipeline(swapchainPixelFormat);
-                cb.beginRendering(*framebufferInfo)
+                RHI_GPU_ZONE(rc.cb, "TriangleSinglePass");
+
+                const auto* pipeline = ensurePipeline(swapchainPixelFormat);
+                if (!pipeline)
+                    return;
+
+                rc.cb.beginRendering(*fb)
                     .bindPipeline(*pipeline)
                     .draw({
                         .vertexBuffer = &m_VertexBuffer,
@@ -98,6 +102,13 @@ public:
     }
 
 private:
+    [[nodiscard]] const rhi::GraphicsPipeline* ensurePipeline(const rhi::PixelFormat format)
+    {
+        if (!m_GraphicsPipeline)
+            m_GraphicsPipeline = createPipeline(format);
+        return m_GraphicsPipeline ? &m_GraphicsPipeline : nullptr;
+    }
+
     [[nodiscard]] rhi::GraphicsPipeline createPipeline(const rhi::PixelFormat& format) const
     {
         return rhi::GraphicsPipeline::Builder {}
@@ -118,11 +129,13 @@ private:
             })
             .setRasterizer({.polygonMode = rhi::PolygonMode::eFill})
             .setBlending(0, {.enabled = false})
-            .build(getRenderDevice());
+            .build(m_RenderDevice);
     }
 
 private:
-    rhi::VertexBuffer m_VertexBuffer;
+    rhi::RenderDevice&    m_RenderDevice;
+    rhi::VertexBuffer     m_VertexBuffer;
+    rhi::GraphicsPipeline m_GraphicsPipeline;
 };
 
 int main()
@@ -192,9 +205,11 @@ int main()
 
         // Execute the frame graph
         {
-            framegraph::Samplers       samplers;
-            gfx::RendererRenderContext rc {cb, samplers};
-            rc.framebufferInfo = rhi::FramebufferInfo {
+            FrameRenderData frameData {};
+            ViewRenderData  viewData {};
+
+            viewData.view.extent = swapchain.getExtent();
+            viewData.framebufferInfo = rhi::FramebufferInfo {
                 .area = rhi::Rect2D {.extent = swapchain.getExtent()},
                 .colorAttachments =
                     {
@@ -204,7 +219,16 @@ int main()
                         },
                     },
             };
-            FG_GPU_ZONE(rc.commandBuffer);
+            FrameGraphExecContext rc {
+                .cb          = cb,
+                .rd          = renderDevice,
+                .frame       = frameData,
+                .viewData    = viewData,
+                .resourceSet = {},
+                .ext         = {.builtinShaderLib = nullptr, .samplers = {}},
+            };
+
+            FG_GPU_ZONE(rc.cb);
             fg.execute(&rc, &transientResources);
         }
 

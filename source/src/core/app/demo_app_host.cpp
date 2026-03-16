@@ -58,6 +58,8 @@ namespace vultra
         return controller;
     }
 
+    Ref<Renderer> DemoAppHost::makeRenderer() const { return createRef<UniversalRenderer>(); }
+
     void DemoAppHost::onConfigure(Engine& engine)
     {
         engine.ctx().config.window.title     = demoWindowTitle();
@@ -67,11 +69,15 @@ namespace vultra
         engine.emplaceSubsystem<InputSystem>();
         engine.emplaceSubsystem<TimingSystem>();
 
-        auto universalRenderer = createRef<UniversalRenderer>();
+        auto renderer = makeRenderer();
+        if (!renderer)
+        {
+            renderer = createRef<UniversalRenderer>();
+        }
 
         auto& cameraSystem  = engine.emplaceSubsystem<CameraSystem>();
         auto  fpsController = makeFPSCameraController();
-        auto& camera        = cameraSystem.addManualCamera({.rendererKey = universalRenderer->name().data()});
+        auto& camera        = cameraSystem.addManualCamera({.rendererKey = renderer->name().data()});
 
         const float width  = static_cast<float>(std::max(engine.ctx().config.window.width, 1u));
         const float height = static_cast<float>(std::max(engine.ctx().config.window.height, 1u));
@@ -96,7 +102,7 @@ namespace vultra
         engine.emplaceSubsystem<ImGuiSystem>();
 
         auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
-        renderSystem.registerRenderer(universalRenderer);
+        renderSystem.registerRenderer(renderer);
 
         engine.emplaceSubsystem<GpuResourceSystem>();
         engine.emplaceSubsystem<AssetSystem>();

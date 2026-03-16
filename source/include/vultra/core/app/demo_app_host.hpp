@@ -1,8 +1,10 @@
 #pragma once
 
 #include "vultra/core/app/app_host.hpp"
+#include "vultra/core/base/base.hpp"
 #include "vultra/core/os/window.hpp"
 #include "vultra/function/camera/camera_system.hpp"
+#include "vultra/function/rendering/srp/renderer.hpp"
 
 #include <string_view>
 
@@ -20,6 +22,7 @@ namespace vultra
         virtual std::string_view    demoWindowTitle() const { return "Vultra Demo App"; }
         virtual bool                demoWindowResizable() const { return false; }
         virtual FPSCameraController makeFPSCameraController() const;
+        virtual Ref<Renderer>       makeRenderer() const;
 
         virtual void onWindowEvent(const os::GeneralWindowEvent& e);
 

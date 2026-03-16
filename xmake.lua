@@ -87,18 +87,6 @@ rule("imguiconfig")
     end)
 rule_end()
 
-rule("vfg")
-    set_extensions(".vfg")
-
-    on_build_file(function (target, sourcefile, opt) end)
-
-    after_build_file(function (target, sourcefile, opt)
-        local output_path = path.join(target:targetdir(), path.filename(sourcefile))
-        os.cp(sourcefile, output_path)
-        print("Copying vfg data: " .. sourcefile .. " -> " .. output_path)
-    end)
-rule_end()
-
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.vsxmake.autoupdate")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode", lsp = "clangd"})
@@ -142,7 +130,6 @@ task("examples")
             "openxr-triangle",
             "openxr-sponza",
             "gltf-viewer",
-            "rendergraph",
             "debugdraw",
             "gaussian-splatting",
         }
