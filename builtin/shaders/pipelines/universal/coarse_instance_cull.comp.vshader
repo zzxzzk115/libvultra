@@ -43,10 +43,14 @@ void main()
         return;
 
     uint outIndex = atomicAdd(s_VisibleInstanceCount.visibleInstanceCount, 1u);
-    if (outIndex < u_PC.maxVisibleInstances)
+    if (outIndex >= u_PC.maxVisibleInstances)
     {
-        s_VisibleInstances.instanceIndices[outIndex] = instanceIndex;
-        uint requiredGroups = (outIndex >> 6u) + 1u;
-        atomicMax(s_DispatchArgs.groupCountX, requiredGroups);
+        // Keep the published count bounded to valid storage range.
+        atomicMin(s_VisibleInstanceCount.visibleInstanceCount, u_PC.maxVisibleInstances);
+        return;
     }
+
+    s_VisibleInstances.instanceIndices[outIndex] = instanceIndex;
+    uint requiredGroups = (outIndex >> 6u) + 1u;
+    atomicMax(s_DispatchArgs.groupCountX, requiredGroups);
 }

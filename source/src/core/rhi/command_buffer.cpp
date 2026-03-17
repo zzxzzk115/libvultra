@@ -440,11 +440,13 @@ namespace vultra
             if (gi.indexBuffer && gi.numIndices > 0)
             {
                 setIndexBuffer(gi.indexBuffer);
+                flushBarriers();
                 m_Handle.drawIndexed(gi.numIndices, numInstances, gi.indexOffset, gi.vertexOffset, kFirstInstance);
             }
             else
             {
                 assert(gi.numVertices > 0);
+                flushBarriers();
                 m_Handle.draw(gi.numVertices, numInstances, gi.vertexOffset, kFirstInstance);
             }
             return *this;
@@ -473,6 +475,7 @@ namespace vultra
                 assert(gi.numIndices > 0);
 
                 setIndexBuffer(gi.indexBuffer);
+                flushBarriers();
                 m_Handle.drawIndexedIndirect(dii.buffer->getHandle(),
                                              dii.firstCommand * dii.buffer->getStride(),
                                              dii.commandCount,
@@ -480,10 +483,52 @@ namespace vultra
             }
             else
             {
+                flushBarriers();
                 m_Handle.drawIndirect(dii.buffer->getHandle(),
                                       dii.firstCommand * dii.buffer->getStride(),
                                       dii.commandCount,
                                       dii.buffer->getStride());
+            }
+
+            return *this;
+        }
+
+        CommandBuffer&
+        CommandBuffer::drawIndirectCount(const DrawIndirectInfo& dii, const Buffer& countBuffer, const uint32_t countOffset)
+        {
+            assert(invariant(State::eRecording,
+                             InvariantFlags::eValidGraphicsPipeline | InvariantFlags::eInsideRenderPass));
+
+            TRACY_GPU_ZONE2_("DrawIndirectCount");
+
+            const auto& drawIndirectType = dii.buffer->getDrawIndirectType();
+            const auto& gi               = dii.gi;
+
+            setVertexBuffer(gi.vertexBuffer, 0);
+
+            if (drawIndirectType == DrawIndirectType::eIndexed)
+            {
+                assert(gi.indexBuffer);
+                assert(gi.numIndices > 0);
+
+                setIndexBuffer(gi.indexBuffer);
+                flushBarriers();
+                m_Handle.drawIndexedIndirectCount(dii.buffer->getHandle(),
+                                                  dii.firstCommand * dii.buffer->getStride(),
+                                                  countBuffer.getHandle(),
+                                                  countOffset,
+                                                  dii.commandCount,
+                                                  dii.buffer->getStride());
+            }
+            else
+            {
+                flushBarriers();
+                m_Handle.drawIndirectCount(dii.buffer->getHandle(),
+                                           dii.firstCommand * dii.buffer->getStride(),
+                                           countBuffer.getHandle(),
+                                           countOffset,
+                                           dii.commandCount,
+                                           dii.buffer->getStride());
             }
 
             return *this;
@@ -495,6 +540,7 @@ namespace vultra
                              InvariantFlags::eValidGraphicsPipeline | InvariantFlags::eInsideRenderPass));
 
             TRACY_GPU_ZONE2_("DrawMeshTask");
+            flushBarriers();
             m_Handle.drawMeshTasksEXT(numTaskGroups.x, numTaskGroups.y, numTaskGroups.z);
 
             return *this;
@@ -1116,6 +1162,20 @@ namespace vultra
                 {
                     .stageMask  = rhi::PipelineStages::eComputeShader,
                     .accessMask = rhi::Access::eShaderRead | rhi::Access::eShaderWrite,
+                });
+        }
+
+        void prepareForDrawingIndirect(CommandBuffer& cb, const Buffer& buffer)
+        {
+            assert(buffer);
+
+            cb.getBarrierBuilder().bufferBarrier(
+                {
+                    .buffer = buffer,
+                },
+                {
+                    .stageMask  = rhi::PipelineStages::eDrawIndirect,
+                    .accessMask = rhi::Access::eIndirectCommandRead,
                 });
         }
 

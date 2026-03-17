@@ -121,7 +121,9 @@ namespace vultra
                     constexpr uint32_t kRenderQueueTransparent = 2u;
 
                     rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
-                    rhi::prepareForComputing(rc.cb, gpuSceneView->indirectBuffer.value());
+                    rhi::prepareForDrawingIndirect(rc.cb, gpuSceneView->indirectBuffer.value());
+                    if (gpuSceneView->drawSetBuffer)
+                        rhi::prepareForDrawingIndirect(rc.cb, *gpuSceneView->drawSetBuffer);
                     rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
                     rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialParams.gpu);
                     rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
@@ -167,8 +169,25 @@ namespace vultra
                         return;
                     }
 
+                    const bool useIndirectCount =
+                        gpuSceneView->drawSetBuffer &&
+                        HasFlagValues(rc.rd.getFeatureReport().flags,
+                                      vultra::rhi::RenderDeviceFeatureReportFlagBits::eDrawIndirectCount);
+
                     const auto drawQueueWindow = [&](uint32_t queueId) {
                         const uint32_t firstCommand = queueId * queueStride;
+
+                        if (useIndirectCount)
+                        {
+                            rc.cb.drawIndirectCount(rhi::DrawIndirectInfo {
+                                                        .buffer       = &gpuSceneView->indirectBuffer.value(),
+                                                        .firstCommand = firstCommand,
+                                                        .commandCount = queueStride,
+                                                    },
+                                                    *gpuSceneView->drawSetBuffer,
+                                                    queueId * sizeof(uint32_t));
+                            return;
+                        }
 
                         if (HasFlagValues(rc.rd.getFeatureReport().flags,
                                           vultra::rhi::RenderDeviceFeatureReportFlagBits::eMultiDraw))

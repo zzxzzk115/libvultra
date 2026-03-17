@@ -14,7 +14,7 @@ layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 layout(push_constant) uniform DrawsetBuildPushConstants
 {
     uint maxDraws;
-    uint padding0;
+    uint useIndirectCount;
     uint padding1;
     uint padding2;
 } u_PC;
@@ -31,7 +31,8 @@ void main()
     for (uint i = 0u; i < 8u; ++i)
         s_DrawSets.drawSetCounts[i] = 0u;
 
-    for (uint q = 0u; q < kQueueCount; ++q)
+    // Legacy path without drawIndirectCount still requires full queue windows to be cleared.
+    for (uint q = 0u; q < kQueueCount && u_PC.useIndirectCount == 0u; ++q)
     {
         for (uint i = 0u; i < u_PC.maxDraws; ++i)
         {

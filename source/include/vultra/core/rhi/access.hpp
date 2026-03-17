@@ -15,6 +15,7 @@ namespace vultra
 
             eIndexRead                   = VK_ACCESS_2_INDEX_READ_BIT,
             eVertexAttributeRead         = VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT,
+            eIndirectCommandRead         = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT,
             eUniformRead                 = VK_ACCESS_2_UNIFORM_READ_BIT,
             eShaderRead                  = VK_ACCESS_2_SHADER_READ_BIT,
             eShaderWrite                 = VK_ACCESS_2_SHADER_WRITE_BIT,

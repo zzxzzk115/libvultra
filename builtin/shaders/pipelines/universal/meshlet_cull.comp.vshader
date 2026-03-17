@@ -58,6 +58,12 @@ void main()
         cameraPosWS = u_Camera.inverseView[3].xyz;
 
     uint  baseOut = atomicAdd(s_VisibleCount.visibleCount, mesh.meshletCount);
+    if (baseOut >= u_PC.maxVisibleMeshlets)
+    {
+        // Keep the published count bounded to valid storage range.
+        atomicMin(s_VisibleCount.visibleCount, u_PC.maxVisibleMeshlets);
+        return;
+    }
 
     for (uint i = 0u; i < mesh.meshletCount; ++i)
     {
@@ -87,12 +93,12 @@ void main()
         }
 
         uint outIndex = baseOut + i;
-        if (outIndex < u_PC.maxVisibleMeshlets)
-        {
-            s_VisibleMeshlets.visibleMeshlets[outIndex].meshletIndex = meshletIndex;
-            s_VisibleMeshlets.visibleMeshlets[outIndex].instanceIndex = instanceIndex;
-            s_VisibleMeshlets.visibleMeshlets[outIndex].materialIndex = m.materialIndex;
-            s_VisibleMeshlets.visibleMeshlets[outIndex].flags = isVisible ? kMeshletVisibleFlag : 0u;
-        }
+        if (outIndex >= u_PC.maxVisibleMeshlets)
+            break;
+
+        s_VisibleMeshlets.visibleMeshlets[outIndex].meshletIndex = meshletIndex;
+        s_VisibleMeshlets.visibleMeshlets[outIndex].instanceIndex = instanceIndex;
+        s_VisibleMeshlets.visibleMeshlets[outIndex].materialIndex = m.materialIndex;
+        s_VisibleMeshlets.visibleMeshlets[outIndex].flags = isVisible ? kMeshletVisibleFlag : 0u;
     }
 }

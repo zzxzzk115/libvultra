@@ -122,6 +122,7 @@ namespace vultra
             CommandBuffer& drawFullScreenTriangle();
             CommandBuffer& drawCube();
             CommandBuffer& drawIndirect(const DrawIndirectInfo&);
+            CommandBuffer& drawIndirectCount(const DrawIndirectInfo&, const Buffer& countBuffer, uint32_t countOffset);
             CommandBuffer& drawMeshTask(const glm::uvec3& numTaskGroups);
 
             // ---
@@ -197,6 +198,7 @@ namespace vultra
         void prepareForComputing(CommandBuffer& cb, const Texture& texture);
         void prepareForRaytracing(CommandBuffer& cb, const Texture& texture);
         void prepareForComputing(CommandBuffer& cb, const Buffer& buffer);
+        void prepareForDrawingIndirect(CommandBuffer& cb, const Buffer& buffer);
         void prepareForReading(CommandBuffer& cb, const Buffer& buffer);
     } // namespace rhi
 } // namespace vultra
