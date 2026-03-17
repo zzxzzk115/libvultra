@@ -111,8 +111,8 @@ namespace vultra
                 if (!pipeline)
                     return;
 
-                uint32_t zero = 0;
-                rc.rd.uploadS(*gpuSceneView->visibleMeshletCountBuffer, 0, sizeof(uint32_t), &zero);
+                // Per-frame tiny reset must stay inside the frame command buffer.
+                rc.cb.clear(*gpuSceneView->visibleMeshletCountBuffer, 0u);
 
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->instanceBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->meshTableBuffer);

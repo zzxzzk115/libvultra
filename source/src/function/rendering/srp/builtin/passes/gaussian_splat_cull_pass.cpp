@@ -297,12 +297,12 @@ namespace vultra
                     s_LoggedGaussianSplatCull = true;
                 }
 
+                // Per-frame tiny reset must be recorded in-frame, not submitted synchronously via uploadS.
+                rc.cb.clear(*gpuSceneView->gaussianSplatVisibleCountBuffer, 0u);
+
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatDrawBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatVisibleCountBuffer);
                 rhi::prepareForComputing(rc.cb, gpuSceneView->gaussianSplatIndirectBuffer.value());
-
-                const uint32_t zero = 0u;
-                rc.rd.uploadS(*gpuSceneView->gaussianSplatVisibleCountBuffer, 0, sizeof(uint32_t), &zero);
 
                 if (totalPointCount == 0u || m_SortDrawIds.empty())
                 {

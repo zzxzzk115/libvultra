@@ -16,6 +16,11 @@
 #include <cstdint>
 #include <vector>
 
+namespace vultra::rhi
+{
+    class CommandBuffer;
+}
+
 namespace vultra::resource
 {
     // Persistent-ish GPU scene database.
@@ -147,35 +152,37 @@ namespace vultra::resource
                 meshTableBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
         }
 
-        void uploadInstances(rhi::RenderDevice& rd)
+        void uploadInstances(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
         {
             ensureInstanceBuffer(rd);
             const size_t bytes = instances.size() * sizeof(GpuInstance);
             if (bytes > 0)
-                rd.uploadS(*instanceBuffer, 0, static_cast<uint64_t>(bytes), instances.data());
+                cb.update(*instanceBuffer, 0, static_cast<uint64_t>(bytes), instances.data());
         }
 
-        void uploadTransforms(rhi::RenderDevice& rd)
+        void uploadTransforms(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
         {
             ensureTransformBuffer(rd);
             const size_t bytes = transforms.size() * sizeof(glm::mat4);
             if (bytes > 0)
-                rd.uploadS(*transformBuffer, 0, static_cast<uint64_t>(bytes), transforms.data());
+                cb.update(*transformBuffer, 0, static_cast<uint64_t>(bytes), transforms.data());
         }
 
-        void uploadMeshTable(rhi::RenderDevice& rd)
+        void uploadMeshTable(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
         {
             ensureMeshTableBuffer(rd);
             const size_t bytes = meshTable.size() * sizeof(GpuMeshTableEntry);
             if (bytes > 0)
-                rd.uploadS(*meshTableBuffer, 0, static_cast<uint64_t>(bytes), meshTable.data());
+                cb.update(*meshTableBuffer, 0, static_cast<uint64_t>(bytes), meshTable.data());
         }
 
-        void uploadSceneTables(rhi::RenderDevice& rd)
+        void uploadSceneTables(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
         {
-            uploadInstances(rd);
-            uploadTransforms(rd);
-            uploadMeshTable(rd);
+            // Per-frame scene uploads must be recorded into the frame command buffer.
+            // Avoid synchronous uploadS() here to prevent mid-frame submit/wait stalls.
+            uploadInstances(rd, cb);
+            uploadTransforms(rd, cb);
+            uploadMeshTable(rd, cb);
         }
     };
 } // namespace vultra::resource

@@ -15,6 +15,11 @@
 #include <optional>
 #include <vector>
 
+namespace vultra::rhi
+{
+    class CommandBuffer;
+}
+
 namespace vultra::resource
 {
     enum class GpuSceneBuildMode : uint8_t
@@ -231,13 +236,13 @@ namespace vultra::resource
                 drawSetBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(kDrawSetBytes));
         }
 
-        void uploadDraws(rhi::RenderDevice& rd)
+        void uploadDraws(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
         {
             ensureDrawBuffer(rd);
 
             const size_t drawBytes = draws.size() * sizeof(GpuDrawRecord);
             if (drawBytes > 0)
-                rd.uploadS(*drawBuffer, 0, static_cast<uint64_t>(drawBytes), draws.data());
+            cb.update(*drawBuffer, 0, static_cast<uint64_t>(drawBytes), draws.data());
         }
 
         void buildIndirectFromDraws(const GpuResourcePool& pool)
@@ -329,13 +334,13 @@ namespace vultra::resource
                 gaussianSplatDrawBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
         }
 
-        void uploadGaussianSplatDraws(rhi::RenderDevice& rd)
+        void uploadGaussianSplatDraws(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
         {
             ensureGaussianSplatDrawBuffer(rd);
 
             const size_t drawBytes = gaussianSplatDraws.size() * sizeof(GpuDrawRecord);
             if (drawBytes > 0)
-                rd.uploadS(*gaussianSplatDrawBuffer, 0, static_cast<uint64_t>(drawBytes), gaussianSplatDraws.data());
+            cb.update(*gaussianSplatDrawBuffer, 0, static_cast<uint64_t>(drawBytes), gaussianSplatDraws.data());
         }
 
         void prepareGaussianSplatGpuDrivenBuffers(rhi::RenderDevice& rd, uint32_t maxDrawCount)

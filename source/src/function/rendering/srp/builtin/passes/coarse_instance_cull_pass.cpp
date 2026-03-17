@@ -98,15 +98,15 @@ namespace vultra
                 if (!pipeline)
                     return;
 
-                uint32_t zero = 0;
-                rc.rd.uploadS(*gpuSceneView->visibleInstanceCountBuffer, 0, sizeof(uint32_t), &zero);
+                // Per-frame tiny resets must be recorded in-frame, not uploaded via synchronous uploadS.
+                rc.cb.clear(*gpuSceneView->visibleInstanceCountBuffer, 0u);
                 struct DispatchArgsInit
                 {
                     uint32_t x;
                     uint32_t y;
                     uint32_t z;
                 } argsInit {0u, 1u, 1u};
-                rc.rd.uploadS(*gpuSceneView->meshletCullDispatchArgsBuffer, 0, sizeof(DispatchArgsInit), &argsInit);
+                rc.cb.update(*gpuSceneView->meshletCullDispatchArgsBuffer, 0, sizeof(DispatchArgsInit), &argsInit);
 
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->instanceBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->meshTableBuffer);

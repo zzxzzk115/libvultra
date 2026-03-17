@@ -217,7 +217,7 @@ namespace vultra
             RenderDevice& upload(Buffer&, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data);
 
             // Upload with staging buffer. Use for non-host-visible memory. This is a helper that creates a staging
-            // buffer,
+            // buffer and performs a synchronous submit/wait. Initialization/setup only, not per-frame pass execution.
             RenderDevice& uploadS(Buffer&, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data);
 
             // Upload draw indirect commands.

@@ -239,7 +239,7 @@ namespace vultra
                 gpuInst.flags          = 0;
                 m_GpuSceneDatabaseBack.pushInstance(gpuInst);
             }
-            m_GpuSceneDatabaseBack.uploadSceneTables(rd);
+            m_GpuSceneDatabaseBack.uploadSceneTables(rd, cb);
 
             uint32_t maxMeshletDraws = 0;
             for (const auto& inst : m_RenderWorldBack.instances)
@@ -311,7 +311,7 @@ namespace vultra
                 for (auto& dr : stagedDraws)
                     m_GpuSceneViewBack.pushMeshletDraw(std::move(dr));
 
-                m_GpuSceneViewBack.uploadDraws(rd);
+                m_GpuSceneViewBack.uploadDraws(rd, cb);
                 m_GpuSceneViewBack.buildIndirectFromDraws(pool);
                 m_GpuSceneViewBack.uploadIndirect(rd);
             }
@@ -356,7 +356,7 @@ namespace vultra
                     s_LoggedGaussianSplatStage = true;
                 }
 
-                m_GpuSceneViewBack.uploadGaussianSplatDraws(rd);
+                m_GpuSceneViewBack.uploadGaussianSplatDraws(rd, cb);
             }
 
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;

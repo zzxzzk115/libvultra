@@ -856,6 +856,10 @@ namespace vultra
             assert(buffer && data);
             assert(m_Device);
 
+            // NOTE: Synchronous upload path. This submits immediately and waits for completion.
+            // Keep this for initialization/setup/debug utilities only.
+            // Do not call from framegraph/pass execution paths.
+
             auto stagingBuffer = createStagingBuffer(size, data);
 
             return execute(
@@ -1807,11 +1811,6 @@ namespace vultra
 
                 default:
                     assert(false);
-            }
-
-            if (result != vk::Result::eErrorOutOfDateKHR)
-            {
-                m_GenericQueue.waitIdle();
             }
 
             return *this;
