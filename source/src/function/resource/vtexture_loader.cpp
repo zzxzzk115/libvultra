@@ -49,6 +49,72 @@ namespace vultra::resource
             }
         }
 
+        vbase::Result<rhi::Texture, std::string> loadKTX_DDS(const std::vector<uint8_t>& bintex, rhi::RenderDevice& rd)
+        {
+            ddsktx_texture_info tc {0};
+
+            if (!ddsktx_parse(&tc, bintex.data(), static_cast<int>(bintex.size()), nullptr))
+            {
+                return vbase::Result<rhi::Texture, std::string>::err("Failed to parse texture file.");
+            }
+
+            auto extent = rhi::Extent2D {static_cast<uint32_t>(tc.width), static_cast<uint32_t>(tc.height)};
+
+            rhi::Texture texture = rhi::Texture::Builder {}
+                                       .setExtent(extent)
+                                       .setPixelFormat(toRHI(tc.format))
+                                       .setNumMipLevels(tc.num_mips)
+                                       .setNumLayers(std::nullopt)
+                                       .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst)
+                                       .setupOptimalSampler(true)
+                                       .build(rd);
+            if (!texture)
+            {
+                return vbase::Result<rhi::Texture, std::string>::err("Failed to create texture.");
+            }
+
+            for (int mip = 0; mip < tc.num_mips; ++mip)
+            {
+                for (int layer = 0; layer < tc.num_layers; ++layer)
+                {
+                    for (int face = 0; face < (tc.flags & DDSKTX_TEXTURE_FLAG_CUBEMAP ? DDSKTX_CUBE_FACE_COUNT : 1);
+                         ++face)
+                    {
+                        ddsktx_sub_data subData;
+                        ddsktx_get_sub(&tc, &subData, bintex.data(), static_cast<int>(bintex.size()), layer, face, mip);
+                        if (!subData.buff)
+                        {
+                            return vbase::Result<rhi::Texture, std::string>::err("Failed to get texture sub-data.");
+                        }
+
+                        const auto uploadSize       = subData.size_bytes;
+                        const auto srcStagingBuffer = rd.createStagingBuffer(uploadSize, subData.buff);
+                        if (!srcStagingBuffer)
+                        {
+                            return vbase::Result<rhi::Texture, std::string>::err("Failed to create staging buffer.");
+                        }
+                        std::array<vk::BufferImageCopy, 1> copyRegions {};
+                        copyRegions[0].bufferOffset                    = 0;
+                        copyRegions[0].bufferRowLength                 = 0;
+                        copyRegions[0].bufferImageHeight               = 0;
+                        copyRegions[0].imageSubresource.aspectMask     = rhi::getAspectMask(texture.getPixelFormat());
+                        copyRegions[0].imageSubresource.mipLevel       = static_cast<uint32_t>(mip);
+                        copyRegions[0].imageSubresource.baseArrayLayer = static_cast<uint32_t>(layer);
+                        copyRegions[0].imageSubresource.layerCount     = tc.num_layers;
+                        copyRegions[0].imageOffset                     = vk::Offset3D {0, 0, 0};
+                        copyRegions[0].imageExtent                     = vk::Extent3D {
+                            static_cast<uint32_t>(subData.width),
+                            static_cast<uint32_t>(subData.height),
+                            static_cast<uint32_t>(tc.depth),
+                        };
+                        rhi::upload(rd, srcStagingBuffer, copyRegions, texture, false);
+                    }
+                }
+            }
+
+            return vbase::Result<rhi::Texture, std::string>::ok(std::move(texture));
+        }
+
         // ============================================================
         // STB
         // ============================================================
@@ -166,16 +232,54 @@ namespace vultra::resource
                               .setupOptimalSampler(true)
                               .build(rd);
 
-            for (uint32_t mip = 0; mip < tex->numLevels; mip++)
+            // If the KTX2 has mipmaps, we will upload each mip level separately.
+            if (tex->numLevels > 1)
+            {
+                for (uint32_t mip = 0; mip < tex->numLevels; mip++)
+                {
+                    for (uint32_t layer = 0; layer < tex->numLayers; layer++)
+                    {
+                        for (uint32_t face = 0; face < tex->numFaces; face++)
+                        {
+                            ktx_size_t offset;
+
+                            ktxTexture_GetImageOffset((ktxTexture*)tex, mip, layer, face, &offset);
+
+                            auto staging = rd.createStagingBuffer(ktxTexture_GetImageSize((ktxTexture*)tex, mip),
+                                                                  tex->pData + offset);
+
+                            // Arrange copy regions for this mip level, layer and face.
+                            std::array<vk::BufferImageCopy, 1> copyRegions {};
+                            copyRegions[0].bufferOffset                    = 0;
+                            copyRegions[0].bufferRowLength                 = 0;
+                            copyRegions[0].bufferImageHeight               = 0;
+                            copyRegions[0].imageSubresource.aspectMask     = rhi::getAspectMask(pixelFormat);
+                            copyRegions[0].imageSubresource.mipLevel       = static_cast<uint32_t>(mip);
+                            copyRegions[0].imageSubresource.baseArrayLayer = static_cast<uint32_t>(layer);
+                            copyRegions[0].imageSubresource.layerCount     = tex->numLayers;
+                            copyRegions[0].imageOffset                     = vk::Offset3D {0, 0, 0};
+                            copyRegions[0].imageExtent                     = vk::Extent3D {
+                                static_cast<uint32_t>(tex->baseWidth >> mip),
+                                static_cast<uint32_t>(tex->baseHeight >> mip),
+                                static_cast<uint32_t>(tex->baseDepth >> mip),
+                            };
+
+                            rhi::upload(rd, staging, copyRegions, rhiTex, false);
+                        }
+                    }
+                }
+            }
+            // If the KTX2 does not have mipmaps, we let gpu generate them.
+            else
             {
                 ktx_size_t offset;
 
-                ktxTexture_GetImageOffset((ktxTexture*)tex, mip, 0, 0, &offset);
+                ktxTexture_GetImageOffset((ktxTexture*)tex, 0, 0, 0, &offset);
 
                 auto staging =
-                    rd.createStagingBuffer(ktxTexture_GetImageSize((ktxTexture*)tex, mip), tex->pData + offset);
+                    rd.createStagingBuffer(ktxTexture_GetImageSize((ktxTexture*)tex, 0), tex->pData + offset);
 
-                rhi::upload(rd, staging, {}, rhiTex, false);
+                rhi::upload(rd, staging, {}, rhiTex, true);
             }
 
             return vbase::Result<rhi::Texture, std::string>::ok(std::move(rhiTex));
@@ -204,6 +308,10 @@ namespace vultra::resource
             case eBMP:
             case eTGA:
                 return loadSTB(v.data, rd);
+
+            case eKTX:
+            case eDDS:
+                return loadKTX_DDS(v.data, rd);
 
             default:
                 return vbase::Result<rhi::Texture, std::string>::err("Unsupported format");
