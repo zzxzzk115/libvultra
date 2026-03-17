@@ -33,26 +33,22 @@ The complete pipeline is shown below.
 ```mermaid
 flowchart TD
 
-B[Depth Prepass]
-C[HZB Generation]
-D[Meshlet Frustum Cull]
-E[Meshlet HiZ Cull]
-F[Build Indirect Draw]
-G[Visibility Raster]
-H[Visibility Resolve]
-I[Tile Light Culling]
-J[Deferred Lighting]
-K[Tone Mapping]
+A[Meshlet Frustum Cull]
+B[Meshlet HiZ Cull - Optional]
+C[Build Indirect - Final]
+D[Drawset Build - Final]
+E[Depth Prepass - Meshlet]
+F[HZB Generation - Frame Latent]
+G[Visibility Raster / Shading]
+H[Tone Mapping]
 
+A --> B
 B --> C
 C --> D
 D --> E
 E --> F
 F --> G
 G --> H
-H --> I
-I --> J
-J --> K
 ```
 
 ---
@@ -63,12 +59,17 @@ The renderer is composed of the following features:
 
 | Feature | Purpose |
 |------|------|
-|DepthPreFeature | Generates depth buffer |
-|HZBFeature | Builds hierarchical Z buffer |
 |MeshletVisibilityFeature | GPU‑driven meshlet visibility |
 |VisibilityResolveFeature | Reconstructs GBuffer from visibility |
 |LightingFeature | Tile‑based deferred lighting |
 |PostProcessFeature | Tone mapping and final output |
+
+Note:
+Depth prepass and HZB generation are integrated into the meshlet feature.
+HZB is generated after final drawset build and is consumed in a frame-latent manner when available.
+
+Current status:
+`MeshletHiZCullPass` and HZB consumption are temporarily disabled in runtime flow until the HiZ path is re-enabled.
 
 ---
 
@@ -76,7 +77,25 @@ The renderer is composed of the following features:
 
 ---
 
-## 3.1 DepthPreFeature
+## 3.1 Meshlet Feature Practical Staging
+
+The meshlet feature runs in practical stable stages:
+
+- Stage A culls and builds final drawset for current-frame shading.
+- Stage B runs meshlet depth prepass from that drawset.
+- Stage C generates HZB for frame-latent occlusion.
+
+Pass order:
+
+```
+CoarseInstanceCullPass
+MeshletCullPass
+MeshletHiZCullPass
+BuildIndirectPass      (Final)
+DrawsetBuildPass       (Final)
+DepthPrePass
+HZBGeneratePass
+```
 
 ### Pass
 ```
@@ -97,18 +116,20 @@ Purpose:
 
 ---
 
-## 3.2 HZBFeature
+## 3.2 DepthPrePass
 
-### Pass
-```
-HZBGeneratePass
-```
+Depth pass over meshlet indirect drawset (opaque + alpha-masked).
 
-### Input
+Purpose:
 
-```
-Depth
-```
+- early-Z seeding for meshlet shading
+- HZB source depth
+
+## 3.3 HZBGeneratePass
+
+Input:
+
+- Depth from `DepthPrePass`
 
 ### Output
 
@@ -128,7 +149,7 @@ HZB
 
 ---
 
-## 3.3 MeshletVisibilityFeature
+## 3.4 MeshletVisibilityFeature
 
 This is the **core GPU‑driven stage**.
 
@@ -139,10 +160,14 @@ A[Meshlet Frustum Cull]
 B[Meshlet HiZ Cull]
 C[Build Indirect]
 D[Visibility Raster]
+E[Depth Prepass]
+F[HZB Generation]
 
 A --> B
 B --> C
 C --> D
+D --> E
+E --> F
 ```
 
 ### Passes
@@ -150,8 +175,10 @@ C --> D
 ```
 MeshletFrustumCullPass
 MeshletHiZCullPass
-BuildIndirectPass
+BuildIndirectPass (Final)
 VisibilityRasterPass
+DepthPrePass
+HZBGeneratePass
 ```
 
 ---

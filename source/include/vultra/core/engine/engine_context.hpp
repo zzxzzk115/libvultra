@@ -43,7 +43,7 @@ namespace vultra
             {
                 rhi::FrameIndex::ValueType       numFramesInFlight {2};
                 rhi::RenderDeviceFeatureFlagBits renderDeviceFeatureFlag {rhi::RenderDeviceFeatureFlagBits::eNormal};
-                rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eAdaptive};
+                rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eDisabled};
                 rhi::Swapchain::Format           swapchainFormat {rhi::Swapchain::Format::eLinear};
 
                 struct XRConfig

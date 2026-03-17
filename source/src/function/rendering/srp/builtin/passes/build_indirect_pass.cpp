@@ -76,9 +76,10 @@ namespace vultra
                     return;
                 }
                 if (!gpuSceneView->visibleMeshletBuffer || !gpuSceneView->visibleMeshletCountBuffer ||
-                    !gpuSceneView->drawBuffer || !gpuSceneView->indirectBuffer.has_value() ||
-                    !gpuSceneDatabase->instanceBuffer || !gpuSceneDatabase->meshTableBuffer ||
-                    !gpuSceneDatabase->transformBuffer || !gpuSceneDatabase->resources->meshlets.meshletsBuffer)
+                    !gpuSceneView->drawBuffer || !gpuSceneDatabase->instanceBuffer ||
+                    !gpuSceneDatabase->meshTableBuffer ||
+                    !gpuSceneDatabase->transformBuffer || !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
+                    !gpuSceneDatabase->resources->materialTableBuffer)
                     return;
 
                 auto variantHash =
@@ -93,8 +94,8 @@ namespace vultra
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->meshTableBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->transformBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
+                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
-                rhi::prepareForComputing(rc.cb, gpuSceneView->indirectBuffer.value());
 
                 rc.resourceSet[0] = {
                     {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawBuffer.get()}},
@@ -106,7 +107,8 @@ namespace vultra
                     {5, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->transformBuffer.get()}},
                     {6, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleMeshletBuffer.get()}},
                     {7, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleMeshletCountBuffer.get()}},
-                    {12, rhi::bindings::StorageBuffer {.buffer = &gpuSceneView->indirectBuffer.value()}},
+                    {8,
+                     rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
                 };
 
                 const uint64_t vertexAddress = gpuSceneDatabase->resources->geometry.vertexBytesAddress;

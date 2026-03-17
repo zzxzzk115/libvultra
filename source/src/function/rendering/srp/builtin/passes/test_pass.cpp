@@ -16,6 +16,7 @@ namespace vultra
     {
         const auto resolution  = ctx.view().extent;
         const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
+        const auto depthPre = ctx.data.tryGet(kResKey_DepthTexture);
 
         struct PassData
         {
@@ -26,8 +27,10 @@ namespace vultra
         };
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution, cameraBlock, buildDone = ctx.data.get(kResKey_MeshletBuildDone)](FrameGraph::Builder& builder,
-                                                                                          PassData&            data) {
+            [resolution,
+             cameraBlock,
+             depthPre,
+             buildDone = ctx.data.get(kResKey_MeshletBuildDone)](FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
                 data.camera    = builder.read(cameraBlock,
@@ -55,19 +58,30 @@ namespace vultra
                                                .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                            });
 
-                data.depth = builder.create<framegraph::FrameGraphTexture>(
-                    "Test Pass Depth",
-                    {
-                        .extent = resolution,
-                        .format = rhi::PixelFormat::eDepth32F,
-                        .usageFlags =
-                            rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferSrc,
-                    });
-                data.depth = builder.write(data.depth,
-                                           framegraph::Attachment {
-                                               .imageAspect = rhi::ImageAspect::eDepth,
-                                               .clearValue  = framegraph::ClearValue::eOne,
-                                           });
+                if (depthPre)
+                {
+                    // Consume depth from meshlet depth prepass; do not clear so shading pass can early-reject.
+                    data.depth = builder.write(depthPre,
+                                               framegraph::Attachment {
+                                                   .imageAspect = rhi::ImageAspect::eDepth,
+                                               });
+                }
+                else
+                {
+                    data.depth = builder.create<framegraph::FrameGraphTexture>(
+                        "Test Pass Depth",
+                        {
+                            .extent = resolution,
+                            .format = rhi::PixelFormat::eDepth32F,
+                            .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                          rhi::ImageUsage::eTransferSrc,
+                        });
+                    data.depth = builder.write(data.depth,
+                                               framegraph::Attachment {
+                                                   .imageAspect = rhi::ImageAspect::eDepth,
+                                                   .clearValue  = framegraph::ClearValue::eOne,
+                                               });
+                }
             },
             [this](const PassData& data, FrameGraphPassResources& resources, void* ctx) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctx);
@@ -102,6 +116,10 @@ namespace vultra
 
                 if (canDrawMeshlets)
                 {
+                    constexpr uint32_t kRenderQueueOpaque = 0u;
+                    constexpr uint32_t kRenderQueueAlphaMask = 1u;
+                    constexpr uint32_t kRenderQueueTransparent = 2u;
+
                     rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
                     rhi::prepareForComputing(rc.cb, gpuSceneView->indirectBuffer.value());
                     rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
@@ -141,28 +159,43 @@ namespace vultra
 
                     rc.bindDescriptorSets(*pipeline);
 
-                    if (HasFlagValues(rc.rd.getFeatureReport().flags,
-                                      vultra::rhi::RenderDeviceFeatureReportFlagBits::eMultiDraw))
+                    const uint32_t queueStride = gpuSceneView->maxDraws;
+                    if (queueStride == 0u)
                     {
-                        rc.cb.drawIndirect(rhi::DrawIndirectInfo {
-                            .buffer       = &gpuSceneView->indirectBuffer.value(),
-                            .firstCommand = 0,
-                            .commandCount = gpuSceneView->getDispatchableDrawCount(),
-                        });
+                        rc.cb.endRendering();
+                        rc.clear();
+                        return;
                     }
-                    else
-                    {
-                        const uint32_t drawCount = gpuSceneView->getDispatchableDrawCount();
 
-                        for (uint32_t i = 0; i < drawCount; ++i)
+                    const auto drawQueueWindow = [&](uint32_t queueId) {
+                        const uint32_t firstCommand = queueId * queueStride;
+
+                        if (HasFlagValues(rc.rd.getFeatureReport().flags,
+                                          vultra::rhi::RenderDeviceFeatureReportFlagBits::eMultiDraw))
                         {
                             rc.cb.drawIndirect(rhi::DrawIndirectInfo {
                                 .buffer       = &gpuSceneView->indirectBuffer.value(),
-                                .firstCommand = i,
-                                .commandCount = 1,
+                                .firstCommand = firstCommand,
+                                .commandCount = queueStride,
                             });
                         }
-                    }
+                        else
+                        {
+                            for (uint32_t i = 0; i < queueStride; ++i)
+                            {
+                                rc.cb.drawIndirect(rhi::DrawIndirectInfo {
+                                    .buffer       = &gpuSceneView->indirectBuffer.value(),
+                                    .firstCommand = firstCommand + i,
+                                    .commandCount = 1,
+                                });
+                            }
+                        }
+                    };
+
+                    // Opaque queues first, transparent queue later.
+                    drawQueueWindow(kRenderQueueOpaque);
+                    drawQueueWindow(kRenderQueueAlphaMask);
+                    drawQueueWindow(kRenderQueueTransparent);
                 }
 
                 rc.cb.endRendering();
@@ -205,8 +238,9 @@ namespace vultra
             .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
             .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
             .setDepthStencil({
-                .depthTest  = true,
-                .depthWrite = true,
+                .depthTest      = true,
+                .depthWrite     = false,
+                .depthCompareOp = rhi::CompareOp::eLessOrEqual,
             })
             .setBlending(0, {.enabled = false})
             .build(getRenderDevice());

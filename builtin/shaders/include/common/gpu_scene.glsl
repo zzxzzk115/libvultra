@@ -110,6 +110,22 @@
 #define VULTRA_DISPATCH_ARGS_BINDING 26
 #endif
 
+#ifndef VULTRA_DEPTH_TEXTURE_BINDING
+#define VULTRA_DEPTH_TEXTURE_BINDING 27
+#endif
+
+#ifndef VULTRA_HZB_TEXTURE_BINDING
+#define VULTRA_HZB_TEXTURE_BINDING 28
+#endif
+
+#ifndef VULTRA_HZB_STORAGE_BINDING
+#define VULTRA_HZB_STORAGE_BINDING 29
+#endif
+
+#ifndef VULTRA_DRAW_SET_BINDING
+#define VULTRA_DRAW_SET_BINDING 30
+#endif
+
 #ifndef VULTRA_TEXTURE_SET
 #define VULTRA_TEXTURE_SET 3
 #endif
@@ -323,6 +339,18 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_DISPATCH_ARGS_BINDING, std430) b
 } s_DispatchArgs;
 #endif
 
+#ifdef VULTRA_DECLARE_DEPTH_TEXTURE
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_DEPTH_TEXTURE_BINDING) uniform sampler2D u_DepthTexture;
+#endif
+
+#ifdef VULTRA_DECLARE_HZB_TEXTURE
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_HZB_TEXTURE_BINDING) uniform sampler2D u_HzbTexture;
+#endif
+
+#ifdef VULTRA_DECLARE_HZB_STORAGE
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_HZB_STORAGE_BINDING, r32f) uniform writeonly image2D u_HzbStorage;
+#endif
+
 #ifdef VULTRA_DECLARE_MESHLET_VERTEX_BUFFER
 layout(set = VULTRA_SCENE_SET, binding = VULTRA_MESHLET_VERTEX_BINDING, std430) readonly buffer MeshletVertexBuffer
 {
@@ -378,6 +406,14 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_SH_BINDING, std430) readon
 #define VULTRA_MAT_UNLIT   3u
 #define VULTRA_MAT_PHONG   4u
 
+// Render queue IDs shared between GPU build passes and CPU-side inspection.
+#define VULTRA_RENDER_QUEUE_OPAQUE      0u
+#define VULTRA_RENDER_QUEUE_ALPHA_MASK  1u
+#define VULTRA_RENDER_QUEUE_TRANSPARENT 2u
+#define VULTRA_RENDER_QUEUE_POST        3u
+#define VULTRA_RENDER_QUEUE_UI          4u
+#define VULTRA_RENDER_QUEUE_COUNT       5u
+
 struct MaterialEntry
 {
     uint model;            // VULTRA_MAT_*
@@ -391,6 +427,17 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_MATERIAL_TABLE_BINDING, std430) 
 {
     MaterialEntry materials[];
 } s_Materials;
+#endif
+
+#ifdef VULTRA_DECLARE_DRAW_SET_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_DRAW_SET_BINDING, std430) buffer DrawSetBuffer
+{
+    // Per-queue draw counts exported by build-indirect.
+    // Indirect commands are emitted into queue windows:
+    // commandIndex = queueId * maxDraws + localQueueSlot.
+    // TODO(vk-queue): switch from fixed queue windows to compacted offsets/ranges.
+    uint drawSetCounts[8];
+} s_DrawSets;
 #endif
 
 #ifdef VULTRA_DECLARE_MATERIAL_PARAMS
@@ -413,6 +460,7 @@ uint load_meshlet_triangle_index(uint triIndex)
 }
 #endif
 
+#ifdef VULTRA_DECLARE_CAMERA
 bool sphere_frustum_test(vec3 centerWS, float radiusWS)
 {
     for (uint i = 0u; i < 6u; ++i)
@@ -424,6 +472,12 @@ bool sphere_frustum_test(vec3 centerWS, float radiusWS)
     }
     return true;
 }
+#else
+bool sphere_frustum_test(vec3 centerWS, float radiusWS)
+{
+    return true;
+}
+#endif
 
 // Alternative cone culling method inspired by Alan Wake 2 tech talk
 bool cone_visible_alanwake2(
@@ -540,6 +594,16 @@ uint get_material_model(uint materialIndex)
     return s_Materials.materials[materialIndex].model;
 }
 
+uint get_material_render_queue(uint materialIndex)
+{
+    // Queue is encoded in MaterialEntry.reserved low byte.
+    // TODO(vk-queue): formalize queue flags in cooked material metadata.
+    uint queueId = s_Materials.materials[materialIndex].reserved & 0xFFu;
+    return queueId < VULTRA_RENDER_QUEUE_COUNT ? queueId : VULTRA_RENDER_QUEUE_OPAQUE;
+}
+
+#ifdef VULTRA_DECLARE_MATERIAL_PARAMS
+
 MaterialParamsPBRMR get_pbrmr_params(uint materialIndex)
 {
     MaterialEntry m = s_Materials.materials[materialIndex];
@@ -633,6 +697,8 @@ MaterialParamsPhong get_phong_params(uint materialIndex)
 
     return params;
 }
+
+#endif
 
 #endif
 

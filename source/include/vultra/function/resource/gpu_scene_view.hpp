@@ -53,6 +53,7 @@ namespace vultra::resource
         Ref<rhi::StorageBuffer>                visibleMeshletBuffer {nullptr};
         Ref<rhi::StorageBuffer>                visibleMeshletCountBuffer {nullptr};
         Ref<rhi::StorageBuffer>                drawBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                drawSetBuffer {nullptr};
         std::optional<rhi::DrawIndirectBuffer> indirectBuffer;
 
         // Gaussian-splat path
@@ -84,6 +85,7 @@ namespace vultra::resource
             visibleMeshletBuffer      = nullptr;
             visibleMeshletCountBuffer = nullptr;
             drawBuffer                = nullptr;
+            drawSetBuffer             = nullptr;
             indirectBuffer.reset();
             gaussianSplatDrawBuffer = nullptr;
             gaussianSplatSortKeysBuffer    = nullptr;
@@ -164,23 +166,29 @@ namespace vultra::resource
 
         uint32_t pushDraw(const GpuDrawRecord& dr)
         {
-            // Compatibility path: generic draws are meshlet draws.
             const uint32_t index = static_cast<uint32_t>(draws.size());
             draws.push_back(dr);
+            return index;
+        }
+
+        uint32_t pushDraw(GpuDrawRecord&& dr)
+        {
+            const uint32_t index = static_cast<uint32_t>(draws.size());
+            draws.push_back(std::move(dr));
             return index;
         }
 
         uint32_t pushMeshletDraw(GpuDrawRecord dr)
         {
             dr.flags |= gpuDrawFlagsToMask(GpuDrawFlags::eMeshlet);
-            return pushDraw(dr);
+            return pushDraw(std::move(dr));
         }
 
         uint32_t pushGaussianSplatDraw(GpuDrawRecord dr)
         {
             dr.flags |= gpuDrawFlagsToMask(GpuDrawFlags::eGaussianSplat);
             const uint32_t index = static_cast<uint32_t>(gaussianSplatDraws.size());
-            gaussianSplatDraws.push_back(dr);
+            gaussianSplatDraws.push_back(std::move(dr));
             return index;
         }
 
@@ -213,6 +221,14 @@ namespace vultra::resource
 
             if (!drawBuffer || static_cast<uint64_t>(drawBuffer->getSize()) < bytes)
                 drawBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
+        }
+
+        void ensureDrawSetBuffer(rhi::RenderDevice& rd)
+        {
+            // 8 counters to keep alignment and allow future queue expansion.
+            constexpr uint64_t kDrawSetBytes = sizeof(uint32_t) * 8ull;
+            if (!drawSetBuffer || static_cast<uint64_t>(drawSetBuffer->getSize()) < kDrawSetBytes)
+                drawSetBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(kDrawSetBytes));
         }
 
         void uploadDraws(rhi::RenderDevice& rd)
@@ -255,7 +271,7 @@ namespace vultra::resource
         void ensureIndirectBuffer(rhi::RenderDevice& rd)
         {
             const uint32_t cmdCount = isGpuDriven() ?
-                                          (maxDraws == 0 ? 1u : maxDraws) :
+                                          (maxDraws == 0 ? 5u : maxDraws * 5u) :
                                           static_cast<uint32_t>(indirectCommands.empty() ? 1 : indirectCommands.size());
 
             if (!indirectBuffer.has_value() ||
@@ -288,6 +304,7 @@ namespace vultra::resource
             ensureVisibleInstanceBuffers(rd);
             ensureVisibleMeshletBuffers(rd);
             ensureDrawBuffer(rd);
+            ensureDrawSetBuffer(rd);
             ensureIndirectBuffer(rd);
         }
 

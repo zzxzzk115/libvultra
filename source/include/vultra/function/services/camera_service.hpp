@@ -2,7 +2,7 @@
 
 #include <vbase/service/service_registry.hpp>
 
-#include <vector>
+#include <span>
 
 namespace vultra
 {
@@ -14,6 +14,6 @@ namespace vultra
         SERVICE_REGISTER(ICameraService);
 
         // Access cooked cameras for the current frame.
-        virtual std::vector<RenderCamera> cameras() = 0;
+        virtual std::span<const RenderCamera> cameras() = 0;
     };
 } // namespace vultra

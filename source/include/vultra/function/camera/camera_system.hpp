@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace vultra
@@ -45,7 +46,7 @@ namespace vultra
         void onPreRender() override;
 
         // ICameraService
-        std::vector<RenderCamera> cameras() override;
+        std::span<const RenderCamera> cameras() override;
 
         // Incremental helper (until ECS cooking is wired):
         // App can push cameras manually.

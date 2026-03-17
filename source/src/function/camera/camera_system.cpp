@@ -80,7 +80,7 @@ namespace vultra
         // Camera cooking is deferred to cameras() so XR data can be consumed after beginFrame.
     }
 
-    std::vector<RenderCamera> CameraSystem::cameras()
+    std::span<const RenderCamera> CameraSystem::cameras()
     {
         m_Cooked.clear();
 

@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
+#include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/rendering/framework/resource_uploader.hpp"
@@ -29,6 +30,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <numeric>
 
 namespace vultra
 {
@@ -197,7 +199,7 @@ namespace vultra
         }
 
         World& world = worldService.world();
-        auto   cams  = camService.cameras();
+        const auto cams = camService.cameras();
 
         // Asset upload/update stage (main thread)
         assetService.update(m_FrameCounter);
@@ -207,7 +209,6 @@ namespace vultra
         cooker.cook(world, assetService, m_RenderWorldBack);
 
         m_RenderWorldBack.frameIndex = m_FrameCounter;
-        m_RenderWorldBack.cameras    = cams;
 
         // Build GPU scene database + per-view draw state.
         //
@@ -251,17 +252,17 @@ namespace vultra
             if (m_EnableGpuDrivenMeshletPipeline)
             {
                 m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack, resource::GpuSceneBuildMode::eGpuDriven);
-                m_GpuSceneViewBack.prepareGpuDrivenBuffers(rd,
-                                                           static_cast<uint32_t>(m_GpuSceneDatabaseBack.instances.size()),
-                                                           maxMeshletDraws,
-                                                           maxMeshletDraws);
+                m_GpuSceneViewBack.prepareGpuDrivenBuffers(
+                    rd,
+                    static_cast<uint32_t>(m_GpuSceneDatabaseBack.instances.size()),
+                    maxMeshletDraws,
+                    maxMeshletDraws);
             }
             else
             {
                 m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack, resource::GpuSceneBuildMode::eCpuDriven);
-                m_GpuSceneViewBack.setGpuDrivenCaps(static_cast<uint32_t>(m_GpuSceneDatabaseBack.instances.size()),
-                                                    maxMeshletDraws,
-                                                    maxMeshletDraws);
+                m_GpuSceneViewBack.setGpuDrivenCaps(
+                    static_cast<uint32_t>(m_GpuSceneDatabaseBack.instances.size()), maxMeshletDraws, maxMeshletDraws);
                 m_GpuSceneViewBack.ensureVisibleMeshletBuffers(rd);
 
                 std::vector<resource::GpuDrawRecord> stagedDraws;
@@ -307,8 +308,8 @@ namespace vultra
                     return a.primitiveIndex < b.primitiveIndex;
                 });
 
-                for (const auto& dr : stagedDraws)
-                    m_GpuSceneViewBack.pushMeshletDraw(dr);
+                for (auto& dr : stagedDraws)
+                    m_GpuSceneViewBack.pushMeshletDraw(std::move(dr));
 
                 m_GpuSceneViewBack.uploadDraws(rd);
                 m_GpuSceneViewBack.buildIndirectFromDraws(pool);
@@ -335,7 +336,7 @@ namespace vultra
                     dr.flags          = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eGaussianSplat);
                     dr.model          = inst.worldMatrix;
                     dr.padding0       = pool.gaussianSplats[inst.splatIndex].pointCount;
-                    m_GpuSceneViewBack.pushGaussianSplatDraw(dr);
+                    m_GpuSceneViewBack.pushGaussianSplatDraw(std::move(dr));
 
                     if (!s_LoggedGaussianSplatStage)
                     {
@@ -378,18 +379,18 @@ namespace vultra
 
         ++m_FrameCounter;
 
-        if (!cams.empty())
-        {
-            std::stable_sort(cams.begin(), cams.end(), [](const RenderCamera& a, const RenderCamera& b) {
-                return a.priority < b.priority;
-            });
-        }
+        std::vector<size_t> cameraOrder(cams.size());
+        std::iota(cameraOrder.begin(), cameraOrder.end(), 0u);
+        std::stable_sort(cameraOrder.begin(), cameraOrder.end(), [&cams](size_t a, size_t b) {
+            return cams[a].priority < cams[b].priority;
+        });
 
         // TODO: TimeSystem, for now use 0
         const fsec dt {0};
 
-        for (auto& cam : cams)
+        for (const size_t cameraIdx : cameraOrder)
         {
+            const auto& cam = cams[cameraIdx];
             auto renderer = resolveRenderer(cam);
             if (!renderer)
                 continue;
@@ -479,7 +480,10 @@ namespace vultra
                 .ext         = {.builtinShaderLib = &shaderService.builtinLibrary(), .samplers = m_Samplers},
             };
 
-            fg.execute(&frameGraphExecCtx, m_TransientResources.get());
+            {
+                FG_GPU_ZONE(cb);
+                fg.execute(&frameGraphExecCtx, m_TransientResources.get());
+            }
 
             // Optional ImGui rendering per non-XR camera
             if (imguiService && !cam.isXRView)

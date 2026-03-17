@@ -145,7 +145,7 @@ namespace vultra
 
             [[nodiscard]] Swapchain createSwapchain(os::Window&,
                                                     Swapchain::Format = Swapchain::Format::esRGB,
-                                                    VerticalSync      = VerticalSync::eEnabled) const;
+                                                    VerticalSync      = VerticalSync::eDisabled) const;
 
             [[nodiscard]] vk::Fence     createFence(bool signaled = true) const;
             [[nodiscard]] vk::Semaphore createSemaphore();
