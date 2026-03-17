@@ -124,6 +124,7 @@ namespace vultra
             assert(m_Swapchain);
             auto& currentFrame = m_Frames[m_FrameIndex];
             m_RenderDevice->present(*m_Swapchain, currentFrame.renderCompleted);
+            FrameMark;
             ++m_FrameIndex;
         }
 

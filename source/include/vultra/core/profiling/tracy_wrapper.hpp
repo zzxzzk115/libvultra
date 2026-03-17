@@ -2,6 +2,7 @@
 
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
+#include <vulkan/vulkan.hpp>
 #include <tracy/TracyVulkan.hpp>
 #else
 using TracyVkCtx = void*;
