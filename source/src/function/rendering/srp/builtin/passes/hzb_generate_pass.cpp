@@ -3,7 +3,6 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/pixel_format.hpp"
-#include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
@@ -28,7 +27,7 @@ namespace vultra
 
         uint32_t calcHzbMipLevels(const rhi::Extent2D extent)
         {
-            uint32_t levels  = 1;
+            uint32_t levels = 1;
             uint32_t maxDim = std::max(extent.width, extent.height);
             while (maxDim > 1u)
             {
@@ -39,24 +38,20 @@ namespace vultra
         }
     } // namespace
 
-    FrameGraphResource HzbGeneratePass::addPass(FrameGraphBuildContext& ctx,
-                                                FrameGraphResource      depth,
-                                                FrameGraphResource      depthDone)
+    void HzbGeneratePass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource depth)
     {
         struct PassData
         {
             FrameGraphResource depth;
-            FrameGraphResource depthDone;
             FrameGraphResource hzb;
-            FrameGraphResource token;
         };
 
         const auto resolution = ctx.view().extent;
         const auto mipLevels  = calcHzbMipLevels(resolution);
 
-        const auto data       = ctx.fg.addCallbackPass<PassData>(
+        const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [depth, depthDone, resolution, mipLevels](FrameGraph::Builder& builder, PassData& pd) {
+            [depth, resolution, mipLevels](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.depth = builder.read(depth,
@@ -69,16 +64,6 @@ namespace vultra
                                             .type        = framegraph::TextureRead::Type::eSampledImage,
                                             .imageAspect = rhi::ImageAspect::eDepth,
                                         });
-
-                pd.depthDone = depthDone;
-                if (pd.depthDone)
-                {
-                    pd.depthDone = builder.read(pd.depthDone,
-                                                framegraph::BindingInfo {
-                                                    .location      = {},
-                                                    .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                });
-                }
 
                 pd.hzb = builder.create<framegraph::FrameGraphTexture>(
                     "HZB",
@@ -97,19 +82,6 @@ namespace vultra
                                                },
                                            .imageAspect = rhi::ImageAspect::eColor,
                                        });
-
-                pd.token = builder.create<framegraph::FrameGraphBuffer>(
-                    "HZBGenerateToken",
-                    {
-                        .type     = framegraph::BufferType::eStorageBuffer,
-                        .stride   = sizeof(uint32_t),
-                        .capacity = 1,
-                    });
-                pd.token = builder.write(pd.token,
-                                         framegraph::BindingInfo {
-                                             .location      = {},
-                                             .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                         });
             },
             [this, resolution, mipLevels](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
@@ -138,8 +110,7 @@ namespace vultra
                 rc.clear();
             });
 
-        ctx.data.set(kResKey_HzbGenerated, data.token);
-        return data.hzb;
+        ctx.data.set(kResKey_HzbTexture, data.hzb);
     }
 
     rhi::ComputePipeline HzbGeneratePass::createPipeline(uint64_t variantHash) const

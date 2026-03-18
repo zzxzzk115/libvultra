@@ -24,7 +24,7 @@ namespace vultra
         };
     } // namespace
 
-    FrameGraphResource BuildIndirectPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource cullToken)
+    void BuildIndirectPass::addPass(FrameGraphBuildContext& ctx)
     {
         auto drawBuffer                = ctx.data.tryGet(kResKey_DrawBuffer);
         auto instanceBuffer            = ctx.data.get(kResKey_InstanceBuffer);
@@ -37,9 +37,6 @@ namespace vultra
 
         struct PassData
         {
-            FrameGraphResource cullToken;
-            FrameGraphResource token;
-
             FrameGraphResource drawBuffer;
             FrameGraphResource instanceBuffer;
             FrameGraphResource meshTableBuffer;
@@ -55,8 +52,7 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [cullToken,
-             drawBuffer,
+            [drawBuffer,
              instanceBuffer,
              meshTableBuffer,
              transformBuffer,
@@ -67,24 +63,15 @@ namespace vultra
              maxDraws](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
-                pd.cullToken = cullToken;
-                if (pd.cullToken)
-                {
-                    pd.cullToken = builder.read(pd.cullToken,
-                                                framegraph::BindingInfo {
-                                                    .location      = {},
-                                                    .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                });
-                }
-
-                pd.drawBuffer = drawBuffer ?
-                    drawBuffer :
-                    builder.create<framegraph::FrameGraphBuffer>("DrawBuffer",
-                                                                 {
-                                                                     .type     = framegraph::BufferType::eStorageBuffer,
-                                                                     .stride   = sizeof(resource::GpuDrawRecord),
-                                                                     .capacity = std::max<uint32_t>(1u, maxDraws),
-                                                                 });
+                pd.drawBuffer =
+                    drawBuffer ?
+                        drawBuffer :
+                        builder.create<framegraph::FrameGraphBuffer>("DrawBuffer",
+                                                                     {
+                                                                         .type = framegraph::BufferType::eStorageBuffer,
+                                                                         .stride   = sizeof(resource::GpuDrawRecord),
+                                                                         .capacity = std::max<uint32_t>(1u, maxDraws),
+                                                                     });
                 pd.drawBuffer = builder.write(pd.drawBuffer,
                                               framegraph::BindingInfo {
                                                   .location      = {.set = 0, .binding = 1},
@@ -156,19 +143,6 @@ namespace vultra
                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                      });
                 }
-
-                pd.token =
-                    builder.create<framegraph::FrameGraphBuffer>("BuildIndirectToken",
-                                                                 {
-                                                                     .type     = framegraph::BufferType::eStorageBuffer,
-                                                                     .stride   = sizeof(uint32_t),
-                                                                     .capacity = 1,
-                                                                 });
-                pd.token = builder.write(pd.token,
-                                         framegraph::BindingInfo {
-                                             .location      = {},
-                                             .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                         });
             },
             [this](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
@@ -217,8 +191,6 @@ namespace vultra
         ctx.data.set(kResKey_VisibleMeshletBuffer, data.visibleMeshletBuffer);
         ctx.data.set(kResKey_VisibleMeshletCountBuffer, data.visibleMeshletCountBuffer);
         ctx.data.set(kResKey_MaterialTableBuffer, data.materialTableBuffer);
-
-        return data.token;
     }
 
     rhi::ComputePipeline BuildIndirectPass::createPipeline(uint64_t variantHash) const

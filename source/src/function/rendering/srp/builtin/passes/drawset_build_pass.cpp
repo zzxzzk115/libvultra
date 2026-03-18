@@ -25,7 +25,7 @@ namespace vultra
         };
     } // namespace
 
-    FrameGraphResource DrawsetBuildPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource buildToken)
+    void DrawsetBuildPass::addPass(FrameGraphBuildContext& ctx)
     {
         // Get persistent resources from ctx.data before PassData
         auto drawBuffer     = ctx.data.get(kResKey_DrawBuffer);
@@ -35,9 +35,6 @@ namespace vultra
 
         struct PassData
         {
-            FrameGraphResource buildToken;
-            FrameGraphResource token;
-
             FrameGraphResource drawBuffer;
             FrameGraphResource meshletsBuffer;
             FrameGraphResource indirectBuffer;
@@ -49,19 +46,9 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [buildToken, drawBuffer, meshletsBuffer, indirectBuffer, drawSetBuffer, maxDraws](FrameGraph::Builder& builder,
-                                                                                               PassData&            pd) {
+            [drawBuffer, meshletsBuffer, indirectBuffer, drawSetBuffer, maxDraws](FrameGraph::Builder& builder,
+                                                                                  PassData&            pd) {
                 PASS_SETUP_ZONE;
-
-                pd.buildToken = buildToken;
-                if (pd.buildToken)
-                {
-                    pd.buildToken = builder.read(pd.buildToken,
-                                                 framegraph::BindingInfo {
-                                                     .location      = {},
-                                                     .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                 });
-                }
 
                 if (drawBuffer)
                 {
@@ -80,47 +67,34 @@ namespace vultra
                                                      });
                 }
                 pd.indirectBuffer = indirectBuffer ?
-                    indirectBuffer :
-                    builder.create<framegraph::FrameGraphBuffer>("DrawIndirectBuffer",
-                                                                 {
-                                                                     .type             = framegraph::BufferType::eDrawIndirectBuffer,
-                                                                     .stride           = sizeof(rhi::DrawIndirectCommand),
-                                                                     .capacity         = std::max<uint32_t>(1u, maxDraws * kRenderQueueCount),
-                                                                     .drawIndirectType = rhi::DrawIndirectType::eNonIndexed,
-                                                                 });
+                                        indirectBuffer :
+                                        builder.create<framegraph::FrameGraphBuffer>(
+                                            "DrawIndirectBuffer",
+                                            {
+                                                .type     = framegraph::BufferType::eDrawIndirectBuffer,
+                                                .stride   = sizeof(rhi::DrawIndirectCommand),
+                                                .capacity = std::max<uint32_t>(1u, maxDraws * kRenderQueueCount),
+                                                .drawIndirectType = rhi::DrawIndirectType::eNonIndexed,
+                                            });
                 pd.indirectBuffer = builder.write(pd.indirectBuffer,
                                                   framegraph::BindingInfo {
                                                       .location      = {.set = 0, .binding = 12},
                                                       .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                   });
-                pd.drawSetBuffer = drawSetBuffer ?
-                    drawSetBuffer :
-                    builder.create<framegraph::FrameGraphBuffer>("DrawSetBuffer",
-                                                                 {
-                                                                     .type       = framegraph::BufferType::eStorageBuffer,
-                                                                     .stride     = sizeof(uint32_t),
-                                                                     .capacity   = kRenderQueueCount,
-                                                                     .extraUsage = vk::BufferUsageFlagBits::eIndirectBuffer,
-                                                                 });
-                pd.drawSetBuffer = builder.write(pd.drawSetBuffer,
+                pd.drawSetBuffer  = drawSetBuffer ? drawSetBuffer :
+                                                    builder.create<framegraph::FrameGraphBuffer>(
+                                                       "DrawSetBuffer",
+                                                       {
+                                                            .type       = framegraph::BufferType::eStorageBuffer,
+                                                            .stride     = sizeof(uint32_t),
+                                                            .capacity   = kRenderQueueCount,
+                                                            .extraUsage = vk::BufferUsageFlagBits::eIndirectBuffer,
+                                                       });
+                pd.drawSetBuffer  = builder.write(pd.drawSetBuffer,
                                                  framegraph::BindingInfo {
-                                                     .location      = {.set = 0, .binding = 30},
-                                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                      .location      = {.set = 0, .binding = 30},
+                                                      .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                  });
-
-                // Token for pass completion
-                pd.token =
-                    builder.create<framegraph::FrameGraphBuffer>("DrawsetBuildToken",
-                                                                 {
-                                                                     .type     = framegraph::BufferType::eStorageBuffer,
-                                                                     .stride   = sizeof(uint32_t),
-                                                                     .capacity = 1,
-                                                                 });
-                pd.token = builder.write(pd.token,
-                                         framegraph::BindingInfo {
-                                             .location      = {},
-                                             .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                         });
             },
             [this](const PassData& /*pd*/, FrameGraphPassResources& /*resources*/, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
@@ -166,8 +140,6 @@ namespace vultra
         ctx.data.set(kResKey_MeshletsBuffer, data.meshletsBuffer);
         ctx.data.set(kResKey_IndirectBuffer, data.indirectBuffer);
         ctx.data.set(kResKey_DrawSetBuffer, data.drawSetBuffer);
-
-        return data.token;
     }
 
     rhi::ComputePipeline DrawsetBuildPass::createPipeline(uint64_t variantHash) const

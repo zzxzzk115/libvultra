@@ -2,7 +2,6 @@
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
@@ -28,26 +27,22 @@ namespace vultra
         };
     } // namespace
 
-    FrameGraphResource MeshletHiZCullPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource meshletCullDone)
+    void MeshletHiZCullPass::addPass(FrameGraphBuildContext& ctx)
     {
         struct PassData
         {
             FrameGraphResource camera;
-            FrameGraphResource meshletCullDone;
             FrameGraphResource hzb;
-            FrameGraphResource hzbDone;
             FrameGraphResource instances;
             FrameGraphResource meshTable;
             FrameGraphResource meshlets;
             FrameGraphResource models;
             FrameGraphResource visibleMeshlets;
             FrameGraphResource visibleCount;
-            FrameGraphResource token;
         };
 
         const auto cameraBlock     = ctx.bb.get<CameraData>().cameraBlock.fgResource;
         const auto hzbTexture      = ctx.data.tryGet(kResKey_HzbTexture);
-        const auto hzbDone         = ctx.data.tryGet(kResKey_HzbGenerated);
         const auto instanceBuffer  = ctx.data.tryGet(kResKey_InstanceBuffer);
         const auto meshTableBuffer = ctx.data.tryGet(kResKey_MeshTableBuffer);
         const auto meshletBuffer   = ctx.data.tryGet(kResKey_MeshletsBuffer);
@@ -58,9 +53,7 @@ namespace vultra
         const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
             [cameraBlock,
-             meshletCullDone,
              hzbTexture,
-             hzbDone,
              instanceBuffer,
              meshTableBuffer,
              meshletBuffer,
@@ -75,16 +68,6 @@ namespace vultra
                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                          });
 
-                pd.meshletCullDone = meshletCullDone;
-                if (pd.meshletCullDone)
-                {
-                    pd.meshletCullDone = builder.read(pd.meshletCullDone,
-                                                      framegraph::BindingInfo {
-                                                          .location      = {},
-                                                          .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                      });
-                }
-
                 pd.hzb = hzbTexture;
                 if (pd.hzb)
                 {
@@ -98,16 +81,6 @@ namespace vultra
                                               .type        = framegraph::TextureRead::Type::eSampledImage,
                                               .imageAspect = rhi::ImageAspect::eColor,
                                           });
-                }
-
-                pd.hzbDone = hzbDone;
-                if (pd.hzbDone)
-                {
-                    pd.hzbDone = builder.read(pd.hzbDone,
-                                              framegraph::BindingInfo {
-                                                  .location      = {},
-                                                  .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                              });
                 }
 
                 if (instanceBuffer)
@@ -163,19 +136,6 @@ namespace vultra
                                                        .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                    });
                 }
-
-                pd.token =
-                    builder.create<framegraph::FrameGraphBuffer>("MeshletHiZCullToken",
-                                                                 {
-                                                                     .type     = framegraph::BufferType::eStorageBuffer,
-                                                                     .stride   = sizeof(uint32_t),
-                                                                     .capacity = 1,
-                                                                 });
-                pd.token = builder.write(pd.token,
-                                         framegraph::BindingInfo {
-                                             .location      = {},
-                                             .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                         });
             },
             [this](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
@@ -245,9 +205,6 @@ namespace vultra
                 rc.cb.dispatch({(pc.drawCount + 63u) / 64u, 1u, 1u});
                 rc.clear();
             });
-
-        ctx.data.set(kResKey_MeshletHiZCullDone, data.token);
-        return data.token;
     }
 
     rhi::ComputePipeline MeshletHiZCullPass::createPipeline(uint64_t variantHash) const

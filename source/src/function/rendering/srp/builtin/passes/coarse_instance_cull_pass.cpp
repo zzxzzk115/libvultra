@@ -23,7 +23,7 @@ namespace vultra
         };
     } // namespace
 
-    FrameGraphResource CoarseInstanceCullPass::addPass(FrameGraphBuildContext& ctx)
+    void CoarseInstanceCullPass::addPass(FrameGraphBuildContext& ctx)
     {
         auto instanceBuffer                = ctx.data.get(kResKey_InstanceBuffer);
         auto meshTableBuffer               = ctx.data.get(kResKey_MeshTableBuffer);
@@ -34,7 +34,6 @@ namespace vultra
 
         struct ResetPassData
         {
-            FrameGraphResource token;
             FrameGraphResource visibleInstanceCountBuffer;
             FrameGraphResource meshletCullDispatchArgsBuffer;
         };
@@ -42,8 +41,6 @@ namespace vultra
         struct PassData
         {
             FrameGraphResource camera;
-            FrameGraphResource resetToken;
-            FrameGraphResource token;
 
             FrameGraphResource visibleInstanceBuffer;
             FrameGraphResource visibleInstanceCountBuffer;
@@ -93,19 +90,6 @@ namespace vultra
                                       .location      = {.set = 0, .binding = 26},
                                       .pipelineStage = framegraph::PipelineStage::eTransfer,
                                   });
-
-                pd.token =
-                    builder.create<framegraph::FrameGraphBuffer>("CoarseCullResetToken",
-                                                                 {
-                                                                     .type     = framegraph::BufferType::eStorageBuffer,
-                                                                     .stride   = sizeof(uint32_t),
-                                                                     .capacity = 1,
-                                                                 });
-                pd.token = builder.write(pd.token,
-                                         framegraph::BindingInfo {
-                                             .location      = {},
-                                             .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                         });
             },
             [](const ResetPassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
@@ -143,12 +127,6 @@ namespace vultra
                                              .location      = {.set = 0, .binding = 0},
                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                          });
-
-                pd.resetToken = builder.read(resetData.token,
-                                             framegraph::BindingInfo {
-                                                 .location      = {},
-                                                 .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                             });
 
                 builder.read(instanceBuffer,
                              framegraph::BindingInfo {
@@ -196,21 +174,8 @@ namespace vultra
                                       .location      = {.set = 0, .binding = 26},
                                       .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                   });
-                pd.token =
-                    builder.create<framegraph::FrameGraphBuffer>("CoarseInstanceCullToken",
-                                                                 {
-                                                                     .type     = framegraph::BufferType::eStorageBuffer,
-                                                                     .stride   = sizeof(uint32_t),
-                                                                     .capacity = 1,
-                                                                 });
-                pd.token = builder.write(pd.token,
-                                         framegraph::BindingInfo {
-                                             .location      = {},
-                                             .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                         });
             },
-            [this, instanceCount, maxVisibleInstance](
-                const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+            [this, instanceCount, maxVisibleInstance](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -249,8 +214,6 @@ namespace vultra
         ctx.data.set(kResKey_VisibleInstanceBuffer, data.visibleInstanceBuffer);
         ctx.data.set(kResKey_VisibleInstanceCountBuffer, data.visibleInstanceCountBuffer);
         ctx.data.set(kResKey_MeshletCullDispatchArgsBuffer, data.meshletCullDispatchArgsBuffer);
-
-        return data.token;
     }
 
     rhi::ComputePipeline CoarseInstanceCullPass::createPipeline(uint64_t variantHash) const

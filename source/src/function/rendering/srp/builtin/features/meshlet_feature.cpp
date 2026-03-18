@@ -73,18 +73,15 @@ namespace vultra
         ctx.data.set(kResKey_MeshletVertexBuffer, meshletVertexBuffer);
         ctx.data.set(kResKey_MeshletTriangleBuffer, meshletTriangleBuffer);
 
-        auto coarseDone = m_CoarseInstanceCullPass->addPass(ctx);
-        ctx.data.set(kResKey_CoarseInstanceCullDone, coarseDone);
+        m_CoarseInstanceCullPass->addPass(ctx);
 
         // Stage A: visibility cull and final drawset build for this frame.
-        auto cullDone = m_MeshletCullPass->addPass(ctx, coarseDone);
+        m_MeshletCullPass->addPass(ctx);
         // Skip HiZ/HZB for now: build final drawset directly from frustum-cull output.
-        auto buildDone   = m_BuildIndirectPass->addPass(ctx, cullDone);
-        auto drawsetDone = m_DrawsetBuildPass->addPass(ctx, buildDone);
-        ctx.data.set(kResKey_MeshletBuildDone, drawsetDone);
+        m_BuildIndirectPass->addPass(ctx);
+        m_DrawsetBuildPass->addPass(ctx);
 
         // Stage B: meshlet depth prepass and HZB build for frame-latent occlusion.
-        const auto depth = m_DepthPrePass->addPass(ctx);
-        ctx.data.set(kResKey_DepthTexture, depth);
+        m_DepthPrePass->addPass(ctx);
     }
 } // namespace vultra

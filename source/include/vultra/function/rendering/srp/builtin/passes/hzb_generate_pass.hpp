@@ -10,7 +10,7 @@ namespace vultra
         friend class BasePass;
 
     public:
-        FrameGraphResource addPass(FrameGraphBuildContext& ctx, FrameGraphResource depth, FrameGraphResource depthDone);
+        void addPass(FrameGraphBuildContext& ctx, FrameGraphResource depth);
 
     private:
         rhi::ComputePipeline createPipeline(uint64_t variantHash) const;

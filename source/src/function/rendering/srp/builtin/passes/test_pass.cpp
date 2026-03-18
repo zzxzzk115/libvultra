@@ -26,7 +26,6 @@ namespace vultra
         const auto resolution  = ctx.view().extent;
         const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
         const auto depthPre    = ctx.data.tryGet(kResKey_DepthTexture);
-        const auto buildDone   = ctx.data.get(kResKey_MeshletBuildDone);
 
         struct PassData
         {
@@ -51,7 +50,6 @@ namespace vultra
             [resolution,
              cameraBlock,
              depthPre,
-             buildDone,
              drawBuffer,
              indirectBuffer,
              drawSetBuffer,
@@ -67,12 +65,6 @@ namespace vultra
                                                .location      = {.set = 0, .binding = 0},
                                                .pipelineStage = framegraph::PipelineStage::eVertexShader,
                                            });
-
-                data.buildDone = builder.read(buildDone,
-                                              framegraph::BindingInfo {
-                                                  .location      = {},
-                                                  .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                              });
 
                 if (drawBuffer)
                 {

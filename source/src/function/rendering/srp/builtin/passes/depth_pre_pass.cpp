@@ -17,29 +17,27 @@ namespace vultra
         constexpr auto PASS_NAME = "DepthPrePass";
     } // namespace
 
-    FrameGraphResource DepthPrePass::addPass(FrameGraphBuildContext& ctx)
+    void DepthPrePass::addPass(FrameGraphBuildContext& ctx)
     {
         struct PassData
         {
             FrameGraphResource camera;
-            FrameGraphResource buildDone;
             FrameGraphResource drawBuffer;
             FrameGraphResource indirectBuffer;
             FrameGraphResource drawSetBuffer;
             FrameGraphResource depth;
-            FrameGraphResource token;
         };
 
         const auto resolution     = ctx.view().extent;
         const auto cameraBlock    = ctx.bb.get<CameraData>().cameraBlock.fgResource;
-        const auto buildDone      = ctx.data.tryGet(kResKey_MeshletBuildDone);
         const auto drawBuffer     = ctx.data.tryGet(kResKey_DrawBuffer);
         const auto indirectBuffer = ctx.data.tryGet(kResKey_IndirectBuffer);
         const auto drawSetBuffer  = ctx.data.tryGet(kResKey_DrawSetBuffer);
 
         const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution, cameraBlock, buildDone, drawBuffer, indirectBuffer, drawSetBuffer](FrameGraph::Builder& builder, PassData& pd) {
+            [resolution, cameraBlock, drawBuffer, indirectBuffer, drawSetBuffer](FrameGraph::Builder& builder,
+                                                                                 PassData&            pd) {
                 PASS_SETUP_ZONE;
 
                 pd.camera = builder.read(cameraBlock,
@@ -48,15 +46,6 @@ namespace vultra
                                              .pipelineStage = framegraph::PipelineStage::eVertexShader,
                                          });
 
-                pd.buildDone = buildDone;
-                if (pd.buildDone)
-                {
-                    pd.buildDone = builder.read(pd.buildDone,
-                                                framegraph::BindingInfo {
-                                                    .location      = {},
-                                                    .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                });
-                }
                 pd.drawBuffer = drawBuffer;
                 if (pd.drawBuffer)
                 {
@@ -99,19 +88,6 @@ namespace vultra
                                              .imageAspect = rhi::ImageAspect::eDepth,
                                              .clearValue  = framegraph::ClearValue::eOne,
                                          });
-
-                pd.token =
-                    builder.create<framegraph::FrameGraphBuffer>("DepthPreToken",
-                                                                 {
-                                                                     .type     = framegraph::BufferType::eStorageBuffer,
-                                                                     .stride   = sizeof(uint32_t),
-                                                                     .capacity = 1,
-                                                                 });
-                pd.token = builder.write(pd.token,
-                                         framegraph::BindingInfo {
-                                             .location      = {},
-                                             .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                         });
             },
             [this](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
@@ -127,19 +103,12 @@ namespace vultra
                 const auto* gpuSceneView     = rc.view().gpuSceneView;
                 auto*       cameraUbo        = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
 
-                if (!cameraUbo || !gpuSceneDatabase || !gpuSceneView || !gpuSceneDatabase->resources || !pd.drawBuffer ||
-                    !pd.indirectBuffer || !gpuSceneDatabase->resources->materialTableBuffer ||
+                if (!cameraUbo || !gpuSceneDatabase || !gpuSceneView || !gpuSceneDatabase->resources ||
+                    !pd.drawBuffer || !pd.indirectBuffer || !gpuSceneDatabase->resources->materialTableBuffer ||
                     !gpuSceneDatabase->resources->materialParams.gpu ||
                     !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
                     !gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer ||
                     !gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer || gpuSceneView->maxDraws == 0u)
-                {
-                    rc.clear();
-                    return;
-                }
-
-                // Depth-pre uses meshlet indirect windows; skip if they are not produced yet.
-                if (!pd.buildDone)
                 {
                     rc.clear();
                     return;
@@ -152,12 +121,11 @@ namespace vultra
 
                 rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
 
-                auto* drawBufferPtr = resources.get<framegraph::FrameGraphBuffer>(pd.drawBuffer).buffer;
-                auto* indirectBufferPtr =
-                    static_cast<rhi::DrawIndirectBuffer*>(resources.get<framegraph::FrameGraphBuffer>(pd.indirectBuffer).buffer);
-                auto* drawSetBufferPtr = pd.drawSetBuffer ?
-                    resources.get<framegraph::FrameGraphBuffer>(pd.drawSetBuffer).buffer :
-                    nullptr;
+                auto* drawBufferPtr     = resources.get<framegraph::FrameGraphBuffer>(pd.drawBuffer).buffer;
+                auto* indirectBufferPtr = static_cast<rhi::DrawIndirectBuffer*>(
+                    resources.get<framegraph::FrameGraphBuffer>(pd.indirectBuffer).buffer);
+                auto* drawSetBufferPtr =
+                    pd.drawSetBuffer ? resources.get<framegraph::FrameGraphBuffer>(pd.drawSetBuffer).buffer : nullptr;
 
                 rhi::prepareForComputing(rc.cb, *drawBufferPtr);
                 rhi::prepareForDrawingIndirect(rc.cb, *indirectBufferPtr);
@@ -248,8 +216,7 @@ namespace vultra
                 rc.clear();
             });
 
-        ctx.data.set(kResKey_DepthPreDone, data.token);
-        return data.depth;
+        ctx.data.set(kResKey_DepthTexture, data.depth);
     }
 
     rhi::GraphicsPipeline DepthPrePass::createPipeline() const

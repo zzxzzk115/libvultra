@@ -20,12 +20,9 @@ namespace vultra
 
     void DepthHzbFeature::addPasses(FrameGraphBuildContext& ctx)
     {
-        const auto depth = m_DepthPrePass->addPass(ctx);
-        ctx.data.set(kResKey_DepthTexture, depth);
+        m_DepthPrePass->addPass(ctx);
 
-        const auto depthDone = ctx.data.get(kResKey_DepthPreDone);
-        const auto hzb       = m_HzbGeneratePass->addPass(ctx, depth, depthDone);
-
-        ctx.data.set(kResKey_HzbTexture, hzb);
+        const auto depth = ctx.data.get(kResKey_DepthTexture);
+        m_HzbGeneratePass->addPass(ctx, depth);
     }
 } // namespace vultra
