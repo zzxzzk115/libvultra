@@ -3,10 +3,7 @@ target("example-gaussian-splatting")
     add_files("main.cpp")
     add_deps("vultra")
 
-    -- add resource files to be copied after build
-    add_values("resource_files", "resources/models/**.spz")
-
-    add_rules("copy_resources")
+    set_rundir("$(projectdir)")
 
     -- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/example-gaussian-splatting")
