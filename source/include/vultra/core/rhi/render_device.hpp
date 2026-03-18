@@ -169,13 +169,15 @@ namespace vultra
                                                                      vk::BufferUsageFlags extraUsage,
                                                                      AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] DrawIndirectBuffer createDrawIndirectBuffer(uint32_t         commandCount,
-                                                                      DrawIndirectType type,
-                                                                      AllocationHints = AllocationHints::eNone) const;
+            [[nodiscard]] DrawIndirectBuffer
+            createDrawIndirectBufferByCount(uint32_t         commandCount,
+                                            DrawIndirectType type,
+                                            AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] DrawIndirectBuffer createDrawIndirectBuffer(vk::DeviceSize   size,
-                                                                      DrawIndirectType type,
-                                                                      AllocationHints = AllocationHints::eNone) const;
+            [[nodiscard]] DrawIndirectBuffer
+            createDrawIndirectBufferBySize(vk::DeviceSize   size,
+                                           DrawIndirectType type,
+                                           AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] std::pair<std::size_t, vk::DescriptorSetLayout>
             createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>&);

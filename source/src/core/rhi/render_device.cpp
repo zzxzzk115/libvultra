@@ -513,9 +513,9 @@ namespace vultra
             };
         }
 
-        DrawIndirectBuffer RenderDevice::createDrawIndirectBuffer(const uint32_t         commandCount,
-                                                                  const DrawIndirectType type,
-                                                                  const AllocationHints  allocationHint) const
+        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferByCount(const uint32_t         commandCount,
+                                                                         const DrawIndirectType type,
+                                                                         const AllocationHints  allocationHint) const
         {
             assert(m_MemoryAllocator);
 
@@ -536,9 +536,9 @@ namespace vultra
                                        type};
         }
 
-        DrawIndirectBuffer RenderDevice::createDrawIndirectBuffer(const vk::DeviceSize   size,
-                                                                  const DrawIndirectType type,
-                                                                  const AllocationHints  allocationHint) const
+        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferBySize(const vk::DeviceSize   size,
+                                                                        const DrawIndirectType type,
+                                                                        const AllocationHints  allocationHint) const
         {
             assert(m_MemoryAllocator);
 

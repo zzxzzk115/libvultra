@@ -210,7 +210,7 @@ namespace vultra::resource
 
             if (!visibleMeshletCountBuffer || visibleMeshletCountBuffer->getSize() < sizeof(uint32_t))
                 visibleMeshletCountBuffer = createRef<rhi::DrawIndirectBuffer>(
-                    rd.createDrawIndirectBuffer(sizeof(uint32_t), rhi::DrawIndirectType::eNonIndexed));
+                    rd.createDrawIndirectBufferBySize(sizeof(uint32_t), rhi::DrawIndirectType::eNonIndexed));
         }
 
         void ensureDrawBuffer(rhi::RenderDevice& rd)
@@ -230,7 +230,7 @@ namespace vultra::resource
             constexpr uint64_t kDrawSetBytes = sizeof(uint32_t) * 8ull;
             if (!drawSetBuffer || static_cast<uint64_t>(drawSetBuffer->getSize()) < kDrawSetBytes)
                 drawSetBuffer = createRef<rhi::DrawIndirectBuffer>(
-                    rd.createDrawIndirectBuffer(kDrawSetBytes, rhi::DrawIndirectType::eNonIndexed));
+                    rd.createDrawIndirectBufferBySize(kDrawSetBytes, rhi::DrawIndirectType::eNonIndexed));
         }
 
         void uploadDraws(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
@@ -280,7 +280,7 @@ namespace vultra::resource
                 indirectBuffer->getDrawIndirectType() != rhi::DrawIndirectType::eNonIndexed ||
                 indirectBuffer->getCapacity() < cmdCount)
             {
-                indirectBuffer = rd.createDrawIndirectBuffer(cmdCount, rhi::DrawIndirectType::eNonIndexed);
+                indirectBuffer = rd.createDrawIndirectBufferByCount(cmdCount, rhi::DrawIndirectType::eNonIndexed);
             }
         }
 
@@ -348,7 +348,7 @@ namespace vultra::resource
         {
             if (!gaussianSplatVisibleCountBuffer || gaussianSplatVisibleCountBuffer->getSize() < sizeof(uint32_t))
                 gaussianSplatVisibleCountBuffer = createRef<rhi::DrawIndirectBuffer>(
-                    rd.createDrawIndirectBuffer(sizeof(uint32_t), rhi::DrawIndirectType::eNonIndexed));
+                    rd.createDrawIndirectBufferBySize(sizeof(uint32_t), rhi::DrawIndirectType::eNonIndexed));
         }
 
         void ensureGaussianSplatIndirectBuffer(rhi::RenderDevice& rd)
@@ -357,7 +357,8 @@ namespace vultra::resource
                 gaussianSplatIndirectBuffer->getDrawIndirectType() != rhi::DrawIndirectType::eNonIndexed ||
                 gaussianSplatIndirectBuffer->getCapacity() < 1u)
             {
-                gaussianSplatIndirectBuffer = rd.createDrawIndirectBuffer(1u, rhi::DrawIndirectType::eNonIndexed);
+                gaussianSplatIndirectBuffer =
+                    rd.createDrawIndirectBufferByCount(1u, rhi::DrawIndirectType::eNonIndexed);
             }
         }
 

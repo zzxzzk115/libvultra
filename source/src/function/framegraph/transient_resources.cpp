@@ -182,8 +182,9 @@ namespace vultra
                         break;
 
                     case eDrawIndirectBuffer:
-                        buffer = std::make_unique<rhi::DrawIndirectBuffer>(m_RenderDevice.createDrawIndirectBuffer(
-                            static_cast<uint32_t>(desc.capacity), desc.drawIndirectType));
+                        buffer =
+                            std::make_unique<rhi::DrawIndirectBuffer>(m_RenderDevice.createDrawIndirectBufferByCount(
+                                static_cast<uint32_t>(desc.capacity), desc.drawIndirectType));
                         break;
 
                     case eDispatchIndirectBuffer:
