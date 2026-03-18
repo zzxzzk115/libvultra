@@ -109,15 +109,14 @@ namespace vultra
         }
 
         //
-        // BindingInfo (14 bits):
+        // BindingInfo (15 bits):
         //
-        // |  1 bit   |  7 bits  |    6 bits     |
-        // |   [0]    |  [1..7]  |   [8..13]     |
+        // |  1 bit   |  7 bits  |    7 bits     |
+        // |   [0]    |  [1..7]  |   [8..14]     |
         // | reserved | location | pipelineStage |
 
-        constexpr auto kBindingInfoBits = 14;
-
-        constexpr auto kPipelineStageBits = 6;
+        constexpr auto kBindingInfoBits   = 15;
+        constexpr auto kPipelineStageBits = 7;
 
         constexpr auto kLocationOffset      = kReservedBits;
         constexpr auto kPipelineStageOffset = kLocationOffset + kLocationBits;
@@ -217,6 +216,10 @@ namespace vultra
             if (static_cast<bool>(pipelineStage & framegraph::PipelineStage::eComputeShader))
             {
                 stageMask |= rhi::PipelineStages::eComputeShader;
+            }
+            if (static_cast<bool>(pipelineStage & framegraph::PipelineStage::eDrawIndirect))
+            {
+                stageMask |= rhi::PipelineStages::eDrawIndirect;
             }
             if (static_cast<bool>(pipelineStage & framegraph::PipelineStage::eRayTracingShader))
             {

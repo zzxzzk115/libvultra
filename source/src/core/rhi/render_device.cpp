@@ -536,6 +536,26 @@ namespace vultra
                                        type};
         }
 
+        DrawIndirectBuffer RenderDevice::createDrawIndirectBuffer(const vk::DeviceSize   size,
+                                                                  const DrawIndirectType type,
+                                                                  const AllocationHints  allocationHint) const
+        {
+            assert(m_MemoryAllocator);
+
+            vk::BufferUsageFlags usage = vk::BufferUsageFlagBits::eStorageBuffer |
+                                         vk::BufferUsageFlagBits::eTransferDst |
+                                         vk::BufferUsageFlagBits::eIndirectBuffer;
+
+            return DrawIndirectBuffer {Buffer {
+                                           m_MemoryAllocator,
+                                           size,
+                                           usage,
+                                           makeAllocationFlags(allocationHint),
+                                           vma::MemoryUsage::eCpuToGpu,
+                                       },
+                                       type};
+        }
+
         std::pair<std::size_t, vk::DescriptorSetLayout>
         RenderDevice::createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>& bindings)
         {

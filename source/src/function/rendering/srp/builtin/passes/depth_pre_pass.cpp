@@ -23,17 +23,23 @@ namespace vultra
         {
             FrameGraphResource camera;
             FrameGraphResource buildDone;
+            FrameGraphResource drawBuffer;
+            FrameGraphResource indirectBuffer;
+            FrameGraphResource drawSetBuffer;
             FrameGraphResource depth;
             FrameGraphResource token;
         };
 
-        const auto resolution = ctx.view().extent;
-        const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
-        const auto buildDone = ctx.data.tryGet(kResKey_MeshletBuildDone);
+        const auto resolution     = ctx.view().extent;
+        const auto cameraBlock    = ctx.bb.get<CameraData>().cameraBlock.fgResource;
+        const auto buildDone      = ctx.data.tryGet(kResKey_MeshletBuildDone);
+        const auto drawBuffer     = ctx.data.tryGet(kResKey_DrawBuffer);
+        const auto indirectBuffer = ctx.data.tryGet(kResKey_IndirectBuffer);
+        const auto drawSetBuffer  = ctx.data.tryGet(kResKey_DrawSetBuffer);
 
         const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution, cameraBlock, buildDone](FrameGraph::Builder& builder, PassData& pd) {
+            [resolution, cameraBlock, buildDone, drawBuffer, indirectBuffer, drawSetBuffer](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.camera = builder.read(cameraBlock,
@@ -47,9 +53,38 @@ namespace vultra
                 {
                     pd.buildDone = builder.read(pd.buildDone,
                                                 framegraph::BindingInfo {
-                                                    .location      = {.set = 0, .binding = 31},
+                                                    .location      = {},
                                                     .pipelineStage = framegraph::PipelineStage::eTransfer,
                                                 });
+                }
+                pd.drawBuffer = drawBuffer;
+                if (pd.drawBuffer)
+                {
+                    pd.drawBuffer = builder.read(pd.drawBuffer,
+                                                 framegraph::BindingInfo {
+                                                     .location      = {.set = 0, .binding = 1},
+                                                     .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                                 });
+                }
+
+                pd.indirectBuffer = indirectBuffer;
+                if (pd.indirectBuffer)
+                {
+                    pd.indirectBuffer = builder.read(pd.indirectBuffer,
+                                                     framegraph::BindingInfo {
+                                                         .location      = {},
+                                                         .pipelineStage = framegraph::PipelineStage::eDrawIndirect,
+                                                     });
+                }
+
+                pd.drawSetBuffer = drawSetBuffer;
+                if (pd.drawSetBuffer)
+                {
+                    pd.drawSetBuffer = builder.read(pd.drawSetBuffer,
+                                                    framegraph::BindingInfo {
+                                                        .location      = {.set = 0, .binding = 30},
+                                                        .pipelineStage = framegraph::PipelineStage::eDrawIndirect,
+                                                    });
                 }
 
                 pd.depth = builder.create<framegraph::FrameGraphTexture>(
@@ -74,7 +109,7 @@ namespace vultra
                                                                  });
                 pd.token = builder.write(pd.token,
                                          framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 31},
+                                             .location      = {},
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },
@@ -89,17 +124,15 @@ namespace vultra
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 const auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
-                const auto* gpuSceneView = rc.view().gpuSceneView;
-                auto* cameraUbo = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
+                const auto* gpuSceneView     = rc.view().gpuSceneView;
+                auto*       cameraUbo        = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
 
-                if (!cameraUbo || !gpuSceneDatabase || !gpuSceneView || !gpuSceneDatabase->resources ||
-                    !gpuSceneView->drawBuffer || !gpuSceneView->indirectBuffer.has_value() ||
-                    !gpuSceneDatabase->resources->materialTableBuffer ||
+                if (!cameraUbo || !gpuSceneDatabase || !gpuSceneView || !gpuSceneDatabase->resources || !pd.drawBuffer ||
+                    !pd.indirectBuffer || !gpuSceneDatabase->resources->materialTableBuffer ||
                     !gpuSceneDatabase->resources->materialParams.gpu ||
                     !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
                     !gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer ||
-                    !gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer ||
-                    gpuSceneView->maxDraws == 0u)
+                    !gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer || gpuSceneView->maxDraws == 0u)
                 {
                     rc.clear();
                     return;
@@ -119,10 +152,17 @@ namespace vultra
 
                 rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
 
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
-                rhi::prepareForDrawingIndirect(rc.cb, gpuSceneView->indirectBuffer.value());
-                if (gpuSceneView->drawSetBuffer)
-                    rhi::prepareForDrawingIndirect(rc.cb, *gpuSceneView->drawSetBuffer);
+                auto* drawBufferPtr = resources.get<framegraph::FrameGraphBuffer>(pd.drawBuffer).buffer;
+                auto* indirectBufferPtr =
+                    static_cast<rhi::DrawIndirectBuffer*>(resources.get<framegraph::FrameGraphBuffer>(pd.indirectBuffer).buffer);
+                auto* drawSetBufferPtr = pd.drawSetBuffer ?
+                    resources.get<framegraph::FrameGraphBuffer>(pd.drawSetBuffer).buffer :
+                    nullptr;
+
+                rhi::prepareForComputing(rc.cb, *drawBufferPtr);
+                rhi::prepareForDrawingIndirect(rc.cb, *indirectBufferPtr);
+                if (drawSetBufferPtr)
+                    rhi::prepareForDrawingIndirect(rc.cb, *drawSetBufferPtr);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialParams.gpu);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
@@ -131,16 +171,13 @@ namespace vultra
 
                 rc.resourceSet[0] = {
                     {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
-                    {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawBuffer.get()}},
+                    {1, rhi::bindings::StorageBuffer {.buffer = drawBufferPtr}},
                     {4,
-                     rhi::bindings::StorageBuffer {
-                         .buffer = gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
+                     rhi::bindings::StorageBuffer {.buffer =
+                                                       gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
                     {8,
-                     rhi::bindings::StorageBuffer {
-                         .buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
-                    {9,
-                     rhi::bindings::StorageBuffer {
-                         .buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
+                     rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
+                    {9, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
                     {10,
                      rhi::bindings::StorageBuffer {
                          .buffer = gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer.get()}},
@@ -159,11 +196,11 @@ namespace vultra
 
                 rc.bindDescriptorSets(*pipeline);
 
-                constexpr uint32_t kRenderQueueOpaque = 0u;
+                constexpr uint32_t kRenderQueueOpaque    = 0u;
                 constexpr uint32_t kRenderQueueAlphaMask = 1u;
-                const uint32_t queueStride = gpuSceneView->maxDraws;
-                const bool useIndirectCount =
-                    gpuSceneView->drawSetBuffer &&
+                const uint32_t     queueStride           = gpuSceneView->maxDraws;
+                const bool         useIndirectCount =
+                    drawSetBufferPtr &&
                     HasFlagValues(rc.rd.getFeatureReport().flags,
                                   vultra::rhi::RenderDeviceFeatureReportFlagBits::eDrawIndirectCount);
 
@@ -171,13 +208,14 @@ namespace vultra
                     const uint32_t firstCommand = queueId * queueStride;
                     if (useIndirectCount)
                     {
-                        rc.cb.drawIndirectCount(rhi::DrawIndirectInfo {
-                                                    .buffer       = &gpuSceneView->indirectBuffer.value(),
-                                                    .firstCommand = firstCommand,
-                                                    .commandCount = queueStride,
-                                                },
-                                                *gpuSceneView->drawSetBuffer,
-                                                queueId * sizeof(uint32_t));
+                        rc.cb.drawIndirectCount(
+                            rhi::DrawIndirectInfo {
+                                .buffer       = indirectBufferPtr,
+                                .firstCommand = firstCommand,
+                                .commandCount = queueStride,
+                            },
+                            *drawSetBufferPtr,
+                            queueId * sizeof(uint32_t));
                         return;
                     }
 
@@ -185,7 +223,7 @@ namespace vultra
                                       vultra::rhi::RenderDeviceFeatureReportFlagBits::eMultiDraw))
                     {
                         rc.cb.drawIndirect(rhi::DrawIndirectInfo {
-                            .buffer       = &gpuSceneView->indirectBuffer.value(),
+                            .buffer       = indirectBufferPtr,
                             .firstCommand = firstCommand,
                             .commandCount = queueStride,
                         });
@@ -195,7 +233,7 @@ namespace vultra
                         for (uint32_t i = 0; i < queueStride; ++i)
                         {
                             rc.cb.drawIndirect(rhi::DrawIndirectInfo {
-                                .buffer       = &gpuSceneView->indirectBuffer.value(),
+                                .buffer       = indirectBufferPtr,
                                 .firstCommand = firstCommand + i,
                                 .commandCount = 1,
                             });
@@ -217,23 +255,23 @@ namespace vultra
     rhi::GraphicsPipeline DepthPrePass::createPipeline() const
     {
         auto vertexShaderVariantHash = getShaderLib().computeVariantHash("mesh.vert",
-                                                                          vshadersystem::ShaderStage::eVert,
-                                                                          {
-                                                                              {"VTX_HAS_NORMAL", 1},
-                                                                              {"VTX_HAS_COLOR", 0},
-                                                                              {"VTX_HAS_UV0", 1},
-                                                                              {"VTX_HAS_UV1", 0},
-                                                                              {"VTX_HAS_TANGENT", 1},
-                                                                          });
-        auto vertexShader = getShaderLib().load(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
+                                                                         vshadersystem::ShaderStage::eVert,
+                                                                         {
+                                                                             {"VTX_HAS_NORMAL", 1},
+                                                                             {"VTX_HAS_COLOR", 0},
+                                                                             {"VTX_HAS_UV0", 1},
+                                                                             {"VTX_HAS_UV1", 0},
+                                                                             {"VTX_HAS_TANGENT", 1},
+                                                                         });
+        auto vertexShader            = getShaderLib().load(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
             VULTRA_CORE_ERROR("[DepthPrePass] Failed to load vertex shader variant");
             return {};
         }
 
-        auto fragmentShaderVariantHash =
-            getShaderLib().computeVariantHash("depth_pre.frag", vshadersystem::ShaderStage::eFrag, {{"VTX_HAS_UV0", 1}});
+        auto fragmentShaderVariantHash = getShaderLib().computeVariantHash(
+            "depth_pre.frag", vshadersystem::ShaderStage::eFrag, {{"VTX_HAS_UV0", 1}});
         auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {

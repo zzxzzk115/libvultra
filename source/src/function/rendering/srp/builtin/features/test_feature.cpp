@@ -20,10 +20,10 @@ namespace vultra
 
     void TestFeature::addPasses(FrameGraphBuildContext& ctx)
     {
-        auto* gpuSceneView = ctx.view().gpuSceneView;
-        const bool hasMeshletDraws = gpuSceneView &&
-                                     (gpuSceneView->isGpuDriven() ? (gpuSceneView->maxDraws > 0u) :
-                                                                    (gpuSceneView->countMeshletDraws() > 0u));
+        auto*      gpuSceneView = ctx.view().gpuSceneView;
+        const bool hasMeshletDraws =
+            gpuSceneView &&
+            (gpuSceneView->isGpuDriven() ? (gpuSceneView->maxDraws > 0u) : (gpuSceneView->countMeshletDraws() > 0u));
 
         if (!hasMeshletDraws)
         {
@@ -44,7 +44,7 @@ namespace vultra
         // If GaussianSplatFeature ran before us, blend its output on top.
         if (ctx.data.contains(kResKey_GaussianSplatRenderDone))
         {
-            auto splatColor = ctx.data.get(kResKey_GaussianSplatRenderDone);
+            auto splatColor     = ctx.data.get(kResKey_GaussianSplatRenderDone);
             auto compositeColor = m_SplatCompositePass->addPass(ctx, meshletColor, splatColor);
             ctx.data.set(kResKey_FinalCompositionSource, compositeColor);
         }

@@ -4,7 +4,9 @@
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
+#include "vultra/function/resource/gpu_visible_meshlet.hpp"
 
+#include <FrameGraphResource.hpp>
 #include <fg/FrameGraph.hpp>
 
 namespace vultra
@@ -24,23 +26,111 @@ namespace vultra
 
     FrameGraphResource MeshletCullPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource coarseToken)
     {
+        auto instanceBuffer             = ctx.data.tryGet(kResKey_InstanceBuffer);
+        auto meshTableBuffer            = ctx.data.tryGet(kResKey_MeshTableBuffer);
+        auto meshletsBuffer             = ctx.data.tryGet(kResKey_MeshletsBuffer);
+        auto transformBuffer            = ctx.data.tryGet(kResKey_TransformBuffer);
+        auto visibleInstanceBuffer      = ctx.data.get(kResKey_VisibleInstanceBuffer);
+        auto visibleInstanceCountBuffer = ctx.data.get(kResKey_VisibleInstanceCountBuffer);
+        auto meshletCullDispatchArgsBuf = ctx.data.get(kResKey_MeshletCullDispatchArgsBuffer);
+
+        struct ResetPassData
+        {
+            FrameGraphResource token;
+            FrameGraphResource visibleMeshletBuffer;
+            FrameGraphResource visibleMeshletCountBuffer;
+        };
+
         struct PassData
         {
             FrameGraphResource camera;
             FrameGraphResource coarseDone;
+            FrameGraphResource resetToken;
             FrameGraphResource token;
+
+            FrameGraphResource visibleMeshletBuffer;
+            FrameGraphResource visibleMeshletCountBuffer;
+            FrameGraphResource meshletCullDispatchArgsBuffer;
         };
 
         const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
 
-        auto*      gpuSceneDatabase = ctx.view().gpuSceneDatabase;
-        auto*      gpuSceneView     = ctx.view().gpuSceneView;
+        auto*      gpuSceneView        = ctx.view().gpuSceneView;
         const auto maxVisibleInstances = gpuSceneView ? gpuSceneView->maxVisibleInstances : 0u;
-        const auto maxVisible       = gpuSceneView ? gpuSceneView->maxVisibleMeshlets : 0u;
+        const auto maxVisible          = gpuSceneView ? gpuSceneView->maxVisibleMeshlets : 0u;
+
+        auto resetData = ctx.fg.addCallbackPass<ResetPassData>(
+            "ResetMeshletCullBuffersPass",
+            [maxVisible](FrameGraph::Builder& builder, ResetPassData& pd) {
+                PASS_SETUP_ZONE;
+
+                pd.visibleMeshletBuffer =
+                    builder.create<framegraph::FrameGraphBuffer>("VisibleMeshletBuffer",
+                                                                 {
+                                                                     .type     = framegraph::BufferType::eStorageBuffer,
+                                                                     .stride   = sizeof(resource::GpuVisibleMeshlet),
+                                                                     .capacity = std::max<uint32_t>(1u, maxVisible),
+                                                                 });
+                pd.visibleMeshletBuffer = builder.write(pd.visibleMeshletBuffer,
+                                                        framegraph::BindingInfo {
+                                                            .location      = {.set = 0, .binding = 6},
+                                                            .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                                        });
+
+                pd.visibleMeshletCountBuffer =
+                    builder.create<framegraph::FrameGraphBuffer>("VisibleMeshletCountBuffer",
+                                                                 {
+                                                                     .type     = framegraph::BufferType::eStorageBuffer,
+                                                                     .stride   = sizeof(uint32_t),
+                                                                     .capacity = 1,
+                                                                 });
+                pd.visibleMeshletCountBuffer = builder.write(pd.visibleMeshletCountBuffer,
+                                                             framegraph::BindingInfo {
+                                                                 .location      = {.set = 0, .binding = 7},
+                                                                 .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                                             });
+
+                pd.token =
+                    builder.create<framegraph::FrameGraphBuffer>("MeshletCullResetToken",
+                                                                 {
+                                                                     .type     = framegraph::BufferType::eStorageBuffer,
+                                                                     .stride   = sizeof(uint32_t),
+                                                                     .capacity = 1,
+                                                                 });
+                pd.token = builder.write(pd.token,
+                                         framegraph::BindingInfo {
+                                             .location      = {},
+                                             .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                         });
+            },
+            [](const ResetPassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                RHI_GPU_ZONE(rc.cb, "ResetMeshletCullBuffersPass");
+
+                // Usually clearing the count is enough, but keep the full clear for now
+                // to stay consistent with the current debugging-friendly behavior.
+                auto* visibleMeshletBuf = resources.get<framegraph::FrameGraphBuffer>(pd.visibleMeshletBuffer).buffer;
+                rc.cb.clear(*visibleMeshletBuf, 0u);
+
+                auto* visibleMeshletCountBuf =
+                    resources.get<framegraph::FrameGraphBuffer>(pd.visibleMeshletCountBuffer).buffer;
+                rc.cb.clear(*visibleMeshletCountBuf, 0u);
+
+                rc.clear();
+            });
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [cameraBlock, coarseToken](FrameGraph::Builder& builder, PassData& pd) {
+            [cameraBlock,
+             coarseToken,
+             instanceBuffer,
+             meshTableBuffer,
+             meshletsBuffer,
+             transformBuffer,
+             visibleInstanceBuffer,
+             visibleInstanceCountBuffer,
+             meshletCullDispatchArgsBuf,
+             resetData](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.camera = builder.read(cameraBlock,
@@ -53,11 +143,96 @@ namespace vultra
                 if (pd.coarseDone)
                 {
                     pd.coarseDone = builder.read(pd.coarseDone,
-                                                framegraph::BindingInfo {
-                                                    .location      = {.set = 0, .binding = 31},
-                                                    .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                });
+                                                 framegraph::BindingInfo {
+                                                     .location      = {},
+                                                     .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                                 });
                 }
+
+                pd.resetToken = builder.read(resetData.token,
+                                             framegraph::BindingInfo {
+                                                 .location      = {},
+                                                 .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                             });
+
+                if (instanceBuffer)
+                {
+                    builder.read(instanceBuffer,
+                                 framegraph::BindingInfo {
+                                     .location      = {.set = 0, .binding = 2},
+                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                 });
+                }
+
+                if (meshTableBuffer)
+                {
+                    builder.read(meshTableBuffer,
+                                 framegraph::BindingInfo {
+                                     .location      = {.set = 0, .binding = 3},
+                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                 });
+                }
+
+                if (meshletsBuffer)
+                {
+                    builder.read(meshletsBuffer,
+                                 framegraph::BindingInfo {
+                                     .location      = {.set = 0, .binding = 4},
+                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                 });
+                }
+
+                if (transformBuffer)
+                {
+                    builder.read(transformBuffer,
+                                 framegraph::BindingInfo {
+                                     .location      = {.set = 0, .binding = 5},
+                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                 });
+                }
+
+                if (visibleInstanceBuffer)
+                {
+                    builder.read(visibleInstanceBuffer,
+                                 framegraph::BindingInfo {
+                                     .location      = {.set = 0, .binding = 24},
+                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                 });
+                }
+
+                if (visibleInstanceCountBuffer)
+                {
+                    builder.read(visibleInstanceCountBuffer,
+                                 framegraph::BindingInfo {
+                                     .location      = {.set = 0, .binding = 25},
+                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                 });
+                }
+
+                if (meshletCullDispatchArgsBuf)
+                {
+                    pd.meshletCullDispatchArgsBuffer =
+                        builder.read(meshletCullDispatchArgsBuf,
+                                     framegraph::BindingInfo {
+                                         .location      = {},
+                                         .pipelineStage = framegraph::PipelineStage::eDrawIndirect,
+                                     });
+                }
+
+                pd.visibleMeshletBuffer = resetData.visibleMeshletBuffer;
+                pd.visibleMeshletBuffer = builder.write(pd.visibleMeshletBuffer,
+                                                        framegraph::BindingInfo {
+                                                            .location      = {.set = 0, .binding = 6},
+                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                        });
+
+                pd.visibleMeshletCountBuffer = resetData.visibleMeshletCountBuffer;
+                pd.visibleMeshletCountBuffer =
+                    builder.write(pd.visibleMeshletCountBuffer,
+                                  framegraph::BindingInfo {
+                                      .location      = {.set = 0, .binding = 7},
+                                      .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                  });
 
                 pd.token =
                     builder.create<framegraph::FrameGraphBuffer>("MeshletCullToken",
@@ -68,11 +243,12 @@ namespace vultra
                                                                  });
                 pd.token = builder.write(pd.token,
                                          framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 31},
+                                             .location      = {},
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },
-            [this, maxVisibleInstances, maxVisible](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+            [this, maxVisibleInstances, maxVisible](
+                const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -87,23 +263,10 @@ namespace vultra
                     return;
                 }
 
-                auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
-                auto* gpuSceneView     = rc.view().gpuSceneView;
-                if (!gpuSceneDatabase || !gpuSceneView || !gpuSceneDatabase->resources)
-                    return;
-
-                gpuSceneView->ensureVisibleInstanceBuffers(rc.rd);
-
-                if (!gpuSceneDatabase->instanceBuffer || !gpuSceneDatabase->meshTableBuffer ||
-                    !gpuSceneDatabase->transformBuffer || !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
-                    !gpuSceneView->visibleInstanceBuffer || !gpuSceneView->visibleInstanceCountBuffer ||
-                    !gpuSceneView->visibleMeshletBuffer || !gpuSceneView->visibleMeshletCountBuffer ||
-                    !gpuSceneView->meshletCullDispatchArgsBuffer)
-                    return;
-
-                auto* cameraUbo = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
-                if (!cameraUbo)
-                    return;
+                CullPushConstants pc {};
+                pc.instanceCount      = maxVisibleInstances;
+                pc.maxVisibleMeshlets = maxVisible;
+                pc.enableConeCull     = 0u;
 
                 auto variantHash =
                     getShaderLib().computeVariantHash("meshlet_cull.comp", vshadersystem::ShaderStage::eComp, {});
@@ -111,54 +274,22 @@ namespace vultra
                 if (!pipeline)
                     return;
 
-                // Per-frame tiny reset must stay inside the frame command buffer.
-                rc.cb.clear(*gpuSceneView->visibleMeshletCountBuffer, 0u);
-
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->instanceBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->meshTableBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->transformBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleMeshletBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleMeshletCountBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->meshletCullDispatchArgsBuffer);
-
-                rc.resourceSet[0] = {
-                    {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
-                    {2, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->instanceBuffer.get()}},
-                    {3, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->meshTableBuffer.get()}},
-                    {4,
-                     rhi::bindings::StorageBuffer {.buffer =
-                                                       gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
-                    {5, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->transformBuffer.get()}},
-                    {6, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleMeshletBuffer.get()}},
-                    {7, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleMeshletCountBuffer.get()}},
-                    {24, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleInstanceBuffer.get()}},
-                    {25, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleInstanceCountBuffer.get()}},
-                };
-
-                CullPushConstants pc {};
-                pc.instanceCount      = maxVisibleInstances;
-                pc.maxVisibleMeshlets = maxVisible;
-                pc.enableConeCull     = 0u;
-
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
-                rc.cb.getBarrierBuilder().bufferBarrier(
-                    {
-                        .buffer = *gpuSceneView->meshletCullDispatchArgsBuffer,
-                        .offset = 0,
-                        .size   = sizeof(uint32_t) * 3u,
-                    },
-                    {
-                        .stageMask  = rhi::PipelineStages::eAllCommands,
-                        .accessMask = rhi::Access::eMemoryRead,
-                    });
-                rc.cb.dispatchIndirect(*gpuSceneView->meshletCullDispatchArgsBuffer);
+
+                auto* meshletCullDispatchArgsBuffer =
+                    resources.get<framegraph::FrameGraphBuffer>(pd.meshletCullDispatchArgsBuffer).buffer;
+                rhi::prepareForDrawingIndirect(rc.cb, *meshletCullDispatchArgsBuffer);
+                rc.cb.dispatchIndirect(*meshletCullDispatchArgsBuffer);
+
                 rc.clear();
             });
 
         ctx.data.set(kResKey_MeshletCullDone, data.token);
+        ctx.data.set(kResKey_VisibleMeshletBuffer, data.visibleMeshletBuffer);
+        ctx.data.set(kResKey_VisibleMeshletCountBuffer, data.visibleMeshletCountBuffer);
+
         return data.token;
     }
 

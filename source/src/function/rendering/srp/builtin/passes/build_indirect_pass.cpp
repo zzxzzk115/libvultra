@@ -3,8 +3,11 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
+#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
+#include "vultra/function/resource/gpu_draw.hpp"
 
 #include <fg/FrameGraph.hpp>
+#include <fg/FrameGraphResource.hpp>
 
 namespace vultra
 {
@@ -23,15 +26,45 @@ namespace vultra
 
     FrameGraphResource BuildIndirectPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource cullToken)
     {
+        auto drawBuffer                = ctx.data.tryGet(kResKey_DrawBuffer);
+        auto instanceBuffer            = ctx.data.get(kResKey_InstanceBuffer);
+        auto meshTableBuffer           = ctx.data.get(kResKey_MeshTableBuffer);
+        auto transformBuffer           = ctx.data.get(kResKey_TransformBuffer);
+        auto meshletsBuffer            = ctx.data.get(kResKey_MeshletsBuffer);
+        auto visibleMeshletBuffer      = ctx.data.get(kResKey_VisibleMeshletBuffer);
+        auto visibleMeshletCountBuffer = ctx.data.get(kResKey_VisibleMeshletCountBuffer);
+        auto materialTableBuffer       = ctx.data.get(kResKey_MaterialTableBuffer);
+
         struct PassData
         {
             FrameGraphResource cullToken;
             FrameGraphResource token;
+
+            FrameGraphResource drawBuffer;
+            FrameGraphResource instanceBuffer;
+            FrameGraphResource meshTableBuffer;
+            FrameGraphResource transformBuffer;
+            FrameGraphResource meshletsBuffer;
+            FrameGraphResource visibleMeshletBuffer;
+            FrameGraphResource visibleMeshletCountBuffer;
+            FrameGraphResource materialTableBuffer;
         };
+
+        auto*      gpuSceneView = ctx.view().gpuSceneView;
+        const auto maxDraws     = gpuSceneView ? gpuSceneView->maxDraws : 0u;
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [cullToken](FrameGraph::Builder& builder, PassData& pd) {
+            [cullToken,
+             drawBuffer,
+             instanceBuffer,
+             meshTableBuffer,
+             transformBuffer,
+             meshletsBuffer,
+             visibleMeshletBuffer,
+             visibleMeshletCountBuffer,
+             materialTableBuffer,
+             maxDraws](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.cullToken = cullToken;
@@ -39,9 +72,89 @@ namespace vultra
                 {
                     pd.cullToken = builder.read(pd.cullToken,
                                                 framegraph::BindingInfo {
-                                                    .location      = {.set = 0, .binding = 31},
+                                                    .location      = {},
                                                     .pipelineStage = framegraph::PipelineStage::eTransfer,
                                                 });
+                }
+
+                pd.drawBuffer = drawBuffer ?
+                    drawBuffer :
+                    builder.create<framegraph::FrameGraphBuffer>("DrawBuffer",
+                                                                 {
+                                                                     .type     = framegraph::BufferType::eStorageBuffer,
+                                                                     .stride   = sizeof(resource::GpuDrawRecord),
+                                                                     .capacity = std::max<uint32_t>(1u, maxDraws),
+                                                                 });
+                pd.drawBuffer = builder.write(pd.drawBuffer,
+                                              framegraph::BindingInfo {
+                                                  .location      = {.set = 0, .binding = 1},
+                                                  .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                              });
+
+                if (instanceBuffer)
+                {
+                    pd.instanceBuffer = builder.read(instanceBuffer,
+                                                     framegraph::BindingInfo {
+                                                         .location      = {.set = 0, .binding = 2},
+                                                         .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                     });
+                }
+
+                if (meshTableBuffer)
+                {
+                    pd.meshTableBuffer = builder.read(meshTableBuffer,
+                                                      framegraph::BindingInfo {
+                                                          .location      = {.set = 0, .binding = 3},
+                                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                      });
+                }
+
+                if (meshletsBuffer)
+                {
+                    pd.meshletsBuffer = builder.read(meshletsBuffer,
+                                                     framegraph::BindingInfo {
+                                                         .location      = {.set = 0, .binding = 4},
+                                                         .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                     });
+                }
+
+                if (transformBuffer)
+                {
+                    pd.transformBuffer = builder.read(transformBuffer,
+                                                      framegraph::BindingInfo {
+                                                          .location      = {.set = 0, .binding = 5},
+                                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                      });
+                }
+
+                if (visibleMeshletBuffer)
+                {
+                    pd.visibleMeshletBuffer =
+                        builder.read(visibleMeshletBuffer,
+                                     framegraph::BindingInfo {
+                                         .location      = {.set = 0, .binding = 6},
+                                         .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                     });
+                }
+
+                if (visibleMeshletCountBuffer)
+                {
+                    pd.visibleMeshletCountBuffer =
+                        builder.read(visibleMeshletCountBuffer,
+                                     framegraph::BindingInfo {
+                                         .location      = {.set = 0, .binding = 7},
+                                         .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                     });
+                }
+
+                if (materialTableBuffer)
+                {
+                    pd.materialTableBuffer =
+                        builder.read(materialTableBuffer,
+                                     framegraph::BindingInfo {
+                                         .location      = {.set = 0, .binding = 8},
+                                         .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                     });
                 }
 
                 pd.token =
@@ -53,7 +166,7 @@ namespace vultra
                                                                  });
                 pd.token = builder.write(pd.token,
                                          framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 31},
+                                             .location      = {},
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },
@@ -75,41 +188,12 @@ namespace vultra
                     rc.clear();
                     return;
                 }
-                if (!gpuSceneView->visibleMeshletBuffer || !gpuSceneView->visibleMeshletCountBuffer ||
-                    !gpuSceneView->drawBuffer || !gpuSceneDatabase->instanceBuffer ||
-                    !gpuSceneDatabase->meshTableBuffer ||
-                    !gpuSceneDatabase->transformBuffer || !gpuSceneDatabase->resources->meshlets.meshletsBuffer ||
-                    !gpuSceneDatabase->resources->materialTableBuffer)
-                    return;
 
                 auto variantHash =
                     getShaderLib().computeVariantHash("build_indirect.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
                     return;
-
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleMeshletBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleMeshletCountBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->instanceBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->meshTableBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->transformBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
-
-                rc.resourceSet[0] = {
-                    {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawBuffer.get()}},
-                    {2, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->instanceBuffer.get()}},
-                    {3, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->meshTableBuffer.get()}},
-                    {4,
-                     rhi::bindings::StorageBuffer {.buffer =
-                                                       gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
-                    {5, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->transformBuffer.get()}},
-                    {6, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleMeshletBuffer.get()}},
-                    {7, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleMeshletCountBuffer.get()}},
-                    {8,
-                     rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->resources->materialTableBuffer.get()}},
-                };
 
                 const uint64_t vertexAddress = gpuSceneDatabase->resources->geometry.vertexBytesAddress;
 
@@ -124,6 +208,15 @@ namespace vultra
                 rc.cb.dispatch({(gpuSceneView->maxDraws + 63u) / 64u, 1u, 1u});
                 rc.clear();
             });
+
+        ctx.data.set(kResKey_DrawBuffer, data.drawBuffer);
+        ctx.data.set(kResKey_InstanceBuffer, data.instanceBuffer);
+        ctx.data.set(kResKey_MeshTableBuffer, data.meshTableBuffer);
+        ctx.data.set(kResKey_TransformBuffer, data.transformBuffer);
+        ctx.data.set(kResKey_MeshletsBuffer, data.meshletsBuffer);
+        ctx.data.set(kResKey_VisibleMeshletBuffer, data.visibleMeshletBuffer);
+        ctx.data.set(kResKey_VisibleMeshletCountBuffer, data.visibleMeshletCountBuffer);
+        ctx.data.set(kResKey_MaterialTableBuffer, data.materialTableBuffer);
 
         return data.token;
     }

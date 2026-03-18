@@ -22,6 +22,7 @@ namespace vultra
             eFragmentShader   = BIT(3),
             eComputeShader    = BIT(4),
             eRayTracingShader = BIT(5),
+            eDrawIndirect     = BIT(6),
         };
 
         enum class ClearValue

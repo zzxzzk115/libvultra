@@ -261,7 +261,7 @@ namespace vultra::resource
                             copyRegions[0].imageExtent                     = vk::Extent3D {
                                 static_cast<uint32_t>(tex->baseWidth >> mip),
                                 static_cast<uint32_t>(tex->baseHeight >> mip),
-                                static_cast<uint32_t>(tex->baseDepth >> mip),
+                                static_cast<uint32_t>(tex->baseDepth),
                             };
 
                             rhi::upload(rd, staging, copyRegions, rhiTex, false);

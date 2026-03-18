@@ -4,6 +4,7 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
+#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -24,22 +25,117 @@ namespace vultra
 
     FrameGraphResource CoarseInstanceCullPass::addPass(FrameGraphBuildContext& ctx)
     {
+        auto instanceBuffer                = ctx.data.get(kResKey_InstanceBuffer);
+        auto meshTableBuffer               = ctx.data.get(kResKey_MeshTableBuffer);
+        auto transformBuffer               = ctx.data.get(kResKey_TransformBuffer);
+        auto visibleInstanceBuffer         = ctx.data.tryGet(kResKey_VisibleInstanceBuffer);
+        auto visibleInstanceCountBuffer    = ctx.data.tryGet(kResKey_VisibleInstanceCountBuffer);
+        auto meshletCullDispatchArgsBuffer = ctx.data.tryGet(kResKey_MeshletCullDispatchArgsBuffer);
+
+        struct ResetPassData
+        {
+            FrameGraphResource token;
+            FrameGraphResource visibleInstanceCountBuffer;
+            FrameGraphResource meshletCullDispatchArgsBuffer;
+        };
+
         struct PassData
         {
             FrameGraphResource camera;
+            FrameGraphResource resetToken;
             FrameGraphResource token;
+
+            FrameGraphResource visibleInstanceBuffer;
+            FrameGraphResource visibleInstanceCountBuffer;
+            FrameGraphResource meshletCullDispatchArgsBuffer;
         };
 
         const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
 
-        auto*      gpuSceneDatabase   = ctx.view().gpuSceneDatabase;
-        auto*      gpuSceneView       = ctx.view().gpuSceneView;
-        const auto instanceCount      = gpuSceneDatabase ? static_cast<uint32_t>(gpuSceneDatabase->instances.size()) : 0u;
+        auto*      gpuSceneDatabase = ctx.view().gpuSceneDatabase;
+        auto*      gpuSceneView     = ctx.view().gpuSceneView;
+        const auto instanceCount    = gpuSceneDatabase ? static_cast<uint32_t>(gpuSceneDatabase->instances.size()) : 0u;
         const auto maxVisibleInstance = gpuSceneView ? gpuSceneView->maxVisibleInstances : 0u;
+
+        auto resetData = ctx.fg.addCallbackPass<ResetPassData>(
+            "ResetCoarseCullBuffersPass",
+            [maxVisibleInstance, visibleInstanceCountBuffer, meshletCullDispatchArgsBuffer](
+                FrameGraph::Builder& builder, ResetPassData& pd) {
+                PASS_SETUP_ZONE;
+
+                pd.visibleInstanceCountBuffer =
+                    visibleInstanceCountBuffer ?
+                        visibleInstanceCountBuffer :
+                        builder.create<framegraph::FrameGraphBuffer>("VisibleInstanceCountBuffer",
+                                                                     {
+                                                                         .type = framegraph::BufferType::eStorageBuffer,
+                                                                         .stride   = sizeof(uint32_t),
+                                                                         .capacity = 1,
+                                                                     });
+                pd.visibleInstanceCountBuffer = builder.write(pd.visibleInstanceCountBuffer,
+                                                              framegraph::BindingInfo {
+                                                                  .location      = {.set = 0, .binding = 25},
+                                                                  .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                                              });
+
+                pd.meshletCullDispatchArgsBuffer = meshletCullDispatchArgsBuffer ?
+                                                       meshletCullDispatchArgsBuffer :
+                                                       builder.create<framegraph::FrameGraphBuffer>(
+                                                           "MeshletCullDispatchArgsBuffer",
+                                                           {
+                                                               .type = framegraph::BufferType::eDispatchIndirectBuffer,
+                                                               .stride   = sizeof(uint32_t),
+                                                               .capacity = 3,
+                                                           });
+                pd.meshletCullDispatchArgsBuffer =
+                    builder.write(pd.meshletCullDispatchArgsBuffer,
+                                  framegraph::BindingInfo {
+                                      .location      = {.set = 0, .binding = 26},
+                                      .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                  });
+
+                pd.token =
+                    builder.create<framegraph::FrameGraphBuffer>("CoarseCullResetToken",
+                                                                 {
+                                                                     .type     = framegraph::BufferType::eStorageBuffer,
+                                                                     .stride   = sizeof(uint32_t),
+                                                                     .capacity = 1,
+                                                                 });
+                pd.token = builder.write(pd.token,
+                                         framegraph::BindingInfo {
+                                             .location      = {},
+                                             .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                         });
+            },
+            [](const ResetPassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                RHI_GPU_ZONE(rc.cb, "ResetCoarseCullBuffersPass");
+
+                auto* visibleInstanceCountBuf =
+                    resources.get<framegraph::FrameGraphBuffer>(pd.visibleInstanceCountBuffer).buffer;
+                auto* meshletCullDispatchArgsBuf =
+                    resources.get<framegraph::FrameGraphBuffer>(pd.meshletCullDispatchArgsBuffer).buffer;
+
+                rc.cb.clear(*visibleInstanceCountBuf, 0u);
+                struct DispatchArgsInit
+                {
+                    uint32_t x;
+                    uint32_t y;
+                    uint32_t z;
+                } argsInit {0u, 1u, 1u};
+                rc.cb.update(*meshletCullDispatchArgsBuf, 0, sizeof(DispatchArgsInit), &argsInit);
+                rc.clear();
+            });
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [cameraBlock](FrameGraph::Builder& builder, PassData& pd) {
+            [cameraBlock,
+             maxVisibleInstance,
+             instanceBuffer,
+             meshTableBuffer,
+             transformBuffer,
+             visibleInstanceBuffer,
+             resetData](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.camera = builder.read(cameraBlock,
@@ -48,6 +144,58 @@ namespace vultra
                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                          });
 
+                pd.resetToken = builder.read(resetData.token,
+                                             framegraph::BindingInfo {
+                                                 .location      = {},
+                                                 .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                             });
+
+                builder.read(instanceBuffer,
+                             framegraph::BindingInfo {
+                                 .location      = {.set = 0, .binding = 2},
+                                 .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                             });
+
+                builder.read(meshTableBuffer,
+                             framegraph::BindingInfo {
+                                 .location      = {.set = 0, .binding = 3},
+                                 .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                             });
+
+                builder.read(transformBuffer,
+                             framegraph::BindingInfo {
+                                 .location      = {.set = 0, .binding = 5},
+                                 .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                             });
+
+                pd.visibleInstanceBuffer = visibleInstanceBuffer ?
+                                               visibleInstanceBuffer :
+                                               builder.create<framegraph::FrameGraphBuffer>(
+                                                   "VisibleInstanceBuffer",
+                                                   {
+                                                       .type     = framegraph::BufferType::eStorageBuffer,
+                                                       .stride   = sizeof(uint32_t),
+                                                       .capacity = std::max<uint32_t>(1u, maxVisibleInstance),
+                                                   });
+                pd.visibleInstanceBuffer = builder.write(pd.visibleInstanceBuffer,
+                                                         framegraph::BindingInfo {
+                                                             .location      = {.set = 0, .binding = 24},
+                                                             .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                         });
+
+                pd.visibleInstanceCountBuffer =
+                    builder.write(resetData.visibleInstanceCountBuffer,
+                                  framegraph::BindingInfo {
+                                      .location      = {.set = 0, .binding = 25},
+                                      .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                  });
+
+                pd.meshletCullDispatchArgsBuffer =
+                    builder.write(resetData.meshletCullDispatchArgsBuffer,
+                                  framegraph::BindingInfo {
+                                      .location      = {.set = 0, .binding = 26},
+                                      .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                  });
                 pd.token =
                     builder.create<framegraph::FrameGraphBuffer>("CoarseInstanceCullToken",
                                                                  {
@@ -57,11 +205,12 @@ namespace vultra
                                                                  });
                 pd.token = builder.write(pd.token,
                                          framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 31},
+                                             .location      = {},
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },
-            [this, instanceCount, maxVisibleInstance](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+            [this, instanceCount, maxVisibleInstance](
+                const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -77,57 +226,18 @@ namespace vultra
                 }
 
                 auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
-                auto* gpuSceneView     = rc.view().gpuSceneView;
-                if (!gpuSceneDatabase || !gpuSceneView)
+                if (!gpuSceneDatabase)
                     return;
 
-                gpuSceneView->ensureVisibleInstanceBuffers(rc.rd);
-
-                if (!gpuSceneDatabase->instanceBuffer || !gpuSceneDatabase->meshTableBuffer || !gpuSceneDatabase->transformBuffer ||
-                    !gpuSceneView->visibleInstanceBuffer || !gpuSceneView->visibleInstanceCountBuffer ||
-                    !gpuSceneView->meshletCullDispatchArgsBuffer)
-                    return;
-
-                auto* cameraUbo = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
-                if (!cameraUbo)
-                    return;
-
-                auto variantHash =
-                    getShaderLib().computeVariantHash("coarse_instance_cull.comp", vshadersystem::ShaderStage::eComp, {});
+                auto variantHash = getShaderLib().computeVariantHash(
+                    "coarse_instance_cull.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
                     return;
 
-                // Per-frame tiny resets must be recorded in-frame, not uploaded via synchronous uploadS.
-                rc.cb.clear(*gpuSceneView->visibleInstanceCountBuffer, 0u);
-                struct DispatchArgsInit
-                {
-                    uint32_t x;
-                    uint32_t y;
-                    uint32_t z;
-                } argsInit {0u, 1u, 1u};
-                rc.cb.update(*gpuSceneView->meshletCullDispatchArgsBuffer, 0, sizeof(DispatchArgsInit), &argsInit);
-
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->instanceBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->meshTableBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->transformBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleInstanceBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->visibleInstanceCountBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->meshletCullDispatchArgsBuffer);
-
-                rc.resourceSet[0] = {
-                    {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
-                    {2, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->instanceBuffer.get()}},
-                    {3, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->meshTableBuffer.get()}},
-                    {5, rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->transformBuffer.get()}},
-                    {24, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleInstanceBuffer.get()}},
-                    {25, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->visibleInstanceCountBuffer.get()}},
-                    {26, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->meshletCullDispatchArgsBuffer.get()}},
-                };
-
                 CoarseCullPushConstants pc {};
-                pc.instanceCount        = instanceCount;
-                pc.maxVisibleInstances  = maxVisibleInstance;
+                pc.instanceCount       = instanceCount;
+                pc.maxVisibleInstances = maxVisibleInstance;
 
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
@@ -135,6 +245,10 @@ namespace vultra
                 rc.cb.dispatch({(instanceCount + 63u) / 64u, 1u, 1u});
                 rc.clear();
             });
+
+        ctx.data.set(kResKey_VisibleInstanceBuffer, data.visibleInstanceBuffer);
+        ctx.data.set(kResKey_VisibleInstanceCountBuffer, data.visibleInstanceCountBuffer);
+        ctx.data.set(kResKey_MeshletCullDispatchArgsBuffer, data.meshletCullDispatchArgsBuffer);
 
         return data.token;
     }

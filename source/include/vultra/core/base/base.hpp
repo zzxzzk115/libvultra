@@ -19,17 +19,16 @@ using fsec = std::chrono::duration<float>;
 #define DEBUG_BREAK() abort() // Fallback if no debug break is available
 #endif
 
-#ifndef VULTRA_CUSTOM_ASSERT
 #define VULTRA_CUSTOM_ASSERT(condition) \
     do \
     { \
-        if (!(condition)) \
+        const bool _vultra_cond = (condition); \
+        if (!_vultra_cond) \
         { \
             DEBUG_BREAK(); \
-            assert(condition); \
+            assert(_vultra_cond); \
         } \
     } while (false)
-#endif
 
 #ifndef BIT
 #define BIT(x) (1 << x)

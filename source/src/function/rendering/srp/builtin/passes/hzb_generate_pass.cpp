@@ -75,7 +75,7 @@ namespace vultra
                 {
                     pd.depthDone = builder.read(pd.depthDone,
                                                 framegraph::BindingInfo {
-                                                    .location      = {.set = 0, .binding = 31},
+                                                    .location      = {},
                                                     .pipelineStage = framegraph::PipelineStage::eTransfer,
                                                 });
                 }
@@ -107,7 +107,7 @@ namespace vultra
                     });
                 pd.token = builder.write(pd.token,
                                          framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 31},
+                                             .location      = {},
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },

@@ -45,54 +45,17 @@ namespace vultra
             FrameGraphResource token;
         };
 
-        const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
-        const auto hzbTexture = ctx.data.tryGet(kResKey_HzbTexture);
-        const auto hzbDone    = ctx.data.tryGet(kResKey_HzbGenerated);
-        const auto instanceBuffer =
-            (ctx.view().gpuSceneDatabase && ctx.view().gpuSceneDatabase->instanceBuffer)
-                ? framegraph::importBuffer(ctx.fg,
-                                           "ImportedInstanceBuffer",
-                                           ctx.view().gpuSceneDatabase->instanceBuffer.get(),
-                                           framegraph::BufferType::eStorageBuffer)
-                : FrameGraphResource {};
-        const auto meshTableBuffer =
-            (ctx.view().gpuSceneDatabase && ctx.view().gpuSceneDatabase->meshTableBuffer)
-                ? framegraph::importBuffer(ctx.fg,
-                                           "ImportedMeshTableBuffer",
-                                           ctx.view().gpuSceneDatabase->meshTableBuffer.get(),
-                                           framegraph::BufferType::eStorageBuffer)
-                : FrameGraphResource {};
-        const auto meshletBuffer =
-            (ctx.view().gpuSceneDatabase && ctx.view().gpuSceneDatabase->resources &&
-             ctx.view().gpuSceneDatabase->resources->meshlets.meshletsBuffer)
-                ? framegraph::importBuffer(ctx.fg,
-                                           "ImportedMeshletBuffer",
-                                           ctx.view().gpuSceneDatabase->resources->meshlets.meshletsBuffer.get(),
-                                           framegraph::BufferType::eStorageBuffer)
-                : FrameGraphResource {};
-        const auto modelBuffer =
-            (ctx.view().gpuSceneDatabase && ctx.view().gpuSceneDatabase->transformBuffer)
-                ? framegraph::importBuffer(ctx.fg,
-                                           "ImportedModelBuffer",
-                                           ctx.view().gpuSceneDatabase->transformBuffer.get(),
-                                           framegraph::BufferType::eStorageBuffer)
-                : FrameGraphResource {};
-        const auto visibleMeshlets =
-            (ctx.view().gpuSceneView && ctx.view().gpuSceneView->visibleMeshletBuffer)
-                ? framegraph::importBuffer(ctx.fg,
-                                           "ImportedVisibleMeshletBuffer",
-                                           ctx.view().gpuSceneView->visibleMeshletBuffer.get(),
-                                           framegraph::BufferType::eStorageBuffer)
-                : FrameGraphResource {};
-        const auto visibleCount =
-            (ctx.view().gpuSceneView && ctx.view().gpuSceneView->visibleMeshletCountBuffer)
-                ? framegraph::importBuffer(ctx.fg,
-                                           "ImportedVisibleMeshletCountBuffer",
-                                           ctx.view().gpuSceneView->visibleMeshletCountBuffer.get(),
-                                           framegraph::BufferType::eStorageBuffer)
-                : FrameGraphResource {};
+        const auto cameraBlock     = ctx.bb.get<CameraData>().cameraBlock.fgResource;
+        const auto hzbTexture      = ctx.data.tryGet(kResKey_HzbTexture);
+        const auto hzbDone         = ctx.data.tryGet(kResKey_HzbGenerated);
+        const auto instanceBuffer  = ctx.data.tryGet(kResKey_InstanceBuffer);
+        const auto meshTableBuffer = ctx.data.tryGet(kResKey_MeshTableBuffer);
+        const auto meshletBuffer   = ctx.data.tryGet(kResKey_MeshletsBuffer);
+        const auto modelBuffer     = ctx.data.tryGet(kResKey_TransformBuffer);
+        const auto visibleMeshlets = ctx.data.tryGet(kResKey_VisibleMeshletBuffer);
+        const auto visibleCount    = ctx.data.tryGet(kResKey_VisibleMeshletCountBuffer);
 
-        const auto data       = ctx.fg.addCallbackPass<PassData>(
+        const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
             [cameraBlock,
              meshletCullDone,
@@ -117,7 +80,7 @@ namespace vultra
                 {
                     pd.meshletCullDone = builder.read(pd.meshletCullDone,
                                                       framegraph::BindingInfo {
-                                                          .location      = {.set = 0, .binding = 31},
+                                                          .location      = {},
                                                           .pipelineStage = framegraph::PipelineStage::eTransfer,
                                                       });
                 }
@@ -142,7 +105,7 @@ namespace vultra
                 {
                     pd.hzbDone = builder.read(pd.hzbDone,
                                               framegraph::BindingInfo {
-                                                  .location      = {.set = 0, .binding = 31},
+                                                  .location      = {},
                                                   .pipelineStage = framegraph::PipelineStage::eTransfer,
                                               });
                 }
@@ -186,10 +149,10 @@ namespace vultra
                 if (visibleMeshlets)
                 {
                     pd.visibleMeshlets = builder.write(visibleMeshlets,
-                                                      framegraph::BindingInfo {
-                                                          .location      = {.set = 0, .binding = 6},
-                                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                      });
+                                                       framegraph::BindingInfo {
+                                                           .location      = {.set = 0, .binding = 6},
+                                                           .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                       });
                 }
 
                 if (visibleCount)
@@ -201,16 +164,16 @@ namespace vultra
                                                    });
                 }
 
-                pd.token = builder.create<framegraph::FrameGraphBuffer>(
-                    "MeshletHiZCullToken",
-                    {
-                        .type     = framegraph::BufferType::eStorageBuffer,
-                        .stride   = sizeof(uint32_t),
-                        .capacity = 1,
-                    });
+                pd.token =
+                    builder.create<framegraph::FrameGraphBuffer>("MeshletHiZCullToken",
+                                                                 {
+                                                                     .type     = framegraph::BufferType::eStorageBuffer,
+                                                                     .stride   = sizeof(uint32_t),
+                                                                     .capacity = 1,
+                                                                 });
                 pd.token = builder.write(pd.token,
                                          framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 31},
+                                             .location      = {},
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },
@@ -232,15 +195,10 @@ namespace vultra
                     return;
                 }
 
-                const bool hasRequiredSceneBuffers = gpuSceneDb->instanceBuffer && gpuSceneDb->meshTableBuffer &&
-                                                     gpuSceneDb->transformBuffer && gpuSceneDb->resources &&
-                                                     gpuSceneDb->resources->meshlets.meshletsBuffer;
-                const bool hasRequiredViewBuffers = gpuSceneView->visibleMeshletBuffer &&
-                                                    gpuSceneView->visibleMeshletCountBuffer;
-                const bool hasRequiredFgResources = pd.camera && pd.hzb && pd.instances && pd.meshTable && pd.meshlets &&
-                                                   pd.models && pd.visibleMeshlets && pd.visibleCount;
+                const bool hasRequiredFgResources = pd.camera && pd.hzb && pd.instances && pd.meshTable &&
+                                                    pd.meshlets && pd.models && pd.visibleMeshlets && pd.visibleCount;
 
-                if (!hasRequiredSceneBuffers || !hasRequiredViewBuffers || !hasRequiredFgResources)
+                if (!hasRequiredFgResources)
                 {
                     rc.clear();
                     return;
@@ -253,7 +211,7 @@ namespace vultra
                     return;
 
                 HiZCullPushConstants pc {};
-                pc.drawCount   = gpuSceneView->maxVisibleMeshlets;
+                pc.drawCount = gpuSceneView->maxVisibleMeshlets;
                 if (pd.hzb)
                 {
                     if (auto* hzbTexture = resources.get<framegraph::FrameGraphTexture>(pd.hzb).texture; hzbTexture)
@@ -264,9 +222,10 @@ namespace vultra
                     rc.clear();
                     return;
                 }
-                // MoltenVK currently hits a GPU page fault in the HiZ sampling path.
-                // Keep the pass active but disable occlusion on Apple until the path is fully validated.
-                // TODO(vk-moltenvk-hiz): re-enable HiZ on Apple after queue-safe sampling validation and capture repro is fixed.
+            // MoltenVK currently hits a GPU page fault in the HiZ sampling path.
+            // Keep the pass active but disable occlusion on Apple until the path is fully validated.
+            // TODO(vk-moltenvk-hiz): re-enable HiZ on Apple after queue-safe sampling validation and capture repro is
+            // fixed.
 #if defined(__APPLE__)
                 pc.enableHiZ = 0u;
 #else
@@ -281,6 +240,7 @@ namespace vultra
                 }
 
                 rc.cb.bindPipeline(*pipeline);
+                rc.bindDescriptorSets(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
                 rc.cb.dispatch({(pc.drawCount + 63u) / 64u, 1u, 1u});
                 rc.clear();

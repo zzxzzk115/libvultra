@@ -198,8 +198,8 @@ namespace vultra
             frameDebuggerService->captureStart();
         }
 
-        World& world = worldService.world();
-        const auto cams = camService.cameras();
+        World&     world = worldService.world();
+        const auto cams  = camService.cameras();
 
         // Asset upload/update stage (main thread)
         assetService.update(m_FrameCounter);
@@ -252,11 +252,8 @@ namespace vultra
             if (m_EnableGpuDrivenMeshletPipeline)
             {
                 m_GpuSceneViewBack.beginFrame(m_GpuSceneDatabaseBack, resource::GpuSceneBuildMode::eGpuDriven);
-                m_GpuSceneViewBack.prepareGpuDrivenBuffers(
-                    rd,
-                    static_cast<uint32_t>(m_GpuSceneDatabaseBack.instances.size()),
-                    maxMeshletDraws,
-                    maxMeshletDraws);
+                m_GpuSceneViewBack.setGpuDrivenCaps(
+                    static_cast<uint32_t>(m_GpuSceneDatabaseBack.instances.size()), maxMeshletDraws, maxMeshletDraws);
             }
             else
             {
@@ -390,8 +387,8 @@ namespace vultra
 
         for (const size_t cameraIdx : cameraOrder)
         {
-            const auto& cam = cams[cameraIdx];
-            auto renderer = resolveRenderer(cam);
+            const auto& cam      = cams[cameraIdx];
+            auto        renderer = resolveRenderer(cam);
             if (!renderer)
                 continue;
 

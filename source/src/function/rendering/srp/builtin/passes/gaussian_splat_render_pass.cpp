@@ -127,7 +127,7 @@ namespace vultra
                 {
                     pd.buildToken = builder.read(pd.buildToken,
                                                  framegraph::BindingInfo {
-                                                     .location      = {.set = 0, .binding = 31},
+                                                     .location      = {},
                                                      .pipelineStage = framegraph::PipelineStage::eTransfer,
                                                  });
                 }

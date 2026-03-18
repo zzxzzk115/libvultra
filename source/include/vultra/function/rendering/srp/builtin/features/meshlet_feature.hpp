@@ -22,9 +22,9 @@ namespace vultra
 
     private:
         CoarseInstanceCullPass* m_CoarseInstanceCullPass {nullptr};
-        MeshletCullPass*   m_MeshletCullPass {nullptr};
-        BuildIndirectPass* m_BuildIndirectPass {nullptr};
-        DrawsetBuildPass* m_DrawsetBuildPass {nullptr};
-        DepthPrePass* m_DepthPrePass {nullptr};
+        MeshletCullPass*        m_MeshletCullPass {nullptr};
+        BuildIndirectPass*      m_BuildIndirectPass {nullptr};
+        DrawsetBuildPass*       m_DrawsetBuildPass {nullptr};
+        DepthPrePass*           m_DepthPrePass {nullptr};
     };
 } // namespace vultra

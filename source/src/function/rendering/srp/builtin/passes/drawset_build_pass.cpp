@@ -1,9 +1,10 @@
-#include "vultra/function/rendering/srp/builtin/passes/drawset_build_pass.hpp"
 
+#include "vultra/function/rendering/srp/builtin/passes/drawset_build_pass.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
+#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -12,6 +13,8 @@ namespace vultra
     namespace
     {
         constexpr auto PASS_NAME = "DrawsetBuildPass";
+
+        constexpr uint32_t kRenderQueueCount = 8u;
 
         struct DrawsetBuildPushConstants
         {
@@ -24,15 +27,30 @@ namespace vultra
 
     FrameGraphResource DrawsetBuildPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource buildToken)
     {
+        // Get persistent resources from ctx.data before PassData
+        auto drawBuffer     = ctx.data.get(kResKey_DrawBuffer);
+        auto meshletsBuffer = ctx.data.get(kResKey_MeshletsBuffer);
+        auto indirectBuffer = ctx.data.tryGet(kResKey_IndirectBuffer);
+        auto drawSetBuffer  = ctx.data.tryGet(kResKey_DrawSetBuffer);
+
         struct PassData
         {
             FrameGraphResource buildToken;
             FrameGraphResource token;
+
+            FrameGraphResource drawBuffer;
+            FrameGraphResource meshletsBuffer;
+            FrameGraphResource indirectBuffer;
+            FrameGraphResource drawSetBuffer;
         };
+
+        auto*      gpuSceneView = ctx.view().gpuSceneView;
+        const auto maxDraws     = gpuSceneView ? gpuSceneView->maxDraws : 0u;
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [buildToken](FrameGraph::Builder& builder, PassData& pd) {
+            [buildToken, drawBuffer, meshletsBuffer, indirectBuffer, drawSetBuffer, maxDraws](FrameGraph::Builder& builder,
+                                                                                               PassData&            pd) {
                 PASS_SETUP_ZONE;
 
                 pd.buildToken = buildToken;
@@ -40,25 +58,71 @@ namespace vultra
                 {
                     pd.buildToken = builder.read(pd.buildToken,
                                                  framegraph::BindingInfo {
-                                                     .location      = {.set = 0, .binding = 31},
+                                                     .location      = {},
                                                      .pipelineStage = framegraph::PipelineStage::eTransfer,
                                                  });
                 }
 
-                pd.token = builder.create<framegraph::FrameGraphBuffer>("DrawsetBuildToken",
-                                                                        {
-                                                                            .type =
-                                                                                framegraph::BufferType::eStorageBuffer,
-                                                                            .stride = sizeof(uint32_t),
-                                                                            .capacity = 1,
-                                                                        });
+                if (drawBuffer)
+                {
+                    pd.drawBuffer = builder.read(drawBuffer,
+                                                 framegraph::BindingInfo {
+                                                     .location      = {.set = 0, .binding = 1},
+                                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                 });
+                }
+                if (meshletsBuffer)
+                {
+                    pd.meshletsBuffer = builder.read(meshletsBuffer,
+                                                     framegraph::BindingInfo {
+                                                         .location      = {.set = 0, .binding = 4},
+                                                         .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                     });
+                }
+                pd.indirectBuffer = indirectBuffer ?
+                    indirectBuffer :
+                    builder.create<framegraph::FrameGraphBuffer>("DrawIndirectBuffer",
+                                                                 {
+                                                                     .type             = framegraph::BufferType::eDrawIndirectBuffer,
+                                                                     .stride           = sizeof(rhi::DrawIndirectCommand),
+                                                                     .capacity         = std::max<uint32_t>(1u, maxDraws * kRenderQueueCount),
+                                                                     .drawIndirectType = rhi::DrawIndirectType::eNonIndexed,
+                                                                 });
+                pd.indirectBuffer = builder.write(pd.indirectBuffer,
+                                                  framegraph::BindingInfo {
+                                                      .location      = {.set = 0, .binding = 12},
+                                                      .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                  });
+                pd.drawSetBuffer = drawSetBuffer ?
+                    drawSetBuffer :
+                    builder.create<framegraph::FrameGraphBuffer>("DrawSetBuffer",
+                                                                 {
+                                                                     .type       = framegraph::BufferType::eStorageBuffer,
+                                                                     .stride     = sizeof(uint32_t),
+                                                                     .capacity   = kRenderQueueCount,
+                                                                     .extraUsage = vk::BufferUsageFlagBits::eIndirectBuffer,
+                                                                 });
+                pd.drawSetBuffer = builder.write(pd.drawSetBuffer,
+                                                 framegraph::BindingInfo {
+                                                     .location      = {.set = 0, .binding = 30},
+                                                     .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                 });
+
+                // Token for pass completion
+                pd.token =
+                    builder.create<framegraph::FrameGraphBuffer>("DrawsetBuildToken",
+                                                                 {
+                                                                     .type     = framegraph::BufferType::eStorageBuffer,
+                                                                     .stride   = sizeof(uint32_t),
+                                                                     .capacity = 1,
+                                                                 });
                 pd.token = builder.write(pd.token,
                                          framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 31},
+                                             .location      = {},
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },
-            [this](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+            [this](const PassData& /*pd*/, FrameGraphPassResources& /*resources*/, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -77,32 +141,11 @@ namespace vultra
                     return;
                 }
 
-                gpuSceneView->ensureDrawSetBuffer(rc.rd);
-
-                if (!gpuSceneView->drawBuffer || !gpuSceneView->drawSetBuffer ||
-                    !gpuSceneView->indirectBuffer.has_value() ||
-                    !gpuSceneDatabase->resources->meshlets.meshletsBuffer)
-                    return;
-
-                auto variantHash = getShaderLib().computeVariantHash(
-                    "drawset_build.comp", vshadersystem::ShaderStage::eComp, {});
+                auto variantHash =
+                    getShaderLib().computeVariantHash("drawset_build.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
                     return;
-
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->drawSetBuffer);
-                rhi::prepareForComputing(rc.cb, gpuSceneView->indirectBuffer.value());
-                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
-
-                rc.resourceSet[0] = {
-                    {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawBuffer.get()}},
-                    {4,
-                     rhi::bindings::StorageBuffer {
-                         .buffer = gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
-                    {12, rhi::bindings::StorageBuffer {.buffer = &gpuSceneView->indirectBuffer.value()}},
-                    {30, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawSetBuffer.get()}},
-                };
 
                 DrawsetBuildPushConstants pc {};
                 pc.maxDraws = gpuSceneView->maxDraws;
@@ -118,6 +161,11 @@ namespace vultra
                 rc.cb.dispatch({1u, 1u, 1u});
                 rc.clear();
             });
+
+        ctx.data.set(kResKey_DrawBuffer, data.drawBuffer);
+        ctx.data.set(kResKey_MeshletsBuffer, data.meshletsBuffer);
+        ctx.data.set(kResKey_IndirectBuffer, data.indirectBuffer);
+        ctx.data.set(kResKey_DrawSetBuffer, data.drawSetBuffer);
 
         return data.token;
     }

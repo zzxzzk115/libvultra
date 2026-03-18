@@ -165,11 +165,15 @@ namespace vultra
             [[nodiscard]] StorageBuffer createStorageBuffer(vk::DeviceSize size,
                                                             AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] StorageBuffer createStorageBufferWithUsage(vk::DeviceSize      size,
+            [[nodiscard]] StorageBuffer createStorageBufferWithUsage(vk::DeviceSize       size,
                                                                      vk::BufferUsageFlags extraUsage,
                                                                      AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] DrawIndirectBuffer createDrawIndirectBuffer(uint32_t         commandCount,
+                                                                      DrawIndirectType type,
+                                                                      AllocationHints = AllocationHints::eNone) const;
+
+            [[nodiscard]] DrawIndirectBuffer createDrawIndirectBuffer(vk::DeviceSize   size,
                                                                       DrawIndirectType type,
                                                                       AllocationHints = AllocationHints::eNone) const;
 

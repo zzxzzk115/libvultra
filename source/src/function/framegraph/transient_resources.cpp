@@ -32,7 +32,7 @@ namespace std
         auto operator()(const vultra::framegraph::FrameGraphBuffer::Desc& desc) const noexcept
         {
             size_t h {0};
-            hashCombine(h, desc.type, desc.dataSize());
+            hashCombine(h, desc.type, desc.dataSize(), static_cast<VkFlags>(desc.extraUsage), desc.drawIndirectType);
             return h;
         }
     };
@@ -175,8 +175,20 @@ namespace vultra
                             std::make_unique<rhi::UniformBuffer>(m_RenderDevice.createUniformBuffer(desc.dataSize()));
                         break;
                     case eStorageBuffer:
-                        buffer =
-                            std::make_unique<rhi::StorageBuffer>(m_RenderDevice.createStorageBuffer(desc.dataSize()));
+                        buffer = std::make_unique<rhi::StorageBuffer>(
+                            desc.extraUsage ?
+                                m_RenderDevice.createStorageBufferWithUsage(desc.dataSize(), desc.extraUsage) :
+                                m_RenderDevice.createStorageBuffer(desc.dataSize()));
+                        break;
+
+                    case eDrawIndirectBuffer:
+                        buffer = std::make_unique<rhi::DrawIndirectBuffer>(m_RenderDevice.createDrawIndirectBuffer(
+                            static_cast<uint32_t>(desc.capacity), desc.drawIndirectType));
+                        break;
+
+                    case eDispatchIndirectBuffer:
+                        buffer = std::make_unique<rhi::StorageBuffer>(m_RenderDevice.createStorageBufferWithUsage(
+                            desc.dataSize(), vk::BufferUsageFlagBits::eIndirectBuffer | desc.extraUsage));
                         break;
 
                     case eVertexBuffer:

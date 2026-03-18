@@ -14,9 +14,19 @@ namespace vultra
 
     FrameGraphResource TestPass::addPass(FrameGraphBuildContext& ctx)
     {
+        auto drawBuffer            = ctx.data.get(kResKey_DrawBuffer);
+        auto indirectBuffer        = ctx.data.tryGet(kResKey_IndirectBuffer);
+        auto drawSetBuffer         = ctx.data.tryGet(kResKey_DrawSetBuffer);
+        auto meshletsBuffer        = ctx.data.get(kResKey_MeshletsBuffer);
+        auto materialTableBuffer   = ctx.data.get(kResKey_MaterialTableBuffer);
+        auto materialParamsBuffer  = ctx.data.get(kResKey_MaterialParametersBuffer);
+        auto meshletVertexBuffer   = ctx.data.get(kResKey_MeshletVertexBuffer);
+        auto meshletTriangleBuffer = ctx.data.get(kResKey_MeshletTriangleBuffer);
+
         const auto resolution  = ctx.view().extent;
         const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
-        const auto depthPre = ctx.data.tryGet(kResKey_DepthTexture);
+        const auto depthPre    = ctx.data.tryGet(kResKey_DepthTexture);
+        const auto buildDone   = ctx.data.get(kResKey_MeshletBuildDone);
 
         struct PassData
         {
@@ -24,25 +34,121 @@ namespace vultra
             FrameGraphResource buildDone;
             FrameGraphResource depth;
             FrameGraphResource color;
+
+            FrameGraphResource drawBuffer;
+            FrameGraphResource indirectBuffer;
+            FrameGraphResource drawSetBuffer;
+
+            FrameGraphResource meshletsBuffer;
+            FrameGraphResource materialTableBuffer;
+            FrameGraphResource materialParamsBuffer;
+            FrameGraphResource meshletVertexBuffer;
+            FrameGraphResource meshletTriangleBuffer;
         };
+
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
             [resolution,
              cameraBlock,
              depthPre,
-             buildDone = ctx.data.get(kResKey_MeshletBuildDone)](FrameGraph::Builder& builder, PassData& data) {
+             buildDone,
+             drawBuffer,
+             indirectBuffer,
+             drawSetBuffer,
+             meshletsBuffer,
+             materialTableBuffer,
+             materialParamsBuffer,
+             meshletVertexBuffer,
+             meshletTriangleBuffer](FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
-                data.camera    = builder.read(cameraBlock,
+                data.camera = builder.read(cameraBlock,
                                            framegraph::BindingInfo {
-                                                  .location      = {.set = 0, .binding = 0},
-                                                  .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                               .location      = {.set = 0, .binding = 0},
+                                               .pipelineStage = framegraph::PipelineStage::eVertexShader,
                                            });
+
                 data.buildDone = builder.read(buildDone,
                                               framegraph::BindingInfo {
-                                                  .location      = {.set = 0, .binding = 31},
+                                                  .location      = {},
                                                   .pipelineStage = framegraph::PipelineStage::eTransfer,
                                               });
+
+                if (drawBuffer)
+                {
+                    data.drawBuffer = builder.read(drawBuffer,
+                                                   framegraph::BindingInfo {
+                                                       .location      = {.set = 0, .binding = 1},
+                                                       .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                                   });
+                }
+
+                if (indirectBuffer)
+                {
+                    data.indirectBuffer = builder.read(indirectBuffer,
+                                                       framegraph::BindingInfo {
+                                                           .location      = {},
+                                                           .pipelineStage = framegraph::PipelineStage::eDrawIndirect,
+                                                       });
+                }
+
+                if (drawSetBuffer)
+                {
+                    data.drawSetBuffer = builder.read(drawSetBuffer,
+                                                      framegraph::BindingInfo {
+                                                          .location      = {},
+                                                          .pipelineStage = framegraph::PipelineStage::eDrawIndirect,
+                                                      });
+                }
+
+                if (meshletsBuffer)
+                {
+                    data.meshletsBuffer = builder.read(meshletsBuffer,
+                                                       framegraph::BindingInfo {
+                                                           .location      = {.set = 0, .binding = 4},
+                                                           .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                                       });
+                }
+
+                if (materialTableBuffer)
+                {
+                    data.materialTableBuffer =
+                        builder.read(materialTableBuffer,
+                                     framegraph::BindingInfo {
+                                         .location      = {.set = 0, .binding = 8},
+                                         .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                     });
+                }
+
+                if (materialParamsBuffer)
+                {
+                    data.materialParamsBuffer =
+                        builder.read(materialParamsBuffer,
+                                     framegraph::BindingInfo {
+                                         .location      = {.set = 0, .binding = 9},
+                                         .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                     });
+                }
+
+                if (meshletVertexBuffer)
+                {
+                    data.meshletVertexBuffer =
+                        builder.read(meshletVertexBuffer,
+                                     framegraph::BindingInfo {
+                                         .location      = {.set = 0, .binding = 10},
+                                         .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                     });
+                }
+
+                if (meshletTriangleBuffer)
+                {
+                    data.meshletTriangleBuffer =
+                        builder.read(meshletTriangleBuffer,
+                                     framegraph::BindingInfo {
+                                         .location      = {.set = 0, .binding = 11},
+                                         .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                     });
+                }
 
                 data.color = builder.create<framegraph::FrameGraphTexture>(
                     "Test Pass Color",
@@ -60,7 +166,6 @@ namespace vultra
 
                 if (depthPre)
                 {
-                    // Consume depth from meshlet depth prepass; do not clear so shading pass can early-reject.
                     data.depth = builder.write(depthPre,
                                                framegraph::Attachment {
                                                    .imageAspect = rhi::ImageAspect::eDepth,
@@ -71,8 +176,8 @@ namespace vultra
                     data.depth = builder.create<framegraph::FrameGraphTexture>(
                         "Test Pass Depth",
                         {
-                            .extent = resolution,
-                            .format = rhi::PixelFormat::eDepth32F,
+                            .extent     = resolution,
+                            .format     = rhi::PixelFormat::eDepth32F,
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
                                           rhi::ImageUsage::eTransferSrc,
                         });
@@ -94,62 +199,46 @@ namespace vultra
 
                 const auto* renderWorld      = rc.view().renderWorld;
                 const auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
-                const auto* gpuSceneView     = rc.view().gpuSceneView;
-                auto*       cameraUbo        = resources.get<framegraph::FrameGraphBuffer>(data.camera).buffer;
+                const auto* gpuSceneView     = rc.view().gpuSceneView; // temporary fallback for queueStride only
 
                 assert(rc.framebufferInfo().has_value());
                 const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
                 if (!pipeline)
                     return;
 
+                auto* indirectBuf = data.indirectBuffer ?
+                                        reinterpret_cast<rhi::DrawIndirectBuffer*>(
+                                            resources.get<framegraph::FrameGraphBuffer>(data.indirectBuffer).buffer) :
+                                        nullptr;
+
+                auto* drawSetBuf = data.drawSetBuffer ?
+                                       resources.get<framegraph::FrameGraphBuffer>(data.drawSetBuffer).buffer :
+                                       nullptr;
+
+                const bool supportsDrawIndirectCount = HasFlagValues(
+                    rc.rd.getFeatureReport().flags, vultra::rhi::RenderDeviceFeatureReportFlagBits::eDrawIndirectCount);
+
+                if (indirectBuf)
+                {
+                    rhi::prepareForDrawingIndirect(rc.cb, *indirectBuf);
+                }
+                if (drawSetBuf && supportsDrawIndirectCount)
+                {
+                    rhi::prepareForDrawingIndirect(rc.cb, *drawSetBuf);
+                }
+
                 rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
 
-                const bool canDrawMeshlets = renderWorld && gpuSceneDatabase && gpuSceneView && cameraUbo &&
-                                             gpuSceneView->drawBuffer && gpuSceneDatabase->resources &&
-                                             gpuSceneDatabase->resources->materialTableBuffer &&
-                                             gpuSceneDatabase->resources->materialParams.gpu &&
-                                             gpuSceneDatabase->resources->meshlets.meshletsBuffer &&
-                                             gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer &&
-                                             gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer &&
-                                             gpuSceneView->indirectBuffer.has_value() &&
-                                             gpuSceneView->getDispatchableDrawCount() > 0;
+                const bool canDrawMeshlets = renderWorld && gpuSceneDatabase && data.drawBuffer &&
+                                             data.meshletsBuffer && data.materialTableBuffer &&
+                                             data.materialParamsBuffer && data.meshletVertexBuffer &&
+                                             data.meshletTriangleBuffer && indirectBuf;
 
                 if (canDrawMeshlets)
                 {
-                    constexpr uint32_t kRenderQueueOpaque = 0u;
-                    constexpr uint32_t kRenderQueueAlphaMask = 1u;
+                    constexpr uint32_t kRenderQueueOpaque      = 0u;
+                    constexpr uint32_t kRenderQueueAlphaMask   = 1u;
                     constexpr uint32_t kRenderQueueTransparent = 2u;
-
-                    rhi::prepareForComputing(rc.cb, *gpuSceneView->drawBuffer);
-                    rhi::prepareForDrawingIndirect(rc.cb, gpuSceneView->indirectBuffer.value());
-                    if (gpuSceneView->drawSetBuffer)
-                        rhi::prepareForDrawingIndirect(rc.cb, *gpuSceneView->drawSetBuffer);
-                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
-                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->materialParams.gpu);
-                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletsBuffer);
-                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer);
-                    rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer);
-
-                    rc.resourceSet[0] = {
-                        {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
-                        {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->drawBuffer.get()}},
-                        {4,
-                         rhi::bindings::StorageBuffer {.buffer =
-                                                           gpuSceneDatabase->resources->meshlets.meshletsBuffer.get()}},
-                        {8,
-                         rhi::bindings::StorageBuffer {.buffer =
-                                                           gpuSceneDatabase->resources->materialTableBuffer.get()}},
-                        {9,
-                         rhi::bindings::StorageBuffer {
-                             .buffer = gpuSceneDatabase->resources->materialParams.gpu.get()}},
-
-                        {10,
-                         rhi::bindings::StorageBuffer {
-                             .buffer = gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer.get()}},
-                        {11,
-                         rhi::bindings::StorageBuffer {
-                             .buffer = gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer.get()}},
-                    };
 
                     rc.resourceSet[3] = {
                         {4,
@@ -161,7 +250,8 @@ namespace vultra
 
                     rc.bindDescriptorSets(*pipeline);
 
-                    const uint32_t queueStride = gpuSceneView->maxDraws;
+                    // TODO: move this metadata fully out of gpuSceneView as well.
+                    const uint32_t queueStride = gpuSceneView ? gpuSceneView->maxDraws : 0u;
                     if (queueStride == 0u)
                     {
                         rc.cb.endRendering();
@@ -169,23 +259,21 @@ namespace vultra
                         return;
                     }
 
-                    const bool useIndirectCount =
-                        gpuSceneView->drawSetBuffer &&
-                        HasFlagValues(rc.rd.getFeatureReport().flags,
-                                      vultra::rhi::RenderDeviceFeatureReportFlagBits::eDrawIndirectCount);
+                    const bool useIndirectCount = drawSetBuf && supportsDrawIndirectCount;
 
                     const auto drawQueueWindow = [&](uint32_t queueId) {
                         const uint32_t firstCommand = queueId * queueStride;
 
                         if (useIndirectCount)
                         {
-                            rc.cb.drawIndirectCount(rhi::DrawIndirectInfo {
-                                                        .buffer       = &gpuSceneView->indirectBuffer.value(),
-                                                        .firstCommand = firstCommand,
-                                                        .commandCount = queueStride,
-                                                    },
-                                                    *gpuSceneView->drawSetBuffer,
-                                                    queueId * sizeof(uint32_t));
+                            rc.cb.drawIndirectCount(
+                                rhi::DrawIndirectInfo {
+                                    .buffer       = indirectBuf,
+                                    .firstCommand = firstCommand,
+                                    .commandCount = queueStride,
+                                },
+                                *drawSetBuf,
+                                queueId * sizeof(uint32_t));
                             return;
                         }
 
@@ -193,7 +281,7 @@ namespace vultra
                                           vultra::rhi::RenderDeviceFeatureReportFlagBits::eMultiDraw))
                         {
                             rc.cb.drawIndirect(rhi::DrawIndirectInfo {
-                                .buffer       = &gpuSceneView->indirectBuffer.value(),
+                                .buffer       = indirectBuf,
                                 .firstCommand = firstCommand,
                                 .commandCount = queueStride,
                             });
@@ -203,7 +291,7 @@ namespace vultra
                             for (uint32_t i = 0; i < queueStride; ++i)
                             {
                                 rc.cb.drawIndirect(rhi::DrawIndirectInfo {
-                                    .buffer       = &gpuSceneView->indirectBuffer.value(),
+                                    .buffer       = indirectBuf,
                                     .firstCommand = firstCommand + i,
                                     .commandCount = 1,
                                 });
@@ -211,7 +299,6 @@ namespace vultra
                         }
                     };
 
-                    // Opaque queues first, transparent queue later.
                     drawQueueWindow(kRenderQueueOpaque);
                     drawQueueWindow(kRenderQueueAlphaMask);
                     drawQueueWindow(kRenderQueueTransparent);
