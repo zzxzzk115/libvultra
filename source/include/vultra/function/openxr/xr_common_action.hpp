@@ -2,6 +2,8 @@
 
 #include "vultra/function/openxr/xr_input.hpp"
 
+#include <memory>
+
 namespace vultra
 {
     namespace openxr
