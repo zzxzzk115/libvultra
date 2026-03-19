@@ -21,7 +21,7 @@ namespace vultra
         bool onShouldClose() const override;
 
         virtual std::string_view                 demoWindowTitle() const { return "Vultra Demo App"; }
-        virtual bool                             demoWindowResizable() const { return false; }
+        virtual bool                             demoWindowResizable() const { return true; }
         virtual rhi::RenderDeviceFeatureFlagBits demoRenderDeviceFeatureFlag() const
         {
             return rhi::RenderDeviceFeatureFlagBits::eNormal;

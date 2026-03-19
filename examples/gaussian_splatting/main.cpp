@@ -22,7 +22,7 @@ protected:
         auto& world = worldService.world();
         sceneService.instantiateScene(world, "res://scenes/3dgs_example.vmanifest");
 
-        VULTRA_CLIENT_INFO("Loaded world from scene: \"res://scenes/3dgs_example.vmanifest\"");
+        VULTRA_CLIENT_INFO("Loaded world from scene manifest: \"res://scenes/3dgs_example.vmanifest\"");
     }
 };
 

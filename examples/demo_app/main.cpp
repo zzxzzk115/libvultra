@@ -22,7 +22,7 @@ protected:
         auto& world = worldService.world();
         auto  root  = sceneService.instantiateScene(world, "res://scenes/test.vmanifest");
 
-        VULTRA_CLIENT_INFO("Loaded world from scene: \"res://scenes/test.vmanifest\"");
+        VULTRA_CLIENT_INFO("Loaded world from scene manifest: \"res://scenes/test.vmanifest\"");
 
         auto& registry = world.registry();
         registry.view<NameComponent, TransformComponent>().each(

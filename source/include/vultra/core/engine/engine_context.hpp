@@ -35,7 +35,7 @@ namespace vultra
                 std::string title {"Vultra App"};
                 uint32_t    width {1024};
                 uint32_t    height {768};
-                bool        resizable {false};
+                bool        resizable {true};
                 bool        fullscreen {false};
             } window;
 

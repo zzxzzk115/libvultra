@@ -5,15 +5,17 @@
 namespace vultra
 {
     GPUCameraBlock::GPUCameraBlock(const rhi::Extent2D extent, const RenderCamera& camera) :
-        projection(camera.projection), inverseProjection(camera.inverseProjection), view(camera.view),
-        inverseView(camera.inverseView), viewProjection(camera.viewProjection),
-        inverseViewProjection(camera.inverseViewProjection),
-        resolution(static_cast<float>(extent.width),
-                   static_cast<float>(extent.height),
-                   extent.width > 0 ? 1.0f / static_cast<float>(extent.width) : 0.0f,
-                   extent.height > 0 ? 1.0f / static_cast<float>(extent.height) : 0.0f),
-        zNear(camera.zNear), zFar(camera.zFar), fovY(camera.fovY)
+        view(camera.view), inverseView(camera.inverseView), zNear(camera.zNear), zFar(camera.zFar), fovY(camera.fovY)
     {
+        // recalculate projection to avoid aspect ratio issues
+        const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+        projection         = glm::perspective(camera.fovY, aspect, camera.zNear, camera.zFar);
+        projection[1][1] *= -1.0f; // Vulkan clip space adjustment
+        inverseProjection     = glm::inverse(projection);
+        viewProjection        = projection * view;
+        inverseViewProjection = glm::inverse(viewProjection);
+        resolution            = glm::vec4(extent.width, extent.height, 1.0f / extent.width, 1.0f / extent.height);
+
         for (int i = 0; i < 6; ++i)
             frustumPlanes[i] = camera.frustumPlanes[i];
     }

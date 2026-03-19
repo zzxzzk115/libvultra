@@ -4,6 +4,7 @@ root = 1
 
 [assets]
 mesh.Sponza = "res://models/Sponza/Sponza.gltf"
+mesh.DamagedHelmet = "res://models/DamagedHelmet/DamagedHelmet.gltf"
 gaussian_splat.Lizard = "res://models/hornedlizard.spz"
 
 [node id=1 name="Root" parent=0]
@@ -23,3 +24,10 @@ MeshComponent/mesh = @mesh.Sponza
 ; TransformComponent/position = (0, 0, -1)
 ; TransformComponent/rotation = (0, 0, 0, 1)
 ; GaussianSplatComponent/gaussianSplat = @gaussian_splat.Lizard
+
+[node id=4 name="DamagedHelmet" parent=1]
+NameComponent/name = "DamagedHelmet"
+TransformComponent/position = (0, 1, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.3, 0.3, 0.3)
+MeshComponent/mesh = @mesh.DamagedHelmet
