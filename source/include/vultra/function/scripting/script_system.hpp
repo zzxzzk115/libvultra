@@ -4,7 +4,7 @@
 #include "vultra/function/scripting/script_context.hpp"
 #include "vultra/function/scripting/script_engine.hpp"
 #include "vultra/function/scripting/script_instance.hpp"
-#include "vultra/function/scripting/services/script_service.hpp"
+#include "vultra/function/services/script_service.hpp"
 
 #include <entt/entity/entity.hpp>
 
