@@ -1,0 +1,256 @@
+#include "vultra/function/scripting/script_system.hpp"
+
+#include "vultra/core/base/common_context.hpp"
+#include "vultra/core/services/input_service.hpp"
+#include "vultra/function/scripting/script_binding.hpp"
+#include "vultra/function/scripting/script_types.hpp"
+#include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/services/world_service.hpp"
+#include "vultra/function/world/components/script_component.hpp"
+#include "vultra/function/world/world.hpp"
+
+namespace vultra
+{
+    World* ScriptContext::world() const { return worldService ? &worldService->world() : nullptr; }
+
+    bool ScriptContext::isValid(entt::entity e) const
+    {
+        auto* w = world();
+        return w && w->registry().valid(e);
+    }
+
+    bool ScriptSystem::onInit()
+    {
+        VULTRA_CORE_INFO("[ScriptSystem] Initializing...");
+
+        if (!m_Engine.init())
+            return false;
+
+        m_ScriptContext.worldService = ctx().services.tryGet<IWorldService>();
+        m_ScriptContext.inputService = ctx().services.tryGet<IInputService>();
+        m_ScriptContext.assetService = ctx().services.tryGet<IAssetService>();
+
+        VULTRA_CORE_TRACE("[ScriptSystem] Registering script bindings...");
+        registerScriptBindings(m_Engine.lua(), m_ScriptContext);
+
+        VULTRA_CORE_TRACE("[ScriptSystem] Providing IScriptService...");
+        ctx().services.provide<IScriptService>(this);
+
+        VULTRA_CORE_INFO("[ScriptSystem] Initialized!");
+        return true;
+    }
+
+    void ScriptSystem::onShutdown()
+    {
+        VULTRA_CORE_INFO("[ScriptSystem] Shutting down");
+        destroyAllInstances();
+        m_Engine.shutdown();
+    }
+
+    void ScriptSystem::onUpdate(fsec dt)
+    {
+        syncInstances();
+
+        auto* worldSvc = ctx().services.tryGet<IWorldService>();
+        if (!worldSvc)
+            return;
+
+        auto& reg = worldSvc->world().registry();
+
+        for (auto it = m_Instances.begin(); it != m_Instances.end();)
+        {
+            const entt::entity e = it->first;
+            if (!reg.valid(e) || !reg.all_of<ScriptComponent>(e))
+            {
+                it = m_Instances.erase(it);
+                continue;
+            }
+
+            const auto& sc   = reg.get<ScriptComponent>(e);
+            auto&       inst = *it->second;
+            inst.enabled     = sc.enabled;
+
+            if (inst.enabled)
+                updateInstance(e, inst, dt.count());
+
+            ++it;
+        }
+    }
+
+    void ScriptSystem::syncInstances()
+    {
+        auto* worldSvc = ctx().services.tryGet<IWorldService>();
+        if (!worldSvc)
+            return;
+
+        auto& reg  = worldSvc->world().registry();
+        auto  view = reg.view<ScriptComponent>();
+
+        for (auto e : view)
+        {
+            const auto& sc = view.get<ScriptComponent>(e);
+            auto        it = m_Instances.find(e);
+
+            if (sc.scriptUri.empty())
+            {
+                if (it != m_Instances.end())
+                    destroyScriptInstance(e);
+                continue;
+            }
+
+            if (it == m_Instances.end())
+            {
+                createOrReloadInstance(e, sc, true);
+                continue;
+            }
+
+            if (it->second && it->second->loadedUri != sc.scriptUri)
+                createOrReloadInstance(e, sc, true);
+        }
+    }
+
+    bool ScriptSystem::createOrReloadInstance(entt::entity e, const ScriptComponent& sc, bool callCreate)
+    {
+        auto* assetSvc = ctx().services.tryGet<IAssetService>();
+        if (!assetSvc)
+            return false;
+
+        const std::string path = assetSvc->resolveUri(sc.scriptUri);
+        if (path.empty())
+        {
+            VULTRA_CORE_ERROR("[ScriptSystem] Failed to resolve script uri: {}", sc.scriptUri);
+            return false;
+        }
+
+        auto existing = m_Instances.find(e);
+        if (existing != m_Instances.end())
+            destroyScriptInstance(e);
+
+        auto& lua  = m_Engine.lua();
+        auto  inst = std::make_unique<ScriptInstance>(sol::environment(lua, sol::create, lua.globals()));
+
+        inst->entity      = e;
+        inst->loadedUri   = sc.scriptUri;
+        inst->enabled     = sc.enabled;
+        inst->env["self"] = ScriptEntity {e};
+
+        auto execRes = lua.safe_script_file(path, inst->env, &sol::script_pass_on_error);
+        if (!execRes.valid())
+        {
+            sol::error err = execRes;
+            VULTRA_CORE_ERROR("[ScriptSystem] Lua runtime error ({}): {}", sc.scriptUri, err.what());
+            return false;
+        }
+
+        inst->onCreate  = inst->env["OnCreate"];
+        inst->onDestroy = inst->env["OnDestroy"];
+        inst->onUpdate  = inst->env["OnUpdate"];
+        inst->valid     = true;
+
+        if (callCreate && inst->onCreate.valid())
+        {
+            sol::protected_function_result r = inst->onCreate(inst->env["self"]);
+            if (!r.valid())
+            {
+                sol::error err = r;
+                VULTRA_CORE_ERROR("[ScriptSystem] OnCreate error ({}): {}", sc.scriptUri, err.what());
+            }
+        }
+
+        m_Instances[e] = std::move(inst);
+        return true;
+    }
+
+    void ScriptSystem::updateInstance(entt::entity e, ScriptInstance& inst, float dt)
+    {
+        if (!inst.valid || !inst.onUpdate.valid())
+            return;
+
+        sol::protected_function_result r = inst.onUpdate(inst.env["self"], dt);
+        if (!r.valid())
+        {
+            sol::error err = r;
+            VULTRA_CORE_ERROR("[ScriptSystem] OnUpdate error for entity {}: {}", static_cast<uint32_t>(e), err.what());
+        }
+    }
+
+    bool ScriptSystem::reloadEntityScript(entt::entity e)
+    {
+        auto* worldSvc = ctx().services.tryGet<IWorldService>();
+        if (!worldSvc)
+            return false;
+
+        auto& reg = worldSvc->world().registry();
+        if (!reg.valid(e) || !reg.all_of<ScriptComponent>(e))
+            return false;
+
+        return createOrReloadInstance(e, reg.get<ScriptComponent>(e), true);
+    }
+
+    bool ScriptSystem::reloadAllScripts()
+    {
+        auto* worldSvc = ctx().services.tryGet<IWorldService>();
+        if (!worldSvc)
+            return false;
+
+        auto& reg  = worldSvc->world().registry();
+        auto  view = reg.view<ScriptComponent>();
+
+        bool ok = true;
+        for (auto e : view)
+            ok &= createOrReloadInstance(e, view.get<ScriptComponent>(e), true);
+
+        return ok;
+    }
+
+    bool ScriptSystem::hasScriptInstance(entt::entity e) const { return m_Instances.find(e) != m_Instances.end(); }
+
+    void ScriptSystem::destroyScriptInstance(entt::entity e)
+    {
+        auto it = m_Instances.find(e);
+        if (it == m_Instances.end())
+            return;
+
+        auto& inst = *it->second;
+        if (inst.onDestroy.valid())
+        {
+            sol::protected_function_result r = inst.onDestroy(inst.env["self"]);
+            if (!r.valid())
+            {
+                sol::error err = r;
+                VULTRA_CORE_ERROR("[ScriptSystem] OnDestroy error: {}", err.what());
+            }
+        }
+
+        m_Instances.erase(it);
+    }
+
+    void ScriptSystem::destroyAllInstances()
+    {
+        for (auto& [e, inst] : m_Instances)
+        {
+            if (inst && inst->onDestroy.valid())
+            {
+                sol::protected_function_result r = inst->onDestroy(inst->env["self"]);
+                if (!r.valid())
+                {
+                    sol::error err = r;
+                    VULTRA_CORE_ERROR("[ScriptSystem] OnDestroy error: {}", err.what());
+                }
+            }
+        }
+        m_Instances.clear();
+    }
+
+    bool ScriptSystem::runString(std::string_view code)
+    {
+        auto result = m_Engine.lua().safe_script(std::string(code), &sol::script_pass_on_error);
+        if (!result.valid())
+        {
+            sol::error err = result;
+            VULTRA_CORE_ERROR("[ScriptSystem] runString error: {}", err.what());
+            return false;
+        }
+        return true;
+    }
+} // namespace vultra

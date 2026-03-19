@@ -5,6 +5,7 @@
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
+#include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 
 #include <entt/entt.hpp>
@@ -35,5 +36,10 @@ namespace vultra
         entt::meta_factory<GaussianSplatComponent>()
             .type("GaussianSplatComponent"_hs)
             .data<&GaussianSplatComponent::gaussianSplat>("gaussianSplat"_hs);
+
+        entt::meta_factory<ScriptComponent>()
+            .type("ScriptComponent"_hs)
+            .data<&ScriptComponent::scriptUri>("scriptUri"_hs)
+            .data<&ScriptComponent::enabled>("enabled"_hs);
     }
 } // namespace vultra

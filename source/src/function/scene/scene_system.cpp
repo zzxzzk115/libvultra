@@ -7,18 +7,19 @@
 #include "vultra/function/scene/vscn_reader.hpp"
 #include "vultra/function/scene/vscn_writer.hpp"
 #include "vultra/function/services/asset_service.hpp"
-#include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
+#include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/prefab_instance_component.hpp"
+#include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 
 #include <entt/entt.hpp>
 
-#include <cctype>
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <sstream>
 #include <unordered_set>
@@ -105,10 +106,10 @@ namespace vultra
         return s;
     }
 
-    bool try_resolve_asset_ref_to_uuid(IAssetService* assetService,
+    bool try_resolve_asset_ref_to_uuid(IAssetService*                                      assetService,
                                        const std::unordered_map<std::string, std::string>& assets,
-                                       std::string_view raw,
-                                       CoreUUID& out)
+                                       std::string_view                                    raw,
+                                       CoreUUID&                                           out)
     {
         if (!assetService)
             return false;
@@ -179,9 +180,9 @@ namespace vultra
         return false;
     }
 
-    entt::meta_any SceneSystem::parseValueToAny(entt::meta_type expected,
-                                                 std::string_view raw,
-                                                 const std::unordered_map<std::string, std::string>& assets) const
+    entt::meta_any SceneSystem::parseValueToAny(entt::meta_type                                     expected,
+                                                std::string_view                                    raw,
+                                                const std::unordered_map<std::string, std::string>& assets) const
     {
         // Strings: "..."
         std::string t = trim_copy(raw);
@@ -309,6 +310,7 @@ namespace vultra
                                                                   {"position", "rotation", "scale"});
         m_ComponentRegistry.registerComponent<MeshComponent>("MeshComponent", {"mesh"});
         m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});
+        m_ComponentRegistry.registerComponent<ScriptComponent>("ScriptComponent", {"scriptUri", "enabled"});
 
         m_AssetService = &ctx().services.require<IAssetService>();
 
@@ -359,9 +361,9 @@ namespace vultra
         }
     }
 
-    void SceneSystem::applyProperties(entt::registry& reg,
-                                      entt::entity e,
-                                      const SceneNode& node,
+    void SceneSystem::applyProperties(entt::registry&                                     reg,
+                                      entt::entity                                        e,
+                                      const SceneNode&                                    node,
                                       const std::unordered_map<std::string, std::string>& assets)
     {
         for (const auto& prop : node.properties)
@@ -392,21 +394,19 @@ namespace vultra
 
             if (!data.set(instance, value))
             {
-                VULTRA_CORE_WARN("[SceneSystem] Failed to apply property {} / {} = '{}'",
-                                 prop.component,
-                                 prop.field,
-                                 prop.value);
+                VULTRA_CORE_WARN(
+                    "[SceneSystem] Failed to apply property {} / {} = '{}'", prop.component, prop.field, prop.value);
             }
         }
     }
 
-    SceneSystem::InstantiateNodeResult SceneSystem::instantiateNodeR(
-        World& world,
-        const SceneNode& node,
-        entt::entity parent,
-        const std::filesystem::path& baseDir,
-        bool allowPrefab,
-        const std::unordered_map<std::string, std::string>& assets)
+    SceneSystem::InstantiateNodeResult
+    SceneSystem::instantiateNodeR(World&                                              world,
+                                  const SceneNode&                                    node,
+                                  entt::entity                                        parent,
+                                  const std::filesystem::path&                        baseDir,
+                                  bool                                                allowPrefab,
+                                  const std::unordered_map<std::string, std::string>& assets)
     {
         entt::registry& reg = world.registry();
 
@@ -611,73 +611,73 @@ namespace vultra
     {
         entt::registry& reg = world.registry();
 
-            if (root == entt::null)
+        if (root == entt::null)
+        {
+            // Find a root entity (parent == null). If multiple, synthesize a root.
+            std::vector<entt::entity> roots;
+            auto                      view = reg.view<HierarchyComponent>();
+            for (auto e : view)
             {
-                // Find a root entity (parent == null). If multiple, synthesize a root.
-                std::vector<entt::entity> roots;
-                auto                      view = reg.view<HierarchyComponent>();
-                for (auto e : view)
+                auto& h = view.get<HierarchyComponent>(e);
+                if (h.parent == entt::null)
+                    roots.push_back(e);
+            }
+
+            if (roots.empty())
+                return false;
+
+            if (roots.size() == 1)
+            {
+                root = roots[0];
+            }
+            else
+            {
+                // Synthetic root (does not modify world).
+                SceneDocument doc;
+                doc.version = 1;
+                doc.root    = std::make_unique<SceneNode>();
+                // Deterministic synthetic root UUID to keep file stable.
+                doc.root->id   = CoreUUIDHelper::getFromName(std::string("SceneRoot:") + std::string(uri));
+                doc.root->name = "SceneRoot";
+
+                // Deterministic root ordering (by UUID).
+                for (auto r : roots)
                 {
-                    auto& h = view.get<HierarchyComponent>(e);
-                    if (h.parent == entt::null)
-                        roots.push_back(e);
+                    if (!reg.all_of<IDComponent>(r) || !reg.get<IDComponent>(r).uuid.valid())
+                    {
+                        VULTRA_CORE_ERROR("[SceneSystem] Scene save: root entity missing IDComponent.uuid");
+                        return false;
+                    }
                 }
+                std::sort(roots.begin(), roots.end(), [&](entt::entity a, entt::entity b) {
+                    const auto& ua = reg.get<IDComponent>(a).uuid;
+                    const auto& ub = reg.get<IDComponent>(b).uuid;
+                    return ua.toString() < ub.toString();
+                });
 
-        if (roots.empty())
-            return false;
-
-        if (roots.size() == 1)
-        {
-            root = roots[0];
-        }
-        else
-        {
-                    // Synthetic root (does not modify world).
-                    SceneDocument doc;
-                    doc.version    = 1;
-                    doc.root       = std::make_unique<SceneNode>();
-                    // Deterministic synthetic root UUID to keep file stable.
-                    doc.root->id   = CoreUUIDHelper::getFromName(std::string("SceneRoot:") + std::string(uri));
-                    doc.root->name = "SceneRoot";
-
-                    // Deterministic root ordering (by UUID).
-                    for (auto r : roots)
+                for (auto r : roots)
+                {
+                    auto nodeResult = buildNodeFromWorldR(world, r);
+                    if (!nodeResult)
                     {
-                        if (!reg.all_of<IDComponent>(r) || !reg.get<IDComponent>(r).uuid.valid())
-                        {
-                            VULTRA_CORE_ERROR("[SceneSystem] Scene save: root entity missing IDComponent.uuid");
-                            return false;
-                        }
+                        VULTRA_CORE_ERROR("[SceneSystem] {}", std::move(nodeResult).error());
+                        return false;
                     }
-                    std::sort(roots.begin(), roots.end(), [&](entt::entity a, entt::entity b) {
-                        const auto& ua = reg.get<IDComponent>(a).uuid;
-                        const auto& ub = reg.get<IDComponent>(b).uuid;
-                        return ua.toString() < ub.toString();
-                    });
-
-                    for (auto r : roots)
-                    {
-                        auto nodeResult = buildNodeFromWorldR(world, r);
-                        if (!nodeResult)
-                        {
-                            VULTRA_CORE_ERROR("[SceneSystem] {}", std::move(nodeResult).error());
-                            return false;
-                        }
-                        doc.root->children.push_back(std::move(nodeResult).value());
-                    }
-                    return saveSceneSync(uri, doc);
-        }
+                    doc.root->children.push_back(std::move(nodeResult).value());
+                }
+                return saveSceneSync(uri, doc);
+            }
         }
 
-            SceneDocument doc;
-            doc.version = 1;
+        SceneDocument doc;
+        doc.version         = 1;
         auto rootNodeResult = buildNodeFromWorldR(world, root);
         if (!rootNodeResult)
         {
             VULTRA_CORE_ERROR("[SceneSystem] {}", std::move(rootNodeResult).error());
             return false;
         }
-            doc.root    = std::move(rootNodeResult).value();
-            return saveSceneSync(uri, doc);
+        doc.root = std::move(rootNodeResult).value();
+        return saveSceneSync(uri, doc);
     }
 } // namespace vultra

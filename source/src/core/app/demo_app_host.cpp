@@ -15,6 +15,7 @@
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
 #include "vultra/function/resource/gpu_resource_system.hpp"
 #include "vultra/function/scene/scene_system.hpp"
+#include "vultra/function/scripting/script_system.hpp"
 #include "vultra/function/world/world_system.hpp"
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -108,6 +109,7 @@ namespace vultra
         engine.emplaceSubsystem<GpuResourceSystem>();
         engine.emplaceSubsystem<AssetSystem>();
         engine.emplaceSubsystem<SceneSystem>();
+        engine.emplaceSubsystem<ScriptSystem>();
 
         onConfigureDemo(engine);
     }

@@ -6,6 +6,7 @@ root = 1
 mesh.Sponza = "res://models/Sponza/Sponza.gltf"
 mesh.DamagedHelmet = "res://models/DamagedHelmet/DamagedHelmet.gltf"
 gaussian_splat.Lizard = "res://models/hornedlizard.spz"
+script.test_move = "res://scripts/test_move.lua"
 
 [node id=1 name="Root" parent=0]
 NameComponent/name = "Root"
@@ -31,3 +32,5 @@ TransformComponent/position = (0, 1, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (0.3, 0.3, 0.3)
 MeshComponent/mesh = @mesh.DamagedHelmet
+ScriptComponent/scriptUri = @script.test_move
+ScriptComponent/enabled = true

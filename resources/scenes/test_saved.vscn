@@ -21,4 +21,6 @@ TransformComponent/position = (0, 1, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (0.3, 0.3, 0.3)
 MeshComponent/mesh = "206733c1f880193cbd1dd2b65e0d0cbd"
+ScriptComponent/scriptUri = "res://scripts/test_move.lua"
+ScriptComponent/enabled = true
 
