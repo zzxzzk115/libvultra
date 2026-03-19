@@ -1,14 +1,14 @@
 Y = 0
 
 function OnCreate(self)
-	print("test_move.lua attached")
-	Y = self:get_position().y
+    print("test_move.lua attached")
+    Y = self.transform.position.y
 end
 
 function OnUpdate(self, dt)
-	-- move up and down
-	local pos = self:get_position()
-	local time = os.clock()
-	pos.y = Y + math.sin(time) * 0.1
-	self:set_position(pos)
+    local t = self.transform
+    local pos = t.position
+    local time = os.clock()
+    pos.y = Y + math.sin(time) * 0.1
+    t.position = pos
 end

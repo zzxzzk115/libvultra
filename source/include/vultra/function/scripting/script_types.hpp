@@ -9,6 +9,11 @@ namespace vultra
         entt::entity value {entt::null};
     };
 
+    struct ScriptTransformRef
+    {
+        entt::entity entity {entt::null};
+    };
+
     struct ScriptVec2
     {
         float x {0.0f};
