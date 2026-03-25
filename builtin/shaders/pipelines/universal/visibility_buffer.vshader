@@ -13,11 +13,7 @@ VTX_HAS_UV0 : bool permute
 #define VULTRA_DECLARE_MESHLET_TRIANGLE_BUFFER
 #include "include/common/gpu_scene.glsl"
 
-#if VTX_HAS_UV0
 layout(location = 0) out vec2 v_TexCoord0;
-#else
-	#error "VTX_HAS_UV0 must be defined for visibility buffer shader"
-#endif
 layout(location = 1) flat out uint v_DrawID;
 layout(location = 2) flat out uint v_TriangleDataIndex;
 
@@ -40,7 +36,7 @@ void main()
 #if VTX_HAS_UV0
     v_TexCoord0 = v.texCoord0;
 #else
-	#error "VTX_HAS_UV0 must be defined for visibility buffer shader"
+    v_TexCoord0 = vec2(0.0);
 #endif
 
     vec4 worldPos4 = d.model * vec4(v.position, 1.0);
@@ -51,11 +47,7 @@ void main()
 }
 
 [frag]
-#if VTX_HAS_UV0
 layout(location = 0) in vec2 v_TexCoord0;
-#else
-	#error "VTX_HAS_UV0 must be defined for visibility buffer shader"
-#endif
 layout(location = 1) flat in uint v_DrawID;
 layout(location = 2) flat in uint v_TriangleDataIndex;
 
