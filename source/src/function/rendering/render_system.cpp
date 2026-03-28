@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <fstream>
 #include <numeric>
+#include <unordered_set>
 
 namespace vultra
 {
@@ -384,6 +385,7 @@ namespace vultra
 
         // TODO: TimeSystem, for now use 0
         const fsec dt {0};
+        static_cast<void>(dt);
 
         for (const size_t cameraIdx : cameraOrder)
         {
@@ -492,6 +494,47 @@ namespace vultra
                 rhi::prepareForAttachment(cb, *target, false);
                 imguiService->render(cb, fbInfo);
             }
+        }
+
+        const auto xrEyeViews = backendService.xrEyeViews();
+        if (imguiService && backendService.isXREnabled() && backendService.isXRMirrorEnabled() && !xrEyeViews.empty())
+        {
+            for (const auto& eyeView : xrEyeViews)
+            {
+                if (!eyeView.target || !eyeView.mirrorTarget)
+                    continue;
+
+                rhi::prepareForReading(cb, *eyeView.target);
+                cb.blit(*eyeView.target, *eyeView.mirrorTarget, vk::Filter::eLinear);
+            }
+
+            imguiService->begin();
+
+            std::unordered_set<Renderer*> imguiRenderers;
+            for (const size_t cameraIdx : cameraOrder)
+            {
+                auto renderer = resolveRenderer(cams[cameraIdx]);
+                if (!renderer || imguiRenderers.contains(renderer.get()))
+                    continue;
+                imguiRenderers.insert(renderer.get());
+                renderer->onImGui();
+            }
+
+            imguiService->end();
+
+            for (const auto& xrEyeView : xrEyeViews)
+            {
+                if (xrEyeView.mirrorTarget)
+                    rhi::prepareForReading(cb, *xrEyeView.mirrorTarget);
+            }
+
+            rhi::FramebufferInfo imguiFbInfo {
+                .area             = {.extent = defaultTarget.getExtent()},
+                .colorAttachments = {rhi::AttachmentInfo {.target = &defaultTarget}},
+            };
+
+            rhi::prepareForAttachment(cb, defaultTarget, false);
+            imguiService->render(cb, imguiFbInfo);
         }
 
         m_TransientResources->update();

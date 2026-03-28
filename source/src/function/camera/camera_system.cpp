@@ -109,17 +109,6 @@ namespace vultra
                     m_Cooked.push_back(std::move(cam));
                 }
 
-                // Add a mirror camera if XR mirror mode is on.
-                if (backendService && backendService->isXRMirrorEnabled())
-                {
-                    RenderCamera cam = srcCam;
-                    cam.viewIndex    = 0;
-                    cam.viewCount    = 1;
-                    cam.isXRView     = false;
-                    finalizeCamera(cam);
-                    m_Cooked.push_back(std::move(cam));
-                }
-
                 continue;
             }
 

@@ -9,6 +9,51 @@
 
 namespace vultra
 {
+    namespace
+    {
+        void ensureXrMirrorTargets(rhi::RenderDevice&                                      rd,
+                                   std::vector<rhi::Texture>&                              mirrorTargets,
+                                   const std::span<const IRenderBackendService::XREyeView> eyeViews)
+        {
+            if (eyeViews.empty())
+            {
+                mirrorTargets.clear();
+                return;
+            }
+
+            if (mirrorTargets.size() != eyeViews.size())
+                mirrorTargets.resize(eyeViews.size());
+
+            for (size_t eyeIndex = 0; eyeIndex < eyeViews.size(); ++eyeIndex)
+            {
+                const auto& eyeView = eyeViews[eyeIndex];
+                if (!eyeView.target)
+                    continue;
+
+                auto&      mirrorTarget = mirrorTargets[eyeIndex];
+                const bool recreate     = !mirrorTarget || mirrorTarget.getExtent().width != eyeView.extent.width ||
+                                      mirrorTarget.getExtent().height != eyeView.extent.height ||
+                                      mirrorTarget.getPixelFormat() != eyeView.target->getPixelFormat();
+                if (!recreate)
+                    continue;
+
+                mirrorTarget = rd.createTexture2D(eyeView.extent,
+                                                  eyeView.target->getPixelFormat(),
+                                                  1u,
+                                                  0u,
+                                                  rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled);
+                rd.setupSampler(mirrorTarget,
+                                rhi::SamplerInfo {
+                                    .magFilter    = rhi::TexelFilter::eLinear,
+                                    .minFilter    = rhi::TexelFilter::eLinear,
+                                    .addressModeS = rhi::SamplerAddressMode::eClampToEdge,
+                                    .addressModeT = rhi::SamplerAddressMode::eClampToEdge,
+                                    .addressModeR = rhi::SamplerAddressMode::eClampToEdge,
+                                });
+            }
+        }
+    } // namespace
+
     bool RenderBackendSystem::onInit()
     {
         VULTRA_CORE_INFO("[RenderBackendSystem] Initializing...");
@@ -66,6 +111,7 @@ namespace vultra
 
         m_ActiveCommandBuffer = nullptr;
         m_XREyeViews.clear();
+        m_XRMirrorTargets.clear();
         m_XRFrameActive  = false;
         m_XRShouldRender = false;
 
@@ -122,9 +168,21 @@ namespace vultra
                                 },
                                 0.1f,
                                 1000.0f),
-                            .extent = extent,
-                            .target = eyeTarget,
+                            .extent       = extent,
+                            .target       = eyeTarget,
+                            .mirrorTarget = nullptr,
                         });
+                    }
+
+                    if (m_XRMirrorEnabled)
+                    {
+                        ensureXrMirrorTargets(*m_RenderDevice, m_XRMirrorTargets, m_XREyeViews);
+                        for (size_t eyeIndex = 0; eyeIndex < m_XREyeViews.size() && eyeIndex < m_XRMirrorTargets.size();
+                             ++eyeIndex)
+                        {
+                            m_XREyeViews[eyeIndex].mirrorTarget =
+                                m_XRMirrorTargets[eyeIndex] ? &m_XRMirrorTargets[eyeIndex] : nullptr;
+                        }
                     }
                     break;
 
@@ -169,6 +227,8 @@ namespace vultra
     bool RenderBackendSystem::isXREnabled() const { return static_cast<bool>(m_XRBackend); }
 
     bool RenderBackendSystem::isXRMirrorEnabled() const { return m_XRMirrorEnabled; }
+
+    bool RenderBackendSystem::isExitRequested() const { return m_XRBackend && m_XRBackend->isExitRequested(); }
 
     std::span<const IRenderBackendService::XREyeView> RenderBackendSystem::xrEyeViews() const { return m_XREyeViews; }
 

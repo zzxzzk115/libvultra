@@ -16,6 +16,7 @@
 #include "vultra/function/resource/gpu_resource_system.hpp"
 #include "vultra/function/scene/scene_system.hpp"
 #include "vultra/function/scripting/script_system.hpp"
+#include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/world/world_system.hpp"
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -140,7 +141,8 @@ namespace vultra
 
     bool DemoAppHost::onShouldClose() const
     {
-        auto& window = engineCtx().services.require<IWindowService>().window();
-        return window.shouldClose();
+        auto& window               = engineCtx().services.require<IWindowService>().window();
+        auto* renderBackendService = engineCtx().services.tryGet<IRenderBackendService>();
+        return window.shouldClose() || (renderBackendService && renderBackendService->isExitRequested());
     }
 } // namespace vultra

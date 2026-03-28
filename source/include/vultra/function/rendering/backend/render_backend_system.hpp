@@ -28,6 +28,7 @@ namespace vultra
 
         bool                       isXREnabled() const override;
         bool                       isXRMirrorEnabled() const override;
+        bool                       isExitRequested() const override;
         std::span<const XREyeView> xrEyeViews() const override;
 
         void endFrame() override;
@@ -47,6 +48,7 @@ namespace vultra
         bool     m_XRMirrorEnabled {false};
         uint32_t m_XRSwapchainImageIndex {0};
 
-        std::vector<XREyeView> m_XREyeViews;
+        std::vector<XREyeView>    m_XREyeViews;
+        std::vector<rhi::Texture> m_XRMirrorTargets;
     };
 } // namespace vultra

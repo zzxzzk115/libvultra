@@ -22,6 +22,7 @@ namespace vultra
             glm::mat4     projection {1.0f};
             rhi::Extent2D extent {};
             rhi::Texture* target {nullptr};
+            rhi::Texture* mirrorTarget {nullptr};
         };
 
         SERVICE_REGISTER(IRenderBackendService)
@@ -40,6 +41,7 @@ namespace vultra
 
         virtual bool isXREnabled() const       = 0;
         virtual bool isXRMirrorEnabled() const = 0;
+        virtual bool isExitRequested() const   = 0;
 
         virtual std::span<const XREyeView> xrEyeViews() const = 0;
 

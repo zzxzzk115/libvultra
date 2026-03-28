@@ -157,6 +157,23 @@ namespace vultra
 #endif
     }
 
+    IImGuiService::TextureID ImGuiSystem::addTexture(const rhi::Texture& texture)
+    {
+        return reinterpret_cast<IImGuiService::TextureID>(ImGui_ImplVulkan_AddTexture(
+            texture.getSampler(), texture.getImageView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+    }
+
+    void ImGuiSystem::removeTexture(TextureID& textureID)
+    {
+        if (!textureID)
+            return;
+
+        auto& renderBackendService = ctx().services.require<IRenderBackendService>();
+        renderBackendService.renderDevice().waitIdle();
+        ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(textureID));
+        textureID = 0;
+    }
+
     void ImGuiSystem::processEvent(const os::GeneralWindowEvent& event)
     {
         ImGui_ImplSDL3_ProcessEvent(&event.internalEvent);

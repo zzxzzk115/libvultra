@@ -2,6 +2,10 @@
 
 #include "vultra/core/rhi/command_buffer.hpp"
 
+// NOLINTBEGIN
+#include <imgui.h>
+// NOLINTEND
+
 #include <vbase/service/service_registry.hpp>
 
 namespace vultra
@@ -11,9 +15,13 @@ namespace vultra
     public:
         SERVICE_REGISTER(IImGuiService);
 
-        virtual void begin()                                                          = 0;
-        virtual void render(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& info) = 0;
-        virtual void end()                                                            = 0;
-        virtual void postRender()                                                     = 0;
+        using TextureID = ImTextureID;
+
+        virtual void      begin()                                                          = 0;
+        virtual void      render(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& info) = 0;
+        virtual void      end()                                                            = 0;
+        virtual void      postRender()                                                     = 0;
+        virtual TextureID addTexture(const rhi::Texture& texture)                          = 0;
+        virtual void      removeTexture(TextureID& textureID)                              = 0;
     };
 } // namespace vultra
