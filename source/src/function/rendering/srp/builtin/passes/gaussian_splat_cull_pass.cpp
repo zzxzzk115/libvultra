@@ -133,6 +133,7 @@ namespace vultra
             const glm::vec4 viewCenter4 = camera.view * worldCenter;
             return glm::max(-viewCenter4.z, 1e-4f);
         }
+
     } // namespace
 
     FrameGraphResource GaussianSplatCullPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource buildToken)
@@ -227,9 +228,7 @@ namespace vultra
 
                 std::vector<SortedDraw> tileKeyDrawPairs;
                 tileKeyDrawPairs.reserve(drawCount);
-
                 static bool s_LoggedGaussianSplatCull = false;
-
                 const RenderCamera* camera = rc.view().camera;
                 const auto extent = rc.view().extent;
 
@@ -279,7 +278,6 @@ namespace vultra
                                      [](const SortedDraw& a, const SortedDraw& b) {
                                          if (a.tileKey != b.tileKey)
                                              return a.tileKey < b.tileKey;
-                                         // Within a tile, render farther splat draws first for more stable alpha compositing.
                                          if (a.depth != b.depth)
                                              return a.depth > b.depth;
                                          return a.drawId < b.drawId;

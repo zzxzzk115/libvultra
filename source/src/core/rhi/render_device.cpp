@@ -1423,6 +1423,9 @@ namespace vultra
                 VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
             };
 
+            // NVIDIA's vk_gaussian_splatting sorter backend (vrdx) uses push descriptors.
+            extensions.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+
             // === Feature structs ===
             vk::PhysicalDeviceFeatures2        deviceFeatures2 {};
             std::vector<vk::BaseOutStructure*> featureChain;

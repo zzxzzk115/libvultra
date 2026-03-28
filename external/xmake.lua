@@ -1,5 +1,5 @@
 add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, sdl3 = true, wchar32 = true}})
-add_requires("volk", "zlib")
+add_requires("zlib")
 
 target("renderdoc")
     -- https://xmake.io/zh/api/description/project-target.html#headeronly
@@ -40,6 +40,6 @@ target("vrdx")
     add_includedirs("vrdx/include", {public = true}) -- public: let other targets to auto include
     add_includedirs("vrdx/src/generated/", {public = true}) -- public: let other targets to auto include
     add_files("vrdx/**.cc")
-    add_packages("volk")
+    add_packages("vulkan-headers", {public = true})
 
 includes("vasset")

@@ -119,6 +119,7 @@ namespace vultra
         {
             friend class GraphicsPipeline;
             friend class RayTracingPipeline;
+            friend class RadixSorter;
             friend class vultra::ImGuiSystem;
             friend class openxr::XRHeadset;
 
