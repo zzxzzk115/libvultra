@@ -33,21 +33,27 @@ namespace vultra
     {
         struct PassData
         {
-            FrameGraphResource            camera;
-            FrameGraphResource            buildToken;
-            FrameGraphResource            token;
-            FrameGraphResource            depth;
-            GaussianSplatRendererSettings settings;
+            FrameGraphResource camera;
+            FrameGraphResource token;
+            FrameGraphResource depth;
         };
 
-        const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
-        const auto depthPre    = ctx.data.tryGet(kResKey_DepthTexture);
+        const auto                  cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
+        const auto                  depthPre    = ctx.data.tryGet(kResKey_DepthTexture);
+        const SortKeysPushConstants basePushConstants {
+            .totalPointCount      = 0u,
+            .maxOutputCount       = 0u,
+            .frustumDilation      = settings.frustumDilation,
+            .alphaCullThreshold   = settings.alphaCullThreshold,
+            .sizeCullingMinPixels = settings.sizeCullingMinPixels,
+            .splatScale           = settings.splatScale,
+            .maxAxisPixels        = settings.maxAxisPixels,
+        };
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [cameraBlock, buildToken, settings, depthPre](FrameGraph::Builder& builder, PassData& pd) {
+            [cameraBlock, buildToken, depthPre](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
-                pd.settings = settings;
 
                 pd.camera = builder.read(cameraBlock,
                                          framegraph::BindingInfo {
@@ -55,14 +61,13 @@ namespace vultra
                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                          });
 
-                pd.buildToken = buildToken;
-                if (pd.buildToken)
+                if (buildToken)
                 {
-                    pd.buildToken = builder.read(pd.buildToken,
-                                                 framegraph::BindingInfo {
-                                                     .location      = {},
-                                                     .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                 });
+                    builder.read(buildToken,
+                                 framegraph::BindingInfo {
+                                     .location      = {},
+                                     .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                 });
                 }
 
                 pd.depth = depthPre;
@@ -93,7 +98,7 @@ namespace vultra
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },
-            [this](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+            [this, basePushConstants](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -207,14 +212,9 @@ namespace vultra
                     }
                 }
 
-                SortKeysPushConstants pc {};
-                pc.totalPointCount      = totalPointCount;
-                pc.maxOutputCount       = totalPointCount;
-                pc.frustumDilation      = pd.settings.frustumDilation;
-                pc.alphaCullThreshold   = pd.settings.alphaCullThreshold;
-                pc.sizeCullingMinPixels = pd.settings.sizeCullingMinPixels;
-                pc.splatScale           = pd.settings.splatScale;
-                pc.maxAxisPixels        = pd.settings.maxAxisPixels;
+                SortKeysPushConstants pc = basePushConstants;
+                pc.totalPointCount       = totalPointCount;
+                pc.maxOutputCount        = totalPointCount;
 
                 {
                     RHI_GPU_ZONE(rc.cb, "GaussianSplatCullPass::Dist");

@@ -372,8 +372,9 @@ namespace vultra
             }
 
             vk::RenderingInfo renderingInfo {};
-            renderingInfo.renderArea           = static_cast<vk::Rect2D>(framebufferInfo.area);
-            renderingInfo.layerCount           = framebufferInfo.viewMask != 0u ? 1u : static_cast<uint32_t>(framebufferInfo.layers);
+            renderingInfo.renderArea = static_cast<vk::Rect2D>(framebufferInfo.area);
+            renderingInfo.layerCount =
+                framebufferInfo.viewMask != 0u ? 1u : static_cast<uint32_t>(framebufferInfo.layers);
             renderingInfo.viewMask             = framebufferInfo.viewMask;
             renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size());
             renderingInfo.pColorAttachments    = colorAttachments.data();
@@ -494,8 +495,9 @@ namespace vultra
             return *this;
         }
 
-        CommandBuffer&
-        CommandBuffer::drawIndirectCount(const DrawIndirectInfo& dii, const Buffer& countBuffer, const uint32_t countOffset)
+        CommandBuffer& CommandBuffer::drawIndirectCount(const DrawIndirectInfo& dii,
+                                                        const Buffer&           countBuffer,
+                                                        const uint32_t          countOffset)
         {
             assert(invariant(State::eRecording,
                              InvariantFlags::eValidGraphicsPipeline | InvariantFlags::eInsideRenderPass));

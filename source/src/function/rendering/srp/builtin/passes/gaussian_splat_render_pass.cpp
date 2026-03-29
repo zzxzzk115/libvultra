@@ -38,18 +38,12 @@ namespace vultra
     {
         struct PassData
         {
-            FrameGraphResource            camera;
-            FrameGraphResource            stereoCamera;
-            FrameGraphResource            buildToken;
-            FrameGraphResource            color;
-            FrameGraphResource            depthAccum;
-            FrameGraphResource            depthTransmittance;
-            FrameGraphResource            depth;
-            GaussianSplatRendererSettings settings;
-            bool                          needsSurfaceInfo {false};
-            bool                          useDepthTransmittance {false};
-            bool                          useSceneDepth {false};
-            bool                          useMultiview {false};
+            FrameGraphResource camera;
+            FrameGraphResource stereoCamera;
+            FrameGraphResource color;
+            FrameGraphResource depthAccum;
+            FrameGraphResource depthTransmittance;
+            FrameGraphResource depth;
         };
 
         const auto resolution                = ctx.view().extent;
@@ -57,8 +51,19 @@ namespace vultra
         const auto stereoCameraBlock         = ctx.bb.get<CameraData>().stereoCameraBlock.fgResource;
         const auto depthPre                  = ctx.data.tryGet(kResKey_DepthTexture);
         const bool useMultiview              = ctx.view().enableMultiview && ctx.view().multiviewCameraCount == 2u;
+        const bool useSceneDepth             = static_cast<bool>(depthPre);
         const bool supportsFragmentInterlock = HasFlagValues(
             ctx.rd.getFeatureReport().flags, rhi::RenderDeviceFeatureReportFlagBits::eFragmentShaderInterlock);
+        const bool useDepthTransmittance =
+            needsSurfaceInfo && supportsFragmentInterlock && settings.enableExactDepthTransmittance;
+        const RasterPushConstants basePushConstants {
+            .frustumDilation      = settings.frustumDilation,
+            .alphaCullThreshold   = settings.alphaCullThreshold,
+            .sizeCullingMinPixels = settings.sizeCullingMinPixels,
+            .splatScale           = settings.splatScale,
+            .maxAxisPixels        = settings.maxAxisPixels,
+            .depthIsoThreshold    = settings.depthIsoThreshold,
+        };
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
@@ -66,18 +71,12 @@ namespace vultra
              cameraBlock,
              stereoCameraBlock,
              resolution,
-             settings,
              depthPre,
-             supportsFragmentInterlock,
              needsSurfaceInfo,
-             useMultiview](FrameGraph::Builder& builder, PassData& pd) {
+             useMultiview,
+             useSceneDepth,
+             useDepthTransmittance](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
-                pd.settings         = settings;
-                pd.needsSurfaceInfo = needsSurfaceInfo;
-                pd.useDepthTransmittance =
-                    needsSurfaceInfo && supportsFragmentInterlock && settings.enableExactDepthTransmittance;
-                pd.useSceneDepth = static_cast<bool>(depthPre);
-                pd.useMultiview  = useMultiview;
 
                 pd.camera = builder.read(cameraBlock,
                                          framegraph::BindingInfo {
@@ -96,22 +95,21 @@ namespace vultra
                     }
                 }
 
-                pd.buildToken = buildToken;
-                if (pd.buildToken)
+                if (buildToken)
                 {
-                    pd.buildToken = builder.read(pd.buildToken,
-                                                 framegraph::BindingInfo {
-                                                     .location      = {},
-                                                     .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                 });
+                    builder.read(buildToken,
+                                 framegraph::BindingInfo {
+                                     .location      = {},
+                                     .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                 });
                 }
 
                 pd.color = builder.create<framegraph::FrameGraphTexture>(
                     "GaussianSplatColor",
                     {
                         .extent     = resolution,
-                        .layers     = useMultiview ? 2u : 0u,
                         .format     = kColorFormat,
+                        .layers     = useMultiview ? 2u : 0u,
                         .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                     });
                 pd.color = builder.write(pd.color,
@@ -121,14 +119,14 @@ namespace vultra
                                              .clearValue  = framegraph::ClearValue::eTransparentBlack,
                                          });
 
-                if (pd.useDepthTransmittance)
+                if (useDepthTransmittance)
                 {
                     pd.depthTransmittance = builder.create<framegraph::FrameGraphTexture>(
                         "GaussianSplatDepthTransmittance",
                         {
                             .extent = resolution,
-                            .layers = useMultiview ? 2u : 0u,
                             .format = kDepthTransmittanceFormat,
+                            .layers = useMultiview ? 2u : 0u,
                             .usageFlags =
                                 rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst,
                         });
@@ -140,14 +138,14 @@ namespace vultra
                                           .imageAspect = rhi::ImageAspect::eColor,
                                       });
                 }
-                else if (pd.needsSurfaceInfo)
+                else if (needsSurfaceInfo)
                 {
                     pd.depthAccum = builder.create<framegraph::FrameGraphTexture>(
                         "GaussianSplatDepthAccum",
                         {
                             .extent     = resolution,
-                            .layers     = useMultiview ? 2u : 0u,
                             .format     = kDepthAccumFormat,
+                            .layers     = useMultiview ? 2u : 0u,
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                         });
                     pd.depthAccum = builder.write(pd.depthAccum,
@@ -158,7 +156,7 @@ namespace vultra
                                                   });
                 }
 
-                if (pd.useSceneDepth)
+                if (useSceneDepth)
                 {
                     pd.depth = builder.write(depthPre,
                                              framegraph::Attachment {
@@ -166,7 +164,8 @@ namespace vultra
                                              });
                 }
             },
-            [this](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+            [this, needsSurfaceInfo, useDepthTransmittance, useSceneDepth, useMultiview, basePushConstants](
+                const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
                 setRenderDevice(rc.rd);
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
@@ -176,10 +175,6 @@ namespace vultra
                 auto* cameraUbo        = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
                 auto* stereoCameraUbo =
                     pd.stereoCamera ? resources.get<framegraph::FrameGraphBuffer>(pd.stereoCamera).buffer : nullptr;
-                const bool useDepthTransmittance = pd.depthTransmittance != FrameGraphResource {};
-                const bool needsSurfaceInfo      = pd.needsSurfaceInfo;
-                const bool useSceneDepth         = pd.useSceneDepth;
-                const bool useMultiview          = pd.useMultiview;
                 if (useDepthTransmittance)
                 {
                     auto* depthTransmittanceTexture =
@@ -284,13 +279,7 @@ namespace vultra
                             };
                         }
                         rc.bindDescriptorSets(*pipeline);
-                        RasterPushConstants pc {};
-                        pc.frustumDilation      = pd.settings.frustumDilation;
-                        pc.alphaCullThreshold   = pd.settings.alphaCullThreshold;
-                        pc.sizeCullingMinPixels = pd.settings.sizeCullingMinPixels;
-                        pc.splatScale           = pd.settings.splatScale;
-                        pc.maxAxisPixels        = pd.settings.maxAxisPixels;
-                        pc.depthIsoThreshold    = pd.settings.depthIsoThreshold;
+                        const RasterPushConstants pc = basePushConstants;
                         rc.cb.pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pc);
                         rc.cb.drawIndirect(rhi::DrawIndirectInfo {
                             .buffer       = &gpuSceneView->gaussianSplatIndirectBuffer.value(),
