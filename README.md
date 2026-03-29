@@ -11,6 +11,8 @@
         <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_linux.yaml?branch=master&label=Build-Linux&logo=github" /></a>
     <a href="https://github.com/zzxzzk115/libvultra/actions" alt="Build-macOS">
         <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_macos.yaml?branch=master&label=Build-macOS&logo=github" /></a>
+    <a href="https://github.com/zzxzzk115/libvultra/actions" alt="Build-Android">
+        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_android.yaml?branch=master&label=Build-Android&logo=github" /></a>
     <a href="https://github.com/zzxzzk115/libvultra/issues" alt="GitHub Issues">
         <img src="https://img.shields.io/github/issues/zzxzzk115/libvultra"></a>
     <a href="https://www.codefactor.io/repository/github/zzxzzk115/libvultra"><img src="https://www.codefactor.io/repository/github/zzxzzk115/libvultra/badge" alt="CodeFactor" /></a>
@@ -42,6 +44,7 @@ Prerequisites:
 - Git
 - XMake
 - Vulkan SDK
+- Android SDK + NDK if Android
 - Visual Studio with MSVC if Windows
 - GCC or Clang if Linux/Unix
 - XCode with GCC or Apple Clang if macOS
@@ -59,6 +62,12 @@ Step-by-Step:
   ```bash
   cd libvultra
   git submodule update --init --recursive
+  xmake -vD
+  ```
+
+- Build for Android:
+  ```bash
+  xmake f -p android --ndk=/path/to/Android/Sdk/ndk/30.0.14904198 --libvultra_build_examples=n --libvultra_build_tests=n
   xmake -vD
   ```
 

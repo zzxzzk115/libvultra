@@ -168,15 +168,15 @@ namespace vultra
             void popDebugGroup() const;
 
         private:
-            vk::Device      m_Device {VK_NULL_HANDLE};
-            vk::CommandPool m_CommandPool {VK_NULL_HANDLE};
+            vk::Device      m_Device {nullptr};
+            vk::CommandPool m_CommandPool {nullptr};
 
             State m_State {State::eInvalid};
 
-            vk::CommandBuffer m_Handle {VK_NULL_HANDLE};
+            vk::CommandBuffer m_Handle {nullptr};
             TracyVkCtx        m_TracyContext {nullptr};
 
-            vk::Fence m_Fence {VK_NULL_HANDLE};
+            vk::Fence m_Fence {nullptr};
 
             DescriptorSetAllocator m_DescriptorSetAllocator;
             DescriptorSetCache     m_DescriptorSetCache;

@@ -21,18 +21,18 @@ namespace vultra
                 const XrPosef& getGazePose() const { return m_GazePose; }
 
             private:
-                XrInstance m_XrInstance = nullptr;
-                XrSession  m_Session    = nullptr;
+                XrInstance m_XrInstance = XR_NULL_HANDLE;
+                XrSession  m_Session    = XR_NULL_HANDLE;
 
                 XrPath m_InteractionProfilePath;
                 XrPath m_GazePosePath;
 
-                XrSpace m_GazeActionSpace;
+                XrSpace m_GazeActionSpace {XR_NULL_HANDLE};
 
                 XrPosef m_GazePose {};
 
-                XrActionSet m_GamePlayActionSet = nullptr;
-                XrAction    m_UserIntentAction  = nullptr;
+                XrActionSet m_GamePlayActionSet = XR_NULL_HANDLE;
+                XrAction    m_UserIntentAction  = XR_NULL_HANDLE;
             };
         } // namespace ext
     } // namespace openxr

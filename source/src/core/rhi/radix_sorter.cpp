@@ -16,7 +16,7 @@ namespace vultra
         struct RadixSorter::Impl
         {
             uint32_t                        maxElementCount {0};
-            VrdxSorter                      sorter {VK_NULL_HANDLE};
+            VrdxSorter                      sorter {nullptr};
             RadixSorterStorageRequirements  storageRequirements {};
             RadixSorterStorageRequirements  keyValueStorageRequirements {};
         };
@@ -36,7 +36,7 @@ namespace vultra
             createInfo.pipelineCache  = static_cast<VkPipelineCache>(rd.m_PipelineCache);
 
             vrdxCreateSorter(&createInfo, &impl->sorter);
-            assert(impl->sorter != VK_NULL_HANDLE);
+            assert(impl->sorter != nullptr);
 
             VrdxSorterStorageRequirements storageRequirements {};
             vrdxGetSorterStorageRequirements(impl->sorter, maxElementCount, &storageRequirements);
@@ -55,16 +55,16 @@ namespace vultra
 
         RadixSorter::~RadixSorter()
         {
-            if (m_Impl && m_Impl->sorter != VK_NULL_HANDLE)
+            if (m_Impl && m_Impl->sorter != nullptr)
             {
                 vrdxDestroySorter(m_Impl->sorter);
-                m_Impl->sorter = VK_NULL_HANDLE;
+                m_Impl->sorter = nullptr;
             }
         }
 
         RadixSorter& RadixSorter::operator=(RadixSorter&&) noexcept = default;
 
-        RadixSorter::operator bool() const { return m_Impl && m_Impl->sorter != VK_NULL_HANDLE; }
+        RadixSorter::operator bool() const { return m_Impl && m_Impl->sorter != nullptr; }
 
         uint32_t RadixSorter::getMaxElementCount() const { return m_Impl ? m_Impl->maxElementCount : 0u; }
 

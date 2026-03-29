@@ -75,7 +75,7 @@ namespace vultra
 
             vk::Image getSwapchainImage(size_t swapchainImageIndex) const
             {
-                return m_SwapchainImages[swapchainImageIndex].image;
+                return vk::Image {m_SwapchainImages[swapchainImageIndex].image};
             }
 
         private:
@@ -86,9 +86,9 @@ namespace vultra
             std::vector<glm::mat4> m_EyeViewMatrices;
             std::vector<XrFovf>    m_EyeFOVs;
 
-            XrSession      m_Session {nullptr};
+            XrSession      m_Session {XR_NULL_HANDLE};
             XrSessionState m_SessionState {XR_SESSION_STATE_UNKNOWN};
-            XrSpace        m_Space {nullptr};
+            XrSpace        m_Space {XR_NULL_HANDLE};
             XrFrameState   m_FrameState {};
             XrViewState    m_ViewState {};
 
@@ -96,7 +96,7 @@ namespace vultra
             std::vector<XrView>                           m_EyePoses;
             std::vector<XrCompositionLayerProjectionView> m_EyeRenderInfos;
 
-            XrSwapchain                             m_Swapchain {nullptr};
+            XrSwapchain                             m_Swapchain {XR_NULL_HANDLE};
             std::vector<XrSwapchainImageVulkan2KHR> m_SwapchainImages;
 
             std::vector<StereoRenderTargetView> m_SwapchainStereoRenderTargetViews;

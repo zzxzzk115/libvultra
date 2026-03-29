@@ -7,6 +7,10 @@ set_version("0.1.0")
 -- set language version: C++ 23
 set_languages("cxx23")
 
+if is_plat("android") then
+    set_toolchains("@ndk", {sdkver = "26"})
+end
+
 -- root ?
 local is_root = (os.projectdir() == os.scriptdir())
 set_config("root", is_root)
@@ -14,13 +18,13 @@ set_config("project_dir", os.scriptdir())
 
 -- global options
 option("libvultra_build_examples") -- build examples?
-    set_default(true)
+    set_default(not is_plat("android"))
     set_showmenu(true)
     set_description("Enable libvultra examples")
 option_end()
 
 option("libvultra_build_tests") -- build tests?
-    set_default(true)
+    set_default(not is_plat("android"))
     set_showmenu(true)
     set_description("Enable libvultra tests")
 option_end()

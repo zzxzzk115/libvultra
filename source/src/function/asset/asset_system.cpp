@@ -5,10 +5,14 @@
 #include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
+#ifdef VULTRA_HAS_VASSET_IMPORT
 #include <vasset/editor_filesystem.hpp>
 #include <vasset/vasset_importers.hpp>
+#endif
 #include <vasset/vgaussiansplat.hpp>
 #include <vasset/vmaterial.hpp>
+
+#include <vfilesystem/backends/physical_filesystem.hpp>
 
 #include <glm/gtc/packing.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -267,12 +271,16 @@ namespace vultra
             if (!std::filesystem::exists(registryPath) || !m_Registry.load(registryPath))
             {
                 VULTRA_CORE_WARN("[AssetSystem] Failed to load asset registry from file: {}", registryPath);
-                // Proceed with an empty registry, which will cause assets to be re-imported.
                 m_Registry.setAssetRootPath(desc.assetRoot);
                 m_Registry.setImportedFolderName(desc.importedFolder);
+#ifdef VULTRA_HAS_VASSET_IMPORT
                 vasset::VAssetImporter importer {m_Registry};
                 importer.importOrReimportAssetFolder(desc.assetRoot);
                 m_Registry.save(registryPath);
+#else
+                VULTRA_CORE_WARN("[AssetSystem] Runtime-only vasset build cannot auto-import source assets. "
+                                 "Expect pre-baked assets or an existing registry.");
+#endif
             }
             else
             {
@@ -282,10 +290,14 @@ namespace vultra
             m_Resolver.loadFromAssetRegistry(m_Registry);
 
             // For development, mount the editor remap filesystem, which allows transparent access to source assets and
-            // imported assets.
+            // imported assets. Runtime-only builds mount the physical filesystem directly and expect pre-baked assets.
+#ifdef VULTRA_HAS_VASSET_IMPORT
             m_VFS.mount(createRef<vasset::EditorRemapFileSystem>(
                             createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {desc.assetRoot})),
                         desc.scheme);
+#else
+            m_VFS.mount(createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {desc.assetRoot}), desc.scheme);
+#endif
         }
 
         m_Resolver.setScheme(desc.scheme);

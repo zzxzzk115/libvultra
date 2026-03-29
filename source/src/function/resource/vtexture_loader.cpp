@@ -5,9 +5,11 @@
 #include <ktxvulkan.h>
 #include <vbase/core/scope_exit.hpp>
 
+#define DDSKTX_IMPLEMENT
 #include <dds-ktx.h>
 #include <ktx.h>
 
+#define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 #include <tinyexr.h>
 

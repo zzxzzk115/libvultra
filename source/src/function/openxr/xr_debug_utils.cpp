@@ -6,10 +6,11 @@
 #include <sstream>
 #include <string>
 
-XrBool32 OpenXRMessageCallbackFunction(XrDebugUtilsMessageSeverityFlagsEXT         messageSeverity,
-                                       XrDebugUtilsMessageTypeFlagsEXT             messageType,
-                                       const XrDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                       void* /*pUserData*/)
+XRAPI_ATTR XrBool32 XRAPI_CALL
+OpenXRMessageCallbackFunction(XrDebugUtilsMessageSeverityFlagsEXT         messageSeverity,
+                              XrDebugUtilsMessageTypeFlagsEXT             messageType,
+                              const XrDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                              void* /*pUserData*/)
 {
     // Lambda to covert an XrDebugUtilsMessageSeverityFlagsEXT to std::string. Bitwise check to concatenate multiple
     // severities to the output string.
@@ -115,8 +116,7 @@ XrDebugUtilsMessengerEXT CreateOpenXRDebugUtilsMessenger(XrInstance m_XrInstance
     debugUtilsMessengerCI.messageTypes =
         XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
         XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT;
-    debugUtilsMessengerCI.userCallback =
-        static_cast<PFN_xrDebugUtilsMessengerCallbackEXT>(OpenXRMessageCallbackFunction);
+    debugUtilsMessengerCI.userCallback = OpenXRMessageCallbackFunction;
     debugUtilsMessengerCI.userData = nullptr;
 
     // Load xrCreateDebugUtilsMessengerEXT() function pointer as it is not default loaded by the OpenXR loader.

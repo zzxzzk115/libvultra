@@ -11,7 +11,6 @@
 #include <vshadersystem/reflect.hpp>
 
 #include <SDL3/SDL_vulkan.h>
-#include <cpptrace/cpptrace.hpp>
 #include <glm/glm.hpp>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -153,9 +152,6 @@ namespace
 
             case vk::DebugUtilsMessageSeverityFlagBitsEXT::eError:
                 VULTRA_CORE_ERROR("{} {}", vk::to_string(messageType), pCallbackData->pMessage);
-#ifdef VULTRA_ENABLE_VK_VALIDATION_STACK_TRACE
-                cpptrace::generate_trace().print();
-#endif
                 break;
         }
 
@@ -1605,7 +1601,7 @@ namespace vultra
                 xrVulkanDeviceCreateInfo.vulkanPhysicalDevice   = m_PhysicalDevice;
 
                 VkResult vkResult = VK_SUCCESS;
-                VkDevice device   = VK_NULL_HANDLE;
+                VkDevice device   = nullptr;
 
                 if (XR_FAILED(m_XRDevice->xrCreateVulkanDeviceKHR(
                         m_XRDevice->m_XrInstance, &xrVulkanDeviceCreateInfo, &device, &vkResult)) ||

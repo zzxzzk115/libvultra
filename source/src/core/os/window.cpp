@@ -231,14 +231,14 @@ namespace vultra
         vk::SurfaceKHR Window::createVulkanSurface(vk::Instance instance) const
         {
             VULTRA_CUSTOM_ASSERT(m_SDL3WindowHandle);
-            VkSurfaceKHR surface {nullptr};
+            VkSurfaceKHR surface {VK_NULL_HANDLE};
             if (!SDL_Vulkan_CreateSurface(m_SDL3WindowHandle, instance, nullptr, &surface))
             {
                 VULTRA_CORE_ERROR("[Window] Failed to create Vulkan surface!, Error: {}", SDL_GetError());
                 throw std::runtime_error("Failed to create Vulkan surface");
             }
 
-            return surface;
+            return vk::SurfaceKHR {surface};
         }
 
         void Window::pollEvents()

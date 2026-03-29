@@ -11,13 +11,19 @@ namespace std
     template<>
     struct hash<vk::ImageView>
     {
-        size_t operator()(const vk::ImageView& imageView) const noexcept { return hash<VkImageView>()(imageView); }
+        size_t operator()(const vk::ImageView& imageView) const noexcept
+        {
+            return hash<VkImageView>()(static_cast<VkImageView>(imageView));
+        }
     };
 
     template<>
     struct hash<vk::Buffer>
     {
-        size_t operator()(const vk::Buffer& buffer) const noexcept { return hash<VkBuffer>()(buffer); }
+        size_t operator()(const vk::Buffer& buffer) const noexcept
+        {
+            return hash<VkBuffer>()(static_cast<VkBuffer>(buffer));
+        }
     };
 } // namespace std
 
@@ -74,7 +80,7 @@ namespace vultra
             m_Bindings[index] = {
                 vk::DescriptorType::eCombinedImageSampler, 1, static_cast<int32_t>(m_ImageInfos.size())};
             const auto sampler = info.sampler.value_or(info.texture->getSampler());
-            assert(sampler != VK_NULL_HANDLE);
+            assert(sampler != nullptr);
             const auto imageLayout = info.texture->getImageLayout();
             assert(imageLayout != ImageLayout::eUndefined);
 
@@ -95,7 +101,7 @@ namespace vultra
                 const auto imageLayout = texture->getImageLayout();
                 assert(imageLayout != ImageLayout::eUndefined);
                 const auto sampler = info.sampler.value_or(texture->getSampler());
-                assert(sampler != VK_NULL_HANDLE);
+                assert(sampler != nullptr);
                 addCombinedImageSampler(
                     texture->getImageView(toVk(info.imageAspect)), static_cast<vk::ImageLayout>(imageLayout), sampler);
             }
@@ -146,7 +152,8 @@ namespace vultra
 
         vk::DescriptorSet DescriptorSetBuilder::build(const vk::DescriptorSetLayout layout)
         {
-            auto                                hash = std::bit_cast<std::size_t>(layout);
+            auto                                hash = std::hash<VkDescriptorSetLayout>()(
+                static_cast<VkDescriptorSetLayout>(layout));
             std::vector<vk::WriteDescriptorSet> writes;
             writes.reserve(m_Bindings.size());
 

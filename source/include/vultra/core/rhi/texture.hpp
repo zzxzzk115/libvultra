@@ -161,7 +161,11 @@ namespace vultra
                 vma::Allocation allocation {nullptr};
                 vk::Image       handle {nullptr};
 
+#if defined(__ANDROID__)
+                bool operator==(const AllocatedImage&) const = default;
+#else
                 auto operator<=>(const AllocatedImage&) const = default;
+#endif
             };
             using ImageVariant = std::variant<std::monostate, vk::Image, AllocatedImage>;
             ImageVariant m_Image;

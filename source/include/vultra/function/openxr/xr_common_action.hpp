@@ -27,8 +27,8 @@ namespace vultra
             const ext::XREyeTracker* getEyeTracker() const { return m_EyeTracker; }
 
         private:
-            XrInstance m_XrInstance = nullptr;
-            XrSession  m_Session    = nullptr;
+            XrInstance m_XrInstance = XR_NULL_HANDLE;
+            XrSession  m_Session    = XR_NULL_HANDLE;
 
             std::unique_ptr<XRInput> m_Input {nullptr};
             ext::XREyeTracker*       m_EyeTracker = nullptr;

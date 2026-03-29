@@ -2,6 +2,11 @@
 -- https://github.com/xmake-io/xmake-repo/issues/3962#issuecomment-2096205856
 rule("vulkansdk")
     on_config(function (target)
+        if target:is_plat("android") then
+            target:add("syslinks", "vulkan", { public = true })
+            return
+        end
+
         import("lib.detect.find_library")
         import("detect.sdks.find_vulkansdk")
 
@@ -80,15 +85,10 @@ else
     set_config("renderdoc", false)
 end
 
-option("vk_validation_stack_trace")
-    set_default(false)
-    set_showmenu(true)
-    set_description("Enable Vulkan validation stack trace")
-option_end()
-
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "cpptrace", "sol2")
+add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.335+0", "vulkan-memory-allocator-hpp", "sol2")
+add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.335+0"})
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
@@ -111,13 +111,17 @@ target("vultra")
     add_files("src/**.cpp")
 
     -- add deps
-    add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vrdx", "vultra_builtin_assets", "miniply", "spz")
+    add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vrdx", "vultra_builtin_assets")
+    if not is_plat("android") then
+        add_deps("vasset-import")
+        add_defines("VULTRA_HAS_VASSET_IMPORT", { public = true })
+    end
 
     -- add rules
     add_rules("vulkansdk")
 
     -- add packages
-    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vulkan-headers", "vulkan-memory-allocator-hpp", "vrendergraph", "cpptrace", "sol2", { public = true })
+    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vulkan-headers", "vulkan-memory-allocator-hpp", "vrendergraph", "sol2", { public = true })
     add_packages("libsdl3", "openxr", { public = true })
     if has_config("tracy") then
         add_packages("tracy", { public = true })
@@ -125,6 +129,9 @@ target("vultra")
 
     -- vulkan dynamic loader
     add_defines("VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1", { public = true })
+    if is_plat("android") then
+        add_defines("VULKAN_HPP_NO_SPACESHIP_OPERATOR=1", { public = true })
+    end
 
     -- tracy & tracky required defines
     if has_config("tracy") then
@@ -142,9 +149,6 @@ target("vultra")
         add_defines("_DEBUG", { public = true })
         if has_config("renderdoc") then
             add_defines("VULTRA_ENABLE_RENDERDOC", { public = true })
-        end
-        if has_config("vk_validation_stack_trace") then
-            add_defines("VULTRA_ENABLE_VK_VALIDATION_STACK_TRACE", { public = true })
         end
     else
         add_defines("NDEBUG", { public = true })

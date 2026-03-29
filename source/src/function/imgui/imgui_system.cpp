@@ -160,7 +160,9 @@ namespace vultra
     IImGuiService::TextureID ImGuiSystem::addTexture(const rhi::Texture& texture)
     {
         return reinterpret_cast<IImGuiService::TextureID>(ImGui_ImplVulkan_AddTexture(
-            texture.getSampler(), texture.getImageView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+            static_cast<VkSampler>(texture.getSampler()),
+            static_cast<VkImageView>(texture.getImageView()),
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
     }
 
     void ImGuiSystem::removeTexture(TextureID& textureID)
@@ -283,20 +285,20 @@ namespace vultra
 
         ImGui_ImplSDL3_InitForVulkan(window.getSDL3WindowHandle());
         ImGui_ImplVulkan_InitInfo initInfo {};
-        initInfo.Instance                    = rd.m_Instance;
-        initInfo.PhysicalDevice              = rd.m_PhysicalDevice;
-        initInfo.Device                      = rd.m_Device;
+        initInfo.Instance                    = static_cast<VkInstance>(rd.m_Instance);
+        initInfo.PhysicalDevice              = static_cast<VkPhysicalDevice>(rd.m_PhysicalDevice);
+        initInfo.Device                      = static_cast<VkDevice>(rd.m_Device);
         initInfo.QueueFamily                 = rd.m_GenericQueueFamilyIndex;
-        initInfo.Queue                       = rd.m_GenericQueue;
-        initInfo.PipelineCache               = nullptr;
-        initInfo.DescriptorPool              = rd.m_DefaultDescriptorPool;
+        initInfo.Queue                       = static_cast<VkQueue>(rd.m_GenericQueue);
+        initInfo.PipelineCache               = VK_NULL_HANDLE;
+        initInfo.DescriptorPool              = static_cast<VkDescriptorPool>(rd.m_DefaultDescriptorPool);
         initInfo.Subpass                     = 0;
         initInfo.MinImageCount               = static_cast<uint32_t>(swapchain.getNumBuffers());
         initInfo.ImageCount                  = static_cast<uint32_t>(swapchain.getNumBuffers());
         initInfo.MSAASamples                 = VK_SAMPLE_COUNT_1_BIT;
         initInfo.Allocator                   = nullptr;
         initInfo.UseDynamicRendering         = true;
-        initInfo.PipelineRenderingCreateInfo = renderingCreateInfo;
+        initInfo.PipelineRenderingCreateInfo = static_cast<VkPipelineRenderingCreateInfo>(renderingCreateInfo);
         ImGui_ImplVulkan_Init(&initInfo);
     }
 

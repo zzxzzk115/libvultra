@@ -504,18 +504,18 @@ namespace vultra
             {
                 for (const auto layer : data.layers)
                 {
-                    vkDestroyImageView(device, layer, nullptr);
+                    device.destroyImageView(layer);
                 }
                 data.layers.clear();
                 for (const auto mipLevel : data.mipLevels)
                 {
-                    vkDestroyImageView(device, mipLevel, nullptr);
+                    device.destroyImageView(mipLevel);
                 }
                 data.mipLevels.clear();
 
                 if (data.imageView)
                 {
-                    vkDestroyImageView(device, data.imageView, nullptr);
+                    device.destroyImageView(data.imageView);
                     data.imageView = nullptr;
                 }
             }

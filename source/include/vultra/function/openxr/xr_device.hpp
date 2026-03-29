@@ -72,7 +72,7 @@ namespace vultra
             XRDeviceFeatureFlagBits m_FeatureFlagBits {XRDeviceFeatureFlagBits::eVR};
             std::string             m_AppName;
 
-            XrInstance               m_XrInstance {nullptr};
+            XrInstance               m_XrInstance {XR_NULL_HANDLE};
             XrSystemId               m_XrSystemId {0u};
             std::vector<const char*> m_XrActiveAPILayers;
             std::vector<const char*> m_XrActiveInstanceExtensions;
