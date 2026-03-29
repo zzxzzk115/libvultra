@@ -56,7 +56,7 @@ namespace vultra
         controller.pitchDegrees     = -20.0f;
         controller.fovYDegrees      = 60.0f;
         controller.zNear            = 0.1f;
-        controller.zFar             = 100.0f;
+        controller.zFar             = 1000.0f;
         return controller;
     }
 

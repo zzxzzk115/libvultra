@@ -205,6 +205,7 @@ namespace vultra
 
                 Builder& setColorFormats(std::initializer_list<PixelFormat>);
                 Builder& setColorFormats(std::span<const PixelFormat>);
+                Builder& setViewMask(uint32_t);
 
                 Builder& setInputAssembly(const VertexAttributes&);
                 Builder& setTopology(const PrimitiveTopology);
@@ -225,6 +226,7 @@ namespace vultra
                 vk::Format              m_DepthFormat {vk::Format::eUndefined};
                 vk::Format              m_StencilFormat {vk::Format::eUndefined};
                 std::vector<vk::Format> m_ColorAttachmentFormats;
+                uint32_t                m_ViewMask {0};
 
                 vk::VertexInputBindingDescription                m_VertexInput;
                 std::vector<vk::VertexInputAttributeDescription> m_VertexInputAttributes;

@@ -7,6 +7,8 @@
 
 namespace vultra
 {
+    class GaussianSplatFeature;
+
     class UniversalRenderer final : public FeatureRenderer
     {
     public:
@@ -17,6 +19,7 @@ namespace vultra
         virtual void onImGui() override;
 
     private:
+        GaussianSplatFeature*                   m_GaussianSplatFeature {nullptr};
         std::array<IImGuiService::TextureID, 2> m_XRMirrorTextureIds {0, 0};
         std::array<const rhi::Texture*, 2>      m_XRMirrorTextures {nullptr, nullptr};
         std::array<uint64_t, 2>                 m_XRMirrorImageHandles {0u, 0u};

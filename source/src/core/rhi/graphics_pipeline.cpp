@@ -162,6 +162,12 @@ namespace vultra
             return *this;
         }
 
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setViewMask(const uint32_t viewMask)
+        {
+            m_ViewMask = viewMask;
+            return *this;
+        }
+
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setInputAssembly(const VertexAttributes& vertexAttributes)
         {
             m_VertexInputAttributes.clear();
@@ -284,6 +290,7 @@ namespace vultra
             // -- Dynamic rendering:
 
             vk::PipelineRenderingCreateInfoKHR renderingInfo {};
+            renderingInfo.viewMask                = m_ViewMask;
             renderingInfo.colorAttachmentCount    = static_cast<uint32_t>(m_ColorAttachmentFormats.size());
             renderingInfo.pColorAttachmentFormats = m_ColorAttachmentFormats.data();
             renderingInfo.depthAttachmentFormat   = m_DepthFormat;

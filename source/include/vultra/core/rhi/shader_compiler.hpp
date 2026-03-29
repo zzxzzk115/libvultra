@@ -2,6 +2,7 @@
 
 #include "vultra/core/rhi/shader_type.hpp"
 
+#include <expected>
 #include <filesystem>
 #include <unordered_map>
 

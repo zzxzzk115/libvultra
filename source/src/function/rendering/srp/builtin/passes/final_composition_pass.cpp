@@ -11,7 +11,8 @@ namespace vultra
 
     FrameGraphResource FinalCompositionPass::compose(FrameGraphBuildContext& ctx, FrameGraphResource target)
     {
-        auto source = ctx.data.get(kResKey_FinalCompositionSource);
+        auto       source       = ctx.data.get(kResKey_FinalCompositionSource);
+        const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount == 2u;
 
         ctx.fg.addCallbackPass(
             PASS_NAME,
@@ -36,7 +37,7 @@ namespace vultra
                                            .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                        });
             },
-            [this, target](const auto&, FrameGraphPassResources&, void* ctx) {
+            [this, target, useMultiview](const auto&, FrameGraphPassResources&, void* ctx) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctx);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -46,13 +47,19 @@ namespace vultra
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 assert(rc.framebufferInfo().has_value());
-                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
+                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0), useMultiview);
                 if (pipeline)
                 {
                     rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["nearest"]);
                     rc.cb.bindPipeline(*pipeline);
                     rc.bindDescriptorSets(*pipeline);
-                    rc.cb.beginRendering(rc.framebufferInfo().value()).drawFullScreenTriangle().endRendering();
+                    auto framebufferInfo = rc.framebufferInfo().value();
+                    if (useMultiview)
+                    {
+                        framebufferInfo.layers   = 2u;
+                        framebufferInfo.viewMask = 0x3u;
+                    }
+                    rc.cb.beginRendering(framebufferInfo).drawFullScreenTriangle().endRendering();
                     rc.clear();
                 }
             });
@@ -60,7 +67,8 @@ namespace vultra
         return target;
     }
 
-    rhi::GraphicsPipeline FinalCompositionPass::createPipeline(const rhi::PixelFormat colorFormat) const
+    rhi::GraphicsPipeline FinalCompositionPass::createPipeline(const rhi::PixelFormat colorFormat,
+                                                               const bool             useMultiview) const
     {
         auto vertexShaderVariantHash =
             getShaderLib().computeVariantHash("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
@@ -71,8 +79,8 @@ namespace vultra
             return {};
         }
 
-        auto fragmentShaderVariantHash =
-            getShaderLib().computeVariantHash("final_composition.frag", vshadersystem::ShaderStage::eFrag, {});
+        auto fragmentShaderVariantHash = getShaderLib().computeVariantHash(
+            "final_composition.frag", vshadersystem::ShaderStage::eFrag, {{"USE_MULTIVIEW", useMultiview ? 1u : 0u}});
         auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
@@ -81,6 +89,7 @@ namespace vultra
         }
 
         return rhi::GraphicsPipeline::Builder {}
+            .setViewMask(useMultiview ? 0x3u : 0u)
             .setColorFormats({colorFormat})
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)

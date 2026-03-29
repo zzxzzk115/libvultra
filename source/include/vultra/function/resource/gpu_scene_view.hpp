@@ -66,7 +66,7 @@ namespace vultra::resource
         Ref<rhi::StorageBuffer>                gaussianSplatSortKeysBuffer {nullptr};
         Ref<rhi::StorageBuffer>                gaussianSplatSortValuesBuffer {nullptr};
         Ref<rhi::StorageBuffer>                gaussianSplatSortStorageBuffer {nullptr};
-        Ref<rhi::StorageBuffer>                gaussianSplatProjectedBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                gaussianSplatPointDrawIdBuffer {nullptr};
         Ref<rhi::DrawIndirectBuffer>           gaussianSplatVisibleCountBuffer {nullptr};
         std::optional<rhi::DrawIndirectBuffer> gaussianSplatIndirectBuffer;
 
@@ -96,7 +96,7 @@ namespace vultra::resource
             gaussianSplatSortKeysBuffer     = nullptr;
             gaussianSplatSortValuesBuffer   = nullptr;
             gaussianSplatSortStorageBuffer  = nullptr;
-            gaussianSplatProjectedBuffer    = nullptr;
+            gaussianSplatPointDrawIdBuffer  = nullptr;
             gaussianSplatVisibleCountBuffer = nullptr;
             gaussianSplatIndirectBuffer.reset();
             maxVisibleInstances          = 0;
@@ -362,6 +362,19 @@ namespace vultra::resource
             }
         }
 
+        void ensureGaussianSplatPointDrawIdBuffer(rhi::RenderDevice& rd, uint32_t pointCount)
+        {
+            if (pointCount == 0u)
+                return;
+
+            const uint64_t bytes = static_cast<uint64_t>(pointCount) * sizeof(uint32_t);
+            if (!gaussianSplatPointDrawIdBuffer ||
+                static_cast<uint64_t>(gaussianSplatPointDrawIdBuffer->getSize()) < bytes)
+            {
+                gaussianSplatPointDrawIdBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
+            }
+        }
+
         void ensureGaussianSplatSortBuffers(rhi::RenderDevice&      rd,
                                             const rhi::RadixSorter& sorter,
                                             const uint32_t          maxElementCount)
@@ -391,14 +404,6 @@ namespace vultra::resource
             {
                 gaussianSplatSortStorageBuffer =
                     createRef<rhi::StorageBuffer>(rd.createStorageBufferWithUsage(storageReq.size, storageReq.usage));
-            }
-
-            constexpr uint64_t kProjectedStrideBytes = sizeof(float) * 12ull;
-            const uint64_t     projectedBytes        = static_cast<uint64_t>(maxElementCount) * kProjectedStrideBytes;
-            if (!gaussianSplatProjectedBuffer ||
-                static_cast<uint64_t>(gaussianSplatProjectedBuffer->getSize()) < projectedBytes)
-            {
-                gaussianSplatProjectedBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(projectedBytes));
             }
 
             maxGaussianSplatSortElements = maxElementCount;

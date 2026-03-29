@@ -28,7 +28,7 @@ namespace vultra
 
         float fovYDegrees {60.0f};
         float zNear {0.1f};
-        float zFar {100.0f};
+        float zFar {1000.0f};
     };
 
     // - Iterate ECS CameraComponent / XrCameraComponent

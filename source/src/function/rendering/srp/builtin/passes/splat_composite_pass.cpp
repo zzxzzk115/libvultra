@@ -15,7 +15,9 @@ namespace vultra
 
     FrameGraphResource SplatCompositePass::addPass(FrameGraphBuildContext& ctx,
                                                    FrameGraphResource      meshletColor,
-                                                   FrameGraphResource      splatColor)
+                                                   FrameGraphResource      splatColor,
+                                                   FrameGraphResource      splatDepthAccum,
+                                                   FrameGraphResource      sceneDepth)
     {
         const auto resolution = ctx.view().extent;
 
@@ -23,12 +25,16 @@ namespace vultra
         {
             FrameGraphResource meshlet;
             FrameGraphResource splat;
+            FrameGraphResource splatDepthAccum;
+            FrameGraphResource sceneDepth;
             FrameGraphResource color;
+            bool               useDepthAware {false};
         };
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [meshletColor, splatColor, resolution](FrameGraph::Builder& builder, PassData& pd) {
+            [meshletColor, splatColor, splatDepthAccum, sceneDepth, resolution](FrameGraph::Builder& builder,
+                                                                                PassData&            pd) {
                 PASS_SETUP_ZONE;
 
                 pd.meshlet = builder.read(meshletColor,
@@ -53,6 +59,34 @@ namespace vultra
                                             .imageAspect = rhi::ImageAspect::eColor,
                                         });
 
+                pd.useDepthAware = splatDepthAccum && sceneDepth;
+                if (pd.useDepthAware)
+                {
+                    pd.splatDepthAccum =
+                        builder.read(splatDepthAccum,
+                                     framegraph::TextureRead {
+                                         .binding =
+                                             {
+                                                 .location      = {.set = 3, .binding = 2},
+                                                 .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                             },
+                                         .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                         .imageAspect = rhi::ImageAspect::eColor,
+                                     });
+
+                    pd.sceneDepth =
+                        builder.read(sceneDepth,
+                                     framegraph::TextureRead {
+                                         .binding =
+                                             {
+                                                 .location      = {.set = 3, .binding = 3},
+                                                 .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                             },
+                                         .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                         .imageAspect = rhi::ImageAspect::eDepth,
+                                     });
+                }
+
                 pd.color = builder.create<framegraph::FrameGraphTexture>(
                     "SplatComposite",
                     {
@@ -67,7 +101,7 @@ namespace vultra
                                              .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                          });
             },
-            [this](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+            [this](const PassData& pd, FrameGraphPassResources&, void* ctxPtr) {
                 auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -77,7 +111,8 @@ namespace vultra
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 assert(rc.framebufferInfo().has_value());
-                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
+                const bool  useDepthAware = pd.useDepthAware;
+                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0), useDepthAware);
                 if (!pipeline)
                     return;
 
@@ -92,10 +127,14 @@ namespace vultra
                 {
                     rc.overrideSampler(rc.resourceSet[3][0], samplerIt->second);
                     rc.overrideSampler(rc.resourceSet[3][1], samplerIt->second);
+                    if (useDepthAware)
+                    {
+                        rc.overrideSampler(rc.resourceSet[3][2], samplerIt->second);
+                        rc.overrideSampler(rc.resourceSet[3][3], samplerIt->second);
+                    }
                 }
 
-                rc.cb.beginRendering(rc.framebufferInfo().value())
-                    .bindPipeline(*pipeline);
+                rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.drawFullScreenTriangle().endRendering();
                 rc.clear();
@@ -104,7 +143,7 @@ namespace vultra
         return data.color;
     }
 
-    rhi::GraphicsPipeline SplatCompositePass::createPipeline(rhi::PixelFormat colorFormat) const
+    rhi::GraphicsPipeline SplatCompositePass::createPipeline(rhi::PixelFormat colorFormat, bool useDepthAware) const
     {
         auto vertexShaderVariantHash =
             getShaderLib().computeVariantHash("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
@@ -115,8 +154,8 @@ namespace vultra
             return {};
         }
 
-        auto fragmentShaderVariantHash =
-            getShaderLib().computeVariantHash("splat_composite.frag", vshadersystem::ShaderStage::eFrag, {});
+        auto fragmentShaderVariantHash = getShaderLib().computeVariantHash(
+            "splat_composite.frag", vshadersystem::ShaderStage::eFrag, {{"USE_DEPTH_AWARE", useDepthAware ? 1u : 0u}});
         auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {

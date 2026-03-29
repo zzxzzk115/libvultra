@@ -1270,6 +1270,8 @@ namespace vultra
             vk::PhysicalDeviceMeshShaderFeaturesEXT mesh {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
             vk::PhysicalDeviceMultiDrawFeaturesEXT  multidraw {
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTI_DRAW_FEATURES_EXT};
+            vk::PhysicalDeviceFragmentShaderInterlockFeaturesEXT fragmentShaderInterlock {
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT};
 
             features2.pNext  = &vk13;
             vk13.pNext       = &vk12;
@@ -1279,6 +1281,7 @@ namespace vultra
             rayQuery.pNext   = &rayTracing;
             rayTracing.pNext = &mesh;
             mesh.pNext       = &multidraw;
+            multidraw.pNext  = &fragmentShaderInterlock;
             m_PhysicalDevice.getFeatures2(&features2);
 
             // Fill feature report
@@ -1321,6 +1324,13 @@ namespace vultra
             add(RenderDeviceFeatureReportFlagBits::eDrawParameters,
                 VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
                 vk11.shaderDrawParameters);
+            if (vk11.multiview)
+                flags |= RenderDeviceFeatureReportFlagBits::eMultiview;
+            else
+                VULTRA_CORE_WARN("[RenderDevice] Extension or feature not supported: multiview");
+            add(RenderDeviceFeatureReportFlagBits::eFragmentShaderInterlock,
+                VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME,
+                fragmentShaderInterlock.fragmentShaderPixelInterlock);
 
 #ifdef VULTRA_ENABLE_RENDERDOC
             VULTRA_CORE_WARN("[RenderDevice] RenderDoc is enabled, raytracing will be disabled");
@@ -1352,6 +1362,8 @@ namespace vultra
             PRINT_FEATURE(eDrawIndirectCount);
             PRINT_FEATURE(eMultiDraw);
             PRINT_FEATURE(eDrawParameters);
+            PRINT_FEATURE(eMultiview);
+            PRINT_FEATURE(eFragmentShaderInterlock);
 #undef PRINT_FEATURE
 
             // === Assign & Check Feature Flags ===
@@ -1462,6 +1474,10 @@ namespace vultra
             {
                 vk11Features.shaderDrawParameters = VK_TRUE;
             }
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMultiview))
+            {
+                vk11Features.multiview = VK_TRUE;
+            }
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk11Features));
 
             // Vulkan 1.2 features
@@ -1537,6 +1553,14 @@ namespace vultra
                 meshShaderFeatures.meshShader = VK_TRUE;
                 meshShaderFeatures.taskShader = VK_TRUE;
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&meshShaderFeatures));
+            }
+
+            vk::PhysicalDeviceFragmentShaderInterlockFeaturesEXT fragmentShaderInterlockFeatures {};
+            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eFragmentShaderInterlock))
+            {
+                extensions.push_back(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME);
+                fragmentShaderInterlockFeatures.fragmentShaderPixelInterlock = VK_TRUE;
+                featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&fragmentShaderInterlockFeatures));
             }
 
             // === Link chain ===

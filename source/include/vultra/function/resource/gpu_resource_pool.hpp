@@ -9,6 +9,7 @@
 #include "vultra/function/resource/gpu_texture.hpp"
 #include "vultra/function/resource/material_buffer.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -299,7 +300,183 @@ namespace vultra::resource
         std::vector<GpuTexture>  textures;
         std::vector<GpuMaterial> materials;
         std::vector<GpuMesh>     meshes;
+
+        struct GaussianStorage
+        {
+            Ref<rhi::StorageBuffer> centersBuffer {nullptr};
+            Ref<rhi::StorageBuffer> scaleBuffer {nullptr};
+            Ref<rhi::StorageBuffer> covarianceBuffer {nullptr};
+            Ref<rhi::StorageBuffer> colorBuffer {nullptr};
+            Ref<rhi::StorageBuffer> shBuffer {nullptr};
+
+            std::vector<glm::vec4>  cpuCenters;
+            std::vector<glm::vec4>  cpuScales;
+            std::vector<glm::uvec4> cpuCovariances;
+            std::vector<glm::uvec2> cpuColors;
+            std::vector<glm::uvec2> cpuSh;
+
+            void reset()
+            {
+                centersBuffer    = nullptr;
+                scaleBuffer      = nullptr;
+                covarianceBuffer = nullptr;
+                colorBuffer      = nullptr;
+                shBuffer         = nullptr;
+                cpuCenters.clear();
+                cpuScales.clear();
+                cpuCovariances.clear();
+                cpuColors.clear();
+                cpuSh.clear();
+            }
+
+            uint32_t appendCenters(rhi::RenderDevice& rd, const glm::vec4* data, uint32_t count)
+            {
+                if (!data || count == 0)
+                    return static_cast<uint32_t>(cpuCenters.size());
+
+                const uint32_t base = static_cast<uint32_t>(cpuCenters.size());
+                cpuCenters.insert(cpuCenters.end(), data, data + count);
+                const uint64_t requiredBytes = static_cast<uint64_t>(cpuCenters.size()) * sizeof(glm::vec4);
+                bool           grew          = false;
+                if (!centersBuffer || static_cast<uint64_t>(centersBuffer->getSize()) < requiredBytes)
+                {
+                    uint64_t oldCap = centersBuffer ? static_cast<uint64_t>(centersBuffer->getSize()) : 0ull;
+                    uint64_t newCap = oldCap == 0 ? 256ull * 1024ull : oldCap * 2ull;
+                    if (newCap < requiredBytes)
+                        newCap = requiredBytes;
+                    centersBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(newCap));
+                    grew          = true;
+                }
+
+                if (grew)
+                    rd.uploadS(*centersBuffer, 0, requiredBytes, cpuCenters.data());
+                else
+                    rd.uploadS(*centersBuffer,
+                               static_cast<uint64_t>(base) * sizeof(glm::vec4),
+                               static_cast<uint64_t>(count) * sizeof(glm::vec4),
+                               data);
+                return base;
+            }
+
+            uint32_t appendScales(rhi::RenderDevice& rd, const glm::vec4* data, uint32_t count)
+            {
+                if (!data || count == 0)
+                    return static_cast<uint32_t>(cpuScales.size());
+
+                const uint32_t base = static_cast<uint32_t>(cpuScales.size());
+                cpuScales.insert(cpuScales.end(), data, data + count);
+                const uint64_t requiredBytes = static_cast<uint64_t>(cpuScales.size()) * sizeof(glm::vec4);
+                bool           grew          = false;
+                if (!scaleBuffer || static_cast<uint64_t>(scaleBuffer->getSize()) < requiredBytes)
+                {
+                    uint64_t oldCap = scaleBuffer ? static_cast<uint64_t>(scaleBuffer->getSize()) : 0ull;
+                    uint64_t newCap = oldCap == 0 ? 256ull * 1024ull : oldCap * 2ull;
+                    if (newCap < requiredBytes)
+                        newCap = requiredBytes;
+                    scaleBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(newCap));
+                    grew        = true;
+                }
+
+                if (grew)
+                    rd.uploadS(*scaleBuffer, 0, requiredBytes, cpuScales.data());
+                else
+                    rd.uploadS(*scaleBuffer,
+                               static_cast<uint64_t>(base) * sizeof(glm::vec4),
+                               static_cast<uint64_t>(count) * sizeof(glm::vec4),
+                               data);
+                return base;
+            }
+
+            uint32_t appendCovariances(rhi::RenderDevice& rd, const glm::uvec4* data, uint32_t count)
+            {
+                if (!data || count == 0)
+                    return static_cast<uint32_t>(cpuCovariances.size());
+
+                const uint32_t base = static_cast<uint32_t>(cpuCovariances.size());
+                cpuCovariances.insert(cpuCovariances.end(), data, data + count);
+                const uint64_t requiredBytes = static_cast<uint64_t>(cpuCovariances.size()) * sizeof(glm::uvec4);
+                bool           grew          = false;
+                if (!covarianceBuffer || static_cast<uint64_t>(covarianceBuffer->getSize()) < requiredBytes)
+                {
+                    uint64_t oldCap = covarianceBuffer ? static_cast<uint64_t>(covarianceBuffer->getSize()) : 0ull;
+                    uint64_t newCap = oldCap == 0 ? 256ull * 1024ull : oldCap * 2ull;
+                    if (newCap < requiredBytes)
+                        newCap = requiredBytes;
+                    covarianceBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(newCap));
+                    grew             = true;
+                }
+
+                if (grew)
+                    rd.uploadS(*covarianceBuffer, 0, requiredBytes, cpuCovariances.data());
+                else
+                    rd.uploadS(*covarianceBuffer,
+                               static_cast<uint64_t>(base) * sizeof(glm::uvec4),
+                               static_cast<uint64_t>(count) * sizeof(glm::uvec4),
+                               data);
+                return base;
+            }
+
+            uint32_t appendColors(rhi::RenderDevice& rd, const glm::uvec2* data, uint32_t count)
+            {
+                if (!data || count == 0)
+                    return static_cast<uint32_t>(cpuColors.size());
+
+                const uint32_t base = static_cast<uint32_t>(cpuColors.size());
+                cpuColors.insert(cpuColors.end(), data, data + count);
+                const uint64_t requiredBytes = static_cast<uint64_t>(cpuColors.size()) * sizeof(glm::uvec2);
+                bool           grew          = false;
+                if (!colorBuffer || static_cast<uint64_t>(colorBuffer->getSize()) < requiredBytes)
+                {
+                    uint64_t oldCap = colorBuffer ? static_cast<uint64_t>(colorBuffer->getSize()) : 0ull;
+                    uint64_t newCap = oldCap == 0 ? 256ull * 1024ull : oldCap * 2ull;
+                    if (newCap < requiredBytes)
+                        newCap = requiredBytes;
+                    colorBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(newCap));
+                    grew        = true;
+                }
+
+                if (grew)
+                    rd.uploadS(*colorBuffer, 0, requiredBytes, cpuColors.data());
+                else
+                    rd.uploadS(*colorBuffer,
+                               static_cast<uint64_t>(base) * sizeof(glm::uvec2),
+                               static_cast<uint64_t>(count) * sizeof(glm::uvec2),
+                               data);
+                return base;
+            }
+
+            uint32_t appendSh(rhi::RenderDevice& rd, const glm::uvec2* data, uint32_t count)
+            {
+                if (!data || count == 0)
+                    return static_cast<uint32_t>(cpuSh.size());
+
+                const uint32_t base = static_cast<uint32_t>(cpuSh.size());
+                cpuSh.insert(cpuSh.end(), data, data + count);
+                const uint64_t requiredBytes = static_cast<uint64_t>(cpuSh.size()) * sizeof(glm::uvec2);
+                bool           grew          = false;
+                if (!shBuffer || static_cast<uint64_t>(shBuffer->getSize()) < requiredBytes)
+                {
+                    uint64_t oldCap = shBuffer ? static_cast<uint64_t>(shBuffer->getSize()) : 0ull;
+                    uint64_t newCap = oldCap == 0 ? 512ull * 1024ull : oldCap * 2ull;
+                    if (newCap < requiredBytes)
+                        newCap = requiredBytes;
+                    shBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(newCap));
+                    grew     = true;
+                }
+
+                if (grew)
+                    rd.uploadS(*shBuffer, 0, requiredBytes, cpuSh.data());
+                else
+                    rd.uploadS(*shBuffer,
+                               static_cast<uint64_t>(base) * sizeof(glm::uvec2),
+                               static_cast<uint64_t>(count) * sizeof(glm::uvec2),
+                               data);
+                return base;
+            }
+        } gaussianStorage;
+
         std::vector<GpuGaussianSplat> gaussianSplats;
+        Ref<rhi::StorageBuffer>       gaussianSplatMetaBuffer {nullptr};
 
         // Material table buffer (GpuMaterial array).
         // The shader-side MaterialEntry layout is a compact view derived from this.
@@ -378,14 +555,43 @@ namespace vultra::resource
         {
             geometry.reset();
             meshlets.reset();
+            gaussianStorage.reset();
             textures.clear();
             materials.clear();
             meshes.clear();
             gaussianSplats.clear();
-            materialTableBuffer = nullptr;
+            gaussianSplatMetaBuffer = nullptr;
+            materialTableBuffer     = nullptr;
             materialParams.reset();
             freeTextureSlots.clear();
             pendingTextureFrees.clear();
+        }
+
+        void uploadGaussianSplatMeta(rhi::RenderDevice& rd)
+        {
+            const size_t bytes = gaussianSplats.size() * sizeof(GpuGaussianSplatMeta);
+            if (bytes == 0)
+            {
+                gaussianSplatMetaBuffer = nullptr;
+                return;
+            }
+
+            std::vector<GpuGaussianSplatMeta> meta;
+            meta.reserve(gaussianSplats.size());
+            for (const auto& splat : gaussianSplats)
+            {
+                meta.push_back(GpuGaussianSplatMeta {
+                    .pointOffset      = splat.pointOffset,
+                    .pointCount       = splat.pointCount,
+                    .shDegree         = static_cast<uint32_t>(std::max(splat.shDegree, 0)),
+                    .shRestCoeffCount = splat.shRestCoeffCount,
+                });
+            }
+
+            if (!gaussianSplatMetaBuffer || gaussianSplatMetaBuffer->getSize() < bytes)
+                gaussianSplatMetaBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
+
+            rd.uploadS(*gaussianSplatMetaBuffer, 0, bytes, meta.data());
         }
 
         void uploadMaterialTable(rhi::RenderDevice& rd)

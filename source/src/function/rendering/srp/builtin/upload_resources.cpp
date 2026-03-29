@@ -34,4 +34,13 @@ namespace vultra
     {
         return GPUCameraBlock {extent, camera};
     }
+
+    GPUStereoCameraBlock
+    makeGPUStereoCameraBlock(rhi::Extent2D extent, const RenderCamera& left, const RenderCamera* right)
+    {
+        GPUStereoCameraBlock block {};
+        block.cameras[0] = makeGPUCameraBlock(extent, left);
+        block.cameras[1] = makeGPUCameraBlock(extent, right ? *right : left);
+        return block;
+    }
 } // namespace vultra

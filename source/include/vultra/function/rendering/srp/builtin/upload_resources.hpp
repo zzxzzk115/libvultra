@@ -38,8 +38,16 @@ namespace vultra
     };
     static_assert(sizeof(GPUCameraBlock) % 16 == 0, "GPUCameraBlock must be 16-byte aligned");
 
+    struct alignas(16) GPUStereoCameraBlock
+    {
+        GPUCameraBlock cameras[2] {};
+    };
+    static_assert(sizeof(GPUStereoCameraBlock) % 16 == 0, "GPUStereoCameraBlock must be 16-byte aligned");
+
     [[nodiscard]] GPUFrameBlock  makeGPUFrameBlock(uint64_t frameIndex, float time = 0.0f, float deltaTime = 0.0f);
     [[nodiscard]] GPUCameraBlock makeGPUCameraBlock(rhi::Extent2D extent, const RenderCamera& camera);
+    [[nodiscard]] GPUStereoCameraBlock
+    makeGPUStereoCameraBlock(rhi::Extent2D extent, const RenderCamera& left, const RenderCamera* right);
 
     template<typename Uploader>
     void prepareFrameData(Uploader&        uploader,
@@ -63,5 +71,15 @@ namespace vultra
                                                            "CameraBlock",
                                                            framegraph::BufferType::eUniformBuffer,
                                                            makeGPUCameraBlock(extent, camera));
+
+        if (out.view.enableMultiview && out.view.multiviewCameraCount >= 2u && out.view.multiviewCameras[0] &&
+            out.view.multiviewCameras[1])
+        {
+            out.cameraData.stereoCameraBlock = uploader.uploadStruct(
+                "UploadStereoCameraBlock",
+                "StereoCameraBlock",
+                framegraph::BufferType::eUniformBuffer,
+                makeGPUStereoCameraBlock(extent, *out.view.multiviewCameras[0], out.view.multiviewCameras[1]));
+        }
     }
 } // namespace vultra

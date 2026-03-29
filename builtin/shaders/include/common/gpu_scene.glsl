@@ -90,12 +90,24 @@
 #define VULTRA_SPLAT_COVARIANCE_BINDING 14
 #endif
 
+#ifndef VULTRA_SPLAT_SCALE_BINDING
+#define VULTRA_SPLAT_SCALE_BINDING 23
+#endif
+
 #ifndef VULTRA_SPLAT_COLOR_BINDING
 #define VULTRA_SPLAT_COLOR_BINDING 15
 #endif
 
 #ifndef VULTRA_SPLAT_SH_BINDING
 #define VULTRA_SPLAT_SH_BINDING 16
+#endif
+
+#ifndef VULTRA_SPLAT_META_BINDING
+#define VULTRA_SPLAT_META_BINDING 19
+#endif
+
+#ifndef VULTRA_SPLAT_POINT_DRAW_BINDING
+#define VULTRA_SPLAT_POINT_DRAW_BINDING 21
 #endif
 
 #ifndef VULTRA_VISIBLE_INSTANCE_BINDING
@@ -386,6 +398,13 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_COVARIANCE_BINDING, std430
 } s_SplatCovariances;
 #endif
 
+#ifdef VULTRA_DECLARE_SPLAT_SCALE_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_SCALE_BINDING, std430) readonly buffer SplatScaleBuffer
+{
+    vec4 scales[];
+} s_SplatScales;
+#endif
+
 #ifdef VULTRA_DECLARE_SPLAT_COLOR_BUFFER
 layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_COLOR_BINDING, std430) readonly buffer SplatColorBuffer
 {
@@ -398,6 +417,28 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_SH_BINDING, std430) readon
 {
     uvec2 sh[];
 } s_SplatSH;
+#endif
+
+struct GaussianSplatMeta
+{
+    uint pointOffset;
+    uint pointCount;
+    uint shDegree;
+    uint shRestCoeffCount;
+};
+
+#ifdef VULTRA_DECLARE_SPLAT_META_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_META_BINDING, std430) readonly buffer SplatMetaBuffer
+{
+    GaussianSplatMeta metas[];
+} s_SplatMeta;
+#endif
+
+#ifdef VULTRA_DECLARE_SPLAT_POINT_DRAW_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_POINT_DRAW_BINDING, std430) readonly buffer SplatPointDrawBuffer
+{
+    uint drawIds[];
+} s_SplatPointDraws;
 #endif
 
 #define VULTRA_MAT_INVALID 0u

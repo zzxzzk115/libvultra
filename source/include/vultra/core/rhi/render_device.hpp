@@ -65,17 +65,19 @@ namespace vultra
 
         enum class RenderDeviceFeatureReportFlagBits : uint64_t
         {
-            eNone                  = 0,
-            eOpenXR                = BIT(0),
-            eRayTracingPipeline    = BIT(1),
-            eRayQuery              = BIT(2),
-            eAccelerationStructure = BIT(3),
-            eMeshShader            = BIT(4),
-            eBufferDeviceAddress   = BIT(5),
-            eDescriptorIndexing    = BIT(6),
-            eDrawIndirectCount     = BIT(7),
-            eMultiDraw             = BIT(8),
-            eDrawParameters        = BIT(9),
+            eNone                    = 0,
+            eOpenXR                  = BIT(0),
+            eRayTracingPipeline      = BIT(1),
+            eRayQuery                = BIT(2),
+            eAccelerationStructure   = BIT(3),
+            eMeshShader              = BIT(4),
+            eBufferDeviceAddress     = BIT(5),
+            eDescriptorIndexing      = BIT(6),
+            eDrawIndirectCount       = BIT(7),
+            eMultiDraw               = BIT(8),
+            eDrawParameters          = BIT(9),
+            eFragmentShaderInterlock = BIT(10),
+            eMultiview               = BIT(11),
         };
 
         struct RenderDeviceFeatureReport

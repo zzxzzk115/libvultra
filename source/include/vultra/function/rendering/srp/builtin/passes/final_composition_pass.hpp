@@ -15,6 +15,6 @@ namespace vultra
         FrameGraphResource compose(FrameGraphBuildContext& ctx, FrameGraphResource target);
 
     private:
-        rhi::GraphicsPipeline createPipeline(const rhi::PixelFormat colorFormat) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useMultiview) const;
     };
 } // namespace vultra

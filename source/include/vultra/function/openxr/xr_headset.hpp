@@ -34,6 +34,7 @@ namespace vultra
 
             struct StereoRenderTargetView
             {
+                rhi::Texture stereo;
                 rhi::Texture left;
                 rhi::Texture right;
             };

@@ -106,7 +106,7 @@ namespace vultra
     {
         // Add features in the desired order.
         emplaceFeature<MeshletFeature>();
-        emplaceFeature<GaussianSplatFeature>();
+        m_GaussianSplatFeature = &emplaceFeature<GaussianSplatFeature>();
         emplaceFeature<TestFeature>();
         emplaceFeature<FinalCompositionFeature>();
     }
@@ -120,6 +120,20 @@ namespace vultra
         auto& imguiService   = services->require<IImGuiService>();
 
         ImGui::Begin("Universal Renderer");
+
+        if (m_GaussianSplatFeature && ImGui::CollapsingHeader("3DGS Renderer Settings", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            auto& settings = m_GaussianSplatFeature->settings();
+            ImGui::SliderFloat("Frustum Dilation", &settings.frustumDilation, 1.0f, 1.5f, "%.2f");
+            ImGui::SliderFloat("Alpha Cull Threshold", &settings.alphaCullThreshold, 0.0f, 0.02f, "%.5f");
+            ImGui::SliderFloat("Size Culling Min Pixels", &settings.sizeCullingMinPixels, 0.0f, 4.0f, "%.2f");
+            ImGui::SliderFloat("Splat Scale", &settings.splatScale, 0.25f, 2.5f, "%.2f");
+            ImGui::SliderFloat("Max Axis Pixels", &settings.maxAxisPixels, 64.0f, 1024.0f, "%.0f");
+            ImGui::SliderFloat("Depth Iso Threshold", &settings.depthIsoThreshold, 0.1f, 0.99f, "%.2f");
+            ImGui::Checkbox("Enable Exact Depth/Transmittance", &settings.enableExactDepthTransmittance);
+            ImGui::Checkbox("Reuse XR Left-Eye Cull/Sort", &settings.enableXrViewReuse);
+            ImGui::Checkbox("Enable XR Multiview", &settings.enableXrMultiview);
+        }
 
         if (backendService.isXREnabled() && backendService.isXRMirrorEnabled())
         {

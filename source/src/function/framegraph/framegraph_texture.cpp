@@ -110,6 +110,8 @@ namespace vultra
             {
                 if (!viewData.framebufferInfo)
                     viewData.framebufferInfo.emplace().area = {.extent = texture->getExtent()};
+                viewData.framebufferInfo->layers =
+                    std::max(viewData.framebufferInfo->layers, std::max(texture->getNumLayers(), 1u));
 
                 switch (decodeAttachment(bits).imageAspect)
                 {
@@ -204,6 +206,8 @@ namespace vultra
             {
                 if (!viewData.framebufferInfo)
                     viewData.framebufferInfo.emplace().area = {.extent = texture->getExtent()};
+                viewData.framebufferInfo->layers =
+                    std::max(viewData.framebufferInfo->layers, std::max(texture->getNumLayers(), 1u));
 
                 const auto attachment = decodeAttachment(bits);
 

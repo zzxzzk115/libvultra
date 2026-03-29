@@ -105,6 +105,7 @@ namespace vultra
                     cam.viewIndex    = eyeView.eyeIndex;
                     cam.viewCount    = static_cast<uint32_t>(xrEyeViews.size());
                     cam.isXRView     = true;
+                    cam.isXRPrimaryView = eyeView.eyeIndex == 0u;
                     finalizeCamera(cam);
                     m_Cooked.push_back(std::move(cam));
                 }
@@ -116,6 +117,7 @@ namespace vultra
             cam.viewIndex    = 0;
             cam.viewCount    = 1;
             cam.isXRView     = false;
+            cam.isXRPrimaryView = true;
             finalizeCamera(cam);
             m_Cooked.push_back(std::move(cam));
         }

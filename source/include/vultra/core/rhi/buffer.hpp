@@ -2,6 +2,8 @@
 
 #include "vultra/core/rhi/barrier_scope.hpp"
 
+#define VULKAN_HPP_NO_EXCEPTIONS
+#define VULKAN_HPP_DISABLE_ENHANCED_MODE
 #include <vk_mem_alloc.hpp>
 
 namespace vultra

@@ -22,6 +22,7 @@ namespace vultra
             glm::mat4     projection {1.0f};
             rhi::Extent2D extent {};
             rhi::Texture* target {nullptr};
+            rhi::Texture* stereoTarget {nullptr};
             rhi::Texture* mirrorTarget {nullptr};
         };
 

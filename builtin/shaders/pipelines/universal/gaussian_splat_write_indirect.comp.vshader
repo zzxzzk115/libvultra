@@ -16,7 +16,7 @@ layout(set = 0, binding = 20, std430) readonly buffer VisibleCount
 void main()
 {
     DrawIndirectCommand cmd;
-    cmd.count = 6u;
+    cmd.count = 4u;
     cmd.instanceCount = s_VisibleCount.count;
     cmd.first = 0u;
     cmd.firstInstance = 0u;

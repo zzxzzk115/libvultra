@@ -42,6 +42,15 @@ namespace vultra
             }
         }
 
+        void clear()
+        {
+            for (auto& shard : m_Shards)
+            {
+                std::scoped_lock lock(shard.mtx);
+                shard.map.clear();
+            }
+        }
+
     private:
         struct Shard
         {

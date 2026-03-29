@@ -33,6 +33,7 @@ namespace vultra
         {
             Rect2D                        area;
             uint32_t                      layers {1};
+            uint32_t                      viewMask {0};
             std::optional<AttachmentInfo> depthAttachment {std::nullopt};
             bool                          depthReadOnly {false};
             std::optional<AttachmentInfo> stencilAttachment {std::nullopt};

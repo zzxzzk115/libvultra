@@ -4,20 +4,10 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
+#include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 #include <fg/FrameGraph.hpp>
-
-#include <glm/common.hpp>
-#include <glm/geometric.hpp>
-#include <glm/vec2.hpp>
-#include <glm/vec3.hpp>
-#include <glm/vec4.hpp>
-
-#include <array>
-#include <algorithm>
-#include <limits>
-#include <unordered_map>
-#include <vector>
 
 namespace vultra
 {
@@ -25,132 +15,39 @@ namespace vultra
     {
         constexpr auto PASS_NAME = "GaussianSplatCullPass";
 
-        [[nodiscard]] bool isSrgbPixelFormat(rhi::PixelFormat pf)
-        {
-            return pf == rhi::PixelFormat::eRGBA8_sRGB || pf == rhi::PixelFormat::eBGRA8_sRGB;
-        }
-
         struct SortKeysPushConstants
         {
-            uint32_t drawId {0};
-            uint32_t pointCount {0};
-            uint32_t valueBase {0};
-            uint32_t shDegree {0};
+            uint32_t totalPointCount {0};
+            uint32_t maxOutputCount {0};
+            float    frustumDilation {1.10f};
+            float    alphaCullThreshold {1.0f / 255.0f};
+            float    sizeCullingMinPixels {0.25f};
+            float    splatScale {1.0f};
+            float    maxAxisPixels {2048.0f};
         };
-
-        [[nodiscard]] float extractMaxScale(const glm::mat4& model)
-        {
-            const glm::vec3 x = glm::vec3(model[0]);
-            const glm::vec3 y = glm::vec3(model[1]);
-            const glm::vec3 z = glm::vec3(model[2]);
-            return glm::max(glm::length(x), glm::max(glm::length(y), glm::length(z)));
-        }
-
-        [[nodiscard]] bool definitelyOutsideTileExpandedView(const RenderCamera&             camera,
-                                                             const rhi::Extent2D             extent,
-                                                             const resource::GpuGaussianSplat& splat,
-                                                             const glm::mat4&                model)
-        {
-            const glm::vec4 worldCenter = model * glm::vec4(splat.center, 1.0f);
-            const glm::vec4 viewCenter4 = camera.view * worldCenter;
-            const glm::vec3 viewCenter  = glm::vec3(viewCenter4);
-
-            if (viewCenter.z >= -0.02f)
-                return true;
-
-            const float depth = glm::max(-viewCenter.z, 1e-4f);
-            const float ndcX = (camera.projection[0][0] * viewCenter.x) / depth;
-            const float ndcY = (camera.projection[1][1] * viewCenter.y) / depth;
-
-            const float extentX = static_cast<float>(extent.width);
-            const float extentY = static_cast<float>(extent.height);
-            if (extentX <= 1.0f || extentY <= 1.0f)
-                return false;
-
-            constexpr float kExtentStdDev = 2.8284271247461903f;
-            constexpr float kTileSizePx = 16.0f;
-
-            const float maxScale = extractMaxScale(model);
-            const float pxPerWorldX = 0.5f * extentX * std::abs(camera.projection[0][0]) / depth;
-            const float pxPerWorldY = 0.5f * extentY * std::abs(camera.projection[1][1]) / depth;
-            const float pxPerWorld  = glm::max(pxPerWorldX, pxPerWorldY);
-
-            const float axisPxUpper = kExtentStdDev * glm::max(splat.radius * maxScale, 1e-4f) * pxPerWorld;
-            const float padPx       = axisPxUpper + (2.0f * kTileSizePx);
-
-            const float padNdcX = (2.0f * padPx) / extentX;
-            const float padNdcY = (2.0f * padPx) / extentY;
-
-            return ndcX < (-1.0f - padNdcX) || ndcX > (1.0f + padNdcX) || ndcY < (-1.0f - padNdcY) ||
-                   ndcY > (1.0f + padNdcY);
-        }
-
-        [[nodiscard]] uint32_t computeTileKey(const RenderCamera&               camera,
-                                              const rhi::Extent2D               extent,
-                                              const resource::GpuGaussianSplat& splat,
-                                              const glm::mat4&                  model)
-        {
-            if (extent.width == 0u || extent.height == 0u)
-                return std::numeric_limits<uint32_t>::max();
-
-            constexpr float kTileSizePx = 16.0f;
-
-            const glm::vec4 worldCenter = model * glm::vec4(splat.center, 1.0f);
-            const glm::vec4 viewCenter4 = camera.view * worldCenter;
-            const glm::vec3 viewCenter  = glm::vec3(viewCenter4);
-            if (viewCenter.z >= -0.02f)
-                return std::numeric_limits<uint32_t>::max();
-
-            const float depth = glm::max(-viewCenter.z, 1e-4f);
-            const float ndcX  = (camera.projection[0][0] * viewCenter.x) / depth;
-            const float ndcY  = (camera.projection[1][1] * viewCenter.y) / depth;
-
-            const float widthF  = static_cast<float>(extent.width);
-            const float heightF = static_cast<float>(extent.height);
-
-            const float centerPxX = (ndcX * 0.5f + 0.5f) * widthF;
-            const float centerPxY = (ndcY * 0.5f + 0.5f) * heightF;
-
-            const uint32_t tilesX = (extent.width + 15u) / 16u;
-            const uint32_t tileX = glm::min(static_cast<uint32_t>(glm::clamp(centerPxX / kTileSizePx,
-                                                                              0.0f,
-                                                                              glm::max(0.0f, static_cast<float>(tilesX - 1u)))),
-                                            tilesX - 1u);
-            const uint32_t tilesY = (extent.height + 15u) / 16u;
-            const uint32_t tileY = glm::min(static_cast<uint32_t>(glm::clamp(centerPxY / kTileSizePx,
-                                                                              0.0f,
-                                                                              glm::max(0.0f, static_cast<float>(tilesY - 1u)))),
-                                            tilesY - 1u);
-
-            return tileY * tilesX + tileX;
-        }
-
-        [[nodiscard]] float computeDrawDepth(const RenderCamera&               camera,
-                                             const resource::GpuGaussianSplat& splat,
-                                             const glm::mat4&                  model)
-        {
-            const glm::vec4 worldCenter = model * glm::vec4(splat.center, 1.0f);
-            const glm::vec4 viewCenter4 = camera.view * worldCenter;
-            return glm::max(-viewCenter4.z, 1e-4f);
-        }
-
     } // namespace
 
-    FrameGraphResource GaussianSplatCullPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource buildToken)
+    FrameGraphResource GaussianSplatCullPass::addPass(FrameGraphBuildContext&              ctx,
+                                                      FrameGraphResource                   buildToken,
+                                                      const GaussianSplatRendererSettings& settings)
     {
         struct PassData
         {
-            FrameGraphResource camera;
-            FrameGraphResource buildToken;
-            FrameGraphResource token;
+            FrameGraphResource            camera;
+            FrameGraphResource            buildToken;
+            FrameGraphResource            token;
+            FrameGraphResource            depth;
+            GaussianSplatRendererSettings settings;
         };
 
         const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
+        const auto depthPre    = ctx.data.tryGet(kResKey_DepthTexture);
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [cameraBlock, buildToken](FrameGraph::Builder& builder, PassData& pd) {
+            [cameraBlock, buildToken, settings, depthPre](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
+                pd.settings = settings;
 
                 pd.camera = builder.read(cameraBlock,
                                          framegraph::BindingInfo {
@@ -168,15 +65,31 @@ namespace vultra
                                                  });
                 }
 
-                pd.token = builder.create<framegraph::FrameGraphBuffer>("GaussianSplatCullToken",
-                                                                        {
-                                                                            .type = framegraph::BufferType::eStorageBuffer,
-                                                                            .stride = sizeof(uint32_t),
-                                                                            .capacity = 1,
-                                                                        });
+                pd.depth = depthPre;
+                if (pd.depth)
+                {
+                    pd.depth = builder.read(pd.depth,
+                                            framegraph::TextureRead {
+                                                .binding =
+                                                    {
+                                                        .location      = {.set = 0, .binding = 27},
+                                                        .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                    },
+                                                .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                                .imageAspect = rhi::ImageAspect::eDepth,
+                                            });
+                }
+
+                pd.token =
+                    builder.create<framegraph::FrameGraphBuffer>("GaussianSplatCullToken",
+                                                                 {
+                                                                     .type     = framegraph::BufferType::eStorageBuffer,
+                                                                     .stride   = sizeof(uint32_t),
+                                                                     .capacity = 1,
+                                                                 });
                 pd.token = builder.write(pd.token,
                                          framegraph::BindingInfo {
-                                             .location = {},
+                                             .location      = {},
                                              .pipelineStage = framegraph::PipelineStage::eTransfer,
                                          });
             },
@@ -189,7 +102,7 @@ namespace vultra
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
-                auto* gpuSceneView = rc.view().gpuSceneView;
+                auto* gpuSceneView     = rc.view().gpuSceneView;
                 auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
                 if (gpuSceneView)
                 {
@@ -197,252 +110,120 @@ namespace vultra
                     gpuSceneView->ensureGaussianSplatVisibleCountBuffer(rc.rd);
                     gpuSceneView->ensureGaussianSplatIndirectBuffer(rc.rd);
                 }
-                if (!gpuSceneView || !gpuSceneView->gaussianSplatDrawBuffer || !gpuSceneView->gaussianSplatVisibleCountBuffer ||
-                    !gpuSceneView->gaussianSplatIndirectBuffer.has_value())
+                if (!gpuSceneView || !gpuSceneView->gaussianSplatDrawBuffer ||
+                    !gpuSceneView->gaussianSplatVisibleCountBuffer ||
+                    !gpuSceneView->gaussianSplatIndirectBuffer.has_value() ||
+                    !gpuSceneView->gaussianSplatPointDrawIdBuffer)
                     return;
 
                 if (!gpuSceneDatabase || !gpuSceneDatabase->resources)
                     return;
 
-                const auto& splats = gpuSceneDatabase->resources->gaussianSplats;
+                const auto& splatStorage = gpuSceneDatabase->resources->gaussianStorage;
+                if (!splatStorage.centersBuffer || !splatStorage.scaleBuffer || !splatStorage.colorBuffer ||
+                    !gpuSceneDatabase->resources->gaussianSplatMetaBuffer)
+                    return;
 
                 auto* cameraUbo = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
                 if (!cameraUbo)
                     return;
 
                 const uint32_t drawCount = gpuSceneView->getDispatchableGaussianSplatDrawCount();
-                if (drawCount == 0)
+                if (drawCount == 0u)
                     return;
 
-                uint32_t totalPointCount = 0;
-                m_DrawPointBaseOffsets.assign(drawCount, 0u);
-                m_DrawPointCounts.assign(drawCount, 0u);
-                m_SortDrawIds.clear();
-                m_SortDrawIds.reserve(drawCount);
-                struct SortedDraw
-                {
-                    uint32_t tileKey;
-                    float    depth;
-                    uint32_t drawId;
-                };
-
-                std::vector<SortedDraw> tileKeyDrawPairs;
-                tileKeyDrawPairs.reserve(drawCount);
-                static bool s_LoggedGaussianSplatCull = false;
-                const RenderCamera* camera = rc.view().camera;
-                const auto extent = rc.view().extent;
-
+                uint32_t totalPointCount = 0u;
                 for (uint32_t drawId = 0; drawId < drawCount; ++drawId)
                 {
                     if (drawId >= gpuSceneView->gaussianSplatDraws.size())
                         continue;
-
-                    const uint32_t splatIndex = gpuSceneView->gaussianSplatDraws[drawId].primitiveIndex;
-                    if (splatIndex >= splats.size())
+                    const auto& draw = gpuSceneView->gaussianSplatDraws[drawId];
+                    if (draw.primitiveIndex >= gpuSceneDatabase->resources->gaussianSplats.size())
                         continue;
-
-                    const auto& splat = splats[splatIndex];
-                    const uint32_t pointCount = splat.pointCount;
-                    if (pointCount == 0u)
-                        continue;
-
-                    m_DrawPointBaseOffsets[drawId] = totalPointCount;
-                    m_DrawPointCounts[drawId]      = pointCount;
-                    totalPointCount += pointCount;
-
-                    if (camera)
-                    {
-                        const auto& drawRecord = gpuSceneView->gaussianSplatDraws[drawId];
-                        const uint32_t tileKey = computeTileKey(*camera, extent, splat, drawRecord.model);
-                        const float depth = computeDrawDepth(*camera, splat, drawRecord.model);
-                        tileKeyDrawPairs.push_back(SortedDraw {
-                            .tileKey = tileKey,
-                            .depth   = depth,
-                            .drawId  = drawId,
-                        });
-                    }
-                    else
-                    {
-                        tileKeyDrawPairs.push_back(SortedDraw {
-                            .tileKey = drawId,
-                            .depth   = 0.0f,
-                            .drawId  = drawId,
-                        });
-                    }
+                    totalPointCount += gpuSceneDatabase->resources->gaussianSplats[draw.primitiveIndex].pointCount;
                 }
+                if (totalPointCount == 0u)
+                    return;
 
-                if (!tileKeyDrawPairs.empty())
-                {
-                    std::stable_sort(tileKeyDrawPairs.begin(),
-                                     tileKeyDrawPairs.end(),
-                                     [](const SortedDraw& a, const SortedDraw& b) {
-                                         if (a.tileKey != b.tileKey)
-                                             return a.tileKey < b.tileKey;
-                                         if (a.depth != b.depth)
-                                             return a.depth > b.depth;
-                                         return a.drawId < b.drawId;
-                                     });
-                    for (const auto& kv : tileKeyDrawPairs)
-                        m_SortDrawIds.push_back(kv.drawId);
-                }
-
-                if (!s_LoggedGaussianSplatCull)
-                {
-                    VULTRA_CORE_INFO("[GaussianSplat] cull drawCount={} sortDraws={} totalPointCount={}",
-                                     drawCount,
-                                     m_SortDrawIds.size(),
-                                     totalPointCount);
-                    s_LoggedGaussianSplatCull = true;
-                }
-
-                // Per-frame tiny reset must be recorded in-frame, not submitted synchronously via uploadS.
                 rc.cb.clear(*gpuSceneView->gaussianSplatVisibleCountBuffer, 0u);
 
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatDrawBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatVisibleCountBuffer);
                 rhi::prepareForComputing(rc.cb, gpuSceneView->gaussianSplatIndirectBuffer.value());
+                rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatPointDrawIdBuffer);
+                rhi::prepareForComputing(rc.cb, *splatStorage.centersBuffer);
+                rhi::prepareForComputing(rc.cb, *splatStorage.scaleBuffer);
+                rhi::prepareForComputing(rc.cb, *splatStorage.colorBuffer);
+                rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->gaussianSplatMetaBuffer);
 
-                if (totalPointCount == 0u || m_SortDrawIds.empty())
-                {
-                    rc.clear();
+                const uint32_t useSceneDepth   = pd.depth ? 1u : 0u;
+                auto           sortVariantHash = getShaderLib().computeVariantHash("gaussian_splat_sort_keys.comp",
+                                                                         vshadersystem::ShaderStage::eComp,
+                                                                                   {{"USE_SCENE_DEPTH", useSceneDepth}});
+                const auto*    sortPipeline    = getPipeline(sortVariantHash);
+                if (!sortPipeline)
                     return;
-                }
-
-                const bool outputSrgb = rc.view().target ? isSrgbPixelFormat(rc.view().target->getPixelFormat()) : false;
-
-                std::array<const rhi::ComputePipeline*, 4> sortPipelines {nullptr, nullptr, nullptr, nullptr};
-                for (uint32_t shDegree = 0u; shDegree < sortPipelines.size(); ++shDegree)
-                {
-                    std::unordered_map<std::string, uint32_t> shKeywords {
-                        {"SPLAT_SH_DEGREE_0", 0u},
-                        {"SPLAT_SH_DEGREE_1", 0u},
-                        {"SPLAT_SH_DEGREE_2", 0u},
-                        {"SPLAT_SH_DEGREE_3", 0u},
-                        {"SPLAT_OUTPUT_SRGB", outputSrgb ? 1u : 0u},
-                    };
-                    switch (shDegree)
-                    {
-                        case 0u: shKeywords["SPLAT_SH_DEGREE_0"] = 1u; break;
-                        case 1u: shKeywords["SPLAT_SH_DEGREE_1"] = 1u; break;
-                        case 2u: shKeywords["SPLAT_SH_DEGREE_2"] = 1u; break;
-                        case 3u: shKeywords["SPLAT_SH_DEGREE_3"] = 1u; break;
-                        default: break;
-                    }
-
-                    auto sortVariantHash = getShaderLib().computeVariantHash(
-                        "gaussian_splat_sort_keys.comp",
-                        vshadersystem::ShaderStage::eComp,
-                        shKeywords);
-                    sortPipelines[shDegree] = getPipeline(sortVariantHash);
-                }
-                auto sortFallbackVariantHash = getShaderLib().computeVariantHash(
-                    "gaussian_splat_sort_keys.comp",
-                    vshadersystem::ShaderStage::eComp,
-                    {
-                        {"SPLAT_SH_DEGREE_0", 0u},
-                        {"SPLAT_SH_DEGREE_1", 0u},
-                        {"SPLAT_SH_DEGREE_2", 1u},
-                        {"SPLAT_SH_DEGREE_3", 0u},
-                        {"SPLAT_OUTPUT_SRGB", outputSrgb ? 1u : 0u},
-                    });
-                const auto* sortFallbackPipeline = getPipeline(sortFallbackVariantHash);
 
                 if (!m_RadixSorter.has_value() || m_RadixSorterMaxElementCount < totalPointCount)
                 {
-                    m_RadixSorter = rc.rd.createRadixSorter(totalPointCount);
+                    m_RadixSorter                = rc.rd.createRadixSorter(totalPointCount);
                     m_RadixSorterMaxElementCount = totalPointCount;
                 }
-
                 if (!m_RadixSorter.has_value() || !m_RadixSorter.value())
                     return;
 
                 gpuSceneView->ensureGaussianSplatSortBuffers(rc.rd, m_RadixSorter.value(), totalPointCount);
                 if (!gpuSceneView->gaussianSplatSortKeysBuffer || !gpuSceneView->gaussianSplatSortValuesBuffer ||
-                    !gpuSceneView->gaussianSplatSortStorageBuffer || !gpuSceneView->gaussianSplatProjectedBuffer)
+                    !gpuSceneView->gaussianSplatSortStorageBuffer)
                     return;
 
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatSortKeysBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatSortValuesBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatSortStorageBuffer);
-                rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatProjectedBuffer);
 
-                const rhi::StorageBuffer* lastCentersBuffer = nullptr;
-                const rhi::StorageBuffer* lastColorBuffer = nullptr;
-                const rhi::StorageBuffer* lastCovarianceBuffer = nullptr;
-                const rhi::StorageBuffer* lastShBuffer = nullptr;
-
-                for (uint32_t drawId : m_SortDrawIds)
+                rc.resourceSet[0] = {
+                    {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
+                    {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatDrawBuffer.get()}},
+                    {13, rhi::bindings::StorageBuffer {.buffer = splatStorage.centersBuffer.get()}},
+                    {15, rhi::bindings::StorageBuffer {.buffer = splatStorage.colorBuffer.get()}},
+                    {19,
+                     rhi::bindings::StorageBuffer {.buffer =
+                                                       gpuSceneDatabase->resources->gaussianSplatMetaBuffer.get()}},
+                    {17, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatSortKeysBuffer.get()}},
+                    {18, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatSortValuesBuffer.get()}},
+                    {20, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatVisibleCountBuffer.get()}},
+                    {21, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatPointDrawIdBuffer.get()}},
+                    {23, rhi::bindings::StorageBuffer {.buffer = splatStorage.scaleBuffer.get()}},
+                };
+                if (pd.depth)
                 {
-                    if (drawId >= gpuSceneView->gaussianSplatDraws.size())
-                        continue;
-
-                    const uint32_t splatIndex = gpuSceneView->gaussianSplatDraws[drawId].primitiveIndex;
-                    if (splatIndex >= splats.size())
-                        continue;
-
-                    const auto& splat = splats[splatIndex];
-                    const uint32_t pointCount = m_DrawPointCounts[drawId];
-                    const uint32_t valueBase  = m_DrawPointBaseOffsets[drawId];
-                    if (pointCount == 0u || !splat.centersBuffer || !splat.colorBuffer || !splat.covarianceBuffer ||
-                        !splat.shBuffer)
-                        continue;
-
-                    if (splat.centersBuffer.get() != lastCentersBuffer)
+                    if (auto* depthTexture = resources.get<framegraph::FrameGraphTexture>(pd.depth).texture;
+                        depthTexture)
                     {
-                        rhi::prepareForComputing(rc.cb, *splat.centersBuffer);
-                        lastCentersBuffer = splat.centersBuffer.get();
+                        rc.resourceSet[0][27] = rhi::bindings::CombinedImageSampler {
+                            .texture     = depthTexture,
+                            .imageAspect = rhi::ImageAspect::eDepth,
+                        };
                     }
-                    if (splat.colorBuffer.get() != lastColorBuffer)
-                    {
-                        rhi::prepareForComputing(rc.cb, *splat.colorBuffer);
-                        lastColorBuffer = splat.colorBuffer.get();
-                    }
-                    if (splat.covarianceBuffer.get() != lastCovarianceBuffer)
-                    {
-                        rhi::prepareForComputing(rc.cb, *splat.covarianceBuffer);
-                        lastCovarianceBuffer = splat.covarianceBuffer.get();
-                    }
-                    if (splat.shBuffer.get() != lastShBuffer)
-                    {
-                        rhi::prepareForComputing(rc.cb, *splat.shBuffer);
-                        lastShBuffer = splat.shBuffer.get();
-                    }
-
-                    rc.resourceSet[0] = {
-                        {0, rhi::bindings::UniformBuffer {.buffer = cameraUbo}},
-                        {1, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatDrawBuffer.get()}},
-                        {13, rhi::bindings::StorageBuffer {.buffer = splat.centersBuffer.get()}},
-                        {14, rhi::bindings::StorageBuffer {.buffer = splat.covarianceBuffer.get()}},
-                        {15, rhi::bindings::StorageBuffer {.buffer = splat.colorBuffer.get()}},
-                        {16, rhi::bindings::StorageBuffer {.buffer = splat.shBuffer.get()}},
-                        {17, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatSortKeysBuffer.get()}},
-                        {18, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatSortValuesBuffer.get()}},
-                        {19, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatProjectedBuffer.get()}},
-                        {20, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatVisibleCountBuffer.get()}},
-                    };
-
-                    SortKeysPushConstants pc {};
-                    pc.drawId     = drawId;
-                    pc.pointCount = pointCount;
-                    pc.valueBase  = valueBase;
-                    pc.shDegree   = std::min<uint32_t>(splat.shDegree < 0 ? 0 : static_cast<uint32_t>(splat.shDegree), 3u);
-
-                    const auto* sortPipeline = sortPipelines[pc.shDegree];
-                    if (!sortPipeline)
-                        sortPipeline = sortFallbackPipeline;
-                    if (!sortPipeline)
-                        continue;
-
-                    {
-                        RHI_GPU_ZONE(rc.cb, "GaussianSplatCullPass::SortKeys");
-                        rc.cb.bindPipeline(*sortPipeline);
-                        rc.bindDescriptorSets(*sortPipeline);
-                        rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
-                        rc.cb.dispatch({(pointCount + 63u) / 64u, 1u, 1u});
-                        rc.cb.insertComputeUavBarrier();
-                    }
-
                 }
+
+                SortKeysPushConstants pc {};
+                pc.totalPointCount      = totalPointCount;
+                pc.maxOutputCount       = totalPointCount;
+                pc.frustumDilation      = pd.settings.frustumDilation;
+                pc.alphaCullThreshold   = pd.settings.alphaCullThreshold;
+                pc.sizeCullingMinPixels = pd.settings.sizeCullingMinPixels;
+                pc.splatScale           = pd.settings.splatScale;
+                pc.maxAxisPixels        = pd.settings.maxAxisPixels;
+
+                {
+                    RHI_GPU_ZONE(rc.cb, "GaussianSplatCullPass::Dist");
+                    rc.cb.bindPipeline(*sortPipeline);
+                    rc.bindDescriptorSets(*sortPipeline);
+                    rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
+                    rc.cb.dispatch({(totalPointCount + 63u) / 64u, 1u, 1u});
+                }
+                rc.cb.insertComputeUavBarrier();
 
                 if (totalPointCount > 1u)
                 {
@@ -460,14 +241,16 @@ namespace vultra
                     rc.cb.insertComputeUavBarrier();
                 }
 
-                auto writeIndirectVariantHash =
-                    getShaderLib().computeVariantHash("gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
+                auto writeIndirectVariantHash = getShaderLib().computeVariantHash(
+                    "gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
                 if (writeIndirectPipeline)
                 {
                     rc.resourceSet[0] = {
-                        {12, rhi::bindings::StorageBuffer {.buffer = &gpuSceneView->gaussianSplatIndirectBuffer.value()}},
-                        {20, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatVisibleCountBuffer.get()}},
+                        {12,
+                         rhi::bindings::StorageBuffer {.buffer = &gpuSceneView->gaussianSplatIndirectBuffer.value()}},
+                        {20,
+                         rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatVisibleCountBuffer.get()}},
                     };
 
                     RHI_GPU_ZONE(rc.cb, "GaussianSplatCullPass::WriteIndirect");

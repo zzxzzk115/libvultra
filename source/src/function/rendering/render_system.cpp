@@ -316,7 +316,9 @@ namespace vultra
 
             // Stage gaussian splat draws (GPU-driven: cull shader writes the indirect buffer).
             {
-                const uint32_t maxSplatDraws = static_cast<uint32_t>(m_RenderWorldBack.splatInstances.size());
+                const uint32_t        maxSplatDraws    = static_cast<uint32_t>(m_RenderWorldBack.splatInstances.size());
+                uint32_t              totalSplatPoints = 0u;
+                std::vector<uint32_t> pointDrawIds;
 
                 static bool s_LoggedGaussianSplatStage = false;
 
@@ -329,12 +331,17 @@ namespace vultra
                         continue;
 
                     resource::GpuDrawRecord dr;
-                    dr.primitiveIndex = inst.splatIndex;
-                    dr.materialIndex  = 0;
-                    dr.flags          = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eGaussianSplat);
-                    dr.model          = inst.worldMatrix;
-                    dr.padding0       = pool.gaussianSplats[inst.splatIndex].pointCount;
-                    m_GpuSceneViewBack.pushGaussianSplatDraw(std::move(dr));
+                    dr.primitiveIndex     = inst.splatIndex;
+                    dr.materialIndex      = 0;
+                    dr.vertexStrideBytes  = 0;
+                    dr.flags              = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eGaussianSplat);
+                    dr.instanceIndex      = totalSplatPoints;
+                    dr.model              = inst.worldMatrix;
+                    dr.padding0           = 0;
+                    const uint32_t drawId = m_GpuSceneViewBack.pushGaussianSplatDraw(std::move(dr));
+
+                    pointDrawIds.insert(pointDrawIds.end(), pool.gaussianSplats[inst.splatIndex].pointCount, drawId);
+                    totalSplatPoints += pool.gaussianSplats[inst.splatIndex].pointCount;
 
                     if (!s_LoggedGaussianSplatStage)
                     {
@@ -355,6 +362,14 @@ namespace vultra
                 }
 
                 m_GpuSceneViewBack.uploadGaussianSplatDraws(rd, cb);
+                m_GpuSceneViewBack.ensureGaussianSplatPointDrawIdBuffer(rd, totalSplatPoints);
+                if (totalSplatPoints > 0u && m_GpuSceneViewBack.gaussianSplatPointDrawIdBuffer)
+                {
+                    cb.update(*m_GpuSceneViewBack.gaussianSplatPointDrawIdBuffer,
+                              0,
+                              static_cast<uint64_t>(pointDrawIds.size()) * sizeof(uint32_t),
+                              pointDrawIds.data());
+                }
             }
 
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;
@@ -383,14 +398,25 @@ namespace vultra
             return cams[a].priority < cams[b].priority;
         });
 
+        const bool supportsMultiview =
+            HasFlagValues(rd.getFeatureReport().flags, rhi::RenderDeviceFeatureReportFlagBits::eMultiview);
+        const auto xrEyeViews               = backendService.xrEyeViews();
+        bool       skipRemainingStereoViews = false;
+
         // TODO: TimeSystem, for now use 0
         const fsec dt {0};
         static_cast<void>(dt);
 
         for (const size_t cameraIdx : cameraOrder)
         {
-            const auto& cam      = cams[cameraIdx];
-            auto        renderer = resolveRenderer(cam);
+            const auto& cam = cams[cameraIdx];
+
+            if (skipRemainingStereoViews && cam.isXRView && !cam.isXRPrimaryView)
+                continue;
+            if (!cam.isXRView || cam.isXRPrimaryView)
+                skipRemainingStereoViews = false;
+
+            auto renderer = resolveRenderer(cam);
             if (!renderer)
                 continue;
 
@@ -398,22 +424,42 @@ namespace vultra
             FrameGraphBlackboard   bb {};
             FrameGraphDataRegistry dataRegistry {};
 
-            rhi::Texture* target = cam.target ? cam.target : &defaultTarget;
+            const bool canUseXrMultiview = supportsMultiview && cam.isXRView && cam.isXRPrimaryView &&
+                                           cam.viewCount == 2u && m_RenderWorldFront.instances.empty() &&
+                                           !xrEyeViews.empty() && xrEyeViews[0].stereoTarget;
+
+            rhi::Texture* target =
+                canUseXrMultiview ? xrEyeViews[0].stereoTarget : (cam.target ? cam.target : &defaultTarget);
             if (!target)
                 continue;
 
             RenderView view {
-                .renderWorld      = &m_RenderWorldFront,
-                .camera           = &cam,
-                .target           = target,
-                .extent           = target->getExtent(),
-                .clearValue       = cam.clearValue,
-                .gpuSceneDatabase = m_RenderWorldFront.gpuSceneDatabase,
-                .gpuSceneView     = m_RenderWorldFront.gpuSceneView,
+                .renderWorld          = &m_RenderWorldFront,
+                .camera               = &cam,
+                .target               = target,
+                .extent               = target->getExtent(),
+                .clearValue           = cam.clearValue,
+                .enableMultiview      = canUseXrMultiview,
+                .multiviewMask        = canUseXrMultiview ? 0x3u : 0u,
+                .multiviewCameras     = {&cam, nullptr},
+                .multiviewCameraCount = canUseXrMultiview ? 2u : 0u,
+                .gpuSceneDatabase     = m_RenderWorldFront.gpuSceneDatabase,
+                .gpuSceneView         = m_RenderWorldFront.gpuSceneView,
             };
+
+            if (canUseXrMultiview)
+            {
+                const auto secondEyeIt = std::find_if(cameraOrder.begin(), cameraOrder.end(), [&](size_t idx) {
+                    return cams[idx].isXRView && !cams[idx].isXRPrimaryView && cams[idx].viewCount == cam.viewCount;
+                });
+                if (secondEyeIt != cameraOrder.end())
+                    view.multiviewCameras[1] = &cams[*secondEyeIt];
+            }
 
             rhi::FramebufferInfo fbInfo {
                 .area             = {.extent = target->getExtent()},
+                .layers           = canUseXrMultiview ? 2u : 1u,
+                .viewMask         = canUseXrMultiview ? 0x3u : 0u,
                 .colorAttachments = {rhi::AttachmentInfo {.target = target, .clearValue = cam.clearValue}},
             };
 
@@ -484,6 +530,9 @@ namespace vultra
                 fg.execute(&frameGraphExecCtx, m_TransientResources.get());
             }
 
+            if (canUseXrMultiview)
+                skipRemainingStereoViews = true;
+
             // Optional ImGui rendering per non-XR camera
             if (imguiService && !cam.isXRView)
             {
@@ -496,7 +545,6 @@ namespace vultra
             }
         }
 
-        const auto xrEyeViews = backendService.xrEyeViews();
         if (imguiService && backendService.isXREnabled() && backendService.isXRMirrorEnabled() && !xrEyeViews.empty())
         {
             for (const auto& eyeView : xrEyeViews)

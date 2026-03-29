@@ -52,4 +52,10 @@ namespace vultra
     constexpr FrameGraphResourceKey kResKey_GaussianSplatCullDone {.id = vbase::hashLiteral("GaussianSplatCullDone")};
     constexpr FrameGraphResourceKey kResKey_GaussianSplatRenderDone {.id =
                                                                          vbase::hashLiteral("GaussianSplatRenderDone")};
+    constexpr FrameGraphResourceKey kResKey_GaussianSplatDepthAccum {.id =
+                                                                         vbase::hashLiteral("GaussianSplatDepthAccum")};
+    constexpr FrameGraphResourceKey kResKey_GaussianSplatDepthTransmittance {
+        .id = vbase::hashLiteral("GaussianSplatDepthTransmittance")};
+    constexpr FrameGraphResourceKey kResKey_GaussianSplatResolvedDepth {
+        .id = vbase::hashLiteral("GaussianSplatResolvedDepth")};
 } // namespace vultra

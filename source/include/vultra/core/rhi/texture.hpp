@@ -8,6 +8,8 @@
 #include "vultra/core/rhi/pixel_format.hpp"
 #include "vultra/core/rhi/texture_type.hpp"
 
+#define VULKAN_HPP_NO_EXCEPTIONS
+#define VULKAN_HPP_DISABLE_ENHANCED_MODE
 #include <vk_mem_alloc.hpp>
 
 #include <glm/ext/vector_uint3.hpp>
@@ -135,6 +137,7 @@ namespace vultra
             Texture(vma::Allocator, CreateInfo&&);
             // "Import" image (from a Swapchain).
             Texture(vk::Device, vk::Image, Extent2D, PixelFormat, uint32_t baseLayer = 0u);
+            Texture(vk::Device, vk::Image, Extent2D, PixelFormat, uint32_t baseLayer, uint32_t numLayers);
 
             void destroy() noexcept;
 

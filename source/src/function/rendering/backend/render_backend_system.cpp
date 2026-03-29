@@ -170,6 +170,7 @@ namespace vultra
                                 1000.0f),
                             .extent       = extent,
                             .target       = eyeTarget,
+                            .stereoTarget = &stereoTarget.stereo,
                             .mirrorTarget = nullptr,
                         });
                     }

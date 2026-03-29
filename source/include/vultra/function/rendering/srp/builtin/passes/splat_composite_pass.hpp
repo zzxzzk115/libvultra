@@ -16,9 +16,11 @@ namespace vultra
     public:
         FrameGraphResource addPass(FrameGraphBuildContext& ctx,
                                    FrameGraphResource      meshletColor,
-                                   FrameGraphResource      splatColor);
+                                   FrameGraphResource      splatColor,
+                                   FrameGraphResource      splatDepthAccum,
+                                   FrameGraphResource      sceneDepth);
 
     private:
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useDepthAware) const;
     };
 } // namespace vultra

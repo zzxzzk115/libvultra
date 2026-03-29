@@ -159,6 +159,15 @@ namespace vultra
                 {
                     const XrSwapchainImageVulkan2KHR& swapchainImage = m_SwapchainImages[i];
 
+                    m_SwapchainStereoRenderTargetViews[i].stereo =
+                        rhi::Texture {m_RenderDevice.m_Device,
+                                      swapchainImage.image,
+                                      {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
+                                       static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
+                                      colorFormat,
+                                      0,
+                                      static_cast<uint32_t>(m_EyeCount)};
+
                     m_SwapchainStereoRenderTargetViews[i].left =
                         rhi::Texture {m_RenderDevice.m_Device,
                                       swapchainImage.image,

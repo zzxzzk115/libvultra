@@ -44,8 +44,13 @@ namespace vultra
         // If GaussianSplatFeature ran before us, blend its output on top.
         if (ctx.data.contains(kResKey_GaussianSplatRenderDone))
         {
-            auto splatColor     = ctx.data.get(kResKey_GaussianSplatRenderDone);
-            auto compositeColor = m_SplatCompositePass->addPass(ctx, meshletColor, splatColor);
+            auto splatColor      = ctx.data.get(kResKey_GaussianSplatRenderDone);
+            auto splatDepthAccum = ctx.data.tryGet(kResKey_GaussianSplatResolvedDepth);
+            if (!splatDepthAccum)
+                splatDepthAccum = ctx.data.tryGet(kResKey_GaussianSplatDepthAccum);
+            auto sceneDepth = ctx.data.tryGet(kResKey_DepthTexture);
+            auto compositeColor =
+                m_SplatCompositePass->addPass(ctx, meshletColor, splatColor, splatDepthAccum, sceneDepth);
             ctx.data.set(kResKey_FinalCompositionSource, compositeColor);
         }
         else

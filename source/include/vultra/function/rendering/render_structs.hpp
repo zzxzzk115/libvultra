@@ -36,6 +36,7 @@ namespace vultra
         uint32_t viewIndex {0};
         uint32_t viewCount {1};
         bool     isXRView {false};
+        bool     isXRPrimaryView {true};
 
         // Matrices
         glm::mat4 view {1.0f};

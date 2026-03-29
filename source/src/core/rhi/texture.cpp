@@ -471,6 +471,25 @@ namespace vultra
                                 });
         }
 
+        Texture::Texture(vk::Device  device,
+                         vk::Image   handle,
+                         Extent2D    extent,
+                         PixelFormat pixelFormat,
+                         uint32_t    baseLayer,
+                         uint32_t    numLayers) :
+            m_DeviceOrAllocator(device), m_Image(handle),
+            m_Type(numLayers > 1u ? TextureType::eTexture2DArray : TextureType::eTexture2D), m_Extent(extent),
+            m_Format(pixelFormat), m_NumLayers(numLayers), m_LayerFaces(std::max(numLayers, 1u)),
+            m_BaseArrayLayer(baseLayer), m_UsageFlags(kSwapchainDefaultUsageFlags)
+        {
+            const auto deviceHandle = getDeviceHandle();
+            createAspect(deviceHandle,
+                         handle,
+                         numLayers > 1u ? vk::ImageViewType::e2DArray : vk::ImageViewType::e2D,
+                         vk::ImageAspectFlagBits::eColor,
+                         m_Aspects[static_cast<uint32_t>(vk::ImageAspectFlagBits::eColor)]);
+        }
+
         void Texture::destroy() noexcept
         {
             if (!static_cast<bool>(*this))

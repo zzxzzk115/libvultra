@@ -14,6 +14,7 @@ namespace vultra
     struct CameraData
     {
         UploadedBuffer cameraBlock;
+        UploadedBuffer stereoCameraBlock;
     };
 
     struct FrameRenderData

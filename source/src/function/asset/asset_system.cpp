@@ -188,10 +188,7 @@ namespace vultra
             return std::clamp(x, -65504.0f, 65504.0f);
         }
 
-        uint32_t packF16x2(float a, float b)
-        {
-            return glm::packHalf2x16(glm::vec2(clampToF16(a), clampToF16(b)));
-        }
+        uint32_t packF16x2(float a, float b) { return glm::packHalf2x16(glm::vec2(clampToF16(a), clampToF16(b))); }
 
         uint32_t packF16x2Clamp01(float a, float b)
         {
@@ -203,7 +200,7 @@ namespace vultra
             if (!std::isfinite(xyzw.x) || !std::isfinite(xyzw.y) || !std::isfinite(xyzw.z) || !std::isfinite(xyzw.w))
                 return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
-            glm::quat q(xyzw.w, xyzw.x, xyzw.y, xyzw.z);
+            glm::quat   q(xyzw.w, xyzw.x, xyzw.y, xyzw.z);
             const float len2 = glm::dot(q, q);
             if (!(len2 > 1e-12f))
                 return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
@@ -238,6 +235,13 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[AssetSystem] Shutting down");
 
+        {
+            std::scoped_lock lock(m_UploadQueueMutex);
+            m_UploadQueue.clear();
+        }
+        m_MeshCache.clear();
+        m_TextureCache.clear();
+        m_GaussianSplatCache.clear();
         m_TexUUIDToBindlessIndex.clear();
         m_RenderDevice       = nullptr;
         m_GpuResourceService = nullptr;
@@ -663,24 +667,25 @@ namespace vultra
 
         auto& pool = m_GpuResourceService->pool();
 
-        constexpr float kShC0       = 0.28209479177f;
-        constexpr int   kTargetRest = static_cast<int>(resource::GpuGaussianSplat::s_PackedShRestCoeffs);
-        constexpr float kAlphaMinKeep          = 0.001f;
-        constexpr float kAlphaLogitMin         = -20.0f;
-        constexpr float kAlphaLogitMax         = 20.0f;
-        constexpr float kLogScaleMin           = -20.0f;
-        constexpr float kLogScaleMax           = 4.0f;
+        constexpr float    kShC0               = 0.28209479177f;
+        constexpr int      kTargetRest         = static_cast<int>(resource::GpuGaussianSplat::s_PackedShRestCoeffs);
+        constexpr float    kAlphaMinKeep       = 0.001f;
+        constexpr float    kAlphaLogitMin      = -20.0f;
+        constexpr float    kAlphaLogitMax      = 20.0f;
+        constexpr float    kLogScaleMin        = -20.0f;
+        constexpr float    kLogScaleMax        = 4.0f;
         constexpr uint32_t kDetectSampleBudget = 200000u;
 
         const int fileDegree     = std::clamp(cpuSplat.shDegree, 0, 3);
         const int fileRestCoeffs = fileDegree > 0 ? (((fileDegree + 1) * (fileDegree + 1)) - 1) : 0;
 
-        const uint32_t detectCount = std::min<uint32_t>(static_cast<uint32_t>(cpuSplat.splats.size()), kDetectSampleBudget);
+        const uint32_t detectCount =
+            std::min<uint32_t>(static_cast<uint32_t>(cpuSplat.splats.size()), kDetectSampleBudget);
 
-        float alphaMin = std::numeric_limits<float>::infinity();
-        float alphaMax = -std::numeric_limits<float>::infinity();
-        float scaleMin = std::numeric_limits<float>::infinity();
-        float scaleMax = -std::numeric_limits<float>::infinity();
+        float  alphaMin = std::numeric_limits<float>::infinity();
+        float  alphaMax = -std::numeric_limits<float>::infinity();
+        float  scaleMin = std::numeric_limits<float>::infinity();
+        float  scaleMax = -std::numeric_limits<float>::infinity();
         double colorMin = std::numeric_limits<double>::infinity();
         double colorMax = -std::numeric_limits<double>::infinity();
 
@@ -721,9 +726,9 @@ namespace vultra
         if (std::isfinite(scaleMin) && std::isfinite(scaleMax))
             looksLogScale = (scaleMin < -1.0f) || (scaleMax > 3.0f);
 
-        const bool looksByteRGB    = std::isfinite(colorMax) && (colorMax > 4.0);
-        const bool looksFloatRGB01 = std::isfinite(colorMin) && std::isfinite(colorMax) && (colorMin >= -1e-3) &&
-                                     (colorMax <= 1.5);
+        const bool looksByteRGB = std::isfinite(colorMax) && (colorMax > 4.0);
+        const bool looksFloatRGB01 =
+            std::isfinite(colorMin) && std::isfinite(colorMax) && (colorMin >= -1e-3) && (colorMax <= 1.5);
         const bool looksSH0 = (!looksByteRGB && !looksFloatRGB01);
 
         bool sh0AddBias = true;
@@ -739,7 +744,7 @@ namespace vultra
                 if (!std::isfinite(p.shDC.x) || !std::isfinite(p.shDC.y) || !std::isfinite(p.shDC.z))
                     continue;
 
-                const glm::vec3 dc = kShC0 * p.shDC;
+                const glm::vec3 dc          = kShC0 * p.shDC;
                 const glm::vec3 rgbWithBias = dc + glm::vec3(0.5f);
                 const glm::vec3 rgbNoBias   = dc;
 
@@ -792,17 +797,18 @@ namespace vultra
             if (looksFloatRGB01)
                 return glm::clamp(p.shDC, glm::vec3(0.0f), glm::vec3(1.0f));
 
-            return glm::clamp(kShC0 * p.shDC + (sh0AddBias ? glm::vec3(0.5f) : glm::vec3(0.0f)),
-                              glm::vec3(0.0f),
-                              glm::vec3(1.0f));
+            return glm::clamp(
+                kShC0 * p.shDC + (sh0AddBias ? glm::vec3(0.5f) : glm::vec3(0.0f)), glm::vec3(0.0f), glm::vec3(1.0f));
         };
 
-        std::vector<glm::vec4> packedCenters;
+        std::vector<glm::vec4>  packedCenters;
+        std::vector<glm::vec4>  packedScales;
         std::vector<glm::uvec4> packedCovariances;
         std::vector<glm::uvec2> packedColors;
         std::vector<glm::uvec2> packedSh;
 
         packedCenters.reserve(cpuSplat.splats.size());
+        packedScales.reserve(cpuSplat.splats.size());
         packedCovariances.reserve(cpuSplat.splats.size());
         packedColors.reserve(cpuSplat.splats.size());
         packedSh.reserve(cpuSplat.splats.size() * resource::GpuGaussianSplat::s_PackedShRestCoeffs);
@@ -823,6 +829,7 @@ namespace vultra
             packedColors.emplace_back(packF16x2Clamp01(baseRgb.r, baseRgb.g), packF16x2Clamp01(baseRgb.b, alpha));
 
             const glm::vec3 scaleLin = decodeScaleLin(p);
+            packedScales.push_back(glm::vec4(scaleLin, 0.0f));
             const glm::quat q = sanitizeAndNormalizeQuat(p.rotation);
             const glm::mat3 R = glm::mat3_cast(q);
 
@@ -895,26 +902,19 @@ namespace vultra
             radius = std::max(radius, glm::length(glm::vec3(c) - center));
 
         resource::GpuGaussianSplat out;
-        out.pointCount = static_cast<uint32_t>(packedCenters.size());
-        out.shDegree   = fileDegree;
-        out.center     = center;
-        out.radius     = radius;
-
-        const auto uploadBuffer = [&](auto& dst, const auto& src) {
-            if (src.empty())
-                return;
-            const uint64_t bytes = static_cast<uint64_t>(src.size()) * static_cast<uint64_t>(sizeof(src[0]));
-            dst = createRef<rhi::StorageBuffer>(m_RenderDevice->createStorageBuffer(bytes));
-            m_RenderDevice->uploadS(*dst, 0, bytes, src.data());
-        };
-
-        uploadBuffer(out.centersBuffer, packedCenters);
-        uploadBuffer(out.covarianceBuffer, packedCovariances);
-        uploadBuffer(out.colorBuffer, packedColors);
-        uploadBuffer(out.shBuffer, packedSh);
+        out.pointCount  = static_cast<uint32_t>(packedCenters.size());
+        out.shDegree    = fileDegree;
+        out.center      = center;
+        out.radius      = radius;
+        out.pointOffset = pool.gaussianStorage.appendCenters(*m_RenderDevice, packedCenters.data(), out.pointCount);
+        pool.gaussianStorage.appendScales(*m_RenderDevice, packedScales.data(), out.pointCount);
+        pool.gaussianStorage.appendCovariances(*m_RenderDevice, packedCovariances.data(), out.pointCount);
+        pool.gaussianStorage.appendColors(*m_RenderDevice, packedColors.data(), out.pointCount);
+        pool.gaussianStorage.appendSh(*m_RenderDevice, packedSh.data(), static_cast<uint32_t>(packedSh.size()));
 
         const uint32_t index = static_cast<uint32_t>(pool.gaussianSplats.size());
         pool.gaussianSplats.push_back(std::move(out));
+        pool.uploadGaussianSplatMeta(*m_RenderDevice);
         return index;
     }
 
