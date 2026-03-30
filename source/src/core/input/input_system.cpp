@@ -19,34 +19,54 @@ namespace vultra
 
     void InputSystem::onPostUpdate(fsec) { clearStates(); }
 
-    void InputSystem::handleEvent(const SDL_Event& e)
+    void InputSystem::handleEvent(const os::GeneralWindowEvent& e)
     {
         switch (e.type)
         {
-            case SDL_EVENT_KEY_DOWN:
-                setKeyState(static_cast<KeyCode>(e.key.scancode),
-                            e.key.repeat ? InputAction::eRepeat : InputAction::ePress);
+            case event::WindowEventType::eKeyDown:
+                if (e.key.has_value())
+                {
+                    setKeyState(e.key->key, e.key->repeat ? InputAction::eRepeat : InputAction::ePress);
+                }
                 break;
 
-            case SDL_EVENT_KEY_UP:
-                setKeyState(static_cast<KeyCode>(e.key.scancode), InputAction::eRelease);
+            case event::WindowEventType::eKeyUp:
+                if (e.key.has_value())
+                {
+                    setKeyState(e.key->key, InputAction::eRelease);
+                }
                 break;
 
-            case SDL_EVENT_MOUSE_BUTTON_DOWN:
-                setMouseButtonState(static_cast<MouseCode>(e.button.button), {true, e.button.clicks});
+            case event::WindowEventType::eMouseButtonDown:
+                if (e.mouseButton.has_value())
+                {
+                    setMouseButtonState(e.mouseButton->button, {true, e.mouseButton->clicks});
+                }
                 break;
 
-            case SDL_EVENT_MOUSE_BUTTON_UP:
-                setMouseButtonState(static_cast<MouseCode>(e.button.button), {false, e.button.clicks});
+            case event::WindowEventType::eMouseButtonUp:
+                if (e.mouseButton.has_value())
+                {
+                    setMouseButtonState(e.mouseButton->button, {false, e.mouseButton->clicks});
+                }
                 break;
 
-            case SDL_EVENT_MOUSE_MOTION:
-                setMousePosition({e.motion.x, e.motion.y});
-                setMousePositionDelta({e.motion.xrel, e.motion.yrel});
+            case event::WindowEventType::eMouseMotion:
+                if (e.mouseMotion.has_value())
+                {
+                    setMousePosition(e.mouseMotion->position);
+                    setMousePositionDelta(e.mouseMotion->delta);
+                }
                 break;
 
-            case SDL_EVENT_MOUSE_WHEEL:
-                setMouseScrollDelta({e.wheel.x, e.wheel.y});
+            case event::WindowEventType::eMouseWheel:
+                if (e.mouseWheel.has_value())
+                {
+                    setMouseScrollDelta(e.mouseWheel->delta);
+                }
+                break;
+
+            default:
                 break;
         }
     }

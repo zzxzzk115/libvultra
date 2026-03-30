@@ -1,25 +1,25 @@
 #pragma once
 
-#include <SDL3/SDL_events.h>
-#include <entt/entt.hpp>
+#include "vultra/core/event/window_events.hpp"
+
 #include <glm/glm.hpp>
+#include <vbase/event/event_bus.hpp>
 #include <vulkan/vulkan.hpp>
+
+#include <functional>
+#include <memory>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace vultra
 {
     namespace os
     {
-        class Window : public entt::emitter<Window>
+        class Window
         {
         public:
-            Window()              = delete;
-            Window(const Window&) = delete;
-            Window(Window&&) noexcept;
-            ~Window() override;
-
-            Window& operator=(const Window&) = delete;
-            Window& operator=(Window&&) noexcept;
-
             using Extent   = glm::ivec2;
             using Position = glm::ivec2;
 
@@ -29,42 +29,22 @@ namespace vultra
                 eGrab,
             };
 
-            [[nodiscard]] static float   getPrimaryDisplayScale();
-            [[nodiscard]] static Window& getActiveWindow();
+            enum class PlatformType
+            {
+                eSDL3,
+                eAndroidNativeWindow,
+            };
 
-            Window& setTitle(std::string_view title);
-            Window& setExtent(Extent extent);
-            Window& setPosition(Position position);
-            Window& setCursor(CursorType cursor);
-            Window& setCursorVisibility(bool cursorVisibility);
-            Window& setMouseRelativeMode(bool mouseRelativeMode);
-            Window& setResizable(bool resizable);
-            Window& setFullscreen(bool fullscreen);
-
-            [[nodiscard]] std::string_view getTitle() const;
-            [[nodiscard]] Extent           getExtent() const;
-            [[nodiscard]] Extent           getFrameBufferExtent() const;
-            [[nodiscard]] Position         getPosition() const;
-            [[nodiscard]] CursorType       getCursor() const;
-            [[nodiscard]] bool             getCursorVisibility() const;
-            [[nodiscard]] bool             getMouseRelativeMode() const;
-            [[nodiscard]] bool             isResizable() const;
-            [[nodiscard]] bool             isFullscreen() const;
-
-            [[nodiscard]] float getDisplayScale() const;
-
-            [[nodiscard]] bool shouldClose() const;
-            [[nodiscard]] bool isMinimized() const;
-
-            [[nodiscard]] SDL_Window* getSDL3WindowHandle() const;
-            [[nodiscard]] void*       getOSWindowHandle() const;
-
-            [[nodiscard]] vk::SurfaceKHR createVulkanSurface(vk::Instance instance) const;
-
-            void pollEvents();
-            void close();
-
-            static void quit();
+            enum class DriverType
+            {
+                eUnknown,
+                eX11,
+                eWayland,
+                eWin32,
+                eCocoa,
+                eUIKit,
+                eAndroid,
+            };
 
             class Builder
             {
@@ -84,7 +64,7 @@ namespace vultra
                 Builder& setResizable(bool resizable);
                 Builder& setFullscreen(bool fullscreen);
 
-                [[nodiscard]] Window build() const;
+                [[nodiscard]] std::shared_ptr<Window> build() const;
 
             private:
                 std::string m_Title;
@@ -95,47 +75,67 @@ namespace vultra
                 bool        m_Fullscreen {false};
             };
 
-            using WindowEventType = uint32_t;
-            using WindowEvent     = SDL_Event;
+            Window()              = default;
+            Window(const Window&) = delete;
+            Window(Window&&)      = delete;
+            virtual ~Window()     = default;
 
-            enum class DriverType
+            Window& operator=(const Window&) = delete;
+            Window& operator=(Window&&)      = delete;
+
+            [[nodiscard]] virtual PlatformType platformType() const = 0;
+            [[nodiscard]] virtual DriverType   driverType() const   = 0;
+
+            virtual Window& setTitle(std::string_view title)             = 0;
+            virtual Window& setExtent(Extent extent)                     = 0;
+            virtual Window& setPosition(Position position)               = 0;
+            virtual Window& setCursor(CursorType cursor)                 = 0;
+            virtual Window& setCursorVisibility(bool cursorVisibility)   = 0;
+            virtual Window& setMouseRelativeMode(bool mouseRelativeMode) = 0;
+            virtual Window& setResizable(bool resizable)                 = 0;
+            virtual Window& setFullscreen(bool fullscreen)               = 0;
+
+            [[nodiscard]] virtual std::string_view getTitle() const             = 0;
+            [[nodiscard]] virtual Extent           getExtent() const            = 0;
+            [[nodiscard]] virtual Extent           getFrameBufferExtent() const = 0;
+            [[nodiscard]] virtual Position         getPosition() const          = 0;
+            [[nodiscard]] virtual CursorType       getCursor() const            = 0;
+            [[nodiscard]] virtual bool             getCursorVisibility() const  = 0;
+            [[nodiscard]] virtual bool             getMouseRelativeMode() const = 0;
+            [[nodiscard]] virtual bool             isResizable() const          = 0;
+            [[nodiscard]] virtual bool             isFullscreen() const         = 0;
+            [[nodiscard]] virtual float            getDisplayScale() const      = 0;
+            [[nodiscard]] virtual bool             shouldClose() const          = 0;
+            [[nodiscard]] virtual bool             isMinimized() const          = 0;
+            [[nodiscard]] virtual bool             isReady() const              = 0;
+
+            [[nodiscard]] virtual std::span<const char* const> getRequiredVulkanInstanceExtensions() const      = 0;
+            [[nodiscard]] virtual vk::SurfaceKHR               createVulkanSurface(vk::Instance instance) const = 0;
+
+            virtual void pollEvents(int timeoutMillis = 0) = 0;
+            virtual void close()                           = 0;
+
+            template<typename Event>
+            void on(std::function<void(const Event&, Window&)> fn)
             {
-                eX11,
-                eWayland,
-                eWin32,
-                eCocoa,
-                eUIKit, // iOS
-            };
+                m_Subscriptions.emplace_back(
+                    m_EventBus.subscribe<Event>([this, fn = std::move(fn)](const Event& event) { fn(event, *this); }));
+            }
 
-            [[nodiscard]] static DriverType getDriverType();
+            static void shutdownPlatform();
 
-            struct GeneralWindowEvent
+        protected:
+            template<typename Event>
+            void emitEvent(const Event& event)
             {
-                WindowEventType type;
-                WindowEvent     internalEvent;
-            };
+                m_EventBus.publish(event);
+            }
 
         private:
-            Window(std::string_view, Extent, Position, bool, bool, bool);
-
-        private:
-            std::string m_Title;
-            Extent      m_Extent {}, m_FrameBufferExtent {};
-            Position    m_Position {};
-            CursorType  m_Cursor {CursorType::eArrow};
-            bool        m_CursorVisibility {true};
-            bool        m_MouseRelativeMode {false};
-            bool        m_Resizable {true};
-            bool        m_Fullscreen {false};
-
-            bool m_ShouldClose {false};
-            bool m_IsMinimized {false};
-
-            SDL_Window* m_SDL3WindowHandle {nullptr};
-
-            static Window* s_ActiveWindow;
+            vbase::EventBus                  m_EventBus;
+            std::vector<vbase::Subscription> m_Subscriptions;
         };
 
-        using GeneralWindowEvent = Window::GeneralWindowEvent;
+        using GeneralWindowEvent = event::WindowEvent;
     } // namespace os
 } // namespace vultra

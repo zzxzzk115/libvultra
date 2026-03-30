@@ -12,6 +12,7 @@
 #include <vasset/vmesh.hpp>
 #include <vasset/vtexture.hpp>
 
+#include <vbase/core/result.hpp>
 #include <vbase/service/service_registry.hpp>
 
 #include <string_view>
@@ -40,6 +41,9 @@ namespace vultra
         virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(std::string_view uri) = 0;
         virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(std::string_view uri) = 0;
+
+        // Text assets: scene documents, manifests, Lua scripts, etc.
+        virtual vbase::Result<std::string, std::string> loadTextAssetSync(std::string_view uri) = 0;
 
         // Bindless texture index resolution.
         // Returns 0 for invalid UUID.

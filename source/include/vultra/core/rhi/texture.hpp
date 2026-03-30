@@ -8,7 +8,8 @@
 #include "vultra/core/rhi/pixel_format.hpp"
 #include "vultra/core/rhi/texture_type.hpp"
 
-#define VULKAN_HPP_NO_EXCEPTIONS
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
 #define VULKAN_HPP_DISABLE_ENHANCED_MODE
 #include <vk_mem_alloc.hpp>
 

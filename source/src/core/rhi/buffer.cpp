@@ -71,7 +71,9 @@ namespace vultra
         {
             assert(m_Handle && m_MappedMemory);
 
-            m_MemoryAllocator.flushAllocation(m_Allocation, offset, size);
+            VK_CHECK(m_MemoryAllocator.flushAllocation(m_Allocation, offset, size),
+                     "[Buffer]",
+                     "Failed to flush allocation");
             return *this;
         }
 

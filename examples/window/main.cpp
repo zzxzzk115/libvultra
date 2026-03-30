@@ -10,35 +10,36 @@ int main()
     auto window = os::Window::Builder {}.setTitle("Empty Vultra Window").setExtent({1024, 768}).build();
 
     // Event callback
-    window.on<os::GeneralWindowEvent>([](const os::GeneralWindowEvent& event, os::Window& wd) {
-        if (event.type == SDL_EVENT_KEY_DOWN)
+    window->on<os::GeneralWindowEvent>([](const os::GeneralWindowEvent& event, os::Window& wd) {
+        if (event.type == vultra::event::WindowEventType::eKeyDown && event.key.has_value())
         {
             // Press ESC to close the window
-            if (event.internalEvent.key.key == SDLK_ESCAPE)
+            if (event.key->key == KeyCode::eEscape)
             {
                 wd.close();
             }
         }
     });
 
-    rhi::RenderDevice renderDevice(rhi::RenderDeviceFeatureFlagBits::eNormal);
+    rhi::RenderDevice renderDevice(
+        rhi::RenderDeviceFeatureFlagBits::eNormal, "Empty Vultra Window", window->getRequiredVulkanInstanceExtensions());
 
     VULTRA_CLIENT_INFO("RenderDevice Name: {}", renderDevice.getName());
     VULTRA_CLIENT_INFO("RenderDevice PhysicalDeviceInfo: {}", renderDevice.getPhysicalDeviceInfo().toString());
 
     VULTRA_CLIENT_WARN("Press ESC to close the window");
 
-    window.setTitle(std::format("Empty Window ({})", renderDevice.getName()));
+    window->setTitle(std::format("Empty Window ({})", renderDevice.getName()));
 
     // Create swapchain
-    rhi::Swapchain swapchain = renderDevice.createSwapchain(window);
+    rhi::Swapchain swapchain = renderDevice.createSwapchain(*window);
 
     // Create frame controller
     rhi::FrameController frameController {renderDevice, swapchain, 2};
 
-    while (!window.shouldClose())
+    while (!window->shouldClose())
     {
-        window.pollEvents();
+        window->pollEvents();
 
         if (!swapchain)
             continue;

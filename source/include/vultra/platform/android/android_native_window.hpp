@@ -1,0 +1,77 @@
+#pragma once
+
+#if defined(__ANDROID__)
+
+#include "vultra/core/os/window.hpp"
+
+#include <android/native_window.h>
+
+struct android_app;
+struct GameActivityKeyEvent;
+struct GameActivityMotionEvent;
+
+namespace vultra::platform::android
+{
+    class AndroidNativeWindow final : public os::Window
+    {
+    public:
+        explicit AndroidNativeWindow(android_app& app);
+        AndroidNativeWindow(ANativeWindow* nativeWindow, const int* destroyRequested = nullptr);
+        ~AndroidNativeWindow() override = default;
+
+        [[nodiscard]] PlatformType platformType() const override { return PlatformType::eAndroidNativeWindow; }
+        [[nodiscard]] DriverType   driverType() const override { return DriverType::eAndroid; }
+
+        Window& setTitle(std::string_view title) override;
+        Window& setExtent(Extent extent) override;
+        Window& setPosition(Position position) override;
+        Window& setCursor(CursorType cursor) override;
+        Window& setCursorVisibility(bool cursorVisibility) override;
+        Window& setMouseRelativeMode(bool mouseRelativeMode) override;
+        Window& setResizable(bool resizable) override;
+        Window& setFullscreen(bool fullscreen) override;
+
+        [[nodiscard]] std::string_view getTitle() const override { return m_Title; }
+        [[nodiscard]] Extent           getExtent() const override { return m_Extent; }
+        [[nodiscard]] Extent           getFrameBufferExtent() const override { return m_Extent; }
+        [[nodiscard]] Position         getPosition() const override { return {}; }
+        [[nodiscard]] CursorType       getCursor() const override { return CursorType::eArrow; }
+        [[nodiscard]] bool             getCursorVisibility() const override { return true; }
+        [[nodiscard]] bool             getMouseRelativeMode() const override { return false; }
+        [[nodiscard]] bool             isResizable() const override { return false; }
+        [[nodiscard]] bool             isFullscreen() const override { return true; }
+        [[nodiscard]] float            getDisplayScale() const override { return 1.0f; }
+        [[nodiscard]] bool             shouldClose() const override { return m_ShouldClose; }
+        [[nodiscard]] bool             isMinimized() const override { return false; }
+        [[nodiscard]] bool             isReady() const override;
+
+        [[nodiscard]] std::span<const char* const> getRequiredVulkanInstanceExtensions() const override;
+        [[nodiscard]] vk::SurfaceKHR               createVulkanSurface(vk::Instance instance) const override;
+
+        void pollEvents(int timeoutMillis) override;
+        void close() override;
+
+        [[nodiscard]] ANativeWindow* nativeWindow() const { return m_NativeWindow; }
+
+        static void shutdown();
+
+    private:
+        void                         processInputBuffers();
+        void                         processKeyEvent(const GameActivityKeyEvent& event);
+        void                         processMotionEvent(const GameActivityMotionEvent& event);
+        [[nodiscard]] static KeyCode translateKeyCode(int32_t keyCode);
+        void                         updateWindowState();
+
+    private:
+        android_app*                 m_App {nullptr};
+        const int*                   m_DestroyRequested {nullptr};
+        ANativeWindow*               m_NativeWindow {nullptr};
+        Extent                       m_Extent {};
+        glm::vec2                    m_LastPointerPosition {};
+        std::string                  m_Title;
+        bool                         m_ShouldClose {false};
+        static constexpr const char* k_VulkanExtensions[2] = {VK_KHR_SURFACE_EXTENSION_NAME, "VK_KHR_android_surface"};
+    };
+} // namespace vultra::platform::android
+
+#endif

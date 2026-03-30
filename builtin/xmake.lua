@@ -96,10 +96,14 @@ task("shader_task")
         import("core.project.project")
 
         local target = project.target("vultra_builtin_assets")
-        assert(target)
+        if not target then
+            return
+        end
 
         local pkg = target:pkg("vshadersystem")
-        assert(pkg)
+        if not pkg then
+            return
+        end
 
         local vshaderc =
             path.join(pkg:installdir(), "bin", "vshaderc")
@@ -373,7 +377,7 @@ task("font_task")
     end)
 task_end()
 
-add_requires("vshadersystem v0.6.1", { configs = { debug = is_mode("debug") }})
+add_requires("vshadersystem v0.6.2", { configs = { debug = is_mode("debug") }})
 
 target("vultra_builtin_assets")
     -- https://xmake.io/zh/api/description/project-target.html#headeronly

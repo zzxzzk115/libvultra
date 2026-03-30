@@ -12,6 +12,7 @@
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
 #include "vultra/function/rendering/render_system.hpp"
 #include "vultra/function/rendering/shader_system.hpp"
+#include "vultra/function/rendering/srp/builtin/android_compat_renderer.hpp"
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
 #include "vultra/function/resource/gpu_resource_system.hpp"
 #include "vultra/function/scene/scene_system.hpp"
@@ -25,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 namespace vultra
 {
@@ -43,6 +45,13 @@ namespace vultra
         }
     } // namespace
 
+#if defined(__ANDROID__)
+    void DemoAppHost::setAndroidRuntimeContext(const platform::android::AndroidAppRuntimeContext& runtimeContext)
+    {
+        m_AndroidRuntimeContext = runtimeContext;
+    }
+#endif
+
     FPSCameraController DemoAppHost::makeFPSCameraController() const
     {
         FPSCameraController controller {};
@@ -60,13 +69,45 @@ namespace vultra
         return controller;
     }
 
-    Ref<Renderer> DemoAppHost::makeRenderer() const { return createRef<UniversalRenderer>(); }
+    Ref<Renderer> DemoAppHost::makeRenderer() const
+    {
+#if defined(__ANDROID__)
+        return createRef<AndroidCompatRenderer>();
+#else
+        return createRef<UniversalRenderer>();
+#endif
+    }
 
     void DemoAppHost::onConfigure(Engine& engine)
     {
         engine.ctx().config.window.title                   = demoWindowTitle();
         engine.ctx().config.window.resizable               = demoWindowResizable();
         engine.ctx().config.render.renderDeviceFeatureFlag = demoRenderDeviceFeatureFlag();
+
+#if defined(__ANDROID__)
+        if (m_AndroidRuntimeContext.has_value())
+        {
+            engine.ctx().config.window.android.app              = m_AndroidRuntimeContext->app;
+            engine.ctx().config.window.android.nativeWindow     = m_AndroidRuntimeContext->nativeWindow;
+            engine.ctx().config.window.android.destroyRequested = m_AndroidRuntimeContext->destroyRequested;
+            engine.ctx().config.imgui.enableMultiview           = false;
+
+            if (m_AndroidRuntimeContext->internalDataPath != nullptr &&
+                m_AndroidRuntimeContext->internalDataPath[0] != '\0')
+            {
+                const auto basePath                 = std::filesystem::path(m_AndroidRuntimeContext->internalDataPath);
+                engine.ctx().config.asset.assetRoot = basePath.generic_string();
+                engine.ctx().config.writableRoot    = basePath.generic_string();
+
+                if (m_AndroidRuntimeContext->useBundledVPK)
+                {
+                    engine.ctx().config.asset.vpkFile = (basePath / "resources.vpk").generic_string();
+                }
+            }
+
+            engine.ctx().config.asset.loadFromVPK = m_AndroidRuntimeContext->useBundledVPK;
+        }
+#endif
 
         engine.emplaceSubsystem<WindowSystem>();
         engine.emplaceSubsystem<InputSystem>();
@@ -118,21 +159,22 @@ namespace vultra
     void DemoAppHost::onPostConfigure(Engine& engine)
     {
         auto& window = engine.ctx().services.require<IWindowService>().window();
-        window.on<os::GeneralWindowEvent>([this](os::GeneralWindowEvent& e, os::Window&) { onWindowEvent(e); });
+        window.on<os::GeneralWindowEvent>([this](const os::GeneralWindowEvent& e, os::Window&) { onWindowEvent(e); });
 
         onPostConfigureDemo(engine);
     }
 
     void DemoAppHost::onWindowEvent(const os::GeneralWindowEvent& e)
     {
-        engineCtx().services.require<IInputService>().handleEvent(e.internalEvent);
+        engineCtx().services.require<IInputService>().handleEvent(e);
         ImGuiSystem::processEvent(e);
     }
 
     void DemoAppHost::onPollEvents()
     {
-        auto& window = engineCtx().services.require<IWindowService>().window();
-        window.pollEvents();
+        auto&     window        = engineCtx().services.require<IWindowService>().window();
+        const int timeoutMillis = (!window.isReady()) ? -1 : 0;
+        window.pollEvents(timeoutMillis);
 
         auto& input = engineCtx().services.require<IInputService>();
         if (input.getKeyDown(KeyCode::eEscape))

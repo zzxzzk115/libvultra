@@ -2,7 +2,6 @@
 
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/core/services/input_service.hpp"
-#include <SDL3/SDL_events.h>
 
 #include <map>
 
@@ -28,7 +27,7 @@ namespace vultra
         glm::vec2 getMousePositionDelta() const override;
         glm::vec2 getMouseScrollDelta() const override;
 
-        void handleEvent(const SDL_Event& e) override;
+        void handleEvent(const os::GeneralWindowEvent& e) override;
 
     protected:
         bool onInit() override;

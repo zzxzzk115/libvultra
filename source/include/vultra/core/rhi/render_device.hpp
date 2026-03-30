@@ -31,17 +31,14 @@
 
 #include <functional>
 #include <set>
+#include <span>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace vultra
 {
     class ImGuiSystem;
-
-    namespace platform::android
-    {
-        class AndroidWindow;
-    }
 
     namespace openxr
     {
@@ -133,7 +130,9 @@ namespace vultra
             friend class openxr::XRHeadset;
 
         public:
-            explicit RenderDevice(RenderDeviceFeatureFlagBits, std::string_view appName = "Untitled Vultra App");
+            explicit RenderDevice(RenderDeviceFeatureFlagBits,
+                                  std::string_view             appName                    = "Untitled Vultra App",
+                                  std::span<const char* const> requiredInstanceExtensions = {});
             RenderDevice(const RenderDevice&)     = delete;
             RenderDevice(RenderDevice&&) noexcept = delete;
             ~RenderDevice();
@@ -154,9 +153,6 @@ namespace vultra
             [[nodiscard]] vk::FormatProperties getFormatProperties(PixelFormat) const;
 
             [[nodiscard]] Swapchain createSwapchain(os::Window&,
-                                                    Swapchain::Format = Swapchain::Format::esRGB,
-                                                    VerticalSync      = VerticalSync::eDisabled) const;
-            [[nodiscard]] Swapchain createSwapchain(platform::android::AndroidWindow&,
                                                     Swapchain::Format = Swapchain::Format::esRGB,
                                                     VerticalSync      = VerticalSync::eDisabled) const;
 
@@ -342,6 +338,7 @@ namespace vultra
             RenderDeviceFeatureReport   m_FeatureReport {};
             RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
             std::string                 m_AppName;
+            std::vector<const char*>    m_RequiredInstanceExtensions;
             bool                        m_UseKhrDynamicRendering {false};
             bool                        m_UseKhrSynchronization2 {false};
 

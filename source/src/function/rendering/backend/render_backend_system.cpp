@@ -62,9 +62,20 @@ namespace vultra
         auto& windowService = ctx().services.require<IWindowService>();
         auto& window        = windowService.window();
 
+        if (!window.isReady())
+        {
+            VULTRA_CORE_INFO("[RenderBackendSystem] Waiting for window to become ready...");
+            while (!window.isReady() && !window.shouldClose())
+            {
+                window.pollEvents(-1);
+            }
+            VULTRA_CORE_INFO("[RenderBackendSystem] Window ready state: {}", window.isReady());
+        }
+
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating render device");
-        m_RenderDevice =
-            std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag, ctx().config.window.title);
+        m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
+                                                             ctx().config.window.title,
+                                                             window.getRequiredVulkanInstanceExtensions());
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");
         m_Swapchain =

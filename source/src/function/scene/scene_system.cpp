@@ -17,6 +17,7 @@
 #include "vultra/function/world/components/transform_component.hpp"
 
 #include <entt/entt.hpp>
+#include <vfilesystem/core/uri.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -97,13 +98,13 @@ namespace vultra
         return s;
     }
 
-    static std::string uri_path_copy(std::string_view uri)
+    static std::filesystem::path uri_base_dir(std::string_view uri)
     {
-        std::string s = trim_copy(uri);
-        auto        p = s.find("://");
-        if (p != std::string::npos)
-            return s.substr(p + 3);
-        return s;
+        const auto            parsed = vfilesystem::parse_uri(uri);
+        std::filesystem::path path {std::string(parsed.path.str())};
+        if (path.has_parent_path())
+            return path.parent_path();
+        return {};
     }
 
     bool try_resolve_asset_ref_to_uuid(IAssetService*                                      assetService,
@@ -125,56 +126,11 @@ namespace vultra
                 token = strip_quotes_copy(it->second);
         }
 
-        std::vector<std::string> candidates;
-        candidates.reserve(8);
-        candidates.push_back(token);
-
-        const std::string pathOnly = uri_path_copy(token);
-        if (pathOnly != token)
-            candidates.push_back(pathOnly);
-
-        if (!pathOnly.empty() && pathOnly.front() == '/')
-            candidates.push_back(pathOnly.substr(1));
-
-        const auto add_scheme_candidate = [&](const std::string& p) {
-            if (!p.empty() && p.find("://") == std::string::npos)
-                candidates.push_back(std::string("res://") + p);
-        };
-
-        add_scheme_candidate(pathOnly);
-        if (!pathOnly.empty() && pathOnly.rfind("imported/", 0) != 0)
-            add_scheme_candidate(std::string("imported/") + pathOnly);
-
-        std::unordered_set<std::string> visited;
-        for (const auto& c : candidates)
+        CoreUUID resolved;
+        if (assetService->resolver().reverseResolve(token, resolved))
         {
-            if (!visited.insert(c).second)
-                continue;
-
-            CoreUUID resolved;
-            if (assetService->resolver().reverseResolve(c, resolved))
-            {
-                out = resolved;
-                return true;
-            }
-        }
-
-        const auto& table = assetService->registry().getRegistry();
-        for (const auto& [uuidStr, entry] : table)
-        {
-            for (const auto& c : visited)
-            {
-                const std::string cPath = uri_path_copy(c);
-                if (entry.sourcePath == cPath || entry.importedPath == cPath)
-                {
-                    vbase::UUID tmp {};
-                    if (vbase::try_parse_uuid(uuidStr.c_str(), tmp))
-                    {
-                        out = CoreUUID(tmp);
-                        return true;
-                    }
-                }
-            }
+            out = resolved;
+            return true;
         }
 
         return false;
@@ -335,11 +291,14 @@ namespace vultra
         if (auto it = m_Cache.find(key); it != m_Cache.end())
             return it->second;
 
-        const auto path    = toPath(uri);
-        const auto baseDir = path.has_parent_path() ? path.parent_path() : std::filesystem::path {};
+        auto textRes = m_AssetService->loadTextAssetSync(uri);
+        if (!textRes)
+        {
+            VULTRA_CORE_ERROR("[SceneSystem] Failed to load scene text asset: {}", uri);
+            return {};
+        }
 
-        const std::string text = os::FileSystem::readFileAllText(path);
-        SceneDocument     doc  = VscnReader::readFromText(text, baseDir);
+        SceneDocument doc = VscnReader::readFromText(textRes.value(), uri_base_dir(uri));
 
         auto sp      = std::make_shared<SceneDocument>(std::move(doc));
         m_Cache[key] = sp;
@@ -417,7 +376,7 @@ namespace vultra
                 return InstantiateNodeResult::err("Scene instantiate: prefab is not allowed in .vmanifest scenes");
 
             std::filesystem::path prefabPath = node.prefabUri;
-            if (prefabPath.is_relative() && !baseDir.empty())
+            if (node.prefabUri.find("://") == std::string::npos && prefabPath.is_relative() && !baseDir.empty())
                 prefabPath = baseDir / prefabPath;
 
             auto         prefabDoc = loadSceneSync(prefabPath.string());
@@ -511,8 +470,7 @@ namespace vultra
         if (clearWorld)
             world.clear();
 
-        const auto path    = toPath(uri);
-        const auto baseDir = path.has_parent_path() ? path.parent_path() : std::filesystem::path {};
+        const auto baseDir = uri_base_dir(uri);
 
         auto rootResult = instantiateNodeR(world, *doc->root, parent, baseDir, !doc->isManifest, doc->assets);
         if (!rootResult)

@@ -5,6 +5,8 @@
 
 #include <renderdoc_app.h>
 
+#include <filesystem>
+
 #ifdef WIN32
 #include <Windows.h>
 #elif defined(__linux__)
@@ -13,6 +15,11 @@
 
 namespace vultra
 {
+    namespace
+    {
+        std::filesystem::path getCaptureRoot() { return vbase::executable_dir(); }
+    } // namespace
+
     RenderDocAPI::RenderDocAPI(bool enable)
     {
 #ifdef VULTRA_ENABLE_RENDERDOC
@@ -241,8 +248,9 @@ namespace vultra
                 m_RenderDocAPI->SetCaptureOptionU32(eRENDERDOC_Option_DebugOutputMute, 0);
                 m_RenderDocAPI->SetCaptureOptionU32(eRENDERDOC_Option_APIValidation, 1);
 #endif
-                m_RenderDocAPI->SetCaptureFilePathTemplate(
-                    (vbase::executable_dir() / "captures" / "myframe").generic_string().c_str());
+                const std::filesystem::path captureRoot = getCaptureRoot() / "captures";
+                std::filesystem::create_directories(captureRoot);
+                m_RenderDocAPI->SetCaptureFilePathTemplate((captureRoot / "myframe").generic_string().c_str());
                 m_RenderDocAPI->MaskOverlayBits(eRENDERDOC_Overlay_None, eRENDERDOC_Overlay_None);
             }
         }

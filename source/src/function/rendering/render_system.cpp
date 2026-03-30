@@ -29,6 +29,7 @@
 #include <fg/FrameGraph.hpp>
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <numeric>
 #include <unordered_set>
@@ -81,6 +82,11 @@ namespace vultra
     bool RenderSystem::onInit()
     {
         VULTRA_CORE_INFO("[RenderSystem] Initializing...");
+
+#if defined(__ANDROID__)
+        // Android paths currently rely on the CPU-driven renderer.
+        m_EnableGpuDrivenMeshletPipeline = false;
+#endif
 
         VULTRA_CORE_TRACE("[RenderSystem] Getting render backend service");
         auto& backendService = ctx().services.require<IRenderBackendService>();
@@ -423,6 +429,7 @@ namespace vultra
             FrameGraph             fg {};
             FrameGraphBlackboard   bb {};
             FrameGraphDataRegistry dataRegistry {};
+            const bool             useFrameGraph = renderer->usesFrameGraph();
 
             const bool canUseXrMultiview = supportsMultiview && cam.isXRView && cam.isXRPrimaryView &&
                                            cam.viewCount == 2u && m_RenderWorldFront.instances.empty() &&
@@ -484,6 +491,7 @@ namespace vultra
             rhi::prepareForAttachment(cb, *target, false);
             renderer->render(immediateCtx);
 
+            if (useFrameGraph)
             {
                 FrameGraphResourceUploader fgUploader {fg};
                 prepareFrameData(fgUploader, m_PreparedFrameData, m_RenderWorldFront.frameIndex, 0.0f, 0.0f);
@@ -492,42 +500,57 @@ namespace vultra
                 bb.add<CameraData>(viewData.cameraData);
             }
 
-            FrameGraphBuildContext buildCtx {
-                .fg       = fg,
-                .bb       = bb,
-                .rd       = rd,
-                .data     = dataRegistry,
-                .frame    = m_PreparedFrameData,
-                .viewData = viewData,
-            };
+            if (useFrameGraph)
+            {
+                FrameGraphBuildContext buildCtx {
+                    .fg       = fg,
+                    .bb       = bb,
+                    .rd       = rd,
+                    .data     = dataRegistry,
+                    .frame    = m_PreparedFrameData,
+                    .viewData = viewData,
+                };
 
-            // This sets up the frame graph using a feature renderer or a custom graph-aware renderer.
-            rhi::prepareForAttachment(cb, *target, false);
-            renderer->buildFrameGraph(buildCtx);
+                // This sets up the frame graph using a feature renderer or a custom graph-aware renderer.
+                rhi::prepareForAttachment(cb, *target, false);
+                renderer->buildFrameGraph(buildCtx);
 
-            fg.compile();
+                fg.compile();
 
 #ifndef NDEBUG
-            {
-                std::ofstream ofs(vbase::executable_dir() / "framegraph.dot");
-                ofs << fg;
-            }
+                {
+                    const std::filesystem::path debugRoot = !ctx().config.writableRoot.empty() ?
+                                                                std::filesystem::path(ctx().config.writableRoot) :
+                                                                vbase::executable_dir();
+                    const std::filesystem::path debugPath = debugRoot / "framegraph.dot";
+                    std::ofstream               ofs(debugPath);
+                    if (ofs.is_open())
+                    {
+                        ofs << fg;
+                    }
+                    else
+                    {
+                        VULTRA_CORE_WARN("[RenderSystem] Failed to write framegraph dot file: {}",
+                                         debugPath.generic_string());
+                    }
+                }
 #endif
 
-            viewData.framebufferInfo = std::nullopt; // Clear framebuffer info for execution phase, will be set by
-                                                     // FrameGraphTexture preRead callback if needed.
-            FrameGraphExecContext frameGraphExecCtx {
-                .cb          = cb,
-                .rd          = rd,
-                .frame       = m_PreparedFrameData,
-                .viewData    = viewData,
-                .resourceSet = {},
-                .ext         = {.builtinShaderLib = &shaderService.builtinLibrary(), .samplers = m_Samplers},
-            };
+                viewData.framebufferInfo = std::nullopt; // Clear framebuffer info for execution phase, will be set by
+                                                         // FrameGraphTexture preRead callback if needed.
+                FrameGraphExecContext frameGraphExecCtx {
+                    .cb          = cb,
+                    .rd          = rd,
+                    .frame       = m_PreparedFrameData,
+                    .viewData    = viewData,
+                    .resourceSet = {},
+                    .ext         = {.builtinShaderLib = &shaderService.builtinLibrary(), .samplers = m_Samplers},
+                };
 
-            {
-                FG_GPU_ZONE(cb);
-                fg.execute(&frameGraphExecCtx, m_TransientResources.get());
+                {
+                    FG_GPU_ZONE(cb);
+                    fg.execute(&frameGraphExecCtx, m_TransientResources.get());
+                }
             }
 
             if (canUseXrMultiview)

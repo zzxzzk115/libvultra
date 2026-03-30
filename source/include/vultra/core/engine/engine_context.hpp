@@ -10,6 +10,11 @@
 
 #include <cstdint>
 
+#if defined(__ANDROID__)
+struct ANativeWindow;
+struct android_app;
+#endif
+
 namespace vultra
 {
     class FramePipeline;
@@ -37,6 +42,14 @@ namespace vultra
                 uint32_t    height {768};
                 bool        resizable {true};
                 bool        fullscreen {false};
+#if defined(__ANDROID__)
+                struct AndroidConfig
+                {
+                    android_app*   app {nullptr};
+                    ANativeWindow* nativeWindow {nullptr};
+                    const int*     destroyRequested {nullptr};
+                } android;
+#endif
             } window;
 
             struct RenderConfig
@@ -59,7 +72,11 @@ namespace vultra
 
             struct AssetConfig
             {
-                bool loadFromVPK {false};
+                bool        loadFromVPK {false};
+                std::string assetRoot {"resources"};
+                std::string importedFolder {"imported"};
+                std::string registryFile {"asset_registry.tsv"};
+                std::string vpkFile {"resources.vpk"};
             } asset;
 
             struct ImGuiConfig
@@ -68,6 +85,10 @@ namespace vultra
                 bool        enableDocking {false};
                 std::string imguiIniFile {"imgui.ini"};
             } imgui;
+
+            // Writable app-private directory used for runtime debug outputs and persisted UI state.
+            // On Android this should point at internalDataPath.
+            std::string writableRoot {};
         } config;
 
         // Per-frame state (optional)

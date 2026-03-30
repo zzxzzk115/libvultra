@@ -61,6 +61,8 @@ namespace vultra
         AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(std::string_view uri) override;
 
+        vbase::Result<std::string, std::string> loadTextAssetSync(std::string_view uri) override;
+
         const vasset::VAssetRegistry& registry() const override { return m_Registry; }
         const vasset::VUUIDResolver&  resolver() const override { return m_Resolver; }
 

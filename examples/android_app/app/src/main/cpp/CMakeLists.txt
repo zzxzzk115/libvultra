@@ -10,11 +10,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(LIBVULTRA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../")
 
 add_library(vultra_android SHARED
-    main.cpp
+    ${LIBVULTRA_ROOT}/source/src/platform/android/android_demo_app_launcher.cpp
+    ${LIBVULTRA_ROOT}/source/src/platform/android/android_main.cpp
 )
 
 target_include_directories(vultra_android PRIVATE
     ${ANDROID_NDK}/sources/android/game-activity/include
+    ${LIBVULTRA_ROOT}/source/include
 )
 
 target_link_libraries(vultra_android

@@ -91,6 +91,7 @@ namespace vultra
             const auto& sc = view.get<ScriptComponent>(e);
             auto        it = m_Instances.find(e);
 
+            // scriptUri is an engine URI resolved by the asset layer, never a raw filesystem path.
             if (sc.scriptUri.empty())
             {
                 if (it != m_Instances.end())
@@ -115,10 +116,10 @@ namespace vultra
         if (!assetSvc)
             return false;
 
-        const std::string path = assetSvc->resolveUri(sc.scriptUri);
-        if (path.empty())
+        auto textRes = assetSvc->loadTextAssetSync(sc.scriptUri);
+        if (!textRes)
         {
-            VULTRA_CORE_ERROR("[ScriptSystem] Failed to resolve script uri: {}", sc.scriptUri);
+            VULTRA_CORE_ERROR("[ScriptSystem] Failed to load script asset: {}", sc.scriptUri);
             return false;
         }
 
@@ -134,7 +135,7 @@ namespace vultra
         inst->enabled     = sc.enabled;
         inst->env["self"] = ScriptEntity {e};
 
-        auto execRes = lua.safe_script_file(path, inst->env, &sol::script_pass_on_error);
+        auto execRes = lua.safe_script(textRes.value(), inst->env, &sol::script_pass_on_error);
         if (!execRes.valid())
         {
             sol::error err = execRes;

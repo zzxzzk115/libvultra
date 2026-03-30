@@ -1,8 +1,5 @@
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/os/window.hpp"
-#if defined(__ANDROID__)
-#include "vultra/platform/android/android_window.hpp"
-#endif
 #include "vultra/core/rhi/vk/macro.hpp"
 
 #include "vultra/core/profiling/tracy_wrapper.hpp"
@@ -74,17 +71,49 @@ namespace vultra
                 assert(false);
                 return vk::PresentModeKHR::eImmediate;
             }
+
+            [[nodiscard]] vk::SurfaceFormatKHR chooseSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& formats,
+                                                                   const Swapchain::Format                  format)
+            {
+                const vk::SurfaceFormatKHR preferred {
+                    format == Swapchain::Format::eLinear ? vk::Format::eB8G8R8A8Unorm : vk::Format::eB8G8R8A8Srgb,
+                    vk::ColorSpaceKHR::eSrgbNonlinear,
+                };
+
+                const auto it = std::find(formats.begin(), formats.end(), preferred);
+                if (it != formats.end())
+                    return *it;
+
+                return formats.empty() ? preferred : formats.front();
+            }
+
+            [[nodiscard]] vk::CompositeAlphaFlagBitsKHR
+            chooseCompositeAlpha(const vk::SurfaceCapabilitiesKHR& capabilities)
+            {
+                constexpr vk::CompositeAlphaFlagBitsKHR candidates[] = {
+                    vk::CompositeAlphaFlagBitsKHR::eOpaque,
+                    vk::CompositeAlphaFlagBitsKHR::ePreMultiplied,
+                    vk::CompositeAlphaFlagBitsKHR::ePostMultiplied,
+                    vk::CompositeAlphaFlagBitsKHR::eInherit,
+                };
+
+                for (const auto candidate : candidates)
+                {
+                    if ((capabilities.supportedCompositeAlpha & candidate) == candidate)
+                        return candidate;
+                }
+
+                return vk::CompositeAlphaFlagBitsKHR::eOpaque;
+            }
         } // namespace
 
         Swapchain::Swapchain(Swapchain&& other) noexcept :
             m_Window(other.m_Window), m_Instance(other.m_Instance), m_PhysicalDevice(other.m_PhysicalDevice),
-            m_AndroidWindow(other.m_AndroidWindow), m_Device(other.m_Device), m_Surface(other.m_Surface),
-            m_Handle(other.m_Handle), m_Format(other.m_Format),
+            m_Device(other.m_Device), m_Surface(other.m_Surface), m_Handle(other.m_Handle), m_Format(other.m_Format),
             m_VerticalSync(other.m_VerticalSync), m_Buffers(std::move(other.m_Buffers)),
             m_CurrentImageIndex(other.m_CurrentImageIndex)
         {
             other.m_Window            = nullptr;
-            other.m_AndroidWindow     = nullptr;
             other.m_Instance          = nullptr;
             other.m_PhysicalDevice    = nullptr;
             other.m_Device            = nullptr;
@@ -102,7 +131,6 @@ namespace vultra
                 destroy();
 
                 std::swap(m_Window, rhs.m_Window);
-                std::swap(m_AndroidWindow, rhs.m_AndroidWindow);
                 std::swap(m_Instance, rhs.m_Instance);
                 std::swap(m_PhysicalDevice, rhs.m_PhysicalDevice);
                 std::swap(m_Device, rhs.m_Device);
@@ -179,36 +207,14 @@ namespace vultra
             create(format, vsync);
         }
 
-        Swapchain::Swapchain(const vk::Instance                instance,
-                             const vk::PhysicalDevice          physicalDevice,
-                             const vk::Device                  device,
-                             platform::android::AndroidWindow* window,
-                             const Format                      format,
-                             const VerticalSync                vsync) :
-            m_Instance(instance), m_PhysicalDevice(physicalDevice), m_Device(device), m_AndroidWindow(window)
-        {
-            createSurface();
-            create(format, vsync);
-        }
-
         void Swapchain::createSurface()
         {
             assert(m_Instance);
-            if (m_Window != nullptr)
-            {
-                m_Surface = m_Window->createVulkanSurface(m_Instance);
-            }
-#if defined(__ANDROID__)
-            else
-            {
-                m_Surface = m_AndroidWindow->createVulkanSurface(m_Instance);
-            }
-#else
-            else
-            {
-                VULTRA_CORE_ASSERT(false, "[Swapchain] Android window surface creation is only available on Android.");
-            }
-#endif
+            VULTRA_CORE_ASSERT(m_Window != nullptr, "[Swapchain] Window must not be null.");
+            VULTRA_CORE_TRACE("[Swapchain] Creating Vulkan surface for window driver {}",
+                              magic_enum::enum_name(m_Window->driverType()));
+            m_Surface = m_Window->createVulkanSurface(m_Instance);
+            VULTRA_CORE_TRACE("[Swapchain] Vulkan surface created");
         }
 
         void Swapchain::create(Format format, VerticalSync vsync)
@@ -218,65 +224,61 @@ namespace vultra
             const auto oldSwapchain = std::exchange(m_Handle, nullptr);
 
             const auto surfaceInfo = getSurfaceInfo(m_PhysicalDevice, m_Surface);
+            VULTRA_CORE_TRACE("[Swapchain] Surface info acquired");
 
             // Using framebuffer extent as the swapchain extent for Wayland compatibility
-            os::Window::Extent fbExtent {};
-            if (m_Window != nullptr)
-            {
-                fbExtent = m_Window->getFrameBufferExtent();
-            }
-#if defined(__ANDROID__)
-            else if (m_AndroidWindow != nullptr)
-            {
-                fbExtent = m_AndroidWindow->getFrameBufferExtent();
-            }
-#endif
+            const os::Window::Extent fbExtent = m_Window->getFrameBufferExtent();
 
             Extent2D extent;
-
-#if defined(__ANDROID__)
-            if (m_AndroidWindow != nullptr)
+            switch (m_Window->driverType())
             {
-                if (surfaceInfo.capabilities.currentExtent.width != 4294967295u &&
-                    surfaceInfo.capabilities.currentExtent.height != 4294967295u)
-                {
-                    extent = fromVk(surfaceInfo.capabilities.currentExtent);
-                }
-                else
-                {
-                    extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
-                }
-            }
-            else
-#endif
-            {
-                switch (m_Window->getDriverType())
-                {
-                    case os::Window::DriverType::eX11:
-                        if (surfaceInfo.capabilities.currentExtent.width != 4294967289u &&
-                            surfaceInfo.capabilities.currentExtent.height != 4294967289u)
-                        {
-                            extent = fromVk(surfaceInfo.capabilities.currentExtent);
-                        }
-                        else
-                        {
-                            extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
-                        }
-                        break;
-
-                    case os::Window::DriverType::eWayland:
-                        extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
-                        break;
-
-                    default:
+                case os::Window::DriverType::eAndroid:
+                    if (surfaceInfo.capabilities.currentExtent.width != 4294967295u &&
+                        surfaceInfo.capabilities.currentExtent.height != 4294967295u)
+                    {
                         extent = fromVk(surfaceInfo.capabilities.currentExtent);
-                }
+                    }
+                    else
+                    {
+                        extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
+                    }
+                    break;
+
+                case os::Window::DriverType::eX11:
+                    if (surfaceInfo.capabilities.currentExtent.width != 4294967289u &&
+                        surfaceInfo.capabilities.currentExtent.height != 4294967289u)
+                    {
+                        extent = fromVk(surfaceInfo.capabilities.currentExtent);
+                    }
+                    else
+                    {
+                        extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
+                    }
+                    break;
+
+                case os::Window::DriverType::eWayland:
+                    extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
+                    break;
+
+                default:
+                    extent = fromVk(surfaceInfo.capabilities.currentExtent);
+                    break;
             }
 
-            const vk::SurfaceFormatKHR kSurfaceDefaultFormat {
-                format == Format::eLinear ? vk::Format::eB8G8R8A8Unorm : vk::Format::eB8G8R8A8Srgb,
-                vk::ColorSpaceKHR::eSrgbNonlinear,
-            };
+            extent.width  = std::clamp(extent.width,
+                                      surfaceInfo.capabilities.minImageExtent.width,
+                                      surfaceInfo.capabilities.maxImageExtent.width);
+            extent.height = std::clamp(extent.height,
+                                       surfaceInfo.capabilities.minImageExtent.height,
+                                       surfaceInfo.capabilities.maxImageExtent.height);
+
+            VULTRA_CORE_TRACE("[Swapchain] Using extent {}x{}, framebuffer {}x{}, currentExtent {}x{}",
+                              extent.width,
+                              extent.height,
+                              fbExtent.x,
+                              fbExtent.y,
+                              surfaceInfo.capabilities.currentExtent.width,
+                              surfaceInfo.capabilities.currentExtent.height);
 
             // Check if the present mode is supported
             auto presentMode = getPresentMode(vsync);
@@ -288,25 +290,41 @@ namespace vultra
                 presentMode = vk::PresentModeKHR::eFifo;
             }
 
+            const auto surfaceFormat = chooseSurfaceFormat(surfaceInfo.formats, format);
+            const auto preTransform =
+                (surfaceInfo.capabilities.supportedTransforms & surfaceInfo.capabilities.currentTransform) ==
+                        surfaceInfo.capabilities.currentTransform ?
+                    surfaceInfo.capabilities.currentTransform :
+                    vk::SurfaceTransformFlagBitsKHR::eIdentity;
+            const auto compositeAlpha = chooseCompositeAlpha(surfaceInfo.capabilities);
+
             vk::SwapchainCreateInfoKHR swapchainCreateInfo {};
             swapchainCreateInfo.surface = m_Surface;
             swapchainCreateInfo.minImageCount =
                 std::clamp(3u,
                            surfaceInfo.capabilities.minImageCount,
                            surfaceInfo.capabilities.maxImageCount > 0 ? surfaceInfo.capabilities.maxImageCount : 8u);
-            swapchainCreateInfo.imageFormat      = kSurfaceDefaultFormat.format;
-            swapchainCreateInfo.imageColorSpace  = kSurfaceDefaultFormat.colorSpace;
+            swapchainCreateInfo.imageFormat      = surfaceFormat.format;
+            swapchainCreateInfo.imageColorSpace  = surfaceFormat.colorSpace;
             swapchainCreateInfo.imageExtent      = static_cast<vk::Extent2D>(extent);
             swapchainCreateInfo.imageArrayLayers = 1; // No Stereo
             swapchainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc |
                                              vk::ImageUsageFlagBits::eTransferDst |
                                              vk::ImageUsageFlagBits::eColorAttachment;
             swapchainCreateInfo.imageSharingMode = vk::SharingMode::eExclusive;
-            swapchainCreateInfo.preTransform     = vk::SurfaceTransformFlagBitsKHR::eIdentity;
-            swapchainCreateInfo.compositeAlpha   = vk::CompositeAlphaFlagBitsKHR::eOpaque;
+            swapchainCreateInfo.preTransform     = preTransform;
+            swapchainCreateInfo.compositeAlpha   = compositeAlpha;
             swapchainCreateInfo.presentMode      = presentMode;
             swapchainCreateInfo.clipped          = true;
             swapchainCreateInfo.oldSwapchain     = oldSwapchain;
+
+            VULTRA_CORE_TRACE("[Swapchain] Creating swapchain format={}, colorSpace={}, preTransform={}, "
+                              "compositeAlpha={}, minImageCount={}",
+                              vk::to_string(surfaceFormat.format),
+                              vk::to_string(surfaceFormat.colorSpace),
+                              vk::to_string(preTransform),
+                              vk::to_string(compositeAlpha),
+                              swapchainCreateInfo.minImageCount);
 
             VK_CHECK(m_Device.createSwapchainKHR(&swapchainCreateInfo, nullptr, &m_Handle),
                      "Swapchain",
@@ -368,7 +386,8 @@ namespace vultra
                 m_Surface = nullptr;
             }
 
-            m_Window = nullptr;
+            m_Window  = nullptr;
+            m_Surface = nullptr;
 
             m_Instance       = nullptr;
             m_PhysicalDevice = nullptr;

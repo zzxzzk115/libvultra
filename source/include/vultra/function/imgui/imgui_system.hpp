@@ -9,6 +9,8 @@
 #include <magic_enum/magic_enum.hpp>
 // NOLINTEND
 
+#include <functional>
+
 namespace vultra
 {
     class ImGuiSystem final : public EngineSubsystem, public IImGuiService
@@ -34,10 +36,11 @@ namespace vultra
                               const os::Window&,
                               bool                                    enableMultiviewport,
                               bool                                    enableDocking,
+                              const std::string&                      writableRoot,
                               const char*                             imguiIniFile,
                               std::function<void(ImGuiDockNodeFlags)> setDockSpace = nullptr);
 
-        static void shutdownImGui(const char* imguiIniFile);
+        static void shutdownImGui(const std::string& writableRoot, const char* imguiIniFile);
 
         static void setImGuiStyle();
 

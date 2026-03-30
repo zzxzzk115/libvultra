@@ -1,4 +1,9 @@
-add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, sdl3 = true, wchar32 = true}})
+if is_plat("android") then
+    add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, android = true, wchar32 = true}})
+else
+    add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, sdl3 = true, wchar32 = true}})
+end
+
 add_requires("zlib")
 
 target("renderdoc")
@@ -23,6 +28,10 @@ target("imgui-ext")
     add_files("imgui-ext/**.cpp")
     add_includedirs("imgui-ext", {public = true}) -- public: let other targets to auto include
     add_packages("imgui", {public = true})
+    if is_plat("android") then
+        add_cflags("-fPIC")
+        add_cxflags("-fPIC")
+    end
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
 

@@ -3,14 +3,30 @@
 
 #include <vshadersystem/engine_keywords.hpp>
 
-#include <fstream>
-
 namespace
 {
-    bool write_all(std::ofstream& f, const void* data, size_t size)
+    bool populate_shader_library_runtime(vshadersystem::ShaderLibrary&                     library,
+                                         std::optional<vshadersystem::EngineKeywordsFile>& engineKeywords,
+                                         bool&                                             loaded)
     {
-        f.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
-        return f.good();
+        loaded = true;
+        engineKeywords.reset();
+        if (library.engineKeywordsVkw.empty())
+            return true;
+
+        std::string text(reinterpret_cast<const char*>(library.engineKeywordsVkw.data()),
+                         library.engineKeywordsVkw.size());
+        auto        kr = vshadersystem::parse_engine_keywords_vkw(text);
+        if (kr.isOk())
+        {
+            engineKeywords = std::move(kr.value());
+        }
+        else
+        {
+            VULTRA_CORE_WARN("[ShaderLibraryRuntime] Failed to parse embedded engine keywords: {}", kr.error().message);
+        }
+
+        return true;
     }
 } // namespace
 
@@ -28,48 +44,22 @@ namespace vultra
                 return false;
             }
 
-            m_Lib    = std::move(r.value());
-            m_Loaded = true;
-
-            m_EngineKeywords.reset();
-            if (!m_Lib.engineKeywordsVkw.empty())
-            {
-                std::string text(reinterpret_cast<const char*>(m_Lib.engineKeywordsVkw.data()),
-                                 m_Lib.engineKeywordsVkw.size());
-                auto        kr = vshadersystem::parse_engine_keywords_vkw(text);
-                if (kr.isOk())
-                {
-                    m_EngineKeywords = std::move(kr.value());
-                }
-                else
-                {
-                    VULTRA_CORE_WARN("[ShaderLibraryRuntime] Failed to parse embedded engine keywords: {}",
-                                     kr.error().message);
-                }
-            }
-
-            return true;
+            m_Lib = std::move(r.value());
+            return populate_shader_library_runtime(m_Lib, m_EngineKeywords, m_Loaded);
         }
 
         bool ShaderLibraryRuntime::loadFromMemory(const uint8_t* data, size_t size)
         {
-            const std::string tempFilePath = "temp_vshlib.bin";
+            auto r = vshadersystem::read_vshlib(std::span<const uint8_t>(data, size));
+            if (!r.isOk())
             {
-                std::ofstream f(tempFilePath, std::ios::binary);
-                if (!f)
-                    return false;
-
-                auto r = write_all(f, data, size);
-                if (!r)
-                    return false;
+                VULTRA_CORE_ERROR("[ShaderLibraryRuntime] Failed to read vshlib from memory: {}", r.error().message);
+                m_Loaded = false;
+                return false;
             }
 
-            auto result = loadFromFile(tempFilePath);
-
-            // Clean up the temp file.
-            std::filesystem::remove(tempFilePath);
-
-            return result;
+            m_Lib = std::move(r.value());
+            return populate_shader_library_runtime(m_Lib, m_EngineKeywords, m_Loaded);
         }
 
         bool ShaderLibraryRuntime::hasEngineKeywords() const { return m_EngineKeywords.has_value(); }

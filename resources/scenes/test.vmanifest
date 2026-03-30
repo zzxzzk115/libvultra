@@ -32,5 +32,5 @@ TransformComponent/position = (0, 1, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (0.3, 0.3, 0.3)
 MeshComponent/mesh = @mesh.DamagedHelmet
-ScriptComponent/scriptUri = @script.test_move
-ScriptComponent/enabled = true
+; ScriptComponent/scriptUri = @script.test_move
+; ScriptComponent/enabled = true

@@ -10,7 +10,6 @@
 
 #include <vshadersystem/reflect.hpp>
 
-#include <SDL3/SDL_vulkan.h>
 #include <glm/glm.hpp>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
@@ -202,8 +201,11 @@ namespace vultra
     {
         constexpr auto LOGTAG = "RenderDevice";
 
-        RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits featureFlag, std::string_view appName) :
-            m_FeatureFlag(featureFlag), m_AppName(appName)
+        RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits featureFlag,
+                                   std::string_view                  appName,
+                                   std::span<const char* const>      requiredInstanceExtensions) :
+            m_FeatureFlag(featureFlag), m_AppName(appName),
+            m_RequiredInstanceExtensions(requiredInstanceExtensions.begin(), requiredInstanceExtensions.end())
         {
             if (HasFlagValues(featureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
             {
@@ -321,22 +323,6 @@ namespace vultra
         Swapchain RenderDevice::createSwapchain(os::Window&             window,
                                                 const Swapchain::Format format,
                                                 const VerticalSync      vsync) const
-        {
-            assert(m_Device);
-
-            return Swapchain {
-                m_Instance,
-                m_PhysicalDevice,
-                m_Device,
-                &window,
-                format,
-                vsync,
-            };
-        }
-
-        Swapchain RenderDevice::createSwapchain(platform::android::AndroidWindow& window,
-                                                const Swapchain::Format           format,
-                                                const VerticalSync                vsync) const
         {
             assert(m_Device);
 
@@ -1021,18 +1007,7 @@ namespace vultra
             std::vector<const char*> extensions;
             bool                     enableDebugUtils = false;
 
-#if defined(__ANDROID__)
-            requiredExtensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-            requiredExtensions.push_back("VK_KHR_android_surface");
-#else
-            uint32_t    sdlExtensionCount = 0;
-            const auto* sdlExtensions     = SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
-            requiredExtensions.reserve(sdlExtensionCount);
-            for (uint32_t i = 0; i < sdlExtensionCount; ++i)
-            {
-                requiredExtensions.push_back(sdlExtensions[i]);
-            }
-#endif
+            requiredExtensions.assign(m_RequiredInstanceExtensions.begin(), m_RequiredInstanceExtensions.end());
 
 #if _DEBUG
             requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -1287,17 +1262,16 @@ namespace vultra
                 m_SupportedExtensions.count(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) > 0;
             const bool supportsRayTracingPipeline =
                 m_SupportedExtensions.count(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) > 0;
-            const bool supportsRayQuery = m_SupportedExtensions.count(VK_KHR_RAY_QUERY_EXTENSION_NAME) > 0;
+            const bool supportsRayQuery   = m_SupportedExtensions.count(VK_KHR_RAY_QUERY_EXTENSION_NAME) > 0;
             const bool supportsMeshShader = m_SupportedExtensions.count(VK_EXT_MESH_SHADER_EXTENSION_NAME) > 0;
-            const bool supportsMultiDraw = m_SupportedExtensions.count(VK_EXT_MULTI_DRAW_EXTENSION_NAME) > 0;
+            const bool supportsMultiDraw  = m_SupportedExtensions.count(VK_EXT_MULTI_DRAW_EXTENSION_NAME) > 0;
             const bool supportsFragmentShaderInterlock =
                 m_SupportedExtensions.count(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME) > 0;
 
             // Query properties with a conservative pNext chain based on advertised support.
-            vk::PhysicalDeviceProperties2 properties2 {};
+            vk::PhysicalDeviceProperties2                     properties2 {};
             vk::PhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties {};
-            rayTracingPipelineProperties.sType =
-                vk::StructureType::ePhysicalDeviceRayTracingPipelinePropertiesKHR;
+            rayTracingPipelineProperties.sType = vk::StructureType::ePhysicalDeviceRayTracingPipelinePropertiesKHR;
 
             if (supportsRayTracingPipeline)
             {
@@ -1330,8 +1304,8 @@ namespace vultra
             vk::PhysicalDeviceFragmentShaderInterlockFeaturesEXT fragmentShaderInterlock {
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT};
 
-            vk::BaseOutStructure* featureChainTail = nullptr;
-            auto appendFeatureChain = [&](auto& featureStruct) {
+            vk::BaseOutStructure* featureChainTail   = nullptr;
+            auto                  appendFeatureChain = [&](auto& featureStruct) {
                 if (featureChainTail != nullptr)
                 {
                     featureChainTail->pNext = reinterpret_cast<vk::BaseOutStructure*>(&featureStruct);
@@ -1380,7 +1354,7 @@ namespace vultra
                 m_AccelerationStructureFeatures = vk::PhysicalDeviceAccelerationStructureFeaturesKHR {};
             }
             // Fill feature report
-            auto props                 = m_PhysicalDevice.getProperties();
+            auto       props = m_PhysicalDevice.getProperties();
             const bool supportsDynamicRendering =
                 vk13.dynamicRendering == VK_TRUE ||
                 m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
@@ -1394,12 +1368,10 @@ namespace vultra
             m_FeatureReport.apiMajor   = VK_API_VERSION_MAJOR(props.apiVersion);
             m_FeatureReport.apiMinor   = VK_API_VERSION_MINOR(props.apiVersion);
             m_FeatureReport.apiPatch   = VK_API_VERSION_PATCH(props.apiVersion);
-            m_UseKhrDynamicRendering   =
-                supportsDynamicRendering && !useVulkan13CoreFeatures &&
-                m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
-            m_UseKhrSynchronization2   =
-                supportsSynchronization2 && !useVulkan13CoreFeatures &&
-                m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
+            m_UseKhrDynamicRendering   = supportsDynamicRendering && !useVulkan13CoreFeatures &&
+                                       m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
+            m_UseKhrSynchronization2 = supportsSynchronization2 && !useVulkan13CoreFeatures &&
+                                       m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
 
             auto& flags = m_FeatureReport.flags;
 
@@ -1556,7 +1528,7 @@ namespace vultra
             queueCreateInfo.queueCount       = 1;
             queueCreateInfo.pQueuePriorities = &queuePriority;
 
-            const auto physicalDeviceFeatures = m_PhysicalDevice.getFeatures();
+            const auto physicalDeviceFeatures  = m_PhysicalDevice.getFeatures();
             const bool useVulkan13CoreFeatures = !m_UseKhrDynamicRendering && !m_UseKhrSynchronization2;
             // === Base extensions ===
             std::vector<const char*> extensions = {
@@ -1612,7 +1584,7 @@ namespace vultra
             }
             else
             {
-                vk::PhysicalDeviceDynamicRenderingFeatures vkDynamicRenderingFeatures {};
+                vk::PhysicalDeviceDynamicRenderingFeatures    vkDynamicRenderingFeatures {};
                 vk::PhysicalDeviceSynchronization2FeaturesKHR vkSync2Features {};
                 if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
                 {
@@ -1977,9 +1949,8 @@ namespace vultra
 
             if (m_UseKhrSynchronization2)
             {
-                VK_CHECK(m_GenericQueue.submit2KHR(1, &submitInfo, cb.m_Fence),
-                         LOGTAG,
-                         "Failed to submit command buffer");
+                VK_CHECK(
+                    m_GenericQueue.submit2KHR(1, &submitInfo, cb.m_Fence), LOGTAG, "Failed to submit command buffer");
             }
             else
             {

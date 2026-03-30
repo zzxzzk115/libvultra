@@ -93,7 +93,9 @@ add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"})
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
-add_requireconfs("imgui.libsdl3", {system = false}) -- we don't use system's SDL3 to avoid version conflicts
+if not is_plat("android") then
+    add_requireconfs("imgui.libsdl3", {system = false}) -- we don't use system's SDL3 to avoid version conflicts
+end
 add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
 add_requires("vrendergraph", {configs = { debug = is_mode("debug") }})
 
@@ -109,13 +111,16 @@ target("vultra")
     -- add include dir
     add_includedirs("include", {public = true}) -- public: let other targets to auto include
     if is_plat("android") then
-        local ndk_root = get_config("ndk")
-            or os.getenv("ANDROID_NDK")
-            or os.getenv("ANDROID_NDK_HOME")
-            or os.getenv("ANDROID_NDK_ROOT")
-        if ndk_root then
-            add_includedirs(path.join(ndk_root, "sources/android/native_app_glue"), {public = true})
-        end
+        local game_activity_root = path.join(os.projectdir(), "external", "android", "game-activity_static")
+        add_includedirs(path.join(game_activity_root, "include"), {public = true})
+        add_syslinks("android", "log", {public = true})
+
+        local arch = get_config("arch")
+        local game_activity_lib = path.join(game_activity_root,
+                                            "libs",
+                                            "android." .. (arch or "arm64-v8a"),
+                                            "libgame-activity_static.a")
+        add_links(game_activity_lib, {public = true})
     end
 
     -- add header files
@@ -123,6 +128,11 @@ target("vultra")
 
     -- add source files
     add_files("src/**.cpp")
+    if is_plat("android") then
+        remove_files("src/platform/sdl/**.cpp")
+    else
+        remove_files("src/platform/android/**.cpp")
+    end
 
     -- add deps
     add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vrdx", "vultra_builtin_assets")
@@ -136,7 +146,10 @@ target("vultra")
 
     -- add packages
     add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vulkan-headers", "vulkan-memory-allocator-hpp", "vrendergraph", "sol2", { public = true })
-    add_packages("libsdl3", "openxr", { public = true })
+    add_packages("openxr", { public = true })
+    if not is_plat("android") then
+        add_packages("libsdl3", { public = true })
+    end
     if has_config("tracy") then
         add_packages("tracy", { public = true })
     end

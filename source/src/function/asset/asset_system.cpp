@@ -253,26 +253,80 @@ namespace vultra
 
     void AssetSystem::configure(const AssetSystemDesc& desc)
     {
-        m_Desc = desc;
+        m_Desc                = desc;
+        m_Desc.assetRoot      = ctx().config.asset.assetRoot;
+        m_Desc.importedFolder = ctx().config.asset.importedFolder;
+        m_Desc.registryFile   = ctx().config.asset.registryFile;
+        m_Desc.vpkFile        = ctx().config.asset.vpkFile;
+
+        const auto resolveAssetPath = [&](const std::string& p) {
+            std::filesystem::path path {p};
+            if (path.is_relative())
+                path = std::filesystem::path(m_Desc.assetRoot) / path;
+            return path;
+        };
+
+        m_Registry.setAssetRootPath(m_Desc.assetRoot);
+        m_Registry.setImportedFolderName(m_Desc.importedFolder);
 
         if (ctx().config.asset.loadFromVPK)
         {
-            // For production, mount the VPK file (read-only).
-            auto vpkFileSystem = createRef<vasset::VpkFileSystem>(desc.vpkFile);
-            vpkFileSystem->openPackage();
+            // For production, mount the VPK file (read-only). The VPK's embedded registry is the source of truth
+            // for UUID -> source path mapping.
+            const auto vpkPath       = resolveAssetPath(m_Desc.vpkFile).generic_string();
+            auto       vpkFileSystem = createRef<vasset::VpkFileSystem>(vpkPath);
+            auto       openResult    = vpkFileSystem->openPackage();
+            if (!openResult)
+            {
+                VULTRA_CORE_ERROR("[AssetSystem] Failed to open VPK file: {}", vpkPath);
+                return;
+            }
+
+            m_Registry = vasset::VAssetRegistry {};
+            m_Registry.setAssetRootPath(m_Desc.assetRoot);
+            m_Registry.setImportedFolderName(m_Desc.importedFolder);
+
+            const auto& vpk = vpkFileSystem->getVpk();
+            for (const auto& entry : vpk.registry)
+            {
+                if (entry.pathOffset + entry.pathSize > vpk.stringTable.size())
+                    continue;
+
+                const char*       s = vpk.stringTable.data() + entry.pathOffset;
+                const std::string logicalPath(s, entry.pathSize);
+                const std::string ext = std::filesystem::path(logicalPath).extension().generic_string();
+
+                vasset::VAssetType inferredType = vasset::VAssetType::eUnknown;
+                if (ext == ".vscn")
+                    inferredType = vasset::VAssetType::eScene;
+                else if (ext == ".vmanifest")
+                    inferredType = vasset::VAssetType::eSceneManifest;
+                else if (ext == ".lua")
+                    inferredType = vasset::VAssetType::eScriptLua;
+                else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga" ||
+                         ext == ".gif" || ext == ".psd" || ext == ".pic" || ext == ".hdr" || ext == ".ktx" ||
+                         ext == ".dds" || ext == ".ktx2")
+                    inferredType = vasset::VAssetType::eTexture;
+                else if (ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".dae")
+                    inferredType = vasset::VAssetType::eMesh;
+                else if (ext == ".ply" || ext == ".spz")
+                    inferredType = vasset::VAssetType::eGaussianSplat;
+
+                m_Registry.registerAsset(entry.uuid, logicalPath, logicalPath, inferredType);
+            }
+
+            m_Resolver.loadFromVPK(vpk);
             m_VFS.mount(vpkFileSystem, desc.scheme);
         }
         else
         {
-            // Try to load existing registry from disk. This will populate the registry with previously imported assets,
-            // allowing us to load them without re-importing.
+            // For development, mount the editor remap filesystem, which allows transparent access to source assets and
+            // imported assets. Runtime-only builds mount the physical filesystem directly and expect pre-baked assets.
             auto registryPath = (std::filesystem::path(m_Desc.assetRoot) / m_Desc.importedFolder / m_Desc.registryFile)
                                     .generic_string();
             if (!std::filesystem::exists(registryPath) || !m_Registry.load(registryPath))
             {
                 VULTRA_CORE_WARN("[AssetSystem] Failed to load asset registry from file: {}", registryPath);
-                m_Registry.setAssetRootPath(desc.assetRoot);
-                m_Registry.setImportedFolderName(desc.importedFolder);
 #ifdef VULTRA_HAS_VASSET_IMPORT
                 vasset::VAssetImporter importer {m_Registry};
                 importer.importOrReimportAssetFolder(desc.assetRoot);
@@ -289,8 +343,6 @@ namespace vultra
 
             m_Resolver.loadFromAssetRegistry(m_Registry);
 
-            // For development, mount the editor remap filesystem, which allows transparent access to source assets and
-            // imported assets. Runtime-only builds mount the physical filesystem directly and expect pre-baked assets.
 #ifdef VULTRA_HAS_VASSET_IMPORT
             m_VFS.mount(createRef<vasset::EditorRemapFileSystem>(
                             createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {desc.assetRoot})),
@@ -452,9 +504,10 @@ namespace vultra
         if (entry.type == vasset::VAssetType::eUnknown)
             return false;
 
-        // Must be the imported path, not the source path
-        // Hence why, we pack it ourselves rather than using UUIDResolver::resolve.
-        outUri = m_Desc.scheme + "://" + entry.importedPath;
+        // Prefer the source path so runtime can read from VPK source-URI mounts or from the physical source tree.
+        // Fall back to importedPath only if an entry is incomplete.
+        const std::string& path = !entry.sourcePath.empty() ? entry.sourcePath : entry.importedPath;
+        outUri                  = m_Desc.scheme + "://" + path;
         return true;
     }
 
@@ -1153,5 +1206,16 @@ namespace vultra
     {
         auto vbaseUri = vfilesystem::parse_uri(uri);
         return m_Desc.assetRoot + vbaseUri.path.str().data();
+    }
+
+    vbase::Result<std::string, std::string> AssetSystem::loadTextAssetSync(std::string_view uri)
+    {
+        auto bytesResult = m_VFS.readAll(uri);
+        if (!bytesResult)
+            return vbase::Result<std::string, std::string>::err("Failed to read text asset: " + std::string(uri));
+
+        const auto& bytes = bytesResult.value();
+        return vbase::Result<std::string, std::string>::ok(
+            std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
     }
 } // namespace vultra

@@ -2,26 +2,46 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
+#if defined(__ANDROID__)
+#include "vultra/platform/android/android_native_window.hpp"
+#else
+#include "vultra/platform/sdl/sdl_window.hpp"
+#endif
 
 #include <font_headers/materialdesignicons_webfont.ttf.binfont.h>
 
 #include <vbase/core/exe_path.hpp>
 
+#include <filesystem>
+
+#if defined(__ANDROID__)
+#include <android/input.h>
+#endif
+
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiAl/fonts/RobotoBold.inl>
 #include <ImGuiAl/fonts/RobotoRegular.inl>
 #include <ImGuizmo/ImGuizmo.h>
-#include <imgui.h>
+#if defined(__ANDROID__)
+#include <imgui_impl_android.h>
+#else
 #include <imgui_impl_sdl3.h>
+#endif
+#include <imgui.h>
 #include <imgui_impl_vulkan.h>
 #include <imgui_internal.h>
 #include <implot/implot.h>
 
 namespace
 {
-    std::string get_imgui_config_file_full_path(const char* imguiIniFile)
+    std::string get_imgui_config_file_full_path(const std::string& writableRoot, const char* imguiIniFile)
     {
-        return (vbase::executable_dir() / imguiIniFile).generic_string();
+        if (imguiIniFile == nullptr || imguiIniFile[0] == '\0')
+            return {};
+
+        const std::filesystem::path root =
+            !writableRoot.empty() ? std::filesystem::path(writableRoot) : vbase::executable_dir();
+        return (root / imguiIniFile).generic_string();
     }
 } // namespace
 
@@ -40,6 +60,7 @@ namespace vultra
                   windowService.window(),
                   config.enableMultiview,
                   config.enableDocking,
+                  ctx().config.writableRoot,
                   config.imguiIniFile.c_str());
 
         VULTRA_CORE_TRACE("[ImGuiSystem] Providing IImGuiService");
@@ -51,13 +72,17 @@ namespace vultra
     void ImGuiSystem::onShutdown()
     {
         VULTRA_CORE_INFO("[ImGuiSystem] Shutting down");
-        shutdownImGui(ctx().config.imgui.imguiIniFile.c_str());
+        shutdownImGui(ctx().config.writableRoot, ctx().config.imgui.imguiIniFile.c_str());
     }
 
     void ImGuiSystem::begin()
     {
         ImGui_ImplVulkan_NewFrame();
+#if defined(__ANDROID__)
+        ImGui_ImplAndroid_NewFrame();
+#else
         ImGui_ImplSDL3_NewFrame();
+#endif
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
 
@@ -96,7 +121,8 @@ namespace vultra
             else
             {
                 // Default DockSpace
-                float   displayScale = os::Window::getPrimaryDisplayScale();
+                auto&   window       = ctx().services.require<IWindowService>().window();
+                float   displayScale = window.getDisplayScale();
                 ImGuiID dockSpaceId  = ImGui::GetID("DockSpace");
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(displayScale * 320.0f, displayScale * 240.0f));
                 ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), dockSpaceFlags);
@@ -159,10 +185,10 @@ namespace vultra
 
     IImGuiService::TextureID ImGuiSystem::addTexture(const rhi::Texture& texture)
     {
-        return reinterpret_cast<IImGuiService::TextureID>(ImGui_ImplVulkan_AddTexture(
-            static_cast<VkSampler>(texture.getSampler()),
-            static_cast<VkImageView>(texture.getImageView()),
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+        return reinterpret_cast<IImGuiService::TextureID>(
+            ImGui_ImplVulkan_AddTexture(static_cast<VkSampler>(texture.getSampler()),
+                                        static_cast<VkImageView>(texture.getImageView()),
+                                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
     }
 
     void ImGuiSystem::removeTexture(TextureID& textureID)
@@ -178,7 +204,17 @@ namespace vultra
 
     void ImGuiSystem::processEvent(const os::GeneralWindowEvent& event)
     {
-        ImGui_ImplSDL3_ProcessEvent(&event.internalEvent);
+#if defined(__ANDROID__)
+        if (event.nativeEventSource == vultra::event::NativeEventSource::eAndroidInput && event.nativeEvent != nullptr)
+        {
+            ImGui_ImplAndroid_HandleInputEvent(reinterpret_cast<AInputEvent*>(const_cast<void*>(event.nativeEvent)));
+        }
+#else
+        if (event.nativeEventSource == vultra::event::NativeEventSource::eSDL3 && event.nativeEvent != nullptr)
+        {
+            ImGui_ImplSDL3_ProcessEvent(reinterpret_cast<SDL_Event*>(const_cast<void*>(event.nativeEvent)));
+        }
+#endif
     }
 
     std::function<void(ImGuiDockNodeFlags)> ImGuiSystem::s_SetDockSpace;
@@ -188,6 +224,7 @@ namespace vultra
                                 const os::Window&                       window,
                                 const bool                              enableMultiviewport,
                                 const bool                              enableDocking,
+                                const std::string&                      writableRoot,
                                 const char*                             imguiIniFile,
                                 std::function<void(ImGuiDockNodeFlags)> setDockSpace)
     {
@@ -212,8 +249,12 @@ namespace vultra
             io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
         }
 #endif
-        io.IniFilename = nullptr; // Disable automatic .ini saving, we will handle it ourselves.
-        ImGui::LoadIniSettingsFromDisk(get_imgui_config_file_full_path(imguiIniFile).c_str());
+        io.IniFilename                 = nullptr; // Disable automatic .ini saving, we will handle it ourselves.
+        const std::string imguiIniPath = get_imgui_config_file_full_path(writableRoot, imguiIniFile);
+        if (!imguiIniPath.empty())
+        {
+            ImGui::LoadIniSettingsFromDisk(imguiIniPath.c_str());
+        }
 
         s_SetDockSpace = setDockSpace;
 
@@ -271,7 +312,7 @@ namespace vultra
         setImGuiStyle();
 
         // High-DPI support
-        float displayScale = os::Window::getPrimaryDisplayScale();
+        float displayScale = window.getDisplayScale();
         auto& style        = ImGui::GetStyle();
         style.ScaleAllSizes(displayScale);
         style.FontScaleDpi = displayScale;
@@ -283,7 +324,13 @@ namespace vultra
         vk::PipelineRenderingCreateInfo renderingCreateInfo {};
         renderingCreateInfo.setColorAttachmentFormats(colorFormat);
 
-        ImGui_ImplSDL3_InitForVulkan(window.getSDL3WindowHandle());
+#if defined(__ANDROID__)
+        const auto& androidWindow = static_cast<const platform::android::AndroidNativeWindow&>(window);
+        ImGui_ImplAndroid_Init(androidWindow.nativeWindow());
+#else
+        const auto& sdlWindow = static_cast<const platform::sdl::SDLWindow&>(window);
+        ImGui_ImplSDL3_InitForVulkan(sdlWindow.getHandle());
+#endif
         ImGui_ImplVulkan_InitInfo initInfo {};
         initInfo.Instance                    = static_cast<VkInstance>(rd.m_Instance);
         initInfo.PhysicalDevice              = static_cast<VkPhysicalDevice>(rd.m_PhysicalDevice);
@@ -302,13 +349,21 @@ namespace vultra
         ImGui_ImplVulkan_Init(&initInfo);
     }
 
-    void ImGuiSystem::shutdownImGui(const char* imguiIniFile)
+    void ImGuiSystem::shutdownImGui(const std::string& writableRoot, const char* imguiIniFile)
     {
         // Before shutting down, save .ini settings to disk.
-        ImGui::SaveIniSettingsToDisk(get_imgui_config_file_full_path(imguiIniFile).c_str());
+        const std::string imguiIniPath = get_imgui_config_file_full_path(writableRoot, imguiIniFile);
+        if (!imguiIniPath.empty())
+        {
+            ImGui::SaveIniSettingsToDisk(imguiIniPath.c_str());
+        }
 
         ImGui_ImplVulkan_Shutdown();
+#if defined(__ANDROID__)
+        ImGui_ImplAndroid_Shutdown();
+#else
         ImGui_ImplSDL3_Shutdown();
+#endif
         ImPlot::DestroyContext();
         ImGui::DestroyContext();
     }

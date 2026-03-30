@@ -29,6 +29,8 @@ namespace vultra
 
         virtual void buildFrameGraph(FrameGraphBuildContext& ctx) {}
 
+        [[nodiscard]] virtual bool usesFrameGraph() const { return true; }
+
         virtual void onImGui() {}
 
         virtual void onResize(uint32_t width, uint32_t height) {}
