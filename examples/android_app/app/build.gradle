@@ -1,0 +1,101 @@
+plugins {
+    id 'com.android.application'
+}
+
+configurations.configureEach {
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
+
+android {
+    namespace "org.libvultra.android"
+    compileSdk 36
+    defaultConfig {
+        applicationId "org.libvultra.android"
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        externalNativeBuild {
+            cmake {
+                abiFilters = project.findProperty('abiFilters')?.split(',') ?: ['arm64-v8a']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    ndkVersion "30.0.14904198"
+
+    sourceSets {
+        main {
+            jniLibs.srcDir(file("${buildDir}/generated/jniLibs"))
+        }
+    }
+    buildFeatures {
+        prefab true
+    }
+}
+
+def vultraRoot = rootDir.parentFile.parentFile
+def vultraRuntimeOutput = new File(vultraRoot, "build/android")
+def generatedJniLibsDir = file("${buildDir}/generated/jniLibs")
+def resolvedAbiFilters = (project.findProperty('abiFilters')?.split(',') ?: ['arm64-v8a']).collect { it.trim() }
+def buildMode = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") } ? "release" : "debug"
+def xmakeGlobalDir = new File(System.getenv("XMAKE_GLOBALDIR") ?: System.getProperty("user.home"), ".xmake").absolutePath
+def xmakePackagesDir = new File(xmakeGlobalDir, "packages")
+def resolveOpenXRLoaderForAbi = { abi ->
+    fileTree(xmakePackagesDir) {
+        include("o/openxr/*/*/jni/${abi}/libopenxr_loader.so")
+    }.files.toList().sort { a, b -> a.absolutePath <=> b.absolutePath }.find()
+}
+
+def prepareVultraRuntimeJniLibs = tasks.register("prepareVultraRuntimeJniLibs", Copy) {
+    from(vultraRuntimeOutput) {
+        resolvedAbiFilters.each { abi ->
+            include("${abi}/${buildMode}/example-android-app-runtime/libvultra_android_runtime.so")
+        }
+        eachFile {
+            def abi = path.substring(0, path.indexOf('/'))
+            path = "${abi}/${name}"
+        }
+        includeEmptyDirs = false
+    }
+    into(generatedJniLibsDir)
+
+    resolvedAbiFilters.each { abi ->
+        def openxrLoader = resolveOpenXRLoaderForAbi(abi)
+        if (openxrLoader != null) {
+            from(openxrLoader) {
+                into(abi)
+            }
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn(prepareVultraRuntimeJniLibs)
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.18.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.games:games-activity:4.4.0'
+}

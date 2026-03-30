@@ -263,7 +263,10 @@ namespace vultra
             if (m_Instance)
             {
 #if _DEBUG
-                m_Instance.destroyDebugUtilsMessengerEXT(m_DebugMessenger);
+                if (m_DebugMessenger)
+                {
+                    m_Instance.destroyDebugUtilsMessengerEXT(m_DebugMessenger);
+                }
 #endif
                 m_Instance.destroy();
             }
@@ -318,6 +321,22 @@ namespace vultra
         Swapchain RenderDevice::createSwapchain(os::Window&             window,
                                                 const Swapchain::Format format,
                                                 const VerticalSync      vsync) const
+        {
+            assert(m_Device);
+
+            return Swapchain {
+                m_Instance,
+                m_PhysicalDevice,
+                m_Device,
+                &window,
+                format,
+                vsync,
+            };
+        }
+
+        Swapchain RenderDevice::createSwapchain(platform::android::AndroidWindow& window,
+                                                const Swapchain::Format           format,
+                                                const VerticalSync                vsync) const
         {
             assert(m_Device);
 
@@ -1000,7 +1019,12 @@ namespace vultra
 
             std::vector<const char*> requiredExtensions;
             std::vector<const char*> extensions;
+            bool                     enableDebugUtils = false;
 
+#if defined(__ANDROID__)
+            requiredExtensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+            requiredExtensions.push_back("VK_KHR_android_surface");
+#else
             uint32_t    sdlExtensionCount = 0;
             const auto* sdlExtensions     = SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
             requiredExtensions.reserve(sdlExtensionCount);
@@ -1008,6 +1032,7 @@ namespace vultra
             {
                 requiredExtensions.push_back(sdlExtensions[i]);
             }
+#endif
 
 #if _DEBUG
             requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -1030,6 +1055,12 @@ namespace vultra
                     {
                         extensions.push_back(requiredExtension);
                         extensionMap[requiredExtension] = true;
+#if _DEBUG
+                        if (std::strcmp(requiredExtension, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0)
+                        {
+                            enableDebugUtils = true;
+                        }
+#endif
                     }
                 }
             }
@@ -1038,6 +1069,13 @@ namespace vultra
             {
                 if (!found)
                 {
+#if _DEBUG
+                    if (std::strcmp(extension, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0)
+                    {
+                        VULTRA_CORE_WARN("[RenderDevice] Optional extension unavailable: {}", extension);
+                        continue;
+                    }
+#endif
                     VULTRA_CORE_ERROR("[RenderDevice] Cannot find required extension: {}", extension);
                     throw std::runtime_error("Missing required extension");
                 }
@@ -1086,8 +1124,7 @@ namespace vultra
 #if _DEBUG
             if (!found)
             {
-                VULTRA_CORE_ERROR("[RenderDevice] Cannot find Validation Layer");
-                throw std::runtime_error("Missing required layer");
+                VULTRA_CORE_WARN("[RenderDevice] Validation layer unavailable, continuing without it");
             }
 #endif
 
@@ -1170,7 +1207,10 @@ namespace vultra
             VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Instance);
 
 #if _DEBUG
-            setupDebugMessenger(m_Instance, m_DebugMessenger);
+            if (enableDebugUtils)
+            {
+                setupDebugMessenger(m_Instance, m_DebugMessenger);
+            }
 #endif
         }
 
@@ -1236,22 +1276,43 @@ namespace vultra
                 m_PhysicalDevice = bestDevice;
             }
 
-            // Query properties and features (for raytracing)
-            // Properties
-            vk::StructureChain<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>
-                propertyChain;
-            m_PhysicalDevice.getProperties2(&propertyChain.get<vk::PhysicalDeviceProperties2>());
-            m_RayTracingPipelineProperties = propertyChain.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-            // Features
-            vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceAccelerationStructureFeaturesKHR>
-                featureChain;
-            m_PhysicalDevice.getFeatures2(&featureChain.get<vk::PhysicalDeviceFeatures2>());
-            m_AccelerationStructureFeatures = featureChain.get<vk::PhysicalDeviceAccelerationStructureFeaturesKHR>();
-
             // Query supported extensions
             auto extensions = m_PhysicalDevice.enumerateDeviceExtensionProperties();
             for (auto& ext : extensions)
+            {
                 m_SupportedExtensions.insert(ext.extensionName);
+            }
+
+            const bool supportsAccelerationStructure =
+                m_SupportedExtensions.count(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) > 0;
+            const bool supportsRayTracingPipeline =
+                m_SupportedExtensions.count(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) > 0;
+            const bool supportsRayQuery = m_SupportedExtensions.count(VK_KHR_RAY_QUERY_EXTENSION_NAME) > 0;
+            const bool supportsMeshShader = m_SupportedExtensions.count(VK_EXT_MESH_SHADER_EXTENSION_NAME) > 0;
+            const bool supportsMultiDraw = m_SupportedExtensions.count(VK_EXT_MULTI_DRAW_EXTENSION_NAME) > 0;
+            const bool supportsFragmentShaderInterlock =
+                m_SupportedExtensions.count(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME) > 0;
+
+            // Query properties with a conservative pNext chain based on advertised support.
+            vk::PhysicalDeviceProperties2 properties2 {};
+            vk::PhysicalDeviceRayTracingPipelinePropertiesKHR rayTracingPipelineProperties {};
+            rayTracingPipelineProperties.sType =
+                vk::StructureType::ePhysicalDeviceRayTracingPipelinePropertiesKHR;
+
+            if (supportsRayTracingPipeline)
+            {
+                properties2.pNext = &rayTracingPipelineProperties;
+            }
+
+            m_PhysicalDevice.getProperties2(&properties2);
+            if (supportsRayTracingPipeline)
+            {
+                m_RayTracingPipelineProperties = rayTracingPipelineProperties;
+            }
+            else
+            {
+                m_RayTracingPipelineProperties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {};
+            }
 
             // Query supported features
             vk::PhysicalDeviceFeatures2        features2 {};
@@ -1269,23 +1330,76 @@ namespace vultra
             vk::PhysicalDeviceFragmentShaderInterlockFeaturesEXT fragmentShaderInterlock {
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT};
 
-            features2.pNext  = &vk13;
-            vk13.pNext       = &vk12;
-            vk12.pNext       = &vk11;
-            vk11.pNext       = &accel;
-            accel.pNext      = &rayQuery;
-            rayQuery.pNext   = &rayTracing;
-            rayTracing.pNext = &mesh;
-            mesh.pNext       = &multidraw;
-            multidraw.pNext  = &fragmentShaderInterlock;
-            m_PhysicalDevice.getFeatures2(&features2);
+            vk::BaseOutStructure* featureChainTail = nullptr;
+            auto appendFeatureChain = [&](auto& featureStruct) {
+                if (featureChainTail != nullptr)
+                {
+                    featureChainTail->pNext = reinterpret_cast<vk::BaseOutStructure*>(&featureStruct);
+                }
+                else
+                {
+                    features2.pNext = &featureStruct;
+                }
+                featureChainTail = reinterpret_cast<vk::BaseOutStructure*>(&featureStruct);
+            };
 
+            appendFeatureChain(vk13);
+            appendFeatureChain(vk12);
+            appendFeatureChain(vk11);
+            if (supportsAccelerationStructure)
+            {
+                appendFeatureChain(accel);
+            }
+            if (supportsRayQuery)
+            {
+                appendFeatureChain(rayQuery);
+            }
+            if (supportsRayTracingPipeline)
+            {
+                appendFeatureChain(rayTracing);
+            }
+            if (supportsMeshShader)
+            {
+                appendFeatureChain(mesh);
+            }
+            if (supportsMultiDraw)
+            {
+                appendFeatureChain(multidraw);
+            }
+            if (supportsFragmentShaderInterlock)
+            {
+                appendFeatureChain(fragmentShaderInterlock);
+            }
+            m_PhysicalDevice.getFeatures2(&features2);
+            if (supportsAccelerationStructure)
+            {
+                m_AccelerationStructureFeatures = accel;
+            }
+            else
+            {
+                m_AccelerationStructureFeatures = vk::PhysicalDeviceAccelerationStructureFeaturesKHR {};
+            }
             // Fill feature report
             auto props                 = m_PhysicalDevice.getProperties();
+            const bool supportsDynamicRendering =
+                vk13.dynamicRendering == VK_TRUE ||
+                m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
+            const bool supportsSynchronization2 =
+                vk13.synchronization2 == VK_TRUE ||
+                m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
+            const bool useVulkan13CoreFeatures =
+                VK_API_VERSION_MAJOR(props.apiVersion) > 1 ||
+                (VK_API_VERSION_MAJOR(props.apiVersion) == 1 && VK_API_VERSION_MINOR(props.apiVersion) >= 3);
             m_FeatureReport.deviceName = props.deviceName.data();
             m_FeatureReport.apiMajor   = VK_API_VERSION_MAJOR(props.apiVersion);
             m_FeatureReport.apiMinor   = VK_API_VERSION_MINOR(props.apiVersion);
             m_FeatureReport.apiPatch   = VK_API_VERSION_PATCH(props.apiVersion);
+            m_UseKhrDynamicRendering   =
+                supportsDynamicRendering && !useVulkan13CoreFeatures &&
+                m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
+            m_UseKhrSynchronization2   =
+                supportsSynchronization2 && !useVulkan13CoreFeatures &&
+                m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
 
             auto& flags = m_FeatureReport.flags;
 
@@ -1327,6 +1441,22 @@ namespace vultra
             add(RenderDeviceFeatureReportFlagBits::eFragmentShaderInterlock,
                 VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME,
                 fragmentShaderInterlock.fragmentShaderPixelInterlock);
+            if (supportsDynamicRendering)
+            {
+                flags |= RenderDeviceFeatureReportFlagBits::eDynamicRendering;
+            }
+            else
+            {
+                VULTRA_CORE_WARN("[RenderDevice] Extension or feature not supported: dynamic rendering");
+            }
+            if (supportsSynchronization2)
+            {
+                flags |= RenderDeviceFeatureReportFlagBits::eSynchronization2;
+            }
+            else
+            {
+                VULTRA_CORE_WARN("[RenderDevice] Extension or feature not supported: synchronization2");
+            }
 
 #ifdef VULTRA_ENABLE_RENDERDOC
             VULTRA_CORE_WARN("[RenderDevice] RenderDoc is enabled, raytracing will be disabled");
@@ -1360,6 +1490,8 @@ namespace vultra
             PRINT_FEATURE(eDrawParameters);
             PRINT_FEATURE(eMultiview);
             PRINT_FEATURE(eFragmentShaderInterlock);
+            PRINT_FEATURE(eDynamicRendering);
+            PRINT_FEATURE(eSynchronization2);
 #undef PRINT_FEATURE
 
             // === Assign & Check Feature Flags ===
@@ -1424,12 +1556,23 @@ namespace vultra
             queueCreateInfo.queueCount       = 1;
             queueCreateInfo.pQueuePriorities = &queuePriority;
 
+            const auto physicalDeviceFeatures = m_PhysicalDevice.getFeatures();
+            const bool useVulkan13CoreFeatures = !m_UseKhrDynamicRendering && !m_UseKhrSynchronization2;
             // === Base extensions ===
             std::vector<const char*> extensions = {
                 VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-                VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
             };
+
+            if (!useVulkan13CoreFeatures &&
+                HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
+            {
+                extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+            }
+            if (!useVulkan13CoreFeatures &&
+                HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
+            {
+                extensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+            }
 
             // NVIDIA's vk_gaussian_splatting sorter backend (vrdx) uses push descriptors.
             extensions.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
@@ -1439,31 +1582,49 @@ namespace vultra
             std::vector<vk::BaseOutStructure*> featureChain;
 
             vk::PhysicalDeviceFeatures enabledFeatures {};
-            enabledFeatures.samplerAnisotropy = VK_TRUE;
+            enabledFeatures.samplerAnisotropy = physicalDeviceFeatures.samplerAnisotropy;
 #ifndef __APPLE__
-            enabledFeatures.geometryShader            = VK_TRUE;
-            enabledFeatures.shaderImageGatherExtended = VK_TRUE;
-            enabledFeatures.shaderInt64               = VK_TRUE;
+            enabledFeatures.geometryShader            = physicalDeviceFeatures.geometryShader;
+            enabledFeatures.shaderImageGatherExtended = physicalDeviceFeatures.shaderImageGatherExtended;
+            enabledFeatures.shaderInt64               = physicalDeviceFeatures.shaderInt64;
 #endif
             deviceFeatures2.features = enabledFeatures;
 
 #ifdef __APPLE__
             extensions.push_back("VK_KHR_portability_subset");
-
-            // Dynamic Rendering & Synchronization2
-            vk::PhysicalDeviceDynamicRenderingFeatures vkDynamicRenderingFeatures {};
-            vkDynamicRenderingFeatures.dynamicRendering = VK_TRUE;
-            vk::PhysicalDeviceSynchronization2FeaturesKHR vkSync2Features {};
-            vkSync2Features.synchronization2 = VK_TRUE;
-            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vkDynamicRenderingFeatures));
-            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vkSync2Features));
-#else
-            // Dynamic Rendering & Synchronization2
-            vk::PhysicalDeviceVulkan13Features vk13Features {};
-            vk13Features.dynamicRendering = VK_TRUE;
-            vk13Features.synchronization2 = VK_TRUE;
-            featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk13Features));
 #endif
+
+            if (useVulkan13CoreFeatures)
+            {
+                vk::PhysicalDeviceVulkan13Features vk13Features {};
+                if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
+                {
+                    vk13Features.dynamicRendering = VK_TRUE;
+                }
+                if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
+                {
+                    vk13Features.synchronization2 = VK_TRUE;
+                }
+                if (vk13Features.dynamicRendering == VK_TRUE || vk13Features.synchronization2 == VK_TRUE)
+                {
+                    featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk13Features));
+                }
+            }
+            else
+            {
+                vk::PhysicalDeviceDynamicRenderingFeatures vkDynamicRenderingFeatures {};
+                vk::PhysicalDeviceSynchronization2FeaturesKHR vkSync2Features {};
+                if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
+                {
+                    vkDynamicRenderingFeatures.dynamicRendering = VK_TRUE;
+                    featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vkDynamicRenderingFeatures));
+                }
+                if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
+                {
+                    vkSync2Features.synchronization2 = VK_TRUE;
+                    featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vkSync2Features));
+                }
+            }
             // Vulkan 1.1 features
             vk::PhysicalDeviceVulkan11Features vk11Features {};
             if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDrawParameters))
@@ -1771,6 +1932,8 @@ namespace vultra
                                   allocateCommandBuffer(),
                                   m_TracyContext,
                                   createFence(),
+                                  m_UseKhrDynamicRendering,
+                                  m_UseKhrSynchronization2,
                                   isRaytracingOrRayQueryEnabled(m_FeatureFlag)};
         }
 
@@ -1812,7 +1975,16 @@ namespace vultra
             submitInfo.signalSemaphoreInfoCount = jobInfo.signal != nullptr ? 1u : 0u;
             submitInfo.pSignalSemaphoreInfos    = jobInfo.signal ? &signalSemaphoreInfo : nullptr;
 
-            VK_CHECK(m_GenericQueue.submit2KHR(1, &submitInfo, cb.m_Fence), LOGTAG, "Failed to submit command buffer");
+            if (m_UseKhrSynchronization2)
+            {
+                VK_CHECK(m_GenericQueue.submit2KHR(1, &submitInfo, cb.m_Fence),
+                         LOGTAG,
+                         "Failed to submit command buffer");
+            }
+            else
+            {
+                VK_CHECK(m_GenericQueue.submit2(1, &submitInfo, cb.m_Fence), LOGTAG, "Failed to submit command buffer");
+            }
 
             if (oneTime)
             {

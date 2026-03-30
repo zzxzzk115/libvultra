@@ -1,0 +1,20 @@
+= Android Project Skeleton for libvultra
+
+This directory now uses the Android project skeleton from the Vulkan Tutorial `attachments/android`
+sample as its baseline.
+
+The goal is to keep the Gradle, `GameActivity`, manifest, resource, and bridge layout aligned with
+the tutorial, then adapt the native side for `libvultra`.
+
+Compared with the old in-repo draft, this version intentionally resets the Android host shell to the
+tutorial structure first, so the next integration steps can happen on top of a cleaner base.
+
+== Notes
+
+* Gradle files are copied from the tutorial's Android attachment layout.
+* Native integration with `libvultra` still needs to be wired on top of this skeleton.
+
+== Reference
+
+* Tutorial source: `attachments/android` and `34_android.cpp` from `Vulkan Tutorial`
+* Downstream copy template: `template/android`

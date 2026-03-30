@@ -1,5 +1,8 @@
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/os/window.hpp"
+#if defined(__ANDROID__)
+#include "vultra/platform/android/android_window.hpp"
+#endif
 #include "vultra/core/rhi/vk/macro.hpp"
 
 #include "vultra/core/profiling/tracy_wrapper.hpp"
@@ -75,11 +78,13 @@ namespace vultra
 
         Swapchain::Swapchain(Swapchain&& other) noexcept :
             m_Window(other.m_Window), m_Instance(other.m_Instance), m_PhysicalDevice(other.m_PhysicalDevice),
-            m_Device(other.m_Device), m_Surface(other.m_Surface), m_Handle(other.m_Handle), m_Format(other.m_Format),
+            m_AndroidWindow(other.m_AndroidWindow), m_Device(other.m_Device), m_Surface(other.m_Surface),
+            m_Handle(other.m_Handle), m_Format(other.m_Format),
             m_VerticalSync(other.m_VerticalSync), m_Buffers(std::move(other.m_Buffers)),
             m_CurrentImageIndex(other.m_CurrentImageIndex)
         {
             other.m_Window            = nullptr;
+            other.m_AndroidWindow     = nullptr;
             other.m_Instance          = nullptr;
             other.m_PhysicalDevice    = nullptr;
             other.m_Device            = nullptr;
@@ -97,6 +102,7 @@ namespace vultra
                 destroy();
 
                 std::swap(m_Window, rhs.m_Window);
+                std::swap(m_AndroidWindow, rhs.m_AndroidWindow);
                 std::swap(m_Instance, rhs.m_Instance);
                 std::swap(m_PhysicalDevice, rhs.m_PhysicalDevice);
                 std::swap(m_Device, rhs.m_Device);
@@ -173,10 +179,36 @@ namespace vultra
             create(format, vsync);
         }
 
+        Swapchain::Swapchain(const vk::Instance                instance,
+                             const vk::PhysicalDevice          physicalDevice,
+                             const vk::Device                  device,
+                             platform::android::AndroidWindow* window,
+                             const Format                      format,
+                             const VerticalSync                vsync) :
+            m_Instance(instance), m_PhysicalDevice(physicalDevice), m_Device(device), m_AndroidWindow(window)
+        {
+            createSurface();
+            create(format, vsync);
+        }
+
         void Swapchain::createSurface()
         {
             assert(m_Instance);
-            m_Surface = m_Window->createVulkanSurface(m_Instance);
+            if (m_Window != nullptr)
+            {
+                m_Surface = m_Window->createVulkanSurface(m_Instance);
+            }
+#if defined(__ANDROID__)
+            else
+            {
+                m_Surface = m_AndroidWindow->createVulkanSurface(m_Instance);
+            }
+#else
+            else
+            {
+                VULTRA_CORE_ASSERT(false, "[Swapchain] Android window surface creation is only available on Android.");
+            }
+#endif
         }
 
         void Swapchain::create(Format format, VerticalSync vsync)
@@ -188,33 +220,57 @@ namespace vultra
             const auto surfaceInfo = getSurfaceInfo(m_PhysicalDevice, m_Surface);
 
             // Using framebuffer extent as the swapchain extent for Wayland compatibility
-            const auto fbExtent = m_Window->getFrameBufferExtent();
+            os::Window::Extent fbExtent {};
+            if (m_Window != nullptr)
+            {
+                fbExtent = m_Window->getFrameBufferExtent();
+            }
+#if defined(__ANDROID__)
+            else if (m_AndroidWindow != nullptr)
+            {
+                fbExtent = m_AndroidWindow->getFrameBufferExtent();
+            }
+#endif
 
             Extent2D extent;
 
-            switch (m_Window->getDriverType())
+#if defined(__ANDROID__)
+            if (m_AndroidWindow != nullptr)
             {
-                case os::Window::DriverType::eX11:
-                    if (surfaceInfo.capabilities.currentExtent.width != 4294967289u &&
-                        surfaceInfo.capabilities.currentExtent.height != 4294967289u)
-                    {
-                        // Use the current extent if available
-                        extent = fromVk(surfaceInfo.capabilities.currentExtent);
-                    }
-                    else
-                    {
-                        // Fallback to framebuffer extent
-                        extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
-                    }
-                    break;
-
-                case os::Window::DriverType::eWayland:
-                    // Wayland does not provide a current extent, so we use the window extent
-                    extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
-                    break;
-
-                default:
+                if (surfaceInfo.capabilities.currentExtent.width != 4294967295u &&
+                    surfaceInfo.capabilities.currentExtent.height != 4294967295u)
+                {
                     extent = fromVk(surfaceInfo.capabilities.currentExtent);
+                }
+                else
+                {
+                    extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
+                }
+            }
+            else
+#endif
+            {
+                switch (m_Window->getDriverType())
+                {
+                    case os::Window::DriverType::eX11:
+                        if (surfaceInfo.capabilities.currentExtent.width != 4294967289u &&
+                            surfaceInfo.capabilities.currentExtent.height != 4294967289u)
+                        {
+                            extent = fromVk(surfaceInfo.capabilities.currentExtent);
+                        }
+                        else
+                        {
+                            extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
+                        }
+                        break;
+
+                    case os::Window::DriverType::eWayland:
+                        extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
+                        break;
+
+                    default:
+                        extent = fromVk(surfaceInfo.capabilities.currentExtent);
+                }
             }
 
             const vk::SurfaceFormatKHR kSurfaceDefaultFormat {

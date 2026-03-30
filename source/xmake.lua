@@ -87,8 +87,9 @@ end
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.335+0", "vulkan-memory-allocator-hpp", "sol2")
-add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.335+0"})
+add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "sol2")
+add_requireconfs("vulkan-memory-allocator-hpp", {configs = {use_vulkanheaders = true}})
+add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"})
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
@@ -100,9 +101,22 @@ add_requires("vrendergraph", {configs = { debug = is_mode("debug") }})
 target("vultra")
     -- set target kind: static library
     set_kind("static")
+    if is_plat("android") then
+        add_cflags("-fPIC")
+        add_cxflags("-fPIC")
+    end
 
     -- add include dir
     add_includedirs("include", {public = true}) -- public: let other targets to auto include
+    if is_plat("android") then
+        local ndk_root = get_config("ndk")
+            or os.getenv("ANDROID_NDK")
+            or os.getenv("ANDROID_NDK_HOME")
+            or os.getenv("ANDROID_NDK_ROOT")
+        if ndk_root then
+            add_includedirs(path.join(ndk_root, "sources/android/native_app_glue"), {public = true})
+        end
+    end
 
     -- add header files
     add_headerfiles("include/(vultra/**.hpp)")

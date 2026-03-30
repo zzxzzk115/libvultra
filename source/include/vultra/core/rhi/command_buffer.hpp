@@ -153,6 +153,8 @@ namespace vultra
                           const vk::CommandBuffer,
                           TracyVkCtx,
                           const vk::Fence,
+                          bool useKhrDynamicRendering,
+                          bool useKhrSynchronization2,
                           const bool enableRaytracing = false);
 
             [[nodiscard]] bool invariant(const State requiredState, const InvariantFlags = InvariantFlags::eNone) const;
@@ -187,6 +189,8 @@ namespace vultra
             const VertexBuffer* m_VertexBuffer {nullptr};
             const IndexBuffer*  m_IndexBuffer {nullptr};
 
+            bool m_UseKhrDynamicRendering {false};
+            bool m_UseKhrSynchronization2 {false};
             bool m_InsideRenderPass {false};
         };
 

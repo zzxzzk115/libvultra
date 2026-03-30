@@ -1,6 +1,10 @@
 #pragma once
 
+#include "vultra/core/base/base.hpp"
 #include "vultra/core/base/logger.hpp"
+
+#include <cstdlib>
+#include <stdexcept>
 
 namespace vultra
 {
@@ -28,6 +32,25 @@ namespace vultra
 #define VULTRA_CLIENT_ERROR(...) ::vultra::commonContext.logger.error(false, __VA_ARGS__);
 #define VULTRA_CLIENT_CRITICAL(...) ::vultra::commonContext.logger.critical(false, __VA_ARGS__);
 
+#if defined(__ANDROID__)
+#define VULTRA_CORE_ASSERT(expr, ...) \
+    do \
+    { \
+        if (!(expr)) \
+        { \
+            if constexpr (sizeof(#__VA_ARGS__) > 1) \
+            { \
+                VULTRA_CORE_ERROR( \
+                    "{}:{}: Assertion '{}' failed. {}", __FILE__, __LINE__, #expr, fmt::format(__VA_ARGS__)); \
+            } \
+            else \
+            { \
+                VULTRA_CORE_ERROR("{}:{}: Assertion '{}' failed.", __FILE__, __LINE__, #expr); \
+            } \
+            throw std::runtime_error("VULTRA_CORE_ASSERT failed: " #expr); \
+        } \
+    } while (0)
+#else
 #define VULTRA_CORE_ASSERT(expr, ...) \
     do \
     { \
@@ -47,3 +70,4 @@ namespace vultra
             std::exit(EXIT_FAILURE); \
         } \
     } while (0)
+#endif

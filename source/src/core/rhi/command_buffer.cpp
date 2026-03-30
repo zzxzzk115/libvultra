@@ -105,6 +105,8 @@ namespace vultra
             m_DescriptorSetCache(std::move(other.m_DescriptorSetCache)),
             m_BarrierBuilder(std::move(other.m_BarrierBuilder)), m_Pipeline(other.m_Pipeline),
             m_VertexBuffer(other.m_VertexBuffer), m_IndexBuffer(other.m_IndexBuffer),
+            m_UseKhrDynamicRendering(other.m_UseKhrDynamicRendering),
+            m_UseKhrSynchronization2(other.m_UseKhrSynchronization2),
             m_InsideRenderPass(other.m_InsideRenderPass)
         {
             other.m_Device           = nullptr;
@@ -116,6 +118,8 @@ namespace vultra
             other.m_Pipeline         = nullptr;
             other.m_VertexBuffer     = nullptr;
             other.m_IndexBuffer      = nullptr;
+            other.m_UseKhrDynamicRendering = false;
+            other.m_UseKhrSynchronization2 = false;
             other.m_InsideRenderPass = false;
         }
 
@@ -146,6 +150,8 @@ namespace vultra
                 std::swap(m_VertexBuffer, rhs.m_VertexBuffer);
                 std::swap(m_IndexBuffer, rhs.m_IndexBuffer);
 
+                std::swap(m_UseKhrDynamicRendering, rhs.m_UseKhrDynamicRendering);
+                std::swap(m_UseKhrSynchronization2, rhs.m_UseKhrSynchronization2);
                 std::swap(m_InsideRenderPass, rhs.m_InsideRenderPass);
             }
 
@@ -382,7 +388,14 @@ namespace vultra
             renderingInfo.pStencilAttachment   = stencilAttachment.imageView ? &stencilAttachment : nullptr;
 
             flushBarriers();
-            m_Handle.beginRenderingKHR(&renderingInfo);
+            if (m_UseKhrDynamicRendering)
+            {
+                m_Handle.beginRenderingKHR(&renderingInfo);
+            }
+            else
+            {
+                m_Handle.beginRendering(&renderingInfo);
+            }
 
             m_InsideRenderPass = true;
 
@@ -394,7 +407,14 @@ namespace vultra
             assert(invariant(State::eRecording, InvariantFlags::eInsideRenderPass));
 
             TRACY_GPU_ZONE2_("EndRendering");
-            m_Handle.endRenderingKHR();
+            if (m_UseKhrDynamicRendering)
+            {
+                m_Handle.endRenderingKHR();
+            }
+            else
+            {
+                m_Handle.endRendering();
+            }
 
             m_InsideRenderPass = false;
 
@@ -882,7 +902,14 @@ namespace vultra
             if (auto barrier = m_BarrierBuilder.build(); barrier.isEffective())
             {
                 TRACY_GPU_ZONE2_("FlushBarriers");
-                m_Handle.pipelineBarrier2KHR(&barrier.m_Info);
+                if (m_UseKhrSynchronization2)
+                {
+                    m_Handle.pipelineBarrier2KHR(&barrier.m_Info);
+                }
+                else
+                {
+                    m_Handle.pipelineBarrier2(&barrier.m_Info);
+                }
             }
             return *this;
         }
@@ -892,9 +919,12 @@ namespace vultra
                                      const vk::CommandBuffer handle,
                                      TracyVkCtx              tracyContext,
                                      const vk::Fence         fence,
+                                     const bool              useKhrDynamicRendering,
+                                     const bool              useKhrSynchronization2,
                                      const bool              enableRaytracing) :
             m_Device(device), m_CommandPool(commandPool), m_State(State::eInitial), m_Handle(handle),
-            m_TracyContext(tracyContext), m_Fence(fence), m_DescriptorSetAllocator(device, enableRaytracing)
+            m_TracyContext(tracyContext), m_Fence(fence), m_DescriptorSetAllocator(device, enableRaytracing),
+            m_UseKhrDynamicRendering(useKhrDynamicRendering), m_UseKhrSynchronization2(useKhrSynchronization2)
         {}
 
         bool CommandBuffer::invariant(const State requiredState, const InvariantFlags flags) const

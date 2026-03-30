@@ -1,0 +1,12 @@
+= Android Template Skeleton for libvultra
+
+This directory is the copyable Android template counterpart to `examples/android_app`.
+
+It intentionally starts from the Vulkan Tutorial `attachments/android` project layout so downstream
+projects can inherit the same `GameActivity`-based shell.
+
+== Notes
+
+* This is meant to be copied into a downstream target repository.
+* `examples/android_app` is the in-repo playground version.
+* Both directories now share the tutorial-derived Android shell.

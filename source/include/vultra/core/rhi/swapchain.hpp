@@ -10,6 +10,11 @@ namespace vultra
         class Window;
     }
 
+    namespace platform::android
+    {
+        class AndroidWindow;
+    }
+
     namespace rhi
     {
         enum class VerticalSync
@@ -58,6 +63,7 @@ namespace vultra
 
         private:
             Swapchain(vk::Instance, vk::PhysicalDevice, vk::Device, os::Window*, Format, VerticalSync);
+            Swapchain(vk::Instance, vk::PhysicalDevice, vk::Device, platform::android::AndroidWindow*, Format, VerticalSync);
 
             void createSurface();
 
@@ -67,6 +73,7 @@ namespace vultra
 
         private:
             os::Window* m_Window {nullptr};
+            platform::android::AndroidWindow* m_AndroidWindow {nullptr};
 
             vk::Instance       m_Instance {nullptr};
             vk::PhysicalDevice m_PhysicalDevice {nullptr};

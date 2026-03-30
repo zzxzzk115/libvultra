@@ -1,0 +1,96 @@
+plugins {
+    id 'com.android.application'
+}
+
+def xmakeGlobalDir = System.getenv("XMAKE_GLOBAL_DIR") ?: new File(System.getProperty("user.home"), ".xmake").absolutePath
+def xmakePackagesDir = new File(xmakeGlobalDir, "packages")
+def resolveOpenXRLoaderForAbi = { abi ->
+    fileTree(xmakePackagesDir) {
+        include("o/openxr/*/*/jni/${abi}/libopenxr_loader.so")
+    }.files.toList().sort { a, b -> a.absolutePath <=> b.absolutePath }.find()
+}
+
+android {
+    namespace "org.libvultra.android"
+    compileSdk 36
+    defaultConfig {
+        applicationId "org.libvultra.android"
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        // Define which chapter to build (default to 34_android)
+        buildConfigField "String", "CHAPTER", "\"${project.findProperty('chapter') ?: '34_android'}\""
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DCHAPTER=${project.findProperty('chapter') ?: '34_android'}"
+                abiFilters = project.findProperty('abiFilters')?.split(',') ?: ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "4.0.2+"
+        }
+    }
+
+    ndkVersion "30.0.14904198"
+
+    // Use assets from the dedicated assets directory and locally compiled shaders
+    sourceSets {
+        main {
+            assets {
+                srcDirs = [
+                    // Point to the dedicated assets directory
+                    '../../assets/'
+                ]
+            }
+            jniLibs.srcDir(file("${buildDir}/generated/jniLibs"))
+        }
+    }
+    buildFeatures {
+        prefab true
+        buildConfig true
+    }
+}
+
+def resolvedAbiFilters = (project.findProperty('abiFilters')?.split(',') ?: ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64']).collect { it.trim() }
+def generatedJniLibsDir = file("${buildDir}/generated/jniLibs")
+
+def prepareOpenXRJniLibs = tasks.register("prepareOpenXRJniLibs", Copy) {
+    resolvedAbiFilters.each { abi ->
+        def openxrLoader = resolveOpenXRLoaderForAbi(abi)
+        if (openxrLoader != null) {
+            from(openxrLoader) {
+            into(abi)
+        }
+        }
+    }
+    into(generatedJniLibsDir)
+}
+
+tasks.named("preBuild") {
+    dependsOn(prepareOpenXRJniLibs)
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.games:games-activity:4.0.0'
+}

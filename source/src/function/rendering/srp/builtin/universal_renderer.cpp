@@ -1,4 +1,5 @@
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
+#include "vultra/core/rhi/vk/handle_utils.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
@@ -19,7 +20,7 @@ namespace vultra
     {
         uint64_t getTextureHandleId(const rhi::Texture& texture)
         {
-            return static_cast<uint64_t>(static_cast<VkImage>(texture.getImageHandle()));
+            return rhi::getVulkanHandleId(static_cast<VkImage>(texture.getImageHandle()));
         }
 
         void syncImGuiTextureRegistration(IImGuiService&            imguiService,

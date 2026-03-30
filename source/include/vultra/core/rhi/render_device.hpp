@@ -38,6 +38,11 @@ namespace vultra
 {
     class ImGuiSystem;
 
+    namespace platform::android
+    {
+        class AndroidWindow;
+    }
+
     namespace openxr
     {
         class XRDevice;
@@ -78,6 +83,8 @@ namespace vultra
             eDrawParameters          = BIT(9),
             eFragmentShaderInterlock = BIT(10),
             eMultiview               = BIT(11),
+            eDynamicRendering        = BIT(12),
+            eSynchronization2        = BIT(13),
         };
 
         struct RenderDeviceFeatureReport
@@ -147,6 +154,9 @@ namespace vultra
             [[nodiscard]] vk::FormatProperties getFormatProperties(PixelFormat) const;
 
             [[nodiscard]] Swapchain createSwapchain(os::Window&,
+                                                    Swapchain::Format = Swapchain::Format::esRGB,
+                                                    VerticalSync      = VerticalSync::eDisabled) const;
+            [[nodiscard]] Swapchain createSwapchain(platform::android::AndroidWindow&,
                                                     Swapchain::Format = Swapchain::Format::esRGB,
                                                     VerticalSync      = VerticalSync::eDisabled) const;
 
@@ -332,6 +342,8 @@ namespace vultra
             RenderDeviceFeatureReport   m_FeatureReport {};
             RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
             std::string                 m_AppName;
+            bool                        m_UseKhrDynamicRendering {false};
+            bool                        m_UseKhrSynchronization2 {false};
 
             vk::Instance               m_Instance {nullptr};
             vk::DebugUtilsMessengerEXT m_DebugMessenger {nullptr};

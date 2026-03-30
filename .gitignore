@@ -2,6 +2,11 @@
 .xmake/
 build/
 
+# Local tooling / temporary build helpers
+.tools/
+.gradle-home/
+.gradle-tmp/
+
 # VS Code
 .vscode/
 
@@ -34,3 +39,14 @@ imported/
 
 # tracky
 tracky*.csv
+
+# Gradle / Android Studio
+.gradle/
+**/.gradle/
+**/build/
+**/.cxx/
+**/local.properties
+
+# Gradle wrapper launchers generated locally
+**/gradlew
+**/gradlew.bat

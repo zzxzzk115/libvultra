@@ -1,11 +1,55 @@
 #include "vultra/core/base/logger.hpp"
 
 #include <magic_enum/magic_enum.hpp>
-#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
+
+#if !defined(__ANDROID__)
+#include <spdlog/sinks/basic_file_sink.h>
+#endif
 
 namespace vultra
 {
+    namespace
+    {
+#if defined(__ANDROID__)
+        [[nodiscard]] int toAndroidPriority(const Logger::Level level)
+        {
+            switch (level)
+            {
+                case Logger::Level::eTrace:
+                    return ANDROID_LOG_VERBOSE;
+                case Logger::Level::eInfo:
+                    return ANDROID_LOG_INFO;
+                case Logger::Level::eWarn:
+                    return ANDROID_LOG_WARN;
+                case Logger::Level::eError:
+                    return ANDROID_LOG_ERROR;
+                case Logger::Level::eCritical:
+                    return ANDROID_LOG_FATAL;
+                default:
+                    return ANDROID_LOG_DEFAULT;
+            }
+        }
+
+        [[nodiscard]] const char* toAndroidTag(const Logger::Region region)
+        {
+            switch (region)
+            {
+                case Logger::Region::eCore:
+                    return "VULTRA_CORE";
+                case Logger::Region::eClient:
+                    return "VULTRA_CLIENT";
+                default:
+                    return "VULTRA_CORE";
+            }
+        }
+#endif
+    } // namespace
+
     Logger::Logger(Logger&& other) noexcept : emitter {std::move(other)}, m_Level(other.m_Level) {}
 
     Logger::~Logger()
@@ -52,10 +96,13 @@ namespace vultra
         std::vector<spdlog::sink_ptr> logSinks;
 
         logSinks.emplace_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
-        logSinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>("Vultra.log", true));
 
         logSinks[0]->set_pattern("%^[%Y-%m-%d %H:%M:%S:%f] %n: %v%$");
+
+#if !defined(__ANDROID__)
+        logSinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>("Vultra.log", true));
         logSinks[1]->set_pattern("[%Y-%m-%d %H:%M:%S:%f] [%l] %n: %v");
+#endif
 
         m_CoreLogger = std::make_shared<spdlog::logger>("VULTRA_CORE", begin(logSinks), end(logSinks));
         spdlog::register_logger(m_CoreLogger);
@@ -70,6 +117,9 @@ namespace vultra
 
     void Logger::triggerLogEvent(Region region, Level level, std::string_view msg)
     {
+#if defined(__ANDROID__)
+        __android_log_print(toAndroidPriority(level), toAndroidTag(region), "%s", msg.data());
+#endif
         publish<LogEvent>({region, level, msg.data()});
     }
 } // namespace vultra

@@ -52,3 +52,6 @@ includes("meshshading/triangle")
 -- includes("debug_draw")
 includes("gaussian_splatting")
 includes("demo_app")
+if is_plat("android") then
+    includes("android_app")
+end

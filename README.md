@@ -121,6 +121,8 @@ Step-by-Step:
 ## Create your own graphics or game project
 You can simply create a project by using this [template](https://github.com/zzxzzk115/libvultra-starter-template).
 
+For Android host integration groundwork, see [template/android](./template/android/) and the in-repo sample [examples/android_app](./examples/android_app/).
+
 Have fun!
 
 ## License
