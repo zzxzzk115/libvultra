@@ -309,7 +309,7 @@ namespace vultra
                     inferredType = vasset::VAssetType::eTexture;
                 else if (ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".dae")
                     inferredType = vasset::VAssetType::eMesh;
-                else if (ext == ".ply" || ext == ".spz")
+                else if (ext == ".ply" || ext == ".spz" || ext == ".splat" || ext == ".ksplat")
                     inferredType = vasset::VAssetType::eGaussianSplat;
 
                 m_Registry.registerAsset(entry.uuid, logicalPath, logicalPath, inferredType);
@@ -744,138 +744,38 @@ namespace vultra
 
         auto& pool = m_GpuResourceService->pool();
 
-        constexpr float    kShC0               = 0.28209479177f;
-        constexpr int      kTargetRest         = static_cast<int>(resource::GpuGaussianSplat::s_PackedShRestCoeffs);
-        constexpr float    kAlphaMinKeep       = 0.001f;
-        constexpr float    kAlphaLogitMin      = -20.0f;
-        constexpr float    kAlphaLogitMax      = 20.0f;
-        constexpr float    kLogScaleMin        = -20.0f;
-        constexpr float    kLogScaleMax        = 4.0f;
-        constexpr uint32_t kDetectSampleBudget = 200000u;
+        constexpr float kShC0          = 0.28209479177f;
+        constexpr int   kTargetRest    = static_cast<int>(resource::GpuGaussianSplat::s_PackedShRestCoeffs);
+        constexpr float kAlphaMinKeep  = 0.001f;
+        constexpr float kAlphaLogitMin = -20.0f;
+        constexpr float kAlphaLogitMax = 20.0f;
+        constexpr float kLogScaleMin   = -20.0f;
+        constexpr float kLogScaleMax   = 4.0f;
 
         const int fileDegree     = std::clamp(cpuSplat.shDegree, 0, 3);
         const int fileRestCoeffs = fileDegree > 0 ? (((fileDegree + 1) * (fileDegree + 1)) - 1) : 0;
-
-        const uint32_t detectCount =
-            std::min<uint32_t>(static_cast<uint32_t>(cpuSplat.splats.size()), kDetectSampleBudget);
-
-        float  alphaMin = std::numeric_limits<float>::infinity();
-        float  alphaMax = -std::numeric_limits<float>::infinity();
-        float  scaleMin = std::numeric_limits<float>::infinity();
-        float  scaleMax = -std::numeric_limits<float>::infinity();
-        double colorMin = std::numeric_limits<double>::infinity();
-        double colorMax = -std::numeric_limits<double>::infinity();
-
-        for (uint32_t i = 0; i < detectCount; ++i)
-        {
-            const auto& p = cpuSplat.splats[i];
-
-            if (std::isfinite(p.opacity))
-            {
-                alphaMin = std::min(alphaMin, p.opacity);
-                alphaMax = std::max(alphaMax, p.opacity);
-            }
-
-            const float scales[3] = {p.scale.x, p.scale.y, p.scale.z};
-            for (float s : scales)
-            {
-                if (!std::isfinite(s))
-                    continue;
-                scaleMin = std::min(scaleMin, s);
-                scaleMax = std::max(scaleMax, s);
-            }
-
-            const float sh0[3] = {p.shDC.x, p.shDC.y, p.shDC.z};
-            for (float c : sh0)
-            {
-                if (!std::isfinite(c))
-                    continue;
-                colorMin = std::min(colorMin, static_cast<double>(c));
-                colorMax = std::max(colorMax, static_cast<double>(c));
-            }
-        }
-
-        bool looksLogitAlpha = true;
-        if (std::isfinite(alphaMin) && std::isfinite(alphaMax))
-            looksLogitAlpha = (alphaMin < -0.05f) || (alphaMax > 1.05f);
-
-        bool looksLogScale = true;
-        if (std::isfinite(scaleMin) && std::isfinite(scaleMax))
-            looksLogScale = (scaleMin < -1.0f) || (scaleMax > 3.0f);
-
-        const bool looksByteRGB = std::isfinite(colorMax) && (colorMax > 4.0);
-        const bool looksFloatRGB01 =
-            std::isfinite(colorMin) && std::isfinite(colorMax) && (colorMin >= -1e-3) && (colorMax <= 1.5);
-        const bool looksSH0 = (!looksByteRGB && !looksFloatRGB01);
-
-        bool sh0AddBias = true;
-        if (looksSH0 && detectCount > 0u)
-        {
-            uint64_t outOfRangeWithBias = 0u;
-            uint64_t outOfRangeNoBias   = 0u;
-            uint64_t totalChannels      = 0u;
-
-            for (uint32_t i = 0; i < detectCount; ++i)
-            {
-                const auto& p = cpuSplat.splats[i];
-                if (!std::isfinite(p.shDC.x) || !std::isfinite(p.shDC.y) || !std::isfinite(p.shDC.z))
-                    continue;
-
-                const glm::vec3 dc          = kShC0 * p.shDC;
-                const glm::vec3 rgbWithBias = dc + glm::vec3(0.5f);
-                const glm::vec3 rgbNoBias   = dc;
-
-                outOfRangeWithBias += (rgbWithBias.x < 0.0f || rgbWithBias.x > 1.0f) ? 1u : 0u;
-                outOfRangeWithBias += (rgbWithBias.y < 0.0f || rgbWithBias.y > 1.0f) ? 1u : 0u;
-                outOfRangeWithBias += (rgbWithBias.z < 0.0f || rgbWithBias.z > 1.0f) ? 1u : 0u;
-
-                outOfRangeNoBias += (rgbNoBias.x < 0.0f || rgbNoBias.x > 1.0f) ? 1u : 0u;
-                outOfRangeNoBias += (rgbNoBias.y < 0.0f || rgbNoBias.y > 1.0f) ? 1u : 0u;
-                outOfRangeNoBias += (rgbNoBias.z < 0.0f || rgbNoBias.z > 1.0f) ? 1u : 0u;
-
-                totalChannels += 3u;
-            }
-
-            if (totalChannels > 0u)
-                sh0AddBias = outOfRangeWithBias <= outOfRangeNoBias;
-        }
 
         auto decodeAlpha = [&](const vasset::VGaussianSplatPoint& p) -> float {
             if (!std::isfinite(p.opacity))
                 return 0.0f;
 
-            if (looksLogitAlpha)
-                return sigmoid(std::clamp(p.opacity, kAlphaLogitMin, kAlphaLogitMax));
-
-            return std::clamp(p.opacity, 0.0f, 1.0f);
+            return sigmoid(std::clamp(p.opacity, kAlphaLogitMin, kAlphaLogitMax));
         };
 
         auto decodeScaleLin = [&](const vasset::VGaussianSplatPoint& p) -> glm::vec3 {
             if (!std::isfinite(p.scale.x) || !std::isfinite(p.scale.y) || !std::isfinite(p.scale.z))
                 return glm::vec3(1e-6f);
 
-            if (looksLogScale)
-            {
-                return glm::vec3(std::exp(std::clamp(p.scale.x, kLogScaleMin, kLogScaleMax)),
-                                 std::exp(std::clamp(p.scale.y, kLogScaleMin, kLogScaleMax)),
-                                 std::exp(std::clamp(p.scale.z, kLogScaleMin, kLogScaleMax)));
-            }
-
-            return glm::vec3(std::max(p.scale.x, 1e-6f), std::max(p.scale.y, 1e-6f), std::max(p.scale.z, 1e-6f));
+            return glm::vec3(std::exp(std::clamp(p.scale.x, kLogScaleMin, kLogScaleMax)),
+                             std::exp(std::clamp(p.scale.y, kLogScaleMin, kLogScaleMax)),
+                             std::exp(std::clamp(p.scale.z, kLogScaleMin, kLogScaleMax)));
         };
 
         auto decodeBaseRgb = [&](const vasset::VGaussianSplatPoint& p) -> glm::vec3 {
             if (!std::isfinite(p.shDC.x) || !std::isfinite(p.shDC.y) || !std::isfinite(p.shDC.z))
                 return glm::vec3(0.0f);
 
-            if (looksByteRGB)
-                return glm::clamp(p.shDC * (1.0f / 255.0f), glm::vec3(0.0f), glm::vec3(1.0f));
-
-            if (looksFloatRGB01)
-                return glm::clamp(p.shDC, glm::vec3(0.0f), glm::vec3(1.0f));
-
-            return glm::clamp(
-                kShC0 * p.shDC + (sh0AddBias ? glm::vec3(0.5f) : glm::vec3(0.0f)), glm::vec3(0.0f), glm::vec3(1.0f));
+            return glm::clamp(kShC0 * p.shDC + glm::vec3(0.5f), glm::vec3(0.0f), glm::vec3(1.0f));
         };
 
         std::vector<glm::vec4>  packedCenters;
