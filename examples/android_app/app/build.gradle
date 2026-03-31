@@ -127,6 +127,7 @@ tasks.register("prepareVultraResourcesVpk", Exec) {
     inputs.file(packVassetResourcesScript)
     inputs.file(importVassetResourcesScript)
     inputs.file(hostVassetCli)
+    inputs.dir(vultraResourcesDir)
     workingDir vultraRoot
     commandLine packVassetCommand
 
@@ -138,8 +139,13 @@ tasks.register("prepareVultraResourcesVpk", Exec) {
 tasks.register("prepareVultraResourcesImport", Exec) {
     inputs.file(importVassetResourcesScript)
     inputs.file(hostVassetCli)
+    inputs.dir(vultraResourcesDir)
     workingDir vultraRoot
     commandLine importVassetCommand
+}
+
+tasks.named("prepareVultraResourcesVpk") {
+    dependsOn(tasks.named("prepareVultraResourcesImport"))
 }
 
 def prepareVultraRuntimeJniLibs = tasks.register("prepareVultraRuntimeJniLibs", Copy) {

@@ -179,6 +179,7 @@ namespace vultra
         auto& gpuResourceService = ctx().services.require<IGpuResourceService>();
         auto& assetService       = ctx().services.require<IAssetService>();
         auto& shaderService      = ctx().services.require<IShaderService>();
+        auto& window             = ctx().services.require<IWindowService>().window();
 
         // Optional ImGui service for rendering ImGui on top of frame.
         auto* imguiService = ctx().services.tryGet<IImGuiService>();
@@ -422,11 +423,16 @@ namespace vultra
             if (!target)
                 continue;
 
+            const bool       isBackbufferTarget = !cam.isXRView && cam.target == nullptr && target == &defaultTarget;
+            const rhi::Rect2D renderArea        = isBackbufferTarget ?
+                                                      window.getContentArea() :
+                                                      rhi::Rect2D {.offset = {0, 0}, .extent = target->getExtent()};
+
             RenderView view {
                 .renderWorld          = &m_RenderWorldFront,
                 .camera               = &cam,
                 .target               = target,
-                .extent               = target->getExtent(),
+                .extent               = renderArea.extent,
                 .clearValue           = cam.clearValue,
                 .enableMultiview      = canUseXrMultiview,
                 .multiviewMask        = canUseXrMultiview ? 0x3u : 0u,
@@ -446,7 +452,7 @@ namespace vultra
             }
 
             rhi::FramebufferInfo fbInfo {
-                .area             = {.extent = target->getExtent()},
+                .area             = renderArea,
                 .layers           = canUseXrMultiview ? 2u : 1u,
                 .viewMask         = canUseXrMultiview ? 0x3u : 0u,
                 .colorAttachments = {rhi::AttachmentInfo {.target = target, .clearValue = cam.clearValue}},
@@ -459,7 +465,7 @@ namespace vultra
 
             {
                 ImmediateResourceUploader immediateUploader {m_FrameResources, rd};
-                prepareCameraData(immediateUploader, viewData, target->getExtent(), cam);
+                prepareCameraData(immediateUploader, viewData, renderArea.extent, cam);
             }
 
             ImmediateRenderContext immediateCtx {
@@ -477,7 +483,7 @@ namespace vultra
             {
                 FrameGraphResourceUploader fgUploader {fg};
                 prepareFrameData(fgUploader, m_PreparedFrameData, m_RenderWorldFront.frameIndex, 0.0f, 0.0f);
-                prepareCameraData(fgUploader, viewData, target->getExtent(), cam);
+                prepareCameraData(fgUploader, viewData, renderArea.extent, cam);
                 bb.add<FrameData>(m_PreparedFrameData.frameData);
                 bb.add<CameraData>(viewData.cameraData);
             }
@@ -582,7 +588,7 @@ namespace vultra
             }
 
             rhi::FramebufferInfo imguiFbInfo {
-                .area             = {.extent = defaultTarget.getExtent()},
+                .area             = window.getContentArea(),
                 .colorAttachments = {rhi::AttachmentInfo {.target = &defaultTarget}},
             };
 

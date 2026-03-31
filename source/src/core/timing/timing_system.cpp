@@ -22,12 +22,23 @@ namespace vultra
 
     void TimingSystem::onPreUpdate(fsec dt)
     {
-        m_UnscaledDeltaTime = std::max(0.0f, dt.count());
+        m_UnscaledDeltaTime = std::clamp(dt.count(), 0.0f, m_MaxDeltaTime);
         m_UpdateDeltaTime   = m_UnscaledDeltaTime * m_TimeScale;
+        m_SmoothedDeltaTime += (m_UnscaledDeltaTime - m_SmoothedDeltaTime) * m_DeltaSmoothingFactor;
 
         m_UnscaledTotalTime += m_UnscaledDeltaTime;
         m_TotalTime += m_UpdateDeltaTime;
         ++m_FrameIndex;
+
+        ++m_FpsAccumulatedFrames;
+        m_FpsAccumulatedTime += m_UnscaledDeltaTime;
+        if (m_FpsAccumulatedTime >= 0.25f)
+        {
+            m_FramesPerSecond = m_FpsAccumulatedFrames / m_FpsAccumulatedTime;
+            m_AverageFrameTime = m_FramesPerSecond > 0.0f ? (1.0f / m_FramesPerSecond) : 0.0f;
+            m_FpsAccumulatedFrames = 0;
+            m_FpsAccumulatedTime = 0.0f;
+        }
 
         m_FixedStepsThisFrame = 0;
         m_FixedAlpha          = 0.0f;
@@ -56,9 +67,10 @@ namespace vultra
 
     void TimingSystem::setUpdateDeltaTime(float dt)
     {
-        const float clamped = std::max(0.0f, dt);
+        const float clamped = std::clamp(dt, 0.0f, m_MaxDeltaTime);
         m_UnscaledDeltaTime = clamped;
         m_UpdateDeltaTime   = clamped * m_TimeScale;
+        m_SmoothedDeltaTime += (m_UnscaledDeltaTime - m_SmoothedDeltaTime) * m_DeltaSmoothingFactor;
     }
 
     void TimingSystem::setFixedDeltaTime(float dt)
@@ -76,5 +88,18 @@ namespace vultra
     void TimingSystem::setMaxFixedStepsPerFrame(uint32_t maxSteps)
     {
         m_MaxFixedStepsPerFrame = std::max(1u, maxSteps);
+    }
+
+    void TimingSystem::setMaxDeltaTime(float dt)
+    {
+        m_MaxDeltaTime = std::max(1e-6f, dt);
+        m_UnscaledDeltaTime = std::clamp(m_UnscaledDeltaTime, 0.0f, m_MaxDeltaTime);
+        m_UpdateDeltaTime   = m_UnscaledDeltaTime * m_TimeScale;
+        m_SmoothedDeltaTime = std::clamp(m_SmoothedDeltaTime, 0.0f, m_MaxDeltaTime);
+    }
+
+    void TimingSystem::setDeltaSmoothingFactor(float factor)
+    {
+        m_DeltaSmoothingFactor = std::clamp(factor, 0.0f, 1.0f);
     }
 } // namespace vultra

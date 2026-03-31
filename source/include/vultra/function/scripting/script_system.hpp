@@ -25,6 +25,7 @@ namespace vultra
         void onShutdown() override;
 
         void onUpdate(fsec dt) override;
+        void onPhysics(fsec dt) override;
 
         bool reloadEntityScript(entt::entity e) override;
         bool reloadAllScripts() override;
@@ -40,6 +41,7 @@ namespace vultra
         void destroyAllInstances();
 
         static void updateInstance(entt::entity e, ScriptInstance& inst, float dt);
+        static void fixedUpdateInstance(entt::entity e, ScriptInstance& inst, float dt);
 
     private:
         ScriptEngine  m_Engine;

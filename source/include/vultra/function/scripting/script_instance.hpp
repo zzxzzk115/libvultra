@@ -16,6 +16,7 @@ namespace vultra
         sol::protected_function onCreate;
         sol::protected_function onDestroy;
         sol::protected_function onUpdate;
+        sol::protected_function onFixedUpdate;
 
         std::string loadedUri;
         bool        valid {false};

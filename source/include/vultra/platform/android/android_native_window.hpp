@@ -4,6 +4,7 @@
 
 #include "vultra/core/os/window.hpp"
 
+#include <algorithm>
 #include <android/native_window.h>
 
 struct android_app;
@@ -32,8 +33,14 @@ namespace vultra::platform::android
         Window& setFullscreen(bool fullscreen) override;
 
         [[nodiscard]] std::string_view getTitle() const override { return m_Title; }
-        [[nodiscard]] Extent           getExtent() const override { return m_Extent; }
+        [[nodiscard]] Extent           getExtent() const override { return m_ContentExtent; }
         [[nodiscard]] Extent           getFrameBufferExtent() const override { return m_Extent; }
+        [[nodiscard]] rhi::Rect2D      getContentArea() const override
+        {
+            return rhi::Rect2D {.offset = {m_ContentOffset.x, m_ContentOffset.y},
+                                .extent = {static_cast<uint32_t>(std::max(m_ContentExtent.x, 0)),
+                                           static_cast<uint32_t>(std::max(m_ContentExtent.y, 0))}};
+        }
         [[nodiscard]] Position         getPosition() const override { return {}; }
         [[nodiscard]] CursorType       getCursor() const override { return CursorType::eArrow; }
         [[nodiscard]] bool             getCursorVisibility() const override { return true; }
@@ -67,6 +74,8 @@ namespace vultra::platform::android
         const int*                   m_DestroyRequested {nullptr};
         ANativeWindow*               m_NativeWindow {nullptr};
         Extent                       m_Extent {};
+        Position                     m_ContentOffset {};
+        Extent                       m_ContentExtent {};
         glm::vec2                    m_LastPointerPosition {};
         std::string                  m_Title;
         bool                         m_ShouldClose {false};

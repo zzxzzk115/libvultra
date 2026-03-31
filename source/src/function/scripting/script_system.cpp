@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/services/input_service.hpp"
+#include "vultra/core/services/timing_service.hpp"
 #include "vultra/function/scripting/script_binding.hpp"
 #include "vultra/function/scripting/script_types.hpp"
 #include "vultra/function/services/asset_service.hpp"
@@ -77,6 +78,36 @@ namespace vultra
         }
     }
 
+    void ScriptSystem::onPhysics(fsec /*dt*/)
+    {
+        auto* timingSvc = ctx().services.tryGet<ITimingService>();
+        auto* worldSvc  = ctx().services.tryGet<IWorldService>();
+        if (!timingSvc || !worldSvc)
+            return;
+
+        const uint32_t fixedSteps = timingSvc->fixedStepsThisFrame();
+        const float    fixedDt    = timingSvc->fixedDeltaTime();
+        if (fixedSteps == 0u || fixedDt <= 0.0f)
+            return;
+
+        auto& reg = worldSvc->world().registry();
+
+        for (auto it = m_Instances.begin(); it != m_Instances.end(); ++it)
+        {
+            const entt::entity e = it->first;
+            if (!reg.valid(e) || !reg.all_of<ScriptComponent>(e))
+                continue;
+
+            const auto& sc   = reg.get<ScriptComponent>(e);
+            auto&       inst = *it->second;
+            if (!sc.enabled || !inst.enabled)
+                continue;
+
+            for (uint32_t step = 0; step < fixedSteps; ++step)
+                fixedUpdateInstance(e, inst, fixedDt);
+        }
+    }
+
     void ScriptSystem::syncInstances()
     {
         auto* worldSvc = ctx().services.tryGet<IWorldService>();
@@ -116,6 +147,10 @@ namespace vultra
         if (!assetSvc)
             return false;
 
+        VULTRA_CORE_INFO("[ScriptSystem] Loading script for entity {} from '{}'",
+                         static_cast<uint32_t>(e),
+                         sc.scriptUri);
+
         auto textRes = assetSvc->loadTextAssetSync(sc.scriptUri);
         if (!textRes)
         {
@@ -146,7 +181,15 @@ namespace vultra
         inst->onCreate  = inst->env["OnCreate"];
         inst->onDestroy = inst->env["OnDestroy"];
         inst->onUpdate  = inst->env["OnUpdate"];
+        inst->onFixedUpdate = inst->env["OnFixedUpdate"];
         inst->valid     = true;
+
+        VULTRA_CORE_INFO("[ScriptSystem] Script loaded for entity {}: OnCreate={}, OnUpdate={}, OnFixedUpdate={}, OnDestroy={}",
+                         static_cast<uint32_t>(e),
+                         inst->onCreate.valid(),
+                         inst->onUpdate.valid(),
+                         inst->onFixedUpdate.valid(),
+                         inst->onDestroy.valid());
 
         if (callCreate && inst->onCreate.valid())
         {
@@ -172,6 +215,21 @@ namespace vultra
         {
             sol::error err = r;
             VULTRA_CORE_ERROR("[ScriptSystem] OnUpdate error for entity {}: {}", static_cast<uint32_t>(e), err.what());
+        }
+    }
+
+    void ScriptSystem::fixedUpdateInstance(entt::entity e, ScriptInstance& inst, float dt)
+    {
+        if (!inst.valid || !inst.onFixedUpdate.valid())
+            return;
+
+        sol::protected_function_result r = inst.onFixedUpdate(inst.env["self"], dt);
+        if (!r.valid())
+        {
+            sol::error err = r;
+            VULTRA_CORE_ERROR("[ScriptSystem] OnFixedUpdate error for entity {}: {}",
+                              static_cast<uint32_t>(e),
+                              err.what());
         }
     }
 

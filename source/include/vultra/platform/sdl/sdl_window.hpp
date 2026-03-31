@@ -4,6 +4,8 @@
 
 #include "vultra/core/os/window.hpp"
 
+#include <algorithm>
+
 struct SDL_Window;
 
 namespace vultra::platform::sdl
@@ -34,6 +36,12 @@ namespace vultra::platform::sdl
         [[nodiscard]] std::string_view getTitle() const override { return m_Title; }
         [[nodiscard]] Extent           getExtent() const override { return m_Extent; }
         [[nodiscard]] Extent           getFrameBufferExtent() const override { return m_FrameBufferExtent; }
+        [[nodiscard]] rhi::Rect2D      getContentArea() const override
+        {
+            return rhi::Rect2D {.offset = {0, 0},
+                                .extent = {static_cast<uint32_t>(std::max(m_FrameBufferExtent.x, 0)),
+                                           static_cast<uint32_t>(std::max(m_FrameBufferExtent.y, 0))}};
+        }
         [[nodiscard]] Position         getPosition() const override { return m_Position; }
         [[nodiscard]] CursorType       getCursor() const override { return m_Cursor; }
         [[nodiscard]] bool             getCursorVisibility() const override { return m_CursorVisibility; }

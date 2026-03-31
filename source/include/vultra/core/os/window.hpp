@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/event/window_events.hpp"
+#include "vultra/core/rhi/rect2d.hpp"
 
 #include <glm/glm.hpp>
 #include <vbase/event/event_bus.hpp>
@@ -98,6 +99,7 @@ namespace vultra
             [[nodiscard]] virtual std::string_view getTitle() const             = 0;
             [[nodiscard]] virtual Extent           getExtent() const            = 0;
             [[nodiscard]] virtual Extent           getFrameBufferExtent() const = 0;
+            [[nodiscard]] virtual rhi::Rect2D      getContentArea() const       = 0;
             [[nodiscard]] virtual Position         getPosition() const          = 0;
             [[nodiscard]] virtual CursorType       getCursor() const            = 0;
             [[nodiscard]] virtual bool             getCursorVisibility() const  = 0;

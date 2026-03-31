@@ -228,7 +228,9 @@ namespace vultra
         if (glm::dot(moveDir, moveDir) > 0.0f)
             controller.position += glm::normalize(moveDir) * speed * dt.count();
 
-        const auto  extent = window.getExtent();
+        const auto  contentArea = window.getContentArea();
+        const auto  extent      = os::Window::Extent {static_cast<int>(contentArea.extent.width),
+                                                      static_cast<int>(contentArea.extent.height)};
         const float width  = static_cast<float>(std::max(extent.x, 1));
         const float height = static_cast<float>(std::max(extent.y, 1));
         const float aspect = width / height;

@@ -327,10 +327,31 @@ namespace vultra::platform::android
         if (m_NativeWindow != nullptr)
         {
             m_Extent = {ANativeWindow_getWidth(m_NativeWindow), ANativeWindow_getHeight(m_NativeWindow)};
+
+            if (m_App != nullptr)
+            {
+                const ARect& rect = m_App->contentRect;
+                const int    left = std::clamp(rect.left, 0, std::max(m_Extent.x, 0));
+                const int    top = std::clamp(rect.top, 0, std::max(m_Extent.y, 0));
+                const int    right = std::clamp(rect.right, left, std::max(m_Extent.x, 0));
+                const int    bottom = std::clamp(rect.bottom, top, std::max(m_Extent.y, 0));
+
+                if (right > left && bottom > top)
+                {
+                    m_ContentOffset = {left, top};
+                    m_ContentExtent = {right - left, bottom - top};
+                    return;
+                }
+            }
+
+            m_ContentOffset = {};
+            m_ContentExtent = m_Extent;
         }
         else
         {
-            m_Extent = {};
+            m_Extent        = {};
+            m_ContentOffset = {};
+            m_ContentExtent = {};
         }
     }
 } // namespace vultra::platform::android
