@@ -195,6 +195,7 @@ namespace vultra
                         .accessMask = dstAccess,
                     });
             }
+
         }
         void FrameGraphTexture::preWrite(const Desc&, const uint32_t bits, void* ctx) const
         {
@@ -258,6 +259,7 @@ namespace vultra
                         .accessMask = rhi::Access::eShaderStorageWrite,
                     });
             }
+
         }
 
         std::string FrameGraphTexture::toString(const Desc& desc)

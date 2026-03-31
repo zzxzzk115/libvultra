@@ -1,5 +1,4 @@
 #include "vultra/function/rendering/srp/builtin/passes/final_composition_pass.hpp"
-#include "vultra/core/base/common_context.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
@@ -100,7 +99,7 @@ namespace vultra
             })
             .setRasterizer({
                 .polygonMode = rhi::PolygonMode::eFill,
-                .cullMode    = rhi::CullMode::eFront,
+                .cullMode    = rhi::CullMode::eNone,
             })
             .setBlending(0, {.enabled = false})
             .build(getRenderDevice());

@@ -1053,6 +1053,9 @@ namespace vultra
         {
             assert(invariant(State::eRecording));
 
+            if (!vk::detail::defaultDispatchLoaderDynamic.vkCmdBeginDebugUtilsLabelEXT)
+                return;
+
             vk::DebugUtilsLabelEXT labelInfo = {};
             labelInfo.pLabelName             = label.data();
 
@@ -1062,6 +1065,10 @@ namespace vultra
         void CommandBuffer::popDebugGroup() const
         {
             assert(invariant(State::eRecording));
+
+            if (!vk::detail::defaultDispatchLoaderDynamic.vkCmdEndDebugUtilsLabelEXT)
+                return;
+
             m_Handle.endDebugUtilsLabelEXT();
         }
 

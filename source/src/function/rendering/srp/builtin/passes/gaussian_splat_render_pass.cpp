@@ -198,19 +198,6 @@ namespace vultra
                                      gpuSceneView->gaussianSplatIndirectBuffer.has_value() &&
                                      gpuSceneView->maxGaussianSplatSortElements > 0u;
 
-                static bool s_LoggedGaussianSplatRender = false;
-                if (!s_LoggedGaussianSplatRender)
-                {
-                    VULTRA_CORE_INFO("[GaussianSplat] render canDraw={} draws={} dispatchable={} hasPointDrawIds={} "
-                                     "hasValues={}",
-                                     canDraw,
-                                     gpuSceneView ? gpuSceneView->gaussianSplatDraws.size() : 0u,
-                                     gpuSceneView ? gpuSceneView->getDispatchableGaussianSplatDrawCount() : 0u,
-                                     gpuSceneView && gpuSceneView->gaussianSplatPointDrawIdBuffer ? 1u : 0u,
-                                     gpuSceneView && gpuSceneView->gaussianSplatSortValuesBuffer ? 1u : 0u);
-                    s_LoggedGaussianSplatRender = true;
-                }
-
                 if (canDraw)
                 {
                     setShaderLib(*rc.ext.builtinShaderLib);

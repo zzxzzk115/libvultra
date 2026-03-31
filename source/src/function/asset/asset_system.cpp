@@ -705,6 +705,18 @@ namespace vultra
 
         pool.meshes[meshIndex].materialOffset = materialOffset;
         pool.meshes[meshIndex].materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
+        pool.meshes[meshIndex].subMeshes.clear();
+        pool.meshes[meshIndex].subMeshes.reserve(cpuMesh.subMeshes.size());
+        for (const auto& subMesh : cpuMesh.subMeshes)
+        {
+            resource::GpuSubMesh gpuSubMesh {};
+            gpuSubMesh.vertexOffset  = subMesh.vertexOffset;
+            gpuSubMesh.vertexCount   = subMesh.vertexCount;
+            gpuSubMesh.indexOffset   = subMesh.indexOffset;
+            gpuSubMesh.indexCount    = subMesh.indexCount;
+            gpuSubMesh.materialIndex = materialOffset + subMesh.materialIndex;
+            pool.meshes[meshIndex].subMeshes.push_back(gpuSubMesh);
+        }
 
         // Remap meshlet vertex indices from local mesh space to global packed-vertex space.
         auto&          gpuMesh = pool.meshes[meshIndex];
@@ -1190,6 +1202,7 @@ namespace vultra
         }
 
         update(/*frameIndex*/ 0);
+
         return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
     }
 

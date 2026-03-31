@@ -7,6 +7,7 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <vector>
 
 namespace vultra::resource
 {
@@ -33,6 +34,15 @@ namespace vultra::resource
     };
     static_assert(sizeof(GpuMeshlet) % 16 == 0, "GpuMeshlet must be 16-byte aligned");
 
+    struct GpuSubMesh
+    {
+        uint32_t vertexOffset {0};
+        uint32_t vertexCount {0};
+        uint32_t indexOffset {0};
+        uint32_t indexCount {0};
+        uint32_t materialIndex {0};
+    };
+
     // GPU-only mesh representation. No CPU-side VMesh / SubMesh is stored here.
     struct GpuMesh
     {
@@ -53,6 +63,8 @@ namespace vultra::resource
 
         uint32_t materialOffset {0};
         uint32_t materialCount {0};
+
+        std::vector<GpuSubMesh> subMeshes;
 
         // Global meshlet-table range inside GpuResourcePool::meshlets.
         uint32_t meshletOffset {0};

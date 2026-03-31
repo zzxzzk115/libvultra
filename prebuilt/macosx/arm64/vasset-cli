@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+
+set -eu
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+raw_bin="$script_dir/vasset-cli-raw"
+
+if [ ! -x "$raw_bin" ]; then
+    echo "Missing executable: $raw_bin" >&2
+    exit 1
+fi
+
+if [ -n "${DYLD_LIBRARY_PATH:-}" ]; then
+    export DYLD_LIBRARY_PATH="$script_dir:$DYLD_LIBRARY_PATH"
+else
+    export DYLD_LIBRARY_PATH="$script_dir"
+fi
+
+exec "$raw_bin" "$@"

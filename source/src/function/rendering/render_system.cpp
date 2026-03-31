@@ -326,8 +326,6 @@ namespace vultra
                 uint32_t              totalSplatPoints = 0u;
                 std::vector<uint32_t> pointDrawIds;
 
-                static bool s_LoggedGaussianSplatStage = false;
-
                 m_GpuSceneViewBack.setGaussianSplatGpuDrivenCaps(maxSplatDraws);
                 m_GpuSceneViewBack.ensureGaussianSplatDrawBuffer(rd);
 
@@ -349,22 +347,6 @@ namespace vultra
                     pointDrawIds.insert(pointDrawIds.end(), pool.gaussianSplats[inst.splatIndex].pointCount, drawId);
                     totalSplatPoints += pool.gaussianSplats[inst.splatIndex].pointCount;
 
-                    if (!s_LoggedGaussianSplatStage)
-                    {
-                        VULTRA_CORE_INFO("[GaussianSplat] stage draw splatIndex={} pointCount={} totalPoolSplats={}",
-                                         inst.splatIndex,
-                                         pool.gaussianSplats[inst.splatIndex].pointCount,
-                                         pool.gaussianSplats.size());
-                    }
-                }
-
-                if (!s_LoggedGaussianSplatStage)
-                {
-                    VULTRA_CORE_INFO("[GaussianSplat] staged instances={} gpuDraws={} maxDraws={}",
-                                     m_RenderWorldBack.splatInstances.size(),
-                                     m_GpuSceneViewBack.gaussianSplatDraws.size(),
-                                     maxSplatDraws);
-                    s_LoggedGaussianSplatStage = true;
                 }
 
                 m_GpuSceneViewBack.uploadGaussianSplatDraws(rd, cb);

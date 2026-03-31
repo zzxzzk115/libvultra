@@ -6,7 +6,7 @@ asset_root="$2"
 
 normalize_platform() {
     case "$(uname -s)" in
-        Darwin*) echo "macos" ;;
+        Darwin*) echo "macosx" ;;
         Linux*) echo "linux" ;;
         MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
         *) echo "$(uname -s | tr '[:upper:]' '[:lower:]')" ;;

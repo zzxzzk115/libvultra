@@ -24,5 +24,5 @@ void main() {
 #else
     const vec4 source = texture(t_0, v_TexCoord);
 #endif
-	FragColor = vec4(source.rgb, 1.0);
+    FragColor = vec4(source.rgb, 1.0);
 }
