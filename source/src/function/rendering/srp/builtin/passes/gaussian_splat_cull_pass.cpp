@@ -125,7 +125,7 @@ namespace vultra
                     return;
 
                 const auto& splatStorage = gpuSceneDatabase->resources->gaussianStorage;
-                if (!splatStorage.centersBuffer || !splatStorage.scaleBuffer || !splatStorage.colorBuffer ||
+                if (!splatStorage.centersBuffer || !splatStorage.colorBuffer ||
                     !gpuSceneDatabase->resources->gaussianSplatMetaBuffer)
                     return;
 
@@ -157,7 +157,6 @@ namespace vultra
                 rhi::prepareForComputing(rc.cb, gpuSceneView->gaussianSplatIndirectBuffer.value());
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatPointDrawIdBuffer);
                 rhi::prepareForComputing(rc.cb, *splatStorage.centersBuffer);
-                rhi::prepareForComputing(rc.cb, *splatStorage.scaleBuffer);
                 rhi::prepareForComputing(rc.cb, *splatStorage.colorBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->gaussianSplatMetaBuffer);
 
@@ -198,7 +197,6 @@ namespace vultra
                     {18, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatSortValuesBuffer.get()}},
                     {20, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatVisibleCountBuffer.get()}},
                     {21, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatPointDrawIdBuffer.get()}},
-                    {23, rhi::bindings::StorageBuffer {.buffer = splatStorage.scaleBuffer.get()}},
                 };
                 if (pd.depth)
                 {

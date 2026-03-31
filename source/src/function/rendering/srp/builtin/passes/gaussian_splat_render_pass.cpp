@@ -340,11 +340,11 @@ namespace vultra
             .setBlending(0,
                          {
                              .enabled  = true,
-                             .srcColor = rhi::BlendFactor::eOneMinusDstAlpha,
-                             .dstColor = rhi::BlendFactor::eOne,
+                             .srcColor = rhi::BlendFactor::eOne,
+                             .dstColor = rhi::BlendFactor::eOneMinusSrcAlpha,
                              .colorOp  = rhi::BlendOp::eAdd,
-                             .srcAlpha = rhi::BlendFactor::eOneMinusDstAlpha,
-                             .dstAlpha = rhi::BlendFactor::eOne,
+                             .srcAlpha = rhi::BlendFactor::eOne,
+                             .dstAlpha = rhi::BlendFactor::eOneMinusSrcAlpha,
                              .alphaOp  = rhi::BlendOp::eAdd,
                          });
 
@@ -353,11 +353,11 @@ namespace vultra
             builder.setBlending(1,
                                 {
                                     .enabled  = true,
-                                    .srcColor = rhi::BlendFactor::eOneMinusDstAlpha,
-                                    .dstColor = rhi::BlendFactor::eOne,
+                                    .srcColor = rhi::BlendFactor::eOne,
+                                    .dstColor = rhi::BlendFactor::eOneMinusSrcAlpha,
                                     .colorOp  = rhi::BlendOp::eAdd,
-                                    .srcAlpha = rhi::BlendFactor::eOneMinusDstAlpha,
-                                    .dstAlpha = rhi::BlendFactor::eOne,
+                                    .srcAlpha = rhi::BlendFactor::eOne,
+                                    .dstAlpha = rhi::BlendFactor::eOneMinusSrcAlpha,
                                     .alphaOp  = rhi::BlendOp::eAdd,
                                 });
         }
