@@ -1496,8 +1496,7 @@ namespace vultra
 
         void RenderDevice::findGenericQueue()
         {
-            constexpr vk::QueueFlags genericQueueFlags =
-                vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute | vk::QueueFlagBits::eTransfer;
+            constexpr vk::QueueFlags requiredQueueFlags = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute;
 
             uint32_t count = 0;
             m_PhysicalDevice.getQueueFamilyProperties(&count, nullptr);
@@ -1506,16 +1505,24 @@ namespace vultra
             m_PhysicalDevice.getQueueFamilyProperties(&count, queueFamilies.data());
             for (uint32_t i = 0; i < count; ++i)
             {
-                if ((queueFamilies[i].queueFlags & genericQueueFlags) == genericQueueFlags)
+                if ((queueFamilies[i].queueFlags & requiredQueueFlags) == requiredQueueFlags)
                 {
                     m_GenericQueueFamilyIndex = i;
+                    VULTRA_CORE_INFO("[RenderDevice] Selected generic queue family {} with flags: {}",
+                                     i,
+                                     vk::to_string(queueFamilies[i].queueFlags));
                     break;
                 }
             }
 
             if (m_GenericQueueFamilyIndex == -1)
             {
-                VULTRA_CORE_ERROR("[RenderDevice] Failed to find a valid queue family index!");
+                for (uint32_t i = 0; i < count; ++i)
+                {
+                    VULTRA_CORE_WARN(
+                        "[RenderDevice] Queue family {} flags: {}", i, vk::to_string(queueFamilies[i].queueFlags));
+                }
+                VULTRA_CORE_ERROR("[RenderDevice] Failed to find a queue family supporting both graphics and compute!");
                 throw std::runtime_error("Failed to find a valid queue family index");
             }
         }

@@ -75,9 +75,8 @@ namespace vultra
             vk::SurfaceKHR   m_Surface {nullptr};
             vk::SwapchainKHR m_Handle {nullptr};
 
-            Format       m_Format {Format::eLinear};
-            VerticalSync m_VerticalSync {VerticalSync::eDisabled};
-
+            Format               m_Format {Format::eLinear};
+            VerticalSync         m_VerticalSync {VerticalSync::eDisabled};
             std::vector<Texture> m_Buffers;
             uint32_t             m_CurrentImageIndex {0};
         };

@@ -105,6 +105,20 @@ namespace vultra
 
                 return vk::CompositeAlphaFlagBitsKHR::eOpaque;
             }
+
+            void logAndroidSwapchainTransformOverrideOnce(const vk::SurfaceTransformFlagBitsKHR currentTransform,
+                                                          const vk::SurfaceTransformFlagBitsKHR preTransform)
+            {
+                static bool logged = false;
+                if (logged)
+                    return;
+
+                logged = true;
+                VULTRA_CORE_WARN("[Swapchain] Android surface reports currentTransform={}, but forcing preTransform={}."
+                                 " Recreate diagnostics will be suppressed after this point.",
+                                 vk::to_string(currentTransform),
+                                 vk::to_string(preTransform));
+            }
         } // namespace
 
         Swapchain::Swapchain(Swapchain&& other) noexcept :
@@ -291,7 +305,12 @@ namespace vultra
             }
 
             const auto surfaceFormat = chooseSurfaceFormat(surfaceInfo.formats, format);
+            const bool supportsIdentityTransform =
+                (surfaceInfo.capabilities.supportedTransforms & vk::SurfaceTransformFlagBitsKHR::eIdentity) ==
+                vk::SurfaceTransformFlagBitsKHR::eIdentity;
             const auto preTransform =
+                (m_Window->driverType() == os::Window::DriverType::eAndroid && supportsIdentityTransform) ?
+                    vk::SurfaceTransformFlagBitsKHR::eIdentity :
                 (surfaceInfo.capabilities.supportedTransforms & surfaceInfo.capabilities.currentTransform) ==
                         surfaceInfo.capabilities.currentTransform ?
                     surfaceInfo.capabilities.currentTransform :
@@ -318,13 +337,24 @@ namespace vultra
             swapchainCreateInfo.clipped          = true;
             swapchainCreateInfo.oldSwapchain     = oldSwapchain;
 
-            VULTRA_CORE_TRACE("[Swapchain] Creating swapchain format={}, colorSpace={}, preTransform={}, "
-                              "compositeAlpha={}, minImageCount={}",
-                              vk::to_string(surfaceFormat.format),
-                              vk::to_string(surfaceFormat.colorSpace),
-                              vk::to_string(preTransform),
-                              vk::to_string(compositeAlpha),
-                              swapchainCreateInfo.minImageCount);
+            const bool androidTransformOverride = m_Window->driverType() == os::Window::DriverType::eAndroid &&
+                                                  preTransform != surfaceInfo.capabilities.currentTransform;
+
+            if (androidTransformOverride)
+            {
+                logAndroidSwapchainTransformOverrideOnce(surfaceInfo.capabilities.currentTransform, preTransform);
+            }
+            else
+            {
+                VULTRA_CORE_TRACE("[Swapchain] Creating swapchain format={}, colorSpace={}, currentTransform={}, "
+                                  "preTransform={}, compositeAlpha={}, minImageCount={}",
+                                  vk::to_string(surfaceFormat.format),
+                                  vk::to_string(surfaceFormat.colorSpace),
+                                  vk::to_string(surfaceInfo.capabilities.currentTransform),
+                                  vk::to_string(preTransform),
+                                  vk::to_string(compositeAlpha),
+                                  swapchainCreateInfo.minImageCount);
+            }
 
             VK_CHECK(m_Device.createSwapchainKHR(&swapchainCreateInfo, nullptr, &m_Handle),
                      "Swapchain",

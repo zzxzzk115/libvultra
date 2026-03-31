@@ -16,6 +16,7 @@
         <activity
             android:name=".LibvultraActivity"
             android:configChanges="orientation|keyboardHidden|screenSize"
+            android:screenOrientation="sensorLandscape"
             android:theme="@style/AppTheme"
             android:exported="true">
             <intent-filter>
