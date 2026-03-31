@@ -301,13 +301,10 @@ namespace vultra
             return {};
         }
 
-        constexpr uint32_t kOutputSrgb =
-            (kColorFormat == rhi::PixelFormat::eRGBA8_sRGB || kColorFormat == rhi::PixelFormat::eBGRA8_sRGB) ? 1u : 0u;
         auto fragmentShaderVariantHash =
             getShaderLib().computeVariantHash("gaussian_splat.frag",
                                               vshadersystem::ShaderStage::eFrag,
-                                              {{"SPLAT_OUTPUT_SRGB", kOutputSrgb},
-                                               {"NEED_SURFACE_INFO", needsSurfaceInfo ? 1u : 0u},
+                                              {{"NEED_SURFACE_INFO", needsSurfaceInfo ? 1u : 0u},
                                                {"USE_DEPTH_TRANSMITTANCE", useDepthTransmittance ? 1u : 0u},
                                                {"USE_FRAGMENT_INTERLOCK", useFragmentInterlock ? 1u : 0u}});
         auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);

@@ -3,15 +3,12 @@ language = glsl
 version = 460
 
 [keywords]
-SPLAT_OUTPUT_SRGB : bool permute
 NEED_SURFACE_INFO : bool permute
 USE_DEPTH_TRANSMITTANCE : bool permute
 USE_FRAGMENT_INTERLOCK : bool permute
 
 [frag]
-#ifndef SPLAT_OUTPUT_SRGB
-#define SPLAT_OUTPUT_SRGB 0
-#endif
+#include "include/common/color.glsl"
 
 #ifndef NEED_SURFACE_INFO
 #define NEED_SURFACE_INFO 0
@@ -57,15 +54,6 @@ vec3 hashColor(uint id)
     return vec3((n & 0xFFu), (n >> 8) & 0xFFu, (n >> 16) & 0xFFu) / 255.0;
 }
 
-vec3 linearToSrgb(vec3 c)
-{
-    c = max(c, vec3(0.0));
-    vec3 lo = c * 12.92;
-    vec3 hi = 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055;
-    bvec3 cutoff = lessThanEqual(c, vec3(0.0031308));
-    return vec3(cutoff.x ? lo.x : hi.x, cutoff.y ? lo.y : hi.y, cutoff.z ? lo.z : hi.z);
-}
-
 void main()
 {
     const float kOpacityDiscardThreshold = 1.0 / 255.0;
@@ -80,9 +68,7 @@ void main()
 
     vec3 color = (v_SplatColor.a > 0.0) ? v_SplatColor.rgb : hashColor(v_SplatIndex);
 
-#if SPLAT_OUTPUT_SRGB
-    color = linearToSrgb(color);
-#endif
+    color = sRGBToLinear(color);
 
     FragColor = vec4(color * alpha, alpha);
 #if NEED_SURFACE_INFO && USE_DEPTH_TRANSMITTANCE
