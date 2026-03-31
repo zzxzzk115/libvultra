@@ -41,16 +41,16 @@ namespace vultra::platform::android
                                 .extent = {static_cast<uint32_t>(std::max(m_ContentExtent.x, 0)),
                                            static_cast<uint32_t>(std::max(m_ContentExtent.y, 0))}};
         }
-        [[nodiscard]] Position         getPosition() const override { return {}; }
-        [[nodiscard]] CursorType       getCursor() const override { return CursorType::eArrow; }
-        [[nodiscard]] bool             getCursorVisibility() const override { return true; }
-        [[nodiscard]] bool             getMouseRelativeMode() const override { return false; }
-        [[nodiscard]] bool             isResizable() const override { return false; }
-        [[nodiscard]] bool             isFullscreen() const override { return true; }
-        [[nodiscard]] float            getDisplayScale() const override { return 1.0f; }
-        [[nodiscard]] bool             shouldClose() const override { return m_ShouldClose; }
-        [[nodiscard]] bool             isMinimized() const override { return false; }
-        [[nodiscard]] bool             isReady() const override;
+        [[nodiscard]] Position   getPosition() const override { return {}; }
+        [[nodiscard]] CursorType getCursor() const override { return CursorType::eArrow; }
+        [[nodiscard]] bool       getCursorVisibility() const override { return true; }
+        [[nodiscard]] bool       getMouseRelativeMode() const override { return false; }
+        [[nodiscard]] bool       isResizable() const override { return false; }
+        [[nodiscard]] bool       isFullscreen() const override { return true; }
+        [[nodiscard]] float      getDisplayScale() const override { return m_DisplayScale; }
+        [[nodiscard]] bool       shouldClose() const override { return m_ShouldClose; }
+        [[nodiscard]] bool       isMinimized() const override { return false; }
+        [[nodiscard]] bool       isReady() const override;
 
         [[nodiscard]] std::span<const char* const> getRequiredVulkanInstanceExtensions() const override;
         [[nodiscard]] vk::SurfaceKHR               createVulkanSurface(vk::Instance instance) const override;
@@ -76,10 +76,12 @@ namespace vultra::platform::android
         Extent                       m_Extent {};
         Position                     m_ContentOffset {};
         Extent                       m_ContentExtent {};
+        float                        m_DisplayScale {1.0f};
         glm::vec2                    m_LastPointerPosition {};
         std::string                  m_Title;
         bool                         m_ShouldClose {false};
-        static constexpr const char* k_VulkanExtensions[2] = {VK_KHR_SURFACE_EXTENSION_NAME, "VK_KHR_android_surface"};
+        static constexpr const char* s_k_VulkanExtensions[2] = {VK_KHR_SURFACE_EXTENSION_NAME,
+                                                                "VK_KHR_android_surface"};
     };
 } // namespace vultra::platform::android
 

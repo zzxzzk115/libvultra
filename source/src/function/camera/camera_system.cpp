@@ -98,13 +98,13 @@ namespace vultra
             {
                 for (const auto& eyeView : xrEyeViews)
                 {
-                    RenderCamera cam = srcCam;
-                    cam.view         = eyeView.view;
-                    cam.projection   = eyeView.projection;
-                    cam.target       = eyeView.target;
-                    cam.viewIndex    = eyeView.eyeIndex;
-                    cam.viewCount    = static_cast<uint32_t>(xrEyeViews.size());
-                    cam.isXRView     = true;
+                    RenderCamera cam    = srcCam;
+                    cam.view            = eyeView.view;
+                    cam.projection      = eyeView.projection;
+                    cam.target          = eyeView.target;
+                    cam.viewIndex       = eyeView.eyeIndex;
+                    cam.viewCount       = static_cast<uint32_t>(xrEyeViews.size());
+                    cam.isXRView        = true;
                     cam.isXRPrimaryView = eyeView.eyeIndex == 0u;
                     finalizeCamera(cam);
                     m_Cooked.push_back(std::move(cam));
@@ -113,10 +113,10 @@ namespace vultra
                 continue;
             }
 
-            RenderCamera cam = srcCam;
-            cam.viewIndex    = 0;
-            cam.viewCount    = 1;
-            cam.isXRView     = false;
+            RenderCamera cam    = srcCam;
+            cam.viewIndex       = 0;
+            cam.viewCount       = 1;
+            cam.isXRView        = false;
             cam.isXRPrimaryView = true;
             finalizeCamera(cam);
             m_Cooked.push_back(std::move(cam));
@@ -228,9 +228,10 @@ namespace vultra
         if (glm::dot(moveDir, moveDir) > 0.0f)
             controller.position += glm::normalize(moveDir) * speed * dt.count();
 
-        const auto  contentArea = window.getContentArea();
-        const auto  extent      = os::Window::Extent {static_cast<int>(contentArea.extent.width),
-                                                      static_cast<int>(contentArea.extent.height)};
+        const auto  extent = window.platformType() == os::Window::PlatformType::eAndroidNativeWindow ?
+                                 os::Window::Extent {static_cast<int>(window.getContentArea().extent.width),
+                                                    static_cast<int>(window.getContentArea().extent.height)} :
+                                 window.getExtent();
         const float width  = static_cast<float>(std::max(extent.x, 1));
         const float height = static_cast<float>(std::max(extent.y, 1));
         const float aspect = width / height;

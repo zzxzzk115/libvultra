@@ -2,6 +2,7 @@
 
 #if defined(__ANDROID__)
 
+#include <android/configuration.h>
 #include <android/input.h>
 #include <android/looper.h>
 #include <game-activity/native_app_glue/android_native_app_glue.h>
@@ -52,7 +53,7 @@ namespace vultra::platform::android
 
     std::span<const char* const> AndroidNativeWindow::getRequiredVulkanInstanceExtensions() const
     {
-        return {k_VulkanExtensions, 2};
+        return {s_k_VulkanExtensions, 2};
     }
 
     vk::SurfaceKHR AndroidNativeWindow::createVulkanSurface(const vk::Instance instance) const
@@ -318,10 +319,20 @@ namespace vultra::platform::android
         {
             m_NativeWindow = m_App->window;
             m_ShouldClose  = m_App->destroyRequested != 0;
+
+            if (m_App->config != nullptr)
+            {
+                const int density = AConfiguration_getDensity(m_App->config);
+                if (density > 0)
+                {
+                    m_DisplayScale = std::max(static_cast<float>(density) / 160.0f, 1.0f);
+                }
+            }
         }
         else
         {
-            m_ShouldClose = m_DestroyRequested != nullptr && *m_DestroyRequested != 0;
+            m_ShouldClose  = m_DestroyRequested != nullptr && *m_DestroyRequested != 0;
+            m_DisplayScale = 1.0f;
         }
 
         if (m_NativeWindow != nullptr)
@@ -330,10 +341,10 @@ namespace vultra::platform::android
 
             if (m_App != nullptr)
             {
-                const ARect& rect = m_App->contentRect;
-                const int    left = std::clamp(rect.left, 0, std::max(m_Extent.x, 0));
-                const int    top = std::clamp(rect.top, 0, std::max(m_Extent.y, 0));
-                const int    right = std::clamp(rect.right, left, std::max(m_Extent.x, 0));
+                const ARect& rect   = m_App->contentRect;
+                const int    left   = std::clamp(rect.left, 0, std::max(m_Extent.x, 0));
+                const int    top    = std::clamp(rect.top, 0, std::max(m_Extent.y, 0));
+                const int    right  = std::clamp(rect.right, left, std::max(m_Extent.x, 0));
                 const int    bottom = std::clamp(rect.bottom, top, std::max(m_Extent.y, 0));
 
                 if (right > left && bottom > top)

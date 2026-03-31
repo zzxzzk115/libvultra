@@ -347,7 +347,6 @@ namespace vultra
 
                     pointDrawIds.insert(pointDrawIds.end(), pool.gaussianSplats[inst.splatIndex].pointCount, drawId);
                     totalSplatPoints += pool.gaussianSplats[inst.splatIndex].pointCount;
-
                 }
 
                 m_GpuSceneViewBack.uploadGaussianSplatDraws(rd, cb);
@@ -423,10 +422,12 @@ namespace vultra
             if (!target)
                 continue;
 
-            const bool       isBackbufferTarget = !cam.isXRView && cam.target == nullptr && target == &defaultTarget;
-            const rhi::Rect2D renderArea        = isBackbufferTarget ?
-                                                      window.getContentArea() :
-                                                      rhi::Rect2D {.offset = {0, 0}, .extent = target->getExtent()};
+            const bool isBackbufferTarget = !cam.isXRView && cam.target == nullptr && target == &defaultTarget;
+            const bool useWindowContentArea =
+                isBackbufferTarget && window.platformType() == os::Window::PlatformType::eAndroidNativeWindow;
+            const rhi::Rect2D renderArea = useWindowContentArea ?
+                                               window.getContentArea() :
+                                               rhi::Rect2D {.offset = {0, 0}, .extent = target->getExtent()};
 
             RenderView view {
                 .renderWorld          = &m_RenderWorldFront,
@@ -587,8 +588,12 @@ namespace vultra
                     rhi::prepareForReading(cb, *xrEyeView.mirrorTarget);
             }
 
+            const rhi::Rect2D imguiArea = window.platformType() == os::Window::PlatformType::eAndroidNativeWindow ?
+                                              window.getContentArea() :
+                                              rhi::Rect2D {.offset = {0, 0}, .extent = defaultTarget.getExtent()};
+
             rhi::FramebufferInfo imguiFbInfo {
-                .area             = window.getContentArea(),
+                .area             = imguiArea,
                 .colorAttachments = {rhi::AttachmentInfo {.target = &defaultTarget}},
             };
 

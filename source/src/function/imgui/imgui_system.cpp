@@ -25,6 +25,7 @@
 #if defined(__ANDROID__)
 #include <imgui_impl_android.h>
 #else
+#include <SDL3/SDL_video.h>
 #include <imgui_impl_sdl3.h>
 #endif
 #include <imgui.h>
@@ -312,8 +313,12 @@ namespace vultra
         setImGuiStyle();
 
         // High-DPI support
+#if defined(__ANDROID__)
         float displayScale = window.getDisplayScale();
-        auto& style        = ImGui::GetStyle();
+#else
+        float displayScale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+#endif
+        auto& style = ImGui::GetStyle();
         style.ScaleAllSizes(displayScale);
         style.FontScaleDpi = displayScale;
 

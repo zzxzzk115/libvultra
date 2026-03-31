@@ -1566,9 +1566,11 @@ namespace vultra
             extensions.push_back("VK_KHR_portability_subset");
 #endif
 
+            vk::PhysicalDeviceVulkan13Features            vk13Features {};
+            vk::PhysicalDeviceDynamicRenderingFeatures    vkDynamicRenderingFeatures {};
+            vk::PhysicalDeviceSynchronization2FeaturesKHR vkSync2Features {};
             if (useVulkan13CoreFeatures)
             {
-                vk::PhysicalDeviceVulkan13Features vk13Features {};
                 if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
                 {
                     vk13Features.dynamicRendering = VK_TRUE;
@@ -1584,8 +1586,6 @@ namespace vultra
             }
             else
             {
-                vk::PhysicalDeviceDynamicRenderingFeatures    vkDynamicRenderingFeatures {};
-                vk::PhysicalDeviceSynchronization2FeaturesKHR vkSync2Features {};
                 if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
                 {
                     vkDynamicRenderingFeatures.dynamicRendering = VK_TRUE;
@@ -1637,7 +1637,7 @@ namespace vultra
             featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vk12Features));
 
             // Multi-draw
-            vk::PhysicalDeviceMultiDrawFeaturesEXT multidraw;
+            vk::PhysicalDeviceMultiDrawFeaturesEXT multidraw {};
             if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMultiDraw))
             {
                 multidraw.multiDraw = VK_TRUE;
@@ -1702,6 +1702,8 @@ namespace vultra
                     deviceFeatures2.pNext = f;
                 prev = f;
             }
+            if (prev)
+                prev->pNext = nullptr;
 
             // === Filter extensions ===
             std::vector<const char*> filteredExtensions;
