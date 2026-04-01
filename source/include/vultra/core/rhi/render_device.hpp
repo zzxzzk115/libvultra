@@ -20,6 +20,7 @@
 #include "vultra/core/rhi/sampler_info.hpp"
 #include "vultra/core/rhi/shader_compiler.hpp"
 #include "vultra/core/rhi/shader_module.hpp"
+#include "vultra/core/rhi/sampler.hpp"
 #include "vultra/core/rhi/storage_buffer.hpp"
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/rhi/uniform_buffer.hpp"
@@ -203,7 +204,7 @@ namespace vultra
             createCubemap(uint32_t size, PixelFormat, uint32_t numMipLevels, uint32_t numLayers, ImageUsage) const;
 
             RenderDevice&             setupSampler(Texture&, SamplerInfo);
-            [[nodiscard]] vk::Sampler getSampler(const SamplerInfo&);
+            [[nodiscard]] Sampler getSampler(const SamplerInfo&);
 
             [[nodiscard]] ShaderCompiler::Result
             compile(const ShaderType,
@@ -323,7 +324,7 @@ namespace vultra
             void createTracky();
 
             vk::CommandBuffer allocateCommandBuffer() const;
-            vk::Sampler       createSampler(const SamplerInfo&) const;
+            Sampler           createSampler(const SamplerInfo&) const;
 
             [[nodiscard]] AccelerationStructureBuffer
             createAccelerationStructureBuffer(vk::DeviceSize size, AllocationHints = AllocationHints::eNone) const;
@@ -362,7 +363,7 @@ namespace vultra
             template<typename T>
             using Cache = std::unordered_map<size_t, T>;
 
-            Cache<vk::Sampler>             m_Samplers;
+            Cache<Sampler>                 m_Samplers;
             Cache<vk::DescriptorSetLayout> m_DescriptorSetLayouts;
             Cache<vk::PipelineLayout>      m_PipelineLayouts;
 

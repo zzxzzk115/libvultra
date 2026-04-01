@@ -2,6 +2,7 @@
 
 #include "vultra/core/rhi/image_aspect.hpp"
 #include "vultra/core/rhi/resource_indices.hpp"
+#include "vultra/core/rhi/sampler.hpp"
 
 #include <vulkan/vulkan.hpp>
 
@@ -24,19 +25,19 @@ namespace vultra
         {
             struct SeparateSampler
             {
-                vk::Sampler handle {nullptr};
+                Sampler handle {};
             };
             struct CombinedImageSampler
             {
                 const Texture*             texture {nullptr};
                 ImageAspect                imageAspect {ImageAspect::eNone};
-                std::optional<vk::Sampler> sampler;
+                std::optional<Sampler> sampler;
             };
             struct CombinedImageSamplerArray
             {
                 std::vector<const Texture*> textures;
                 ImageAspect                 imageAspect {ImageAspect::eNone};
-                std::optional<vk::Sampler>  sampler;
+                std::optional<Sampler>      sampler;
             };
             struct SampledImage
             {
@@ -105,8 +106,8 @@ namespace vultra
             void clear();
 
             void addImage(const vk::ImageView, const vk::ImageLayout);
-            void addSampler(const vk::Sampler);
-            void addCombinedImageSampler(const vk::ImageView, const vk::ImageLayout, const vk::Sampler);
+            void addSampler(const Sampler);
+            void addCombinedImageSampler(const vk::ImageView, const vk::ImageLayout, const Sampler);
             void addAccelerationStructure(const vk::AccelerationStructureKHR&);
 
             DescriptorSetBuilder& bindBuffer(const BindingIndex, const vk::DescriptorType, vk::DescriptorBufferInfo&&);
@@ -138,5 +139,5 @@ namespace vultra
 
     using ResourceBindings = std::unordered_map<rhi::BindingIndex, rhi::ResourceBinding>;
     using ResourceSet      = std::unordered_map<rhi::DescriptorSetIndex, ResourceBindings>;
-    using Samplers         = std::unordered_map<std::string, vk::Sampler>;
+    using Samplers         = std::unordered_map<std::string, rhi::Sampler>;
 } // namespace vultra

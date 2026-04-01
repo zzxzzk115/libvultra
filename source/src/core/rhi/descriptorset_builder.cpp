@@ -80,7 +80,7 @@ namespace vultra
             m_Bindings[index] = {
                 vk::DescriptorType::eCombinedImageSampler, 1, static_cast<int32_t>(m_ImageInfos.size())};
             const auto sampler = info.sampler.value_or(info.texture->getSampler());
-            assert(sampler != nullptr);
+            assert(sampler);
             const auto imageLayout = info.texture->getImageLayout();
             assert(imageLayout != ImageLayout::eUndefined);
 
@@ -101,7 +101,7 @@ namespace vultra
                 const auto imageLayout = texture->getImageLayout();
                 assert(imageLayout != ImageLayout::eUndefined);
                 const auto sampler = info.sampler.value_or(texture->getSampler());
-                assert(sampler != nullptr);
+                assert(sampler);
                 addCombinedImageSampler(
                     texture->getImageView(toVk(info.imageAspect)), static_cast<vk::ImageLayout>(imageLayout), sampler);
             }
@@ -236,16 +236,19 @@ namespace vultra
             m_ImageInfos.emplace_back(vk::DescriptorImageInfo {nullptr, view, layout});
         }
 
-        void DescriptorSetBuilder::addSampler(const vk::Sampler sampler)
+        void DescriptorSetBuilder::addSampler(const Sampler sampler)
         {
-            m_ImageInfos.emplace_back(vk::DescriptorImageInfo {sampler, nullptr, vk::ImageLayout::eUndefined});
+            m_ImageInfos.emplace_back(vk::DescriptorImageInfo {static_cast<vk::Sampler>(sampler),
+                                                                nullptr,
+                                                                vk::ImageLayout::eUndefined});
         }
 
         void DescriptorSetBuilder::addCombinedImageSampler(const vk::ImageView   view,
                                                            const vk::ImageLayout layout,
-                                                           const vk::Sampler     sampler)
+                                                           const Sampler         sampler)
         {
-            m_ImageInfos.emplace_back(vk::DescriptorImageInfo {sampler, view, layout});
+            m_ImageInfos.emplace_back(
+                vk::DescriptorImageInfo {static_cast<vk::Sampler>(sampler), view, layout});
         }
 
         void DescriptorSetBuilder::addAccelerationStructure(const vk::AccelerationStructureKHR& as)

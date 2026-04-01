@@ -56,7 +56,7 @@ namespace vultra
 
         void clear() { resourceSet.clear(); }
 
-        inline static void overrideSampler(rhi::ResourceBinding& v, const vk::Sampler sampler)
+        inline static void overrideSampler(rhi::ResourceBinding& v, const rhi::Sampler sampler)
         {
             assert(sampler);
             if (std::holds_alternative<rhi::bindings::CombinedImageSampler>(v))

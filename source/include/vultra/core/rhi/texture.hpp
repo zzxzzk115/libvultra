@@ -6,6 +6,7 @@
 #include "vultra/core/rhi/image_layout.hpp"
 #include "vultra/core/rhi/image_usage.hpp"
 #include "vultra/core/rhi/pixel_format.hpp"
+#include "vultra/core/rhi/sampler.hpp"
 #include "vultra/core/rhi/texture_type.hpp"
 
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
@@ -58,7 +59,7 @@ namespace vultra
 
             // ---
 
-            void setSampler(vk::Sampler);
+            void setSampler(Sampler);
 
             // ---
 
@@ -87,7 +88,7 @@ namespace vultra
             [[nodiscard]] std::span<const vk::ImageView>
                 getLayers(vk::ImageAspectFlags = vk::ImageAspectFlagBits::eNone) const;
 
-            [[nodiscard]] vk::Sampler getSampler() const;
+            [[nodiscard]] Sampler getSampler() const;
 
             class Builder
             {
@@ -178,7 +179,7 @@ namespace vultra
 
             std::unordered_map<uint32_t, AspectData> m_Aspects;
 
-            vk::Sampler m_Sampler {nullptr}; // Non-owning.
+            Sampler m_Sampler {}; // Non-owning.
 
             Extent2D    m_Extent {0u};
             uint32_t    m_Depth {0u};

@@ -11,6 +11,8 @@ namespace vultra
 {
     namespace rhi
     {
+        using BufferUsageFlags = vk::BufferUsageFlags;
+
         class RenderDevice;
         class Barrier;
 

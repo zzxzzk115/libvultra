@@ -1,11 +1,14 @@
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
+#include "vultra/core/rhi/render_backend_api.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
 
 #include <vbase/core/scoped_enum_flags.hpp>
+
+#include <stdexcept>
 
 namespace vultra
 {
@@ -73,9 +76,22 @@ namespace vultra
         }
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating render device");
-        m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
-                                                             ctx().config.window.title,
-                                                             window.getRequiredVulkanInstanceExtensions());
+        switch (ctx().config.render.backendApi)
+        {
+            case rhi::RenderBackendApi::eAuto:
+            case rhi::RenderBackendApi::eVulkan:
+                m_RenderDevice =
+                    std::make_unique<rhi::VulkanRenderDeviceBackend>(ctx().config.render.renderDeviceFeatureFlag,
+                                                                     ctx().config.window.title,
+                                                                     window.getRequiredVulkanInstanceExtensions());
+                break;
+
+            case rhi::RenderBackendApi::eWebGPU:
+                VULTRA_CORE_ERROR(
+                    "[RenderBackendSystem] WebGPU backend is not implemented yet. TODO: wire in a WebGPU render "
+                    "device backend (wgpu-native)");
+                throw std::runtime_error("WebGPU backend is not implemented yet");
+        }
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");
         m_Swapchain =

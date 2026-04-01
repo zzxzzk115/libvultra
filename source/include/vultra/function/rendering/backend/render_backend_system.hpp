@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/engine/engine_subsystem.hpp"
+#include "vultra/core/rhi/vulkan_render_device_backend.hpp"
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
@@ -35,7 +36,7 @@ namespace vultra
         void present() override;
 
     private:
-        std::unique_ptr<rhi::RenderDevice>    m_RenderDevice;
+        std::unique_ptr<rhi::VulkanRenderDeviceBackend> m_RenderDevice;
         std::unique_ptr<rhi::FrameController> m_FrameController;
         std::unique_ptr<openxr::XRHeadset>    m_XRBackend;
 

@@ -243,7 +243,7 @@ namespace vultra
 
             for (auto [_, sampler] : m_Samplers)
             {
-                m_Device.destroySampler(sampler);
+                m_Device.destroySampler(static_cast<vk::Sampler>(sampler));
             }
 
             TracyVkDestroy(m_TracyContext);
@@ -722,7 +722,7 @@ namespace vultra
             return *this;
         }
 
-        vk::Sampler RenderDevice::getSampler(const SamplerInfo& samplerInfo)
+        Sampler RenderDevice::getSampler(const SamplerInfo& samplerInfo)
         {
             const auto hash = std::hash<SamplerInfo> {}(samplerInfo);
 
@@ -1878,7 +1878,7 @@ namespace vultra
             return commandBuffer;
         }
 
-        vk::Sampler RenderDevice::createSampler(const SamplerInfo& samplerInfo) const
+        Sampler RenderDevice::createSampler(const SamplerInfo& samplerInfo) const
         {
             vk::SamplerCreateInfo samplerCreateInfo {};
             samplerCreateInfo.magFilter               = static_cast<vk::Filter>(samplerInfo.magFilter);
@@ -1903,7 +1903,7 @@ namespace vultra
             vk::Sampler sampler {nullptr};
             VK_CHECK(m_Device.createSampler(&samplerCreateInfo, nullptr, &sampler), LOGTAG, "Failed to create sampler");
 
-            return sampler;
+            return Sampler {sampler};
         }
 
         CommandBuffer RenderDevice::createCommandBuffer() const

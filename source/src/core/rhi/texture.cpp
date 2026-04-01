@@ -160,7 +160,7 @@ namespace vultra
             other.m_Type   = TextureType::eUndefined;
             other.m_Layout = ImageLayout::eUndefined;
 
-            other.m_Sampler = nullptr;
+            other.m_Sampler = {};
 
             other.m_Format = PixelFormat::eUndefined;
         }
@@ -200,7 +200,7 @@ namespace vultra
             return !m_Image.valueless_by_exception() && !std::holds_alternative<std::monostate>(m_Image);
         }
 
-        void Texture::setSampler(const vk::Sampler sampler) { m_Sampler = sampler; }
+        void Texture::setSampler(const Sampler sampler) { m_Sampler = sampler; }
 
         TextureType Texture::getType() const { return m_Type; }
 
@@ -278,7 +278,7 @@ namespace vultra
             return aspect ? aspect->layers : std::span<const vk::ImageView> {};
         }
 
-        vk::Sampler Texture::getSampler() const { return m_Sampler; }
+        Sampler Texture::getSampler() const { return m_Sampler; }
 
         Texture::Builder& Texture::Builder::setExtent(const Extent2D extent, const uint32_t depth)
         {
@@ -495,7 +495,7 @@ namespace vultra
             if (!static_cast<bool>(*this))
                 return;
 
-            m_Sampler = nullptr;
+            m_Sampler = {};
 
             const auto device = getDeviceHandle();
             assert(device);
