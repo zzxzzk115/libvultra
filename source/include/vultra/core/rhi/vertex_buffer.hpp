@@ -14,7 +14,7 @@ namespace vultra
             VertexBuffer() = default;
 
             [[nodiscard]] Stride         getStride() const;
-            [[nodiscard]] vk::DeviceSize getCapacity() const;
+            [[nodiscard]] uint64_t       getCapacity() const;
 
         private:
             VertexBuffer(Buffer&&, Stride);

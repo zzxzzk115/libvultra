@@ -2,8 +2,9 @@
 
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/draw_indirect_buffer.hpp"
-#include "vultra/core/rhi/draw_indirect_command.hpp"
-#include "vultra/core/rhi/draw_indirect_type.hpp"
+#include "vultra/core/rhi/structs/draw_indirect_command.hpp"
+#include "vultra/core/rhi/structs/draw_indirect_type.hpp"
+#include "vultra/core/rhi/structs/buffer_usage.hpp"
 #include "vultra/core/rhi/radix_sorter.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/storage_buffer.hpp"
@@ -148,7 +149,7 @@ namespace vultra::resource
                 static_cast<uint64_t>(meshletCullDispatchArgsBuffer->getSize()) < kDispatchArgsBytes)
             {
                 meshletCullDispatchArgsBuffer = createRef<rhi::StorageBuffer>(
-                    rd.createStorageBufferWithUsage(kDispatchArgsBytes, vk::BufferUsageFlagBits::eIndirectBuffer));
+                    rd.createStorageBufferWithUsage(kDispatchArgsBytes, rhi::BufferUsage::eIndirectBuffer));
             }
         }
 
@@ -410,3 +411,4 @@ namespace vultra::resource
         }
     };
 } // namespace vultra::resource
+

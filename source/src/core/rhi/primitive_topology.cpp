@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/primitive_topology.hpp"
+#include "vultra/core/rhi/structs/primitive_topology.hpp"
 
 #include <magic_enum/magic_enum.hpp>
 

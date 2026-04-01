@@ -2,6 +2,8 @@
 
 #include <cassert>
 
+#include <vulkan/vulkan.hpp>
+
 // Runtime-sized array fallback value used by legacy libvultra descriptor layout.
 #define MAX_ARRAY_SIZE 1024
 
@@ -9,62 +11,63 @@ namespace vultra
 {
     namespace rhi
     {
-        namespace
+namespace
+{
+    [[nodiscard]] vultra::rhi::ShaderStages toStages(const vshadersystem::ShaderStageFlags flags)
+    {
+        using vultra::rhi::ShaderStages;
+        ShaderStages out {ShaderStages::eNone};
+
+        using namespace vshadersystem;
+        if (flags & ShaderStageFlagBits::eStageVert)
+            out |= ShaderStages::eVertex;
+        if (flags & ShaderStageFlagBits::eStageFrag)
+            out |= ShaderStages::eFragment;
+        if (flags & ShaderStageFlagBits::eStageComp)
+            out |= ShaderStages::eCompute;
+        if (flags & ShaderStageFlagBits::eStageTask)
+            out |= ShaderStages::eTask;
+        if (flags & ShaderStageFlagBits::eStageMesh)
+            out |= ShaderStages::eMesh;
+
+        if (flags & ShaderStageFlagBits::eStageRgen)
+            out |= ShaderStages::eRayGen;
+        if (flags & ShaderStageFlagBits::eStageRmiss)
+            out |= ShaderStages::eMiss;
+        if (flags & ShaderStageFlagBits::eStageRchit)
+            out |= ShaderStages::eClosestHit;
+        if (flags & ShaderStageFlagBits::eStageRahit)
+            out |= ShaderStages::eAnyHit;
+        if (flags & ShaderStageFlagBits::eStageRint)
+            out |= ShaderStages::eIntersect;
+
+        return out;
+    }
+
+    [[nodiscard]] vultra::rhi::DescriptorType toDescriptorType(const vshadersystem::DescriptorKind k)
+    {
+        using DK = vshadersystem::DescriptorKind;
+        switch (k)
         {
-            [[nodiscard]] vk::ShaderStageFlags toVkStageFlags(const vshadersystem::ShaderStageFlags flags)
-            {
-                vk::ShaderStageFlags out = vk::ShaderStageFlagBits(0);
-
-                using namespace vshadersystem;
-                if (flags & ShaderStageFlagBits::eStageVert)
-                    out |= vk::ShaderStageFlagBits::eVertex;
-                if (flags & ShaderStageFlagBits::eStageFrag)
-                    out |= vk::ShaderStageFlagBits::eFragment;
-                if (flags & ShaderStageFlagBits::eStageComp)
-                    out |= vk::ShaderStageFlagBits::eCompute;
-                if (flags & ShaderStageFlagBits::eStageTask)
-                    out |= vk::ShaderStageFlagBits::eTaskEXT;
-                if (flags & ShaderStageFlagBits::eStageMesh)
-                    out |= vk::ShaderStageFlagBits::eMeshEXT;
-
-                if (flags & ShaderStageFlagBits::eStageRgen)
-                    out |= vk::ShaderStageFlagBits::eRaygenKHR;
-                if (flags & ShaderStageFlagBits::eStageRmiss)
-                    out |= vk::ShaderStageFlagBits::eMissKHR;
-                if (flags & ShaderStageFlagBits::eStageRchit)
-                    out |= vk::ShaderStageFlagBits::eClosestHitKHR;
-                if (flags & ShaderStageFlagBits::eStageRahit)
-                    out |= vk::ShaderStageFlagBits::eAnyHitKHR;
-                if (flags & ShaderStageFlagBits::eStageRint)
-                    out |= vk::ShaderStageFlagBits::eIntersectionKHR;
-
-                return out;
-            }
-
-            [[nodiscard]] vk::DescriptorType toVkDescriptorType(const vshadersystem::DescriptorKind k)
-            {
-                using DK = vshadersystem::DescriptorKind;
-                switch (k)
-                {
-                    case DK::eUniformBuffer:
-                        return vk::DescriptorType::eUniformBuffer;
-                    case DK::eStorageBuffer:
-                        return vk::DescriptorType::eStorageBuffer;
-                    case DK::eSampledImage:
-                        return vk::DescriptorType::eSampledImage;
-                    case DK::eStorageImage:
-                        return vk::DescriptorType::eStorageImage;
-                    case DK::eSampler:
-                        return vk::DescriptorType::eSampler;
-                    case DK::eCombinedImageSampler:
-                        return vk::DescriptorType::eCombinedImageSampler;
-                    case DK::eAccelerationStructure:
-                        return vk::DescriptorType::eAccelerationStructureKHR;
-                    default:
-                        return vk::DescriptorType::eSampler;
-                }
-            }
-        } // namespace
+            case DK::eUniformBuffer:
+                return vultra::rhi::DescriptorType::eUniformBuffer;
+            case DK::eStorageBuffer:
+                return vultra::rhi::DescriptorType::eStorageBuffer;
+            case DK::eSampledImage:
+                return vultra::rhi::DescriptorType::eSampledImage;
+            case DK::eStorageImage:
+                return vultra::rhi::DescriptorType::eStorageImage;
+            case DK::eSampler:
+                return vultra::rhi::DescriptorType::eSampler;
+            case DK::eCombinedImageSampler:
+                return vultra::rhi::DescriptorType::eCombinedImageSampler;
+            case DK::eAccelerationStructure:
+                return vultra::rhi::DescriptorType::eAccelerationStructure;
+            default:
+                return vultra::rhi::DescriptorType::eSampler;
+        }
+    }
+} // namespace
 
         void ShaderReflection::accumulate(const vshadersystem::ShaderReflection& r)
         {
@@ -80,14 +83,14 @@ namespace vultra
                 if (d.set >= descriptorSets.size())
                     continue;
 
-                auto [it, emplaced] = descriptorSets[d.set].try_emplace(d.binding, toVkDescriptorType(d.kind));
+                auto [it, emplaced] = descriptorSets[d.set].try_emplace(d.binding, toDescriptorType(d.kind));
                 auto& out           = it->second;
 
                 if (emplaced)
                 {
                     out.count = d.count;
                 }
-                out.stageFlags |= toVkStageFlags(d.stageFlags);
+                out.stageFlags |= toStages(d.stageFlags);
 
                 if (d.runtimeSized)
                 {
@@ -108,10 +111,10 @@ namespace vultra
                 if (!b.isPushConstant)
                     continue;
 
-                vk::PushConstantRange range {};
+                ShaderReflection::PushConstantRange range {};
                 range.offset     = 0;
                 range.size       = b.size;
-                range.stageFlags = toVkStageFlags(b.stageFlags);
+                range.stageFlags = toStages(b.stageFlags);
 
                 // Merge with existing ranges if they match (offset+size).
                 bool merged = false;

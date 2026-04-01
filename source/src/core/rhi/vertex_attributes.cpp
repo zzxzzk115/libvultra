@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/vertex_attributes.hpp"
+#include "vultra/core/rhi/structs/vertex_attributes.hpp"
 
 #include <cassert>
 

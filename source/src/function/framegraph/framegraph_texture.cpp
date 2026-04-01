@@ -185,14 +185,14 @@ namespace vultra
                         .image     = *texture,
                         .newLayout = imageLayout,
                         .subresourceRange =
-                            VkImageSubresourceRange {
-                                .levelCount = VK_REMAINING_MIP_LEVELS,
-                                .layerCount = VK_REMAINING_ARRAY_LAYERS,
+                            rhi::ImageSubresourceRange {
+                                .levelCount = UINT32_MAX,
+                                .layerCount = UINT32_MAX,
                             },
                     },
                     {
-                        .stageMask  = convert(pipelineStage),
-                        .accessMask = dstAccess,
+                        .dstStage  = convert(pipelineStage),
+                        .dstAccess = dstAccess,
                     });
             }
 
@@ -252,11 +252,11 @@ namespace vultra
                     {
                         .image            = *texture,
                         .newLayout        = rhi::ImageLayout::eGeneral,
-                        .subresourceRange = {vk::ImageAspectFlagBits::eNone, 0, 1, 0, 1},
+                        .subresourceRange = rhi::ImageSubresourceRange {.levelCount = 1u, .layerCount = 1u},
                     },
                     {
-                        .stageMask  = convert(pipelineStage),
-                        .accessMask = rhi::Access::eShaderStorageWrite,
+                        .dstStage  = convert(pipelineStage),
+                        .dstAccess = rhi::Access::eShaderStorageWrite,
                     });
             }
 

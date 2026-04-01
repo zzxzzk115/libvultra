@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/image_usage.hpp"
+#include "vultra/core/rhi/structs/image_usage.hpp"
 
 #include <magic_enum/magic_enum.hpp>
 

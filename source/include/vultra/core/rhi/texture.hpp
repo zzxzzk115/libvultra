@@ -1,13 +1,14 @@
 #pragma once
 
-#include "vultra/core/rhi/barrier_scope.hpp"
-#include "vultra/core/rhi/cube_face.hpp"
-#include "vultra/core/rhi/extent2d.hpp"
-#include "vultra/core/rhi/image_layout.hpp"
-#include "vultra/core/rhi/image_usage.hpp"
-#include "vultra/core/rhi/pixel_format.hpp"
+#include "vultra/core/rhi/structs/barrier_scope.hpp"
+#include "vultra/core/rhi/structs/cube_face.hpp"
+#include "vultra/core/rhi/structs/extent2d.hpp"
+#include "vultra/core/rhi/structs/image_layout.hpp"
+#include "vultra/core/rhi/structs/image_usage.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/sampler.hpp"
-#include "vultra/core/rhi/texture_type.hpp"
+#include "vultra/core/rhi/texture_view.hpp"
+#include "vultra/core/rhi/structs/texture_type.hpp"
 
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
@@ -34,6 +35,7 @@ namespace vultra
         class RenderDevice;
         class Swapchain;
         class CommandBuffer;
+        class VulkanCommandBuffer;
         class Barrier;
 
         class Texture
@@ -41,6 +43,7 @@ namespace vultra
             friend class RenderDevice;
             friend class Swapchain;
             friend class CommandBuffer;
+            friend class VulkanCommandBuffer;
             friend class Barrier;
             friend class openxr::XRHeadset;
 
@@ -71,21 +74,21 @@ namespace vultra
             [[nodiscard]] PixelFormat getPixelFormat() const;
             [[nodiscard]] ImageUsage  getUsageFlags() const;
 
-            [[nodiscard]] vk::Image   getImageHandle() const;
+            [[nodiscard]] std::uintptr_t getNativeImageHandle() const;
             [[nodiscard]] ImageLayout getImageLayout() const;
 
             // @return Used memory (in bytes).
             [[nodiscard]] vk::DeviceSize getSize() const;
 
-            [[nodiscard]] vk::ImageView getImageView(vk::ImageAspectFlags = vk::ImageAspectFlagBits::eNone) const;
+            [[nodiscard]] TextureView getImageView(vk::ImageAspectFlags = vk::ImageAspectFlagBits::eNone) const;
 
-            [[nodiscard]] vk::ImageView getMipLevel(uint32_t,
-                                                    vk::ImageAspectFlags = vk::ImageAspectFlagBits::eNone) const;
-            [[nodiscard]] std::span<const vk::ImageView>
+            [[nodiscard]] TextureView getMipLevel(uint32_t,
+                                                  vk::ImageAspectFlags = vk::ImageAspectFlagBits::eNone) const;
+            [[nodiscard]] std::span<const TextureView>
                 getMipLevels(vk::ImageAspectFlags = vk::ImageAspectFlagBits::eNone) const;
-            [[nodiscard]] vk::ImageView
+            [[nodiscard]] TextureView
             getLayer(uint32_t, std::optional<CubeFace>, vk::ImageAspectFlags = vk::ImageAspectFlagBits::eNone) const;
-            [[nodiscard]] std::span<const vk::ImageView>
+            [[nodiscard]] std::span<const TextureView>
                 getLayers(vk::ImageAspectFlags = vk::ImageAspectFlagBits::eNone) const;
 
             [[nodiscard]] Sampler getSampler() const;
@@ -147,9 +150,9 @@ namespace vultra
 
             struct AspectData
             {
-                vk::ImageView              imageView {nullptr};
-                std::vector<vk::ImageView> mipLevels;
-                std::vector<vk::ImageView> layers;
+                TextureView              imageView {};
+                std::vector<TextureView> mipLevels;
+                std::vector<TextureView> layers;
             };
             void              createAspect(vk::Device, vk::Image, vk::ImageViewType, vk::ImageAspectFlags, AspectData&);
             const AspectData* getAspect(vk::ImageAspectFlags) const;
@@ -204,3 +207,4 @@ namespace vultra
         createDefaultTexture(uint8_t r, uint8_t g, uint8_t b, uint8_t a, rhi::RenderDevice& rd);
     } // namespace rhi
 } // namespace vultra
+

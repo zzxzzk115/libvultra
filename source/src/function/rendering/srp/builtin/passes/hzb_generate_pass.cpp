@@ -2,7 +2,7 @@
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/pixel_format.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
@@ -124,3 +124,4 @@ namespace vultra
         return getRenderDevice().createComputePipelineBuiltin(shader->spirv);
     }
 } // namespace vultra
+

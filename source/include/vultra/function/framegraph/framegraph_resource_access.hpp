@@ -1,9 +1,9 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
-#include "vultra/core/rhi/cube_face.hpp"
-#include "vultra/core/rhi/image_aspect.hpp"
-#include "vultra/core/rhi/pipeline_stage.hpp"
+#include "vultra/core/rhi/structs/cube_face.hpp"
+#include "vultra/core/rhi/structs/image_aspect.hpp"
+#include "vultra/core/rhi/structs/pipeline_stage.hpp"
 
 #include <vbase/core/scoped_enum_flags.hpp>
 
@@ -105,3 +105,4 @@ namespace vultra
 template<>
 struct HasFlags<vultra::framegraph::PipelineStage> : std::true_type
 {};
+

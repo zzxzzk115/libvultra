@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/shader_type.hpp"
+#include "vultra/core/rhi/structs/shader_type.hpp"
 
 #include <expected>
 #include <filesystem>
@@ -42,3 +42,4 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
+

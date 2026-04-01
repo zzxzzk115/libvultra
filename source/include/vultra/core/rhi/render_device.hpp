@@ -5,11 +5,12 @@
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/compute_pipeline.hpp"
 #include "vultra/core/rhi/draw_indirect_buffer.hpp"
-#include "vultra/core/rhi/draw_indirect_command.hpp"
-#include "vultra/core/rhi/image_aspect.hpp"
+#include "vultra/core/rhi/structs/draw_indirect_command.hpp"
+#include "vultra/core/rhi/structs/image_aspect.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/radix_sorter.hpp"
+#include "vultra/core/rhi/structs/buffer_usage.hpp"
 #include "vultra/core/rhi/raytracing/acceleration_structure.hpp"
 #include "vultra/core/rhi/raytracing/raytracing_instance.hpp"
 #include "vultra/core/rhi/raytracing/raytracing_pipeline.hpp"
@@ -17,7 +18,7 @@
 #include "vultra/core/rhi/raytracing/scratch_buffer.hpp"
 #include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
 #include "vultra/core/rhi/render_mesh.hpp"
-#include "vultra/core/rhi/sampler_info.hpp"
+#include "vultra/core/rhi/structs/sampler_info.hpp"
 #include "vultra/core/rhi/shader_compiler.hpp"
 #include "vultra/core/rhi/shader_module.hpp"
 #include "vultra/core/rhi/sampler.hpp"
@@ -25,6 +26,9 @@
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/rhi/uniform_buffer.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_backend.hpp"
+#include "vultra/core/rhi/structs/job_info.hpp"
+#include "vultra/core/rhi/structs/render_device_structs.hpp"
 
 #include <vbase/core/scoped_enum_flags.hpp>
 
@@ -35,6 +39,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <memory>
 #include <vector>
 
 namespace vultra
@@ -54,66 +59,7 @@ namespace vultra
 
     namespace rhi
     {
-        enum class RenderDeviceFeatureFlagBits : uint32_t
-        {
-            eNormal             = 0,
-            eRayQuery           = BIT(0),
-            eRayTracingPipeline = BIT(1),
-            eMeshShader         = BIT(2),
-            eOpenXR             = BIT(3),
-
-            eRayTracing = eRayQuery | eRayTracingPipeline,
-            eAll        = eNormal | eRayQuery | eRayTracingPipeline | eMeshShader | eOpenXR,
-        };
-
-        enum class RenderDeviceFeatureReportFlagBits : uint64_t
-        {
-            eNone                    = 0,
-            eOpenXR                  = BIT(0),
-            eRayTracingPipeline      = BIT(1),
-            eRayQuery                = BIT(2),
-            eAccelerationStructure   = BIT(3),
-            eMeshShader              = BIT(4),
-            eBufferDeviceAddress     = BIT(5),
-            eDescriptorIndexing      = BIT(6),
-            eDrawIndirectCount       = BIT(7),
-            eMultiDraw               = BIT(8),
-            eDrawParameters          = BIT(9),
-            eFragmentShaderInterlock = BIT(10),
-            eMultiview               = BIT(11),
-            eDynamicRendering        = BIT(12),
-            eSynchronization2        = BIT(13),
-        };
-
-        struct RenderDeviceFeatureReport
-        {
-            RenderDeviceFeatureReportFlagBits flags {RenderDeviceFeatureReportFlagBits::eNone};
-
-            std::string deviceName;
-            uint32_t    apiMajor {0};
-            uint32_t    apiMinor {0};
-            uint32_t    apiPatch {0};
-        };
-
-        struct PhysicalDeviceInfo
-        {
-            uint32_t    vendorId;
-            uint32_t    deviceId;
-            std::string deviceName;
-
-            std::string toString()
-            {
-                return std::format("[Vendor ID: {}, Device ID: {}, Device Name: {}]", vendorId, deviceId, deviceName);
-            }
-        };
-
-        struct JobInfo
-        {
-            vk::Semaphore           wait {nullptr};
-            vk::PipelineStageFlags2 waitStage {vk::PipelineStageFlagBits2::eAllCommands};
-            vk::Semaphore           signal {nullptr};
-        };
-
+        class VulkanImGuiBackend;
         enum class AllocationHints
         {
             eNone            = ZERO_BIT,
@@ -124,6 +70,7 @@ namespace vultra
 
         class RenderDevice final
         {
+            friend class VulkanImGuiBackend;
             friend class GraphicsPipeline;
             friend class RayTracingPipeline;
             friend class RadixSorter;
@@ -175,8 +122,8 @@ namespace vultra
             [[nodiscard]] StorageBuffer createStorageBuffer(vk::DeviceSize size,
                                                             AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] StorageBuffer createStorageBufferWithUsage(vk::DeviceSize       size,
-                                                                     vk::BufferUsageFlags extraUsage,
+            [[nodiscard]] StorageBuffer createStorageBufferWithUsage(vk::DeviceSize size,
+                                                                     BufferUsage          extraUsage,
                                                                      AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] DrawIndirectBuffer
@@ -189,7 +136,7 @@ namespace vultra
                                            DrawIndirectType type,
                                            AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] std::pair<std::size_t, vk::DescriptorSetLayout>
+            [[nodiscard]] std::pair<std::size_t, std::uintptr_t>
             createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>&);
 
             [[nodiscard]] PipelineLayout createPipelineLayout(const PipelineLayoutInfo&);
@@ -205,6 +152,7 @@ namespace vultra
 
             RenderDevice&             setupSampler(Texture&, SamplerInfo);
             [[nodiscard]] Sampler getSampler(const SamplerInfo&);
+            [[nodiscard]] vk::Sampler getSamplerHandle(const Sampler&) const;
 
             [[nodiscard]] ShaderCompiler::Result
             compile(const ShaderType,
@@ -299,7 +247,16 @@ namespace vultra
             [[nodiscard]] RayTracingPipelineProperties getRayTracingPipelineProperties() const;
 
             // For the OpenXR
-            openxr::XRDevice* getXRDevice() const { return m_XRDevice; }
+            openxr::XRDevice* getXRDevice() const;
+
+            // Native backend handles for backend-specific implementation code.
+            [[nodiscard]] std::uintptr_t getNativeInstanceHandle() const;
+            [[nodiscard]] std::uintptr_t getNativePhysicalDeviceHandle() const;
+            [[nodiscard]] std::uintptr_t getNativeDeviceHandle() const;
+            [[nodiscard]] int           getNativeQueueFamilyIndex() const;
+            [[nodiscard]] std::uintptr_t getNativeQueueHandle() const;
+            [[nodiscard]] std::uintptr_t getNativePipelineCacheHandle() const;
+            [[nodiscard]] std::uintptr_t getNativeDescriptorPoolHandle() const;
 
             // Bindless
             // Bindless resource ownership is higher-level (e.g., resource::GpuScene).
@@ -324,7 +281,7 @@ namespace vultra
             void createTracky();
 
             vk::CommandBuffer allocateCommandBuffer() const;
-            Sampler           createSampler(const SamplerInfo&) const;
+            vk::Sampler       createSampler(const SamplerInfo&) const;
 
             [[nodiscard]] AccelerationStructureBuffer
             createAccelerationStructureBuffer(vk::DeviceSize size, AllocationHints = AllocationHints::eNone) const;
@@ -335,43 +292,7 @@ namespace vultra
             getSbtEntryStrideDeviceAddressRegion(const Buffer& sbt, uint32_t handleCount, uint64_t offset) const;
 
         private:
-            std::set<std::string>       m_SupportedExtensions;
-            RenderDeviceFeatureReport   m_FeatureReport {};
-            RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
-            std::string                 m_AppName;
-            std::vector<const char*>    m_RequiredInstanceExtensions;
-            bool                        m_UseKhrDynamicRendering {false};
-            bool                        m_UseKhrSynchronization2 {false};
-
-            vk::Instance               m_Instance {nullptr};
-            vk::DebugUtilsMessengerEXT m_DebugMessenger {nullptr};
-            vk::Device                 m_Device {nullptr};
-            int                        m_GenericQueueFamilyIndex {-1};
-            vk::Queue                  m_GenericQueue {nullptr};
-            vk::PhysicalDevice         m_PhysicalDevice {nullptr};
-            vma::Allocator             m_MemoryAllocator {nullptr};
-            vk::CommandPool            m_CommandPool {nullptr};
-            vk::PipelineCache          m_PipelineCache {nullptr};
-            vk::DescriptorPool         m_DefaultDescriptorPool {nullptr};
-
-            // Raytracing properties and features
-            vk::PhysicalDeviceRayTracingPipelinePropertiesKHR  m_RayTracingPipelineProperties;
-            vk::PhysicalDeviceAccelerationStructureFeaturesKHR m_AccelerationStructureFeatures;
-
-            TracyVkCtx m_TracyContext {nullptr};
-
-            template<typename T>
-            using Cache = std::unordered_map<size_t, T>;
-
-            Cache<Sampler>                 m_Samplers;
-            Cache<vk::DescriptorSetLayout> m_DescriptorSetLayouts;
-            Cache<vk::PipelineLayout>      m_PipelineLayouts;
-
-            ShaderCompiler m_ShaderCompiler;
-
-            openxr::XRDevice* m_XRDevice {nullptr};
-
-            // Textures loaded from files, used for bindless textures
+            std::unique_ptr<VulkanRenderDeviceBackend> m_Backend;
         };
     } // namespace rhi
 } // namespace vultra
@@ -387,3 +308,4 @@ struct HasFlags<vultra::rhi::RenderDeviceFeatureReportFlagBits> : std::true_type
 template<>
 struct HasFlags<vultra::rhi::AllocationHints> : std::true_type
 {};
+

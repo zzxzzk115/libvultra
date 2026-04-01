@@ -1,37 +1,34 @@
 #pragma once
 
-#include "vultra/core/rhi/shader_type.hpp"
+#include "vultra/core/rhi/shader_reflection.hpp"
+#include "vultra/core/rhi/structs/shader_type.hpp"
 
 namespace vultra
 {
     namespace rhi
     {
-        class RenderDevice;
-
         class ShaderModule final
         {
-            friend class RenderDevice;
-
         public:
-            ShaderModule(const ShaderModule&) = delete;
-            ShaderModule(ShaderModule&&) noexcept;
-            ~ShaderModule();
-
-            ShaderModule& operator=(const ShaderModule&) = delete;
-            ShaderModule& operator=(ShaderModule&&) noexcept;
-
-            [[nodiscard]] explicit operator bool() const;
-            [[nodiscard]] explicit operator vk::ShaderModule() const;
-
-        private:
             ShaderModule() = default;
-            ShaderModule(const vk::Device, const SPIRV&);
+            explicit ShaderModule(SPIRV spirv) : m_Spirv(std::move(spirv)) {}
 
-            void destroy() noexcept;
+            ShaderModule(const ShaderModule&)            = default;
+            ShaderModule(ShaderModule&&) noexcept        = default;
+            ShaderModule& operator=(const ShaderModule&)  = default;
+            ShaderModule& operator=(ShaderModule&&) noexcept = default;
+
+            [[nodiscard]] explicit operator bool() const { return !m_Spirv.empty(); }
+            [[nodiscard]] const SPIRV& getSpirv() const { return m_Spirv; }
+            [[nodiscard]] SPIRV&       getSpirv() { return m_Spirv; }
+
+            [[nodiscard]] const ShaderReflection& getReflection() const { return m_Reflection; }
+            [[nodiscard]] ShaderReflection&       getReflection() { return m_Reflection; }
 
         private:
-            vk::Device       m_Device {nullptr};
-            vk::ShaderModule m_Handle {nullptr};
+            SPIRV            m_Spirv;
+            ShaderReflection m_Reflection;
         };
     } // namespace rhi
 } // namespace vultra
+

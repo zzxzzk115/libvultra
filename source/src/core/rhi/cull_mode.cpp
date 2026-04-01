@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/cull_mode.hpp"
+#include "vultra/core/rhi/structs/cull_mode.hpp"
 
 #include <magic_enum/magic_enum.hpp>
 

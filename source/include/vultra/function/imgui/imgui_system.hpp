@@ -25,10 +25,9 @@ namespace vultra
         virtual void      render(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& framebufferInfo) override;
         virtual void      end() override;
         virtual void      postRender() override;
+        virtual void      processEvent(const os::GeneralWindowEvent& event) override;
         virtual TextureID addTexture(const rhi::Texture& texture) override;
         virtual void      removeTexture(TextureID& textureID) override;
-
-        static void processEvent(const os::GeneralWindowEvent& event);
 
     private:
         static void initImGui(const rhi::RenderDevice&,

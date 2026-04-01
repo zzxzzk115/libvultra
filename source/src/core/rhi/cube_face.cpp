@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/cube_face.hpp"
+#include "vultra/core/rhi/structs/cube_face.hpp"
 
 #include <magic_enum/magic_enum.hpp>
 

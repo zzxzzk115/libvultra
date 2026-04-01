@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/buffer.hpp"
-#include "vultra/core/rhi/stride_device_address_region.hpp"
+#include "vultra/core/rhi/structs/stride_device_address_region.hpp"
 
 namespace vultra
 {

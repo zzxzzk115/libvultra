@@ -7,6 +7,7 @@ namespace vultra
     namespace rhi
     {
         class CommandBuffer;
+        class VulkanCommandBuffer;
 
         struct DescriptorPool
         {
@@ -21,6 +22,7 @@ namespace vultra
         class DescriptorSetAllocator final
         {
             friend class CommandBuffer;
+            friend class VulkanCommandBuffer;
 
         public:
             DescriptorSetAllocator()                              = default;

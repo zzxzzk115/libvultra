@@ -8,7 +8,7 @@ namespace vultra
 
         Buffer::Stride IndexBuffer::getStride() const { return std::to_underlying(m_IndexType); }
 
-        vk::DeviceSize IndexBuffer::getCapacity() const
+        uint64_t IndexBuffer::getCapacity() const
         {
             assert(m_IndexType != IndexType::eUndefined);
 

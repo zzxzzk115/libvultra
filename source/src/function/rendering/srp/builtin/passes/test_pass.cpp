@@ -1,6 +1,6 @@
 #include "vultra/function/rendering/srp/builtin/passes/test_pass.hpp"
 #include "vultra/core/base/common_context.hpp"
-#include "vultra/core/rhi/pixel_format.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"

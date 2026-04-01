@@ -20,7 +20,7 @@ namespace vultra
     {
         uint64_t getTextureHandleId(const rhi::Texture& texture)
         {
-            return rhi::getVulkanHandleId(static_cast<VkImage>(texture.getImageHandle()));
+            return rhi::getVulkanHandleId(reinterpret_cast<VkImage>(texture.getNativeImageHandle()));
         }
 
         void syncImGuiTextureRegistration(IImGuiService&            imguiService,

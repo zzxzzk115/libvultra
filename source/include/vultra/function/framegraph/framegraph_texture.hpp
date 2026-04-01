@@ -1,8 +1,8 @@
 #pragma once
 
-#include "vultra/core/rhi/extent2d.hpp"
-#include "vultra/core/rhi/image_usage.hpp"
-#include "vultra/core/rhi/pixel_format.hpp"
+#include "vultra/core/rhi/structs/extent2d.hpp"
+#include "vultra/core/rhi/structs/image_usage.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
 
 namespace vultra
 {

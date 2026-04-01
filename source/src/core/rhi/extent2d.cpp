@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/extent2d.hpp"
+#include "vultra/core/rhi/structs/extent2d.hpp"
 
 #include <glm/ext/scalar_constants.hpp>
 

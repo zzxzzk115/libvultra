@@ -2,6 +2,7 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/shader_module.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
+#include "vultra/core/rhi/vk/conversions.hpp"
 #include "vultra/core/rhi/vk/macro.hpp"
 
 #include <glm/common.hpp>
@@ -45,6 +46,112 @@ namespace vultra
                 return static_cast<vk::ShaderStageFlagBits>(0);
             }
 
+            [[nodiscard]] constexpr vk::StencilOp toVk(const StencilOp op)
+            {
+                switch (op)
+                {
+                    case StencilOp::eKeep:
+                        return vk::StencilOp::eKeep;
+                    case StencilOp::eZero:
+                        return vk::StencilOp::eZero;
+                    case StencilOp::eReplace:
+                        return vk::StencilOp::eReplace;
+                    case StencilOp::eIncrementAndClamp:
+                        return vk::StencilOp::eIncrementAndClamp;
+                    case StencilOp::eDecrementAndClamp:
+                        return vk::StencilOp::eDecrementAndClamp;
+                    case StencilOp::eInvert:
+                        return vk::StencilOp::eInvert;
+                    case StencilOp::eIncrementAndWrap:
+                        return vk::StencilOp::eIncrementAndWrap;
+                    case StencilOp::eDecrementAndWrap:
+                        return vk::StencilOp::eDecrementAndWrap;
+                }
+                assert(false);
+                return vk::StencilOp::eKeep;
+            }
+
+            [[nodiscard]] constexpr vk::PolygonMode toVk(const PolygonMode mode)
+            {
+                switch (mode)
+                {
+                    case PolygonMode::eFill:
+                        return vk::PolygonMode::eFill;
+                    case PolygonMode::eLine:
+                        return vk::PolygonMode::eLine;
+                    case PolygonMode::ePoint:
+                        return vk::PolygonMode::ePoint;
+                }
+                assert(false);
+                return vk::PolygonMode::eFill;
+            }
+
+            [[nodiscard]] constexpr vk::BlendOp toVk(const BlendOp op)
+            {
+                switch (op)
+                {
+                    case BlendOp::eAdd:
+                        return vk::BlendOp::eAdd;
+                    case BlendOp::eSubtract:
+                        return vk::BlendOp::eSubtract;
+                    case BlendOp::eReverseSubtract:
+                        return vk::BlendOp::eReverseSubtract;
+                    case BlendOp::eMin:
+                        return vk::BlendOp::eMin;
+                    case BlendOp::eMax:
+                        return vk::BlendOp::eMax;
+                }
+                assert(false);
+                return vk::BlendOp::eAdd;
+            }
+
+            [[nodiscard]] constexpr vk::BlendFactor toVk(const BlendFactor factor)
+            {
+                switch (factor)
+                {
+                    case BlendFactor::eZero:
+                        return vk::BlendFactor::eZero;
+                    case BlendFactor::eOne:
+                        return vk::BlendFactor::eOne;
+                    case BlendFactor::eSrcColor:
+                        return vk::BlendFactor::eSrcColor;
+                    case BlendFactor::eOneMinusSrcColor:
+                        return vk::BlendFactor::eOneMinusSrcColor;
+                    case BlendFactor::eDstColor:
+                        return vk::BlendFactor::eDstColor;
+                    case BlendFactor::eOneMinusDstColor:
+                        return vk::BlendFactor::eOneMinusDstColor;
+                    case BlendFactor::eSrcAlpha:
+                        return vk::BlendFactor::eSrcAlpha;
+                    case BlendFactor::eOneMinusSrcAlpha:
+                        return vk::BlendFactor::eOneMinusSrcAlpha;
+                    case BlendFactor::eDstAlpha:
+                        return vk::BlendFactor::eDstAlpha;
+                    case BlendFactor::eOneMinusDstAlpha:
+                        return vk::BlendFactor::eOneMinusDstAlpha;
+                    case BlendFactor::eConstantColor:
+                        return vk::BlendFactor::eConstantColor;
+                    case BlendFactor::eOneMinusConstantColor:
+                        return vk::BlendFactor::eOneMinusConstantColor;
+                    case BlendFactor::eConstantAlpha:
+                        return vk::BlendFactor::eConstantAlpha;
+                    case BlendFactor::eOneMinusConstantAlpha:
+                        return vk::BlendFactor::eOneMinusConstantAlpha;
+                    case BlendFactor::eSrcAlphaSaturate:
+                        return vk::BlendFactor::eSrcAlphaSaturate;
+                    case BlendFactor::eSrc1Color:
+                        return vk::BlendFactor::eSrc1Color;
+                    case BlendFactor::eOneMinusSrc1Color:
+                        return vk::BlendFactor::eOneMinusSrc1Color;
+                    case BlendFactor::eSrc1Alpha:
+                        return vk::BlendFactor::eSrc1Alpha;
+                    case BlendFactor::eOneMinusSrc1Alpha:
+                        return vk::BlendFactor::eOneMinusSrc1Alpha;
+                }
+                assert(false);
+                return vk::BlendFactor::eOne;
+            }
+
             constexpr vk::VertexInputBindingDescription kIgnoreVertexInput {
                 0,
                 0,
@@ -78,28 +185,68 @@ namespace vultra
                 false,
             };
 
+            [[nodiscard]] constexpr vk::PrimitiveTopology toVk(const PrimitiveTopology topology)
+            {
+                switch (topology)
+                {
+                    case PrimitiveTopology::eTriangleList:
+                        return vk::PrimitiveTopology::eTriangleList;
+                    case PrimitiveTopology::eTriangleStrip:
+                        return vk::PrimitiveTopology::eTriangleStrip;
+                    case PrimitiveTopology::eLineList:
+                        return vk::PrimitiveTopology::eLineList;
+                    case PrimitiveTopology::eLineStrip:
+                        return vk::PrimitiveTopology::eLineStrip;
+                    case PrimitiveTopology::ePointList:
+                        return vk::PrimitiveTopology::ePointList;
+                }
+
+                assert(false);
+                return vk::PrimitiveTopology::eTriangleList;
+            }
+
             [[nodiscard]] auto toVk(const StencilOpState& desc)
             {
                 return vk::StencilOpState {
-                    static_cast<vk::StencilOp>(desc.failOp),
-                    static_cast<vk::StencilOp>(desc.passOp),
-                    static_cast<vk::StencilOp>(desc.depthFailOp),
-                    static_cast<vk::CompareOp>(desc.compareOp),
+                    toVk(desc.failOp),
+                    toVk(desc.passOp),
+                    toVk(desc.depthFailOp),
+                    toVk(desc.compareOp),
                     desc.compareMask,
                     desc.writeMask,
                     desc.reference,
                 };
             }
 
-            [[nodiscard]] auto convert(const auto& container)
+        [[nodiscard]] auto convert(const auto& container)
+        {
+            std::vector<vk::Format> out(container.size());
+            std::ranges::transform(container, out.begin(), [](const PixelFormat format) {
+                assert(getAspectMask(format) & vk::ImageAspectFlagBits::eColor);
+                return toVk(format);
+            });
+            return out;
+        }
+
+        [[nodiscard]] constexpr vk::Format toVk(const VertexAttribute::Type type)
+        {
+            switch (type)
             {
-                std::vector<vk::Format> out(container.size());
-                std::ranges::transform(container, out.begin(), [](const PixelFormat format) {
-                    assert(getAspectMask(format) & vk::ImageAspectFlagBits::eColor);
-                    return static_cast<vk::Format>(format);
-                });
-                return out;
+                case VertexAttribute::Type::eFloat:
+                    return vk::Format::eR32Sfloat;
+                case VertexAttribute::Type::eFloat2:
+                    return vk::Format::eR32G32Sfloat;
+                case VertexAttribute::Type::eFloat3:
+                    return vk::Format::eR32G32B32Sfloat;
+                case VertexAttribute::Type::eFloat4:
+                    return vk::Format::eR32G32B32A32Sfloat;
+                case VertexAttribute::Type::eInt4:
+                    return vk::Format::eR32G32B32A32Sint;
+                case VertexAttribute::Type::eUByte4_Norm:
+                    return vk::Format::eR8G8B8A8Unorm;
             }
+            return vk::Format::eUndefined;
+        }
 
         } // namespace
 
@@ -108,35 +255,30 @@ namespace vultra
             constexpr auto kMaxNumStages = 3; // CS or VS/GS/FS
             m_ShaderStages.reserve(kMaxNumStages);
 
-            m_DepthStencilState = {
-                .sType             = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-                .depthTestEnable   = false,
-                .depthWriteEnable  = true,
-                .depthCompareOp    = VK_COMPARE_OP_LESS_OR_EQUAL,
-                .stencilTestEnable = false,
-                .minDepthBounds    = 0.0f,
-                .maxDepthBounds    = 1.0f,
-            };
-            m_RasterizerState = {
-                .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-                .depthClampEnable        = false,
-                .rasterizerDiscardEnable = false,
-                .polygonMode             = VK_POLYGON_MODE_FILL,
-                .cullMode                = VK_CULL_MODE_NONE,
-                .frontFace               = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-                .depthBiasEnable         = false,
-                .lineWidth               = 1.0f,
-            };
+            m_DepthStencilState.sType             = static_cast<vk::StructureType>(VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO);
+            m_DepthStencilState.depthTestEnable   = false;
+            m_DepthStencilState.depthWriteEnable  = true;
+            m_DepthStencilState.depthCompareOp    = static_cast<vk::CompareOp>(VK_COMPARE_OP_LESS_OR_EQUAL);
+            m_DepthStencilState.stencilTestEnable = false;
+            m_DepthStencilState.minDepthBounds    = 0.0f;
+            m_DepthStencilState.maxDepthBounds    = 1.0f;
+
+            m_RasterizerState.sType                   = static_cast<vk::StructureType>(VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO);
+            m_RasterizerState.depthClampEnable        = false;
+            m_RasterizerState.rasterizerDiscardEnable = false;
+            m_RasterizerState.polygonMode             = static_cast<vk::PolygonMode>(VK_POLYGON_MODE_FILL);
+            m_RasterizerState.cullMode                = static_cast<vk::CullModeFlags>(VK_CULL_MODE_NONE);
+            m_RasterizerState.frontFace               = static_cast<vk::FrontFace>(VK_FRONT_FACE_COUNTER_CLOCKWISE);
+            m_RasterizerState.depthBiasEnable         = false;
+            m_RasterizerState.lineWidth               = 1.0f;
         }
 
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthFormat(const PixelFormat depthFormat)
         {
             const auto aspectMask = getAspectMask(depthFormat);
-            m_DepthFormat         = static_cast<bool>(aspectMask & vk::ImageAspectFlagBits::eDepth) ?
-                                        static_cast<vk::Format>(depthFormat) :
+            m_DepthFormat         = static_cast<bool>(aspectMask & vk::ImageAspectFlagBits::eDepth) ? toVk(depthFormat) :
                                         vk::Format::eUndefined;
-            m_StencilFormat       = static_cast<bool>(aspectMask & vk::ImageAspectFlagBits::eStencil) ?
-                                        static_cast<vk::Format>(depthFormat) :
+            m_StencilFormat       = static_cast<bool>(aspectMask & vk::ImageAspectFlagBits::eStencil) ? toVk(depthFormat) :
                                         vk::Format::eUndefined;
             return *this;
         }
@@ -184,7 +326,7 @@ namespace vultra
                         m_VertexInputAttributes.push_back(vk::VertexInputAttributeDescription {
                             location,
                             0,
-                            static_cast<vk::Format>(attrib.type),
+                            toVk(attrib.type),
                             attrib.offset,
                         });
                     }
@@ -205,7 +347,7 @@ namespace vultra
 
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setTopology(const PrimitiveTopology topology)
         {
-            m_PrimitiveTopology = static_cast<vk::PrimitiveTopology>(topology);
+            m_PrimitiveTopology = toVk(topology);
             return *this;
         }
 
@@ -236,7 +378,7 @@ namespace vultra
         {
             m_DepthStencilState.depthTestEnable  = desc.depthTest;
             m_DepthStencilState.depthWriteEnable = desc.depthWrite;
-            m_DepthStencilState.depthCompareOp   = static_cast<vk::CompareOp>(desc.depthCompareOp);
+            m_DepthStencilState.depthCompareOp   = toVk(desc.depthCompareOp);
 
             m_DepthStencilState.stencilTestEnable = desc.stencilTestEnable;
             m_DepthStencilState.front             = toVk(desc.front);
@@ -247,8 +389,8 @@ namespace vultra
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setRasterizer(const RasterizerState& desc)
         {
             m_RasterizerState.depthClampEnable = desc.depthClampEnable;
-            m_RasterizerState.polygonMode      = static_cast<vk::PolygonMode>(desc.polygonMode);
-            m_RasterizerState.cullMode         = static_cast<vk::CullModeFlagBits>(desc.cullMode);
+            m_RasterizerState.polygonMode      = toVk(desc.polygonMode);
+            m_RasterizerState.cullMode         = toVk(desc.cullMode);
             if (desc.depthBias)
             {
                 m_RasterizerState.depthBiasEnable         = true;
@@ -265,16 +407,17 @@ namespace vultra
             if (index >= m_BlendStates.size())
                 m_BlendStates.resize(index + 1);
 
-            m_BlendStates[index] = VkPipelineColorBlendAttachmentState {
-                .blendEnable         = desc.enabled,
-                .srcColorBlendFactor = static_cast<VkBlendFactor>(desc.srcColor),
-                .dstColorBlendFactor = static_cast<VkBlendFactor>(desc.dstColor),
-                .colorBlendOp        = static_cast<VkBlendOp>(desc.colorOp),
-                .srcAlphaBlendFactor = static_cast<VkBlendFactor>(desc.srcAlpha),
-                .dstAlphaBlendFactor = static_cast<VkBlendFactor>(desc.dstAlpha),
-                .alphaBlendOp        = static_cast<VkBlendOp>(desc.alphaOp),
-                .colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
-                                  VK_COLOR_COMPONENT_A_BIT};
+            auto& blendState = m_BlendStates[index];
+            blendState       = vk::PipelineColorBlendAttachmentState {};
+            blendState.blendEnable         = desc.enabled ? VK_TRUE : VK_FALSE;
+            blendState.srcColorBlendFactor = toVk(desc.srcColor);
+            blendState.dstColorBlendFactor = toVk(desc.dstColor);
+            blendState.colorBlendOp        = toVk(desc.colorOp);
+            blendState.srcAlphaBlendFactor = toVk(desc.srcAlpha);
+            blendState.dstAlphaBlendFactor = toVk(desc.dstAlpha);
+            blendState.alphaBlendOp        = toVk(desc.alphaOp);
+            blendState.colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+                                        vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
             return *this;
         }
 
@@ -319,8 +462,10 @@ namespace vultra
             const auto numShaderStages = m_ShaderStages.size() + m_BuiltinShaderStages.size();
             assert(numShaderStages > 0);
 
-            std::vector<ShaderModule> shaderModules; // For delayed destruction only.
+            std::vector<ShaderModule> shaderModules; // For delayed reflection ownership only.
             shaderModules.reserve(numShaderStages);
+            std::vector<vk::ShaderModule> shaderModuleHandles;
+            shaderModuleHandles.reserve(numShaderStages);
             std::vector<vk::PipelineShaderStageCreateInfo> shaderStages;
             shaderStages.reserve(numShaderStages);
 
@@ -332,13 +477,25 @@ namespace vultra
                 if (!shaderModule)
                     continue;
 
+                vk::ShaderModule shaderModuleHandle {nullptr};
+                {
+                    vk::ShaderModuleCreateInfo createInfo {};
+                    createInfo.codeSize = sizeof(uint32_t) * shaderModule.getSpirv().size();
+                    createInfo.pCode    = shaderModule.getSpirv().data();
+                    const vk::Device device {reinterpret_cast<VkDevice>(rd.getNativeDeviceHandle())};
+                    VK_CHECK(device.createShaderModule(&createInfo, nullptr, &shaderModuleHandle),
+                             "GraphicsPipeline",
+                             "Failed to create shader module");
+                }
+
                 vk::PipelineShaderStageCreateInfo shaderStageCreateInfo {};
                 shaderStageCreateInfo.stage  = toVk(shaderType);
-                shaderStageCreateInfo.module = vk::ShaderModule {shaderModule};
+                shaderStageCreateInfo.module = shaderModuleHandle;
                 shaderStageCreateInfo.pName  = "main";
 
                 shaderStages.push_back(shaderStageCreateInfo);
                 shaderModules.emplace_back(std::move(shaderModule));
+                shaderModuleHandles.push_back(shaderModuleHandle);
             }
 
             // -- Shader stages:
@@ -352,16 +509,35 @@ namespace vultra
                 if (!shaderModule)
                     continue;
 
+                vk::ShaderModule shaderModuleHandle {nullptr};
+                {
+                    vk::ShaderModuleCreateInfo createInfo {};
+                    createInfo.codeSize = sizeof(uint32_t) * shaderModule.getSpirv().size();
+                    createInfo.pCode    = shaderModule.getSpirv().data();
+                    const vk::Device device {reinterpret_cast<VkDevice>(rd.getNativeDeviceHandle())};
+                    VK_CHECK(device.createShaderModule(&createInfo, nullptr, &shaderModuleHandle),
+                             "GraphicsPipeline",
+                             "Failed to create shader module");
+                }
+
                 vk::PipelineShaderStageCreateInfo shaderStageCreateInfo {};
                 shaderStageCreateInfo.stage  = toVk(shaderType);
-                shaderStageCreateInfo.module = vk::ShaderModule {shaderModule};
+                shaderStageCreateInfo.module = shaderModuleHandle;
                 shaderStageCreateInfo.pName  = shaderStageInfo.entryPointName.data();
 
                 shaderStages.push_back(shaderStageCreateInfo);
                 shaderModules.emplace_back(std::move(shaderModule));
+                shaderModuleHandles.push_back(shaderModuleHandle);
             }
             if (shaderStages.size() != numShaderStages)
+            {
+                for (const auto shaderModuleHandle : shaderModuleHandles)
+                {
+                    const vk::Device device {reinterpret_cast<VkDevice>(rd.getNativeDeviceHandle())};
+                    device.destroyShaderModule(shaderModuleHandle);
+                }
                 return {};
+            }
 
             if (reflection.has_value())
                 m_PipelineLayout = reflectPipelineLayout(rd, *reflection);
@@ -397,24 +573,37 @@ namespace vultra
             graphicsPipelineInfo.pDepthStencilState  = &m_DepthStencilState;
             graphicsPipelineInfo.pColorBlendState    = &colorBlendInfo;
             graphicsPipelineInfo.pDynamicState       = &dynamicStateInfo;
-            graphicsPipelineInfo.layout              = m_PipelineLayout.getHandle();
+            graphicsPipelineInfo.layout =
+                vk::PipelineLayout {reinterpret_cast<VkPipelineLayout>(m_PipelineLayout.getHandle())};
             graphicsPipelineInfo.renderPass          = nullptr;
             graphicsPipelineInfo.subpass = 0, graphicsPipelineInfo.basePipelineHandle = nullptr;
 
-            const auto device = rd.m_Device;
+            const vk::Device device {reinterpret_cast<VkDevice>(rd.getNativeDeviceHandle())};
 
             vk::Pipeline handle {nullptr};
+            const vk::PipelineCache pipelineCache {
+                reinterpret_cast<VkPipelineCache>(rd.getNativePipelineCacheHandle())};
+            const auto result = device.createGraphicsPipelines(pipelineCache, 1, &graphicsPipelineInfo, nullptr, &handle);
+            if (result != vk::Result::eSuccess)
+            {
+                VULTRA_CORE_ERROR("[GraphicsPipeline] Failed to create graphics pipeline: {}",
+                                  vk::to_string(result));
+                throw std::runtime_error("Failed to create graphics pipeline");
+            }
 
-            VK_CHECK(device.createGraphicsPipelines(rd.m_PipelineCache, 1, &graphicsPipelineInfo, nullptr, &handle),
-                     "GraphicsPipeline",
-                     "Failed to create graphics pipeline!");
+            for (const auto shaderModuleHandle : shaderModuleHandles)
+            {
+                device.destroyShaderModule(shaderModuleHandle);
+            }
 
-            return GraphicsPipeline {device, std::move(m_PipelineLayout), handle};
+            return GraphicsPipeline {rd.getNativeDeviceHandle(),
+                                     std::move(m_PipelineLayout),
+                                     reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(handle))};
         }
 
-        GraphicsPipeline::GraphicsPipeline(const vk::Device   device,
-                                           PipelineLayout&&   pipelineLayout,
-                                           const vk::Pipeline pipeline) :
+        GraphicsPipeline::GraphicsPipeline(const std::uintptr_t device,
+                                           PipelineLayout&&       pipelineLayout,
+                                           const std::uintptr_t   pipeline) :
             BasePipeline {device, std::move(pipelineLayout), pipeline}
         {}
     } // namespace rhi

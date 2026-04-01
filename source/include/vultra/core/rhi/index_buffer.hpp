@@ -22,7 +22,7 @@ namespace vultra
 
             [[nodiscard]] IndexType      getIndexType() const;
             [[nodiscard]] Stride         getStride() const;
-            [[nodiscard]] vk::DeviceSize getCapacity() const;
+            [[nodiscard]] uint64_t       getCapacity() const;
 
         private:
             IndexBuffer(Buffer&&, IndexType);

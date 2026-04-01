@@ -58,11 +58,13 @@ namespace vultra
         }
 
         m_LineGraphicsPipeline = builder
-                                     .setInputAssembly({
-                                         {0, {.type = rhi::VertexAttribute::Type::eFloat3, .offset = 0}},
-                                         {1, {.type = rhi::VertexAttribute::Type::eFloat3, .offset = 12}},
-                                         {2, {.type = rhi::VertexAttribute::Type::eFloat, .offset = 24}},
-                                     })
+                                     .setInputAssembly([] {
+                                         rhi::VertexAttributes attrs;
+                                         attrs[0] = rhi::VertexAttribute {0, rhi::VertexAttribute::Type::eFloat3, 0};
+                                         attrs[1] = rhi::VertexAttribute {1, rhi::VertexAttribute::Type::eFloat3, 12};
+                                         attrs[2] = rhi::VertexAttribute {2, rhi::VertexAttribute::Type::eFloat, 24};
+                                         return attrs;
+                                     }())
                                      .addBuiltinShader(rhi::ShaderType::eVertex, debug_draw_vert_spv)
                                      .addBuiltinShader(rhi::ShaderType::eFragment, debug_draw_frag_spv)
                                      .setBlending(0, {.enabled = false})

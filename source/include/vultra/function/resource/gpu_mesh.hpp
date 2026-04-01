@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/index_buffer.hpp"
-#include "vultra/core/rhi/vertex_attributes.hpp"
+#include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
 #include <glm/glm.hpp>
@@ -71,3 +71,4 @@ namespace vultra::resource
         uint32_t meshletCount {0};
     };
 } // namespace vultra::resource
+

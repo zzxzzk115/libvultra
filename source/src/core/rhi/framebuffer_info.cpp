@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/framebuffer_info.hpp"
+#include "vultra/core/rhi/structs/framebuffer_info.hpp"
 #include "vultra/core/rhi/texture.hpp"
 
 #include <algorithm>

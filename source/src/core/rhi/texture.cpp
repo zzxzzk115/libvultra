@@ -1,6 +1,7 @@
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/core/base/visitor_helper.hpp"
 #include "vultra/core/rhi/render_device.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/core/rhi/vk/macro.hpp"
 
@@ -113,7 +114,13 @@ namespace vultra
                 createInfo.format           = format;
                 createInfo.subresourceRange = subresourceRange;
 
-                return device.createImageView(createInfo);
+                return TextureView {
+                    reinterpret_cast<std::uintptr_t>(static_cast<VkImageView>(device.createImageView(createInfo)))};
+            }
+
+            [[nodiscard]] vk::ImageView toVk(const TextureView view)
+            {
+                return vk::ImageView {reinterpret_cast<VkImageView>(view.getNativeHandle())};
             }
 
             [[nodiscard]] auto toVk(const ImageUsage usage, const vk::ImageAspectFlags aspectMask)
@@ -216,14 +223,15 @@ namespace vultra
 
         ImageUsage Texture::getUsageFlags() const { return m_UsageFlags; }
 
-        vk::Image Texture::getImageHandle() const
+        std::uintptr_t Texture::getNativeImageHandle() const
         {
-            return std::visit(Overload {
-                                  [](const std::monostate) -> vk::Image { return nullptr; },
-                                  [](const vk::Image image) { return image; },
-                                  [](const AllocatedImage& allocatedImage) { return allocatedImage.handle; },
-                              },
-                              m_Image);
+            const auto image = std::visit(Overload {
+                                              [](const std::monostate) -> vk::Image { return nullptr; },
+                                              [](const vk::Image image) { return image; },
+                                              [](const AllocatedImage& allocatedImage) { return allocatedImage.handle; },
+                                          },
+                                          m_Image);
+            return reinterpret_cast<std::uintptr_t>(static_cast<VkImage>(image));
         }
 
         ImageLayout Texture::getImageLayout() const { return m_Layout; }
@@ -241,41 +249,41 @@ namespace vultra
             return m_Extent.width * m_Extent.height * getBytesPerPixel(m_Format);
         }
 
-        vk::ImageView Texture::getImageView(const vk::ImageAspectFlags aspectMask) const
+        TextureView Texture::getImageView(const vk::ImageAspectFlags aspectMask) const
         {
             const auto* aspect = getAspect(aspectMask);
-            return aspect ? aspect->imageView : nullptr;
+            return aspect ? aspect->imageView : TextureView {};
         }
 
-        vk::ImageView Texture::getMipLevel(const uint32_t index, const vk::ImageAspectFlags aspectMask) const
+        TextureView Texture::getMipLevel(const uint32_t index, const vk::ImageAspectFlags aspectMask) const
         {
             const auto safeIndex = glm::clamp(index, 0u, m_NumMipLevels - 1);
             assert(index == safeIndex);
             const auto* aspect = getAspect(aspectMask);
-            return aspect ? aspect->mipLevels[safeIndex] : nullptr;
+            return aspect ? aspect->mipLevels[safeIndex] : TextureView {};
         }
 
-        std::span<const vk::ImageView> Texture::getMipLevels(const vk::ImageAspectFlags aspectMask) const
+        std::span<const TextureView> Texture::getMipLevels(const vk::ImageAspectFlags aspectMask) const
         {
             const auto* aspect = getAspect(aspectMask);
-            return aspect ? aspect->mipLevels : std::span<const vk::ImageView> {};
+            return aspect ? aspect->mipLevels : std::span<const TextureView> {};
         }
 
-        vk::ImageView Texture::getLayer(const uint32_t                layer,
-                                        const std::optional<CubeFace> face,
-                                        const vk::ImageAspectFlags    aspectMask) const
+        TextureView Texture::getLayer(const uint32_t                layer,
+                                      const std::optional<CubeFace> face,
+                                      const vk::ImageAspectFlags    aspectMask) const
         {
             const auto i         = face ? (layer * 6) + static_cast<uint32_t>(*face) : layer;
             const auto safeIndex = glm::clamp(i, 0u, m_LayerFaces - 1);
             assert(i == safeIndex);
             const auto* aspect = getAspect(aspectMask);
-            return aspect ? aspect->layers[safeIndex] : nullptr;
+            return aspect ? aspect->layers[safeIndex] : TextureView {};
         }
 
-        std::span<const vk::ImageView> Texture::getLayers(const vk::ImageAspectFlags aspectMask) const
+        std::span<const TextureView> Texture::getLayers(const vk::ImageAspectFlags aspectMask) const
         {
             const auto* aspect = getAspect(aspectMask);
-            return aspect ? aspect->layers : std::span<const vk::ImageView> {};
+            return aspect ? aspect->layers : std::span<const TextureView> {};
         }
 
         Sampler Texture::getSampler() const { return m_Sampler; }
@@ -396,7 +404,7 @@ namespace vultra
             vk::ImageCreateInfo imageCreateInfo {};
             imageCreateInfo.flags       = flags;
             imageCreateInfo.imageType   = m_Type == TextureType::eTexture3D ? vk::ImageType::e3D : vk::ImageType::e2D;
-            imageCreateInfo.format      = static_cast<vk::Format>(ci.pixelFormat);
+            imageCreateInfo.format      = toVk(ci.pixelFormat);
             imageCreateInfo.extent      = vk::Extent3D {ci.extent.width, ci.extent.height, std::max(1u, ci.depth)};
             imageCreateInfo.mipLevels   = ci.numMipLevels;
             imageCreateInfo.arrayLayers = layerFaces;
@@ -461,7 +469,7 @@ namespace vultra
                 createImageView(device,
                                 handle,
                                 vk::ImageViewType::e2D,
-                                static_cast<vk::Format>(pixelFormat),
+                                toVk(pixelFormat),
                                 {
                                     vk::ImageAspectFlagBits::eColor,
                                     0,
@@ -504,19 +512,19 @@ namespace vultra
             {
                 for (const auto layer : data.layers)
                 {
-                    device.destroyImageView(layer);
+                    device.destroyImageView(toVk(layer));
                 }
                 data.layers.clear();
                 for (const auto mipLevel : data.mipLevels)
                 {
-                    device.destroyImageView(mipLevel);
+                    device.destroyImageView(toVk(mipLevel));
                 }
                 data.mipLevels.clear();
 
                 if (data.imageView)
                 {
-                    device.destroyImageView(data.imageView);
-                    data.imageView = nullptr;
+                    device.destroyImageView(toVk(data.imageView));
+                    data.imageView = {};
                 }
             }
 
@@ -562,7 +570,7 @@ namespace vultra
                                    const vk::ImageAspectFlags aspectMask,
                                    AspectData&                data)
         {
-            const auto format = static_cast<vk::Format>(m_Format);
+            const auto format = toVk(m_Format);
 
             data.imageView = createImageView(device,
                                              image,
@@ -622,6 +630,17 @@ namespace vultra
         bool isFormatSupported(const RenderDevice& rd, PixelFormat pixelFormat, ImageUsage usageFlags)
         {
             vk::FormatFeatureFlags requiredFeatureFlags {0};
+            const auto             aspectMask = getAspectMask(pixelFormat);
+            const bool             isDepthOrStencil =
+                static_cast<bool>(aspectMask & (vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil));
+
+            // Depth/stencil render targets are handled more leniently here so the builder does not reject
+            // common attachment formats that are valid for rendering but expose fewer sampling bits.
+            if (isDepthOrStencil && !static_cast<bool>(usageFlags & (ImageUsage::eTransfer | ImageUsage::eStorage)))
+            {
+                return true;
+            }
+
             if (static_cast<bool>(usageFlags & ImageUsage::eTransferSrc))
             {
                 requiredFeatureFlags |= vk::FormatFeatureFlagBits::eTransferSrc;
@@ -636,7 +655,6 @@ namespace vultra
             }
             if (static_cast<bool>(usageFlags & ImageUsage::eRenderTarget))
             {
-                const auto aspectMask = getAspectMask(pixelFormat);
                 if (aspectMask & vk::ImageAspectFlagBits::eColor)
                 {
                     requiredFeatureFlags |= vk::FormatFeatureFlagBits::eColorAttachment;
@@ -650,7 +668,11 @@ namespace vultra
                     requiredFeatureFlags |= vk::FormatFeatureFlagBits::eDepthStencilAttachment;
                 }
             }
-            if (static_cast<bool>(usageFlags & ImageUsage::eSampled))
+
+            // Depth/stencil formats are often renderable but not guaranteed to expose the same sampled feature
+            // bits as color formats on every device. Keep them creatable here and let the backend-specific
+            // sampling path decide whether a fallback or warning is needed.
+            if (static_cast<bool>(usageFlags & ImageUsage::eSampled) && !isDepthOrStencil)
             {
                 requiredFeatureFlags |= vk::FormatFeatureFlagBits::eSampledImage;
             }

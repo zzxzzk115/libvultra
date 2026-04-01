@@ -1,10 +1,8 @@
 #include "vultra/core/rhi/radix_sorter.hpp"
 
-#include "vultra/core/rhi/buffer.hpp"
+#include "vultra/core/rhi/radix_sorter_backend.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
-
-#include <vk_radix_sort.h>
 
 #include <cassert>
 #include <utility>
@@ -15,145 +13,88 @@ namespace vultra
     {
         struct RadixSorter::Impl
         {
-            uint32_t                        maxElementCount {0};
-            VrdxSorter                      sorter {nullptr};
-            RadixSorterStorageRequirements  storageRequirements {};
-            RadixSorterStorageRequirements  keyValueStorageRequirements {};
+            std::unique_ptr<IRadixSorterBackend> backend;
         };
 
         RadixSorter::RadixSorter(std::unique_ptr<Impl>&& impl) : m_Impl(std::move(impl)) {}
 
-        RadixSorter RadixSorter::create(RenderDevice& rd, const uint32_t maxElementCount)
+        RadixSorter RadixSorter::create(std::unique_ptr<IRadixSorterBackend>&& backend)
         {
-            assert(maxElementCount > 0u);
-
-            auto impl                = std::make_unique<Impl>();
-            impl->maxElementCount    = maxElementCount;
-
-            VrdxSorterCreateInfo createInfo {};
-            createInfo.physicalDevice = static_cast<VkPhysicalDevice>(rd.m_PhysicalDevice);
-            createInfo.device         = static_cast<VkDevice>(rd.m_Device);
-            createInfo.pipelineCache  = static_cast<VkPipelineCache>(rd.m_PipelineCache);
-
-            vrdxCreateSorter(&createInfo, &impl->sorter);
-            assert(impl->sorter != nullptr);
-
-            VrdxSorterStorageRequirements storageRequirements {};
-            vrdxGetSorterStorageRequirements(impl->sorter, maxElementCount, &storageRequirements);
-            impl->storageRequirements.size  = storageRequirements.size;
-            impl->storageRequirements.usage = vk::BufferUsageFlags(storageRequirements.usage);
-
-            VrdxSorterStorageRequirements keyValueStorageRequirements {};
-            vrdxGetSorterKeyValueStorageRequirements(impl->sorter, maxElementCount, &keyValueStorageRequirements);
-            impl->keyValueStorageRequirements.size  = keyValueStorageRequirements.size;
-            impl->keyValueStorageRequirements.usage = vk::BufferUsageFlags(keyValueStorageRequirements.usage);
-
+            auto impl = std::make_unique<Impl>();
+            impl->backend = std::move(backend);
             return RadixSorter {std::move(impl)};
         }
 
-        RadixSorter::RadixSorter(RadixSorter&&) noexcept = default;
-
-        RadixSorter::~RadixSorter()
+        RadixSorter RadixSorter::create(RenderDevice& rd, const uint32_t maxElementCount)
         {
-            if (m_Impl && m_Impl->sorter != nullptr)
-            {
-                vrdxDestroySorter(m_Impl->sorter);
-                m_Impl->sorter = nullptr;
-            }
+            assert(maxElementCount > 0u);
+            return rd.createRadixSorter(maxElementCount);
         }
 
+        RadixSorter::RadixSorter(RadixSorter&&) noexcept = default;
+        RadixSorter::~RadixSorter()                      = default;
         RadixSorter& RadixSorter::operator=(RadixSorter&&) noexcept = default;
 
-        RadixSorter::operator bool() const { return m_Impl && m_Impl->sorter != nullptr; }
+        RadixSorter::operator bool() const
+        {
+            return m_Impl && m_Impl->backend && static_cast<bool>(*m_Impl->backend);
+        }
 
-        uint32_t RadixSorter::getMaxElementCount() const { return m_Impl ? m_Impl->maxElementCount : 0u; }
+        uint32_t RadixSorter::getMaxElementCount() const
+        {
+            return m_Impl && m_Impl->backend ? m_Impl->backend->getMaxElementCount() : 0u;
+        }
 
         RadixSorterStorageRequirements RadixSorter::getStorageRequirements() const
         {
-            return m_Impl ? m_Impl->storageRequirements : RadixSorterStorageRequirements {};
+            return m_Impl && m_Impl->backend ? m_Impl->backend->getStorageRequirements()
+                                             : RadixSorterStorageRequirements {};
         }
 
         RadixSorterStorageRequirements RadixSorter::getKeyValueStorageRequirements() const
         {
-            return m_Impl ? m_Impl->keyValueStorageRequirements : RadixSorterStorageRequirements {};
+            return m_Impl && m_Impl->backend ? m_Impl->backend->getKeyValueStorageRequirements()
+                                             : RadixSorterStorageRequirements {};
         }
 
         void RadixSorter::sortKeys(CommandBuffer& cb,
                                    const uint32_t elementCount,
                                    const Buffer&  keys,
-                                   const vk::DeviceSize keysOffset,
+                                   const uint64_t keysOffset,
                                    const Buffer&  storage,
-                                   const vk::DeviceSize storageOffset) const
+                                   const uint64_t storageOffset) const
         {
             assert(*this);
-            if (elementCount <= 1u)
-                return;
-
-            vrdxCmdSort(static_cast<VkCommandBuffer>(cb.getHandle()),
-                        m_Impl->sorter,
-                        elementCount,
-                        static_cast<VkBuffer>(keys.getHandle()),
-                        keysOffset,
-                        static_cast<VkBuffer>(storage.getHandle()),
-                        storageOffset,
-                        VK_NULL_HANDLE,
-                        0u);
+            m_Impl->backend->sortKeys(cb, elementCount, keys, keysOffset, storage, storageOffset);
         }
 
         void RadixSorter::sortKeyValues(CommandBuffer& cb,
                                         const uint32_t elementCount,
                                         const Buffer&  keys,
-                                        const vk::DeviceSize keysOffset,
+                                        const uint64_t keysOffset,
                                         const Buffer&  values,
-                                        const vk::DeviceSize valuesOffset,
+                                        const uint64_t valuesOffset,
                                         const Buffer&  storage,
-                                        const vk::DeviceSize storageOffset) const
+                                        const uint64_t storageOffset) const
         {
             assert(*this);
-            if (elementCount <= 1u)
-                return;
-
-            vrdxCmdSortKeyValue(static_cast<VkCommandBuffer>(cb.getHandle()),
-                                m_Impl->sorter,
-                                elementCount,
-                                static_cast<VkBuffer>(keys.getHandle()),
-                                keysOffset,
-                                static_cast<VkBuffer>(values.getHandle()),
-                                valuesOffset,
-                                static_cast<VkBuffer>(storage.getHandle()),
-                                storageOffset,
-                                VK_NULL_HANDLE,
-                                0u);
+            m_Impl->backend->sortKeyValues(cb, elementCount, keys, keysOffset, values, valuesOffset, storage, storageOffset);
         }
 
         void RadixSorter::sortKeyValuesIndirect(CommandBuffer& cb,
                                                 const uint32_t maxElementCount,
                                                 const Buffer&  indirect,
-                                                const vk::DeviceSize indirectOffset,
+                                                const uint64_t indirectOffset,
                                                 const Buffer&  keys,
-                                                const vk::DeviceSize keysOffset,
+                                                const uint64_t keysOffset,
                                                 const Buffer&  values,
-                                                const vk::DeviceSize valuesOffset,
+                                                const uint64_t valuesOffset,
                                                 const Buffer&  storage,
-                                                const vk::DeviceSize storageOffset) const
+                                                const uint64_t storageOffset) const
         {
             assert(*this);
-            if (maxElementCount <= 1u)
-                return;
-
-            vrdxCmdSortKeyValueIndirect(static_cast<VkCommandBuffer>(cb.getHandle()),
-                                        m_Impl->sorter,
-                                        maxElementCount,
-                                        static_cast<VkBuffer>(indirect.getHandle()),
-                                        indirectOffset,
-                                        static_cast<VkBuffer>(keys.getHandle()),
-                                        keysOffset,
-                                        static_cast<VkBuffer>(values.getHandle()),
-                                        valuesOffset,
-                                        static_cast<VkBuffer>(storage.getHandle()),
-                                        storageOffset,
-                                        VK_NULL_HANDLE,
-                                        0u);
+            m_Impl->backend->sortKeyValuesIndirect(
+                cb, maxElementCount, indirect, indirectOffset, keys, keysOffset, values, valuesOffset, storage, storageOffset);
         }
     } // namespace rhi
 } // namespace vultra

@@ -1,7 +1,8 @@
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
-#include "vultra/core/rhi/render_backend_api.hpp"
+#include "vultra/core/rhi/structs/render_backend_api.hpp"
+#include "vultra/core/rhi/vk/vulkan_imgui_backend.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
@@ -80,10 +81,10 @@ namespace vultra
         {
             case rhi::RenderBackendApi::eAuto:
             case rhi::RenderBackendApi::eVulkan:
-                m_RenderDevice =
-                    std::make_unique<rhi::VulkanRenderDeviceBackend>(ctx().config.render.renderDeviceFeatureFlag,
-                                                                     ctx().config.window.title,
-                                                                     window.getRequiredVulkanInstanceExtensions());
+                m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
+                                                                      ctx().config.window.title,
+                                                                      window.getRequiredVulkanInstanceExtensions());
+                m_ImGuiBackend = std::make_unique<rhi::VulkanImGuiBackend>(*m_RenderDevice);
                 break;
 
             case rhi::RenderBackendApi::eWebGPU:
@@ -143,6 +144,7 @@ namespace vultra
         m_XRShouldRender = false;
 
         m_XRBackend.reset();
+        m_ImGuiBackend.reset();
         m_FrameController.reset();
         m_Swapchain = {};
         m_RenderDevice.reset();
@@ -153,6 +155,8 @@ namespace vultra
     rhi::Swapchain& RenderBackendSystem::swapchain() { return m_Swapchain; }
 
     rhi::FrameController& RenderBackendSystem::frameController() { return *m_FrameController; }
+
+    rhi::IImGuiBackend& RenderBackendSystem::imguiBackend() { return *m_ImGuiBackend; }
 
     bool RenderBackendSystem::beginFrame()
     {
@@ -277,3 +281,4 @@ namespace vultra
 
     void RenderBackendSystem::present() { m_FrameController->present(); }
 } // namespace vultra
+

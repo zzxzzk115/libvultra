@@ -1,120 +1,71 @@
 #include "vultra/core/rhi/buffer.hpp"
-#include "vultra/core/rhi/vk/macro.hpp"
+#include "vultra/core/rhi/buffer_backend.hpp"
 
-namespace vultra
+namespace vultra::rhi
 {
-    namespace rhi
+    Buffer::Buffer(Buffer&& other) noexcept : m_Impl(std::move(other.m_Impl)) {}
+
+    Buffer::~Buffer() { destroy(); }
+
+    Buffer& Buffer::operator=(Buffer&& rhs) noexcept
     {
-        Buffer::Buffer(Buffer&& other) noexcept :
-            m_MemoryAllocator(other.m_MemoryAllocator), m_Allocation(other.m_Allocation), m_Handle(other.m_Handle),
-            m_LastScope(other.m_LastScope), m_Size(other.m_Size), m_MappedMemory(other.m_MappedMemory)
+        if (this != &rhs)
         {
-            other.m_MemoryAllocator = nullptr;
-            other.m_Allocation      = nullptr;
-            other.m_Handle          = nullptr;
-            other.m_LastScope       = {};
-            other.m_Size            = 0;
-            other.m_MappedMemory    = nullptr;
+            destroy();
+            m_Impl = std::move(rhs.m_Impl);
         }
+        return *this;
+    }
 
-        Buffer::~Buffer() { destroy(); }
+    Buffer::operator bool() const { return m_Impl && m_Impl->isValid(); }
 
-        Buffer& Buffer::operator=(Buffer&& rhs) noexcept
-        {
-            if (this != &rhs)
-            {
-                destroy();
+    std::uintptr_t Buffer::getHandle() const
+    {
+        assert(m_Impl);
+        return m_Impl->getHandle();
+    }
 
-                std::swap(m_MemoryAllocator, rhs.m_MemoryAllocator);
-                std::swap(m_Allocation, rhs.m_Allocation);
-                std::swap(m_Handle, rhs.m_Handle);
-                std::swap(m_LastScope, rhs.m_LastScope);
-                std::swap(m_Size, rhs.m_Size);
-                std::swap(m_MappedMemory, rhs.m_MappedMemory);
-            }
+    std::uintptr_t Buffer::getNativeHandle() const { return getHandle(); }
 
-            return *this;
-        }
+    uint64_t Buffer::getSize() const
+    {
+        assert(m_Impl);
+        return m_Impl->getSize();
+    }
 
-        Buffer::operator bool() const { return m_Handle != nullptr; }
+    void* Buffer::map()
+    {
+        assert(m_Impl);
+        return m_Impl->map();
+    }
 
-        vk::Buffer Buffer::getHandle() const { return m_Handle; }
+    Buffer& Buffer::unmap()
+    {
+        assert(m_Impl);
+        m_Impl->unmap();
+        return *this;
+    }
 
-        vk::DeviceSize Buffer::getSize() const { return m_Size; }
+    Buffer& Buffer::flush(const uint64_t offset, const uint64_t size)
+    {
+        assert(m_Impl);
+        m_Impl->flush(offset, size);
+        return *this;
+    }
 
-        void* Buffer::map()
-        {
-            assert(m_Handle);
+    BarrierScope Buffer::getBarrierScope() const
+    {
+        assert(m_Impl);
+        return m_Impl->getLastScope();
+    }
 
-            if (!m_MappedMemory)
-            {
-                VK_CHECK(m_MemoryAllocator.mapMemory(m_Allocation, &m_MappedMemory), "Buffer", "Failed to map memory");
-            }
+    void Buffer::setBarrierScope(BarrierScope scope)
+    {
+        assert(m_Impl);
+        m_Impl->setLastScope(scope);
+    }
 
-            return m_MappedMemory;
-        }
+    Buffer::Buffer(std::unique_ptr<IBufferBackend> impl) : m_Impl(std::move(impl)) {}
 
-        Buffer& Buffer::unmap()
-        {
-            assert(m_Handle);
-
-            if (m_MappedMemory)
-            {
-                m_MemoryAllocator.unmapMemory(m_Allocation);
-                m_MappedMemory = nullptr;
-            }
-
-            return *this;
-        }
-
-        Buffer& Buffer::flush(const vk::DeviceSize offset, const vk::DeviceSize size)
-        {
-            assert(m_Handle && m_MappedMemory);
-
-            VK_CHECK(m_MemoryAllocator.flushAllocation(m_Allocation, offset, size),
-                     "[Buffer]",
-                     "Failed to flush allocation");
-            return *this;
-        }
-
-        Buffer::Buffer(const vma::Allocator             memoryAllocator,
-                       const vk::DeviceSize             size,
-                       const vk::BufferUsageFlags       bufferUsage,
-                       const vma::AllocationCreateFlags allocationFlags,
-                       const vma::MemoryUsage           memoryUsage) : m_MemoryAllocator(memoryAllocator)
-        {
-            vk::BufferCreateInfo bufferCreateInfo {};
-            bufferCreateInfo.size        = size;
-            bufferCreateInfo.usage       = bufferUsage;
-            bufferCreateInfo.sharingMode = vk::SharingMode::eExclusive;
-
-            vma::AllocationCreateInfo memoryAllocationCreateInfo {};
-            memoryAllocationCreateInfo.usage = memoryUsage;
-            memoryAllocationCreateInfo.flags = allocationFlags;
-
-            vma::AllocationInfo allocationInfo {};
-            VK_CHECK(m_MemoryAllocator.createBuffer(
-                         &bufferCreateInfo, &memoryAllocationCreateInfo, &m_Handle, &m_Allocation, &allocationInfo),
-                     "Buffer",
-                     "Failed to create buffer");
-
-            m_Size = allocationInfo.size;
-        }
-
-        void Buffer::destroy() noexcept
-        {
-            if (m_Handle)
-            {
-                unmap();
-
-                m_MemoryAllocator.destroyBuffer(m_Handle, m_Allocation);
-                m_MemoryAllocator = nullptr;
-                m_Allocation      = nullptr;
-                m_Handle          = nullptr;
-                m_Size            = 0;
-                m_MappedMemory    = nullptr;
-                m_LastScope       = {};
-            }
-        }
-    } // namespace rhi
-} // namespace vultra
+    void Buffer::destroy() noexcept { m_Impl.reset(); }
+} // namespace vultra::rhi

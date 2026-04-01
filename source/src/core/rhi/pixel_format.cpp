@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/pixel_format.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
 
 #include <magic_enum/magic_enum.hpp>
 
@@ -131,6 +131,241 @@ namespace vultra
 
                 default:
                     return vk::ImageAspectFlagBits::eColor;
+            }
+        }
+
+        vk::Format toVk(const PixelFormat pixelFormat)
+        {
+            switch (pixelFormat)
+            {
+                using enum PixelFormat;
+
+                case eUndefined:
+                    return vk::Format::eUndefined;
+                case eR8_UNorm:
+                    return vk::Format::eR8Unorm;
+                case eR8_SNorm:
+                    return vk::Format::eR8Snorm;
+                case eR8UI:
+                    return vk::Format::eR8Uint;
+                case eR8I:
+                    return vk::Format::eR8Sint;
+                case eRG8_UNorm:
+                    return vk::Format::eR8G8Unorm;
+                case eRG8_SNorm:
+                    return vk::Format::eR8G8Snorm;
+                case eRG8UI:
+                    return vk::Format::eR8G8Uint;
+                case eRG8I:
+                    return vk::Format::eR8G8Sint;
+                case eRGB8_UNorm:
+                    return vk::Format::eR8G8B8Unorm;
+                case eRGBA8_UNorm:
+                    return vk::Format::eR8G8B8A8Unorm;
+                case eRGBA8_sRGB:
+                    return vk::Format::eR8G8B8A8Srgb;
+                case eBGRA8_UNorm:
+                    return vk::Format::eB8G8R8A8Unorm;
+                case eBGRA8_sRGB:
+                    return vk::Format::eB8G8R8A8Srgb;
+                case eRGBA8UI:
+                    return vk::Format::eR8G8B8A8Uint;
+                case eRGBA8I:
+                    return vk::Format::eR8G8B8A8Sint;
+                case eBC1_UNorm:
+                    return vk::Format::eBc1RgbaUnormBlock;
+                case eBC2_UNorm:
+                    return vk::Format::eBc2UnormBlock;
+                case eBC3_UNorm:
+                    return vk::Format::eBc3UnormBlock;
+                case eBC4_UNorm:
+                    return vk::Format::eBc4UnormBlock;
+                case eBC5_UNorm:
+                    return vk::Format::eBc5UnormBlock;
+                case eBC6H_RGB16F:
+                    return vk::Format::eBc6HSfloatBlock;
+                case eBC7_RGBA8_UNorm:
+                    return vk::Format::eBc7UnormBlock;
+                case eR16_UNorm:
+                    return vk::Format::eR16Unorm;
+                case eR16_SNorm:
+                    return vk::Format::eR16Snorm;
+                case eR16F:
+                    return vk::Format::eR16Sfloat;
+                case eR16UI:
+                    return vk::Format::eR16Uint;
+                case eR16I:
+                    return vk::Format::eR16Sint;
+                case eRG16_UNorm:
+                    return vk::Format::eR16G16Unorm;
+                case eRG16_SNorm:
+                    return vk::Format::eR16G16Snorm;
+                case eRG16F:
+                    return vk::Format::eR16G16Sfloat;
+                case eRG16UI:
+                    return vk::Format::eR16G16Uint;
+                case eRG16I:
+                    return vk::Format::eR16G16Sint;
+                case eRGB16F:
+                    return vk::Format::eR16G16B16Sfloat;
+                case eRGBA16_UNorm:
+                    return vk::Format::eR16G16B16A16Unorm;
+                case eRGBA16_SNorm:
+                    return vk::Format::eR16G16B16A16Snorm;
+                case eRGBA16F:
+                    return vk::Format::eR16G16B16A16Sfloat;
+                case eRGBA16UI:
+                    return vk::Format::eR16G16B16A16Uint;
+                case eRGBA16I:
+                    return vk::Format::eR16G16B16A16Sint;
+                case eR32F:
+                    return vk::Format::eR32Sfloat;
+                case eR32UI:
+                    return vk::Format::eR32Uint;
+                case eR32I:
+                    return vk::Format::eR32Sint;
+                case eRG32F:
+                    return vk::Format::eR32G32Sfloat;
+                case eRG32UI:
+                    return vk::Format::eR32G32Uint;
+                case eRG32I:
+                    return vk::Format::eR32G32Sint;
+                case eRGBA32F:
+                    return vk::Format::eR32G32B32A32Sfloat;
+                case eRGBA32UI:
+                    return vk::Format::eR32G32B32A32Uint;
+                case eRGBA32I:
+                    return vk::Format::eR32G32B32A32Sint;
+                case eDepth16:
+                    return vk::Format::eD16Unorm;
+                case eDepth32F:
+                    return vk::Format::eD32Sfloat;
+                case eStencil8:
+                    return vk::Format::eS8Uint;
+                case eDepth16_Stencil8:
+                    return vk::Format::eD16UnormS8Uint;
+                case eDepth24_Stencil8:
+                    return vk::Format::eD24UnormS8Uint;
+                case eDepth32F_Stencil8:
+                    return vk::Format::eD32SfloatS8Uint;
+            }
+            return vk::Format::eUndefined;
+        }
+
+        PixelFormat fromVk(const vk::Format format)
+        {
+            switch (format)
+            {
+                case vk::Format::eUndefined:
+                    return PixelFormat::eUndefined;
+                case vk::Format::eR8Unorm:
+                    return PixelFormat::eR8_UNorm;
+                case vk::Format::eR8Snorm:
+                    return PixelFormat::eR8_SNorm;
+                case vk::Format::eR8Uint:
+                    return PixelFormat::eR8UI;
+                case vk::Format::eR8Sint:
+                    return PixelFormat::eR8I;
+                case vk::Format::eR8G8Unorm:
+                    return PixelFormat::eRG8_UNorm;
+                case vk::Format::eR8G8Snorm:
+                    return PixelFormat::eRG8_SNorm;
+                case vk::Format::eR8G8Uint:
+                    return PixelFormat::eRG8UI;
+                case vk::Format::eR8G8Sint:
+                    return PixelFormat::eRG8I;
+                case vk::Format::eR8G8B8Unorm:
+                    return PixelFormat::eRGB8_UNorm;
+                case vk::Format::eR8G8B8A8Unorm:
+                    return PixelFormat::eRGBA8_UNorm;
+                case vk::Format::eR8G8B8A8Srgb:
+                    return PixelFormat::eRGBA8_sRGB;
+                case vk::Format::eB8G8R8A8Unorm:
+                    return PixelFormat::eBGRA8_UNorm;
+                case vk::Format::eB8G8R8A8Srgb:
+                    return PixelFormat::eBGRA8_sRGB;
+                case vk::Format::eR8G8B8A8Uint:
+                    return PixelFormat::eRGBA8UI;
+                case vk::Format::eR8G8B8A8Sint:
+                    return PixelFormat::eRGBA8I;
+                case vk::Format::eBc1RgbaUnormBlock:
+                    return PixelFormat::eBC1_UNorm;
+                case vk::Format::eBc2UnormBlock:
+                    return PixelFormat::eBC2_UNorm;
+                case vk::Format::eBc3UnormBlock:
+                    return PixelFormat::eBC3_UNorm;
+                case vk::Format::eBc4UnormBlock:
+                    return PixelFormat::eBC4_UNorm;
+                case vk::Format::eBc5UnormBlock:
+                    return PixelFormat::eBC5_UNorm;
+                case vk::Format::eBc6HSfloatBlock:
+                    return PixelFormat::eBC6H_RGB16F;
+                case vk::Format::eBc7UnormBlock:
+                    return PixelFormat::eBC7_RGBA8_UNorm;
+                case vk::Format::eR16Unorm:
+                    return PixelFormat::eR16_UNorm;
+                case vk::Format::eR16Snorm:
+                    return PixelFormat::eR16_SNorm;
+                case vk::Format::eR16Sfloat:
+                    return PixelFormat::eR16F;
+                case vk::Format::eR16Uint:
+                    return PixelFormat::eR16UI;
+                case vk::Format::eR16Sint:
+                    return PixelFormat::eR16I;
+                case vk::Format::eR16G16Unorm:
+                    return PixelFormat::eRG16_UNorm;
+                case vk::Format::eR16G16Snorm:
+                    return PixelFormat::eRG16_SNorm;
+                case vk::Format::eR16G16Sfloat:
+                    return PixelFormat::eRG16F;
+                case vk::Format::eR16G16Uint:
+                    return PixelFormat::eRG16UI;
+                case vk::Format::eR16G16Sint:
+                    return PixelFormat::eRG16I;
+                case vk::Format::eR16G16B16Sfloat:
+                    return PixelFormat::eRGB16F;
+                case vk::Format::eR16G16B16A16Unorm:
+                    return PixelFormat::eRGBA16_UNorm;
+                case vk::Format::eR16G16B16A16Snorm:
+                    return PixelFormat::eRGBA16_SNorm;
+                case vk::Format::eR16G16B16A16Sfloat:
+                    return PixelFormat::eRGBA16F;
+                case vk::Format::eR16G16B16A16Uint:
+                    return PixelFormat::eRGBA16UI;
+                case vk::Format::eR16G16B16A16Sint:
+                    return PixelFormat::eRGBA16I;
+                case vk::Format::eR32Sfloat:
+                    return PixelFormat::eR32F;
+                case vk::Format::eR32Uint:
+                    return PixelFormat::eR32UI;
+                case vk::Format::eR32Sint:
+                    return PixelFormat::eR32I;
+                case vk::Format::eR32G32Sfloat:
+                    return PixelFormat::eRG32F;
+                case vk::Format::eR32G32Uint:
+                    return PixelFormat::eRG32UI;
+                case vk::Format::eR32G32Sint:
+                    return PixelFormat::eRG32I;
+                case vk::Format::eR32G32B32A32Sfloat:
+                    return PixelFormat::eRGBA32F;
+                case vk::Format::eR32G32B32A32Uint:
+                    return PixelFormat::eRGBA32UI;
+                case vk::Format::eR32G32B32A32Sint:
+                    return PixelFormat::eRGBA32I;
+                case vk::Format::eD16Unorm:
+                    return PixelFormat::eDepth16;
+                case vk::Format::eD32Sfloat:
+                    return PixelFormat::eDepth32F;
+                case vk::Format::eS8Uint:
+                    return PixelFormat::eStencil8;
+                case vk::Format::eD16UnormS8Uint:
+                    return PixelFormat::eDepth16_Stencil8;
+                case vk::Format::eD24UnormS8Uint:
+                    return PixelFormat::eDepth24_Stencil8;
+                case vk::Format::eD32SfloatS8Uint:
+                    return PixelFormat::eDepth32F_Stencil8;
+                default:
+                    return PixelFormat::eUndefined;
             }
         }
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/buffer.hpp"
-#include "vultra/core/rhi/draw_indirect_type.hpp"
+#include "vultra/core/rhi/structs/draw_indirect_type.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -35,7 +35,7 @@ namespace vultra
                 BufferType            type;
                 uint32_t              stride {sizeof(std::byte)};
                 uint64_t              capacity;
-                rhi::BufferUsageFlags extraUsage {0};
+                rhi::BufferUsage extraUsage {rhi::BufferUsage::eNone};
                 rhi::DrawIndirectType drawIndirectType {rhi::DrawIndirectType::eNonIndexed};
 
                 [[nodiscard]] constexpr auto dataSize() const { return stride * capacity; }
@@ -53,3 +53,4 @@ namespace vultra
         };
     } // namespace framegraph
 } // namespace vultra
+

@@ -1,7 +1,7 @@
 #include "vultra/function/asset/asset_system.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/vertex_attributes.hpp"
+#include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
@@ -86,8 +86,8 @@ namespace vultra
 
             uint32_t offset = 0;
 
-            auto add = [&](LocationIndex loc, VertexAttribute::Type type) {
-                attrs[loc] = {type, offset};
+            auto add = [&](uint32_t loc, VertexAttribute::Type type) {
+                attrs[loc] = VertexAttribute {loc, type, offset};
 
                 offset += getSize(type);
             };
@@ -1134,3 +1134,4 @@ namespace vultra
             std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
     }
 } // namespace vultra
+

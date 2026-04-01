@@ -1,18 +1,19 @@
 #pragma once
 
 #include "vultra/core/rhi/pipeline_layout.hpp"
+#include "vultra/core/rhi/structs/shader_stage_info.hpp"
 
-#include <unordered_map>
+#include <cstdint>
 
 namespace vultra
 {
     namespace rhi
     {
-        struct ShaderStageInfo
+        enum class PipelineBindPoint
         {
-            std::string                                                 code;
-            std::string                                                 entryPointName {"main"};
-            std::unordered_map<std::string, std::optional<std::string>> defines;
+            eGraphics,
+            eCompute,
+            eRayTracing,
         };
 
         class BasePipeline
@@ -28,22 +29,22 @@ namespace vultra
 
             [[nodiscard]] explicit operator bool() const;
 
-            [[nodiscard]] vk::Pipeline                            getHandle() const;
-            [[nodiscard]] constexpr virtual vk::PipelineBindPoint getBindPoint() const = 0;
+            [[nodiscard]] std::uintptr_t getHandle() const;
+            [[nodiscard]] constexpr virtual PipelineBindPoint getBindPoint() const = 0;
 
             [[nodiscard]] const PipelineLayout&   getLayout() const;
-            [[nodiscard]] vk::DescriptorSetLayout getDescriptorSetLayout(const DescriptorSetIndex) const;
+            [[nodiscard]] std::uintptr_t getDescriptorSetLayout(const DescriptorSetIndex) const;
 
         protected:
-            BasePipeline(const vk::Device, PipelineLayout&&, const vk::Pipeline);
+            BasePipeline(std::uintptr_t, PipelineLayout&&, std::uintptr_t);
 
         private:
             void destroy() noexcept;
 
         private:
-            vk::Device     m_Device {nullptr};
+            std::uintptr_t m_Device {0};
             PipelineLayout m_Layout;
-            vk::Pipeline   m_Handle {nullptr};
+            std::uintptr_t m_Handle {0};
         };
     } // namespace rhi
 } // namespace vultra

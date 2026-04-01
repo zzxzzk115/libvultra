@@ -1,12 +1,11 @@
 #pragma once
 
-#include "vultra/core/rhi/render_device.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_backend.hpp"
 
 namespace vultra
 {
     namespace rhi
     {
-        // TODO: Split the Vulkan implementation out of RenderDevice into this backend type.
-        using VulkanRenderDeviceBackend = RenderDevice;
+        using VulkanRenderDevice = VulkanRenderDeviceBackend;
     } // namespace rhi
 } // namespace vultra

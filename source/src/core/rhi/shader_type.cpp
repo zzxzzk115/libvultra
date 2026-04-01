@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/shader_type.hpp"
+#include "vultra/core/rhi/structs/shader_type.hpp"
 
 #include <magic_enum/magic_enum.hpp>
 
@@ -41,7 +41,10 @@ namespace vultra
 
         uint8_t countStages(const ShaderStages flags)
         {
-            return static_cast<uint8_t>(std::bitset<sizeof(ShaderStages) * 8> {std::to_underlying(flags)}.count());
+            return static_cast<uint8_t>(
+                std::bitset<sizeof(ShaderStages) * 8> {static_cast<unsigned long long>(std::to_underlying(flags))}
+                    .count());
         }
     } // namespace rhi
 } // namespace vultra
+

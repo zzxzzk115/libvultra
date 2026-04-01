@@ -48,14 +48,14 @@ namespace vultra
                         .image     = dst,
                         .newLayout = ImageLayout::eReadOnly,
                         .subresourceRange =
-                            VkImageSubresourceRange {
-                                .levelCount = VK_REMAINING_MIP_LEVELS,
-                                .layerCount = VK_REMAINING_ARRAY_LAYERS,
+                            ImageSubresourceRange {
+                                .levelCount = UINT32_MAX,
+                                .layerCount = UINT32_MAX,
                             },
                     },
                     {
-                        .stageMask  = PipelineStages::eFragmentShader | PipelineStages::eComputeShader,
-                        .accessMask = Access::eShaderRead,
+                        .dstStage  = PipelineStages::eFragmentShader | PipelineStages::eComputeShader,
+                        .dstAccess = Access::eShaderRead,
                     });
             });
         }

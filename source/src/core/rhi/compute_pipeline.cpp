@@ -9,10 +9,10 @@ namespace vultra
     {
         glm::uvec3 ComputePipeline::getWorkGroupSize() const { return m_LocalSize; }
 
-        ComputePipeline::ComputePipeline(const vk::Device   device,
-                                         PipelineLayout&&   pipelineLayout,
-                                         const glm::uvec3   localSize,
-                                         const vk::Pipeline pipeline) :
+        ComputePipeline::ComputePipeline(const std::uintptr_t device,
+                                         PipelineLayout&&     pipelineLayout,
+                                         const glm::uvec3     localSize,
+                                         const std::uintptr_t pipeline) :
             BasePipeline(device, std::move(pipelineLayout), pipeline), m_LocalSize(localSize)
         {}
 

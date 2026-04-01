@@ -55,7 +55,7 @@ namespace vultra
 
             return {
                 m_FrameIndex,
-                m_Swapchain->getCurrentBuffer(),
+                m_Swapchain->getCurrentBuffer().getNativeImageHandle(),
             };
         }
 
@@ -84,7 +84,7 @@ namespace vultra
             auto& [cb, imageAcquired, _] = m_Frames[m_FrameIndex];
             cb.reset();
 
-            m_ImageAcquired         = m_Swapchain->acquireNextImage(imageAcquired);
+            m_ImageAcquired = m_Swapchain->acquireNextImage(reinterpret_cast<std::uintptr_t>(static_cast<VkSemaphore>(imageAcquired)));
             m_ImageAcquireAttempted = true;
             return m_ImageAcquired;
         }
@@ -99,11 +99,11 @@ namespace vultra
                 {
                     .image            = m_Swapchain->getCurrentBuffer(),
                     .newLayout        = ImageLayout::ePresent,
-                    .subresourceRange = VkImageSubresourceRange {.levelCount = 1, .layerCount = 1},
+                    .subresourceRange = ImageSubresourceRange {.levelCount = 1u, .layerCount = 1u},
                 },
                 {
-                    .stageMask  = PipelineStages::eBottom,
-                    .accessMask = Access::eNone,
+                    .dstStage  = PipelineStages::eBottom,
+                    .dstAccess = Access::eNone,
                 });
 
             m_RenderDevice->execute(cb,

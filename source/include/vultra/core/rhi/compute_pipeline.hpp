@@ -23,12 +23,12 @@ namespace vultra
             ComputePipeline& operator=(const ComputePipeline&)     = delete;
             ComputePipeline& operator=(ComputePipeline&&) noexcept = default;
 
-            constexpr vk::PipelineBindPoint getBindPoint() const override { return vk::PipelineBindPoint::eCompute; }
+            constexpr PipelineBindPoint getBindPoint() const override { return PipelineBindPoint::eCompute; }
 
             [[nodiscard]] glm::uvec3 getWorkGroupSize() const;
 
         private:
-            ComputePipeline(const vk::Device, PipelineLayout&&, const glm::uvec3 localSize, const vk::Pipeline);
+            ComputePipeline(std::uintptr_t, PipelineLayout&&, const glm::uvec3 localSize, std::uintptr_t);
 
         private:
             glm::uvec3 m_LocalSize {};

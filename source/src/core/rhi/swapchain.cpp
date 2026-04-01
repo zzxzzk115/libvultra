@@ -10,6 +10,31 @@ namespace vultra
 {
     namespace rhi
     {
+        struct VulkanSwapchainBackend
+        {
+            os::Window*            m_Window {nullptr};
+            vk::Instance           m_Instance {nullptr};
+            vk::PhysicalDevice     m_PhysicalDevice {nullptr};
+            vk::Device             m_Device {nullptr};
+            vk::SurfaceKHR         m_Surface {nullptr};
+            vk::SwapchainKHR       m_Handle {nullptr};
+            Swapchain::Format      m_Format {Swapchain::Format::eLinear};
+            VerticalSync           m_VerticalSync {VerticalSync::eDisabled};
+            std::vector<Texture>   m_Buffers;
+            uint32_t               m_CurrentImageIndex {0};
+        };
+
+#define m_Window (m_Backend->m_Window)
+#define m_Instance (m_Backend->m_Instance)
+#define m_PhysicalDevice (m_Backend->m_PhysicalDevice)
+#define m_Device (m_Backend->m_Device)
+#define m_Surface (m_Backend->m_Surface)
+#define m_Handle (m_Backend->m_Handle)
+#define m_Format (m_Backend->m_Format)
+#define m_VerticalSync (m_Backend->m_VerticalSync)
+#define m_Buffers (m_Backend->m_Buffers)
+#define m_CurrentImageIndex (m_Backend->m_CurrentImageIndex)
+
         namespace
         {
             struct SurfaceInfo
@@ -121,20 +146,7 @@ namespace vultra
             }
         } // namespace
 
-        Swapchain::Swapchain(Swapchain&& other) noexcept :
-            m_Window(other.m_Window), m_Instance(other.m_Instance), m_PhysicalDevice(other.m_PhysicalDevice),
-            m_Device(other.m_Device), m_Surface(other.m_Surface), m_Handle(other.m_Handle), m_Format(other.m_Format),
-            m_VerticalSync(other.m_VerticalSync), m_Buffers(std::move(other.m_Buffers)),
-            m_CurrentImageIndex(other.m_CurrentImageIndex)
-        {
-            other.m_Window            = nullptr;
-            other.m_Instance          = nullptr;
-            other.m_PhysicalDevice    = nullptr;
-            other.m_Device            = nullptr;
-            other.m_Surface           = nullptr;
-            other.m_Handle            = nullptr;
-            other.m_CurrentImageIndex = 0;
-        }
+        Swapchain::Swapchain(Swapchain&& other) noexcept : m_Backend(std::move(other.m_Backend)) {}
 
         Swapchain::~Swapchain() { destroy(); }
 
@@ -143,56 +155,56 @@ namespace vultra
             if (this != &rhs)
             {
                 destroy();
-
-                std::swap(m_Window, rhs.m_Window);
-                std::swap(m_Instance, rhs.m_Instance);
-                std::swap(m_PhysicalDevice, rhs.m_PhysicalDevice);
-                std::swap(m_Device, rhs.m_Device);
-                std::swap(m_Surface, rhs.m_Surface);
-                std::swap(m_Handle, rhs.m_Handle);
-                std::swap(m_Format, rhs.m_Format);
-                std::swap(m_VerticalSync, rhs.m_VerticalSync);
-                std::swap(m_Buffers, rhs.m_Buffers);
-                std::swap(m_CurrentImageIndex, rhs.m_CurrentImageIndex);
+                std::swap(m_Backend, rhs.m_Backend);
             }
 
             return *this;
         }
 
-        Swapchain::operator bool() const { return m_Handle != nullptr; }
+        Swapchain::operator bool() const { return m_Backend && m_Handle != nullptr; }
 
-        Swapchain::Format Swapchain::getFormat() const { return m_Format; }
+        Swapchain::Format Swapchain::getFormat() const { return m_Backend ? m_Format : Format::eLinear; }
 
         PixelFormat Swapchain::getPixelFormat() const
         {
-            return m_Handle ? m_Buffers.back().getPixelFormat() : PixelFormat::eUndefined;
+            return m_Backend && m_Handle ? m_Buffers.back().getPixelFormat() : PixelFormat::eUndefined;
         }
 
-        Extent2D Swapchain::getExtent() const { return m_Handle ? m_Buffers.back().getExtent() : Extent2D {}; }
+        Extent2D Swapchain::getExtent() const { return m_Backend && m_Handle ? m_Buffers.back().getExtent() : Extent2D {}; }
 
-        std::size_t Swapchain::getNumBuffers() const { return m_Buffers.size(); }
+        std::size_t Swapchain::getNumBuffers() const { return m_Backend ? m_Buffers.size() : 0u; }
+
+        std::uintptr_t Swapchain::getNativeHandle() const
+        {
+            return m_Backend ? reinterpret_cast<std::uintptr_t>(static_cast<VkSwapchainKHR>(m_Handle)) : 0u;
+        }
 
         const std::vector<Texture>& Swapchain::getBuffers() const { return m_Buffers; }
 
         const Texture& Swapchain::getBuffer(const uint32_t i) const { return m_Buffers[i]; }
 
-        uint32_t Swapchain::getCurrentBufferIndex() const { return m_CurrentImageIndex; }
+        uint32_t Swapchain::getCurrentBufferIndex() const { return m_Backend ? m_CurrentImageIndex : 0u; }
 
         Texture& Swapchain::getCurrentBuffer() { return m_Buffers[m_CurrentImageIndex]; }
 
         void Swapchain::recreate(const std::optional<VerticalSync> vsync)
         {
+            assert(m_Backend);
             m_Buffers.clear();
             create(m_Format, vsync.value_or(m_VerticalSync));
         }
 
-        bool Swapchain::acquireNextImage(const vk::Semaphore imageAcquired)
+        bool Swapchain::acquireNextImage(const std::uintptr_t imageAcquired)
         {
-            assert(m_Handle);
+            assert(m_Backend && m_Handle);
             ZoneScopedN("RHI::AcquireNextImage");
 
             const auto result = m_Device.acquireNextImageKHR(
-                m_Handle, std::numeric_limits<uint64_t>::max(), imageAcquired, nullptr, &m_CurrentImageIndex);
+                m_Handle,
+                std::numeric_limits<uint64_t>::max(),
+                vk::Semaphore {reinterpret_cast<VkSemaphore>(imageAcquired)},
+                nullptr,
+                &m_CurrentImageIndex);
 
             switch (result)
             {
@@ -209,20 +221,25 @@ namespace vultra
             }
         }
 
-        Swapchain::Swapchain(const vk::Instance       instance,
-                             const vk::PhysicalDevice physicalDevice,
-                             const vk::Device         device,
-                             os::Window*              window,
-                             const Format             format,
-                             const VerticalSync       vsync) :
-            m_Instance(instance), m_PhysicalDevice(physicalDevice), m_Device(device), m_Window(window)
+        Swapchain::Swapchain(const std::uintptr_t instance,
+                             const std::uintptr_t physicalDevice,
+                             const std::uintptr_t device,
+                             os::Window*          window,
+                             const Format         format,
+                             const VerticalSync   vsync) :
+            m_Backend(std::make_shared<VulkanSwapchainBackend>())
         {
+            m_Instance       = vk::Instance {reinterpret_cast<VkInstance>(instance)};
+            m_PhysicalDevice = vk::PhysicalDevice {reinterpret_cast<VkPhysicalDevice>(physicalDevice)};
+            m_Device         = vk::Device {reinterpret_cast<VkDevice>(device)};
+            m_Window         = window;
             createSurface();
             create(format, vsync);
         }
 
         void Swapchain::createSurface()
         {
+            assert(m_Backend);
             assert(m_Instance);
             VULTRA_CORE_ASSERT(m_Window != nullptr, "[Swapchain] Window must not be null.");
             VULTRA_CORE_TRACE("[Swapchain] Creating Vulkan surface for window driver {}",
@@ -233,6 +250,7 @@ namespace vultra
 
         void Swapchain::create(Format format, VerticalSync vsync)
         {
+            assert(m_Backend);
             m_Device.waitIdle();
 
             const auto oldSwapchain = std::exchange(m_Handle, nullptr);
@@ -360,7 +378,7 @@ namespace vultra
                      "Swapchain",
                      "Failed to create swapchain");
 
-            buildBuffers(extent, static_cast<PixelFormat>(swapchainCreateInfo.imageFormat));
+            buildBuffers(extent, fromVk(swapchainCreateInfo.imageFormat));
             m_Format       = format;
             m_VerticalSync = vsync;
 
@@ -380,6 +398,7 @@ namespace vultra
 
         void Swapchain::buildBuffers(Extent2D extent, PixelFormat pixelFormat)
         {
+            assert(m_Backend);
             assert(m_Buffers.empty());
 
             uint32_t imageCount {0};
@@ -401,6 +420,9 @@ namespace vultra
 
         void Swapchain::destroy()
         {
+            if (!m_Backend)
+                return;
+
             m_Buffers.clear();
 
             if (m_Handle)
@@ -425,6 +447,17 @@ namespace vultra
 
             m_CurrentImageIndex = 0;
         }
+
+#undef m_Window
+#undef m_Instance
+#undef m_PhysicalDevice
+#undef m_Device
+#undef m_Surface
+#undef m_Handle
+#undef m_Format
+#undef m_VerticalSync
+#undef m_Buffers
+#undef m_CurrentImageIndex
 
         Rect2D getRenderArea(const Swapchain& swapchain)
         {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/shader_reflection.hpp"
-#include "vultra/core/rhi/shader_type.hpp"
+#include "vultra/core/rhi/structs/shader_type.hpp"
 
 #include <cstdint>
 #include <vshadersystem/binary.hpp>
@@ -71,3 +71,4 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
+

@@ -3,7 +3,7 @@
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
-#include "vultra/core/rhi/vertex_attributes.hpp"
+#include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/function/resource/gpu_resource_pool.hpp"
 #include "vultra/function/resource/gpu_texture.hpp"
 
@@ -63,3 +63,4 @@ namespace vultra
 template<>
 struct HasFlags<vultra::GpuMeshUsageFlags> : std::true_type
 {};
+

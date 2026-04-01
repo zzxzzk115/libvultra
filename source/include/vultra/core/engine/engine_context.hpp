@@ -2,8 +2,8 @@
 
 #include "vultra/core/base/api.hpp"
 #include "vultra/core/base/logger.hpp"
-#include "vultra/core/rhi/frame_index.hpp"
-#include "vultra/core/rhi/render_backend_api.hpp"
+#include "vultra/core/rhi/structs/frame_index.hpp"
+#include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 
 #include <vbase/module/module_registry.hpp>
@@ -98,3 +98,4 @@ namespace vultra
         bool     minimized  = false;
     };
 } // namespace vultra
+

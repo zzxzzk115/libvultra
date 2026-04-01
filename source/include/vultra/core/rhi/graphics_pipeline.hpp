@@ -1,12 +1,12 @@
 #pragma once
 
 #include "vultra/core/rhi/base_pipeline.hpp"
-#include "vultra/core/rhi/compare_op.hpp"
-#include "vultra/core/rhi/cull_mode.hpp"
-#include "vultra/core/rhi/pixel_format.hpp"
-#include "vultra/core/rhi/primitive_topology.hpp"
-#include "vultra/core/rhi/shader_type.hpp"
-#include "vultra/core/rhi/vertex_attributes.hpp"
+#include "vultra/core/rhi/structs/compare_op.hpp"
+#include "vultra/core/rhi/structs/cull_mode.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
+#include "vultra/core/rhi/structs/primitive_topology.hpp"
+#include "vultra/core/rhi/structs/shader_type.hpp"
+#include "vultra/core/rhi/structs/vertex_attributes.hpp"
 
 #include <limits>
 #include <optional>
@@ -17,28 +17,16 @@ namespace vultra
 {
     namespace rhi
     {
-        // https://registry.khronos.org/vulkan/specs/1.3/html/chap26.html#VkStencilOp
         enum class StencilOp
         {
-            // Keeps the current value.
-            eKeep = VK_STENCIL_OP_KEEP,
-            // Sets the value to 0.
-            eZero = VK_STENCIL_OP_ZERO,
-            // Sets the value to reference.
-            eReplace = VK_STENCIL_OP_REPLACE,
-            // Increments the current value and clamps to the maximum representable
-            // unsigned value.
-            eIncrementAndClamp = VK_STENCIL_OP_INCREMENT_AND_CLAMP,
-            // Decrements the current value and clamps to 0.
-            eDecrementAndClamp = VK_STENCIL_OP_DECREMENT_AND_CLAMP,
-            // Bitwise-inverts the current value.
-            eInvert = VK_STENCIL_OP_INVERT,
-            // Increments the current value and wraps to 0 when the maximum value would
-            // have been exceeded.
-            eIncrementAndWrap = VK_STENCIL_OP_INCREMENT_AND_WRAP,
-            // Decrements the current value and wraps to the maximum possible value when
-            // the value would go below 0.
-            eDecrementAndWrap = VK_STENCIL_OP_DECREMENT_AND_WRAP,
+            eKeep,
+            eZero,
+            eReplace,
+            eIncrementAndClamp,
+            eDecrementAndClamp,
+            eInvert,
+            eIncrementAndWrap,
+            eDecrementAndWrap,
         };
 
         struct StencilOpState
@@ -80,12 +68,11 @@ namespace vultra
             std::optional<StencilOpState> back {std::nullopt};
         };
 
-        // https://registry.khronos.org/vulkan/specs/1.3/html/chap25.html#VkPolygonMode
         enum class PolygonMode
         {
-            eFill  = VK_POLYGON_MODE_FILL,
-            eLine  = VK_POLYGON_MODE_LINE,
-            ePoint = VK_POLYGON_MODE_POINT,
+            eFill,
+            eLine,
+            ePoint,
         };
 
         struct DepthBias
@@ -112,37 +99,35 @@ namespace vultra
             float lineWidth {1.0f};
         };
 
-        // https://registry.khronos.org/vulkan/specs/1.3/html/chap27.html#VkBlendOp
         enum class BlendOp
         {
-            eAdd             = VK_BLEND_OP_ADD,
-            eSubtract        = VK_BLEND_OP_SUBTRACT,
-            eReverseSubtract = VK_BLEND_OP_REVERSE_SUBTRACT,
-            eMin             = VK_BLEND_OP_MIN,
-            eMax             = VK_BLEND_OP_MAX,
+            eAdd,
+            eSubtract,
+            eReverseSubtract,
+            eMin,
+            eMax,
         };
-        // https://registry.khronos.org/vulkan/specs/1.3/html/chap27.html#VkBlendFactor
         enum class BlendFactor
         {
-            eZero                  = VK_BLEND_FACTOR_ZERO,
-            eOne                   = VK_BLEND_FACTOR_ONE,
-            eSrcColor              = VK_BLEND_FACTOR_SRC_COLOR,
-            eOneMinusSrcColor      = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
-            eDstColor              = VK_BLEND_FACTOR_DST_COLOR,
-            eOneMinusDstColor      = VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR,
-            eSrcAlpha              = VK_BLEND_FACTOR_SRC_ALPHA,
-            eOneMinusSrcAlpha      = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-            eDstAlpha              = VK_BLEND_FACTOR_DST_ALPHA,
-            eOneMinusDstAlpha      = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA,
-            eConstantColor         = VK_BLEND_FACTOR_CONSTANT_COLOR,
-            eOneMinusConstantColor = VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR,
-            eConstantAlpha         = VK_BLEND_FACTOR_CONSTANT_ALPHA,
-            eOneMinusConstantAlpha = VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA,
-            eSrcAlphaSaturate      = VK_BLEND_FACTOR_SRC_ALPHA_SATURATE,
-            eSrc1Color             = VK_BLEND_FACTOR_SRC1_COLOR,
-            eOneMinusSrc1Color     = VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR,
-            eSrc1Alpha             = VK_BLEND_FACTOR_SRC1_ALPHA,
-            eOneMinusSrc1Alpha     = VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA,
+            eZero,
+            eOne,
+            eSrcColor,
+            eOneMinusSrcColor,
+            eDstColor,
+            eOneMinusDstColor,
+            eSrcAlpha,
+            eOneMinusSrcAlpha,
+            eDstAlpha,
+            eOneMinusDstAlpha,
+            eConstantColor,
+            eOneMinusConstantColor,
+            eConstantAlpha,
+            eOneMinusConstantAlpha,
+            eSrcAlphaSaturate,
+            eSrc1Color,
+            eOneMinusSrc1Color,
+            eSrc1Alpha,
+            eOneMinusSrc1Alpha,
         };
 
         // src = Incoming values (fragment shader output).
@@ -187,7 +172,7 @@ namespace vultra
             GraphicsPipeline& operator=(const GraphicsPipeline&)     = delete;
             GraphicsPipeline& operator=(GraphicsPipeline&&) noexcept = default;
 
-            constexpr vk::PipelineBindPoint getBindPoint() const override { return vk::PipelineBindPoint::eGraphics; }
+            constexpr PipelineBindPoint getBindPoint() const override { return PipelineBindPoint::eGraphics; }
 
             class Builder
             {
@@ -243,7 +228,7 @@ namespace vultra
             };
 
         private:
-            GraphicsPipeline(const vk::Device, PipelineLayout&&, const vk::Pipeline);
+            GraphicsPipeline(std::uintptr_t, PipelineLayout&&, std::uintptr_t);
         };
     } // namespace rhi
 } // namespace vultra
@@ -277,3 +262,4 @@ namespace std
         }
     };
 } // namespace std
+

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/engine/engine_subsystem.hpp"
-#include "vultra/core/rhi/vulkan_render_device_backend.hpp"
+#include "vultra/core/rhi/imgui_backend.hpp"
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
@@ -22,6 +22,7 @@ namespace vultra
         rhi::RenderDevice&    renderDevice() override;
         rhi::Swapchain&       swapchain() override;
         rhi::FrameController& frameController() override;
+        rhi::IImGuiBackend&   imguiBackend() override;
 
         bool                beginFrame() override;
         rhi::CommandBuffer& commandBuffer() override;
@@ -36,8 +37,9 @@ namespace vultra
         void present() override;
 
     private:
-        std::unique_ptr<rhi::VulkanRenderDeviceBackend> m_RenderDevice;
+        std::unique_ptr<rhi::RenderDevice> m_RenderDevice;
         std::unique_ptr<rhi::FrameController> m_FrameController;
+        std::unique_ptr<rhi::IImGuiBackend>   m_ImGuiBackend;
         std::unique_ptr<openxr::XRHeadset>    m_XRBackend;
 
         rhi::Swapchain m_Swapchain;

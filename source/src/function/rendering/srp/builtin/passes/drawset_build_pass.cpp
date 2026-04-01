@@ -82,13 +82,13 @@ namespace vultra
                                                       .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                   });
                 pd.drawSetBuffer  = drawSetBuffer ? drawSetBuffer :
-                                                    builder.create<framegraph::FrameGraphBuffer>(
+                                                        builder.create<framegraph::FrameGraphBuffer>(
                                                        "DrawSetBuffer",
                                                        {
                                                             .type       = framegraph::BufferType::eStorageBuffer,
                                                             .stride     = sizeof(uint32_t),
                                                             .capacity   = kRenderQueueCount,
-                                                            .extraUsage = vk::BufferUsageFlagBits::eIndirectBuffer,
+                                                            .extraUsage = rhi::BufferUsage::eIndirectBuffer,
                                                        });
                 pd.drawSetBuffer  = builder.write(pd.drawSetBuffer,
                                                  framegraph::BindingInfo {

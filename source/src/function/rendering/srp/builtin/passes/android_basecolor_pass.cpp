@@ -1,8 +1,8 @@
 #include "vultra/function/rendering/srp/builtin/passes/android_basecolor_pass.hpp"
 
 #include "vultra/core/base/common_context.hpp"
-#include "vultra/core/rhi/geometry_info.hpp"
-#include "vultra/core/rhi/pixel_format.hpp"
+#include "vultra/core/rhi/structs/geometry_info.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
@@ -155,10 +155,8 @@ namespace vultra
             const auto addAttribute = [&](const uint32_t                   location,
                                           const rhi::VertexAttribute::Type type,
                                           const bool                       usedByShader) {
-                pipelineVertexAttributes[location] = {
-                    type,
-                    usedByShader ? offset : rhi::kIgnoreVertexAttribute,
-                };
+                pipelineVertexAttributes[location] =
+                    rhi::VertexAttribute {location, type, usedByShader ? offset : rhi::kIgnoreVertexAttribute};
                 offset += rhi::getSize(type);
             };
 
@@ -414,3 +412,4 @@ namespace vultra
             .build(getRenderDevice());
     }
 } // namespace vultra
+

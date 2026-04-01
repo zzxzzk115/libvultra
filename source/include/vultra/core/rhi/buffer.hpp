@@ -1,18 +1,17 @@
 #pragma once
 
-#include "vultra/core/rhi/barrier_scope.hpp"
+#include "vultra/core/rhi/structs/barrier_scope.hpp"
+#include "vultra/core/rhi/buffer_backend.hpp"
+#include "vultra/core/rhi/structs/buffer_usage.hpp"
+#include "vultra/core/rhi/structs/buffer_structs.hpp"
 
-#define VMA_STATIC_VULKAN_FUNCTIONS 0
-#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
-#define VULKAN_HPP_DISABLE_ENHANCED_MODE
-#include <vk_mem_alloc.hpp>
+#include <cstdint>
+#include <memory>
 
 namespace vultra
 {
     namespace rhi
     {
-        using BufferUsageFlags = vk::BufferUsageFlags;
-
         class RenderDevice;
         class Barrier;
 
@@ -26,6 +25,7 @@ namespace vultra
             Buffer(const Buffer&) = delete;
             Buffer(Buffer&&) noexcept;
             virtual ~Buffer();
+            explicit Buffer(std::unique_ptr<IBufferBackend>);
 
             Buffer& operator=(const Buffer&) = delete;
             Buffer& operator=(Buffer&&) noexcept;
@@ -34,34 +34,24 @@ namespace vultra
 
             using Stride = uint32_t;
 
-            [[nodiscard]] vk::Buffer     getHandle() const;
-            [[nodiscard]] vk::DeviceSize getSize() const;
+            [[nodiscard]] std::uintptr_t getHandle() const;
+            [[nodiscard]] std::uintptr_t getNativeHandle() const;
+            [[nodiscard]] uint64_t       getSize() const;
 
             void*   map();
             Buffer& unmap();
 
-            Buffer& flush(vk::DeviceSize offset = 0, vk::DeviceSize size = vk::WholeSize);
+            Buffer& flush(uint64_t offset = 0, uint64_t size = UINT64_MAX);
 
         private:
-            Buffer(vma::Allocator,
-                   vk::DeviceSize size,
-                   vk::BufferUsageFlags,
-                   vma::AllocationCreateFlags,
-                   vma::MemoryUsage);
-
             void destroy() noexcept;
+            [[nodiscard]] BarrierScope getBarrierScope() const;
+            void                       setBarrierScope(BarrierScope);
 
         private:
-            vma::Allocator       m_MemoryAllocator {nullptr};
-            vma::Allocation      m_Allocation {nullptr};
-            vk::Buffer           m_Handle {nullptr};
-            mutable BarrierScope m_LastScope {kInitialBarrierScope};
-
-            vk::DeviceSize m_Size {0};
-            void*          m_MappedMemory {nullptr};
+            std::unique_ptr<IBufferBackend> m_Impl;
         };
-
-        using BufferCopy = vk::BufferCopy;
 
     } // namespace rhi
 } // namespace vultra
+

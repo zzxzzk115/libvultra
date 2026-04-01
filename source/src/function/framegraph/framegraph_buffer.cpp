@@ -30,7 +30,7 @@ namespace vultra
             const auto bindingInfo = decodeBindingInfo(flags);
             if (static_cast<bool>(bindingInfo.pipelineStage & PipelineStage::eTransfer))
             {
-                dst.accessMask = rhi::Access::eTransferRead;
+                dst.dstAccess = rhi::Access::eTransferRead;
             }
             else
             {
@@ -40,7 +40,7 @@ namespace vultra
                 // registering the buffer as a descriptor (no descriptor binding).
                 if (static_cast<bool>(bindingInfo.pipelineStage & PipelineStage::eDrawIndirect))
                 {
-                    dst.accessMask = rhi::Access::eIndirectCommandRead;
+                    dst.dstAccess = rhi::Access::eIndirectCommandRead;
                 }
                 else
                 {
@@ -48,23 +48,23 @@ namespace vultra
                     {
                         case BufferType::eIndexBuffer:
                             dst = {
-                                .stageMask  = rhi::PipelineStages::eVertexInput,
-                                .accessMask = rhi::Access::eIndexRead,
+                                .dstStage  = rhi::PipelineStages::eVertexInput,
+                                .dstAccess = rhi::Access::eIndexRead,
                             };
                             break;
                         case BufferType::eVertexBuffer:
                             dst = {
-                                .stageMask  = rhi::PipelineStages::eVertexInput,
-                                .accessMask = rhi::Access::eVertexAttributeRead,
+                                .dstStage  = rhi::PipelineStages::eVertexInput,
+                                .dstAccess = rhi::Access::eVertexAttributeRead,
                             };
                             break;
                         case BufferType::eUniformBuffer:
-                            dst.accessMask = rhi::Access::eUniformRead;
+                            dst.dstAccess = rhi::Access::eUniformRead;
                             break;
                         case BufferType::eStorageBuffer:
                         case BufferType::eDrawIndirectBuffer:
                         case BufferType::eDispatchIndirectBuffer:
-                            dst.accessMask = rhi::Access::eShaderStorageRead;
+                            dst.dstAccess = rhi::Access::eShaderStorageRead;
                             break;
                     }
 
@@ -84,7 +84,7 @@ namespace vultra
                     }
                 }
             }
-            dst.stageMask |= convert(bindingInfo.pipelineStage);
+            dst.dstStage |= convert(bindingInfo.pipelineStage);
             rc.cb.getBarrierBuilder().bufferBarrier({.buffer = *buffer}, dst);
         }
 
@@ -99,8 +99,8 @@ namespace vultra
             if (static_cast<bool>(pipelineStage & PipelineStage::eTransfer))
             {
                 dst = {
-                    .stageMask  = rhi::PipelineStages::eTransfer,
-                    .accessMask = rhi::Access::eTransferWrite,
+                    .dstStage  = rhi::PipelineStages::eTransfer,
+                    .dstAccess = rhi::Access::eTransferWrite,
                 };
             }
             else
@@ -108,8 +108,8 @@ namespace vultra
                 VULTRA_CUSTOM_ASSERT(desc.type == BufferType::eStorageBuffer ||
                                      desc.type == BufferType::eDrawIndirectBuffer ||
                                      desc.type == BufferType::eDispatchIndirectBuffer);
-                dst.stageMask |= convert(pipelineStage);
-                dst.accessMask = rhi::Access::eShaderStorageRead | rhi::Access::eShaderStorageWrite;
+                dst.dstStage |= convert(pipelineStage);
+                dst.dstAccess = rhi::Access::eShaderStorageRead | rhi::Access::eShaderStorageWrite;
 
                 const auto [set, binding]    = location;
                 rc.resourceSet[set][binding] = rhi::bindings::StorageBuffer {.buffer = buffer};

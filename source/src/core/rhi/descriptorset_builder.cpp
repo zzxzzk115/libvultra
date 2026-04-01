@@ -3,8 +3,10 @@
 #include "vultra/core/base/visitor_helper.hpp"
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/descriptorset_allocator.hpp"
+#include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/raytracing/acceleration_structure.hpp"
 #include "vultra/core/rhi/texture.hpp"
+#include "vultra/core/rhi/vk/conversions.hpp"
 
 namespace std
 {
@@ -50,10 +52,11 @@ namespace vultra
 
         } // namespace
 #endif
-        DescriptorSetBuilder::DescriptorSetBuilder(const vk::Device        device,
+        DescriptorSetBuilder::DescriptorSetBuilder(const RenderDevice&    renderDevice,
+                                                   const std::uintptr_t    deviceHandle,
                                                    DescriptorSetAllocator& allocator,
                                                    DescriptorSetCache&     cache) :
-            m_Device(device), m_DescriptorSetAllocator(allocator), m_DescriptorSetCache(cache)
+            m_Device(deviceHandle), m_RenderDevice(&renderDevice), m_DescriptorSetAllocator(allocator), m_DescriptorSetCache(cache)
         {
             m_Bindings.reserve(10);
             m_ImageInfos.reserve(10);
@@ -84,8 +87,9 @@ namespace vultra
             const auto imageLayout = info.texture->getImageLayout();
             assert(imageLayout != ImageLayout::eUndefined);
 
-            addCombinedImageSampler(
-                info.texture->getImageView(toVk(info.imageAspect)), static_cast<vk::ImageLayout>(imageLayout), sampler);
+            addCombinedImageSampler(vk::ImageView {reinterpret_cast<VkImageView>(info.texture->getImageView(toVk(info.imageAspect)).getNativeHandle())},
+                                    toVk(imageLayout),
+                                    sampler);
             return *this;
         }
 
@@ -100,10 +104,12 @@ namespace vultra
             {
                 const auto imageLayout = texture->getImageLayout();
                 assert(imageLayout != ImageLayout::eUndefined);
-                const auto sampler = info.sampler.value_or(texture->getSampler());
-                assert(sampler);
+            const auto sampler = info.sampler.value_or(texture->getSampler());
+            assert(sampler);
                 addCombinedImageSampler(
-                    texture->getImageView(toVk(info.imageAspect)), static_cast<vk::ImageLayout>(imageLayout), sampler);
+                    vk::ImageView {reinterpret_cast<VkImageView>(texture->getImageView(toVk(info.imageAspect)).getNativeHandle())},
+                    toVk(imageLayout),
+                    sampler);
             }
             return *this;
         }
@@ -111,8 +117,8 @@ namespace vultra
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex index, const bindings::SampledImage& info)
         {
             m_Bindings[index] = {vk::DescriptorType::eSampledImage, 1, static_cast<int32_t>(m_ImageInfos.size())};
-            addImage(info.texture->getImageView(toVk(info.imageAspect)),
-                     static_cast<vk::ImageLayout>(info.texture->getImageLayout()));
+            addImage(vk::ImageView {reinterpret_cast<VkImageView>(info.texture->getImageView(toVk(info.imageAspect)).getNativeHandle())},
+                     toVk(info.texture->getImageLayout()));
             return *this;
         }
 
@@ -122,8 +128,8 @@ namespace vultra
             m_Bindings[index]    = {
                 vk::DescriptorType::eStorageImage, numImages, static_cast<int32_t>(m_ImageInfos.size())};
             for (uint32_t i = 0; i < numImages; ++i)
-                addImage(info.texture->getMipLevel(i, toVk(info.imageAspect)),
-                         static_cast<vk::ImageLayout>(info.texture->getImageLayout()));
+                addImage(vk::ImageView {reinterpret_cast<VkImageView>(info.texture->getMipLevel(i, toVk(info.imageAspect)).getNativeHandle())},
+                         toVk(info.texture->getImageLayout()));
             return *this;
         }
 
@@ -131,14 +137,18 @@ namespace vultra
         {
             return bindBuffer(index,
                               vk::DescriptorType::eUniformBuffer,
-                              {info.buffer->getHandle(), info.offset, info.range.value_or(vk::WholeSize)});
+                              {vk::Buffer {reinterpret_cast<VkBuffer>(info.buffer->getHandle())},
+                               info.offset,
+                               info.range.value_or(vk::WholeSize)});
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex index, const bindings::StorageBuffer& info)
         {
             return bindBuffer(index,
                               vk::DescriptorType::eStorageBuffer,
-                              {info.buffer->getHandle(), info.offset, info.range.value_or(vk::WholeSize)});
+                              {vk::Buffer {reinterpret_cast<VkBuffer>(info.buffer->getHandle())},
+                               info.offset,
+                               info.range.value_or(vk::WholeSize)});
         }
 
         DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex                        index,
@@ -150,10 +160,12 @@ namespace vultra
             return *this;
         }
 
-        vk::DescriptorSet DescriptorSetBuilder::build(const vk::DescriptorSetLayout layout)
+        vk::DescriptorSet DescriptorSetBuilder::build(const std::uintptr_t layoutHandle)
         {
-            auto                                hash = std::hash<VkDescriptorSetLayout>()(
-                static_cast<VkDescriptorSetLayout>(layout));
+            const auto layout =
+                vk::DescriptorSetLayout {reinterpret_cast<VkDescriptorSetLayout>(layoutHandle)};
+            auto hash = std::hash<VkDescriptorSetLayout>()(
+                static_cast<VkDescriptorSetLayout>(reinterpret_cast<VkDescriptorSetLayout>(layoutHandle)));
             std::vector<vk::WriteDescriptorSet> writes;
             writes.reserve(m_Bindings.size());
 
@@ -211,10 +223,11 @@ namespace vultra
                         break;
                     }
                 }
+                const vk::Device device {reinterpret_cast<VkDevice>(m_Device)};
                 set = m_DescriptorSetAllocator.allocate(layout, variableDescriptorCount);
                 for (auto& r : writes)
                     r.dstSet = set;
-                m_Device.updateDescriptorSets(static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+                device.updateDescriptorSets(static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
                 m_DescriptorSetCache.emplace(hash, set);
             }
 
@@ -238,7 +251,8 @@ namespace vultra
 
         void DescriptorSetBuilder::addSampler(const Sampler sampler)
         {
-            m_ImageInfos.emplace_back(vk::DescriptorImageInfo {static_cast<vk::Sampler>(sampler),
+            assert(m_RenderDevice);
+            m_ImageInfos.emplace_back(vk::DescriptorImageInfo {m_RenderDevice->getSamplerHandle(sampler),
                                                                 nullptr,
                                                                 vk::ImageLayout::eUndefined});
         }
@@ -248,7 +262,7 @@ namespace vultra
                                                            const Sampler         sampler)
         {
             m_ImageInfos.emplace_back(
-                vk::DescriptorImageInfo {static_cast<vk::Sampler>(sampler), view, layout});
+                vk::DescriptorImageInfo {m_RenderDevice->getSamplerHandle(sampler), view, layout});
         }
 
         void DescriptorSetBuilder::addAccelerationStructure(const vk::AccelerationStructureKHR& as)

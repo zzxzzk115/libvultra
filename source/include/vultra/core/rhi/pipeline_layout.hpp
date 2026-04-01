@@ -1,29 +1,13 @@
 #pragma once
 
-#include "vultra/core/rhi/resource_indices.hpp"
+#include "vultra/core/rhi/structs/pipeline_layout_structs.hpp"
 
-#include <vulkan/vulkan.hpp>
+#include <cstdint>
 
 namespace vultra
 {
     namespace rhi
     {
-
-        constexpr auto kMinNumDescriptorSets = 4;
-
-        struct DescriptorSetLayoutBindingEx
-        {
-            vk::DescriptorSetLayoutBinding binding;
-            VkDescriptorBindingFlags       flags {0};
-        };
-
-        struct PipelineLayoutInfo
-        {
-            using DescriptorSetBindings = std::vector<DescriptorSetLayoutBindingEx>;
-            std::array<DescriptorSetBindings, kMinNumDescriptorSets> descriptorSets;
-            std::vector<vk::PushConstantRange>                       pushConstantRanges;
-        };
-
         class RenderDevice;
 
         class PipelineLayout final
@@ -41,8 +25,8 @@ namespace vultra
 
             [[nodiscard]] explicit operator bool() const;
 
-            [[nodiscard]] vk::PipelineLayout      getHandle() const;
-            [[nodiscard]] vk::DescriptorSetLayout getDescriptorSet(const DescriptorSetIndex) const;
+            [[nodiscard]] std::uintptr_t getHandle() const;
+            [[nodiscard]] std::uintptr_t getDescriptorSet(const DescriptorSetIndex) const;
 
             class Builder
             {
@@ -55,40 +39,28 @@ namespace vultra
                 Builder& operator=(const Builder&)     = delete;
                 Builder& operator=(Builder&&) noexcept = delete;
 
-                Builder& addImage(const DescriptorSetIndex,
-                                  const BindingIndex,
-                                  const vk::ShaderStageFlags,
-                                  const VkDescriptorBindingFlags = {});
+                Builder& addImage(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
                 Builder& addImages(const DescriptorSetIndex,
                                    const BindingIndex,
-                                   const uint32_t count,
-                                   const vk::ShaderStageFlags,
-                                   const VkDescriptorBindingFlags = {});
-                Builder& addSampledImage(const DescriptorSetIndex,
-                                         const BindingIndex,
-                                         const vk::ShaderStageFlags,
-                                         const VkDescriptorBindingFlags = {});
+                                   uint32_t count,
+                                   ShaderStages,
+                                   const uint32_t = {});
+                Builder& addSampledImage(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
                 Builder& addSampledImages(const DescriptorSetIndex,
                                           const BindingIndex,
-                                          const uint32_t count,
-                                          const vk::ShaderStageFlags,
-                                          const VkDescriptorBindingFlags = {});
-                Builder& addUniformBuffer(const DescriptorSetIndex,
-                                          const BindingIndex,
-                                          const vk::ShaderStageFlags,
-                                          const VkDescriptorBindingFlags = {});
-                Builder& addStorageBuffer(const DescriptorSetIndex,
-                                          const BindingIndex,
-                                          const vk::ShaderStageFlags,
-                                          const VkDescriptorBindingFlags = {});
+                                          uint32_t count,
+                                          ShaderStages,
+                                          const uint32_t = {});
+                Builder& addUniformBuffer(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
+                Builder& addStorageBuffer(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
 
                 Builder& addAccelerationStructure(const DescriptorSetIndex,
                                                   const BindingIndex,
-                                                  const vk::ShaderStageFlags,
-                                                  const VkDescriptorBindingFlags = {});
+                                                  ShaderStages,
+                                                  const uint32_t = {});
 
                 Builder& addResource(const DescriptorSetIndex, DescriptorSetLayoutBindingEx);
-                Builder& addPushConstantRange(vk::PushConstantRange);
+                Builder& addPushConstantRange(PushConstantRange);
 
                 [[nodiscard]] PipelineLayout build(RenderDevice&) const;
 
@@ -97,11 +69,11 @@ namespace vultra
             };
 
         private:
-            PipelineLayout(const vk::PipelineLayout, std::vector<vk::DescriptorSetLayout>&&);
+            PipelineLayout(std::uintptr_t, std::vector<std::uintptr_t>&&);
 
         private:
-            vk::PipelineLayout                   m_Handle {nullptr}; // Non-owning.
-            std::vector<vk::DescriptorSetLayout> m_DescriptorSetLayouts;
+            std::uintptr_t              m_Handle {0}; // Non-owning.
+            std::vector<std::uintptr_t> m_DescriptorSetLayouts;
         };
 
         struct ShaderReflection;

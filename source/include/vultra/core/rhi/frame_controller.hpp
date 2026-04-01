@@ -1,7 +1,8 @@
 #pragma once
 
 #include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/rendertarget_view.hpp"
+#include "vultra/core/rhi/structs/frame_index.hpp"
+#include "vultra/core/rhi/structs/render_target_view.hpp"
 
 namespace vultra
 {

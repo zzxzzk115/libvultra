@@ -1,7 +1,11 @@
 #pragma once
 
-#include "vultra/core/rhi/rect2d.hpp"
+#include <cstdint>
+#include <memory>
+
+#include "vultra/core/rhi/structs/rect2d.hpp"
 #include "vultra/core/rhi/texture.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_swapchain_backend.hpp"
 
 namespace vultra
 {
@@ -45,6 +49,7 @@ namespace vultra
             [[nodiscard]] Extent2D    getExtent() const;
 
             [[nodiscard]] std::size_t getNumBuffers() const;
+            [[nodiscard]] std::uintptr_t getNativeHandle() const;
 
             [[nodiscard]] const std::vector<Texture>& getBuffers() const;
             [[nodiscard]] const Texture&              getBuffer(uint32_t) const;
@@ -54,31 +59,17 @@ namespace vultra
 
             void recreate(std::optional<VerticalSync> = std::nullopt);
 
-            bool acquireNextImage(vk::Semaphore imageAcquired = nullptr);
+            bool acquireNextImage(std::uintptr_t imageAcquired = 0);
 
         private:
-            Swapchain(vk::Instance, vk::PhysicalDevice, vk::Device, os::Window*, Format, VerticalSync);
-
+            Swapchain(std::uintptr_t, std::uintptr_t, std::uintptr_t, os::Window*, Format, VerticalSync);
             void createSurface();
-
             void create(Format, VerticalSync);
             void buildBuffers(Extent2D, PixelFormat);
             void destroy();
 
         private:
-            os::Window* m_Window {nullptr};
-
-            vk::Instance       m_Instance {nullptr};
-            vk::PhysicalDevice m_PhysicalDevice {nullptr};
-            vk::Device         m_Device {nullptr};
-
-            vk::SurfaceKHR   m_Surface {nullptr};
-            vk::SwapchainKHR m_Handle {nullptr};
-
-            Format               m_Format {Format::eLinear};
-            VerticalSync         m_VerticalSync {VerticalSync::eDisabled};
-            std::vector<Texture> m_Buffers;
-            uint32_t             m_CurrentImageIndex {0};
+            std::shared_ptr<VulkanSwapchainBackend> m_Backend;
         };
 
         [[nodiscard]] Rect2D getRenderArea(const Swapchain&);

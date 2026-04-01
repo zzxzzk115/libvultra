@@ -5,6 +5,8 @@
 
 #include <fmt/format.h>
 
+#include <type_traits>
+
 namespace std
 {
 
@@ -32,7 +34,11 @@ namespace std
         auto operator()(const vultra::framegraph::FrameGraphBuffer::Desc& desc) const noexcept
         {
             size_t h {0};
-            hashCombine(h, desc.type, desc.dataSize(), static_cast<VkFlags>(desc.extraUsage), desc.drawIndirectType);
+            hashCombine(h,
+                        desc.type,
+                        desc.dataSize(),
+                        static_cast<std::underlying_type_t<vultra::rhi::BufferUsage>>(desc.extraUsage),
+                        desc.drawIndirectType);
             return h;
         }
     };
@@ -176,7 +182,7 @@ namespace vultra
                         break;
                     case eStorageBuffer:
                         buffer = std::make_unique<rhi::StorageBuffer>(
-                            desc.extraUsage ?
+                            desc.extraUsage != rhi::BufferUsage::eNone ?
                                 m_RenderDevice.createStorageBufferWithUsage(desc.dataSize(), desc.extraUsage) :
                                 m_RenderDevice.createStorageBuffer(desc.dataSize()));
                         break;
@@ -189,7 +195,7 @@ namespace vultra
 
                     case eDispatchIndirectBuffer:
                         buffer = std::make_unique<rhi::StorageBuffer>(m_RenderDevice.createStorageBufferWithUsage(
-                            desc.dataSize(), vk::BufferUsageFlagBits::eIndirectBuffer | desc.extraUsage));
+                            desc.dataSize(), rhi::BufferUsage::eIndirectBuffer | desc.extraUsage));
                         break;
 
                     case eVertexBuffer:

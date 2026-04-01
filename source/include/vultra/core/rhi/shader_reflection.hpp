@@ -1,12 +1,13 @@
 #pragma once
 
-#include "vultra/core/rhi/resource_indices.hpp"
+#include "vultra/core/rhi/structs/descriptor_type.hpp"
+#include "vultra/core/rhi/structs/resource_indices.hpp"
+#include "vultra/core/rhi/structs/shader_type.hpp"
 
 #include <vshadersystem/types.hpp>
 
 #include <glm/ext/vector_uint3.hpp>
-#include <vulkan/vulkan.hpp>
-
+#include <array>
 #include <optional>
 #include <unordered_map>
 
@@ -23,18 +24,25 @@ namespace vultra
 
             struct Descriptor
             {
-                explicit Descriptor(vk::DescriptorType type) : type {type} {}
+                explicit Descriptor(DescriptorType type) : type {type} {}
 
-                vk::DescriptorType       type {vk::DescriptorType::eSampler};
-                uint32_t                 count {1};
-                vk::ShaderStageFlags     stageFlags {0};
-                VkDescriptorBindingFlags flags {0};
+                DescriptorType type {DescriptorType::eSampler};
+                uint32_t       count {1};
+                ShaderStages   stageFlags {ShaderStages::eNone};
+                uint32_t       flags {0};
             };
             // Key = binding
             // layout(binding = index)
             using DescriptorSet = std::unordered_map<BindingIndex, Descriptor>;
-            std::array<DescriptorSet, 4>       descriptorSets;
-            std::vector<vk::PushConstantRange> pushConstantRanges;
+            std::array<DescriptorSet, 4> descriptorSets;
+            struct PushConstantRange
+            {
+                uint32_t     offset {0};
+                uint32_t     size {0};
+                ShaderStages stageFlags {ShaderStages::eNone};
+            };
+            std::vector<PushConstantRange> pushConstantRanges;
         };
     } // namespace rhi
 } // namespace vultra
+

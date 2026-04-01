@@ -13,28 +13,45 @@
 #include <vbase/core/exe_path.hpp>
 
 #include <filesystem>
-
-#if defined(__ANDROID__)
-#include <android/input.h>
-#endif
+#include <type_traits>
 
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiAl/fonts/RobotoBold.inl>
 #include <ImGuiAl/fonts/RobotoRegular.inl>
 #include <ImGuizmo/ImGuizmo.h>
-#if defined(__ANDROID__)
-#include <imgui_impl_android.h>
-#else
 #include <SDL3/SDL_video.h>
-#include <imgui_impl_sdl3.h>
-#endif
 #include <imgui.h>
-#include <imgui_impl_vulkan.h>
 #include <imgui_internal.h>
 #include <implot/implot.h>
 
 namespace
 {
+    template <typename T>
+    T toImGuiTextureId(std::uintptr_t textureId)
+    {
+        if constexpr (std::is_pointer_v<T>)
+        {
+            return reinterpret_cast<T>(textureId);
+        }
+        else
+        {
+            return static_cast<T>(textureId);
+        }
+    }
+
+    template <typename T>
+    std::uintptr_t fromImGuiTextureId(T textureId)
+    {
+        if constexpr (std::is_pointer_v<T>)
+        {
+            return reinterpret_cast<std::uintptr_t>(textureId);
+        }
+        else
+        {
+            return static_cast<std::uintptr_t>(textureId);
+        }
+    }
+
     std::string get_imgui_config_file_full_path(const std::string& writableRoot, const char* imguiIniFile)
     {
         if (imguiIniFile == nullptr || imguiIniFile[0] == '\0')
@@ -63,6 +80,13 @@ namespace vultra
                   config.enableDocking,
                   ctx().config.writableRoot,
                   config.imguiIniFile.c_str());
+        renderBackendService
+            .imguiBackend()
+            .init(windowService.window(),
+                  renderBackendService.renderDevice(),
+                  renderBackendService.swapchain(),
+                  config.enableMultiview,
+                  config.enableDocking);
 
         VULTRA_CORE_TRACE("[ImGuiSystem] Providing IImGuiService");
         ctx().services.provide<IImGuiService>(this);
@@ -73,17 +97,15 @@ namespace vultra
     void ImGuiSystem::onShutdown()
     {
         VULTRA_CORE_INFO("[ImGuiSystem] Shutting down");
+        ctx().services.require<IRenderBackendService>().imguiBackend().shutdown(ctx().config.writableRoot,
+                                                                                 ctx().config.imgui.imguiIniFile.c_str());
         shutdownImGui(ctx().config.writableRoot, ctx().config.imgui.imguiIniFile.c_str());
     }
 
     void ImGuiSystem::begin()
     {
-        ImGui_ImplVulkan_NewFrame();
-#if defined(__ANDROID__)
-        ImGui_ImplAndroid_NewFrame();
-#else
-        ImGui_ImplSDL3_NewFrame();
-#endif
+        auto& renderBackendService = ctx().services.require<IRenderBackendService>();
+        renderBackendService.imguiBackend().beginFrame(ctx().services.require<IWindowService>().window());
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
 
@@ -150,9 +172,8 @@ namespace vultra
 
         cb.beginRendering(fbInfoCopy);
 
-        ImGui::Render();
-        ImDrawData* drawData = ImGui::GetDrawData();
-        ImGui_ImplVulkan_RenderDrawData(drawData, cb.m_Handle);
+        auto& renderBackendService = ctx().services.require<IRenderBackendService>();
+        renderBackendService.imguiBackend().render(cb);
 
         cb.endRendering();
     }
@@ -170,26 +191,13 @@ namespace vultra
 
     void ImGuiSystem::postRender()
     {
-#ifdef IMGUI_HAS_VIEWPORT
-        ImGuiIO& io = ImGui::GetIO();
-
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            if (ImGui::GetDrawData() != nullptr)
-            {
-                ImGui::UpdatePlatformWindows();
-                ImGui::RenderPlatformWindowsDefault();
-            }
-        }
-#endif
+        ctx().services.require<IRenderBackendService>().imguiBackend().postRender();
     }
 
     IImGuiService::TextureID ImGuiSystem::addTexture(const rhi::Texture& texture)
     {
-        return reinterpret_cast<IImGuiService::TextureID>(
-            ImGui_ImplVulkan_AddTexture(static_cast<VkSampler>(texture.getSampler()),
-                                        static_cast<VkImageView>(texture.getImageView()),
-                                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+        auto& renderBackendService = ctx().services.require<IRenderBackendService>();
+        return toImGuiTextureId<IImGuiService::TextureID>(renderBackendService.imguiBackend().addTexture(texture));
     }
 
     void ImGuiSystem::removeTexture(TextureID& textureID)
@@ -198,24 +206,14 @@ namespace vultra
             return;
 
         auto& renderBackendService = ctx().services.require<IRenderBackendService>();
-        renderBackendService.renderDevice().waitIdle();
-        ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(textureID));
+        auto backendTextureId = fromImGuiTextureId(textureID);
+        renderBackendService.imguiBackend().removeTexture(backendTextureId);
         textureID = 0;
     }
 
     void ImGuiSystem::processEvent(const os::GeneralWindowEvent& event)
     {
-#if defined(__ANDROID__)
-        if (event.nativeEventSource == vultra::event::NativeEventSource::eAndroidInput && event.nativeEvent != nullptr)
-        {
-            ImGui_ImplAndroid_HandleInputEvent(reinterpret_cast<AInputEvent*>(const_cast<void*>(event.nativeEvent)));
-        }
-#else
-        if (event.nativeEventSource == vultra::event::NativeEventSource::eSDL3 && event.nativeEvent != nullptr)
-        {
-            ImGui_ImplSDL3_ProcessEvent(reinterpret_cast<SDL_Event*>(const_cast<void*>(event.nativeEvent)));
-        }
-#endif
+        ctx().services.require<IRenderBackendService>().imguiBackend().processEvent(event);
     }
 
     std::function<void(ImGuiDockNodeFlags)> ImGuiSystem::s_SetDockSpace;
@@ -322,36 +320,6 @@ namespace vultra
         style.ScaleAllSizes(displayScale);
         style.FontScaleDpi = displayScale;
 
-        // Setup Platform/Renderer backends
-        // https://github.com/ocornut/imgui/issues/8282#issuecomment-2597934394
-        static vk::Format colorFormat = static_cast<vk::Format>(swapchain.getPixelFormat());
-
-        vk::PipelineRenderingCreateInfo renderingCreateInfo {};
-        renderingCreateInfo.setColorAttachmentFormats(colorFormat);
-
-#if defined(__ANDROID__)
-        const auto& androidWindow = static_cast<const platform::android::AndroidNativeWindow&>(window);
-        ImGui_ImplAndroid_Init(androidWindow.nativeWindow());
-#else
-        const auto& sdlWindow = static_cast<const platform::sdl::SDLWindow&>(window);
-        ImGui_ImplSDL3_InitForVulkan(sdlWindow.getHandle());
-#endif
-        ImGui_ImplVulkan_InitInfo initInfo {};
-        initInfo.Instance                    = static_cast<VkInstance>(rd.m_Instance);
-        initInfo.PhysicalDevice              = static_cast<VkPhysicalDevice>(rd.m_PhysicalDevice);
-        initInfo.Device                      = static_cast<VkDevice>(rd.m_Device);
-        initInfo.QueueFamily                 = rd.m_GenericQueueFamilyIndex;
-        initInfo.Queue                       = static_cast<VkQueue>(rd.m_GenericQueue);
-        initInfo.PipelineCache               = VK_NULL_HANDLE;
-        initInfo.DescriptorPool              = static_cast<VkDescriptorPool>(rd.m_DefaultDescriptorPool);
-        initInfo.Subpass                     = 0;
-        initInfo.MinImageCount               = static_cast<uint32_t>(swapchain.getNumBuffers());
-        initInfo.ImageCount                  = static_cast<uint32_t>(swapchain.getNumBuffers());
-        initInfo.MSAASamples                 = VK_SAMPLE_COUNT_1_BIT;
-        initInfo.Allocator                   = nullptr;
-        initInfo.UseDynamicRendering         = true;
-        initInfo.PipelineRenderingCreateInfo = static_cast<VkPipelineRenderingCreateInfo>(renderingCreateInfo);
-        ImGui_ImplVulkan_Init(&initInfo);
     }
 
     void ImGuiSystem::shutdownImGui(const std::string& writableRoot, const char* imguiIniFile)
@@ -363,12 +331,6 @@ namespace vultra
             ImGui::SaveIniSettingsToDisk(imguiIniPath.c_str());
         }
 
-        ImGui_ImplVulkan_Shutdown();
-#if defined(__ANDROID__)
-        ImGui_ImplAndroid_Shutdown();
-#else
-        ImGui_ImplSDL3_Shutdown();
-#endif
         ImPlot::DestroyContext();
         ImGui::DestroyContext();
     }

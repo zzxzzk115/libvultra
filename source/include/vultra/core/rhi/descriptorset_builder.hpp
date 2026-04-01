@@ -1,11 +1,12 @@
 #pragma once
 
-#include "vultra/core/rhi/image_aspect.hpp"
-#include "vultra/core/rhi/resource_indices.hpp"
+#include "vultra/core/rhi/structs/image_aspect.hpp"
+#include "vultra/core/rhi/structs/resource_indices.hpp"
 #include "vultra/core/rhi/sampler.hpp"
 
 #include <vulkan/vulkan.hpp>
 
+#include <cstdint>
 #include <unordered_map>
 #include <variant>
 
@@ -13,6 +14,7 @@ namespace vultra
 {
     namespace rhi
     {
+        class RenderDevice;
         class DescriptorSetAllocator;
         class Buffer;
         class Texture;
@@ -83,7 +85,7 @@ namespace vultra
         {
         public:
             DescriptorSetBuilder() = delete;
-            DescriptorSetBuilder(const vk::Device, DescriptorSetAllocator&, DescriptorSetCache&);
+            DescriptorSetBuilder(const RenderDevice&, std::uintptr_t deviceHandle, DescriptorSetAllocator&, DescriptorSetCache&);
             DescriptorSetBuilder(const DescriptorSetBuilder&)     = delete;
             DescriptorSetBuilder(DescriptorSetBuilder&&) noexcept = delete;
 
@@ -100,7 +102,7 @@ namespace vultra
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::StorageBuffer&);
             DescriptorSetBuilder& bind(const BindingIndex, const bindings::AccelerationStructureKHR&);
 
-            [[nodiscard]] vk::DescriptorSet build(const vk::DescriptorSetLayout);
+            [[nodiscard]] vk::DescriptorSet build(std::uintptr_t);
 
         private:
             void clear();
@@ -113,7 +115,8 @@ namespace vultra
             DescriptorSetBuilder& bindBuffer(const BindingIndex, const vk::DescriptorType, vk::DescriptorBufferInfo&&);
 
         private:
-            vk::Device              m_Device {nullptr};
+            std::uintptr_t          m_Device {0};
+            const RenderDevice*     m_RenderDevice {nullptr};
             DescriptorSetAllocator& m_DescriptorSetAllocator;
             DescriptorSetCache&     m_DescriptorSetCache;
 
@@ -141,3 +144,4 @@ namespace vultra
     using ResourceSet      = std::unordered_map<rhi::DescriptorSetIndex, ResourceBindings>;
     using Samplers         = std::unordered_map<std::string, rhi::Sampler>;
 } // namespace vultra
+

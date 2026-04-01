@@ -3,8 +3,9 @@
 #include <cstdint>
 #include <memory>
 
-#include <vulkan/vulkan.hpp>
-
+#include "vultra/core/rhi/radix_sorter_backend.hpp"
+#include "vultra/core/rhi/structs/radix_sorter_types.hpp"
+ 
 namespace vultra
 {
     namespace rhi
@@ -12,12 +13,6 @@ namespace vultra
         class Buffer;
         class CommandBuffer;
         class RenderDevice;
-
-        struct RadixSorterStorageRequirements
-        {
-            vk::DeviceSize       size {0};
-            vk::BufferUsageFlags usage;
-        };
 
         class RadixSorter final
         {
@@ -41,34 +36,35 @@ namespace vultra
             void sortKeys(CommandBuffer&,
                           uint32_t       elementCount,
                           const Buffer&  keys,
-                          vk::DeviceSize keysOffset,
+                          uint64_t       keysOffset,
                           const Buffer&  storage,
-                          vk::DeviceSize storageOffset) const;
+                          uint64_t       storageOffset) const;
 
             void sortKeyValues(CommandBuffer&,
                                uint32_t       elementCount,
                                const Buffer&  keys,
-                               vk::DeviceSize keysOffset,
+                               uint64_t       keysOffset,
                                const Buffer&  values,
-                               vk::DeviceSize valuesOffset,
+                               uint64_t       valuesOffset,
                                const Buffer&  storage,
-                               vk::DeviceSize storageOffset) const;
+                               uint64_t       storageOffset) const;
 
             void sortKeyValuesIndirect(CommandBuffer&,
                                        uint32_t       maxElementCount,
                                        const Buffer&  indirect,
-                                       vk::DeviceSize indirectOffset,
+                                       uint64_t       indirectOffset,
                                        const Buffer&  keys,
-                                       vk::DeviceSize keysOffset,
+                                       uint64_t       keysOffset,
                                        const Buffer&  values,
-                                       vk::DeviceSize valuesOffset,
+                                       uint64_t       valuesOffset,
                                        const Buffer&  storage,
-                                       vk::DeviceSize storageOffset) const;
+                                       uint64_t       storageOffset) const;
 
         private:
             struct Impl;
 
             explicit RadixSorter(std::unique_ptr<Impl>&&);
+            static RadixSorter create(std::unique_ptr<IRadixSorterBackend>&&);
             static RadixSorter create(RenderDevice&, uint32_t maxElementCount);
 
         private:

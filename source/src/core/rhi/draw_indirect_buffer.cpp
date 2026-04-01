@@ -1,24 +1,23 @@
 #include "vultra/core/rhi/draw_indirect_buffer.hpp"
-#include "vultra/core/rhi/draw_indirect_type.hpp"
 
-#include <vulkan/vulkan_structs.hpp>
-
-namespace vultra
+namespace vultra::rhi
 {
-    namespace rhi
+    namespace
     {
-        DrawIndirectType DrawIndirectBuffer::getDrawIndirectType() const { return m_Type; }
+        [[nodiscard]] constexpr Buffer::Stride getIndexedStride() { return 5 * sizeof(uint32_t); }
+        [[nodiscard]] constexpr Buffer::Stride getIndirectStride() { return 4 * sizeof(uint32_t); }
+    } // namespace
 
-        Buffer::Stride DrawIndirectBuffer::getStride() const
-        {
-            return m_Type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
-                                                          sizeof(vk::DrawIndirectCommand);
-        }
+    DrawIndirectType DrawIndirectBuffer::getDrawIndirectType() const { return m_Type; }
 
-        vk::DeviceSize DrawIndirectBuffer::getCapacity() const { return getStride() > 0 ? getSize() / getStride() : 0; }
+    Buffer::Stride DrawIndirectBuffer::getStride() const
+    {
+        return m_Type == DrawIndirectType::eIndexed ? getIndexedStride() : getIndirectStride();
+    }
 
-        DrawIndirectBuffer::DrawIndirectBuffer(Buffer&& buffer, const DrawIndirectType type) :
-            Buffer(std::move(buffer)), m_Type(type)
-        {}
-    } // namespace rhi
-} // namespace vultra
+    uint64_t DrawIndirectBuffer::getCapacity() const { return getStride() > 0 ? getSize() / getStride() : 0; }
+
+    DrawIndirectBuffer::DrawIndirectBuffer(Buffer&& buffer, const DrawIndirectType type) :
+        Buffer(std::move(buffer)), m_Type(type)
+    {}
+} // namespace vultra::rhi

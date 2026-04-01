@@ -1,6 +1,6 @@
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/core/base/common_context.hpp"
-#include "vultra/core/rhi/extent2d.hpp"
+#include "vultra/core/rhi/structs/extent2d.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
@@ -29,10 +29,10 @@ namespace vultra
             // Create an OpenXR session
             XrGraphicsBindingVulkan2KHR graphicsBinding {};
             graphicsBinding.type             = XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR;
-            graphicsBinding.device           = m_RenderDevice.m_Device;
-            graphicsBinding.instance         = m_RenderDevice.m_Instance;
-            graphicsBinding.physicalDevice   = m_RenderDevice.m_PhysicalDevice;
-            graphicsBinding.queueFamilyIndex = m_RenderDevice.m_GenericQueueFamilyIndex;
+            graphicsBinding.device           = reinterpret_cast<VkDevice>(m_RenderDevice.getNativeDeviceHandle());
+            graphicsBinding.instance         = reinterpret_cast<VkInstance>(m_RenderDevice.getNativeInstanceHandle());
+            graphicsBinding.physicalDevice   = reinterpret_cast<VkPhysicalDevice>(m_RenderDevice.getNativePhysicalDeviceHandle());
+            graphicsBinding.queueFamilyIndex = m_RenderDevice.getNativeQueueFamilyIndex();
             graphicsBinding.queueIndex       = 0u;
 
             XrSessionCreateInfo sessionCreateInfo {};
@@ -160,7 +160,7 @@ namespace vultra
                     const XrSwapchainImageVulkan2KHR& swapchainImage = m_SwapchainImages[i];
 
                     m_SwapchainStereoRenderTargetViews[i].stereo =
-                        rhi::Texture {m_RenderDevice.m_Device,
+                        rhi::Texture {reinterpret_cast<VkDevice>(m_RenderDevice.getNativeDeviceHandle()),
                                       vk::Image {swapchainImage.image},
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
@@ -169,7 +169,7 @@ namespace vultra
                                       static_cast<uint32_t>(m_EyeCount)};
 
                     m_SwapchainStereoRenderTargetViews[i].left =
-                        rhi::Texture {m_RenderDevice.m_Device,
+                        rhi::Texture {reinterpret_cast<VkDevice>(m_RenderDevice.getNativeDeviceHandle()),
                                       vk::Image {swapchainImage.image},
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
@@ -177,7 +177,7 @@ namespace vultra
                                       0};
 
                     m_SwapchainStereoRenderTargetViews[i].right =
-                        rhi::Texture {m_RenderDevice.m_Device,
+                        rhi::Texture {reinterpret_cast<VkDevice>(m_RenderDevice.getNativeDeviceHandle()),
                                       vk::Image {swapchainImage.image},
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
@@ -516,3 +516,4 @@ namespace vultra
         }
     } // namespace openxr
 } // namespace vultra
+

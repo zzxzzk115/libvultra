@@ -1,35 +1,30 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
+#include "vultra/core/rhi/structs/sampler_info.hpp"
+
+#include <utility>
 
 namespace vultra
 {
     namespace rhi
     {
-        class RenderDevice;
-        class Texture;
-        class DescriptorSetBuilder;
-
+        // Sampler description used by backend-specific render APIs.
         class Sampler final
         {
-            friend class RenderDevice;
-            friend class Texture;
-            friend class DescriptorSetBuilder;
-
         public:
             Sampler() = default;
 
-            [[nodiscard]] explicit operator bool() const { return m_Handle != nullptr; }
-            [[nodiscard]] vk::Sampler getHandle() const { return m_Handle; }
+            explicit Sampler(SamplerInfo info) : m_Info(std::move(info)), m_Valid(true) {}
 
-            explicit operator vk::Sampler() const { return m_Handle; }
-            explicit operator VkSampler() const { return static_cast<VkSampler>(m_Handle); }
+            [[nodiscard]] explicit operator bool() const { return m_Valid; }
 
-        private:
-            explicit Sampler(vk::Sampler handle) : m_Handle {handle} {}
+            [[nodiscard]] const SamplerInfo& info() const { return m_Info; }
+            [[nodiscard]] SamplerInfo&       info() { return m_Info; }
 
         private:
-            vk::Sampler m_Handle {nullptr};
+            SamplerInfo m_Info {};
+            bool        m_Valid {false};
         };
     } // namespace rhi
 } // namespace vultra
+

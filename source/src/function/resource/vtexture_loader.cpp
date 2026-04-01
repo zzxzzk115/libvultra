@@ -226,7 +226,12 @@ namespace vultra::resource
             }
 
             VkFormat         vkFormat    = ktxTexture2_GetVkFormat(tex);
-            rhi::PixelFormat pixelFormat = static_cast<rhi::PixelFormat>(vkFormat);
+            rhi::PixelFormat pixelFormat = rhi::fromVk(static_cast<vk::Format>(vkFormat));
+
+            if (pixelFormat == rhi::PixelFormat::eUndefined)
+            {
+                return vbase::Result<rhi::Texture, std::string>::err("Unsupported KTX2 VkFormat");
+            }
 
             auto rhiTex = rhi::Texture::Builder {}
                               .setExtent({tex->baseWidth, tex->baseHeight})

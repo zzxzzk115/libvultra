@@ -167,7 +167,7 @@ namespace vultra
     void DemoAppHost::onWindowEvent(const os::GeneralWindowEvent& e)
     {
         engineCtx().services.require<IInputService>().handleEvent(e);
-        ImGuiSystem::processEvent(e);
+        engineCtx().services.require<IImGuiService>().processEvent(e);
     }
 
     void DemoAppHost::onPollEvents()

@@ -3,7 +3,8 @@
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/base_pipeline.hpp"
 #include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
-#include "vultra/core/rhi/shader_type.hpp"
+#include "vultra/core/rhi/raytracing/raytracing_pipeline_properties.hpp"
+#include "vultra/core/rhi/structs/shader_type.hpp"
 
 #include <vector>
 
@@ -15,14 +16,19 @@ namespace vultra
 
         struct RaytracingShaderGroup
         {
-            // Vulkan shader group type
-            vk::RayTracingShaderGroupTypeKHR type {vk::RayTracingShaderGroupTypeKHR::eGeneral};
+            enum class Type
+            {
+                eGeneral,
+                eTrianglesHitGroup,
+            };
+
+            Type type {Type::eGeneral};
 
             // Shader stage indices (relative to Builder's shader list)
-            uint32_t generalShader {VK_SHADER_UNUSED_KHR};
-            uint32_t closestHitShader {VK_SHADER_UNUSED_KHR};
-            uint32_t anyHitShader {VK_SHADER_UNUSED_KHR};
-            uint32_t intersectionShader {VK_SHADER_UNUSED_KHR};
+            uint32_t generalShader {UINT32_MAX};
+            uint32_t closestHitShader {UINT32_MAX};
+            uint32_t anyHitShader {UINT32_MAX};
+            uint32_t intersectionShader {UINT32_MAX};
         };
 
         class RayTracingPipeline final : public BasePipeline
@@ -37,9 +43,9 @@ namespace vultra
             RayTracingPipeline& operator=(const RayTracingPipeline&)     = delete;
             RayTracingPipeline& operator=(RayTracingPipeline&&) noexcept = default;
 
-            constexpr vk::PipelineBindPoint getBindPoint() const override
+            constexpr PipelineBindPoint getBindPoint() const override
             {
-                return vk::PipelineBindPoint::eRayTracingKHR;
+                return PipelineBindPoint::eRayTracing;
             }
 
             const std::vector<RaytracingShaderGroup>& getShaderGroups() const { return m_Groups; }
@@ -96,19 +102,19 @@ namespace vultra
             };
 
         private:
-            RayTracingPipeline(const vk::Device                                  device,
+            RayTracingPipeline(std::uintptr_t                                  device,
                                PipelineLayout&&                                  pipelineLayout,
-                               const vk::Pipeline                                handle,
+                               std::uintptr_t                                    handle,
                                std::vector<RaytracingShaderGroup>&&              groups,
                                std::vector<uint32_t>&&                           raygenGroupIndices,
                                std::vector<uint32_t>&&                           missGroupIndices,
                                std::vector<uint32_t>&&                           hitGroupIndices,
                                std::vector<uint32_t>&&                           callableGroupIndices,
-                               vk::PhysicalDeviceRayTracingPipelinePropertiesKHR props);
+                               RayTracingPipelineProperties props);
 
         private:
             std::vector<RaytracingShaderGroup>                m_Groups;
-            vk::PhysicalDeviceRayTracingPipelinePropertiesKHR m_Props;
+            RayTracingPipelineProperties m_Props;
 
             std::vector<uint32_t> m_RaygenGroupIndices;
             std::vector<uint32_t> m_MissGroupIndices;
@@ -119,3 +125,4 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
+

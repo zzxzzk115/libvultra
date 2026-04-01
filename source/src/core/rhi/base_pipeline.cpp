@@ -1,5 +1,7 @@
 #include "vultra/core/rhi/base_pipeline.hpp"
 
+#include <vulkan/vulkan.hpp>
+
 namespace vultra
 {
     namespace rhi
@@ -7,8 +9,8 @@ namespace vultra
         BasePipeline::BasePipeline(BasePipeline&& other) noexcept :
             m_Device(other.m_Device), m_Layout(std::move(other.m_Layout)), m_Handle(other.m_Handle)
         {
-            other.m_Device = nullptr;
-            other.m_Handle = nullptr;
+            other.m_Device = 0;
+            other.m_Handle = 0;
         }
 
         BasePipeline::~BasePipeline() { destroy(); }
@@ -27,21 +29,21 @@ namespace vultra
             return *this;
         }
 
-        BasePipeline::operator bool() const { return m_Handle != nullptr; }
+        BasePipeline::operator bool() const { return m_Handle != 0; }
 
-        vk::Pipeline BasePipeline::getHandle() const { return m_Handle; }
+        std::uintptr_t BasePipeline::getHandle() const { return m_Handle; }
 
         const PipelineLayout& BasePipeline::getLayout() const { return m_Layout; }
 
-        vk::DescriptorSetLayout BasePipeline::getDescriptorSetLayout(const DescriptorSetIndex index) const
+        std::uintptr_t BasePipeline::getDescriptorSetLayout(const DescriptorSetIndex index) const
         {
             return m_Layout.getDescriptorSet(index);
         }
 
-        BasePipeline::BasePipeline(const vk::Device device, PipelineLayout&& layout, const vk::Pipeline pipeline) :
+        BasePipeline::BasePipeline(const std::uintptr_t device, PipelineLayout&& layout, const std::uintptr_t pipeline) :
             m_Device(device), m_Layout(std::move(layout)), m_Handle(pipeline)
         {
-            assert(device);
+            assert(device != 0);
         }
 
         void BasePipeline::destroy() noexcept
@@ -51,10 +53,11 @@ namespace vultra
                 return;
             }
 
-            m_Device.destroyPipeline(m_Handle);
+            auto device = vk::Device {reinterpret_cast<VkDevice>(m_Device)};
+            device.destroyPipeline(vk::Pipeline {reinterpret_cast<VkPipeline>(m_Handle)});
 
-            m_Device = nullptr;
-            m_Handle = nullptr;
+            m_Device = 0;
+            m_Handle = 0;
         }
     } // namespace rhi
 } // namespace vultra

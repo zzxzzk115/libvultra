@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/extent2d.hpp"
+#include "vultra/core/rhi/structs/extent2d.hpp"
 
 namespace vultra
 {
@@ -9,3 +9,4 @@ namespace vultra
         rhi::Extent2D extent;
     };
 } // namespace vultra
+

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/framebuffer_info.hpp"
+#include "vultra/core/rhi/structs/framebuffer_info.hpp"
 #include "vultra/function/rendering/framework/uploaded_buffer.hpp"
 #include "vultra/function/rendering/srp/render_view.hpp"
 
@@ -31,3 +31,4 @@ namespace vultra
         std::optional<rhi::FramebufferInfo> framebufferInfo;
     };
 } // namespace vultra
+

@@ -2,7 +2,7 @@
 
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/graphics_pipeline.hpp"
-#include "vultra/core/rhi/pixel_format.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
 #include <debug_draw.hpp>

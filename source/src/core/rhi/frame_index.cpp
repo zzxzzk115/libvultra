@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/frame_index.hpp"
+#include "vultra/core/rhi/structs/frame_index.hpp"
 
 #include <cassert>
 #include <utility>

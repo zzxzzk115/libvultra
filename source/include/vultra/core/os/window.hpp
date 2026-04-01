@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/event/window_events.hpp"
-#include "vultra/core/rhi/rect2d.hpp"
+#include "vultra/core/rhi/structs/rect2d.hpp"
 
 #include <glm/glm.hpp>
 #include <vbase/event/event_bus.hpp>

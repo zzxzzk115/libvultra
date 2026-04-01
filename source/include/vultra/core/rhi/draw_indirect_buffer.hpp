@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/buffer.hpp"
-#include "vultra/core/rhi/draw_indirect_type.hpp"
+#include "vultra/core/rhi/structs/draw_indirect_type.hpp"
 
 namespace vultra
 {
@@ -16,7 +16,7 @@ namespace vultra
 
             [[nodiscard]] DrawIndirectType getDrawIndirectType() const;
             [[nodiscard]] Stride           getStride() const;
-            [[nodiscard]] vk::DeviceSize   getCapacity() const;
+            [[nodiscard]] uint64_t         getCapacity() const;
 
         private:
             DrawIndirectBuffer(Buffer&&, DrawIndirectType);
@@ -26,3 +26,4 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
+
