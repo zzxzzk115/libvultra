@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
+#include "vultra/function/services/render_backend_service.hpp"
 
 #include <limits>
 #include <vector>
@@ -22,6 +23,8 @@ namespace vultra
     void GpuResourceSystem::onShutdown()
     {
         VULTRA_CORE_INFO("[GpuResourceSystem] Shutting down");
+        if (auto* backend = ctx().services.tryGet<IRenderBackendService>())
+            backend->renderDevice().waitIdle();
         m_Pool.clear();
     }
 
@@ -83,16 +86,18 @@ namespace vultra
             if (desc.meshletCount > 0 && desc.meshletData)
             {
                 const uint32_t globalMeshletVertexBase =
-                    (desc.meshletVertexCount > 0 && desc.meshletVertexData)
-                        ? m_Pool.meshlets.appendMeshletVertices(rd, desc.meshletVertexData, desc.meshletVertexCount)
-                        : static_cast<uint32_t>(m_Pool.meshlets.cpuMeshletVertices.size());
+                    (desc.meshletVertexCount > 0 && desc.meshletVertexData) ?
+                        m_Pool.meshlets.appendMeshletVertices(rd, desc.meshletVertexData, desc.meshletVertexCount) :
+                        static_cast<uint32_t>(m_Pool.meshlets.cpuMeshletVertices.size());
 
                 const uint32_t globalMeshletTriangleBase =
-                    (desc.meshletTriangleCount > 0 && desc.meshletTriangleData)
-                        ? m_Pool.meshlets.appendMeshletTriangles(rd, desc.meshletTriangleData, desc.meshletTriangleCount)
-                        : static_cast<uint32_t>(m_Pool.meshlets.cpuMeshletTriangles.size());
+                    (desc.meshletTriangleCount > 0 && desc.meshletTriangleData) ?
+                        m_Pool.meshlets.appendMeshletTriangles(
+                            rd, desc.meshletTriangleData, desc.meshletTriangleCount) :
+                        static_cast<uint32_t>(m_Pool.meshlets.cpuMeshletTriangles.size());
 
-                std::vector<resource::GpuMeshlet> rebasedMeshlets(desc.meshletData, desc.meshletData + desc.meshletCount);
+                std::vector<resource::GpuMeshlet> rebasedMeshlets(desc.meshletData,
+                                                                  desc.meshletData + desc.meshletCount);
                 for (auto& meshlet : rebasedMeshlets)
                 {
                     meshlet.vertexOffset += globalMeshletVertexBase;

@@ -238,6 +238,8 @@ namespace vultra
     void AssetSystem::onShutdown()
     {
         VULTRA_CORE_INFO("[AssetSystem] Shutting down");
+        if (auto* backend = ctx().services.tryGet<IRenderBackendService>())
+            backend->renderDevice().waitIdle();
 
         {
             std::scoped_lock lock(m_UploadQueueMutex);
