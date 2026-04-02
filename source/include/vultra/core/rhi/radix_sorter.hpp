@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <memory>
 
-#include "vultra/core/rhi/radix_sorter_backend.hpp"
+#include "vultra/core/rhi/interfaces/iradix_sorter_backend.hpp"
 #include "vultra/core/rhi/structs/radix_sorter_types.hpp"
  
 namespace vultra

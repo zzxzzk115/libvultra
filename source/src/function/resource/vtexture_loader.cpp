@@ -1,4 +1,5 @@
 #include "vultra/function/resource/vtexture_loader.hpp"
+#include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/util.hpp"
 
@@ -16,6 +17,7 @@
 #include <tinyexr.h>
 
 #include <magic_enum.hpp>
+#include <algorithm>
 
 namespace vultra::resource
 {
@@ -97,20 +99,22 @@ namespace vultra::resource
                         {
                             return vbase::Result<rhi::Texture, std::string>::err("Failed to create staging buffer.");
                         }
-                        std::array<vk::BufferImageCopy, 1> copyRegions {};
-                        copyRegions[0].bufferOffset                    = 0;
-                        copyRegions[0].bufferRowLength                 = 0;
-                        copyRegions[0].bufferImageHeight               = 0;
-                        copyRegions[0].imageSubresource.aspectMask     = rhi::getAspectMask(texture.getPixelFormat());
-                        copyRegions[0].imageSubresource.mipLevel       = static_cast<uint32_t>(mip);
-                        copyRegions[0].imageSubresource.baseArrayLayer = static_cast<uint32_t>(layer);
-                        copyRegions[0].imageSubresource.layerCount     = tc.num_layers;
-                        copyRegions[0].imageOffset                     = vk::Offset3D {0, 0, 0};
-                        copyRegions[0].imageExtent                     = vk::Extent3D {
-                            static_cast<uint32_t>(subData.width),
-                            static_cast<uint32_t>(subData.height),
-                            static_cast<uint32_t>(tc.depth),
-                        };
+                        std::array<rhi::BufferImageCopy, 1> copyRegions {};
+                        copyRegions[0].bufferOffset      = 0;
+                        copyRegions[0].bufferRowLength   = 0;
+                        copyRegions[0].bufferImageHeight = 0;
+                        copyRegions[0].aspectMask        = rhi::ImageAspectFlags::eColor;
+                        copyRegions[0].mipLevel          = static_cast<uint32_t>(mip);
+                        const uint32_t faceCount         =
+                            static_cast<uint32_t>(tc.flags & DDSKTX_TEXTURE_FLAG_CUBEMAP ? DDSKTX_CUBE_FACE_COUNT : 1);
+                        copyRegions[0].baseArrayLayer    = static_cast<uint32_t>(layer) * faceCount + static_cast<uint32_t>(face);
+                        copyRegions[0].layerCount        = 1;
+                        copyRegions[0].imageOffsetX      = 0;
+                        copyRegions[0].imageOffsetY      = 0;
+                        copyRegions[0].imageOffsetZ      = 0;
+                        copyRegions[0].imageExtentWidth  = static_cast<uint32_t>(subData.width);
+                        copyRegions[0].imageExtentHeight = static_cast<uint32_t>(subData.height);
+                        copyRegions[0].imageExtentDepth  = std::max(1u, static_cast<uint32_t>(tc.depth));
                         rhi::upload(rd, srcStagingBuffer, copyRegions, texture, false);
                     }
                 }
@@ -258,20 +262,21 @@ namespace vultra::resource
                                                                   tex->pData + offset);
 
                             // Arrange copy regions for this mip level, layer and face.
-                            std::array<vk::BufferImageCopy, 1> copyRegions {};
-                            copyRegions[0].bufferOffset                    = 0;
-                            copyRegions[0].bufferRowLength                 = 0;
-                            copyRegions[0].bufferImageHeight               = 0;
-                            copyRegions[0].imageSubresource.aspectMask     = rhi::getAspectMask(pixelFormat);
-                            copyRegions[0].imageSubresource.mipLevel       = static_cast<uint32_t>(mip);
-                            copyRegions[0].imageSubresource.baseArrayLayer = static_cast<uint32_t>(layer);
-                            copyRegions[0].imageSubresource.layerCount     = tex->numLayers;
-                            copyRegions[0].imageOffset                     = vk::Offset3D {0, 0, 0};
-                            copyRegions[0].imageExtent                     = vk::Extent3D {
-                                static_cast<uint32_t>(tex->baseWidth >> mip),
-                                static_cast<uint32_t>(tex->baseHeight >> mip),
-                                static_cast<uint32_t>(tex->baseDepth),
-                            };
+                            std::array<rhi::BufferImageCopy, 1> copyRegions {};
+                            copyRegions[0].bufferOffset      = 0;
+                            copyRegions[0].bufferRowLength   = 0;
+                            copyRegions[0].bufferImageHeight = 0;
+                            copyRegions[0].aspectMask        = rhi::ImageAspectFlags::eColor;
+                            copyRegions[0].mipLevel          = static_cast<uint32_t>(mip);
+                            copyRegions[0].baseArrayLayer =
+                                static_cast<uint32_t>(layer) * tex->numFaces + static_cast<uint32_t>(face);
+                            copyRegions[0].layerCount        = 1;
+                            copyRegions[0].imageOffsetX      = 0;
+                            copyRegions[0].imageOffsetY      = 0;
+                            copyRegions[0].imageOffsetZ      = 0;
+                            copyRegions[0].imageExtentWidth  = static_cast<uint32_t>(tex->baseWidth >> mip);
+                            copyRegions[0].imageExtentHeight = static_cast<uint32_t>(tex->baseHeight >> mip);
+                            copyRegions[0].imageExtentDepth  = std::max(1u, static_cast<uint32_t>(tex->baseDepth));
 
                             rhi::upload(rd, staging, copyRegions, rhiTex, false);
                         }

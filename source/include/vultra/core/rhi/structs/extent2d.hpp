@@ -1,8 +1,8 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
-
 #include <glm/ext/vector_uint2.hpp>
+
+#include <compare>
 
 namespace vultra
 {
@@ -15,7 +15,6 @@ namespace vultra
 
             [[nodiscard]] explicit operator bool() const;
 
-            [[nodiscard]] explicit operator vk::Extent2D() const;
             [[nodiscard]] explicit operator glm::uvec2() const;
 
             [[nodiscard]] float getAspectRatio() const;

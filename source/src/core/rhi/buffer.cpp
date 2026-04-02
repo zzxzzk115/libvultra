@@ -1,5 +1,5 @@
 #include "vultra/core/rhi/buffer.hpp"
-#include "vultra/core/rhi/buffer_backend.hpp"
+#include "vultra/core/rhi/interfaces/ibuffer_backend.hpp"
 
 namespace vultra::rhi
 {

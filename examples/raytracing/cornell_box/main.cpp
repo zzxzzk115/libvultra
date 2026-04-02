@@ -1,6 +1,6 @@
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/input/input.hpp>
-#include <vultra/core/rhi/raytracing/raytracing_pipeline.hpp>
+#include <vultra/core/rhi/raytracing_pipeline.hpp>
 #include <vultra/function/app/imgui_app.hpp>
 #include <vultra/function/renderer/mesh_manager.hpp>
 
@@ -334,14 +334,14 @@ public:
             // }
 
             m_MaterialBuffer = m_RenderDevice->createStorageBuffer(
-                sizeof(GPUMaterial) * static_cast<vk::DeviceSize>(materials.size()), rhi::AllocationHints::eNone);
+                sizeof(GPUMaterial) * static_cast<uint64_t>(materials.size()), rhi::AllocationHints::eNone);
 
             auto stagingBuffer = m_RenderDevice->createStagingBuffer(
-                sizeof(GPUMaterial) * static_cast<vk::DeviceSize>(materials.size()), materials.data());
+                sizeof(GPUMaterial) * static_cast<uint64_t>(materials.size()), materials.data());
 
             m_RenderDevice->execute(
                 [&](rhi::CommandBuffer& cb) {
-                    cb.copyBuffer(stagingBuffer, m_MaterialBuffer, vk::BufferCopy {0, 0, stagingBuffer.getSize()});
+                    cb.copyBuffer(stagingBuffer, m_MaterialBuffer, rhi::BufferCopy {0, 0, stagingBuffer.getSize()});
                 },
                 true);
         }
@@ -361,15 +361,15 @@ public:
             }
 
             m_GeometryNodeBuffer = m_RenderDevice->createStorageBuffer(
-                sizeof(GPUGeometryNode) * static_cast<vk::DeviceSize>(geometryNodes.size()),
+                sizeof(GPUGeometryNode) * static_cast<uint64_t>(geometryNodes.size()),
                 rhi::AllocationHints::eNone);
 
             auto stagingBuffer = m_RenderDevice->createStagingBuffer(
-                sizeof(GPUGeometryNode) * static_cast<vk::DeviceSize>(geometryNodes.size()), geometryNodes.data());
+                sizeof(GPUGeometryNode) * static_cast<uint64_t>(geometryNodes.size()), geometryNodes.data());
 
             m_RenderDevice->execute(
                 [&](rhi::CommandBuffer& cb) {
-                    cb.copyBuffer(stagingBuffer, m_GeometryNodeBuffer, vk::BufferCopy {0, 0, stagingBuffer.getSize()});
+                    cb.copyBuffer(stagingBuffer, m_GeometryNodeBuffer, rhi::BufferCopy {0, 0, stagingBuffer.getSize()});
                 },
                 true);
         }
@@ -402,12 +402,14 @@ public:
 
     void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
     {
+        auto& backBuffer = m_Swapchain.getCurrentBuffer();
+
         // Skip rendering if resizing is not finished
-        if (rtv.texture.getExtent() != m_OutputImage.getExtent())
+        if (backBuffer.getExtent() != m_OutputImage.getExtent())
         {
             VULTRA_CLIENT_TRACE("RTV size ({}, {}) != Output Image size ({}, {}), skipping rendering this frame",
-                                rtv.texture.getExtent().width,
-                                rtv.texture.getExtent().height,
+                                backBuffer.getExtent().width,
+                                backBuffer.getExtent().height,
                                 m_OutputImage.getExtent().width,
                                 m_OutputImage.getExtent().height);
             ImGuiApp::onRender(cb, rtv, dt);
@@ -470,7 +472,7 @@ public:
                            &pushConstants)
             .traceRays(*m_Pipeline.getSBT(*m_RenderDevice), {m_Window.getFrameBufferExtent(), 1});
 
-        cb.blit(m_OutputImage, rtv.texture, vk::Filter::eLinear);
+        cb.blit(m_OutputImage, backBuffer, TexelFilter::eLinear);
 
         ImGuiApp::onRender(cb, rtv, dt);
     }

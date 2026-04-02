@@ -1,6 +1,8 @@
 #include "vultra/core/rhi/descriptorset_allocator.hpp"
 
-#include "vultra/core/rhi/vk/macro.hpp"
+#include "vultra/core/rhi/backends/vk/macro.hpp"
+
+#include <vulkan/vulkan.hpp>
 
 namespace vultra
 {
@@ -57,7 +59,7 @@ namespace vultra
             m_Device(other.m_Device), m_DescriptorPools(other.m_DescriptorPools),
             m_LastPoolIndex(other.m_LastPoolIndex), m_EnableRaytracing(other.m_EnableRaytracing)
         {
-            other.m_Device = nullptr;
+            other.m_Device = 0;
             other.m_DescriptorPools.clear();
             other.m_LastPoolIndex    = -1;
             other.m_EnableRaytracing = false;
@@ -80,12 +82,12 @@ namespace vultra
             return *this;
         }
 
-        vk::DescriptorSet DescriptorSetAllocator::allocate(const vk::DescriptorSetLayout descriptorSetLayout,
-                                                           uint32_t                      variableDescriptorCount)
+        DescriptorSetHandle DescriptorSetAllocator::allocate(const std::uintptr_t descriptorSetLayout,
+                                                             const uint32_t       variableDescriptorCount)
         {
-            assert(m_Device && descriptorSetLayout);
+            assert(m_Device && descriptorSetLayout != 0);
             auto descriptorSet = allocate(getPool(), descriptorSetLayout, variableDescriptorCount);
-            if (descriptorSet == nullptr)
+            if (!descriptorSet)
             {
                 // No more space in the descriptor pool (any of .pPoolSizes)
                 descriptorSet = allocate(createPool(), descriptorSetLayout, variableDescriptorCount);
@@ -101,43 +103,46 @@ namespace vultra
             {
                 if (numAllocatedSets > 0)
                 {
-                    m_Device.resetDescriptorPool(h);
+                    const auto device = vk::Device {reinterpret_cast<VkDevice>(m_Device)};
+                    device.resetDescriptorPool(vk::DescriptorPool {reinterpret_cast<VkDescriptorPool>(h)});
                     numAllocatedSets = 0;
                 }
             }
             m_LastPoolIndex = m_DescriptorPools.empty() ? -1 : 0;
         }
 
-        DescriptorSetAllocator::DescriptorSetAllocator(const vk::Device device, bool raytracing) :
-            m_Device(device), m_EnableRaytracing(raytracing)
+        DescriptorSetAllocator::DescriptorSetAllocator(const std::uintptr_t deviceHandle, const bool raytracing) :
+            m_Device(deviceHandle), m_EnableRaytracing(raytracing)
         {
-            assert(device);
+            assert(deviceHandle != 0);
         }
 
         void DescriptorSetAllocator::destroy() noexcept
         {
-            if (!m_Device)
+            if (m_Device == 0)
             {
                 assert(m_DescriptorPools.empty());
                 return;
             }
 
+            const auto device = vk::Device {reinterpret_cast<VkDevice>(m_Device)};
             for (const auto [h, _] : m_DescriptorPools)
             {
-                m_Device.destroyDescriptorPool(h);
+                device.destroyDescriptorPool(vk::DescriptorPool {reinterpret_cast<VkDescriptorPool>(h)});
             }
             m_DescriptorPools.clear();
             m_LastPoolIndex    = -1;
             m_EnableRaytracing = false;
 
-            m_Device = nullptr;
+            m_Device = 0;
         }
 
         DescriptorPool& DescriptorSetAllocator::createPool()
         {
             m_LastPoolIndex           = static_cast<int32_t>(m_DescriptorPools.size());
-            const auto descriptorPool = createDescriptorPool(m_Device, m_EnableRaytracing);
-            return m_DescriptorPools.emplace_back(descriptorPool);
+            const auto device = vk::Device {reinterpret_cast<VkDevice>(m_Device)};
+            const auto descriptorPool = createDescriptorPool(device, m_EnableRaytracing);
+            return m_DescriptorPools.emplace_back(reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorPool>(descriptorPool)));
         }
 
         DescriptorPool& DescriptorSetAllocator::getPool()
@@ -151,22 +156,24 @@ namespace vultra
             return createPool();
         }
 
-        vk::DescriptorSet DescriptorSetAllocator::allocate(DescriptorPool&               descriptorPool,
-                                                           const vk::DescriptorSetLayout descriptorSetLayout,
-                                                           uint32_t                      variableDescriptorCount) const
+        DescriptorSetHandle DescriptorSetAllocator::allocate(DescriptorPool&          descriptorPool,
+                                                             const std::uintptr_t      descriptorSetLayout,
+                                                             const uint32_t            variableDescriptorCount) const
         {
+            const auto device = vk::Device {reinterpret_cast<VkDevice>(m_Device)};
             vk::DescriptorSetVariableDescriptorCountAllocateInfo countInfo {};
             countInfo.descriptorSetCount = 1;
             countInfo.pDescriptorCounts  = &variableDescriptorCount;
 
             vk::DescriptorSetAllocateInfo allocateInfo {};
-            allocateInfo.descriptorPool     = descriptorPool.handle;
+            allocateInfo.descriptorPool     = vk::DescriptorPool {reinterpret_cast<VkDescriptorPool>(descriptorPool.handle)};
             allocateInfo.descriptorSetCount = 1;
-            allocateInfo.pSetLayouts        = &descriptorSetLayout;
+            const auto layout               = vk::DescriptorSetLayout {reinterpret_cast<VkDescriptorSetLayout>(descriptorSetLayout)};
+            allocateInfo.pSetLayouts        = &layout;
             allocateInfo.pNext              = variableDescriptorCount > 0 ? &countInfo : nullptr;
 
             vk::DescriptorSet descriptorSet {};
-            vk::Result        result = m_Device.allocateDescriptorSets(&allocateInfo, &descriptorSet);
+            vk::Result        result = device.allocateDescriptorSets(&allocateInfo, &descriptorSet);
             switch (result)
             {
                 case vk::Result::eSuccess:
@@ -182,7 +189,7 @@ namespace vultra
                 descriptorPool.numAllocatedSets++;
             }
 
-            return descriptorSet;
+            return DescriptorSetHandle {reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorSet>(descriptorSet))};
         }
     } // namespace rhi
 } // namespace vultra

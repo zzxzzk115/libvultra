@@ -35,7 +35,7 @@ namespace vultra
 
         const PipelineLayout& BasePipeline::getLayout() const { return m_Layout; }
 
-        std::uintptr_t BasePipeline::getDescriptorSetLayout(const DescriptorSetIndex index) const
+        DescriptorSetLayoutKey BasePipeline::getDescriptorSetLayout(const DescriptorSetIndex index) const
         {
             return m_Layout.getDescriptorSet(index);
         }

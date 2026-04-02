@@ -160,8 +160,8 @@ public:
 
     void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
     {
-        const auto& [frameIndex, target] = rtv;
-        m_Renderer.render(cb, &target, dt);
+        auto& backBuffer = m_Swapchain.getCurrentBuffer();
+        m_Renderer.render(cb, &backBuffer, dt);
         ImGuiApp::onRender(cb, rtv, dt);
     }
 

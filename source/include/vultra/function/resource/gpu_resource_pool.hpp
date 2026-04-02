@@ -43,7 +43,7 @@ namespace vultra::resource
         {
             // Global vertex buffer for gpu-driven rendering.
             Ref<rhi::StorageBuffer> vertexBytes {nullptr};
-            uint64_t                vertexBytesAddress {0};
+            rhi::DeviceAddress      vertexBytesAddress {};
             uint32_t                vertexBytesUsed {0};
 
             // CPU mirror for deterministic (re)uploads when buffers grow.
@@ -51,7 +51,7 @@ namespace vultra::resource
 
             // Global index buffer for indexed multi-draw indirect (uint32 indices).
             rhi::IndexBuffer index32;
-            uint64_t         index32Address {0};
+            rhi::DeviceAddress index32Address {};
             uint32_t         indexCountUsed {0};
 
             // CPU mirror for deterministic (re)uploads when buffers grow.
@@ -61,13 +61,13 @@ namespace vultra::resource
             void reset()
             {
                 vertexBytes        = nullptr;
-                vertexBytesAddress = 0;
+                vertexBytesAddress = {};
                 vertexBytesUsed    = 0;
 
                 cpuVertexBytes.clear();
 
                 index32        = {};
-                index32Address = 0;
+                index32Address = {};
                 indexCountUsed = 0;
 
                 cpuIndex32.clear();
@@ -178,27 +178,27 @@ namespace vultra::resource
         struct MeshletBuffers
         {
             Ref<rhi::StorageBuffer> meshletsBuffer {nullptr};
-            uint64_t                meshletsAddress {0};
+            rhi::DeviceAddress      meshletsAddress {};
             std::vector<GpuMeshlet> cpuMeshlets;
 
             Ref<rhi::StorageBuffer> meshletVerticesBuffer {nullptr};
-            uint64_t                meshletVerticesAddress {0};
+            rhi::DeviceAddress      meshletVerticesAddress {};
             std::vector<uint32_t>   cpuMeshletVertices;
 
             Ref<rhi::StorageBuffer> meshletTrianglesBuffer {nullptr};
-            uint64_t                meshletTrianglesAddress {0};
+            rhi::DeviceAddress      meshletTrianglesAddress {};
             std::vector<uint32_t>   cpuMeshletTriangles;
 
             void reset()
             {
                 meshletsBuffer  = nullptr;
-                meshletsAddress = 0;
+                meshletsAddress = {};
                 cpuMeshlets.clear();
                 meshletVerticesBuffer  = nullptr;
-                meshletVerticesAddress = 0;
+                meshletVerticesAddress = {};
                 cpuMeshletVertices.clear();
                 meshletTrianglesBuffer  = nullptr;
-                meshletTrianglesAddress = 0;
+                meshletTrianglesAddress = {};
                 cpuMeshletTriangles.clear();
             }
 

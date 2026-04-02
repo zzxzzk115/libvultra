@@ -7,13 +7,18 @@ namespace vultra
 {
     namespace rhi
     {
-        glm::uvec3 ComputePipeline::getWorkGroupSize() const { return m_LocalSize; }
+        glm::uvec3 ComputePipeline::getWorkGroupSize() const
+        {
+            assert(m_Backend && m_Backend->isValid());
+            return m_Backend->getWorkGroupSize();
+        }
 
         ComputePipeline::ComputePipeline(const std::uintptr_t device,
                                          PipelineLayout&&     pipelineLayout,
                                          const glm::uvec3     localSize,
-                                         const std::uintptr_t pipeline) :
-            BasePipeline(device, std::move(pipelineLayout), pipeline), m_LocalSize(localSize)
+                                         const std::uintptr_t pipeline,
+                                         std::unique_ptr<IComputePipelineBackend> backend) :
+            BasePipeline(device, std::move(pipelineLayout), pipeline), m_Backend(std::move(backend)), m_LocalSize(localSize)
         {}
 
         glm::uvec2 calcNumWorkGroups(const glm::uvec2 extent, const glm::uvec2 localSize)

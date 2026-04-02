@@ -1,28 +1,29 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
+#include "vultra/core/rhi/structs/native_handles.hpp"
+
+#include <cstdint>
+#include <vector>
 
 namespace vultra
 {
     namespace rhi
     {
         class CommandBuffer;
-        class VulkanCommandBuffer;
 
         struct DescriptorPool
         {
-            vk::DescriptorPool handle {nullptr};
-            uint32_t           numAllocatedSets {0};
+            std::uintptr_t handle {0};
+            uint32_t       numAllocatedSets {0};
 
             const static uint32_t s_kSetsPerPool;
 
-            explicit DescriptorPool(vk::DescriptorPool h) : handle(h), numAllocatedSets(0) {}
+            explicit DescriptorPool(std::uintptr_t h) : handle(h), numAllocatedSets(0) {}
         };
 
         class DescriptorSetAllocator final
         {
             friend class CommandBuffer;
-            friend class VulkanCommandBuffer;
 
         public:
             DescriptorSetAllocator()                              = default;
@@ -33,20 +34,21 @@ namespace vultra
             DescriptorSetAllocator& operator=(const DescriptorSetAllocator&) = delete;
             DescriptorSetAllocator& operator=(DescriptorSetAllocator&&) noexcept;
 
-            [[nodiscard]] vk::DescriptorSet allocate(const vk::DescriptorSetLayout, uint32_t);
+            // Internal constructor used by backend command buffers.
+            explicit DescriptorSetAllocator(std::uintptr_t deviceHandle, bool raytracing = false);
+
+            [[nodiscard]] DescriptorSetHandle allocate(std::uintptr_t descriptorSetLayout, uint32_t);
             void                            reset();
 
         private:
-            explicit DescriptorSetAllocator(const vk::Device, bool raytracing = false);
-
             void destroy() noexcept;
 
-            [[nodiscard]] DescriptorPool&   createPool();
-            [[nodiscard]] DescriptorPool&   getPool();
-            [[nodiscard]] vk::DescriptorSet allocate(DescriptorPool&, const vk::DescriptorSetLayout, uint32_t) const;
+            [[nodiscard]] DescriptorPool&      createPool();
+            [[nodiscard]] DescriptorPool&      getPool();
+            [[nodiscard]] DescriptorSetHandle  allocate(DescriptorPool&, std::uintptr_t descriptorSetLayout, uint32_t) const;
 
         private:
-            vk::Device m_Device {nullptr};
+            std::uintptr_t m_Device {0};
 
             std::vector<DescriptorPool> m_DescriptorPools;
             int32_t                     m_LastPoolIndex {-1};

@@ -1,18 +1,12 @@
 #pragma once
 
 #include "vultra/core/rhi/buffer.hpp"
+#include "vultra/core/rhi/structs/index_type.hpp"
 
 namespace vultra
 {
     namespace rhi
     {
-        enum class IndexType
-        {
-            eUndefined = 0,
-            eUInt16    = 2,
-            eUInt32    = 4
-        };
-
         class IndexBuffer final : public Buffer
         {
             friend class RenderDevice;

@@ -5,19 +5,22 @@
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/compute_pipeline.hpp"
 #include "vultra/core/rhi/draw_indirect_buffer.hpp"
+#include "vultra/core/rhi/structs/allocation_hints.hpp"
 #include "vultra/core/rhi/structs/draw_indirect_command.hpp"
+#include "vultra/core/rhi/structs/device_address.hpp"
 #include "vultra/core/rhi/structs/image_aspect.hpp"
+#include "vultra/core/rhi/structs/native_handles.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/radix_sorter.hpp"
 #include "vultra/core/rhi/structs/buffer_usage.hpp"
-#include "vultra/core/rhi/raytracing/acceleration_structure.hpp"
-#include "vultra/core/rhi/raytracing/raytracing_instance.hpp"
-#include "vultra/core/rhi/raytracing/raytracing_pipeline.hpp"
-#include "vultra/core/rhi/raytracing/raytracing_pipeline_properties.hpp"
-#include "vultra/core/rhi/raytracing/scratch_buffer.hpp"
-#include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
-#include "vultra/core/rhi/render_mesh.hpp"
+#include "vultra/core/rhi/acceleration_structure.hpp"
+#include "vultra/core/rhi/structs/raytracing_instance.hpp"
+#include "vultra/core/rhi/raytracing_pipeline.hpp"
+#include "vultra/core/rhi/structs/raytracing_pipeline_properties.hpp"
+#include "vultra/core/rhi/scratch_buffer.hpp"
+#include "vultra/core/rhi/shader_binding_table.hpp"
+#include "vultra/core/rhi/structs/render_mesh.hpp"
 #include "vultra/core/rhi/structs/sampler_info.hpp"
 #include "vultra/core/rhi/shader_compiler.hpp"
 #include "vultra/core/rhi/shader_module.hpp"
@@ -26,7 +29,7 @@
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/rhi/uniform_buffer.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_render_device_backend.hpp"
+#include "vultra/core/rhi/interfaces/irender_device_backend.hpp"
 #include "vultra/core/rhi/structs/job_info.hpp"
 #include "vultra/core/rhi/structs/render_device_structs.hpp"
 
@@ -34,6 +37,7 @@
 
 #include <glm/fwd.hpp>
 
+#include <array>
 #include <functional>
 #include <set>
 #include <span>
@@ -59,21 +63,12 @@ namespace vultra
 
     namespace rhi
     {
-        class VulkanImGuiBackend;
-        enum class AllocationHints
-        {
-            eNone            = ZERO_BIT,
-            eMinMemory       = BIT(0),
-            eSequentialWrite = BIT(1),
-            eRandomAccess    = BIT(2),
-        };
-
         class RenderDevice final
         {
-            friend class VulkanImGuiBackend;
             friend class GraphicsPipeline;
             friend class RayTracingPipeline;
             friend class RadixSorter;
+            friend class DescriptorSetBuilder;
             friend class vultra::ImGuiSystem;
             friend class openxr::XRHeadset;
 
@@ -95,34 +90,33 @@ namespace vultra
 
             [[nodiscard]] PhysicalDeviceInfo getPhysicalDeviceInfo() const;
 
-            [[nodiscard]] vk::PhysicalDeviceLimits   getDeviceLimits() const;
-            [[nodiscard]] vk::PhysicalDeviceFeatures getDeviceFeatures() const;
-
-            [[nodiscard]] vk::FormatProperties getFormatProperties(PixelFormat) const;
+            [[nodiscard]] std::array<float, 2> getLineWidthRange() const;
+            [[nodiscard]] float                getMaxSamplerAnisotropy() const;
+            [[nodiscard]] uint64_t             getFormatFeatureFlagsOptimal(PixelFormat) const;
 
             [[nodiscard]] Swapchain createSwapchain(os::Window&,
-                                                    Swapchain::Format = Swapchain::Format::esRGB,
+                                                    SwapchainFormat = SwapchainFormat::esRGB,
                                                     VerticalSync      = VerticalSync::eDisabled) const;
 
-            [[nodiscard]] vk::Fence     createFence(bool signaled = true) const;
-            [[nodiscard]] vk::Semaphore createSemaphore();
+            [[nodiscard]] FenceHandle     createFence(bool signaled = true) const;
+            [[nodiscard]] SemaphoreHandle createSemaphore();
 
-            [[nodiscard]] Buffer createStagingBuffer(vk::DeviceSize size, const void* data = nullptr) const;
+            [[nodiscard]] Buffer createStagingBuffer(uint64_t size, const void* data = nullptr) const;
 
             [[nodiscard]] VertexBuffer createVertexBuffer(Buffer::Stride,
-                                                          vk::DeviceSize vertexCount,
+                                                          uint64_t vertexCount,
                                                           AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] IndexBuffer
-            createIndexBuffer(IndexType, vk::DeviceSize indexCount, AllocationHints = AllocationHints::eNone) const;
+            createIndexBuffer(IndexType, uint64_t indexCount, AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] UniformBuffer createUniformBuffer(vk::DeviceSize size,
+            [[nodiscard]] UniformBuffer createUniformBuffer(uint64_t size,
                                                             AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] StorageBuffer createStorageBuffer(vk::DeviceSize size,
+            [[nodiscard]] StorageBuffer createStorageBuffer(uint64_t size,
                                                             AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] StorageBuffer createStorageBufferWithUsage(vk::DeviceSize size,
+            [[nodiscard]] StorageBuffer createStorageBufferWithUsage(uint64_t size,
                                                                      BufferUsage          extraUsage,
                                                                      AllocationHints = AllocationHints::eNone) const;
 
@@ -132,12 +126,9 @@ namespace vultra
                                             AllocationHints = AllocationHints::eNone) const;
 
             [[nodiscard]] DrawIndirectBuffer
-            createDrawIndirectBufferBySize(vk::DeviceSize   size,
+            createDrawIndirectBufferBySize(uint64_t   size,
                                            DrawIndirectType type,
                                            AllocationHints = AllocationHints::eNone) const;
-
-            [[nodiscard]] std::pair<std::size_t, std::uintptr_t>
-            createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>&);
 
             [[nodiscard]] PipelineLayout createPipelineLayout(const PipelineLayoutInfo&);
 
@@ -152,7 +143,7 @@ namespace vultra
 
             RenderDevice&             setupSampler(Texture&, SamplerInfo);
             [[nodiscard]] Sampler getSampler(const SamplerInfo&);
-            [[nodiscard]] vk::Sampler getSamplerHandle(const Sampler&) const;
+            [[nodiscard]] SamplerHandle getSamplerHandle(const Sampler&) const;
 
             [[nodiscard]] ShaderCompiler::Result
             compile(const ShaderType,
@@ -178,27 +169,27 @@ namespace vultra
                                                                        std::optional<PipelineLayout> = std::nullopt);
 
             // Direct mapping without staging buffer. Use with host-coherent memory or persistent mapped memory.
-            RenderDevice& upload(Buffer&, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data);
+            RenderDevice& upload(Buffer&, uint64_t offset, uint64_t size, const void* data);
 
             // Upload with staging buffer. Use for non-host-visible memory. This is a helper that creates a staging
             // buffer and performs a synchronous submit/wait. Initialization/setup only, not per-frame pass execution.
-            RenderDevice& uploadS(Buffer&, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data);
+            RenderDevice& uploadS(Buffer&, uint64_t offset, uint64_t size, const void* data);
 
             // Upload draw indirect commands.
             RenderDevice& uploadDrawIndirect(DrawIndirectBuffer&, const std::vector<DrawIndirectCommand>& commands);
 
-            RenderDevice& destroy(vk::Fence&);
-            RenderDevice& destroy(vk::Semaphore&);
+            RenderDevice& destroy(FenceHandle&);
+            RenderDevice& destroy(SemaphoreHandle&);
 
             [[nodiscard]] CommandBuffer createCommandBuffer() const;
             // Blocking.
             RenderDevice& execute(const std::function<void(CommandBuffer&)>&, bool oneTime = false);
             RenderDevice& execute(CommandBuffer&, const JobInfo& = {}, bool oneTime = false);
 
-            RenderDevice& present(Swapchain&, const vk::Semaphore wait = nullptr);
+            RenderDevice& present(Swapchain&, SemaphoreHandle wait = {});
 
-            RenderDevice& wait(const vk::Fence);
-            RenderDevice& reset(const vk::Fence);
+            RenderDevice& wait(FenceHandle);
+            RenderDevice& reset(FenceHandle);
 
             RenderDevice& waitIdle();
 
@@ -213,9 +204,9 @@ namespace vultra
                                         AccelerationStructureBuildSizesInfo buildSizesInfo) const;
 
             // For single geometry BLAS, e.g., triangle
-            [[nodiscard]] AccelerationStructure createBuildSingleGeometryBLAS(uint64_t vertexBufferAddress,
-                                                                              uint64_t indexBufferAddress,
-                                                                              uint64_t transformBufferAddress,
+            [[nodiscard]] AccelerationStructure createBuildSingleGeometryBLAS(DeviceAddress vertexBufferAddress,
+                                                                              DeviceAddress indexBufferAddress,
+                                                                              DeviceAddress transformBufferAddress,
                                                                               uint32_t vertexStride,
                                                                               uint32_t vertexCount,
                                                                               uint32_t indexCount);
@@ -242,7 +233,7 @@ namespace vultra
             [[nodiscard]] ShaderBindingTable createShaderBindingTable(const rhi::RayTracingPipeline& pipeline,
                                                                       AllocationHints = AllocationHints::eNone) const;
 
-            [[nodiscard]] uint64_t getBufferDeviceAddress(const Buffer&) const;
+            [[nodiscard]] DeviceAddress getBufferDeviceAddress(const Buffer&) const;
 
             [[nodiscard]] RayTracingPipelineProperties getRayTracingPipelineProperties() const;
 
@@ -280,19 +271,24 @@ namespace vultra
             void createTracyContext();
             void createTracky();
 
-            vk::CommandBuffer allocateCommandBuffer() const;
-            vk::Sampler       createSampler(const SamplerInfo&) const;
+            [[nodiscard]] DescriptorSetLayoutKey
+            createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>&);
+            [[nodiscard]] std::uintptr_t
+            getDescriptorSetLayoutNativeHandle(DescriptorSetLayoutKey) const;
+
+            std::uintptr_t allocateCommandBuffer() const;
+            SamplerHandle   createSampler(const SamplerInfo&) const;
 
             [[nodiscard]] AccelerationStructureBuffer
-            createAccelerationStructureBuffer(vk::DeviceSize size, AllocationHints = AllocationHints::eNone) const;
+            createAccelerationStructureBuffer(uint64_t size, AllocationHints = AllocationHints::eNone) const;
 
-            uint64_t getAccelerationStructureDeviceAddress(const AccelerationStructure&) const;
+            DeviceAddress getAccelerationStructureDeviceAddress(const AccelerationStructure&) const;
 
             StrideDeviceAddressRegion
-            getSbtEntryStrideDeviceAddressRegion(const Buffer& sbt, uint32_t handleCount, uint64_t offset) const;
+            getSbtEntryStrideDeviceAddressRegion(const Buffer& sbt, uint32_t handleCount, DeviceAddress offset) const;
 
         private:
-            std::unique_ptr<VulkanRenderDeviceBackend> m_Backend;
+            std::unique_ptr<IRenderDeviceBackend> m_Backend;
         };
     } // namespace rhi
 } // namespace vultra
@@ -308,4 +304,3 @@ struct HasFlags<vultra::rhi::RenderDeviceFeatureReportFlagBits> : std::true_type
 template<>
 struct HasFlags<vultra::rhi::AllocationHints> : std::true_type
 {};
-

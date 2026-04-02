@@ -70,7 +70,7 @@ namespace vultra
             cb.begin();
             {
                 ZoneScopedN("Tracky::NextFrame");
-                TRACKY_VK_NEXT_FRAME(cb);
+                TRACKY_GPU_NEXT_FRAME(cb);
             }
 
             return cb;
@@ -84,7 +84,7 @@ namespace vultra
             auto& [cb, imageAcquired, _] = m_Frames[m_FrameIndex];
             cb.reset();
 
-            m_ImageAcquired = m_Swapchain->acquireNextImage(reinterpret_cast<std::uintptr_t>(static_cast<VkSemaphore>(imageAcquired)));
+            m_ImageAcquired = m_Swapchain->acquireNextImage(imageAcquired);
             m_ImageAcquireAttempted = true;
             return m_ImageAcquired;
         }
@@ -109,7 +109,7 @@ namespace vultra
             m_RenderDevice->execute(cb,
                                     JobInfo {
                                         .wait      = imageAcquired,
-                                        .waitStage = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+                                        .waitStage = PipelineStages::eColorAttachmentOutput,
                                         .signal    = renderCompleted,
                                     });
 

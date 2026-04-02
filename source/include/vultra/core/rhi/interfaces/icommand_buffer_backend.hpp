@@ -9,15 +9,15 @@
 #include "vultra/core/rhi/structs/draw_indirect_info.hpp"
 #include "vultra/core/rhi/structs/framebuffer_info.hpp"
 #include "vultra/core/rhi/structs/geometry_info.hpp"
+#include "vultra/core/rhi/structs/buffer_image_copy.hpp"
+#include "vultra/core/rhi/structs/native_handles.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
-#include "vultra/core/rhi/raytracing/shader_binding_table.hpp"
+#include "vultra/core/rhi/shader_binding_table.hpp"
 #include "vultra/core/rhi/structs/rect2d.hpp"
 #include "vultra/core/rhi/structs/shader_type.hpp"
 #include "vultra/core/rhi/structs/texel_filter.hpp"
 #include "vultra/core/rhi/texture.hpp"
-
-#include <vulkan/vulkan.hpp>
 
 #include <cstdint>
 #include <glm/ext/vector_uint3.hpp>
@@ -35,9 +35,9 @@ namespace vultra
         public:
             virtual ~ICommandBufferBackend() = default;
 
-            [[nodiscard]] virtual vk::CommandBuffer getHandle() const = 0;
+            [[nodiscard]] virtual std::uintptr_t     getHandle() const = 0;
             [[nodiscard]] virtual std::uintptr_t     getNativeHandle() const = 0;
-            [[nodiscard]] virtual TracyVkCtx         getTracyContext() const = 0;
+            [[nodiscard]] virtual TracyGpuContext    getTracyContext() const = 0;
 
             [[nodiscard]] virtual Barrier::Builder& getBarrierBuilder() = 0;
             [[nodiscard]] virtual DescriptorSetBuilder createDescriptorSetBuilder() = 0;
@@ -51,12 +51,12 @@ namespace vultra
 
             virtual ICommandBufferBackend& dispatch(const ComputePipeline&, const glm::uvec3&) = 0;
             virtual ICommandBufferBackend& dispatch(const glm::uvec3&) = 0;
-            virtual ICommandBufferBackend& dispatchIndirect(const Buffer&, vk::DeviceSize offset) = 0;
+            virtual ICommandBufferBackend& dispatchIndirect(const Buffer&, uint64_t offset) = 0;
             virtual ICommandBufferBackend& insertComputeUavBarrier() = 0;
 
             virtual ICommandBufferBackend& traceRays(const ShaderBindingTable&, const glm::uvec3&) = 0;
 
-            virtual ICommandBufferBackend& bindDescriptorSet(DescriptorSetIndex, vk::DescriptorSet) = 0;
+            virtual ICommandBufferBackend& bindDescriptorSet(DescriptorSetIndex, DescriptorSetHandle) = 0;
             virtual ICommandBufferBackend& pushConstants(ShaderStages, uint32_t offset, uint32_t size, const void* data) = 0;
 
             virtual ICommandBufferBackend& beginRendering(const FramebufferInfo&) = 0;
@@ -77,12 +77,12 @@ namespace vultra
 
             virtual ICommandBufferBackend& copyBuffer(const Buffer&, Buffer&, const rhi::BufferCopy&) = 0;
             virtual ICommandBufferBackend& copyBuffer(const Buffer&, Texture&) = 0;
-            virtual ICommandBufferBackend& copyBuffer(const Buffer&, Texture&, std::span<const vk::BufferImageCopy>) = 0;
+            virtual ICommandBufferBackend& copyBuffer(const Buffer&, Texture&, std::span<const BufferImageCopy>) = 0;
             virtual ICommandBufferBackend& copyImage(const Texture&, const Buffer&, const rhi::ImageAspect) = 0;
 
-            virtual ICommandBufferBackend& update(Buffer&, vk::DeviceSize offset, vk::DeviceSize size, const void* data) = 0;
+            virtual ICommandBufferBackend& update(Buffer&, uint64_t offset, uint64_t size, const void* data) = 0;
 
-            virtual ICommandBufferBackend& blit(Texture&, Texture&, vk::Filter, uint32_t srcMipLevel, uint32_t dstMipLevel) = 0;
+            virtual ICommandBufferBackend& blit(Texture&, Texture&, TexelFilter, uint32_t srcMipLevel, uint32_t dstMipLevel) = 0;
             virtual ICommandBufferBackend& generateMipmaps(Texture&, TexelFilter) = 0;
 
             virtual ICommandBufferBackend& flushBarriers() = 0;
@@ -91,4 +91,3 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
-

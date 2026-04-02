@@ -2,6 +2,7 @@
 
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/structs/frame_index.hpp"
+#include "vultra/core/rhi/structs/native_handles.hpp"
 #include "vultra/core/rhi/structs/render_target_view.hpp"
 
 namespace vultra
@@ -48,8 +49,8 @@ namespace vultra
             struct PerFrameData
             {
                 CommandBuffer commandBuffer;
-                vk::Semaphore imageAcquired {nullptr};
-                vk::Semaphore renderCompleted {nullptr};
+                SemaphoreHandle imageAcquired {};
+                SemaphoreHandle renderCompleted {};
             };
             std::vector<PerFrameData> m_Frames;
             FrameIndex                m_FrameIndex;

@@ -13,33 +13,26 @@ namespace vultra
             [[nodiscard]] auto getDefaultRegion(const Texture& texture)
             {
                 const auto extent = texture.getExtent();
-                return VkBufferImageCopy {
-                    .imageSubresource =
-                        {
-                            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                            .layerCount = 1,
-                        },
-                    .imageExtent =
-                        {
-                            .width  = extent.width,
-                            .height = extent.height,
-                            .depth  = 1,
-                        },
+                return BufferImageCopy {
+                    .aspectMask        = ImageAspectFlags::eColor,
+                    .layerCount        = 1,
+                    .imageExtentWidth  = extent.width,
+                    .imageExtentHeight = extent.height,
+                    .imageExtentDepth  = 1,
                 };
             }
         } // namespace
 
-        void upload(RenderDevice&                        rd,
-                    const Buffer&                        srcStagingBuffer,
-                    std::span<const vk::BufferImageCopy> copyRegions,
-                    Texture&                             dst,
-                    const bool                           generateMipmaps)
+        void upload(RenderDevice&                     rd,
+                    const Buffer&                     srcStagingBuffer,
+                    std::span<const BufferImageCopy>  copyRegions,
+                    Texture&                          dst,
+                    const bool                        generateMipmaps)
         {
             rd.execute([&](CommandBuffer& cb) {
                 cb.copyBuffer(srcStagingBuffer,
                               dst,
-                              copyRegions.empty() ? std::array {vk::BufferImageCopy(getDefaultRegion(dst))} :
-                                                    copyRegions);
+                              copyRegions.empty() ? std::array {getDefaultRegion(dst)} : copyRegions);
                 if (generateMipmaps)
                     cb.generateMipmaps(dst);
 

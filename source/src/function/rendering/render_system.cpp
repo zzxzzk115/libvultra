@@ -565,7 +565,7 @@ namespace vultra
                     continue;
 
                 rhi::prepareForReading(cb, *eyeView.target);
-                cb.blit(*eyeView.target, *eyeView.mirrorTarget, vk::Filter::eLinear);
+                cb.blit(*eyeView.target, *eyeView.mirrorTarget, rhi::TexelFilter::eLinear);
             }
 
             imguiService->begin();

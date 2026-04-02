@@ -26,7 +26,7 @@ namespace vultra
             [[nodiscard]] explicit operator bool() const;
 
             [[nodiscard]] std::uintptr_t getHandle() const;
-            [[nodiscard]] std::uintptr_t getDescriptorSet(const DescriptorSetIndex) const;
+            [[nodiscard]] DescriptorSetLayoutKey getDescriptorSet(const DescriptorSetIndex) const;
 
             class Builder
             {
@@ -69,11 +69,11 @@ namespace vultra
             };
 
         private:
-            PipelineLayout(std::uintptr_t, std::vector<std::uintptr_t>&&);
+            PipelineLayout(std::uintptr_t, std::vector<DescriptorSetLayoutKey>&&);
 
         private:
-            std::uintptr_t              m_Handle {0}; // Non-owning.
-            std::vector<std::uintptr_t> m_DescriptorSetLayouts;
+            std::uintptr_t                       m_Handle {0}; // Non-owning.
+            std::vector<DescriptorSetLayoutKey> m_DescriptorSetLayouts;
         };
 
         struct ShaderReflection;

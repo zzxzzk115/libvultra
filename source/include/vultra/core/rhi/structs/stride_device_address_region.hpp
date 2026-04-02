@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vultra/core/rhi/structs/device_address.hpp"
+
 #include <cstdint>
 
 namespace vultra
@@ -8,7 +10,7 @@ namespace vultra
     {
         struct StrideDeviceAddressRegion
         {
-            uint64_t deviceAddress {0};
+            DeviceAddress deviceAddress {};
             uint64_t stride {0};
             uint64_t size {0};
         };

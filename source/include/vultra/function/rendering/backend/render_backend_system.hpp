@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/engine/engine_subsystem.hpp"
-#include "vultra/core/rhi/imgui_backend.hpp"
+#include "vultra/core/rhi/interfaces/iimgui_backend.hpp"
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 

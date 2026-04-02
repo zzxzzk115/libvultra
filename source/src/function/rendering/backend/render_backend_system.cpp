@@ -2,7 +2,7 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
-#include "vultra/core/rhi/vk/vulkan_imgui_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_imgui_backend.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
@@ -96,13 +96,13 @@ namespace vultra
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");
         m_Swapchain =
-            m_RenderDevice->createSwapchain(window, rhi::Swapchain::Format::esRGB, ctx().config.render.vSyncConfig);
+            m_RenderDevice->createSwapchain(window, rhi::SwapchainFormat::esRGB, ctx().config.render.vSyncConfig);
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating frame controller");
         m_FrameController =
             std::make_unique<rhi::FrameController>(*m_RenderDevice, m_Swapchain, ctx().config.render.numFramesInFlight);
 
-        if (HasFlagValues(ctx().config.render.renderDeviceFeatureFlag, rhi::RenderDeviceFeatureFlagBits::eOpenXR))
+        if (HasFlagValues(ctx().config.render.renderDeviceFeatureFlag, rhi::RenderDeviceFeatureFlagBits::eXR))
         {
             VULTRA_CORE_TRACE("[RenderBackendSystem] Creating XR render backend");
             if (!m_RenderDevice->getXRDevice())
@@ -281,4 +281,3 @@ namespace vultra
 
     void RenderBackendSystem::present() { m_FrameController->present(); }
 } // namespace vultra
-

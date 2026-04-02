@@ -44,12 +44,12 @@ int main()
         if (!swapchain)
             continue;
 
-        auto& backBuffer        = frameController.getCurrentTarget().texture;
         bool  acquiredNextFrame = frameController.acquireNextFrame();
         if (!acquiredNextFrame)
         {
             continue;
         }
+        auto& backBuffer = swapchain.getCurrentBuffer();
 
         auto& cb = frameController.beginFrame();
 

@@ -3,8 +3,10 @@
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/profiling/tracky.hpp"
 #include "vultra/core/profiling/tracy_wrapper.hpp"
-#include "vultra/core/rhi/command_buffer_backend.hpp"
+#include "vultra/core/rhi/interfaces/icommand_buffer_backend.hpp"
 #include "vultra/core/rhi/debug_marker.hpp"
+#include "vultra/core/rhi/structs/native_handles.hpp"
+#include "vultra/core/rhi/structs/buffer_image_copy.hpp"
 
 #include <vbase/core/scoped_enum_flags.hpp>
 
@@ -44,7 +46,7 @@ namespace vultra
             CommandBuffer& operator=(const CommandBuffer&) = delete;
             CommandBuffer& operator=(CommandBuffer&&) noexcept = default;
 
-            [[nodiscard]] vk::CommandBuffer getHandle() const
+            [[nodiscard]] std::uintptr_t getHandle() const
             {
                 assert(m_Impl);
                 return m_Impl->getHandle();
@@ -54,7 +56,7 @@ namespace vultra
                 assert(m_Impl);
                 return m_Impl->getNativeHandle();
             }
-            [[nodiscard]] TracyVkCtx getTracyContext() const
+            [[nodiscard]] TracyGpuContext getTracyContext() const
             {
                 assert(m_Impl);
                 return m_Impl->getTracyContext();
@@ -117,7 +119,7 @@ namespace vultra
                 m_Impl->dispatch(groupCount);
                 return *this;
             }
-            CommandBuffer& dispatchIndirect(const Buffer& buffer, vk::DeviceSize offset = 0)
+            CommandBuffer& dispatchIndirect(const Buffer& buffer, uint64_t offset = 0)
             {
                 assert(m_Impl);
                 m_Impl->dispatchIndirect(buffer, offset);
@@ -137,7 +139,7 @@ namespace vultra
                 return *this;
             }
 
-            CommandBuffer& bindDescriptorSet(const DescriptorSetIndex index, const vk::DescriptorSet descriptorSet)
+            CommandBuffer& bindDescriptorSet(const DescriptorSetIndex index, const DescriptorSetHandle descriptorSet)
             {
                 assert(m_Impl);
                 m_Impl->bindDescriptorSet(index, descriptorSet);
@@ -253,7 +255,7 @@ namespace vultra
                 return *this;
             }
             // Inserts layout transition barrier for dst.
-            CommandBuffer& copyBuffer(const Buffer& src, Texture& dst, std::span<const vk::BufferImageCopy> copyRegions)
+            CommandBuffer& copyBuffer(const Buffer& src, Texture& dst, std::span<const BufferImageCopy> copyRegions)
             {
                 assert(m_Impl);
                 m_Impl->copyBuffer(src, dst, copyRegions);
@@ -266,14 +268,14 @@ namespace vultra
                 return *this;
             }
 
-            CommandBuffer& update(Buffer& buffer, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data)
+            CommandBuffer& update(Buffer& buffer, const uint64_t offset, const uint64_t size, const void* data)
             {
                 assert(m_Impl);
                 m_Impl->update(buffer, offset, size, data);
                 return *this;
             }
 
-            CommandBuffer& blit(Texture& src, Texture& dst, const vk::Filter filter, uint32_t srcMipLevel = 0, uint32_t dstMipLevel = 0)
+            CommandBuffer& blit(Texture& src, Texture& dst, const TexelFilter filter, uint32_t srcMipLevel = 0, uint32_t dstMipLevel = 0)
             {
                 assert(m_Impl);
                 m_Impl->blit(src, dst, filter, srcMipLevel, dstMipLevel);
@@ -328,24 +330,24 @@ namespace vultra
 
 #define TRACY_GPU_ZONE_(TracyContext, CommandBufferHandle, Label) \
     ZoneScopedN(Label); \
-    TracyVkZone(TracyContext, CommandBufferHandle, Label)
+    TracyGpuZone(TracyContext, CommandBufferHandle, Label)
 
 #define TRACY_GPU_ZONE(CommandBuffer, Label) \
     TRACY_GPU_ZONE_(CommandBuffer.getTracyContext(), CommandBuffer.getHandle(), Label)
 
 #define TRACY_GPU_TRANSIENT_ZONE(CommandBuffer, Label) \
     ZoneTransientN(_tracy_zone, Label, true); \
-    TracyVkZoneTransient(CommandBuffer.getTracyContext(), _tracy_vk_zone, CommandBuffer.getHandle(), Label, true)
+    TracyGpuZoneTransient(CommandBuffer.getTracyContext(), _tracy_vk_zone, CommandBuffer.getHandle(), Label, true)
 
-#define TRACKY_VK_NEXT_FRAME(CommandBuffer) \
+#define TRACKY_GPU_NEXT_FRAME(CommandBuffer) \
     TRACKY_BIND_CMD_BUFFER(CommandBuffer.getHandle()); \
     TRACKY_NEXT_FRAME();
 
-#define TRACKY_VK_SCOPE(CommandBuffer, Label, ...) \
+#define TRACKY_GPU_SCOPE(CommandBuffer, Label, ...) \
     TRACKY_BIND_CMD_BUFFER(CommandBuffer.getHandle()); \
     TRACKY_SCOPE(Label, __VA_ARGS__);
 
-#define TRACKY_GPU_ZONE(CommandBuffer, Label) TRACKY_VK_SCOPE(CommandBuffer, Label, GPU)
+#define TRACKY_GPU_ZONE(CommandBuffer, Label) TRACKY_GPU_SCOPE(CommandBuffer, Label, GPU)
 
 #define RHI_GPU_ZONE(CommandBuffer, Label) \
     RHI_NAMED_DEBUG_MARKER(CommandBuffer, Label); \

@@ -4,6 +4,7 @@
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 
 #include <memory>
+#include <cstdint>
 #include <unordered_map>
 #include <vector>
 
@@ -30,8 +31,8 @@ namespace vultra
             // In bytes
             struct MemoryStats
             {
-                vk::DeviceSize textures;
-                vk::DeviceSize buffers;
+                uint64_t textures {0};
+                uint64_t buffers {0};
             };
             [[nodiscard]] MemoryStats getStats() const;
 

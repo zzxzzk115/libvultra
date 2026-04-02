@@ -4,15 +4,14 @@
 
 #include <vulkan/vulkan.hpp>
 
-// Runtime-sized array fallback value used by legacy libvultra descriptor layout.
-#define MAX_ARRAY_SIZE 1024
-
 namespace vultra
 {
     namespace rhi
     {
 namespace
 {
+    constexpr uint32_t kRuntimeSizedDescriptorUpperBound = 1024u;
+
     [[nodiscard]] vultra::rhi::ShaderStages toStages(const vshadersystem::ShaderStageFlags flags)
     {
         using vultra::rhi::ShaderStages;
@@ -94,10 +93,9 @@ namespace
 
                 if (d.runtimeSized)
                 {
-                    out.count = MAX_ARRAY_SIZE;
+                    out.count = kRuntimeSizedDescriptorUpperBound;
 #ifdef __APPLE__
-                    // On macOS, VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT is not supported.
-                    // Keep legacy behavior to avoid validation errors.
+                    // Keep legacy MoltenVK behavior for runtime-sized descriptors.
                     out.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 #else
                     out.flags = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;

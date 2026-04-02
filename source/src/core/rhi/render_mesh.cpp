@@ -1,4 +1,4 @@
-#include "vultra/core/rhi/render_mesh.hpp"
+#include "vultra/core/rhi/structs/render_mesh.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 
 #include <glm/mat4x4.hpp>

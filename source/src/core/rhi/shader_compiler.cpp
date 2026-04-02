@@ -73,7 +73,6 @@ namespace vultra
             vshadersystem::CompileOptions opt;
             opt.stage = stage;
 
-            // Keep include behavior consistent with legacy libvultra compiler.
             opt.includeDirs.push_back(s_ShaderRootPath.generic_string());
 
             for (const auto& [name, value] : defines)

@@ -3,7 +3,12 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/util.hpp"
-#include "vultra/core/rhi/vk/macro.hpp"
+#include "vultra/core/rhi/backends/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/macro.hpp"
+
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+#include <vk_mem_alloc.hpp>
 
 namespace vultra
 {
@@ -114,8 +119,9 @@ namespace vultra
                 createInfo.format           = format;
                 createInfo.subresourceRange = subresourceRange;
 
-                return TextureView {
-                    reinterpret_cast<std::uintptr_t>(static_cast<VkImageView>(device.createImageView(createInfo)))};
+                vk::ImageView imageView {nullptr};
+                VK_CHECK(device.createImageView(&createInfo, nullptr, &imageView), "Texture", "Failed to create image view");
+                return TextureView {reinterpret_cast<std::uintptr_t>(static_cast<VkImageView>(imageView))};
             }
 
             [[nodiscard]] vk::ImageView toVk(const TextureView view)
@@ -150,6 +156,16 @@ namespace vultra
                     vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eStorage;
                 assert((out & kForbiddenSet) != kForbiddenSet);
                 return out;
+            }
+
+            [[nodiscard]] vma::Allocator toVmaAllocator(const std::uintptr_t allocatorHandle)
+            {
+                return vma::Allocator {reinterpret_cast<VmaAllocator>(allocatorHandle)};
+            }
+
+            [[nodiscard]] vma::Allocation toVmaAllocation(const std::uintptr_t allocationHandle)
+            {
+                return vma::Allocation {reinterpret_cast<VmaAllocation>(allocationHandle)};
             }
         } // namespace
 
@@ -226,36 +242,46 @@ namespace vultra
         std::uintptr_t Texture::getNativeImageHandle() const
         {
             const auto image = std::visit(Overload {
-                                              [](const std::monostate) -> vk::Image { return nullptr; },
-                                              [](const vk::Image image) { return image; },
+                                              [](const std::monostate) -> std::uintptr_t { return 0; },
+                                              [](const std::uintptr_t image) { return image; },
                                               [](const AllocatedImage& allocatedImage) { return allocatedImage.handle; },
                                           },
                                           m_Image);
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkImage>(image));
+            return image;
         }
 
         ImageLayout Texture::getImageLayout() const { return m_Layout; }
 
-        vk::DeviceSize Texture::getSize() const
+        uint32_t Texture::getBaseArrayLayer() const { return m_BaseArrayLayer; }
+
+        uint32_t Texture::getLayerFaceCount() const { return m_LayerFaces; }
+
+        BarrierScope Texture::getLastBarrierScope() const { return m_LastScope; }
+
+        void Texture::setBarrierState(const BarrierScope scope, const ImageLayout layout)
+        {
+            m_LastScope = scope;
+            m_Layout    = layout;
+        }
+
+        uint64_t Texture::getSize() const
         {
             if (const auto* allocatedImage = std::get_if<AllocatedImage>(&m_Image); allocatedImage)
             {
-                const auto          allocator = std::get<vma::Allocator>(m_DeviceOrAllocator);
-                vma::AllocationInfo allocationInfo {};
-                allocator.getAllocationInfo(allocatedImage->allocation, &allocationInfo);
-                return allocationInfo.size;
+                return allocatedImage->allocationSize;
             }
 
-            return m_Extent.width * m_Extent.height * getBytesPerPixel(m_Format);
+            return static_cast<uint64_t>(m_Extent.width) * static_cast<uint64_t>(m_Extent.height) *
+                   static_cast<uint64_t>(getBytesPerPixel(m_Format));
         }
 
-        TextureView Texture::getImageView(const vk::ImageAspectFlags aspectMask) const
+        TextureView Texture::getImageView(const ImageAspectFlags aspectMask) const
         {
             const auto* aspect = getAspect(aspectMask);
             return aspect ? aspect->imageView : TextureView {};
         }
 
-        TextureView Texture::getMipLevel(const uint32_t index, const vk::ImageAspectFlags aspectMask) const
+        TextureView Texture::getMipLevel(const uint32_t index, const ImageAspectFlags aspectMask) const
         {
             const auto safeIndex = glm::clamp(index, 0u, m_NumMipLevels - 1);
             assert(index == safeIndex);
@@ -263,7 +289,7 @@ namespace vultra
             return aspect ? aspect->mipLevels[safeIndex] : TextureView {};
         }
 
-        std::span<const TextureView> Texture::getMipLevels(const vk::ImageAspectFlags aspectMask) const
+        std::span<const TextureView> Texture::getMipLevels(const ImageAspectFlags aspectMask) const
         {
             const auto* aspect = getAspect(aspectMask);
             return aspect ? aspect->mipLevels : std::span<const TextureView> {};
@@ -271,7 +297,7 @@ namespace vultra
 
         TextureView Texture::getLayer(const uint32_t                layer,
                                       const std::optional<CubeFace> face,
-                                      const vk::ImageAspectFlags    aspectMask) const
+                                      const ImageAspectFlags        aspectMask) const
         {
             const auto i         = face ? (layer * 6) + static_cast<uint32_t>(*face) : layer;
             const auto safeIndex = glm::clamp(i, 0u, m_LayerFaces - 1);
@@ -280,7 +306,7 @@ namespace vultra
             return aspect ? aspect->layers[safeIndex] : TextureView {};
         }
 
-        std::span<const TextureView> Texture::getLayers(const vk::ImageAspectFlags aspectMask) const
+        std::span<const TextureView> Texture::getLayers(const ImageAspectFlags aspectMask) const
         {
             const auto* aspect = getAspect(aspectMask);
             return aspect ? aspect->layers : std::span<const TextureView> {};
@@ -375,8 +401,10 @@ namespace vultra
             return texture;
         }
 
-        Texture::Texture(vma::Allocator memoryAllocator, CreateInfo&& ci) : m_DeviceOrAllocator(memoryAllocator)
+        Texture::Texture(const std::uintptr_t allocatorHandle, CreateInfo&& ci) :
+            m_DeviceOrAllocator(AllocatorHandle {allocatorHandle})
         {
+            const auto memoryAllocator = toVmaAllocator(allocatorHandle);
             assert(ci.extent && (ci.numFaces != 6 || ci.extent.width == ci.extent.height));
 
             m_Type = findTextureType(ci.extent, ci.depth, ci.numFaces, ci.numLayers);
@@ -398,8 +426,9 @@ namespace vultra
                 ci.numMipLevels = calcMipLevels(glm::max(ci.extent.width, ci.extent.height));
             }
 
-            const auto layerFaces = ci.numFaces * std::max(1u, ci.numLayers);
-            const auto aspectMask = getAspectMask(ci.pixelFormat);
+            const auto layerFaces  = ci.numFaces * std::max(1u, ci.numLayers);
+            const auto aspectFlags = getAspectMask(ci.pixelFormat);
+            const auto aspectMask  = toVk(aspectFlags);
 
             vk::ImageCreateInfo imageCreateInfo {};
             imageCreateInfo.flags       = flags;
@@ -418,14 +447,27 @@ namespace vultra
             vma::AllocationCreateInfo allocationCreateInfo {};
             allocationCreateInfo.usage = vma::MemoryUsage::eGpuOnly;
 
-            AllocatedImage image;
+            AllocatedImage  image;
+            vma::Allocation allocation {nullptr};
+            vk::Image       vkImage {nullptr};
             VK_CHECK(memoryAllocator.createImage(
-                         &imageCreateInfo, &allocationCreateInfo, &image.handle, &image.allocation, nullptr),
+                         &imageCreateInfo, &allocationCreateInfo, &vkImage, &allocation, nullptr),
                      "Texture",
                      "Failed to create image");
+            image.handle = reinterpret_cast<std::uintptr_t>(static_cast<VkImage>(vkImage));
+            image.allocationHandle = reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocation>(allocation));
+            {
+                vma::AllocationInfo allocationInfo {};
+                memoryAllocator.getAllocationInfo(allocation, &allocationInfo);
+                image.allocationSize = static_cast<uint64_t>(allocationInfo.size);
+            }
 
-            m_Image        = image;
-            m_Layout       = static_cast<ImageLayout>(imageCreateInfo.initialLayout);
+            m_Image        = AllocatedImage {
+                       .allocationHandle = image.allocationHandle,
+                       .handle = image.handle,
+                       .allocationSize = image.allocationSize,
+            };
+            m_Layout       = fromVk(imageCreateInfo.initialLayout);
             m_Extent       = ci.extent;
             m_Depth        = ci.depth;
             m_Format       = ci.pixelFormat;
@@ -434,40 +476,45 @@ namespace vultra
             m_LayerFaces   = layerFaces;
             m_UsageFlags   = ci.usageFlags;
 
-            vma::AllocatorInfo allocatorInfo {};
-            memoryAllocator.getAllocatorInfo(&allocatorInfo);
-
             const auto imageViewType = getImageViewType(m_Type);
+            const auto imageHandle = image.handle;
 
             const auto device = getDeviceHandle();
-            createAspect(device, image.handle, imageViewType, aspectMask, m_Aspects[static_cast<uint32_t>(aspectMask)]);
-            if (aspectMask == (vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil))
+            createAspect(device,
+                         imageHandle,
+                         static_cast<uint32_t>(imageViewType),
+                         aspectFlags,
+                         m_Aspects[static_cast<uint32_t>(aspectFlags)]);
+            if (HasFlagValues(aspectFlags, ImageAspectFlags::eDepth) &&
+                HasFlagValues(aspectFlags, ImageAspectFlags::eStencil))
             {
                 createAspect(device,
-                             image.handle,
-                             imageViewType,
-                             vk::ImageAspectFlagBits::eDepth,
-                             m_Aspects[static_cast<uint32_t>(vk::ImageAspectFlagBits::eDepth)]);
+                             imageHandle,
+                             static_cast<uint32_t>(imageViewType),
+                             ImageAspectFlags::eDepth,
+                             m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eDepth)]);
                 createAspect(device,
-                             image.handle,
-                             imageViewType,
-                             vk::ImageAspectFlagBits::eStencil,
-                             m_Aspects[static_cast<uint32_t>(vk::ImageAspectFlagBits::eStencil)]);
+                             imageHandle,
+                             static_cast<uint32_t>(imageViewType),
+                             ImageAspectFlags::eStencil,
+                             m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eStencil)]);
             }
         }
 
-        Texture::Texture(vk::Device  device,
-                         vk::Image   handle,
+        Texture::Texture(const std::uintptr_t device,
+                         const std::uintptr_t handle,
                          Extent2D    extent,
                          PixelFormat pixelFormat,
                          uint32_t    baseLayer) :
-            m_DeviceOrAllocator(device), m_Image(handle), m_Type(TextureType::eTexture2D), m_Extent(extent),
+            m_DeviceOrAllocator(DeviceHandle {device}), m_Image(handle), m_Type(TextureType::eTexture2D), m_Extent(extent),
             m_Format(pixelFormat), m_NumLayers(1u), m_LayerFaces(1u), m_BaseArrayLayer(baseLayer),
             m_UsageFlags(kSwapchainDefaultUsageFlags)
         {
-            m_Aspects[static_cast<uint32_t>(vk::ImageAspectFlagBits::eColor)].imageView =
-                createImageView(device,
-                                handle,
+            const auto vkDevice = vk::Device {reinterpret_cast<VkDevice>(device)};
+            const auto vkHandle = vk::Image {reinterpret_cast<VkImage>(handle)};
+            m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eColor)].imageView =
+                createImageView(vkDevice,
+                                vkHandle,
                                 vk::ImageViewType::e2D,
                                 toVk(pixelFormat),
                                 {
@@ -479,13 +526,13 @@ namespace vultra
                                 });
         }
 
-        Texture::Texture(vk::Device  device,
-                         vk::Image   handle,
+        Texture::Texture(const std::uintptr_t device,
+                         const std::uintptr_t handle,
                          Extent2D    extent,
                          PixelFormat pixelFormat,
                          uint32_t    baseLayer,
                          uint32_t    numLayers) :
-            m_DeviceOrAllocator(device), m_Image(handle),
+            m_DeviceOrAllocator(DeviceHandle {device}), m_Image(handle),
             m_Type(numLayers > 1u ? TextureType::eTexture2DArray : TextureType::eTexture2D), m_Extent(extent),
             m_Format(pixelFormat), m_NumLayers(numLayers), m_LayerFaces(std::max(numLayers, 1u)),
             m_BaseArrayLayer(baseLayer), m_UsageFlags(kSwapchainDefaultUsageFlags)
@@ -493,9 +540,9 @@ namespace vultra
             const auto deviceHandle = getDeviceHandle();
             createAspect(deviceHandle,
                          handle,
-                         numLayers > 1u ? vk::ImageViewType::e2DArray : vk::ImageViewType::e2D,
-                         vk::ImageAspectFlagBits::eColor,
-                         m_Aspects[static_cast<uint32_t>(vk::ImageAspectFlagBits::eColor)]);
+                         static_cast<uint32_t>(numLayers > 1u ? vk::ImageViewType::e2DArray : vk::ImageViewType::e2D),
+                         ImageAspectFlags::eColor,
+                         m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eColor)]);
         }
 
         void Texture::destroy() noexcept
@@ -505,33 +552,36 @@ namespace vultra
 
             m_Sampler = {};
 
-            const auto device = getDeviceHandle();
-            assert(device);
+            const auto deviceHandle = getDeviceHandle();
+            assert(deviceHandle != 0);
+            const auto device = vk::Device {reinterpret_cast<VkDevice>(deviceHandle)};
 
             for (auto& [_, data] : m_Aspects)
             {
                 for (const auto layer : data.layers)
                 {
-                    device.destroyImageView(toVk(layer));
+                    device.destroyImageView(toVk(layer), nullptr);
                 }
                 data.layers.clear();
                 for (const auto mipLevel : data.mipLevels)
                 {
-                    device.destroyImageView(toVk(mipLevel));
+                    device.destroyImageView(toVk(mipLevel), nullptr);
                 }
                 data.mipLevels.clear();
 
                 if (data.imageView)
                 {
-                    device.destroyImageView(toVk(data.imageView));
+                    device.destroyImageView(toVk(data.imageView), nullptr);
                     data.imageView = {};
                 }
             }
 
             if (auto* const allocatedImage = std::get_if<AllocatedImage>(&m_Image); allocatedImage)
             {
-                std::get<vma::Allocator>(m_DeviceOrAllocator)
-                    .destroyImage(allocatedImage->handle, allocatedImage->allocation);
+                const auto allocatorHandle = std::get<AllocatorHandle>(m_DeviceOrAllocator).value;
+                toVmaAllocator(allocatorHandle)
+                    .destroyImage(vk::Image {reinterpret_cast<VkImage>(allocatedImage->handle)},
+                                  toVmaAllocation(allocatedImage->allocationHandle));
             }
 
             m_DeviceOrAllocator = {};
@@ -550,34 +600,39 @@ namespace vultra
             m_BaseArrayLayer = 0u;
         }
 
-        vk::Device Texture::getDeviceHandle() const
+        std::uintptr_t Texture::getDeviceHandle() const
         {
             return std::visit(Overload {
-                                  [](const std::monostate) -> vk::Device { return nullptr; },
-                                  [](const vk::Device device) { return device; },
-                                  [](const vma::Allocator allocator) {
+                                  [](const std::monostate) -> std::uintptr_t { return 0; },
+                                  [](const DeviceHandle device) { return device.value; },
+                                  [](const AllocatorHandle allocator) {
+                                      const auto vmaAllocator = toVmaAllocator(allocator.value);
                                       vma::AllocatorInfo allocatorInfo;
-                                      allocator.getAllocatorInfo(&allocatorInfo);
-                                      return allocatorInfo.device;
+                                      vmaAllocator.getAllocatorInfo(&allocatorInfo);
+                                      return reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(allocatorInfo.device));
                                   },
                               },
                               m_DeviceOrAllocator);
         }
 
-        void Texture::createAspect(const vk::Device           device,
-                                   const vk::Image            image,
-                                   const vk::ImageViewType    viewType,
-                                   const vk::ImageAspectFlags aspectMask,
-                                   AspectData&                data)
+        void Texture::createAspect(const std::uintptr_t   deviceHandle,
+                                   const std::uintptr_t   imageHandle,
+                                   const uint32_t         viewType,
+                                   const ImageAspectFlags aspectMask,
+                                   AspectData&            data)
         {
+            const auto device      = vk::Device {reinterpret_cast<VkDevice>(deviceHandle)};
+            const auto image       = vk::Image {reinterpret_cast<VkImage>(imageHandle)};
+            const auto vkViewType  = static_cast<vk::ImageViewType>(viewType);
+            const auto vkAspectMask = toVk(aspectMask);
             const auto format = toVk(m_Format);
 
             data.imageView = createImageView(device,
                                              image,
-                                             viewType,
+                                             vkViewType,
                                              format,
                                              vk::ImageSubresourceRange {
-                                                 aspectMask,
+                                                 vkAspectMask,
                                                  0u,
                                                  m_NumMipLevels,
                                                  0u,
@@ -589,10 +644,10 @@ namespace vultra
             {
                 data.mipLevels.emplace_back(createImageView(device,
                                                             image,
-                                                            viewType,
+                                                            vkViewType,
                                                             format,
                                                             vk::ImageSubresourceRange {
-                                                                aspectMask,
+                                                                vkAspectMask,
                                                                 i,
                                                                 1u,
                                                                 0u,
@@ -610,7 +665,7 @@ namespace vultra
                                                              vk::ImageViewType::e2D,
                                                              format,
                                                              {
-                                                                 aspectMask,
+                                                                 vkAspectMask,
                                                                  0u,
                                                                  1u,
                                                                  i,
@@ -620,10 +675,10 @@ namespace vultra
             }
         }
 
-        const Texture::AspectData* Texture::getAspect(const vk::ImageAspectFlags aspectMask) const
+        const Texture::AspectData* Texture::getAspect(const ImageAspectFlags aspectMask) const
         {
             const auto it = m_Aspects.find(static_cast<uint32_t>(
-                aspectMask == vk::ImageAspectFlagBits::eNone ? getAspectMask(m_Format) : aspectMask));
+                aspectMask == ImageAspectFlags::eNone ? getAspectMask(m_Format) : aspectMask));
             return it != m_Aspects.end() ? &it->second : nullptr;
         }
 
@@ -632,7 +687,7 @@ namespace vultra
             vk::FormatFeatureFlags requiredFeatureFlags {0};
             const auto             aspectMask = getAspectMask(pixelFormat);
             const bool             isDepthOrStencil =
-                static_cast<bool>(aspectMask & (vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil));
+                HasFlagValues(aspectMask, ImageAspectFlags::eDepth) || HasFlagValues(aspectMask, ImageAspectFlags::eStencil);
 
             // Depth/stencil render targets are handled more leniently here so the builder does not reject
             // common attachment formats that are valid for rendering but expose fewer sampling bits.
@@ -655,33 +710,32 @@ namespace vultra
             }
             if (static_cast<bool>(usageFlags & ImageUsage::eRenderTarget))
             {
-                if (aspectMask & vk::ImageAspectFlagBits::eColor)
+                if (HasFlagValues(aspectMask, ImageAspectFlags::eColor))
                 {
                     requiredFeatureFlags |= vk::FormatFeatureFlagBits::eColorAttachment;
                 }
-                if (aspectMask & vk::ImageAspectFlagBits::eDepth)
+                if (HasFlagValues(aspectMask, ImageAspectFlags::eDepth))
                 {
                     requiredFeatureFlags |= vk::FormatFeatureFlagBits::eDepthStencilAttachment;
                 }
-                if (aspectMask & vk::ImageAspectFlagBits::eStencil)
+                if (HasFlagValues(aspectMask, ImageAspectFlags::eStencil))
                 {
                     requiredFeatureFlags |= vk::FormatFeatureFlagBits::eDepthStencilAttachment;
                 }
             }
 
-            // Depth/stencil formats are often renderable but not guaranteed to expose the same sampled feature
-            // bits as color formats on every device. Keep them creatable here and let the backend-specific
-            // sampling path decide whether a fallback or warning is needed.
+            // Depth/stencil formats use a different sampled capability model than color formats.
             if (static_cast<bool>(usageFlags & ImageUsage::eSampled) && !isDepthOrStencil)
             {
                 requiredFeatureFlags |= vk::FormatFeatureFlagBits::eSampledImage;
             }
 
-            const auto formatProperties = rd.getFormatProperties(pixelFormat);
-            return (formatProperties.optimalTilingFeatures & requiredFeatureFlags) == requiredFeatureFlags;
+            const auto optimalFeatures = rd.getFormatFeatureFlagsOptimal(pixelFormat);
+            return (optimalFeatures & static_cast<uint64_t>(static_cast<VkFormatFeatureFlags>(requiredFeatureFlags))) ==
+                   static_cast<uint64_t>(static_cast<VkFormatFeatureFlags>(requiredFeatureFlags));
         }
 
-        vk::ImageAspectFlags getAspectMask(const Texture& texture) { return getAspectMask(texture.getPixelFormat()); }
+        ImageAspectFlags getAspectMask(const Texture& texture) { return getAspectMask(texture.getPixelFormat()); }
 
         uint32_t calcMipLevels(Extent2D extent) { return calcMipLevels(glm::max(extent.width, extent.height)); }
 

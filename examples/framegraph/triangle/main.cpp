@@ -69,7 +69,7 @@ public:
             auto           stagingVertexBuffer = rd.createStagingBuffer(kVerticesSize, kTriangle.data());
 
             rd.execute([&](auto& cb) {
-                cb.copyBuffer(stagingVertexBuffer, m_VertexBuffer, vk::BufferCopy {0, 0, kVerticesSize});
+                cb.copyBuffer(stagingVertexBuffer, m_VertexBuffer, rhi::BufferCopy {0, 0, kVerticesSize});
             });
         }
     }
@@ -184,12 +184,12 @@ int main()
         if (!swapchain)
             continue;
 
-        auto& backBuffer        = frameController.getCurrentTarget().texture;
         bool  acquiredNextFrame = frameController.acquireNextFrame();
         if (!acquiredNextFrame)
         {
             continue;
         }
+        auto& backBuffer = swapchain.getCurrentBuffer();
 
         auto& cb = frameController.beginFrame();
 

@@ -27,7 +27,7 @@ protected:
 
     rhi::RenderDeviceFeatureFlagBits demoRenderDeviceFeatureFlag() const override
     {
-        return rhi::RenderDeviceFeatureFlagBits::eOpenXR;
+        return rhi::RenderDeviceFeatureFlagBits::eXR;
     }
 };
 

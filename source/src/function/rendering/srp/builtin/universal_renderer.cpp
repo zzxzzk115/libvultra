@@ -1,5 +1,5 @@
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
-#include "vultra/core/rhi/vk/handle_utils.hpp"
+#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"

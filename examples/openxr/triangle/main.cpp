@@ -69,7 +69,7 @@ public:
             auto           stagingVertexBuffer = renderDevice.createStagingBuffer(kVerticesSize, kTriangle.data());
 
             renderDevice.execute([&](auto& cb) {
-                cb.copyBuffer(stagingVertexBuffer, m_VertexBuffer, vk::BufferCopy {0, 0, kVerticesSize});
+                cb.copyBuffer(stagingVertexBuffer, m_VertexBuffer, rhi::BufferCopy {0, 0, kVerticesSize});
             });
         }
 
@@ -178,7 +178,7 @@ protected:
 
     rhi::RenderDeviceFeatureFlagBits demoRenderDeviceFeatureFlag() const override
     {
-        return rhi::RenderDeviceFeatureFlagBits::eOpenXR;
+        return rhi::RenderDeviceFeatureFlagBits::eXR;
     }
 
     Ref<Renderer> makeRenderer() const override { return createRef<OpenXRTriangleRenderer>(); }

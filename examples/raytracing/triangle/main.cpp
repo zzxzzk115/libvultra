@@ -1,6 +1,6 @@
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/input/input.hpp>
-#include <vultra/core/rhi/raytracing/raytracing_pipeline.hpp>
+#include <vultra/core/rhi/raytracing_pipeline.hpp>
 #include <vultra/function/app/imgui_app.hpp>
 
 #include <imgui.h>
@@ -108,7 +108,7 @@ public:
 
             m_RenderDevice->execute(
                 [&](auto& cb) {
-                    cb.copyBuffer(stagingVertexBuffer, m_VertexBuffer, vk::BufferCopy {0, 0, kVerticesSize});
+                    cb.copyBuffer(stagingVertexBuffer, m_VertexBuffer, rhi::BufferCopy {0, 0, kVerticesSize});
                 },
                 true);
         }
@@ -125,7 +125,7 @@ public:
 
             m_RenderDevice->execute(
                 [&](auto& cb) {
-                    cb.copyBuffer(stagingIndexBuffer, m_IndexBuffer, vk::BufferCopy {0, 0, kIndicesSize});
+                    cb.copyBuffer(stagingIndexBuffer, m_IndexBuffer, rhi::BufferCopy {0, 0, kIndicesSize});
                 },
                 true);
         }
@@ -210,12 +210,14 @@ public:
 
     void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
     {
+        auto& backBuffer = m_Swapchain.getCurrentBuffer();
+
         // Skip rendering if resizing is not finished
-        if (rtv.texture.getExtent() != m_OutputImage.getExtent())
+        if (backBuffer.getExtent() != m_OutputImage.getExtent())
         {
             VULTRA_CLIENT_TRACE("RTV size ({}, {}) != Output Image size ({}, {}), skipping rendering this frame",
-                                rtv.texture.getExtent().width,
-                                rtv.texture.getExtent().height,
+                                backBuffer.getExtent().width,
+                                backBuffer.getExtent().height,
                                 m_OutputImage.getExtent().width,
                                 m_OutputImage.getExtent().height);
             ImGuiApp::onRender(cb, rtv, dt);
@@ -239,7 +241,7 @@ public:
             .pushConstants(rhi::ShaderStages::eMiss, 0, &missColor)
             .traceRays(m_SBT, {m_Window.getFrameBufferExtent(), 1});
 
-        cb.blit(m_OutputImage, rtv.texture, vk::Filter::eLinear);
+        cb.blit(m_OutputImage, backBuffer, TexelFilter::eLinear);
 
         ImGuiApp::onRender(cb, rtv, dt);
     }

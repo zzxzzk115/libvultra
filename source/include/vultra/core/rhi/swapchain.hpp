@@ -4,8 +4,10 @@
 #include <memory>
 
 #include "vultra/core/rhi/structs/rect2d.hpp"
+#include "vultra/core/rhi/structs/swapchain_format.hpp"
+#include "vultra/core/rhi/structs/vertical_sync.hpp"
 #include "vultra/core/rhi/texture.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_swapchain_backend.hpp"
+#include "vultra/core/rhi/interfaces/iswapchain_backend.hpp"
 
 namespace vultra
 {
@@ -16,13 +18,6 @@ namespace vultra
 
     namespace rhi
     {
-        enum class VerticalSync
-        {
-            eDisabled,
-            eEnabled,
-            eAdaptive
-        };
-
         class Swapchain final
         {
             friend class RenderDevice;
@@ -38,13 +33,7 @@ namespace vultra
 
             [[nodiscard]] explicit operator bool() const;
 
-            enum class Format
-            {
-                eLinear,
-                esRGB
-            };
-
-            [[nodiscard]] Format      getFormat() const;
+            [[nodiscard]] SwapchainFormat getFormat() const;
             [[nodiscard]] PixelFormat getPixelFormat() const;
             [[nodiscard]] Extent2D    getExtent() const;
 
@@ -62,14 +51,14 @@ namespace vultra
             bool acquireNextImage(std::uintptr_t imageAcquired = 0);
 
         private:
-            Swapchain(std::uintptr_t, std::uintptr_t, std::uintptr_t, os::Window*, Format, VerticalSync);
+            Swapchain(std::uintptr_t, std::uintptr_t, std::uintptr_t, os::Window*, SwapchainFormat, VerticalSync);
             void createSurface();
-            void create(Format, VerticalSync);
+            void create(SwapchainFormat, VerticalSync);
             void buildBuffers(Extent2D, PixelFormat);
             void destroy();
 
         private:
-            std::shared_ptr<VulkanSwapchainBackend> m_Backend;
+            std::shared_ptr<ISwapchainBackend> m_Backend;
         };
 
         [[nodiscard]] Rect2D getRenderArea(const Swapchain&);

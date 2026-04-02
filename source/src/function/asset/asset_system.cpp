@@ -318,7 +318,7 @@ namespace vultra
             }
 
             m_Resolver.loadFromVPK(vpk);
-            m_VFS.mount(vpkFileSystem, desc.scheme);
+            m_VFS.mount(vpkFileSystem, m_Desc.scheme);
         }
         else
         {
@@ -326,12 +326,21 @@ namespace vultra
             // imported assets. Runtime-only builds mount the physical filesystem directly and expect pre-baked assets.
             auto registryPath = (std::filesystem::path(m_Desc.assetRoot) / m_Desc.importedFolder / m_Desc.registryFile)
                                     .generic_string();
-            if (!std::filesystem::exists(registryPath) || !m_Registry.load(registryPath))
+            const bool hasRegistryFile = std::filesystem::exists(registryPath);
+            const bool loadedRegistry  = hasRegistryFile && m_Registry.load(registryPath);
+            if (!loadedRegistry || m_Registry.getRegistry().empty())
             {
-                VULTRA_CORE_WARN("[AssetSystem] Failed to load asset registry from file: {}", registryPath);
+                if (!loadedRegistry)
+                {
+                    VULTRA_CORE_WARN("[AssetSystem] Failed to load asset registry from file: {}", registryPath);
+                }
+                else
+                {
+                    VULTRA_CORE_WARN("[AssetSystem] Asset registry is empty, rebuilding: {}", registryPath);
+                }
 #ifdef VULTRA_HAS_VASSET_IMPORT
                 vasset::VAssetImporter importer {m_Registry};
-                importer.importOrReimportAssetFolder(desc.assetRoot);
+                importer.importOrReimportAssetFolder(m_Desc.assetRoot);
                 m_Registry.save(registryPath);
 #else
                 VULTRA_CORE_WARN("[AssetSystem] Runtime-only vasset build cannot auto-import source assets. "
@@ -347,14 +356,14 @@ namespace vultra
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
             m_VFS.mount(createRef<vasset::EditorRemapFileSystem>(
-                            createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {desc.assetRoot})),
-                        desc.scheme);
+                            createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {m_Desc.assetRoot})),
+                        m_Desc.scheme);
 #else
-            m_VFS.mount(createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {desc.assetRoot}), desc.scheme);
+            m_VFS.mount(createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {m_Desc.assetRoot}), m_Desc.scheme);
 #endif
         }
 
-        m_Resolver.setScheme(desc.scheme);
+        m_Resolver.setScheme(m_Desc.scheme);
 
         auto& pool = m_GpuResourceService->pool();
 
@@ -1134,4 +1143,3 @@ namespace vultra
             std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
     }
 } // namespace vultra
-

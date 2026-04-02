@@ -4,40 +4,6 @@ namespace vultra
 {
     namespace rhi
     {
-        namespace
-        {
-            [[nodiscard]] vk::ImageAspectFlags toVk(const ImageAspect imageAspect)
-            {
-                switch (imageAspect)
-                {
-                    using enum ImageAspect;
-
-                    case eDepth:
-                        return vk::ImageAspectFlagBits::eDepth;
-                    case eStencil:
-                        return vk::ImageAspectFlagBits::eStencil;
-                    case eColor:
-                        return vk::ImageAspectFlagBits::eColor;
-
-                    default:
-                        assert(false);
-                        return vk::ImageAspectFlagBits::eNone;
-                }
-            }
-
-            [[nodiscard]] ImageAspectFlags toRhi(const vk::ImageAspectFlags aspectMask)
-            {
-                ImageAspectFlags out {ImageAspectFlags::eNone};
-                if (aspectMask & vk::ImageAspectFlagBits::eColor)
-                    out |= ImageAspectFlags::eColor;
-                if (aspectMask & vk::ImageAspectFlagBits::eDepth)
-                    out |= ImageAspectFlags::eDepth;
-                if (aspectMask & vk::ImageAspectFlagBits::eStencil)
-                    out |= ImageAspectFlags::eStencil;
-                return out;
-            }
-        } // namespace
-
         void prepareForAttachment(CommandBuffer& cb, const Texture& texture, const bool readOnly)
         {
             assert(texture);
@@ -47,7 +13,7 @@ namespace vultra
 
             const auto aspectMask = getAspectMask(texture);
 
-            if (aspectMask & vk::ImageAspectFlagBits::eColor)
+            if (HasFlagValues(aspectMask, ImageAspectFlags::eColor))
             {
                 dst.dstStage  = PipelineStages::eColorAttachmentOutput;
                 dst.dstAccess = Access::eColorAttachmentRead | Access::eColorAttachmentWrite;
@@ -66,7 +32,7 @@ namespace vultra
                     .newLayout = newLayout,
                     .subresourceRange =
                         ImageSubresourceRange {
-                            .aspectMask     = toRhi(aspectMask),
+                            .aspectMask     = aspectMask,
                             .baseMipLevel   = 0u,
                             .levelCount     = UINT32_MAX,
                             .baseArrayLayer = 0u,

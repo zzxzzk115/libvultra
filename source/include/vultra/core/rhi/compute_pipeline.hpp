@@ -1,9 +1,11 @@
 #pragma once
 
 #include "vultra/core/rhi/base_pipeline.hpp"
+#include "vultra/core/rhi/interfaces/icompute_pipeline_backend.hpp"
 
 #include <glm/ext/vector_uint2.hpp>
 #include <glm/ext/vector_uint3.hpp>
+#include <memory>
 
 namespace vultra
 {
@@ -28,9 +30,14 @@ namespace vultra
             [[nodiscard]] glm::uvec3 getWorkGroupSize() const;
 
         private:
-            ComputePipeline(std::uintptr_t, PipelineLayout&&, const glm::uvec3 localSize, std::uintptr_t);
+            ComputePipeline(std::uintptr_t,
+                            PipelineLayout&&,
+                            const glm::uvec3 localSize,
+                            std::uintptr_t,
+                            std::unique_ptr<IComputePipelineBackend> backend);
 
         private:
+            std::unique_ptr<IComputePipelineBackend> m_Backend;
             glm::uvec3 m_LocalSize {};
         };
 

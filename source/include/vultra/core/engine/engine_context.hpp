@@ -59,7 +59,7 @@ namespace vultra
                 rhi::RenderBackendApi            backendApi {rhi::RenderBackendApi::eVulkan};
                 rhi::RenderDeviceFeatureFlagBits renderDeviceFeatureFlag {rhi::RenderDeviceFeatureFlagBits::eNormal};
                 rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eDisabled};
-                rhi::Swapchain::Format           swapchainFormat {rhi::Swapchain::Format::eLinear};
+                rhi::SwapchainFormat             swapchainFormat {rhi::SwapchainFormat::eLinear};
 
                 struct XRConfig
                 {
@@ -98,4 +98,3 @@ namespace vultra
         bool     minimized  = false;
     };
 } // namespace vultra
-

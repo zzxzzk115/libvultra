@@ -5,6 +5,7 @@
 #include "vultra/core/rhi/structs/shader_type.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -13,6 +14,15 @@ namespace vultra
     namespace rhi
     {
         constexpr auto kMinNumDescriptorSets = 4;
+
+        struct DescriptorSetLayoutKey
+        {
+            std::size_t value {0};
+
+            constexpr DescriptorSetLayoutKey() = default;
+            constexpr explicit DescriptorSetLayoutKey(std::size_t v) : value(v) {}
+            [[nodiscard]] constexpr explicit operator bool() const { return value != 0; }
+        };
 
         struct DescriptorSetLayoutBindingEx
         {
@@ -38,4 +48,3 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
-

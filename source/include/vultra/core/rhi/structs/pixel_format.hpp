@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
+#include "vultra/core/rhi/structs/image_aspect.hpp"
 
 #include <cstdint>
 #include <string_view>
@@ -67,10 +67,8 @@ namespace vultra
             eDepth32F_Stencil8,
         };
 
-        [[nodiscard]] uint8_t             getBytesPerPixel(PixelFormat);
-        [[nodiscard]] vk::ImageAspectFlags getAspectMask(PixelFormat);
-        [[nodiscard]] vk::Format           toVk(PixelFormat);
-        [[nodiscard]] PixelFormat          fromVk(vk::Format);
-        [[nodiscard]] std::string_view     toString(PixelFormat);
+        [[nodiscard]] uint8_t          getBytesPerPixel(PixelFormat);
+        [[nodiscard]] ImageAspectFlags getAspectMask(PixelFormat);
+        [[nodiscard]] std::string_view toString(PixelFormat);
     } // namespace rhi
 } // namespace vultra

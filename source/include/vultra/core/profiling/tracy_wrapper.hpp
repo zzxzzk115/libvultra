@@ -4,14 +4,18 @@
 #include <tracy/Tracy.hpp>
 #include <vulkan/vulkan.hpp>
 #include <tracy/TracyVulkan.hpp>
+using TracyGpuContext = TracyVkCtx;
+#define TracyGpuZone TracyVkZone
+#define TracyGpuZoneTransient TracyVkZoneTransient
+#define TracyGpuDestroy TracyVkDestroy
+#define TracyGpuCollect TracyVkCollect
 #else
-using TracyVkCtx = void*;
+using TracyGpuContext = void*;
 #define ZoneScopedN(x)
 #define ZoneTransientN(x, y, z)
-#define TracyVkZone(x, y, z)
-#define TracyVkZoneTransient(a, b, c, d, e)
-#define TracyVkDestroy(x)
-#define TracyVkZone(x, y, z)
-#define TracyVkCollect(x, y)
+#define TracyGpuZone(x, y, z)
+#define TracyGpuZoneTransient(a, b, c, d, e)
+#define TracyGpuDestroy(x)
+#define TracyGpuCollect(x, y)
 #define FrameMark
 #endif

@@ -169,7 +169,7 @@ namespace vultra
                 if (!pipeline)
                     return;
 
-                const uint64_t vertexAddress = gpuSceneDatabase->resources->geometry.vertexBytesAddress;
+                const auto vertexAddress = gpuSceneDatabase->resources->geometry.vertexBytesAddress.value;
 
                 BuildPushConstants pc {};
                 pc.maxDraws        = gpuSceneView->maxDraws;

@@ -3,7 +3,7 @@
 #include "vultra/core/base/ranges.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
-#include "vultra/core/rhi/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/conversions.hpp"
 
 #include <vulkan/vulkan.hpp>
 
@@ -64,7 +64,7 @@ namespace vultra
 
         std::uintptr_t PipelineLayout::getHandle() const { return m_Handle; }
 
-        std::uintptr_t PipelineLayout::getDescriptorSet(const DescriptorSetIndex index) const
+        DescriptorSetLayoutKey PipelineLayout::getDescriptorSet(const DescriptorSetIndex index) const
         {
             assert(index < m_DescriptorSetLayouts.size());
 
@@ -180,8 +180,8 @@ namespace vultra
             return rd.createPipelineLayout(m_LayoutInfo);
         }
 
-        PipelineLayout::PipelineLayout(const std::uintptr_t               handle,
-                                       std::vector<std::uintptr_t>&& descriptorSetLayouts) :
+        PipelineLayout::PipelineLayout(const std::uintptr_t                    handle,
+                                       std::vector<DescriptorSetLayoutKey>&& descriptorSetLayouts) :
             m_Handle(handle), m_DescriptorSetLayouts(std::move(descriptorSetLayouts))
         {}
 

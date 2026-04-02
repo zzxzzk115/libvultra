@@ -1,6 +1,6 @@
 #include "vultra/core/rhi/radix_sorter.hpp"
 
-#include "vultra/core/rhi/radix_sorter_backend.hpp"
+#include "vultra/core/rhi/interfaces/iradix_sorter_backend.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 
@@ -42,19 +42,20 @@ namespace vultra
 
         uint32_t RadixSorter::getMaxElementCount() const
         {
-            return m_Impl && m_Impl->backend ? m_Impl->backend->getMaxElementCount() : 0u;
+            assert(m_Impl && m_Impl->backend);
+            return m_Impl->backend->getMaxElementCount();
         }
 
         RadixSorterStorageRequirements RadixSorter::getStorageRequirements() const
         {
-            return m_Impl && m_Impl->backend ? m_Impl->backend->getStorageRequirements()
-                                             : RadixSorterStorageRequirements {};
+            assert(m_Impl && m_Impl->backend);
+            return m_Impl->backend->getStorageRequirements();
         }
 
         RadixSorterStorageRequirements RadixSorter::getKeyValueStorageRequirements() const
         {
-            return m_Impl && m_Impl->backend ? m_Impl->backend->getKeyValueStorageRequirements()
-                                             : RadixSorterStorageRequirements {};
+            assert(m_Impl && m_Impl->backend);
+            return m_Impl->backend->getKeyValueStorageRequirements();
         }
 
         void RadixSorter::sortKeys(CommandBuffer& cb,

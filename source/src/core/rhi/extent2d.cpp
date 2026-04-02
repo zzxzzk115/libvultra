@@ -8,8 +8,6 @@ namespace vultra
     {
         Extent2D::operator bool() const { return width > 0 && height > 0; }
 
-        Extent2D::operator vk::Extent2D() const { return {width, height}; }
-
         Extent2D::operator glm::vec<2, unsigned>() const { return {width, height}; }
 
         float Extent2D::getAspectRatio() const

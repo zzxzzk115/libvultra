@@ -1,6 +1,8 @@
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/os/window.hpp"
-#include "vultra/core/rhi/vk/macro.hpp"
+#include "vultra/core/rhi/backends/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_swapchain_backend.hpp"
+#include "vultra/core/rhi/backends/vk/macro.hpp"
 
 #include "vultra/core/profiling/tracy_wrapper.hpp"
 
@@ -10,33 +12,20 @@ namespace vultra
 {
     namespace rhi
     {
-        struct VulkanSwapchainBackend
-        {
-            os::Window*            m_Window {nullptr};
-            vk::Instance           m_Instance {nullptr};
-            vk::PhysicalDevice     m_PhysicalDevice {nullptr};
-            vk::Device             m_Device {nullptr};
-            vk::SurfaceKHR         m_Surface {nullptr};
-            vk::SwapchainKHR       m_Handle {nullptr};
-            Swapchain::Format      m_Format {Swapchain::Format::eLinear};
-            VerticalSync           m_VerticalSync {VerticalSync::eDisabled};
-            std::vector<Texture>   m_Buffers;
-            uint32_t               m_CurrentImageIndex {0};
-        };
-
-#define m_Window (m_Backend->m_Window)
-#define m_Instance (m_Backend->m_Instance)
-#define m_PhysicalDevice (m_Backend->m_PhysicalDevice)
-#define m_Device (m_Backend->m_Device)
-#define m_Surface (m_Backend->m_Surface)
-#define m_Handle (m_Backend->m_Handle)
-#define m_Format (m_Backend->m_Format)
-#define m_VerticalSync (m_Backend->m_VerticalSync)
-#define m_Buffers (m_Backend->m_Buffers)
-#define m_CurrentImageIndex (m_Backend->m_CurrentImageIndex)
-
         namespace
         {
+            [[nodiscard]] VulkanSwapchainBackend& backendOf(std::shared_ptr<ISwapchainBackend>& backend)
+            {
+                assert(backend);
+                return *static_cast<VulkanSwapchainBackend*>(backend.get());
+            }
+
+            [[nodiscard]] const VulkanSwapchainBackend& backendOf(const std::shared_ptr<ISwapchainBackend>& backend)
+            {
+                assert(backend);
+                return *static_cast<const VulkanSwapchainBackend*>(backend.get());
+            }
+
             struct SurfaceInfo
             {
                 vk::SurfaceCapabilitiesKHR        capabilities;
@@ -98,10 +87,10 @@ namespace vultra
             }
 
             [[nodiscard]] vk::SurfaceFormatKHR chooseSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& formats,
-                                                                   const Swapchain::Format                  format)
+                                                                   const SwapchainFormat                    format)
             {
                 const vk::SurfaceFormatKHR preferred {
-                    format == Swapchain::Format::eLinear ? vk::Format::eB8G8R8A8Unorm : vk::Format::eB8G8R8A8Srgb,
+                    format == SwapchainFormat::eLinear ? vk::Format::eB8G8R8A8Unorm : vk::Format::eB8G8R8A8Srgb,
                     vk::ColorSpaceKHR::eSrgbNonlinear,
                 };
 
@@ -131,19 +120,6 @@ namespace vultra
                 return vk::CompositeAlphaFlagBitsKHR::eOpaque;
             }
 
-            void logAndroidSwapchainTransformOverrideOnce(const vk::SurfaceTransformFlagBitsKHR currentTransform,
-                                                          const vk::SurfaceTransformFlagBitsKHR preTransform)
-            {
-                static bool logged = false;
-                if (logged)
-                    return;
-
-                logged = true;
-                VULTRA_CORE_WARN("[Swapchain] Android surface reports currentTransform={}, but forcing preTransform={}."
-                                 " Recreate diagnostics will be suppressed after this point.",
-                                 vk::to_string(currentTransform),
-                                 vk::to_string(preTransform));
-            }
         } // namespace
 
         Swapchain::Swapchain(Swapchain&& other) noexcept : m_Backend(std::move(other.m_Backend)) {}
@@ -161,50 +137,90 @@ namespace vultra
             return *this;
         }
 
-        Swapchain::operator bool() const { return m_Backend && m_Handle != nullptr; }
+        Swapchain::operator bool() const
+        {
+            if (!m_Backend)
+                return false;
+            const auto& backend = backendOf(m_Backend);
+            return backend.m_Handle != nullptr;
+        }
 
-        Swapchain::Format Swapchain::getFormat() const { return m_Backend ? m_Format : Format::eLinear; }
+        SwapchainFormat Swapchain::getFormat() const
+        {
+            const auto& backend = backendOf(m_Backend);
+            return backend.m_Format;
+        }
 
         PixelFormat Swapchain::getPixelFormat() const
         {
-            return m_Backend && m_Handle ? m_Buffers.back().getPixelFormat() : PixelFormat::eUndefined;
+            const auto& backend = backendOf(m_Backend);
+            assert(backend.m_Handle && !backend.m_Buffers.empty());
+            return backend.m_Buffers.back().getPixelFormat();
         }
 
-        Extent2D Swapchain::getExtent() const { return m_Backend && m_Handle ? m_Buffers.back().getExtent() : Extent2D {}; }
+        Extent2D Swapchain::getExtent() const
+        {
+            const auto& backend = backendOf(m_Backend);
+            assert(backend.m_Handle && !backend.m_Buffers.empty());
+            return backend.m_Buffers.back().getExtent();
+        }
 
-        std::size_t Swapchain::getNumBuffers() const { return m_Backend ? m_Buffers.size() : 0u; }
+        std::size_t Swapchain::getNumBuffers() const
+        {
+            const auto& backend = backendOf(m_Backend);
+            return backend.m_Buffers.size();
+        }
 
         std::uintptr_t Swapchain::getNativeHandle() const
         {
-            return m_Backend ? reinterpret_cast<std::uintptr_t>(static_cast<VkSwapchainKHR>(m_Handle)) : 0u;
+            const auto& backend = backendOf(m_Backend);
+            assert(backend.m_Handle);
+            return reinterpret_cast<std::uintptr_t>(static_cast<VkSwapchainKHR>(backend.m_Handle));
         }
 
-        const std::vector<Texture>& Swapchain::getBuffers() const { return m_Buffers; }
+        const std::vector<Texture>& Swapchain::getBuffers() const
+        {
+            const auto& backend = backendOf(m_Backend);
+            return backend.m_Buffers;
+        }
 
-        const Texture& Swapchain::getBuffer(const uint32_t i) const { return m_Buffers[i]; }
+        const Texture& Swapchain::getBuffer(const uint32_t i) const
+        {
+            const auto& backend = backendOf(m_Backend);
+            return backend.m_Buffers[i];
+        }
 
-        uint32_t Swapchain::getCurrentBufferIndex() const { return m_Backend ? m_CurrentImageIndex : 0u; }
+        uint32_t Swapchain::getCurrentBufferIndex() const
+        {
+            const auto& backend = backendOf(m_Backend);
+            return backend.m_CurrentImageIndex;
+        }
 
-        Texture& Swapchain::getCurrentBuffer() { return m_Buffers[m_CurrentImageIndex]; }
+        Texture& Swapchain::getCurrentBuffer()
+        {
+            auto& backend = backendOf(m_Backend);
+            return backend.m_Buffers[backend.m_CurrentImageIndex];
+        }
 
         void Swapchain::recreate(const std::optional<VerticalSync> vsync)
         {
-            assert(m_Backend);
-            m_Buffers.clear();
-            create(m_Format, vsync.value_or(m_VerticalSync));
+            auto& backend = backendOf(m_Backend);
+            backend.m_Buffers.clear();
+            create(backend.m_Format, vsync.value_or(backend.m_VerticalSync));
         }
 
         bool Swapchain::acquireNextImage(const std::uintptr_t imageAcquired)
         {
-            assert(m_Backend && m_Handle);
+            auto& backend = backendOf(m_Backend);
+            assert(backend.m_Handle);
             ZoneScopedN("RHI::AcquireNextImage");
 
-            const auto result = m_Device.acquireNextImageKHR(
-                m_Handle,
+            const auto result = backend.m_Device.acquireNextImageKHR(
+                backend.m_Handle,
                 std::numeric_limits<uint64_t>::max(),
                 vk::Semaphore {reinterpret_cast<VkSemaphore>(imageAcquired)},
                 nullptr,
-                &m_CurrentImageIndex);
+                &backend.m_CurrentImageIndex);
 
             switch (result)
             {
@@ -225,77 +241,46 @@ namespace vultra
                              const std::uintptr_t physicalDevice,
                              const std::uintptr_t device,
                              os::Window*          window,
-                             const Format         format,
+                             const SwapchainFormat format,
                              const VerticalSync   vsync) :
             m_Backend(std::make_shared<VulkanSwapchainBackend>())
         {
-            m_Instance       = vk::Instance {reinterpret_cast<VkInstance>(instance)};
-            m_PhysicalDevice = vk::PhysicalDevice {reinterpret_cast<VkPhysicalDevice>(physicalDevice)};
-            m_Device         = vk::Device {reinterpret_cast<VkDevice>(device)};
-            m_Window         = window;
+            auto& backend         = backendOf(m_Backend);
+            backend.m_Instance       = vk::Instance {reinterpret_cast<VkInstance>(instance)};
+            backend.m_PhysicalDevice = vk::PhysicalDevice {reinterpret_cast<VkPhysicalDevice>(physicalDevice)};
+            backend.m_Device         = vk::Device {reinterpret_cast<VkDevice>(device)};
+            backend.m_Window         = window;
             createSurface();
             create(format, vsync);
         }
 
         void Swapchain::createSurface()
         {
-            assert(m_Backend);
-            assert(m_Instance);
-            VULTRA_CORE_ASSERT(m_Window != nullptr, "[Swapchain] Window must not be null.");
+            auto& backend = backendOf(m_Backend);
+            assert(backend.m_Instance);
+            VULTRA_CORE_ASSERT(backend.m_Window != nullptr, "[Swapchain] Window must not be null.");
             VULTRA_CORE_TRACE("[Swapchain] Creating Vulkan surface for window driver {}",
-                              magic_enum::enum_name(m_Window->driverType()));
-            m_Surface = m_Window->createVulkanSurface(m_Instance);
+                              magic_enum::enum_name(backend.m_Window->driverType()));
+            backend.m_Surface = backend.m_Window->createVulkanSurface(backend.m_Instance);
             VULTRA_CORE_TRACE("[Swapchain] Vulkan surface created");
         }
 
-        void Swapchain::create(Format format, VerticalSync vsync)
+        void Swapchain::create(SwapchainFormat format, VerticalSync vsync)
         {
-            assert(m_Backend);
-            m_Device.waitIdle();
+            auto& backend = backendOf(m_Backend);
+            backend.m_Device.waitIdle();
 
-            const auto oldSwapchain = std::exchange(m_Handle, nullptr);
+            const auto oldSwapchain = std::exchange(backend.m_Handle, nullptr);
 
-            const auto surfaceInfo = getSurfaceInfo(m_PhysicalDevice, m_Surface);
+            const auto surfaceInfo = getSurfaceInfo(backend.m_PhysicalDevice, backend.m_Surface);
             VULTRA_CORE_TRACE("[Swapchain] Surface info acquired");
 
-            // Using framebuffer extent as the swapchain extent for Wayland compatibility
-            const os::Window::Extent fbExtent = m_Window->getFrameBufferExtent();
+            const os::Window::Extent fbExtent = backend.m_Window->getFrameBufferExtent();
 
-            Extent2D extent;
-            switch (m_Window->driverType())
-            {
-                case os::Window::DriverType::eAndroid:
-                    if (surfaceInfo.capabilities.currentExtent.width != 4294967295u &&
-                        surfaceInfo.capabilities.currentExtent.height != 4294967295u)
-                    {
-                        extent = fromVk(surfaceInfo.capabilities.currentExtent);
-                    }
-                    else
-                    {
-                        extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
-                    }
-                    break;
-
-                case os::Window::DriverType::eX11:
-                    if (surfaceInfo.capabilities.currentExtent.width != 4294967289u &&
-                        surfaceInfo.capabilities.currentExtent.height != 4294967289u)
-                    {
-                        extent = fromVk(surfaceInfo.capabilities.currentExtent);
-                    }
-                    else
-                    {
-                        extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
-                    }
-                    break;
-
-                case os::Window::DriverType::eWayland:
-                    extent = Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
-                    break;
-
-                default:
-                    extent = fromVk(surfaceInfo.capabilities.currentExtent);
-                    break;
-            }
+            const bool variableExtent = surfaceInfo.capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max() ||
+                                        surfaceInfo.capabilities.currentExtent.height == std::numeric_limits<uint32_t>::max();
+            Extent2D extent = variableExtent ? Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)} :
+                                               fromVk(surfaceInfo.capabilities.currentExtent);
 
             extent.width  = std::clamp(extent.width,
                                       surfaceInfo.capabilities.minImageExtent.width,
@@ -323,12 +308,7 @@ namespace vultra
             }
 
             const auto surfaceFormat = chooseSurfaceFormat(surfaceInfo.formats, format);
-            const bool supportsIdentityTransform =
-                (surfaceInfo.capabilities.supportedTransforms & vk::SurfaceTransformFlagBitsKHR::eIdentity) ==
-                vk::SurfaceTransformFlagBitsKHR::eIdentity;
             const auto preTransform =
-                (m_Window->driverType() == os::Window::DriverType::eAndroid && supportsIdentityTransform) ?
-                    vk::SurfaceTransformFlagBitsKHR::eIdentity :
                 (surfaceInfo.capabilities.supportedTransforms & surfaceInfo.capabilities.currentTransform) ==
                         surfaceInfo.capabilities.currentTransform ?
                     surfaceInfo.capabilities.currentTransform :
@@ -336,14 +316,14 @@ namespace vultra
             const auto compositeAlpha = chooseCompositeAlpha(surfaceInfo.capabilities);
 
             vk::SwapchainCreateInfoKHR swapchainCreateInfo {};
-            swapchainCreateInfo.surface = m_Surface;
+            swapchainCreateInfo.surface = backend.m_Surface;
             swapchainCreateInfo.minImageCount =
                 std::clamp(3u,
                            surfaceInfo.capabilities.minImageCount,
                            surfaceInfo.capabilities.maxImageCount > 0 ? surfaceInfo.capabilities.maxImageCount : 8u);
             swapchainCreateInfo.imageFormat      = surfaceFormat.format;
             swapchainCreateInfo.imageColorSpace  = surfaceFormat.colorSpace;
-            swapchainCreateInfo.imageExtent      = static_cast<vk::Extent2D>(extent);
+            swapchainCreateInfo.imageExtent      = toVk(extent);
             swapchainCreateInfo.imageArrayLayers = 1; // No Stereo
             swapchainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc |
                                              vk::ImageUsageFlagBits::eTransferDst |
@@ -355,40 +335,30 @@ namespace vultra
             swapchainCreateInfo.clipped          = true;
             swapchainCreateInfo.oldSwapchain     = oldSwapchain;
 
-            const bool androidTransformOverride = m_Window->driverType() == os::Window::DriverType::eAndroid &&
-                                                  preTransform != surfaceInfo.capabilities.currentTransform;
+            VULTRA_CORE_TRACE("[Swapchain] Creating swapchain format={}, colorSpace={}, currentTransform={}, "
+                              "preTransform={}, compositeAlpha={}, minImageCount={}",
+                              vk::to_string(surfaceFormat.format),
+                              vk::to_string(surfaceFormat.colorSpace),
+                              vk::to_string(surfaceInfo.capabilities.currentTransform),
+                              vk::to_string(preTransform),
+                              vk::to_string(compositeAlpha),
+                              swapchainCreateInfo.minImageCount);
 
-            if (androidTransformOverride)
-            {
-                logAndroidSwapchainTransformOverrideOnce(surfaceInfo.capabilities.currentTransform, preTransform);
-            }
-            else
-            {
-                VULTRA_CORE_TRACE("[Swapchain] Creating swapchain format={}, colorSpace={}, currentTransform={}, "
-                                  "preTransform={}, compositeAlpha={}, minImageCount={}",
-                                  vk::to_string(surfaceFormat.format),
-                                  vk::to_string(surfaceFormat.colorSpace),
-                                  vk::to_string(surfaceInfo.capabilities.currentTransform),
-                                  vk::to_string(preTransform),
-                                  vk::to_string(compositeAlpha),
-                                  swapchainCreateInfo.minImageCount);
-            }
-
-            VK_CHECK(m_Device.createSwapchainKHR(&swapchainCreateInfo, nullptr, &m_Handle),
+            VK_CHECK(backend.m_Device.createSwapchainKHR(&swapchainCreateInfo, nullptr, &backend.m_Handle),
                      "Swapchain",
                      "Failed to create swapchain");
 
             buildBuffers(extent, fromVk(swapchainCreateInfo.imageFormat));
-            m_Format       = format;
-            m_VerticalSync = vsync;
+            backend.m_Format       = format;
+            backend.m_VerticalSync = vsync;
 
             if (oldSwapchain)
             {
-                m_Device.waitIdle();
-                m_Device.destroySwapchainKHR(oldSwapchain);
+                backend.m_Device.waitIdle();
+                backend.m_Device.destroySwapchainKHR(oldSwapchain, nullptr);
             }
 
-            m_Device.waitIdle();
+            backend.m_Device.waitIdle();
 
             VULTRA_CORE_TRACE("[Swapchain] Created, extent: ({}, {}), present mode: {}",
                               extent.width,
@@ -398,23 +368,27 @@ namespace vultra
 
         void Swapchain::buildBuffers(Extent2D extent, PixelFormat pixelFormat)
         {
-            assert(m_Backend);
-            assert(m_Buffers.empty());
+            auto& backend = backendOf(m_Backend);
+            assert(backend.m_Buffers.empty());
 
             uint32_t imageCount {0};
-            VK_CHECK(m_Device.getSwapchainImagesKHR(m_Handle, &imageCount, nullptr),
+            VK_CHECK(backend.m_Device.getSwapchainImagesKHR(backend.m_Handle, &imageCount, nullptr),
                      "Swapchain",
                      "Failed to get swapchain images");
 
             std::vector<vk::Image> swapchainImages(imageCount);
-            VK_CHECK(m_Device.getSwapchainImagesKHR(m_Handle, &imageCount, swapchainImages.data()),
+            VK_CHECK(backend.m_Device.getSwapchainImagesKHR(backend.m_Handle, &imageCount, swapchainImages.data()),
                      "Swapchain",
                      "Failed to get swapchain images");
 
-            m_Buffers.reserve(imageCount);
+            backend.m_Buffers.reserve(imageCount);
             for (auto image : swapchainImages)
             {
-                m_Buffers.emplace_back(Texture {m_Device, image, extent, pixelFormat});
+                backend.m_Buffers.emplace_back(Texture {
+                    reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backend.m_Device)),
+                    reinterpret_cast<std::uintptr_t>(static_cast<VkImage>(image)),
+                    extent,
+                    pixelFormat});
             }
         }
 
@@ -423,41 +397,32 @@ namespace vultra
             if (!m_Backend)
                 return;
 
-            m_Buffers.clear();
+            auto& backend = backendOf(m_Backend);
 
-            if (m_Handle)
+            backend.m_Buffers.clear();
+
+            if (backend.m_Handle)
             {
-                m_Device.waitIdle();
-                m_Device.destroySwapchainKHR(m_Handle);
-                m_Handle = nullptr;
+                backend.m_Device.waitIdle();
+                backend.m_Device.destroySwapchainKHR(backend.m_Handle, nullptr);
+                backend.m_Handle = nullptr;
             }
 
-            if (m_Surface)
+            if (backend.m_Surface)
             {
-                m_Instance.destroySurfaceKHR(m_Surface);
-                m_Surface = nullptr;
+                backend.m_Instance.destroySurfaceKHR(backend.m_Surface, nullptr);
+                backend.m_Surface = nullptr;
             }
 
-            m_Window  = nullptr;
-            m_Surface = nullptr;
+            backend.m_Window  = nullptr;
+            backend.m_Surface = nullptr;
 
-            m_Instance       = nullptr;
-            m_PhysicalDevice = nullptr;
-            m_Device         = nullptr;
+            backend.m_Instance       = nullptr;
+            backend.m_PhysicalDevice = nullptr;
+            backend.m_Device         = nullptr;
 
-            m_CurrentImageIndex = 0;
+            backend.m_CurrentImageIndex = 0;
         }
-
-#undef m_Window
-#undef m_Instance
-#undef m_PhysicalDevice
-#undef m_Device
-#undef m_Surface
-#undef m_Handle
-#undef m_Format
-#undef m_VerticalSync
-#undef m_Buffers
-#undef m_CurrentImageIndex
 
         Rect2D getRenderArea(const Swapchain& swapchain)
         {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/index_buffer.hpp"
+#include "vultra/core/rhi/structs/device_address.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
@@ -52,8 +53,8 @@ namespace vultra::resource
         rhi::VertexBuffer vertexBuffer;
         rhi::IndexBuffer  indexBuffer;
 
-        uint64_t vertexBufferAddress {0};
-        uint64_t indexBufferAddress {0};
+        rhi::DeviceAddress vertexBufferAddress {};
+        rhi::DeviceAddress indexBufferAddress {};
 
         uint32_t indexBase {0};
         uint32_t vertexByteOffset {0};
@@ -71,4 +72,3 @@ namespace vultra::resource
         uint32_t meshletCount {0};
     };
 } // namespace vultra::resource
-

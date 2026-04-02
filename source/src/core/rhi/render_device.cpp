@@ -2,14 +2,17 @@
 #include "vultra/core/base/hash.hpp"
 #include "vultra/core/base/ranges.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/vk/vulkan_buffer.hpp"
-#include "vultra/core/rhi/raytracing/raytracing_pipeline.hpp"
-#include "vultra/core/rhi/vk/vulkan_radix_sorter.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_buffer.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_acceleration_structure_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_compute_pipeline_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_backend.hpp"
+#include "vultra/core/rhi/raytracing_pipeline.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_radix_sorter.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
-#include "vultra/core/rhi/vk/conversions.hpp"
-#include "vultra/core/rhi/vk/vulkan_command_buffer.hpp"
+#include "vultra/core/rhi/backends/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_command_buffer.hpp"
 #include "vultra/core/rhi/util.hpp"
-#include "vultra/core/rhi/vk/macro.hpp"
+#include "vultra/core/rhi/backends/vk/macro.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
 
 #include <vshadersystem/reflect.hpp>
@@ -138,74 +141,22 @@ namespace
     }
 } // namespace
 
-namespace vultra::rhi
+namespace
 {
-    struct VulkanRenderDeviceBackend
+    [[nodiscard]] vultra::rhi::VulkanRenderDeviceBackend&
+    backendOf(std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
     {
-        friend class VulkanImGuiBackend;
+        assert(backend);
+        return *static_cast<vultra::rhi::VulkanRenderDeviceBackend*>(backend.get());
+    }
 
-        std::set<std::string>       m_SupportedExtensions;
-        RenderDeviceFeatureReport   m_FeatureReport {};
-        RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
-        std::string                 m_AppName;
-        std::vector<const char*>    m_RequiredInstanceExtensions;
-        bool                        m_UseKhrDynamicRendering {false};
-        bool                        m_UseKhrSynchronization2 {false};
-
-        vk::Instance               m_Instance {nullptr};
-        vk::DebugUtilsMessengerEXT m_DebugMessenger {nullptr};
-        vk::Device                 m_Device {nullptr};
-        int                        m_GenericQueueFamilyIndex {-1};
-        vk::Queue                  m_GenericQueue {nullptr};
-        vk::PhysicalDevice         m_PhysicalDevice {nullptr};
-        vma::Allocator             m_MemoryAllocator {nullptr};
-        vk::CommandPool            m_CommandPool {nullptr};
-        vk::PipelineCache          m_PipelineCache {nullptr};
-        vk::DescriptorPool         m_DefaultDescriptorPool {nullptr};
-
-        vk::PhysicalDeviceRayTracingPipelinePropertiesKHR  m_RayTracingPipelineProperties;
-        vk::PhysicalDeviceAccelerationStructureFeaturesKHR m_AccelerationStructureFeatures;
-
-        TracyVkCtx m_TracyContext {nullptr};
-
-        template<typename T>
-        using Cache = std::unordered_map<size_t, T>;
-
-        mutable Cache<vk::Sampler>     m_Samplers;
-        Cache<vk::DescriptorSetLayout> m_DescriptorSetLayouts;
-        Cache<vk::PipelineLayout>      m_PipelineLayouts;
-
-        ShaderCompiler m_ShaderCompiler;
-
-        openxr::XRDevice* m_XRDevice {nullptr};
-    };
-} // namespace vultra::rhi
-
-#define m_SupportedExtensions (m_Backend->m_SupportedExtensions)
-#define m_FeatureReport (m_Backend->m_FeatureReport)
-#define m_FeatureFlag (m_Backend->m_FeatureFlag)
-#define m_AppName (m_Backend->m_AppName)
-#define m_RequiredInstanceExtensions (m_Backend->m_RequiredInstanceExtensions)
-#define m_UseKhrDynamicRendering (m_Backend->m_UseKhrDynamicRendering)
-#define m_UseKhrSynchronization2 (m_Backend->m_UseKhrSynchronization2)
-#define m_Instance (m_Backend->m_Instance)
-#define m_DebugMessenger (m_Backend->m_DebugMessenger)
-#define m_Device (m_Backend->m_Device)
-#define m_GenericQueueFamilyIndex (m_Backend->m_GenericQueueFamilyIndex)
-#define m_GenericQueue (m_Backend->m_GenericQueue)
-#define m_PhysicalDevice (m_Backend->m_PhysicalDevice)
-#define m_MemoryAllocator (m_Backend->m_MemoryAllocator)
-#define m_CommandPool (m_Backend->m_CommandPool)
-#define m_PipelineCache (m_Backend->m_PipelineCache)
-#define m_DefaultDescriptorPool (m_Backend->m_DefaultDescriptorPool)
-#define m_RayTracingPipelineProperties (m_Backend->m_RayTracingPipelineProperties)
-#define m_AccelerationStructureFeatures (m_Backend->m_AccelerationStructureFeatures)
-#define m_TracyContext (m_Backend->m_TracyContext)
-#define m_Samplers (m_Backend->m_Samplers)
-#define m_DescriptorSetLayouts (m_Backend->m_DescriptorSetLayouts)
-#define m_PipelineLayouts (m_Backend->m_PipelineLayouts)
-#define m_ShaderCompiler (m_Backend->m_ShaderCompiler)
-#define m_XRDevice (m_Backend->m_XRDevice)
+    [[nodiscard]] const vultra::rhi::VulkanRenderDeviceBackend&
+    backendOf(const std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
+    {
+        assert(backend);
+        return *static_cast<const vultra::rhi::VulkanRenderDeviceBackend*>(backend.get());
+    }
+}
 
 namespace
 {
@@ -301,12 +252,12 @@ namespace vultra
                                    std::span<const char* const>      requiredInstanceExtensions) :
             m_Backend(std::make_unique<VulkanRenderDeviceBackend>())
         {
-            m_FeatureFlag = featureFlag;
-            m_AppName     = appName;
-            m_RequiredInstanceExtensions.assign(requiredInstanceExtensions.begin(),
+            backendOf(m_Backend).m_FeatureFlag = featureFlag;
+            backendOf(m_Backend).m_AppName     = appName;
+            backendOf(m_Backend).m_RequiredInstanceExtensions.assign(requiredInstanceExtensions.begin(),
                                                 requiredInstanceExtensions.end());
 
-            if (HasFlagValues(featureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
+            if (HasFlagValues(featureFlag, RenderDeviceFeatureFlagBits::eXR))
             {
                 createXRDevice();
             }
@@ -325,101 +276,101 @@ namespace vultra
 
         RenderDevice::~RenderDevice()
         {
-            if (m_Device)
+            if (backendOf(m_Backend).m_Device)
             {
-                m_Device.waitIdle();
+                backendOf(m_Backend).m_Device.waitIdle();
             }
 
-            for (auto [_, layout] : m_DescriptorSetLayouts)
+            for (auto [_, layout] : backendOf(m_Backend).m_DescriptorSetLayouts)
             {
-                m_Device.destroyDescriptorSetLayout(layout);
+                backendOf(m_Backend).m_Device.destroyDescriptorSetLayout(layout);
             }
 
-            for (auto [_, layout] : m_PipelineLayouts)
+            for (auto [_, layout] : backendOf(m_Backend).m_PipelineLayouts)
             {
-                m_Device.destroyPipelineLayout(layout);
+                backendOf(m_Backend).m_Device.destroyPipelineLayout(layout);
             }
 
-            for (auto [_, sampler] : m_Samplers)
+            for (auto [_, sampler] : backendOf(m_Backend).m_Samplers)
             {
-                m_Device.destroySampler(sampler);
+                backendOf(m_Backend).m_Device.destroySampler(vk::Sampler {reinterpret_cast<VkSampler>(sampler.value)});
             }
 
-            TracyVkDestroy(m_TracyContext);
+            TracyGpuDestroy(backendOf(m_Backend).m_TracyContext);
             TRACKY_TEARDOWN();
 
-            if (m_MemoryAllocator)
+            if (backendOf(m_Backend).m_MemoryAllocator)
             {
-                m_MemoryAllocator.destroy();
+                backendOf(m_Backend).m_MemoryAllocator.destroy();
             }
 
-            if (m_Device)
+            if (backendOf(m_Backend).m_Device)
             {
-                m_Device.destroyDescriptorPool(m_DefaultDescriptorPool);
-                m_Device.destroyPipelineCache(m_PipelineCache);
-                m_Device.destroyCommandPool(m_CommandPool);
-                m_Device.destroy();
+                backendOf(m_Backend).m_Device.destroyDescriptorPool(backendOf(m_Backend).m_DefaultDescriptorPool);
+                backendOf(m_Backend).m_Device.destroyPipelineCache(backendOf(m_Backend).m_PipelineCache);
+                backendOf(m_Backend).m_Device.destroyCommandPool(backendOf(m_Backend).m_CommandPool);
+                backendOf(m_Backend).m_Device.destroy();
             }
 
-            if (m_Instance)
+            if (backendOf(m_Backend).m_Instance)
             {
 #if _DEBUG
-                if (m_DebugMessenger)
+                if (backendOf(m_Backend).m_DebugMessenger)
                 {
-                    m_Instance.destroyDebugUtilsMessengerEXT(m_DebugMessenger);
+                    backendOf(m_Backend).m_Instance.destroyDebugUtilsMessengerEXT(backendOf(m_Backend).m_DebugMessenger);
                 }
 #endif
-                m_Instance.destroy();
+                backendOf(m_Backend).m_Instance.destroy();
             }
 
-            if (m_XRDevice)
+            if (backendOf(m_Backend).m_XRDevice)
             {
-                delete m_XRDevice;
-                m_XRDevice = nullptr;
+                delete backendOf(m_Backend).m_XRDevice;
+                backendOf(m_Backend).m_XRDevice = nullptr;
             }
         }
 
-        RenderDeviceFeatureFlagBits RenderDevice::getFeatureFlag() const { return m_FeatureFlag; }
+        RenderDeviceFeatureFlagBits RenderDevice::getFeatureFlag() const { return backendOf(m_Backend).m_FeatureFlag; }
 
-        RenderDeviceFeatureReport RenderDevice::getFeatureReport() const { return m_FeatureReport; }
+        RenderDeviceFeatureReport RenderDevice::getFeatureReport() const { return backendOf(m_Backend).m_FeatureReport; }
 
-        openxr::XRDevice* RenderDevice::getXRDevice() const { return m_XRDevice; }
+        openxr::XRDevice* RenderDevice::getXRDevice() const { return backendOf(m_Backend).m_XRDevice; }
 
         std::uintptr_t RenderDevice::getNativeInstanceHandle() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkInstance>(m_Instance));
+            return reinterpret_cast<std::uintptr_t>(static_cast<VkInstance>(backendOf(m_Backend).m_Instance));
         }
 
         std::uintptr_t RenderDevice::getNativePhysicalDeviceHandle() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkPhysicalDevice>(m_PhysicalDevice));
+            return reinterpret_cast<std::uintptr_t>(static_cast<VkPhysicalDevice>(backendOf(m_Backend).m_PhysicalDevice));
         }
 
         std::uintptr_t RenderDevice::getNativeDeviceHandle() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(m_Device));
+            return reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device));
         }
 
-        int RenderDevice::getNativeQueueFamilyIndex() const { return m_GenericQueueFamilyIndex; }
+        int RenderDevice::getNativeQueueFamilyIndex() const { return backendOf(m_Backend).m_GenericQueueFamilyIndex; }
 
         std::uintptr_t RenderDevice::getNativeQueueHandle() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkQueue>(m_GenericQueue));
+            return reinterpret_cast<std::uintptr_t>(static_cast<VkQueue>(backendOf(m_Backend).m_GenericQueue));
         }
 
         std::uintptr_t RenderDevice::getNativePipelineCacheHandle() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkPipelineCache>(m_PipelineCache));
+            return reinterpret_cast<std::uintptr_t>(static_cast<VkPipelineCache>(backendOf(m_Backend).m_PipelineCache));
         }
 
         std::uintptr_t RenderDevice::getNativeDescriptorPoolHandle() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorPool>(m_DefaultDescriptorPool));
+            return reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorPool>(backendOf(m_Backend).m_DefaultDescriptorPool));
         }
 
         std::string RenderDevice::getName() const
         {
-            const auto v = m_PhysicalDevice.getProperties().apiVersion;
+            const auto v = backendOf(m_Backend).m_PhysicalDevice.getProperties().apiVersion;
             return fmt::format(
                 "Vulkan {}.{}.{}", VK_API_VERSION_MAJOR(v), VK_API_VERSION_MINOR(v), VK_API_VERSION_PATCH(v));
         }
@@ -427,73 +378,74 @@ namespace vultra
         PhysicalDeviceInfo RenderDevice::getPhysicalDeviceInfo() const
         {
             return PhysicalDeviceInfo {
-                .vendorId   = m_PhysicalDevice.getProperties().vendorID,
-                .deviceId   = m_PhysicalDevice.getProperties().deviceID,
-                .deviceName = m_PhysicalDevice.getProperties().deviceName,
+                .vendorId   = backendOf(m_Backend).m_PhysicalDevice.getProperties().vendorID,
+                .deviceId   = backendOf(m_Backend).m_PhysicalDevice.getProperties().deviceID,
+                .deviceName = backendOf(m_Backend).m_PhysicalDevice.getProperties().deviceName,
             };
         }
 
-        vk::PhysicalDeviceLimits RenderDevice::getDeviceLimits() const
+        std::array<float, 2> RenderDevice::getLineWidthRange() const
         {
-            assert(m_PhysicalDevice);
-            return m_PhysicalDevice.getProperties().limits;
+            assert(backendOf(m_Backend).m_PhysicalDevice);
+            const auto& limits = backendOf(m_Backend).m_PhysicalDevice.getProperties().limits;
+            return {limits.lineWidthRange[0], limits.lineWidthRange[1]};
         }
 
-        vk::PhysicalDeviceFeatures RenderDevice::getDeviceFeatures() const
+        float RenderDevice::getMaxSamplerAnisotropy() const
         {
-            assert(m_PhysicalDevice);
-            return m_PhysicalDevice.getFeatures();
+            assert(backendOf(m_Backend).m_PhysicalDevice);
+            return backendOf(m_Backend).m_PhysicalDevice.getProperties().limits.maxSamplerAnisotropy;
         }
 
-        vk::FormatProperties RenderDevice::getFormatProperties(const PixelFormat pixelFormat) const
+        uint64_t RenderDevice::getFormatFeatureFlagsOptimal(const PixelFormat pixelFormat) const
         {
-            assert(m_PhysicalDevice);
+            assert(backendOf(m_Backend).m_PhysicalDevice);
             vk::FormatProperties props {};
-            m_PhysicalDevice.getFormatProperties(toVk(pixelFormat), &props);
-            return props;
+            backendOf(m_Backend).m_PhysicalDevice.getFormatProperties(toVk(pixelFormat), &props);
+            return static_cast<uint64_t>(static_cast<VkFormatFeatureFlags>(props.optimalTilingFeatures));
         }
 
         Swapchain RenderDevice::createSwapchain(os::Window&             window,
-                                                const Swapchain::Format format,
+                                                const SwapchainFormat   format,
                                                 const VerticalSync      vsync) const
         {
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
 
             return Swapchain {
-                reinterpret_cast<std::uintptr_t>(static_cast<VkInstance>(m_Instance)),
-                reinterpret_cast<std::uintptr_t>(static_cast<VkPhysicalDevice>(m_PhysicalDevice)),
-                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(m_Device)),
+                reinterpret_cast<std::uintptr_t>(static_cast<VkInstance>(backendOf(m_Backend).m_Instance)),
+                reinterpret_cast<std::uintptr_t>(static_cast<VkPhysicalDevice>(backendOf(m_Backend).m_PhysicalDevice)),
+                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device)),
                 &window,
                 format,
                 vsync,
             };
         }
 
-        vk::Fence RenderDevice::createFence(const bool signaled) const
+        FenceHandle RenderDevice::createFence(const bool signaled) const
         {
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
             vk::FenceCreateInfo createInfo {};
             createInfo.flags = signaled ? vk::FenceCreateFlagBits::eSignaled : vk::FenceCreateFlags(0u);
             vk::Fence fence {nullptr};
-            VK_CHECK(m_Device.createFence(&createInfo, nullptr, &fence), LOGTAG, "Failed to create fence");
-            return fence;
+            VK_CHECK(backendOf(m_Backend).m_Device.createFence(&createInfo, nullptr, &fence), LOGTAG, "Failed to create fence");
+            return FenceHandle {reinterpret_cast<std::uintptr_t>(static_cast<VkFence>(fence))};
         }
 
-        vk::Semaphore RenderDevice::createSemaphore()
+        SemaphoreHandle RenderDevice::createSemaphore()
         {
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
             vk::SemaphoreCreateInfo createInfo {};
             createInfo.flags = vk::SemaphoreCreateFlags(0);
             vk::Semaphore semaphore {nullptr};
-            VK_CHECK(m_Device.createSemaphore(&createInfo, nullptr, &semaphore), LOGTAG, "Failed to create semaphore");
-            return semaphore;
+            VK_CHECK(backendOf(m_Backend).m_Device.createSemaphore(&createInfo, nullptr, &semaphore), LOGTAG, "Failed to create semaphore");
+            return SemaphoreHandle {reinterpret_cast<std::uintptr_t>(static_cast<VkSemaphore>(semaphore))};
         }
 
-        Buffer RenderDevice::createStagingBuffer(const vk::DeviceSize size, const void* data) const
+        Buffer RenderDevice::createStagingBuffer(const uint64_t size, const void* data) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            Buffer stagingBuffer = makeBuffer(m_MemoryAllocator,
+            Buffer stagingBuffer = makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                                               size,
                                               BufferUsage::eTransferSrc,
                                               makeAllocationFlags(AllocationHints::eSequentialWrite),
@@ -509,25 +461,25 @@ namespace vultra
         }
 
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
-                                                      const vk::DeviceSize  vertexCount,
+                                                      const uint64_t        vertexCount,
                                                       const AllocationHints allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
             BufferUsage usage = BufferUsage::eVertexBuffer | BufferUsage::eTransferDst;
 
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 usage |= BufferUsage::eShaderDeviceAddress;
             }
 
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
             {
                 usage |= BufferUsage::eAccelerationBuildInput;
             }
 
             return VertexBuffer {
-                makeBuffer(m_MemoryAllocator,
+                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                            stride * vertexCount,
                            usage,
                            makeAllocationFlags(allocationHint),
@@ -537,19 +489,19 @@ namespace vultra
         }
 
         IndexBuffer RenderDevice::createIndexBuffer(IndexType             indexType,
-                                                    const vk::DeviceSize  indexCount,
+                                                    const uint64_t        indexCount,
                                                     const AllocationHints allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
             BufferUsage usage = BufferUsage::eIndexBuffer | BufferUsage::eTransferDst;
 
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 usage |= BufferUsage::eShaderDeviceAddress;
             }
 
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
             {
                 usage |= BufferUsage::eAccelerationBuildInput;
             }
@@ -557,7 +509,7 @@ namespace vultra
             const auto indexStride = indexType == IndexType::eUInt16 ? 2 : 4;
 
             return IndexBuffer {
-                makeBuffer(m_MemoryAllocator,
+                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                            indexStride * indexCount,
                            usage,
                            makeAllocationFlags(allocationHint),
@@ -566,13 +518,13 @@ namespace vultra
             };
         }
 
-        UniformBuffer RenderDevice::createUniformBuffer(const vk::DeviceSize  size,
+        UniformBuffer RenderDevice::createUniformBuffer(const uint64_t        size,
                                                         const AllocationHints allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
             return UniformBuffer {
-                makeBuffer(m_MemoryAllocator,
+                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                            size,
                            BufferUsage::eUniformBuffer | BufferUsage::eTransferDst,
                            makeAllocationFlags(allocationHint),
@@ -580,25 +532,25 @@ namespace vultra
             };
         }
 
-        StorageBuffer RenderDevice::createStorageBuffer(const vk::DeviceSize  size,
+        StorageBuffer RenderDevice::createStorageBuffer(const uint64_t        size,
                                                         const AllocationHints allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
             BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst;
 
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 usage |= BufferUsage::eShaderDeviceAddress;
             }
 
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
             {
                 usage |= BufferUsage::eAccelerationBuildInput;
             }
 
             return StorageBuffer {
-                makeBuffer(m_MemoryAllocator,
+                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                            size,
                            usage,
                            makeAllocationFlags(allocationHint),
@@ -606,26 +558,26 @@ namespace vultra
             };
         }
 
-        StorageBuffer RenderDevice::createStorageBufferWithUsage(const vk::DeviceSize size,
+        StorageBuffer RenderDevice::createStorageBufferWithUsage(const uint64_t       size,
                                                                  const BufferUsage    extraUsage,
                                                                  const AllocationHints allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
             BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | extraUsage;
 
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 usage |= BufferUsage::eShaderDeviceAddress;
             }
 
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
             {
                 usage |= BufferUsage::eAccelerationBuildInput;
             }
 
             return StorageBuffer {
-                makeBuffer(m_MemoryAllocator,
+                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                            size,
                            usage,
                            makeAllocationFlags(allocationHint),
@@ -637,14 +589,14 @@ namespace vultra
                                                                          const DrawIndirectType type,
                                                                          const AllocationHints  allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
             BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer;
 
             const auto stride = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
                                                                      sizeof(vk::DrawIndirectCommand);
 
-            return DrawIndirectBuffer {makeBuffer(m_MemoryAllocator,
+            return DrawIndirectBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                                                  commandCount * stride,
                                                  usage,
                                                  makeAllocationFlags(allocationHint),
@@ -652,15 +604,15 @@ namespace vultra
                                        type};
         }
 
-        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferBySize(const vk::DeviceSize   size,
+        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferBySize(const uint64_t         size,
                                                                         const DrawIndirectType type,
                                                                         const AllocationHints  allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
             BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer;
 
-            return DrawIndirectBuffer {makeBuffer(m_MemoryAllocator,
+            return DrawIndirectBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                                                  size,
                                                  usage,
                                                  makeAllocationFlags(allocationHint),
@@ -668,18 +620,18 @@ namespace vultra
                                        type};
         }
 
-        std::pair<std::size_t, std::uintptr_t>
+        DescriptorSetLayoutKey
         RenderDevice::createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>& bindings)
         {
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
 
             std::size_t hash {0};
             for (const auto& b : bindings)
                 hashCombine(hash, b);
 
-            if (const auto it = m_DescriptorSetLayouts.find(hash); it != m_DescriptorSetLayouts.cend())
+            if (const auto it = backendOf(m_Backend).m_DescriptorSetLayouts.find(hash); it != backendOf(m_Backend).m_DescriptorSetLayouts.cend())
             {
-                return {hash, reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorSetLayout>(it->second))};
+                return DescriptorSetLayoutKey {hash};
             }
 
             std::vector<vk::DescriptorSetLayoutBinding> vkBindings;
@@ -711,20 +663,32 @@ namespace vultra
 #endif
 
             vk::DescriptorSetLayout descriptorSetLayout {nullptr};
-            VK_CHECK(m_Device.createDescriptorSetLayout(&createInfo, nullptr, &descriptorSetLayout),
+            VK_CHECK(backendOf(m_Backend).m_Device.createDescriptorSetLayout(&createInfo, nullptr, &descriptorSetLayout),
                      LOGTAG,
                      "Failed to create descriptor set layout");
 
-            const auto& [inserted, _] = m_DescriptorSetLayouts.emplace(hash, descriptorSetLayout);
-            return {hash, reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorSetLayout>(inserted->second))};
+            const auto& [inserted, _] = backendOf(m_Backend).m_DescriptorSetLayouts.emplace(hash, descriptorSetLayout);
+            return DescriptorSetLayoutKey {hash};
+        }
+
+        std::uintptr_t RenderDevice::getDescriptorSetLayoutNativeHandle(const DescriptorSetLayoutKey layoutKey) const
+        {
+            assert(layoutKey);
+            if (const auto it = backendOf(m_Backend).m_DescriptorSetLayouts.find(layoutKey.value);
+                it != backendOf(m_Backend).m_DescriptorSetLayouts.end())
+            {
+                return reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorSetLayout>(it->second));
+            }
+            return 0;
         }
 
         PipelineLayout RenderDevice::createPipelineLayout(const PipelineLayoutInfo& layoutInfo)
         {
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
 
-            std::size_t                          hash {0};
-            std::vector<vk::DescriptorSetLayout> descriptorSetLayouts(kMinNumDescriptorSets);
+            std::size_t                           hash {0};
+            std::vector<DescriptorSetLayoutKey>   descriptorSetLayoutKeys(kMinNumDescriptorSets);
+            std::vector<vk::DescriptorSetLayout>  descriptorSetLayouts(kMinNumDescriptorSets);
             std::vector<vk::PushConstantRange>    vkPushConstantRanges;
             vkPushConstantRanges.reserve(layoutInfo.pushConstantRanges.size());
 
@@ -734,8 +698,10 @@ namespace vultra
                 {
                     hashCombine(hash, set, binding);
                 }
-                auto [_, handle]          = createDescriptorSetLayout(bindings);
-                descriptorSetLayouts[set] = vk::DescriptorSetLayout {reinterpret_cast<VkDescriptorSetLayout>(handle)};
+                descriptorSetLayoutKeys[set] = createDescriptorSetLayout(bindings);
+                descriptorSetLayouts[set] = vk::DescriptorSetLayout {
+                    reinterpret_cast<VkDescriptorSetLayout>(
+                        getDescriptorSetLayoutNativeHandle(descriptorSetLayoutKeys[set]))};
             }
             for (const auto& range : layoutInfo.pushConstantRanges)
             {
@@ -747,16 +713,10 @@ namespace vultra
                 vkPushConstantRanges.push_back(vkRange);
             }
 
-            if (const auto it = m_PipelineLayouts.find(hash); it != m_PipelineLayouts.cend())
+            if (const auto it = backendOf(m_Backend).m_PipelineLayouts.find(hash); it != backendOf(m_Backend).m_PipelineLayouts.cend())
             {
-                std::vector<std::uintptr_t> layoutHandles(descriptorSetLayouts.size());
-                for (size_t i = 0; i < descriptorSetLayouts.size(); ++i)
-                {
-                    layoutHandles[i] =
-                        reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorSetLayout>(descriptorSetLayouts[i]));
-                }
                 return PipelineLayout {reinterpret_cast<std::uintptr_t>(static_cast<VkPipelineLayout>(it->second)),
-                                       std::move(layoutHandles)};
+                                       std::move(descriptorSetLayoutKeys)};
             }
 
             vk::PipelineLayoutCreateInfo createInfo {};
@@ -766,19 +726,13 @@ namespace vultra
             createInfo.pPushConstantRanges    = vkPushConstantRanges.data();
 
             vk::PipelineLayout handle {nullptr};
-            VK_CHECK(m_Device.createPipelineLayout(&createInfo, nullptr, &handle),
+            VK_CHECK(backendOf(m_Backend).m_Device.createPipelineLayout(&createInfo, nullptr, &handle),
                      LOGTAG,
                      "Failed to create pipeline layout");
 
-            const auto& [inserted, _] = m_PipelineLayouts.emplace(hash, handle);
-            std::vector<std::uintptr_t> layoutHandles(descriptorSetLayouts.size());
-            for (size_t i = 0; i < descriptorSetLayouts.size(); ++i)
-            {
-                layoutHandles[i] =
-                    reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorSetLayout>(descriptorSetLayouts[i]));
-            }
+            const auto& [inserted, _] = backendOf(m_Backend).m_PipelineLayouts.emplace(hash, handle);
             return PipelineLayout {reinterpret_cast<std::uintptr_t>(static_cast<VkPipelineLayout>(inserted->second)),
-                                   std::move(layoutHandles)};
+                                   std::move(descriptorSetLayoutKeys)};
         }
 
         Texture RenderDevice::createTexture2D(const Extent2D    extent,
@@ -787,10 +741,12 @@ namespace vultra
                                               const uint32_t    numLayers,
                                               const ImageUsage  usageFlags) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
+            const auto allocatorHandle =
+                reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(backendOf(m_Backend).m_MemoryAllocator));
 
             return Texture {
-                m_MemoryAllocator,
+                allocatorHandle,
                 Texture::CreateInfo {
                     .extent       = extent,
                     .depth        = 0,
@@ -809,10 +765,12 @@ namespace vultra
                                               const uint32_t    numMipLevels,
                                               const ImageUsage  usageFlags) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
+            const auto allocatorHandle =
+                reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(backendOf(m_Backend).m_MemoryAllocator));
 
             return Texture {
-                m_MemoryAllocator,
+                allocatorHandle,
                 Texture::CreateInfo {
                     .extent       = extent,
                     .depth        = depth,
@@ -831,10 +789,12 @@ namespace vultra
                                             const uint32_t    numLayers,
                                             const ImageUsage  usageFlags) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
+            const auto allocatorHandle =
+                reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(backendOf(m_Backend).m_MemoryAllocator));
 
             return Texture {
-                m_MemoryAllocator,
+                allocatorHandle,
                 Texture::CreateInfo {
                     .extent       = {size, size},
                     .depth        = 0,
@@ -851,8 +811,8 @@ namespace vultra
         {
             assert(texture && HasFlagValues(texture.getUsageFlags(), ImageUsage::eSampled));
 
-            if (const auto props = getFormatProperties(texture.getPixelFormat());
-                !static_cast<bool>(props.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
+            if ((getFormatFeatureFlagsOptimal(texture.getPixelFormat()) &
+                 static_cast<uint64_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) == 0)
             {
                 samplerInfo.minFilter  = TexelFilter::eNearest;
                 samplerInfo.magFilter  = TexelFilter::eNearest;
@@ -866,25 +826,25 @@ namespace vultra
         {
             const auto hash = std::hash<SamplerInfo> {}(samplerInfo);
 
-            auto it = m_Samplers.find(hash);
-            if (it == m_Samplers.cend())
+            auto it = backendOf(m_Backend).m_Samplers.find(hash);
+            if (it == backendOf(m_Backend).m_Samplers.cend())
             {
-                it = m_Samplers.emplace(hash, createSampler(samplerInfo)).first;
+                it = backendOf(m_Backend).m_Samplers.emplace(hash, createSampler(samplerInfo)).first;
                 VULTRA_CORE_TRACE("[RenderDevice] Created Sampler {}", hash);
             }
 
             return Sampler {samplerInfo};
         }
 
-        vk::Sampler RenderDevice::getSamplerHandle(const Sampler& sampler) const
+        SamplerHandle RenderDevice::getSamplerHandle(const Sampler& sampler) const
         {
             assert(sampler);
             const auto hash = std::hash<SamplerInfo> {}(sampler.info());
 
-            auto it = m_Samplers.find(hash);
-            if (it == m_Samplers.cend())
+            auto it = backendOf(m_Backend).m_Samplers.find(hash);
+            if (it == backendOf(m_Backend).m_Samplers.cend())
             {
-                it = m_Samplers.emplace(hash, createSampler(sampler.info())).first;
+                it = backendOf(m_Backend).m_Samplers.emplace(hash, createSampler(sampler.info())).first;
             }
 
             return it->second;
@@ -896,7 +856,7 @@ namespace vultra
                               const std::string_view                                             entryPointName,
                               const std::unordered_map<std::string, std::optional<std::string>>& defines) const
         {
-            return m_ShaderCompiler.compile(shaderType, code, entryPointName, defines);
+            return backendOf(m_Backend).m_ShaderCompiler.compile(shaderType, code, entryPointName, defines);
         }
 
         ShaderModule
@@ -919,7 +879,7 @@ namespace vultra
 
         ShaderModule RenderDevice::createShaderModule(SPIRV spv, ShaderReflection* reflection) const
         {
-            assert(m_Device != nullptr);
+            assert(backendOf(m_Backend).m_Device != nullptr);
             if (reflection)
             {
                 auto rr = vshadersystem::reflect_spirv(spv);
@@ -952,14 +912,14 @@ namespace vultra
                 pipelineLayout = reflectPipelineLayout(*this, *reflection);
             assert(*pipelineLayout);
 
-            const auto shaderModuleHandle = createVulkanShaderModule(m_Device, shaderModule.getSpirv());
+            const auto shaderModuleHandle = createVulkanShaderModule(backendOf(m_Backend).m_Device, shaderModule.getSpirv());
 
             vk::ComputePipelineCreateInfo createInfo {};
             createInfo.stage  = vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eCompute, shaderModuleHandle, "main"};
             createInfo.layout = vk::PipelineLayout {reinterpret_cast<VkPipelineLayout>(pipelineLayout->getHandle())};
 
-            auto [result, computePipeline] = m_Device.createComputePipeline(m_PipelineCache, createInfo, nullptr);
-            m_Device.destroyShaderModule(shaderModuleHandle);
+            auto [result, computePipeline] = backendOf(m_Backend).m_Device.createComputePipeline(backendOf(m_Backend).m_PipelineCache, createInfo, nullptr);
+            backendOf(m_Backend).m_Device.destroyShaderModule(shaderModuleHandle);
             if (result != vk::Result::eSuccess)
             {
                 VULTRA_CORE_ERROR("[RenderDevice] Failed to create compute pipeline: {}", vk::to_string(result));
@@ -967,10 +927,13 @@ namespace vultra
             }
 
             return ComputePipeline {
-                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(m_Device)),
+                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device)),
                 std::move(pipelineLayout.value()),
                 reflection ? reflection->localSize.value() : glm::uvec3 {},
                 reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
+                std::make_unique<VulkanComputePipelineBackend>(
+                    reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
+                    reflection ? reflection->localSize.value() : glm::uvec3 {}),
             };
         }
 
@@ -989,13 +952,13 @@ namespace vultra
             assert(*pipelineLayout);
 
             vk::ComputePipelineCreateInfo createInfo {};
-            const auto shaderModuleHandle = createVulkanShaderModule(m_Device, shaderModule.getSpirv());
+            const auto shaderModuleHandle = createVulkanShaderModule(backendOf(m_Backend).m_Device, shaderModule.getSpirv());
             createInfo.stage              = vk::PipelineShaderStageCreateInfo {
                                  {}, vk::ShaderStageFlagBits::eCompute, shaderModuleHandle, "main"};
             createInfo.layout = vk::PipelineLayout {reinterpret_cast<VkPipelineLayout>(pipelineLayout->getHandle())};
 
-            auto [result, computePipeline] = m_Device.createComputePipeline(m_PipelineCache, createInfo, nullptr);
-            m_Device.destroyShaderModule(shaderModuleHandle);
+            auto [result, computePipeline] = backendOf(m_Backend).m_Device.createComputePipeline(backendOf(m_Backend).m_PipelineCache, createInfo, nullptr);
+            backendOf(m_Backend).m_Device.destroyShaderModule(shaderModuleHandle);
             if (result != vk::Result::eSuccess)
             {
                 VULTRA_CORE_ERROR("[RenderDevice] Failed to create compute pipeline: {}", vk::to_string(result));
@@ -1003,10 +966,13 @@ namespace vultra
             }
 
             return ComputePipeline {
-                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(m_Device)),
+                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device)),
                 std::move(pipelineLayout.value()),
                 reflection ? reflection->localSize.value() : glm::uvec3 {},
                 reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
+                std::make_unique<VulkanComputePipelineBackend>(
+                    reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
+                    reflection ? reflection->localSize.value() : glm::uvec3 {}),
             };
         }
 
@@ -1015,11 +981,10 @@ namespace vultra
             return RadixSorter::create(std::make_unique<VulkanRadixSorter>(*this, maxElementCount));
         }
 
-        RenderDevice&
-        RenderDevice::upload(Buffer& buffer, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data)
+        RenderDevice& RenderDevice::upload(Buffer& buffer, const uint64_t offset, const uint64_t size, const void* data)
         {
             assert(buffer && data);
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
 
             auto* mappedMemory = std::bit_cast<std::byte*>(buffer.map());
             std::memcpy(mappedMemory + offset, data, size);
@@ -1027,11 +992,10 @@ namespace vultra
             return *this;
         }
 
-        RenderDevice&
-        RenderDevice::uploadS(Buffer& buffer, const vk::DeviceSize offset, const vk::DeviceSize size, const void* data)
+        RenderDevice& RenderDevice::uploadS(Buffer& buffer, const uint64_t offset, const uint64_t size, const void* data)
         {
             assert(buffer && data);
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
 
             // NOTE: Synchronous upload path. This submits immediately and waits for completion.
             // Keep this for initialization/setup/debug utilities only.
@@ -1053,7 +1017,7 @@ namespace vultra
             }
 
             assert(buffer);
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
 
             const uint32_t maxCommands = buffer.getSize();
 
@@ -1097,39 +1061,37 @@ namespace vultra
             return *this;
         }
 
-        RenderDevice& RenderDevice::destroy(vk::Fence& fence)
+        RenderDevice& RenderDevice::destroy(FenceHandle& fence)
         {
-            assert(fence);
-            assert(m_Device);
-
-            m_Device.destroyFence(fence);
-            fence = nullptr;
+            assert(static_cast<bool>(fence));
+            assert(backendOf(m_Backend).m_Device);
+            backendOf(m_Backend).m_Device.destroyFence(vk::Fence {reinterpret_cast<VkFence>(fence.value)});
+            fence = {};
             return *this;
         }
 
-        RenderDevice& RenderDevice::destroy(vk::Semaphore& semaphore)
+        RenderDevice& RenderDevice::destroy(SemaphoreHandle& semaphore)
         {
-            assert(semaphore);
-            assert(m_Device);
-
-            m_Device.destroySemaphore(semaphore);
-            semaphore = nullptr;
+            assert(static_cast<bool>(semaphore));
+            assert(backendOf(m_Backend).m_Device);
+            backendOf(m_Backend).m_Device.destroySemaphore(vk::Semaphore {reinterpret_cast<VkSemaphore>(semaphore.value)});
+            semaphore = {};
             return *this;
         }
 
         void RenderDevice::createXRDevice()
         {
-            assert(HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR));
+            assert(HasFlagValues(backendOf(m_Backend).m_FeatureFlag, RenderDeviceFeatureFlagBits::eXR));
 
             try
             {
-                m_XRDevice = new openxr::XRDevice(openxr::XRDeviceFeatureFlagBits::eVR, m_AppName);
+                backendOf(m_Backend).m_XRDevice = new openxr::XRDevice(openxr::XRDeviceFeatureFlagBits::eVR, backendOf(m_Backend).m_AppName);
             }
             catch (const std::exception& e)
             {
                 VULTRA_CORE_ERROR("[RenderDevice] Failed to initialize OpenXR device: {}", e.what());
-                m_XRDevice    = nullptr;
-                m_FeatureFlag = m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eOpenXR;
+                backendOf(m_Backend).m_XRDevice    = nullptr;
+                backendOf(m_Backend).m_FeatureFlag = backendOf(m_Backend).m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eXR;
             }
         }
 
@@ -1146,7 +1108,7 @@ namespace vultra
             VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
             vk::ApplicationInfo appInfo {};
-            appInfo.pApplicationName   = m_AppName.c_str();
+            appInfo.pApplicationName   = backendOf(m_Backend).m_AppName.c_str();
             appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
             appInfo.pEngineName        = "Vultra";
             appInfo.engineVersion      = VK_MAKE_VERSION(1, 0, 0);
@@ -1163,7 +1125,7 @@ namespace vultra
             std::vector<const char*> extensions;
             bool                     enableDebugUtils = false;
 
-            requiredExtensions.assign(m_RequiredInstanceExtensions.begin(), m_RequiredInstanceExtensions.end());
+            requiredExtensions.assign(backendOf(m_Backend).m_RequiredInstanceExtensions.begin(), backendOf(m_Backend).m_RequiredInstanceExtensions.end());
 
 #if _DEBUG
             requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -1259,11 +1221,8 @@ namespace vultra
             }
 #endif
 
-#ifndef VULTRA_ENABLE_RENDERDOC
-            // If RenderDoc is enabled, we don't need to enable those layers.
             createInfo.enabledLayerCount   = static_cast<uint32_t>(enabledLayers.size());
             createInfo.ppEnabledLayerNames = enabledLayers.data();
-#endif
             createInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
             createInfo.ppEnabledExtensionNames = extensions.data();
 
@@ -1298,7 +1257,7 @@ namespace vultra
 #endif
 
             // If enable OpenXR feature, then let OpenXR create the vulkan instance.
-            if (HasFlagValues(m_FeatureFlag, RenderDeviceFeatureFlagBits::eOpenXR))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureFlag, RenderDeviceFeatureFlagBits::eXR))
             {
                 VkInstance           vkInstanceC;
                 VkInstanceCreateInfo createInfoC(createInfo);
@@ -1306,13 +1265,13 @@ namespace vultra
                 XrVulkanInstanceCreateInfoKHR xrVulkanInstanceCreateInfo {};
                 xrVulkanInstanceCreateInfo.type                   = XR_TYPE_VULKAN_INSTANCE_CREATE_INFO_KHR;
                 xrVulkanInstanceCreateInfo.pfnGetInstanceProcAddr = vkGetInstanceProcAddr;
-                xrVulkanInstanceCreateInfo.systemId               = m_XRDevice->m_XrSystemId;
+                xrVulkanInstanceCreateInfo.systemId               = backendOf(m_Backend).m_XRDevice->m_XrSystemId;
                 xrVulkanInstanceCreateInfo.vulkanCreateInfo       = &createInfoC;
                 VkResult vkResult;
 
                 bool ok = true;
-                if (XR_FAILED(m_XRDevice->xrCreateVulkanInstanceKHR(
-                        m_XRDevice->m_XrInstance, &xrVulkanInstanceCreateInfo, &vkInstanceC, &vkResult)))
+                if (XR_FAILED(backendOf(m_Backend).m_XRDevice->xrCreateVulkanInstanceKHR(
+                        backendOf(m_Backend).m_XRDevice->m_XrInstance, &xrVulkanInstanceCreateInfo, &vkInstanceC, &vkResult)))
                 {
                     ok = false;
                 }
@@ -1327,20 +1286,20 @@ namespace vultra
                     throw std::runtime_error("Failed to create Instance with OpenXR");
                 }
 
-                m_Instance = vkInstanceC;
+                backendOf(m_Backend).m_Instance = vkInstanceC;
             }
             else
             {
                 VK_CHECK(
-                    vk::createInstance(&createInfo, nullptr, &m_Instance), LOGTAG, "Failed to create Vulkan instance");
+                    vk::createInstance(&createInfo, nullptr, &backendOf(m_Backend).m_Instance), LOGTAG, "Failed to create Vulkan instance");
             }
 
-            VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Instance);
+            VULKAN_HPP_DEFAULT_DISPATCHER.init(backendOf(m_Backend).m_Instance);
 
 #if _DEBUG
             if (enableDebugUtils)
             {
-                setupDebugMessenger(m_Instance, m_DebugMessenger);
+                setupDebugMessenger(backendOf(m_Backend).m_Instance, backendOf(m_Backend).m_DebugMessenger);
             }
 #endif
         }
@@ -1348,34 +1307,34 @@ namespace vultra
         void RenderDevice::selectPhysicalDevice()
         {
             // If OpenXR is enabled, then retrieve the physical device from OpenXR.
-            bool useOpenXR = m_XRDevice != nullptr && m_XRDevice->m_XrInstance != XR_NULL_HANDLE;
+            bool useOpenXR = backendOf(m_Backend).m_XRDevice != nullptr && backendOf(m_Backend).m_XRDevice->m_XrInstance != XR_NULL_HANDLE;
 
             if (useOpenXR)
             {
                 VULTRA_CORE_INFO("[RenderDevice] Selecting physical device from OpenXR");
-                m_FeatureReport.flags |= RenderDeviceFeatureReportFlagBits::eOpenXR;
+                backendOf(m_Backend).m_FeatureReport.flags |= RenderDeviceFeatureReportFlagBits::eXR;
 
                 // Retrieve the physical device from OpenXR
                 VkPhysicalDevice physicalDevice = nullptr;
 
                 XrVulkanGraphicsDeviceGetInfoKHR vulkanGraphicsDeviceGetInfo {};
                 vulkanGraphicsDeviceGetInfo.type           = XR_TYPE_VULKAN_GRAPHICS_DEVICE_GET_INFO_KHR;
-                vulkanGraphicsDeviceGetInfo.systemId       = m_XRDevice->m_XrSystemId;
-                vulkanGraphicsDeviceGetInfo.vulkanInstance = m_Instance;
+                vulkanGraphicsDeviceGetInfo.systemId       = backendOf(m_Backend).m_XRDevice->m_XrSystemId;
+                vulkanGraphicsDeviceGetInfo.vulkanInstance = backendOf(m_Backend).m_Instance;
 
-                if (XR_FAILED(m_XRDevice->xrGetVulkanGraphicsDevice2KHR(
-                        m_XRDevice->m_XrInstance, &vulkanGraphicsDeviceGetInfo, &physicalDevice)))
+                if (XR_FAILED(backendOf(m_Backend).m_XRDevice->xrGetVulkanGraphicsDevice2KHR(
+                        backendOf(m_Backend).m_XRDevice->m_XrInstance, &vulkanGraphicsDeviceGetInfo, &physicalDevice)))
                 {
                     VULTRA_CORE_ERROR("[RenderDevice] Failed to get Vulkan graphics device from OpenXR");
                     throw std::runtime_error("Failed to get Vulkan graphics device from OpenXR");
                 }
-                m_PhysicalDevice = physicalDevice;
+                backendOf(m_Backend).m_PhysicalDevice = physicalDevice;
             }
             // If OpenXR is not enabled, then select a physical device from the Vulkan instance.
             else
             {
                 VULTRA_CORE_INFO("[RenderDevice] Selecting physical device");
-                auto               physicalDevices = m_Instance.enumeratePhysicalDevices();
+                auto               physicalDevices = backendOf(m_Backend).m_Instance.enumeratePhysicalDevices();
                 vk::PhysicalDevice bestDevice      = nullptr;
                 int                bestScore       = 0;
 
@@ -1404,25 +1363,25 @@ namespace vultra
                     throw std::runtime_error("Failed to find a suitable GPU");
                 }
 
-                m_PhysicalDevice = bestDevice;
+                backendOf(m_Backend).m_PhysicalDevice = bestDevice;
             }
 
             // Query supported extensions
-            auto extensions = m_PhysicalDevice.enumerateDeviceExtensionProperties();
+            auto extensions = backendOf(m_Backend).m_PhysicalDevice.enumerateDeviceExtensionProperties();
             for (auto& ext : extensions)
             {
-                m_SupportedExtensions.insert(ext.extensionName);
+                backendOf(m_Backend).m_SupportedExtensions.insert(ext.extensionName);
             }
 
             const bool supportsAccelerationStructure =
-                m_SupportedExtensions.count(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) > 0;
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) > 0;
             const bool supportsRayTracingPipeline =
-                m_SupportedExtensions.count(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) > 0;
-            const bool supportsRayQuery   = m_SupportedExtensions.count(VK_KHR_RAY_QUERY_EXTENSION_NAME) > 0;
-            const bool supportsMeshShader = m_SupportedExtensions.count(VK_EXT_MESH_SHADER_EXTENSION_NAME) > 0;
-            const bool supportsMultiDraw  = m_SupportedExtensions.count(VK_EXT_MULTI_DRAW_EXTENSION_NAME) > 0;
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) > 0;
+            const bool supportsRayQuery   = backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_RAY_QUERY_EXTENSION_NAME) > 0;
+            const bool supportsMeshShader = backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_MESH_SHADER_EXTENSION_NAME) > 0;
+            const bool supportsMultiDraw  = backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_MULTI_DRAW_EXTENSION_NAME) > 0;
             const bool supportsFragmentShaderInterlock =
-                m_SupportedExtensions.count(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME) > 0;
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME) > 0;
 
             // Query properties with a conservative pNext chain based on advertised support.
             vk::PhysicalDeviceProperties2                     properties2 {};
@@ -1434,14 +1393,14 @@ namespace vultra
                 properties2.pNext = &rayTracingPipelineProperties;
             }
 
-            m_PhysicalDevice.getProperties2(&properties2);
+            backendOf(m_Backend).m_PhysicalDevice.getProperties2(&properties2);
             if (supportsRayTracingPipeline)
             {
-                m_RayTracingPipelineProperties = rayTracingPipelineProperties;
+                backendOf(m_Backend).m_RayTracingPipelineProperties = rayTracingPipelineProperties;
             }
             else
             {
-                m_RayTracingPipelineProperties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {};
+                backendOf(m_Backend).m_RayTracingPipelineProperties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {};
             }
 
             // Query supported features
@@ -1500,39 +1459,39 @@ namespace vultra
             {
                 appendFeatureChain(fragmentShaderInterlock);
             }
-            m_PhysicalDevice.getFeatures2(&features2);
+            backendOf(m_Backend).m_PhysicalDevice.getFeatures2(&features2);
             if (supportsAccelerationStructure)
             {
-                m_AccelerationStructureFeatures = accel;
+                backendOf(m_Backend).m_AccelerationStructureFeatures = accel;
             }
             else
             {
-                m_AccelerationStructureFeatures = vk::PhysicalDeviceAccelerationStructureFeaturesKHR {};
+                backendOf(m_Backend).m_AccelerationStructureFeatures = vk::PhysicalDeviceAccelerationStructureFeaturesKHR {};
             }
             // Fill feature report
-            auto       props = m_PhysicalDevice.getProperties();
+            auto       props = backendOf(m_Backend).m_PhysicalDevice.getProperties();
             const bool supportsDynamicRendering =
                 vk13.dynamicRendering == VK_TRUE ||
-                m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
             const bool supportsSynchronization2 =
                 vk13.synchronization2 == VK_TRUE ||
-                m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
             const bool useVulkan13CoreFeatures =
                 VK_API_VERSION_MAJOR(props.apiVersion) > 1 ||
                 (VK_API_VERSION_MAJOR(props.apiVersion) == 1 && VK_API_VERSION_MINOR(props.apiVersion) >= 3);
-            m_FeatureReport.deviceName = props.deviceName.data();
-            m_FeatureReport.apiMajor   = VK_API_VERSION_MAJOR(props.apiVersion);
-            m_FeatureReport.apiMinor   = VK_API_VERSION_MINOR(props.apiVersion);
-            m_FeatureReport.apiPatch   = VK_API_VERSION_PATCH(props.apiVersion);
-            m_UseKhrDynamicRendering   = supportsDynamicRendering && !useVulkan13CoreFeatures &&
-                                       m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
-            m_UseKhrSynchronization2 = supportsSynchronization2 && !useVulkan13CoreFeatures &&
-                                       m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
+            backendOf(m_Backend).m_FeatureReport.deviceName = props.deviceName.data();
+            backendOf(m_Backend).m_FeatureReport.apiMajor   = VK_API_VERSION_MAJOR(props.apiVersion);
+            backendOf(m_Backend).m_FeatureReport.apiMinor   = VK_API_VERSION_MINOR(props.apiVersion);
+            backendOf(m_Backend).m_FeatureReport.apiPatch   = VK_API_VERSION_PATCH(props.apiVersion);
+            backendOf(m_Backend).m_UseKhrDynamicRendering   = supportsDynamicRendering && !useVulkan13CoreFeatures &&
+                                       backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
+            backendOf(m_Backend).m_UseKhrSynchronization2 = supportsSynchronization2 && !useVulkan13CoreFeatures &&
+                                       backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
 
-            auto& flags = m_FeatureReport.flags;
+            auto& flags = backendOf(m_Backend).m_FeatureReport.flags;
 
             auto add = [&](RenderDeviceFeatureReportFlagBits bit, const char* ext, bool featureSupported = true) {
-                if (m_SupportedExtensions.count(ext) && featureSupported)
+                if (backendOf(m_Backend).m_SupportedExtensions.count(ext) && featureSupported)
                     flags |= bit;
                 else
                     VULTRA_CORE_WARN("[RenderDevice] Extension or feature not supported: {}", ext);
@@ -1586,27 +1545,18 @@ namespace vultra
                 VULTRA_CORE_WARN("[RenderDevice] Extension or feature not supported: synchronization2");
             }
 
-#ifdef VULTRA_ENABLE_RENDERDOC
-            VULTRA_CORE_WARN("[RenderDevice] RenderDoc is enabled, raytracing will be disabled");
-            // Override feature flags
-            m_FeatureFlag &= ~RenderDeviceFeatureFlagBits::eRayTracing;
-            m_FeatureReport.flags &= ~(RenderDeviceFeatureReportFlagBits::eRayTracingPipeline |
-                                       RenderDeviceFeatureReportFlagBits::eRayQuery |
-                                       RenderDeviceFeatureReportFlagBits::eAccelerationStructure);
-#endif
-
             // Summarize selected device
             VULTRA_CORE_INFO("[RenderDevice] Selected GPU: {}", props.deviceName.data());
             VULTRA_CORE_INFO(
-                "  Vulkan API: {}.{}.{}", m_FeatureReport.apiMajor, m_FeatureReport.apiMinor, m_FeatureReport.apiPatch);
+                "  Vulkan API: {}.{}.{}", backendOf(m_Backend).m_FeatureReport.apiMajor, backendOf(m_Backend).m_FeatureReport.apiMinor, backendOf(m_Backend).m_FeatureReport.apiPatch);
             VULTRA_CORE_INFO("[RenderDevice] Supported features:");
 
 #define PRINT_FEATURE(f) \
     VULTRA_CORE_INFO("   {:<30} {}", \
                      std::string_view(#f).substr(1), \
-                     HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::f) ? "yes" : "no")
+                     HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::f) ? "yes" : "no")
             VULTRA_CORE_INFO("[RenderDevice] Feature support report:");
-            PRINT_FEATURE(eOpenXR);
+            PRINT_FEATURE(eXR);
             PRINT_FEATURE(eRayTracingPipeline);
             PRINT_FEATURE(eRayQuery);
             PRINT_FEATURE(eAccelerationStructure);
@@ -1624,27 +1574,27 @@ namespace vultra
 
             // === Assign & Check Feature Flags ===
             auto availableFeatureFlag = RenderDeviceFeatureFlagBits::eNormal;
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
-                HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
+                HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eRayTracingPipeline;
             }
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
-                HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayQuery))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
+                HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayQuery))
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eRayQuery;
             }
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMeshShader))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMeshShader))
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eMeshShader;
             }
             if (useOpenXR)
             {
-                availableFeatureFlag |= RenderDeviceFeatureFlagBits::eOpenXR;
+                availableFeatureFlag |= RenderDeviceFeatureFlagBits::eXR;
             }
 
-            if (!HasFlagValues(availableFeatureFlag, m_FeatureFlag) &&
-                m_FeatureFlag != RenderDeviceFeatureFlagBits::eNormal)
+            if (!HasFlagValues(availableFeatureFlag, backendOf(m_Backend).m_FeatureFlag) &&
+                backendOf(m_Backend).m_FeatureFlag != RenderDeviceFeatureFlagBits::eNormal)
             {
                 throw std::runtime_error("Requested features are not supported by the physical device");
             }
@@ -1655,15 +1605,15 @@ namespace vultra
             constexpr vk::QueueFlags requiredQueueFlags = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute;
 
             uint32_t count = 0;
-            m_PhysicalDevice.getQueueFamilyProperties(&count, nullptr);
+            backendOf(m_Backend).m_PhysicalDevice.getQueueFamilyProperties(&count, nullptr);
             assert(count > 0);
             std::vector<vk::QueueFamilyProperties> queueFamilies(count);
-            m_PhysicalDevice.getQueueFamilyProperties(&count, queueFamilies.data());
+            backendOf(m_Backend).m_PhysicalDevice.getQueueFamilyProperties(&count, queueFamilies.data());
             for (uint32_t i = 0; i < count; ++i)
             {
                 if ((queueFamilies[i].queueFlags & requiredQueueFlags) == requiredQueueFlags)
                 {
-                    m_GenericQueueFamilyIndex = i;
+                    backendOf(m_Backend).m_GenericQueueFamilyIndex = i;
                     VULTRA_CORE_INFO("[RenderDevice] Selected generic queue family {} with flags: {}",
                                      i,
                                      vk::to_string(queueFamilies[i].queueFlags));
@@ -1671,7 +1621,7 @@ namespace vultra
                 }
             }
 
-            if (m_GenericQueueFamilyIndex == -1)
+            if (backendOf(m_Backend).m_GenericQueueFamilyIndex == -1)
             {
                 for (uint32_t i = 0; i < count; ++i)
                 {
@@ -1687,24 +1637,24 @@ namespace vultra
         {
             constexpr float           queuePriority = 1.0f;
             vk::DeviceQueueCreateInfo queueCreateInfo {};
-            queueCreateInfo.queueFamilyIndex = m_GenericQueueFamilyIndex;
+            queueCreateInfo.queueFamilyIndex = backendOf(m_Backend).m_GenericQueueFamilyIndex;
             queueCreateInfo.queueCount       = 1;
             queueCreateInfo.pQueuePriorities = &queuePriority;
 
-            const auto physicalDeviceFeatures  = m_PhysicalDevice.getFeatures();
-            const bool useVulkan13CoreFeatures = !m_UseKhrDynamicRendering && !m_UseKhrSynchronization2;
+            const auto physicalDeviceFeatures  = backendOf(m_Backend).m_PhysicalDevice.getFeatures();
+            const bool useVulkan13CoreFeatures = !backendOf(m_Backend).m_UseKhrDynamicRendering && !backendOf(m_Backend).m_UseKhrSynchronization2;
             // === Base extensions ===
             std::vector<const char*> extensions = {
                 VK_KHR_SWAPCHAIN_EXTENSION_NAME,
             };
 
             if (!useVulkan13CoreFeatures &&
-                HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
+                HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
             {
                 extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
             }
             if (!useVulkan13CoreFeatures &&
-                HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
+                HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
             {
                 extensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
             }
@@ -1734,11 +1684,11 @@ namespace vultra
             vk::PhysicalDeviceSynchronization2FeaturesKHR vkSync2Features {};
             if (useVulkan13CoreFeatures)
             {
-                if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
+                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
                 {
                     vk13Features.dynamicRendering = VK_TRUE;
                 }
-                if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
+                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
                 {
                     vk13Features.synchronization2 = VK_TRUE;
                 }
@@ -1749,12 +1699,12 @@ namespace vultra
             }
             else
             {
-                if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
+                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
                 {
                     vkDynamicRenderingFeatures.dynamicRendering = VK_TRUE;
                     featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vkDynamicRenderingFeatures));
                 }
-                if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
+                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
                 {
                     vkSync2Features.synchronization2 = VK_TRUE;
                     featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vkSync2Features));
@@ -1762,11 +1712,11 @@ namespace vultra
             }
             // Vulkan 1.1 features
             vk::PhysicalDeviceVulkan11Features vk11Features {};
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDrawParameters))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDrawParameters))
             {
                 vk11Features.shaderDrawParameters = VK_TRUE;
             }
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMultiview))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMultiview))
             {
                 vk11Features.multiview = VK_TRUE;
             }
@@ -1774,7 +1724,7 @@ namespace vultra
 
             // Vulkan 1.2 features
             vk::PhysicalDeviceVulkan12Features vk12Features {};
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 vk12Features.bufferDeviceAddress = VK_TRUE;
 #ifdef VULTRA_ENABLE_RENDERDOC
@@ -1784,7 +1734,7 @@ namespace vultra
                 vk12Features.scalarBlockLayout       = VK_TRUE;
                 vk12Features.storageBuffer8BitAccess = VK_TRUE;
             }
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDescriptorIndexing))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDescriptorIndexing))
             {
                 vk12Features.descriptorIndexing                        = VK_TRUE;
                 vk12Features.descriptorBindingVariableDescriptorCount  = VK_TRUE;
@@ -1793,7 +1743,7 @@ namespace vultra
                 vk12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
                 vk12Features.runtimeDescriptorArray                    = VK_TRUE;
             }
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDrawIndirectCount))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDrawIndirectCount))
             {
                 vk12Features.drawIndirectCount = VK_TRUE;
             }
@@ -1801,7 +1751,7 @@ namespace vultra
 
             // Multi-draw
             vk::PhysicalDeviceMultiDrawFeaturesEXT multidraw {};
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMultiDraw))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMultiDraw))
             {
                 multidraw.multiDraw = VK_TRUE;
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&multidraw));
@@ -1809,7 +1759,7 @@ namespace vultra
 
             // Ray Tracing & Ray Query
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure))
             {
                 extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
                 extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
@@ -1818,7 +1768,7 @@ namespace vultra
             }
 
             vk::PhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures {};
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayQuery))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayQuery))
             {
                 extensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
                 rayQueryFeatures.rayQuery = VK_TRUE;
@@ -1826,20 +1776,16 @@ namespace vultra
             }
 
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures {};
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
             {
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
                 rayTracingFeatures.rayTracingPipeline = VK_TRUE;
-
-                // RenderDoc & RELEASE mode doesn't support raytracing capture replay.
-                // rayTracingFeatures.rayTracingPipelineShaderGroupHandleCaptureReplay = VK_TRUE;
-
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&rayTracingFeatures));
             }
 
             // Mesh Shaders
             vk::PhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures {};
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMeshShader))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMeshShader))
             {
                 extensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
                 meshShaderFeatures.meshShader = VK_TRUE;
@@ -1848,7 +1794,7 @@ namespace vultra
             }
 
             vk::PhysicalDeviceFragmentShaderInterlockFeaturesEXT fragmentShaderInterlockFeatures {};
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eFragmentShaderInterlock))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eFragmentShaderInterlock))
             {
                 extensions.push_back(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME);
                 fragmentShaderInterlockFeatures.fragmentShaderPixelInterlock = VK_TRUE;
@@ -1872,7 +1818,7 @@ namespace vultra
             std::vector<const char*> filteredExtensions;
             for (const auto* ext : extensions)
             {
-                if (m_SupportedExtensions.count(ext))
+                if (backendOf(m_Backend).m_SupportedExtensions.count(ext))
                     filteredExtensions.push_back(ext);
                 else
                     VULTRA_CORE_WARN("[RenderDevice] Skipping unsupported extension: {}", ext);
@@ -1886,7 +1832,7 @@ namespace vultra
             createInfo.enabledExtensionCount   = static_cast<uint32_t>(filteredExtensions.size());
             createInfo.ppEnabledExtensionNames = filteredExtensions.data();
 
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eOpenXR))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eXR))
             {
                 VULTRA_CORE_INFO("[RenderDevice] Creating Vulkan device via OpenXR runtime");
 
@@ -1894,39 +1840,39 @@ namespace vultra
                 XrVulkanDeviceCreateInfoKHR xrVulkanDeviceCreateInfo {};
                 xrVulkanDeviceCreateInfo.type                   = XR_TYPE_VULKAN_DEVICE_CREATE_INFO_KHR;
                 xrVulkanDeviceCreateInfo.pfnGetInstanceProcAddr = &vkGetInstanceProcAddr;
-                xrVulkanDeviceCreateInfo.systemId               = m_XRDevice->m_XrSystemId;
+                xrVulkanDeviceCreateInfo.systemId               = backendOf(m_Backend).m_XRDevice->m_XrSystemId;
                 xrVulkanDeviceCreateInfo.vulkanCreateInfo       = &deviceCreateInfoC;
-                xrVulkanDeviceCreateInfo.vulkanPhysicalDevice   = m_PhysicalDevice;
+                xrVulkanDeviceCreateInfo.vulkanPhysicalDevice   = backendOf(m_Backend).m_PhysicalDevice;
 
                 VkResult vkResult = VK_SUCCESS;
                 VkDevice device   = nullptr;
 
-                if (XR_FAILED(m_XRDevice->xrCreateVulkanDeviceKHR(
-                        m_XRDevice->m_XrInstance, &xrVulkanDeviceCreateInfo, &device, &vkResult)) ||
+                if (XR_FAILED(backendOf(m_Backend).m_XRDevice->xrCreateVulkanDeviceKHR(
+                        backendOf(m_Backend).m_XRDevice->m_XrInstance, &xrVulkanDeviceCreateInfo, &device, &vkResult)) ||
                     vkResult != VK_SUCCESS)
                 {
                     VULTRA_CORE_ERROR("[RenderDevice] OpenXR Vulkan device creation failed (VkResult: {})",
                                       vk::to_string(static_cast<vk::Result>(vkResult)));
                     VULTRA_CORE_WARN("[RenderDevice] Falling back to standard Vulkan device creation");
-                    VK_CHECK(m_PhysicalDevice.createDevice(&createInfo, nullptr, &m_Device),
+                    VK_CHECK(backendOf(m_Backend).m_PhysicalDevice.createDevice(&createInfo, nullptr, &backendOf(m_Backend).m_Device),
                              LOGTAG,
                              "Failed to create logical device");
                 }
                 else
                 {
-                    m_Device = device;
+                    backendOf(m_Backend).m_Device = device;
                 }
             }
             else
             {
                 VULTRA_CORE_INFO("[RenderDevice] Creating standalone Vulkan device (non-XR)");
-                VK_CHECK(m_PhysicalDevice.createDevice(&createInfo, nullptr, &m_Device),
+                VK_CHECK(backendOf(m_Backend).m_PhysicalDevice.createDevice(&createInfo, nullptr, &backendOf(m_Backend).m_Device),
                          LOGTAG,
                          "Failed to create logical device");
             }
 
             // === Get Generic Queue (for both graphics & compute) ===
-            m_Device.getQueue(m_GenericQueueFamilyIndex, 0, &m_GenericQueue);
+            backendOf(m_Backend).m_Device.getQueue(backendOf(m_Backend).m_GenericQueueFamilyIndex, 0, &backendOf(m_Backend).m_GenericQueue);
         }
 
         void RenderDevice::createMemoryAllocator()
@@ -1935,12 +1881,12 @@ namespace vultra
             const vma::VulkanFunctions functions = vma::functionsFromDispatcher(VULKAN_HPP_DEFAULT_DISPATCHER);
 
             vma::AllocatorCreateInfo allocatorInfo {};
-            allocatorInfo.physicalDevice   = m_PhysicalDevice;
-            allocatorInfo.device           = m_Device;
-            allocatorInfo.instance         = m_Instance;
+            allocatorInfo.physicalDevice   = backendOf(m_Backend).m_PhysicalDevice;
+            allocatorInfo.device           = backendOf(m_Backend).m_Device;
+            allocatorInfo.instance         = backendOf(m_Backend).m_Instance;
             allocatorInfo.pVulkanFunctions = &functions;
 
-            if (HasFlagValues(m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 allocatorInfo.flags |= vma::AllocatorCreateFlagBits::eBufferDeviceAddress;
             }
@@ -1948,15 +1894,15 @@ namespace vultra
             vma::Allocator allocator;
             VK_CHECK(vma::createAllocator(&allocatorInfo, &allocator), LOGTAG, "Failed to create memory allocator");
 
-            m_MemoryAllocator = allocator;
+            backendOf(m_Backend).m_MemoryAllocator = allocator;
         }
 
         void RenderDevice::createCommandPool()
         {
             vk::CommandPoolCreateInfo createInfo {};
             createInfo.flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
-            createInfo.queueFamilyIndex = m_GenericQueueFamilyIndex;
-            VK_CHECK(m_Device.createCommandPool(&createInfo, nullptr, &m_CommandPool),
+            createInfo.queueFamilyIndex = backendOf(m_Backend).m_GenericQueueFamilyIndex;
+            VK_CHECK(backendOf(m_Backend).m_Device.createCommandPool(&createInfo, nullptr, &backendOf(m_Backend).m_CommandPool),
                      LOGTAG,
                      "Failed to create command pool");
         }
@@ -1964,7 +1910,7 @@ namespace vultra
         void RenderDevice::createPipelineCache()
         {
             vk::PipelineCacheCreateInfo createInfo {};
-            VK_CHECK(m_Device.createPipelineCache(&createInfo, nullptr, &m_PipelineCache),
+            VK_CHECK(backendOf(m_Backend).m_Device.createPipelineCache(&createInfo, nullptr, &backendOf(m_Backend).m_PipelineCache),
                      LOGTAG,
                      "Failed to create pipeline cache");
         }
@@ -1981,7 +1927,7 @@ namespace vultra
                 {vk::DescriptorType::eInputAttachment, 100},
             };
 
-            if (isRaytracingOrRayQueryEnabled(m_FeatureFlag))
+            if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
             {
                 poolSizes.emplace_back(vk::DescriptorType::eStorageBufferDynamic, 100);
                 poolSizes.emplace_back(vk::DescriptorType::eAccelerationStructureKHR, 100);
@@ -1991,17 +1937,21 @@ namespace vultra
             descriptorPoolCreateInfo.setPoolSizes(poolSizes);
             descriptorPoolCreateInfo.setMaxSets(100);
             descriptorPoolCreateInfo.setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
-            m_DefaultDescriptorPool = m_Device.createDescriptorPool(descriptorPoolCreateInfo);
+            backendOf(m_Backend).m_DefaultDescriptorPool = backendOf(m_Backend).m_Device.createDescriptorPool(descriptorPoolCreateInfo);
         }
 
         void RenderDevice::createTracyContext()
         {
 #ifdef TRACY_ENABLE
-            const auto cmdBuffer = allocateCommandBuffer();
-            m_TracyContext       = TracyVkContext(m_PhysicalDevice, m_Device, m_GenericQueue, cmdBuffer);
-            m_Device.freeCommandBuffers(m_CommandPool, 1, &cmdBuffer);
+            const auto cmdBuffer = vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(allocateCommandBuffer())};
+            backendOf(m_Backend).m_TracyContext =
+                TracyVkContext(backendOf(m_Backend).m_PhysicalDevice,
+                               backendOf(m_Backend).m_Device,
+                               backendOf(m_Backend).m_GenericQueue,
+                               cmdBuffer);
+            backendOf(m_Backend).m_Device.freeCommandBuffers(backendOf(m_Backend).m_CommandPool, 1, &cmdBuffer);
             const auto deviceName = getPhysicalDeviceInfo().deviceName;
-            TracyVkContextName(m_TracyContext, deviceName.data(), static_cast<uint16_t>(deviceName.length()));
+            TracyVkContextName(backendOf(m_Backend).m_TracyContext, deviceName.data(), static_cast<uint16_t>(deviceName.length()));
 #endif
         }
 
@@ -2009,32 +1959,32 @@ namespace vultra
         void RenderDevice::createTracky()
         {
 #ifdef __APPLE__
-            const float timestampPeriodNs = m_PhysicalDevice.getProperties().limits.timestampPeriod;
-            TRACKY_STARTUP(m_Device, 4 * 1024, timestampPeriodNs);
+            const float timestampPeriodNs = backendOf(m_Backend).m_PhysicalDevice.getProperties().limits.timestampPeriod;
+            TRACKY_STARTUP(backendOf(m_Backend).m_Device, 4 * 1024, timestampPeriodNs);
 #else
-            const float timestampPeriodNs = m_PhysicalDevice.getProperties().limits.timestampPeriod;
-            TRACKY_STARTUP(m_Device, 64 * 1024, timestampPeriodNs);
+            const float timestampPeriodNs = backendOf(m_Backend).m_PhysicalDevice.getProperties().limits.timestampPeriod;
+            TRACKY_STARTUP(backendOf(m_Backend).m_Device, 64 * 1024, timestampPeriodNs);
 #endif
         }
         // NOLINTEND
 
-        vk::CommandBuffer RenderDevice::allocateCommandBuffer() const
+        std::uintptr_t RenderDevice::allocateCommandBuffer() const
         {
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
 
             vk::CommandBufferAllocateInfo allocateInfo {};
-            allocateInfo.commandPool        = m_CommandPool;
+            allocateInfo.commandPool        = backendOf(m_Backend).m_CommandPool;
             allocateInfo.level              = vk::CommandBufferLevel::ePrimary;
             allocateInfo.commandBufferCount = 1;
 
             vk::CommandBuffer commandBuffer {nullptr};
-            VK_CHECK(m_Device.allocateCommandBuffers(&allocateInfo, &commandBuffer),
+            VK_CHECK(backendOf(m_Backend).m_Device.allocateCommandBuffers(&allocateInfo, &commandBuffer),
                      LOGTAG,
                      "Failed to allocate command buffer");
-            return commandBuffer;
+            return reinterpret_cast<std::uintptr_t>(static_cast<VkCommandBuffer>(commandBuffer));
         }
 
-        vk::Sampler RenderDevice::createSampler(const SamplerInfo& samplerInfo) const
+        SamplerHandle RenderDevice::createSampler(const SamplerInfo& samplerInfo) const
         {
             vk::SamplerCreateInfo samplerCreateInfo {};
             samplerCreateInfo.magFilter               = toVk(samplerInfo.magFilter);
@@ -2053,33 +2003,36 @@ namespace vultra
             samplerCreateInfo.anisotropyEnable = samplerInfo.maxAnisotropy.has_value();
             samplerCreateInfo.maxAnisotropy =
                 samplerInfo.maxAnisotropy ?
-                    glm::clamp(*samplerInfo.maxAnisotropy, 1.0f, getDeviceLimits().maxSamplerAnisotropy) :
+                    glm::clamp(*samplerInfo.maxAnisotropy, 1.0f, getMaxSamplerAnisotropy()) :
                     0.0f;
 
             vk::Sampler sampler {nullptr};
-            VK_CHECK(m_Device.createSampler(&samplerCreateInfo, nullptr, &sampler), LOGTAG, "Failed to create sampler");
+            VK_CHECK(backendOf(m_Backend).m_Device.createSampler(&samplerCreateInfo, nullptr, &sampler), LOGTAG, "Failed to create sampler");
 
-            return sampler;
+            return SamplerHandle {reinterpret_cast<std::uintptr_t>(static_cast<VkSampler>(sampler))};
         }
 
         CommandBuffer RenderDevice::createCommandBuffer() const
         {
-            return CommandBuffer {std::make_unique<VulkanCommandBuffer>(m_Device,
-                                                                         m_CommandPool,
-                                                                         allocateCommandBuffer(),
-                                                                         m_TracyContext,
-                                                                         createFence(),
+            const auto fenceHandle = createFence();
+            const vk::Fence fence {reinterpret_cast<VkFence>(fenceHandle.value)};
+            return CommandBuffer {std::make_unique<VulkanCommandBuffer>(backendOf(m_Backend).m_Device,
+                                                                         backendOf(m_Backend).m_CommandPool,
+                                                                         vk::CommandBuffer {
+                                                                             reinterpret_cast<VkCommandBuffer>(allocateCommandBuffer())},
+                                                                         backendOf(m_Backend).m_TracyContext,
+                                                                         fence,
                                                                          this,
-                                                                         m_UseKhrDynamicRendering,
-                                                                         m_UseKhrSynchronization2,
-                                                                         isRaytracingOrRayQueryEnabled(m_FeatureFlag))};
+                                                                         backendOf(m_Backend).m_UseKhrDynamicRendering,
+                                                                         backendOf(m_Backend).m_UseKhrSynchronization2,
+                                                                         isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))};
         }
 
         RenderDevice& RenderDevice::execute(const std::function<void(CommandBuffer&)>& f, bool oneTime)
         {
             auto cb = createCommandBuffer();
             cb.begin();
-            // TRACKY_VK_NEXT_FRAME(cb);
+            // TRACKY_GPU_NEXT_FRAME(cb);
             {
                 TRACY_GPU_ZONE(cb, "ExecuteCommandBuffer");
                 // TRACKY_GPU_ZONE(cb, "ExecuteCommandBuffer");
@@ -2091,23 +2044,24 @@ namespace vultra
         RenderDevice& RenderDevice::execute(CommandBuffer& cb, const JobInfo& jobInfo, bool oneTime)
         {
             cb.flushBarriers();
-            TracyVkCollect(m_TracyContext, cb.getHandle());
+            TracyGpuCollect(backendOf(m_Backend).m_TracyContext, reinterpret_cast<VkCommandBuffer>(cb.getHandle()));
             cb.end();
             cb.submit(jobInfo, oneTime);
 
             return *this;
         }
 
-        RenderDevice& RenderDevice::present(Swapchain& swapchain, const vk::Semaphore wait)
+        RenderDevice& RenderDevice::present(Swapchain& swapchain, const SemaphoreHandle wait)
         {
             ZoneScopedN("RHI::Present");
 
             assert(swapchain);
-            assert(m_GenericQueue);
+            assert(backendOf(m_Backend).m_GenericQueue);
 
             vk::PresentInfoKHR presentInfo {};
-            presentInfo.waitSemaphoreCount = wait != nullptr ? 1u : 0u;
-            presentInfo.pWaitSemaphores    = &wait;
+            const vk::Semaphore waitSemaphore {reinterpret_cast<VkSemaphore>(wait.value)};
+            presentInfo.waitSemaphoreCount = static_cast<bool>(wait) ? 1u : 0u;
+            presentInfo.pWaitSemaphores    = static_cast<bool>(wait) ? &waitSemaphore : nullptr;
             presentInfo.swapchainCount     = 1;
             const auto swapchainHandle     = vk::SwapchainKHR {
                 reinterpret_cast<VkSwapchainKHR>(swapchain.getNativeHandle())};
@@ -2115,7 +2069,7 @@ namespace vultra
             presentInfo.pSwapchains   = &swapchainHandle;
             presentInfo.pImageIndices = &imageIndex;
 
-            auto result = m_GenericQueue.presentKHR(&presentInfo);
+            auto result = backendOf(m_Backend).m_GenericQueue.presentKHR(&presentInfo);
             switch (result)
             {
                 case vk::Result::eSuboptimalKHR:
@@ -2132,28 +2086,30 @@ namespace vultra
             return *this;
         }
 
-        RenderDevice& RenderDevice::wait(const vk::Fence fence)
+        RenderDevice& RenderDevice::wait(const FenceHandle fence)
         {
-            assert(fence);
-            assert(m_Device);
-            VK_CHECK(m_Device.waitForFences(1, &fence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
+            assert(static_cast<bool>(fence));
+            assert(backendOf(m_Backend).m_Device);
+            const vk::Fence vkFence {reinterpret_cast<VkFence>(fence.value)};
+            VK_CHECK(backendOf(m_Backend).m_Device.waitForFences(1, &vkFence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
                      LOGTAG,
                      "Failed to wait for fence");
             return reset(fence);
         }
 
-        RenderDevice& RenderDevice::reset(const vk::Fence fence)
+        RenderDevice& RenderDevice::reset(const FenceHandle fence)
         {
-            assert(fence);
-            assert(m_Device);
-            VK_CHECK(m_Device.resetFences(1, &fence), LOGTAG, "Failed to reset fence");
+            assert(static_cast<bool>(fence));
+            assert(backendOf(m_Backend).m_Device);
+            const vk::Fence vkFence {reinterpret_cast<VkFence>(fence.value)};
+            VK_CHECK(backendOf(m_Backend).m_Device.resetFences(1, &vkFence), LOGTAG, "Failed to reset fence");
             return *this;
         }
 
         RenderDevice& RenderDevice::waitIdle()
         {
-            assert(m_Device);
-            m_Device.waitIdle();
+            assert(backendOf(m_Backend).m_Device);
+            backendOf(m_Backend).m_Device.waitIdle();
             return *this;
         }
 
@@ -2186,7 +2142,7 @@ namespace vultra
                                                  });
 
             execute(cb, JobInfo {});
-            m_GenericQueue.waitIdle();
+            backendOf(m_Backend).m_GenericQueue.waitIdle();
 
             // map the staging buffer
             std::byte* data      = new std::byte[texture.getSize()];
@@ -2235,49 +2191,62 @@ namespace vultra
         RenderDevice::createAccelerationStructure(AccelerationStructureType           type,
                                                   AccelerationStructureBuildSizesInfo buildSizesInfo) const
         {
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
 
             auto buffer = createAccelerationStructureBuffer(buildSizesInfo.accelerationStructureSize);
 
             vk::AccelerationStructureCreateInfoKHR createInfo {};
-            createInfo.type   = static_cast<vk::AccelerationStructureTypeKHR>(type);
+            switch (type)
+            {
+                case AccelerationStructureType::eTopLevel:
+                    createInfo.type = vk::AccelerationStructureTypeKHR::eTopLevel;
+                    break;
+                case AccelerationStructureType::eBottomLevel:
+                    createInfo.type = vk::AccelerationStructureTypeKHR::eBottomLevel;
+                    break;
+                case AccelerationStructureType::eGeneric:
+                    createInfo.type = vk::AccelerationStructureTypeKHR::eGeneric;
+                    break;
+            }
             createInfo.size   = buildSizesInfo.accelerationStructureSize;
             createInfo.buffer = vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getNativeHandle())};
             createInfo.offset = 0;
 
             vk::AccelerationStructureKHR handle {nullptr};
-            VK_CHECK(m_Device.createAccelerationStructureKHR(&createInfo, nullptr, &handle),
+            VK_CHECK(backendOf(m_Backend).m_Device.createAccelerationStructureKHR(&createInfo, nullptr, &handle),
                      LOGTAG,
                      "Failed to create acceleration structure");
 
             vk::AccelerationStructureDeviceAddressInfoKHR addressInfo {};
             addressInfo.accelerationStructure = handle;
-            uint64_t deviceAddress            = m_Device.getAccelerationStructureAddressKHR(addressInfo);
+            DeviceAddress deviceAddress {
+                backendOf(m_Backend).m_Device.getAccelerationStructureAddressKHR(addressInfo)};
 
             return AccelerationStructure {
-                m_Device, handle, deviceAddress, type, std::move(buildSizesInfo), std::move(buffer)};
+                std::make_unique<VulkanAccelerationStructureBackend>(
+                    backendOf(m_Backend).m_Device, handle, deviceAddress, type, std::move(buildSizesInfo), std::move(buffer))};
         }
 
-        AccelerationStructure RenderDevice::createBuildSingleGeometryBLAS(uint64_t vertexBufferAddress,
-                                                                          uint64_t indexBufferAddress,
-                                                                          uint64_t transformBufferAddress,
+        AccelerationStructure RenderDevice::createBuildSingleGeometryBLAS(DeviceAddress vertexBufferAddress,
+                                                                          DeviceAddress indexBufferAddress,
+                                                                          DeviceAddress transformBufferAddress,
                                                                           uint32_t vertexStride,
                                                                           uint32_t vertexCount,
                                                                           uint32_t indexCount)
         {
-            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(m_FeatureFlag),
+            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag),
                                "[RenderDevice] Raytracing Pipeline feature is not enabled!");
-            VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
+            VULTRA_CORE_ASSERT(backendOf(m_Backend).m_AccelerationStructureFeatures.accelerationStructure,
                                "[RenderDevice] Acceleration Structure feature is not enabled!");
 
             // Describe the geometry
             vk::AccelerationStructureGeometryTrianglesDataKHR triangles {};
             triangles.vertexFormat                = vk::Format::eR32G32B32Sfloat;
-            triangles.vertexData.deviceAddress    = vertexBufferAddress;
+            triangles.vertexData.deviceAddress    = vertexBufferAddress.value;
             triangles.vertexStride                = vertexStride;
             triangles.indexType                   = vk::IndexType::eUint32;
-            triangles.indexData.deviceAddress     = indexBufferAddress;
-            triangles.transformData.deviceAddress = transformBufferAddress;
+            triangles.indexData.deviceAddress     = indexBufferAddress.value;
+            triangles.transformData.deviceAddress = transformBufferAddress.value;
             triangles.maxVertex                   = vertexCount - 1;
 
             vk::AccelerationStructureGeometryKHR geometry {};
@@ -2299,7 +2268,7 @@ namespace vultra
             buildGeometryInfo.geometryCount = 1;
             buildGeometryInfo.pGeometries   = &geometry;
 
-            auto buildSizes = m_Device.getAccelerationStructureBuildSizesKHR(
+            auto buildSizes = backendOf(m_Backend).m_Device.getAccelerationStructureBuildSizesKHR(
                 vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, buildRangeInfo.primitiveCount);
 
             // Assign RHI build sizes info
@@ -2315,14 +2284,18 @@ namespace vultra
             auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
 
             // Fill geometry info
-            buildGeometryInfo.dstAccelerationStructure  = blas.getHandle();
-            buildGeometryInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer);
+            buildGeometryInfo.dstAccelerationStructure =
+                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(blas.getHandle())};
+            buildGeometryInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer).value;
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> buildRangeInfos = {&buildRangeInfo};
 
             // Build the BLAS using a one-time command buffer
             execute(
                 [&](CommandBuffer& cb) {
-                    cb.getHandle().buildAccelerationStructuresKHR(1, &buildGeometryInfo, buildRangeInfos.data());
+                    vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
+                        1,
+                        &buildGeometryInfo,
+                        buildRangeInfos.data());
                 },
                 true);
 
@@ -2331,9 +2304,9 @@ namespace vultra
 
         AccelerationStructure RenderDevice::createBuildRenderMeshBLAS(std::vector<RenderSubMesh>& subMeshes)
         {
-            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(m_FeatureFlag),
+            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag),
                                "[RenderDevice] Raytracing Pipeline feature is not enabled!");
-            VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
+            VULTRA_CORE_ASSERT(backendOf(m_Backend).m_AccelerationStructureFeatures.accelerationStructure,
                                "[RenderDevice] Acceleration Structure feature is not enabled!");
 
             VULTRA_CORE_ASSERT(!subMeshes.empty(), "[RenderDevice] Cannot build BLAS from empty subMeshes!");
@@ -2348,11 +2321,11 @@ namespace vultra
             {
                 vk::AccelerationStructureGeometryTrianglesDataKHR triangles {};
                 triangles.vertexFormat                = vk::Format::eR32G32B32Sfloat;
-                triangles.vertexData.deviceAddress    = sm.vertexBufferAddress;
+                triangles.vertexData.deviceAddress    = sm.vertexBufferAddress.value;
                 triangles.vertexStride                = sm.vertexStride;
                 triangles.indexType                   = toVkIndexType(sm.indexType);
-                triangles.indexData.deviceAddress     = sm.indexBufferAddress;
-                triangles.transformData.deviceAddress = sm.transformBufferAddress;
+                triangles.indexData.deviceAddress     = sm.indexBufferAddress.value;
+                triangles.transformData.deviceAddress = sm.transformBufferAddress.value;
                 triangles.maxVertex                   = sm.vertexCount - 1;
 
                 vk::AccelerationStructureGeometryKHR geometry {};
@@ -2385,7 +2358,7 @@ namespace vultra
             for (auto& r : buildRanges)
                 primitiveCounts.push_back(r.primitiveCount);
 
-            auto buildSizes = m_Device.getAccelerationStructureBuildSizesKHR(
+            auto buildSizes = backendOf(m_Backend).m_Device.getAccelerationStructureBuildSizesKHR(
                 vk::AccelerationStructureBuildTypeKHR::eDevice, buildGeometryInfo, primitiveCounts);
 
             // Assign RHI build sizes info
@@ -2401,8 +2374,9 @@ namespace vultra
             auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
 
             // Fill geometry info
-            buildGeometryInfo.dstAccelerationStructure  = blas.getHandle();
-            buildGeometryInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer);
+            buildGeometryInfo.dstAccelerationStructure =
+                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(blas.getHandle())};
+            buildGeometryInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer).value;
 
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> buildRangePtrs;
             buildRangePtrs.reserve(buildRanges.size());
@@ -2412,7 +2386,10 @@ namespace vultra
             // Build the BLAS using a one-time command buffer
             execute(
                 [&](CommandBuffer& cb) {
-                    cb.getHandle().buildAccelerationStructuresKHR(1, &buildGeometryInfo, buildRangePtrs.data());
+                    vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
+                        1,
+                        &buildGeometryInfo,
+                        buildRangePtrs.data());
                 },
                 true);
 
@@ -2422,9 +2399,9 @@ namespace vultra
         AccelerationStructure RenderDevice::createBuildSingleInstanceTLAS(const AccelerationStructure& referenceBLAS,
                                                                           const glm::mat4&             transform)
         {
-            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(m_FeatureFlag),
+            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag),
                                "[RenderDevice] Raytracing Pipeline feature is not enabled!");
-            VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
+            VULTRA_CORE_ASSERT(backendOf(m_Backend).m_AccelerationStructureFeatures.accelerationStructure,
                                "[RenderDevice] Acceleration Structure feature is not enabled!");
 
             vk::TransformMatrixKHR vkTransform {};
@@ -2436,9 +2413,9 @@ namespace vultra
             instance.instanceCustomIndex                    = 0;
             instance.mask                                   = 0xFF;
             instance.instanceShaderBindingTableRecordOffset = 0;
-            instance.flags =
-                static_cast<VkGeometryInstanceFlagsKHR>(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable);
-            instance.accelerationStructureReference = referenceBLAS.getDeviceAddress();
+            instance.flags = static_cast<VkGeometryInstanceFlagsKHR>(
+                static_cast<uint32_t>(RayTracingInstanceFlags::eTriangleFacingCullDisable));
+            instance.accelerationStructureReference = referenceBLAS.getDeviceAddress().value;
 
             auto  instancesBuffer = createInstancesBuffer(1);
             void* mapped          = instancesBuffer.map();
@@ -2446,7 +2423,7 @@ namespace vultra
             instancesBuffer.unmap();
 
             vk::DeviceOrHostAddressConstKHR instanceData {};
-            instanceData.deviceAddress = getBufferDeviceAddress(instancesBuffer);
+            instanceData.deviceAddress = getBufferDeviceAddress(instancesBuffer).value;
 
             vk::AccelerationStructureGeometryKHR geometry {};
             geometry.geometryType = vk::GeometryTypeKHR::eInstances;
@@ -2466,7 +2443,7 @@ namespace vultra
             buildInfo.geometryCount = 1;
             buildInfo.pGeometries   = &geometry;
 
-            auto buildSizes = m_Device.getAccelerationStructureBuildSizesKHR(
+            auto buildSizes = backendOf(m_Backend).m_Device.getAccelerationStructureBuildSizesKHR(
                 vk::AccelerationStructureBuildTypeKHR::eDevice, buildInfo, rangeInfo.primitiveCount);
 
             AccelerationStructureBuildSizesInfo sizesInfo {};
@@ -2477,12 +2454,18 @@ namespace vultra
             auto tlas          = createAccelerationStructure(AccelerationStructureType::eTopLevel, sizesInfo);
             auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
 
-            buildInfo.dstAccelerationStructure                              = tlas.getHandle();
-            buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer);
+            buildInfo.dstAccelerationStructure =
+                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(tlas.getHandle())};
+            buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer).value;
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> ranges = {&rangeInfo};
 
             execute(
-                [&](CommandBuffer& cb) { cb.getHandle().buildAccelerationStructuresKHR(1, &buildInfo, ranges.data()); },
+                [&](CommandBuffer& cb) {
+                    vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
+                        1,
+                        &buildInfo,
+                        ranges.data());
+                },
                 true);
 
             return tlas;
@@ -2491,9 +2474,9 @@ namespace vultra
         AccelerationStructure
         RenderDevice::createBuildMultipleInstanceTLAS(const std::vector<RayTracingInstance>& instances)
         {
-            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(m_FeatureFlag),
+            VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag),
                                "[RenderDevice] Raytracing Pipeline feature is not enabled!");
-            VULTRA_CORE_ASSERT(m_AccelerationStructureFeatures.accelerationStructure,
+            VULTRA_CORE_ASSERT(backendOf(m_Backend).m_AccelerationStructureFeatures.accelerationStructure,
                                "[RenderDevice] Acceleration Structure feature is not enabled!");
 
             VULTRA_CORE_ASSERT(!instances.empty(), "[RenderDevice] Cannot build TLAS from empty instances!");
@@ -2512,8 +2495,8 @@ namespace vultra
                 vkInstance.instanceCustomIndex                    = inst.instanceID;
                 vkInstance.mask                                   = inst.mask;
                 vkInstance.instanceShaderBindingTableRecordOffset = inst.sbtRecordOffset;
-                vkInstance.flags                                  = static_cast<VkGeometryInstanceFlagsKHR>(inst.flags);
-                vkInstance.accelerationStructureReference         = inst.blas->getDeviceAddress();
+                vkInstance.flags = static_cast<VkGeometryInstanceFlagsKHR>(static_cast<uint32_t>(inst.flags));
+                vkInstance.accelerationStructureReference         = inst.blas->getDeviceAddress().value;
 
                 vkInstances.push_back(vkInstance);
             }
@@ -2524,7 +2507,7 @@ namespace vultra
             instancesBuffer.unmap();
 
             vk::DeviceOrHostAddressConstKHR instanceData {};
-            instanceData.deviceAddress = getBufferDeviceAddress(instancesBuffer);
+            instanceData.deviceAddress = getBufferDeviceAddress(instancesBuffer).value;
 
             vk::AccelerationStructureGeometryKHR geometry {};
             geometry.geometryType = vk::GeometryTypeKHR::eInstances;
@@ -2544,7 +2527,7 @@ namespace vultra
             buildInfo.geometryCount = 1;
             buildInfo.pGeometries   = &geometry;
 
-            auto buildSizes = m_Device.getAccelerationStructureBuildSizesKHR(
+            auto buildSizes = backendOf(m_Backend).m_Device.getAccelerationStructureBuildSizesKHR(
                 vk::AccelerationStructureBuildTypeKHR::eDevice, buildInfo, rangeInfo.primitiveCount);
 
             AccelerationStructureBuildSizesInfo sizesInfo {};
@@ -2555,12 +2538,18 @@ namespace vultra
             auto tlas          = createAccelerationStructure(AccelerationStructureType::eTopLevel, sizesInfo);
             auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
 
-            buildInfo.dstAccelerationStructure                              = tlas.getHandle();
-            buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer);
+            buildInfo.dstAccelerationStructure =
+                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(tlas.getHandle())};
+            buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer).value;
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> ranges = {&rangeInfo};
 
             execute(
-                [&](CommandBuffer& cb) { cb.getHandle().buildAccelerationStructuresKHR(1, &buildInfo, ranges.data()); },
+                [&](CommandBuffer& cb) {
+                    vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
+                        1,
+                        &buildInfo,
+                        ranges.data());
+                },
                 true);
 
             return tlas;
@@ -2568,24 +2557,24 @@ namespace vultra
 
         ScratchBuffer RenderDevice::createScratchBuffer(uint64_t size, AllocationHints allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            Buffer buffer = makeBuffer(m_MemoryAllocator,
+            Buffer buffer = makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                                        size,
                                        BufferUsage::eStorageBuffer | BufferUsage::eShaderDeviceAddress,
                                        makeAllocationFlags(allocationHint),
                                        vma::MemoryUsage::eAutoPreferDevice);
 
-            uint64_t bufferAddress = getBufferDeviceAddress(buffer);
+            DeviceAddress bufferAddress = getBufferDeviceAddress(buffer);
 
             return ScratchBuffer {std::move(buffer), bufferAddress};
         }
 
         InstanceBuffer RenderDevice::createInstancesBuffer(uint32_t instanceCount, AllocationHints allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            return InstanceBuffer {makeBuffer(m_MemoryAllocator,
+            return InstanceBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                                               instanceCount * sizeof(VkAccelerationStructureInstanceKHR),
                                               BufferUsage::eShaderDeviceAddress |
                                                   BufferUsage::eAccelerationBuildInput,
@@ -2596,9 +2585,9 @@ namespace vultra
 
         TransformBuffer RenderDevice::createTransformBuffer(AllocationHints allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            return TransformBuffer {makeBuffer(m_MemoryAllocator,
+            return TransformBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                                                sizeof(vk::TransformMatrixKHR),
                                                BufferUsage::eShaderDeviceAddress |
                                                    BufferUsage::eAccelerationBuildInput,
@@ -2610,9 +2599,9 @@ namespace vultra
         ShaderBindingTable RenderDevice::createShaderBindingTable(const rhi::RayTracingPipeline& pipeline,
                                                                   AllocationHints                allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            const auto& props = m_RayTracingPipelineProperties;
+            const auto& props = backendOf(m_Backend).m_RayTracingPipelineProperties;
 
             const uint32_t handleSize        = props.shaderGroupHandleSize;
             const uint32_t handleSizeAligned = alignedSize(handleSize, props.shaderGroupHandleAlignment);
@@ -2641,7 +2630,7 @@ namespace vultra
             const uint32_t sbtSize = callableOffset + callableSize;
 
             // Chunk buffer
-            Buffer sbtBuffer = makeBuffer(m_MemoryAllocator,
+            Buffer sbtBuffer = makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                                           sbtSize,
                                           BufferUsage::eShaderBindingTable | BufferUsage::eShaderDeviceAddress |
                                               BufferUsage::eTransferDst,
@@ -2649,7 +2638,7 @@ namespace vultra
                                           vma::MemoryUsage::eCpuToGpu); // Host visible & coherent for easy mapping
 
             std::vector<uint8_t> handles(sbtSize);
-            VK_CHECK(m_Device.getRayTracingShaderGroupHandlesKHR(
+            VK_CHECK(backendOf(m_Backend).m_Device.getRayTracingShaderGroupHandlesKHR(
                          vk::Pipeline {reinterpret_cast<VkPipeline>(pipeline.getHandle())},
                          0,
                          pipeline.getGroupCount(),
@@ -2683,7 +2672,7 @@ namespace vultra
             auto makeRegion = [&](uint32_t offset, uint32_t count) -> StrideDeviceAddressRegion {
                 if (count == 0)
                     return {};
-                return getSbtEntryStrideDeviceAddressRegion(sbtBuffer, count, offset);
+                return getSbtEntryStrideDeviceAddressRegion(sbtBuffer, count, DeviceAddress {offset});
             };
 
             ShaderBindingTable::Regions regions {
@@ -2697,34 +2686,34 @@ namespace vultra
             return ShaderBindingTable {std::move(sbtBuffer), std::move(regions)};
         }
 
-        uint64_t RenderDevice::getBufferDeviceAddress(const Buffer& buffer) const
+        DeviceAddress RenderDevice::getBufferDeviceAddress(const Buffer& buffer) const
         {
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
             vk::BufferDeviceAddressInfo bufferDeviceAddressInfo {};
             bufferDeviceAddressInfo.buffer = vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getNativeHandle())};
-            return m_Device.getBufferAddress(bufferDeviceAddressInfo);
+            return DeviceAddress {backendOf(m_Backend).m_Device.getBufferAddress(bufferDeviceAddressInfo)};
         }
 
         RayTracingPipelineProperties RenderDevice::getRayTracingPipelineProperties() const
         {
             return RayTracingPipelineProperties {
-                m_RayTracingPipelineProperties.shaderGroupHandleSize,
-                m_RayTracingPipelineProperties.maxRayRecursionDepth,
-                m_RayTracingPipelineProperties.maxShaderGroupStride,
-                m_RayTracingPipelineProperties.shaderGroupBaseAlignment,
-                m_RayTracingPipelineProperties.shaderGroupHandleCaptureReplaySize,
-                m_RayTracingPipelineProperties.maxRayDispatchInvocationCount,
-                m_RayTracingPipelineProperties.shaderGroupHandleAlignment,
-                m_RayTracingPipelineProperties.maxRayHitAttributeSize,
+                backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupHandleSize,
+                backendOf(m_Backend).m_RayTracingPipelineProperties.maxRayRecursionDepth,
+                backendOf(m_Backend).m_RayTracingPipelineProperties.maxShaderGroupStride,
+                backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupBaseAlignment,
+                backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupHandleCaptureReplaySize,
+                backendOf(m_Backend).m_RayTracingPipelineProperties.maxRayDispatchInvocationCount,
+                backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupHandleAlignment,
+                backendOf(m_Backend).m_RayTracingPipelineProperties.maxRayHitAttributeSize,
             };
         }
 
         AccelerationStructureBuffer
-        RenderDevice::createAccelerationStructureBuffer(vk::DeviceSize size, AllocationHints allocationHint) const
+        RenderDevice::createAccelerationStructureBuffer(uint64_t size, AllocationHints allocationHint) const
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            return AccelerationStructureBuffer {makeBuffer(m_MemoryAllocator,
+            return AccelerationStructureBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                                                             size,
                                                             BufferUsage::eAccelerationStorage |
                                                                 BufferUsage::eShaderDeviceAddress,
@@ -2732,23 +2721,24 @@ namespace vultra
                                                             vma::MemoryUsage::eAutoPreferDevice)};
         }
 
-        uint64_t RenderDevice::getAccelerationStructureDeviceAddress(const AccelerationStructure& accel) const
+        DeviceAddress RenderDevice::getAccelerationStructureDeviceAddress(const AccelerationStructure& accel) const
         {
-            assert(m_Device);
+            assert(backendOf(m_Backend).m_Device);
             vk::AccelerationStructureDeviceAddressInfoKHR addressInfo {};
-            addressInfo.accelerationStructure = accel.getHandle();
-            return m_Device.getAccelerationStructureAddressKHR(addressInfo);
+            addressInfo.accelerationStructure =
+                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(accel.getHandle())};
+            return DeviceAddress {backendOf(m_Backend).m_Device.getAccelerationStructureAddressKHR(addressInfo)};
         }
 
         StrideDeviceAddressRegion RenderDevice::getSbtEntryStrideDeviceAddressRegion(const Buffer& sbt,
                                                                                      uint32_t      handleCount,
-                                                                                     uint64_t      offset) const
+                                                                                     DeviceAddress offset) const
         {
-            const uint32_t handleSizeAligned = alignedSize(m_RayTracingPipelineProperties.shaderGroupHandleSize,
-                                                           m_RayTracingPipelineProperties.shaderGroupHandleAlignment);
+            const uint32_t handleSizeAligned = alignedSize(backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupHandleSize,
+                                                           backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupHandleAlignment);
 
             return StrideDeviceAddressRegion {
-                .deviceAddress = getBufferDeviceAddress(sbt) + offset,
+                .deviceAddress = DeviceAddress {getBufferDeviceAddress(sbt).value + offset.value},
                 .stride        = handleSizeAligned,
                 .size          = handleCount * handleSizeAligned,
             };
@@ -2756,11 +2746,11 @@ namespace vultra
 
         Ref<rhi::Buffer> RenderDevice::createBindlessStorageBuffer(AllocationHints allocationHint)
         {
-            assert(m_MemoryAllocator);
+            assert(backendOf(m_Backend).m_MemoryAllocator);
 
             // Bindless ownership is managed at higher level (e.g., resource::GpuScene).
             // Provide a minimal device-local storage buffer handle.
-            Buffer buffer = makeBuffer(m_MemoryAllocator,
+            Buffer buffer = makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
                                        1,
                                        BufferUsage::eStorageBuffer | BufferUsage::eShaderDeviceAddress,
                                        makeAllocationFlags(allocationHint),
@@ -2771,7 +2761,6 @@ namespace vultra
 
         Ref<rhi::Texture> RenderDevice::createDefaultWhite1x1Texture2D()
         {
-            // Create a 1x1 white texture. This can be used as a fallback for invalid bindless indices.
             uint32_t whitePixel = 0xFFFFFFFF; // RGBA8 white
 
             auto texture = Texture::Builder {}

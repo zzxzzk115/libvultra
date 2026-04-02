@@ -1,5 +1,6 @@
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/structs/extent2d.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
@@ -8,7 +9,7 @@
 namespace
 {
     constexpr XrReferenceSpaceType     spaceType {XR_REFERENCE_SPACE_TYPE_STAGE};
-    constexpr vultra::rhi::PixelFormat colorFormat {vultra::rhi::PixelFormat::eRGBA8_sRGB};
+    constexpr vultra::rhi::PixelFormat kPreferredColorFormat {vultra::rhi::PixelFormat::eRGBA8_sRGB};
 } // namespace
 
 namespace vultra
@@ -17,7 +18,7 @@ namespace vultra
     {
         XRHeadset::XRHeadset(rhi::RenderDevice& rd) : m_Device(*rd.getXRDevice()), m_RenderDevice(rd)
         {
-            if (!static_cast<bool>(rd.getFeatureFlag() & rhi::RenderDeviceFeatureFlagBits::eOpenXR))
+            if (!static_cast<bool>(rd.getFeatureFlag() & rhi::RenderDeviceFeatureFlagBits::eXR))
             {
                 VULTRA_CORE_ERROR("[XRHeadset] OpenXR feature is not enabled in the RenderDevice!");
                 throw std::runtime_error("OpenXR feature is not enabled in the RenderDevice");
@@ -85,7 +86,7 @@ namespace vultra
                 eyePose.next = nullptr;
             }
 
-            // Verify that the desired color format is supported
+            // Resolve a supported swapchain format.
             {
                 uint32_t formatCount = 0u;
                 OPENXR_CHECK(xrEnumerateSwapchainFormats(m_Session, 0u, &formatCount, nullptr),
@@ -95,21 +96,48 @@ namespace vultra
                 OPENXR_CHECK(xrEnumerateSwapchainFormats(m_Session, formatCount, &formatCount, formats.data()),
                              "Failed to enumerate swapchain formats");
 
-                bool formatFound = false;
-                for (const int64_t& format : formats)
+                const std::array<vk::Format, 4> preferredFormats {
+                    rhi::toVk(kPreferredColorFormat),
+                    vk::Format::eB8G8R8A8Srgb,
+                    vk::Format::eR8G8B8A8Unorm,
+                    vk::Format::eB8G8R8A8Unorm,
+                };
+
+                for (const auto preferredVkFormat : preferredFormats)
                 {
-                    if (format == static_cast<int64_t>(colorFormat))
+                    for (const int64_t format : formats)
                     {
-                        formatFound = true;
+                        if (static_cast<vk::Format>(format) == preferredVkFormat)
+                        {
+                            m_SwapchainPixelFormat = rhi::fromVk(preferredVkFormat);
+                            break;
+                        }
+                    }
+                    if (m_SwapchainPixelFormat != rhi::PixelFormat::eUndefined)
                         break;
+                }
+
+                if (m_SwapchainPixelFormat == rhi::PixelFormat::eUndefined)
+                {
+                    for (const int64_t format : formats)
+                    {
+                        const auto mapped = rhi::fromVk(static_cast<vk::Format>(format));
+                        if (mapped != rhi::PixelFormat::eUndefined)
+                        {
+                            m_SwapchainPixelFormat = mapped;
+                            break;
+                        }
                     }
                 }
 
-                if (!formatFound)
+                if (m_SwapchainPixelFormat == rhi::PixelFormat::eUndefined)
                 {
-                    VULTRA_CORE_ERROR("[Headset] Invalid swapchain format!");
-                    return;
+                    VULTRA_CORE_ERROR("[XRHeadset] No compatible swapchain format found.");
+                    throw std::runtime_error("OpenXR swapchain format negotiation failed");
                 }
+
+                VULTRA_CORE_INFO("[XRHeadset] Using swapchain format: {}",
+                                 rhi::toString(m_SwapchainPixelFormat));
             }
 
             // Create a swapchain and render targets
@@ -119,7 +147,7 @@ namespace vultra
                 // Create a swapchain
                 XrSwapchainCreateInfo swapchainCreateInfo {};
                 swapchainCreateInfo.type        = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-                swapchainCreateInfo.format      = static_cast<int64_t>(colorFormat);
+                swapchainCreateInfo.format      = static_cast<int64_t>(rhi::toVk(m_SwapchainPixelFormat));
                 swapchainCreateInfo.sampleCount = eyeImageInfo.recommendedSwapchainSampleCount;
                 swapchainCreateInfo.width       = eyeImageInfo.recommendedImageRectWidth;
                 swapchainCreateInfo.height      = eyeImageInfo.recommendedImageRectHeight;
@@ -160,28 +188,28 @@ namespace vultra
                     const XrSwapchainImageVulkan2KHR& swapchainImage = m_SwapchainImages[i];
 
                     m_SwapchainStereoRenderTargetViews[i].stereo =
-                        rhi::Texture {reinterpret_cast<VkDevice>(m_RenderDevice.getNativeDeviceHandle()),
-                                      vk::Image {swapchainImage.image},
+                        rhi::Texture {m_RenderDevice.getNativeDeviceHandle(),
+                                      reinterpret_cast<std::uintptr_t>(swapchainImage.image),
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
-                                      colorFormat,
+                                      m_SwapchainPixelFormat,
                                       0,
                                       static_cast<uint32_t>(m_EyeCount)};
 
                     m_SwapchainStereoRenderTargetViews[i].left =
-                        rhi::Texture {reinterpret_cast<VkDevice>(m_RenderDevice.getNativeDeviceHandle()),
-                                      vk::Image {swapchainImage.image},
+                        rhi::Texture {m_RenderDevice.getNativeDeviceHandle(),
+                                      reinterpret_cast<std::uintptr_t>(swapchainImage.image),
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
-                                      colorFormat,
+                                      m_SwapchainPixelFormat,
                                       0};
 
                     m_SwapchainStereoRenderTargetViews[i].right =
-                        rhi::Texture {reinterpret_cast<VkDevice>(m_RenderDevice.getNativeDeviceHandle()),
-                                      vk::Image {swapchainImage.image},
+                        rhi::Texture {m_RenderDevice.getNativeDeviceHandle(),
+                                      reinterpret_cast<std::uintptr_t>(swapchainImage.image),
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
-                                      colorFormat,
+                                      m_SwapchainPixelFormat,
                                       1};
                 }
             }
@@ -481,7 +509,7 @@ namespace vultra
             return m_SwapchainStereoRenderTargetViews.at(index);
         }
 
-        rhi::PixelFormat XRHeadset::getSwapchainPixelFormat() { return colorFormat; }
+        rhi::PixelFormat XRHeadset::getSwapchainPixelFormat() const { return m_SwapchainPixelFormat; }
 
         bool XRHeadset::beginSession() const
         {
@@ -516,4 +544,3 @@ namespace vultra
         }
     } // namespace openxr
 } // namespace vultra
-

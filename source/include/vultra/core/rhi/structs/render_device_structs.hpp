@@ -16,16 +16,16 @@ namespace vultra
             eRayQuery           = BIT(0),
             eRayTracingPipeline = BIT(1),
             eMeshShader         = BIT(2),
-            eOpenXR             = BIT(3),
+            eXR                 = BIT(3),
 
             eRayTracing = eRayQuery | eRayTracingPipeline,
-            eAll        = eNormal | eRayQuery | eRayTracingPipeline | eMeshShader | eOpenXR,
+            eAll        = eNormal | eRayQuery | eRayTracingPipeline | eMeshShader | eXR,
         };
 
         enum class RenderDeviceFeatureReportFlagBits : uint64_t
         {
             eNone                    = 0,
-            eOpenXR                  = BIT(0),
+            eXR                      = BIT(0),
             eRayTracingPipeline      = BIT(1),
             eRayQuery                = BIT(2),
             eAccelerationStructure   = BIT(3),
@@ -64,4 +64,3 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
-

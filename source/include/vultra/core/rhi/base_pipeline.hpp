@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/pipeline_layout.hpp"
+#include "vultra/core/rhi/structs/pipeline_bind_point.hpp"
 #include "vultra/core/rhi/structs/shader_stage_info.hpp"
 
 #include <cstdint>
@@ -9,13 +10,6 @@ namespace vultra
 {
     namespace rhi
     {
-        enum class PipelineBindPoint
-        {
-            eGraphics,
-            eCompute,
-            eRayTracing,
-        };
-
         class BasePipeline
         {
         public:
@@ -33,7 +27,7 @@ namespace vultra
             [[nodiscard]] constexpr virtual PipelineBindPoint getBindPoint() const = 0;
 
             [[nodiscard]] const PipelineLayout&   getLayout() const;
-            [[nodiscard]] std::uintptr_t getDescriptorSetLayout(const DescriptorSetIndex) const;
+            [[nodiscard]] DescriptorSetLayoutKey getDescriptorSetLayout(const DescriptorSetIndex) const;
 
         protected:
             BasePipeline(std::uintptr_t, PipelineLayout&&, std::uintptr_t);

@@ -2,6 +2,8 @@
 
 #include "vultra/core/rhi/texture.hpp"
 
+#include <vulkan/vulkan.hpp>
+
 // OpenXR Headers
 #define XR_USE_GRAPHICS_API_VULKAN
 #include <openxr/openxr.h>
@@ -67,7 +69,7 @@ namespace vultra
 
             [[nodiscard]] size_t                  getSwapchainCount() const { return m_SwapchainImages.size(); }
             [[nodiscard]] StereoRenderTargetView& getSwapchainStereoRenderTargetView(size_t index);
-            [[nodiscard]] static rhi::PixelFormat getSwapchainPixelFormat();
+            [[nodiscard]] rhi::PixelFormat getSwapchainPixelFormat() const;
 
         private:
             bool beginSession() const;
@@ -98,6 +100,7 @@ namespace vultra
 
             XrSwapchain                             m_Swapchain {XR_NULL_HANDLE};
             std::vector<XrSwapchainImageVulkan2KHR> m_SwapchainImages;
+            rhi::PixelFormat                        m_SwapchainPixelFormat {rhi::PixelFormat::eUndefined};
 
             std::vector<StereoRenderTargetView> m_SwapchainStereoRenderTargetViews;
 

@@ -14,7 +14,6 @@ namespace vultra
     namespace rhi
     {
         class CommandBuffer;
-        class VulkanCommandBuffer;
         class Texture;
 
         struct ImageSubresourceRange
@@ -54,16 +53,17 @@ namespace vultra
         class Barrier final
         {
             friend class CommandBuffer;
-            friend class VulkanCommandBuffer;
 
         public:
             [[nodiscard]] bool isEffective() const;
+            [[nodiscard]] const std::vector<BarrierMemory>& getMemoryBarriers() const;
+            [[nodiscard]] const std::vector<BarrierBuffer>& getBufferBarriers() const;
+            [[nodiscard]] const std::vector<BarrierImage>&  getImageBarriers() const;
 
             class Builder
             {
                 friend class Barrier;
                 friend class CommandBuffer;
-                friend class VulkanCommandBuffer;
 
             public:
                 Builder()                   = default;
@@ -111,4 +111,3 @@ namespace vultra
 
     } // namespace rhi
 } // namespace vultra
-

@@ -1,6 +1,7 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
+#include "vultra/core/rhi/structs/native_handles.hpp"
+#include "vultra/core/rhi/structs/pipeline_stage.hpp"
 
 namespace vultra
 {
@@ -8,9 +9,9 @@ namespace vultra
     {
         struct JobInfo
         {
-            vk::Semaphore           wait {nullptr};
-            vk::PipelineStageFlags2 waitStage {vk::PipelineStageFlagBits2::eAllCommands};
-            vk::Semaphore           signal {nullptr};
+            SemaphoreHandle wait {};
+            PipelineStages  waitStage {PipelineStages::eAllCommands};
+            SemaphoreHandle signal {};
         };
     } // namespace rhi
 } // namespace vultra

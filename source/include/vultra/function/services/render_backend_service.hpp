@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/frame_controller.hpp"
-#include "vultra/core/rhi/imgui_backend.hpp"
+#include "vultra/core/rhi/interfaces/iimgui_backend.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/swapchain.hpp"
 

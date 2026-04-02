@@ -54,10 +54,10 @@ namespace vultra
 
             [[nodiscard]] auto getSize(const auto& pool)
             {
-                VkDeviceSize total = 0;
+                uint64_t total = 0;
                 for (const auto& resource : pool.resources)
                 {
-                    total += resource->getSize();
+                    total += static_cast<uint64_t>(resource->getSize());
                 }
                 return total;
             }

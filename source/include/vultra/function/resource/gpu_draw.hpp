@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vultra/core/rhi/structs/device_address.hpp"
+
 #include <cstdint>
 
 #include <glm/mat4x4.hpp>
@@ -40,7 +42,7 @@ namespace vultra::resource
         // Bitmask from GpuDrawFlags.
         uint32_t flags {gpuDrawFlagsToMask(GpuDrawFlags::eNone)};
 
-        uint64_t vertexAddress {0};
+        rhi::DeviceAddress vertexAddress {};
         // Scene instance payload index (or transform index for legacy CPU-driven path).
         uint32_t instanceIndex {0};
         uint32_t padding0 {0};

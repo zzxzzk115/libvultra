@@ -65,7 +65,7 @@ try
         auto           stagingVertexBuffer = renderDevice.createStagingBuffer(kVerticesSize, kTriangle.data());
 
         renderDevice.execute(
-            [&](auto& cb) { cb.copyBuffer(stagingVertexBuffer, vertexBuffer, vk::BufferCopy {0, 0, kVerticesSize}); });
+            [&](auto& cb) { cb.copyBuffer(stagingVertexBuffer, vertexBuffer, rhi::BufferCopy {0, 0, kVerticesSize}); });
     }
 
     const auto* const vertCode = R"(
@@ -120,12 +120,12 @@ void main() {
         if (!swapchain)
             continue;
 
-        auto& backBuffer        = frameController.getCurrentTarget().texture;
         bool  acquiredNextFrame = frameController.acquireNextFrame();
         if (!acquiredNextFrame)
         {
             continue;
         }
+        auto& backBuffer = swapchain.getCurrentBuffer();
 
         auto& cb = frameController.beginFrame();
 

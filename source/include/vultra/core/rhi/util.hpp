@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
+#include "vultra/core/rhi/structs/buffer_image_copy.hpp"
 
 #include <span>
 
@@ -13,10 +13,10 @@ namespace vultra
         class Texture;
 
         void upload(RenderDevice&,
-                    const Buffer&                        srcStagingBuffer,
-                    std::span<const vk::BufferImageCopy> copyRegions,
-                    Texture&                             dst,
-                    const bool                           generateMipmaps = false);
+                    const Buffer&                       srcStagingBuffer,
+                    std::span<const BufferImageCopy>    copyRegions,
+                    Texture&                            dst,
+                    const bool                          generateMipmaps = false);
 
         uint32_t alignedSize(const uint32_t size, const uint32_t alignment);
     } // namespace rhi

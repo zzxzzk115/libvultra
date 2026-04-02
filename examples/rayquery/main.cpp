@@ -1,7 +1,7 @@
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/input/input.hpp>
 #include <vultra/core/rhi/graphics_pipeline.hpp>
-#include <vultra/core/rhi/raytracing/raytracing_pipeline.hpp>
+#include <vultra/core/rhi/raytracing_pipeline.hpp>
 #include <vultra/function/app/imgui_app.hpp>
 #include <vultra/function/camera/fps_camera.hpp>
 #include <vultra/function/renderer/mesh_manager.hpp>
@@ -175,12 +175,14 @@ public:
 
     void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
     {
+        auto& backBuffer = m_Swapchain.getCurrentBuffer();
+
         // Skip rendering if resizing is not finished
-        if (rtv.texture.getExtent() != m_DepthTexture.getExtent())
+        if (backBuffer.getExtent() != m_DepthTexture.getExtent())
         {
             VULTRA_CLIENT_TRACE("RTV size ({}, {}) != Depth Texture size ({}, {}), skipping rendering this frame",
-                                rtv.texture.getExtent().width,
-                                rtv.texture.getExtent().height,
+                                backBuffer.getExtent().width,
+                                backBuffer.getExtent().height,
                                 m_DepthTexture.getExtent().width,
                                 m_DepthTexture.getExtent().height);
             ImGuiApp::onRender(cb, rtv, dt);
@@ -188,14 +190,14 @@ public:
         }
 
         // Record graphics commands
-        rhi::prepareForAttachment(cb, rtv.texture, false);
+        rhi::prepareForAttachment(cb, backBuffer, false);
         rhi::prepareForAttachment(cb, m_DepthTexture, false);
 
         auto descriptorSet = cb.createDescriptorSetBuilder()
                                  .bind(0, rhi::bindings::AccelerationStructureKHR {.as = &m_TLAS})
                                  .build(m_Pipeline.getDescriptorSetLayout(0));
 
-        const auto& extent2D = rtv.texture.getExtent();
+        const auto& extent2D = backBuffer.getExtent();
 
         struct GlobalPushConstants
         {
@@ -224,7 +226,7 @@ public:
             .beginRendering({
                 .area             = {.extent = extent2D},
                 .depthAttachment  = rhi::AttachmentInfo {.target = &m_DepthTexture, .clearValue = 1.0f},
-                .colorAttachments = {rhi::AttachmentInfo {.target     = &rtv.texture,
+                .colorAttachments = {rhi::AttachmentInfo {.target     = &backBuffer,
                                                           .clearValue = glm::vec4 {0.1f, 0.1f, 0.1f, 1.0f}}},
             })
             .pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pushConstants);
@@ -243,7 +245,7 @@ public:
 
         cb.endRendering();
 
-        rhi::prepareForReading(cb, rtv.texture);
+        rhi::prepareForReading(cb, backBuffer);
         rhi::prepareForReading(cb, m_DepthTexture);
 
         ImGuiApp::onRender(cb, rtv, dt);

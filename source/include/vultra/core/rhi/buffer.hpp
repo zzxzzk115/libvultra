@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/structs/barrier_scope.hpp"
-#include "vultra/core/rhi/buffer_backend.hpp"
+#include "vultra/core/rhi/interfaces/ibuffer_backend.hpp"
 #include "vultra/core/rhi/structs/buffer_usage.hpp"
 #include "vultra/core/rhi/structs/buffer_structs.hpp"
 
@@ -54,4 +54,3 @@ namespace vultra
 
     } // namespace rhi
 } // namespace vultra
-
