@@ -61,14 +61,12 @@ namespace vultra
                                        uint64_t       storageOffset) const;
 
         private:
-            struct Impl;
-
-            explicit RadixSorter(std::unique_ptr<Impl>&&);
+            explicit RadixSorter(std::unique_ptr<IRadixSorterBackend>&&);
             static RadixSorter create(std::unique_ptr<IRadixSorterBackend>&&);
             static RadixSorter create(RenderDevice&, uint32_t maxElementCount);
 
         private:
-            std::unique_ptr<Impl> m_Impl;
+            std::unique_ptr<IRadixSorterBackend> m_Backend;
         };
     } // namespace rhi
 } // namespace vultra

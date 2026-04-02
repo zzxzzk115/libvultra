@@ -11,18 +11,11 @@ namespace vultra
 {
     namespace rhi
     {
-        struct RadixSorter::Impl
-        {
-            std::unique_ptr<IRadixSorterBackend> backend;
-        };
-
-        RadixSorter::RadixSorter(std::unique_ptr<Impl>&& impl) : m_Impl(std::move(impl)) {}
+        RadixSorter::RadixSorter(std::unique_ptr<IRadixSorterBackend>&& backend) : m_Backend(std::move(backend)) {}
 
         RadixSorter RadixSorter::create(std::unique_ptr<IRadixSorterBackend>&& backend)
         {
-            auto impl = std::make_unique<Impl>();
-            impl->backend = std::move(backend);
-            return RadixSorter {std::move(impl)};
+            return RadixSorter {std::move(backend)};
         }
 
         RadixSorter RadixSorter::create(RenderDevice& rd, const uint32_t maxElementCount)
@@ -37,25 +30,25 @@ namespace vultra
 
         RadixSorter::operator bool() const
         {
-            return m_Impl && m_Impl->backend && static_cast<bool>(*m_Impl->backend);
+            return m_Backend && static_cast<bool>(*m_Backend);
         }
 
         uint32_t RadixSorter::getMaxElementCount() const
         {
-            assert(m_Impl && m_Impl->backend);
-            return m_Impl->backend->getMaxElementCount();
+            assert(m_Backend);
+            return m_Backend->getMaxElementCount();
         }
 
         RadixSorterStorageRequirements RadixSorter::getStorageRequirements() const
         {
-            assert(m_Impl && m_Impl->backend);
-            return m_Impl->backend->getStorageRequirements();
+            assert(m_Backend);
+            return m_Backend->getStorageRequirements();
         }
 
         RadixSorterStorageRequirements RadixSorter::getKeyValueStorageRequirements() const
         {
-            assert(m_Impl && m_Impl->backend);
-            return m_Impl->backend->getKeyValueStorageRequirements();
+            assert(m_Backend);
+            return m_Backend->getKeyValueStorageRequirements();
         }
 
         void RadixSorter::sortKeys(CommandBuffer& cb,
@@ -66,7 +59,7 @@ namespace vultra
                                    const uint64_t storageOffset) const
         {
             assert(*this);
-            m_Impl->backend->sortKeys(cb, elementCount, keys, keysOffset, storage, storageOffset);
+            m_Backend->sortKeys(cb, elementCount, keys, keysOffset, storage, storageOffset);
         }
 
         void RadixSorter::sortKeyValues(CommandBuffer& cb,
@@ -79,7 +72,7 @@ namespace vultra
                                         const uint64_t storageOffset) const
         {
             assert(*this);
-            m_Impl->backend->sortKeyValues(cb, elementCount, keys, keysOffset, values, valuesOffset, storage, storageOffset);
+            m_Backend->sortKeyValues(cb, elementCount, keys, keysOffset, values, valuesOffset, storage, storageOffset);
         }
 
         void RadixSorter::sortKeyValuesIndirect(CommandBuffer& cb,
@@ -94,7 +87,7 @@ namespace vultra
                                                 const uint64_t storageOffset) const
         {
             assert(*this);
-            m_Impl->backend->sortKeyValuesIndirect(
+            m_Backend->sortKeyValuesIndirect(
                 cb, maxElementCount, indirect, indirectOffset, keys, keysOffset, values, valuesOffset, storage, storageOffset);
         }
     } // namespace rhi

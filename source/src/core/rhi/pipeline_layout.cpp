@@ -3,9 +3,6 @@
 #include "vultra/core/base/ranges.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
-#include "vultra/core/rhi/backends/vk/conversions.hpp"
-
-#include <vulkan/vulkan.hpp>
 
 namespace std
 {

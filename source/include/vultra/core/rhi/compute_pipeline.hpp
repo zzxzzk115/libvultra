@@ -30,10 +30,10 @@ namespace vultra
             [[nodiscard]] glm::uvec3 getWorkGroupSize() const;
 
         private:
-            ComputePipeline(std::uintptr_t,
-                            PipelineLayout&&,
+            ComputePipeline(PipelineLayout&&,
                             const glm::uvec3 localSize,
                             std::uintptr_t,
+                            std::unique_ptr<IPipelineBackend> destroyBackend,
                             std::unique_ptr<IComputePipelineBackend> backend);
 
         private:

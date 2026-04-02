@@ -89,9 +89,9 @@ namespace vultra
             };
 
         private:
-            RayTracingPipeline(std::uintptr_t                                  device,
-                               PipelineLayout&&                                  pipelineLayout,
+            RayTracingPipeline(PipelineLayout&&                                  pipelineLayout,
                                std::uintptr_t                                    handle,
+                               std::unique_ptr<IPipelineBackend> destroyBackend,
                                std::vector<RaytracingShaderGroup>&&              groups,
                                std::vector<uint32_t>&&                           raygenGroupIndices,
                                std::vector<uint32_t>&&                           missGroupIndices,

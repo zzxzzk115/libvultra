@@ -1,8 +1,7 @@
 #include "vultra/core/rhi/shader_reflection.hpp"
+#include "vultra/core/rhi/structs/descriptor_layout_flags.hpp"
 
 #include <cassert>
-
-#include <vulkan/vulkan.hpp>
 
 namespace vultra
 {
@@ -96,9 +95,9 @@ namespace
                     out.count = kRuntimeSizedDescriptorUpperBound;
 #ifdef __APPLE__
                     // Keep legacy MoltenVK behavior for runtime-sized descriptors.
-                    out.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+                    out.flags = descriptor_layout_flags::eUpdateAfterBindPool;
 #else
-                    out.flags = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT;
+                    out.flags = descriptor_layout_flags::eVariableDescriptorCount;
 #endif
                 }
             }

@@ -55,7 +55,7 @@ namespace vultra
 
             return {
                 m_FrameIndex,
-                m_Swapchain->getCurrentBuffer().getNativeImageHandle(),
+                m_Swapchain->getCurrentBuffer().getImageHandle(),
             };
         }
 

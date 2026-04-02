@@ -126,7 +126,7 @@ namespace vultra
 
             [[nodiscard]] vk::ImageView toVk(const TextureView view)
             {
-                return vk::ImageView {reinterpret_cast<VkImageView>(view.getNativeHandle())};
+                return vk::ImageView {reinterpret_cast<VkImageView>(view.getHandle())};
             }
 
             [[nodiscard]] auto toVk(const ImageUsage usage, const vk::ImageAspectFlags aspectMask)
@@ -239,7 +239,7 @@ namespace vultra
 
         ImageUsage Texture::getUsageFlags() const { return m_UsageFlags; }
 
-        std::uintptr_t Texture::getNativeImageHandle() const
+        std::uintptr_t Texture::getImageHandle() const
         {
             const auto image = std::visit(Overload {
                                               [](const std::monostate) -> std::uintptr_t { return 0; },
@@ -313,6 +313,25 @@ namespace vultra
         }
 
         Sampler Texture::getSampler() const { return m_Sampler; }
+
+        Texture Texture::fromExternalImage(const std::uintptr_t device,
+                                           const std::uintptr_t image,
+                                           const Extent2D       extent,
+                                           const PixelFormat    format,
+                                           const uint32_t       baseLayer)
+        {
+            return Texture {device, image, extent, format, baseLayer};
+        }
+
+        Texture Texture::fromExternalImage(const std::uintptr_t device,
+                                           const std::uintptr_t image,
+                                           const Extent2D       extent,
+                                           const PixelFormat    format,
+                                           const uint32_t       baseLayer,
+                                           const uint32_t       numLayers)
+        {
+            return Texture {device, image, extent, format, baseLayer, numLayers};
+        }
 
         Texture::Builder& Texture::Builder::setExtent(const Extent2D extent, const uint32_t depth)
         {

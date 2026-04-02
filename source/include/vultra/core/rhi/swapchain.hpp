@@ -37,8 +37,8 @@ namespace vultra
             [[nodiscard]] PixelFormat getPixelFormat() const;
             [[nodiscard]] Extent2D    getExtent() const;
 
-            [[nodiscard]] std::size_t getNumBuffers() const;
-            [[nodiscard]] std::uintptr_t getNativeHandle() const;
+            [[nodiscard]] std::size_t   getNumBuffers() const;
+            [[nodiscard]] std::uintptr_t getHandle() const;
 
             [[nodiscard]] const std::vector<Texture>& getBuffers() const;
             [[nodiscard]] const Texture&              getBuffer(uint32_t) const;
@@ -52,9 +52,6 @@ namespace vultra
 
         private:
             Swapchain(std::uintptr_t, std::uintptr_t, std::uintptr_t, os::Window*, SwapchainFormat, VerticalSync);
-            void createSurface();
-            void create(SwapchainFormat, VerticalSync);
-            void buildBuffers(Extent2D, PixelFormat);
             void destroy();
 
         private:

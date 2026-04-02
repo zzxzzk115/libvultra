@@ -5,12 +5,11 @@
 #include "vultra/core/rhi/base_pipeline.hpp"
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/compute_pipeline.hpp"
-#include "vultra/core/rhi/descriptorset_builder.hpp"
 #include "vultra/core/rhi/structs/draw_indirect_info.hpp"
 #include "vultra/core/rhi/structs/framebuffer_info.hpp"
 #include "vultra/core/rhi/structs/geometry_info.hpp"
 #include "vultra/core/rhi/structs/buffer_image_copy.hpp"
-#include "vultra/core/rhi/structs/native_handles.hpp"
+#include "vultra/core/rhi/structs/handles.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/shader_binding_table.hpp"
@@ -29,6 +28,7 @@ namespace vultra
     namespace rhi
     {
         struct JobInfo;
+        class DescriptorSetBuilder;
 
         class ICommandBufferBackend
         {
@@ -36,7 +36,6 @@ namespace vultra
             virtual ~ICommandBufferBackend() = default;
 
             [[nodiscard]] virtual std::uintptr_t     getHandle() const = 0;
-            [[nodiscard]] virtual std::uintptr_t     getNativeHandle() const = 0;
             [[nodiscard]] virtual TracyGpuContext    getTracyContext() const = 0;
 
             [[nodiscard]] virtual Barrier::Builder& getBarrierBuilder() = 0;

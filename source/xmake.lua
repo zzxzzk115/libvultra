@@ -87,7 +87,7 @@ end
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "sol2")
+add_requires("spdlog", "magic_enum", "entt", "cereal", "wgpu-native v27.0.4+0", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "sol2")
 add_requireconfs("vulkan-memory-allocator-hpp", {configs = {use_vulkanheaders = true}})
 add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"})
 if has_config("tracy") then
@@ -145,7 +145,7 @@ target("vultra")
     add_rules("vulkansdk")
 
     -- add packages
-    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vulkan-headers", "vulkan-memory-allocator-hpp", "vrendergraph", "sol2", { public = true })
+    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "wgpu-native", "vulkan-headers", "vulkan-memory-allocator-hpp", "vrendergraph", "sol2", { public = true })
     add_packages("openxr", { public = true })
     if not is_plat("android") then
         add_packages("libsdl3", { public = true })

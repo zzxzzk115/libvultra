@@ -2,7 +2,7 @@
 
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/structs/frame_index.hpp"
-#include "vultra/core/rhi/structs/native_handles.hpp"
+#include "vultra/core/rhi/structs/handles.hpp"
 #include "vultra/core/rhi/structs/render_target_view.hpp"
 
 namespace vultra

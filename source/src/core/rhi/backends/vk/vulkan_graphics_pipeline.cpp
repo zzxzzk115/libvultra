@@ -4,6 +4,8 @@
 #include "vultra/core/rhi/shader_reflection.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_pipeline_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
 
 #include <glm/common.hpp>
 
@@ -262,110 +264,131 @@ namespace vultra
 
         } // namespace
 
-        struct GraphicsPipeline::Builder::InternalState
-        {
-            vk::Format              depthFormat {vk::Format::eUndefined};
-            vk::Format              stencilFormat {vk::Format::eUndefined};
-            std::vector<vk::Format> colorAttachmentFormats;
-            uint32_t                viewMask {0};
-
-            vk::VertexInputBindingDescription                vertexInput;
-            std::vector<vk::VertexInputAttributeDescription> vertexInputAttributes;
-            vk::PrimitiveTopology                            primitiveTopology {vk::PrimitiveTopology::eTriangleList};
-
-            std::unordered_map<ShaderType, ShaderStageInfo> shaderStages;
-            std::unordered_map<ShaderType, SPIRV>           builtinShaderStages;
-            PipelineLayout                                  pipelineLayout;
-
-            vk::PipelineDepthStencilStateCreateInfo            depthStencilState;
-            vk::PipelineRasterizationStateCreateInfo           rasterizerState;
-            std::vector<vk::PipelineColorBlendAttachmentState> blendStates;
-            std::vector<vk::DynamicState> dynamicStates {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
-        };
-
         GraphicsPipeline::Builder::Builder()
         {
-            m_State = std::make_unique<InternalState>();
-            auto& s = *m_State;
             constexpr auto kMaxNumStages = 3; // CS or VS/GS/FS
-            s.shaderStages.reserve(kMaxNumStages);
-
-            s.depthStencilState.sType             = static_cast<vk::StructureType>(VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO);
-            s.depthStencilState.depthTestEnable   = false;
-            s.depthStencilState.depthWriteEnable  = true;
-            s.depthStencilState.depthCompareOp    = static_cast<vk::CompareOp>(VK_COMPARE_OP_LESS_OR_EQUAL);
-            s.depthStencilState.stencilTestEnable = false;
-            s.depthStencilState.minDepthBounds    = 0.0f;
-            s.depthStencilState.maxDepthBounds    = 1.0f;
-
-            s.rasterizerState.sType                   = static_cast<vk::StructureType>(VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO);
-            s.rasterizerState.depthClampEnable        = false;
-            s.rasterizerState.rasterizerDiscardEnable = false;
-            s.rasterizerState.polygonMode             = static_cast<vk::PolygonMode>(VK_POLYGON_MODE_FILL);
-            s.rasterizerState.cullMode                = static_cast<vk::CullModeFlags>(VK_CULL_MODE_NONE);
-            s.rasterizerState.frontFace               = static_cast<vk::FrontFace>(VK_FRONT_FACE_COUNTER_CLOCKWISE);
-            s.rasterizerState.depthBiasEnable         = false;
-            s.rasterizerState.lineWidth               = 1.0f;
+            m_ShaderStages.reserve(kMaxNumStages);
         }
 
         GraphicsPipeline::Builder::~Builder() = default;
 
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthFormat(const PixelFormat depthFormat)
         {
-            auto& s = *m_State;
             const auto aspectMask = getAspectMask(depthFormat);
-            s.depthFormat         = HasFlagValues(aspectMask, ImageAspectFlags::eDepth) ? toVk(depthFormat) :
-                                        vk::Format::eUndefined;
-            s.stencilFormat       = HasFlagValues(aspectMask, ImageAspectFlags::eStencil) ? toVk(depthFormat) :
-                                        vk::Format::eUndefined;
+            m_DepthFormat         = HasFlagValues(aspectMask, ImageAspectFlags::eDepth) ? depthFormat : PixelFormat::eUndefined;
+            m_StencilFormat       = HasFlagValues(aspectMask, ImageAspectFlags::eStencil) ? depthFormat : PixelFormat::eUndefined;
             return *this;
         }
 
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthBias(const DepthBias& desc)
         {
-            auto& s = *m_State;
-            s.rasterizerState.depthBiasEnable         = VK_TRUE;
-            s.rasterizerState.depthBiasConstantFactor = desc.constantFactor;
-            s.rasterizerState.depthBiasSlopeFactor    = desc.slopeFactor;
+            m_RasterizerState.depthBias = desc;
             return *this;
         }
 
         GraphicsPipeline::Builder&
         GraphicsPipeline::Builder::setColorFormats(std::initializer_list<PixelFormat> formats)
         {
-            auto& s = *m_State;
-            s.colorAttachmentFormats = convert(formats);
+            m_ColorAttachmentFormats.assign(formats.begin(), formats.end());
             return *this;
         }
 
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setColorFormats(std::span<const PixelFormat> formats)
         {
-            auto& s = *m_State;
-            s.colorAttachmentFormats = convert(formats);
+            m_ColorAttachmentFormats.assign(formats.begin(), formats.end());
             return *this;
         }
 
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setViewMask(const uint32_t viewMask)
         {
-            m_State->viewMask = viewMask;
+            m_ViewMask = viewMask;
             return *this;
         }
 
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setInputAssembly(const VertexAttributes& vertexAttributes)
         {
-            auto& s = *m_State;
-            s.vertexInputAttributes.clear();
+            m_VertexAttributes = vertexAttributes;
+            return *this;
+        }
 
-            if (!vertexAttributes.empty())
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setTopology(const PrimitiveTopology topology)
+        {
+            m_PrimitiveTopology = topology;
+            return *this;
+        }
+
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setPipelineLayout(PipelineLayout pipelineLayout)
+        {
+            m_PipelineLayout = std::move(pipelineLayout);
+            return *this;
+        }
+
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::addShader(const ShaderType       type,
+                                                                        const ShaderStageInfo& stageInfo)
+        {
+            m_ShaderStages.emplace(type, stageInfo);
+            return *this;
+        }
+
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::addBuiltinShader(const ShaderType type, const SPIRV& spv)
+        {
+            m_BuiltinShaderStages.emplace(type, spv);
+            return *this;
+        }
+
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthStencil(const DepthStencilState& desc)
+        {
+            m_DepthStencilState = desc;
+            return *this;
+        }
+
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setRasterizer(const RasterizerState& desc)
+        {
+            m_RasterizerState = desc;
+            return *this;
+        }
+
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setBlending(const AttachmentIndex index,
+                                                                          const BlendState&     desc)
+        {
+            if (index >= m_BlendStates.size())
+                m_BlendStates.resize(index + 1);
+            m_BlendStates[index] = desc;
+            return *this;
+        }
+
+        GraphicsPipeline::Builder&
+        GraphicsPipeline::Builder::setDynamicState(const std::initializer_list<DynamicState> dynamicStates)
+        {
+            m_DynamicStates.assign(dynamicStates.begin(), dynamicStates.end());
+            return *this;
+        }
+
+        GraphicsPipeline GraphicsPipeline::Builder::build(RenderDevice& rd)
+        {
+            const auto vkColorAttachmentFormats = convert(m_ColorAttachmentFormats);
+            // -- Dynamic rendering:
+
+            vk::PipelineRenderingCreateInfoKHR renderingInfo {};
+            renderingInfo.viewMask                = m_ViewMask;
+            renderingInfo.colorAttachmentCount    = static_cast<uint32_t>(vkColorAttachmentFormats.size());
+            renderingInfo.pColorAttachmentFormats = vkColorAttachmentFormats.data();
+            renderingInfo.depthAttachmentFormat   = m_DepthFormat != PixelFormat::eUndefined ? toVk(m_DepthFormat) : vk::Format::eUndefined;
+            renderingInfo.stencilAttachmentFormat = m_StencilFormat != PixelFormat::eUndefined ? toVk(m_StencilFormat) : vk::Format::eUndefined;
+
+            // -- Vertex Attributes:
+
+            vk::VertexInputBindingDescription                vertexInput = kIgnoreVertexInput;
+            std::vector<vk::VertexInputAttributeDescription> vertexInputAttributes;
+            if (!m_VertexAttributes.empty())
             {
-                s.vertexInputAttributes.reserve(vertexAttributes.size());
-
+                vertexInputAttributes.reserve(m_VertexAttributes.size());
                 uint32_t stride {0};
-                for (const auto& [location, attrib] : vertexAttributes)
+                for (const auto& [location, attrib] : m_VertexAttributes)
                 {
                     if (attrib.offset != kIgnoreVertexAttribute)
                     {
-                        s.vertexInputAttributes.push_back(vk::VertexInputAttributeDescription {
+                        vertexInputAttributes.push_back(vk::VertexInputAttributeDescription {
                             location,
                             0,
                             toVk(attrib.type),
@@ -374,138 +397,33 @@ namespace vultra
                     }
                     stride += getSize(attrib.type);
                 }
-                s.vertexInput = {
+                vertexInput = {
                     .binding   = 0,
                     .stride    = stride,
                     .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
                 };
             }
-            else
-            {
-                s.vertexInput = kIgnoreVertexInput;
-            }
-            return *this;
-        }
-
-        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setTopology(const PrimitiveTopology topology)
-        {
-            m_State->primitiveTopology = toVk(topology);
-            return *this;
-        }
-
-        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setPipelineLayout(PipelineLayout pipelineLayout)
-        {
-            m_State->pipelineLayout = std::move(pipelineLayout);
-            return *this;
-        }
-
-        GraphicsPipeline::Builder& GraphicsPipeline::Builder::addShader(const ShaderType       type,
-                                                                        const ShaderStageInfo& stageInfo)
-        {
-            m_State->shaderStages.emplace(type, stageInfo);
-            return *this;
-        }
-
-        GraphicsPipeline::Builder& GraphicsPipeline::Builder::addBuiltinShader(const ShaderType type, const SPIRV& spv)
-        {
-            m_State->builtinShaderStages.emplace(type, spv);
-            return *this;
-        }
-
-        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthStencil(const DepthStencilState& desc)
-        {
-            auto& s = *m_State;
-            s.depthStencilState.depthTestEnable  = desc.depthTest;
-            s.depthStencilState.depthWriteEnable = desc.depthWrite;
-            s.depthStencilState.depthCompareOp   = toVk(desc.depthCompareOp);
-
-            s.depthStencilState.stencilTestEnable = desc.stencilTestEnable;
-            s.depthStencilState.front             = toVk(desc.front);
-            s.depthStencilState.back              = toVk(desc.back.value_or(desc.front));
-            return *this;
-        }
-
-        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setRasterizer(const RasterizerState& desc)
-        {
-            auto& s = *m_State;
-            s.rasterizerState.depthClampEnable = desc.depthClampEnable;
-            s.rasterizerState.polygonMode      = toVk(desc.polygonMode);
-            s.rasterizerState.cullMode         = toVk(desc.cullMode);
-            if (desc.depthBias)
-            {
-                s.rasterizerState.depthBiasEnable         = true;
-                s.rasterizerState.depthBiasConstantFactor = desc.depthBias->constantFactor;
-                s.rasterizerState.depthBiasSlopeFactor    = desc.depthBias->slopeFactor;
-            }
-            s.rasterizerState.lineWidth = desc.lineWidth;
-            return *this;
-        }
-
-        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setBlending(const AttachmentIndex index,
-                                                                          const BlendState&     desc)
-        {
-            auto& s = *m_State;
-            if (index >= s.blendStates.size())
-                s.blendStates.resize(index + 1);
-
-            auto& blendState = s.blendStates[index];
-            blendState       = vk::PipelineColorBlendAttachmentState {};
-            blendState.blendEnable         = desc.enabled ? VK_TRUE : VK_FALSE;
-            blendState.srcColorBlendFactor = toVk(desc.srcColor);
-            blendState.dstColorBlendFactor = toVk(desc.dstColor);
-            blendState.colorBlendOp        = toVk(desc.colorOp);
-            blendState.srcAlphaBlendFactor = toVk(desc.srcAlpha);
-            blendState.dstAlphaBlendFactor = toVk(desc.dstAlpha);
-            blendState.alphaBlendOp        = toVk(desc.alphaOp);
-            blendState.colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-                                        vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-            return *this;
-        }
-
-        GraphicsPipeline::Builder&
-        GraphicsPipeline::Builder::setDynamicState(const std::initializer_list<DynamicState> dynamicStates)
-        {
-            auto& s = *m_State;
-            s.dynamicStates.clear();
-            s.dynamicStates.reserve(dynamicStates.size());
-            for (const auto state : dynamicStates)
-                s.dynamicStates.push_back(toVk(state));
-            return *this;
-        }
-
-        GraphicsPipeline GraphicsPipeline::Builder::build(RenderDevice& rd)
-        {
-            auto& s = *m_State;
-            // -- Dynamic rendering:
-
-            vk::PipelineRenderingCreateInfoKHR renderingInfo {};
-            renderingInfo.viewMask                = s.viewMask;
-            renderingInfo.colorAttachmentCount    = static_cast<uint32_t>(s.colorAttachmentFormats.size());
-            renderingInfo.pColorAttachmentFormats = s.colorAttachmentFormats.data();
-            renderingInfo.depthAttachmentFormat   = s.depthFormat;
-            renderingInfo.stencilAttachmentFormat = s.stencilFormat;
-
-            // -- Vertex Attributes:
 
             vk::PipelineVertexInputStateCreateInfo vertexInputStateInfo {};
-            vertexInputStateInfo.vertexBindingDescriptionCount = s.vertexInput.stride > 0 ? 1u : 0u;
-            vertexInputStateInfo.pVertexBindingDescriptions    = &s.vertexInput;
+            vertexInputStateInfo.vertexBindingDescriptionCount = vertexInput.stride > 0 ? 1u : 0u;
+            vertexInputStateInfo.pVertexBindingDescriptions    = &vertexInput;
             vertexInputStateInfo.vertexAttributeDescriptionCount =
-                static_cast<uint32_t>(s.vertexInputAttributes.size());
-            vertexInputStateInfo.pVertexAttributeDescriptions = s.vertexInputAttributes.data();
+                static_cast<uint32_t>(vertexInputAttributes.size());
+            vertexInputStateInfo.pVertexAttributeDescriptions = vertexInputAttributes.data();
 
             vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo {};
-            inputAssemblyInfo.topology               = s.primitiveTopology;
-            inputAssemblyInfo.primitiveRestartEnable = s.primitiveTopology == vk::PrimitiveTopology::eTriangleStrip;
+            inputAssemblyInfo.topology               = toVk(m_PrimitiveTopology);
+            inputAssemblyInfo.primitiveRestartEnable = m_PrimitiveTopology == PrimitiveTopology::eTriangleStrip;
 
             // --
 
             const auto lineWidthRange   = rd.getLineWidthRange();
-            s.rasterizerState.lineWidth = glm::clamp(s.rasterizerState.lineWidth, lineWidthRange[0], lineWidthRange[1]);
+            auto rasterizerState = m_RasterizerState;
+            rasterizerState.lineWidth = glm::clamp(rasterizerState.lineWidth, lineWidthRange[0], lineWidthRange[1]);
 
             // -- Shader stages:
-            auto       reflection      = s.pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
-            const auto numShaderStages = s.shaderStages.size() + s.builtinShaderStages.size();
+            auto       reflection      = m_PipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
+            const auto numShaderStages = m_ShaderStages.size() + m_BuiltinShaderStages.size();
             assert(numShaderStages > 0);
 
             std::vector<ShaderModule> shaderModules; // For delayed reflection ownership only.
@@ -516,7 +434,7 @@ namespace vultra
             shaderStages.reserve(numShaderStages);
 
             // -- Builtin stages:
-            for (const auto& [shaderType, spv] : s.builtinShaderStages)
+            for (const auto& [shaderType, spv] : m_BuiltinShaderStages)
             {
                 auto shaderModule =
                     rd.createShaderModule(spv, reflection ? std::addressof(reflection.value()) : nullptr);
@@ -528,7 +446,7 @@ namespace vultra
                     vk::ShaderModuleCreateInfo createInfo {};
                     createInfo.codeSize = sizeof(uint32_t) * shaderModule.getSpirv().size();
                     createInfo.pCode    = shaderModule.getSpirv().data();
-                    const vk::Device device {reinterpret_cast<VkDevice>(rd.getNativeDeviceHandle())};
+                    const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
                     VK_CHECK(device.createShaderModule(&createInfo, nullptr, &shaderModuleHandle),
                              "GraphicsPipeline",
                              "Failed to create shader module");
@@ -545,7 +463,7 @@ namespace vultra
             }
 
             // -- Shader stages:
-            for (const auto& [shaderType, shaderStageInfo] : s.shaderStages)
+            for (const auto& [shaderType, shaderStageInfo] : m_ShaderStages)
             {
                 auto shaderModule = rd.createShaderModule(shaderType,
                                                           shaderStageInfo.code,
@@ -560,7 +478,7 @@ namespace vultra
                     vk::ShaderModuleCreateInfo createInfo {};
                     createInfo.codeSize = sizeof(uint32_t) * shaderModule.getSpirv().size();
                     createInfo.pCode    = shaderModule.getSpirv().data();
-                    const vk::Device device {reinterpret_cast<VkDevice>(rd.getNativeDeviceHandle())};
+                    const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
                     VK_CHECK(device.createShaderModule(&createInfo, nullptr, &shaderModuleHandle),
                              "GraphicsPipeline",
                              "Failed to create shader module");
@@ -579,31 +497,78 @@ namespace vultra
             {
                 for (const auto shaderModuleHandle : shaderModuleHandles)
                 {
-                    const vk::Device device {reinterpret_cast<VkDevice>(rd.getNativeDeviceHandle())};
+                    const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
                     device.destroyShaderModule(shaderModuleHandle);
                 }
                 return {};
             }
 
             if (reflection.has_value())
-                s.pipelineLayout = reflectPipelineLayout(rd, *reflection);
-            assert(s.pipelineLayout);
+                m_PipelineLayout = reflectPipelineLayout(rd, *reflection);
+            assert(m_PipelineLayout);
 
             // -- Blending state:
 
-            assert(s.blendStates.size() == s.colorAttachmentFormats.size());
+            assert(m_BlendStates.size() == m_ColorAttachmentFormats.size());
+
+            std::vector<vk::PipelineColorBlendAttachmentState> vkBlendStates;
+            vkBlendStates.reserve(m_BlendStates.size());
+            for (const auto& blend : m_BlendStates)
+            {
+                auto vkBlendState = vk::PipelineColorBlendAttachmentState {};
+                vkBlendState.blendEnable         = blend.enabled ? VK_TRUE : VK_FALSE;
+                vkBlendState.srcColorBlendFactor = toVk(blend.srcColor);
+                vkBlendState.dstColorBlendFactor = toVk(blend.dstColor);
+                vkBlendState.colorBlendOp        = toVk(blend.colorOp);
+                vkBlendState.srcAlphaBlendFactor = toVk(blend.srcAlpha);
+                vkBlendState.dstAlphaBlendFactor = toVk(blend.dstAlpha);
+                vkBlendState.alphaBlendOp        = toVk(blend.alphaOp);
+                vkBlendState.colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+                                              vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+                vkBlendStates.push_back(vkBlendState);
+            }
 
             vk::PipelineColorBlendStateCreateInfo colorBlendInfo {};
             colorBlendInfo.logicOpEnable   = false;
             colorBlendInfo.logicOp         = vk::LogicOp::eClear;
-            colorBlendInfo.attachmentCount = static_cast<uint32_t>(s.blendStates.size());
-            colorBlendInfo.pAttachments    = s.blendStates.data();
+            colorBlendInfo.attachmentCount = static_cast<uint32_t>(vkBlendStates.size());
+            colorBlendInfo.pAttachments    = vkBlendStates.data();
 
             // -- Dynamic state:
 
+            std::vector<vk::DynamicState> vkDynamicStates;
+            vkDynamicStates.reserve(m_DynamicStates.size());
+            for (const auto state : m_DynamicStates)
+                vkDynamicStates.push_back(toVk(state));
+
+            vk::PipelineRasterizationStateCreateInfo vkRasterizerState {};
+            vkRasterizerState.sType                   = vk::StructureType::ePipelineRasterizationStateCreateInfo;
+            vkRasterizerState.depthClampEnable        = rasterizerState.depthClampEnable;
+            vkRasterizerState.rasterizerDiscardEnable = false;
+            vkRasterizerState.polygonMode             = toVk(rasterizerState.polygonMode);
+            vkRasterizerState.cullMode                = toVk(rasterizerState.cullMode);
+            vkRasterizerState.frontFace               = vk::FrontFace::eCounterClockwise;
+            vkRasterizerState.depthBiasEnable         = rasterizerState.depthBias.has_value();
+            vkRasterizerState.depthBiasConstantFactor =
+                rasterizerState.depthBias ? rasterizerState.depthBias->constantFactor : 0.0f;
+            vkRasterizerState.depthBiasSlopeFactor =
+                rasterizerState.depthBias ? rasterizerState.depthBias->slopeFactor : 0.0f;
+            vkRasterizerState.lineWidth = rasterizerState.lineWidth;
+
+            vk::PipelineDepthStencilStateCreateInfo vkDepthStencilState {};
+            vkDepthStencilState.sType             = vk::StructureType::ePipelineDepthStencilStateCreateInfo;
+            vkDepthStencilState.depthTestEnable   = m_DepthStencilState.depthTest;
+            vkDepthStencilState.depthWriteEnable  = m_DepthStencilState.depthWrite;
+            vkDepthStencilState.depthCompareOp    = toVk(m_DepthStencilState.depthCompareOp);
+            vkDepthStencilState.stencilTestEnable = m_DepthStencilState.stencilTestEnable;
+            vkDepthStencilState.front             = toVk(m_DepthStencilState.front);
+            vkDepthStencilState.back              = toVk(m_DepthStencilState.back.value_or(m_DepthStencilState.front));
+            vkDepthStencilState.minDepthBounds    = 0.0f;
+            vkDepthStencilState.maxDepthBounds    = 1.0f;
+
             vk::PipelineDynamicStateCreateInfo dynamicStateInfo {};
-            dynamicStateInfo.dynamicStateCount = static_cast<uint32_t>(s.dynamicStates.size());
-            dynamicStateInfo.pDynamicStates    = s.dynamicStates.data();
+            dynamicStateInfo.dynamicStateCount = static_cast<uint32_t>(vkDynamicStates.size());
+            dynamicStateInfo.pDynamicStates    = vkDynamicStates.data();
 
             // -- Assemble:
 
@@ -614,21 +579,21 @@ namespace vultra
             graphicsPipelineInfo.pVertexInputState   = &vertexInputStateInfo;
             graphicsPipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
             graphicsPipelineInfo.pViewportState      = &kIgnoreViewportState;
-            graphicsPipelineInfo.pRasterizationState = &s.rasterizerState;
+            graphicsPipelineInfo.pRasterizationState = &vkRasterizerState;
             graphicsPipelineInfo.pMultisampleState   = &kIgnoreMultisampleState;
-            graphicsPipelineInfo.pDepthStencilState  = &s.depthStencilState;
+            graphicsPipelineInfo.pDepthStencilState  = &vkDepthStencilState;
             graphicsPipelineInfo.pColorBlendState    = &colorBlendInfo;
             graphicsPipelineInfo.pDynamicState       = &dynamicStateInfo;
             graphicsPipelineInfo.layout =
-                vk::PipelineLayout {reinterpret_cast<VkPipelineLayout>(s.pipelineLayout.getHandle())};
+                vk::PipelineLayout {reinterpret_cast<VkPipelineLayout>(m_PipelineLayout.getHandle())};
             graphicsPipelineInfo.renderPass          = nullptr;
             graphicsPipelineInfo.subpass = 0, graphicsPipelineInfo.basePipelineHandle = nullptr;
 
-            const vk::Device device {reinterpret_cast<VkDevice>(rd.getNativeDeviceHandle())};
+            const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
 
             vk::Pipeline handle {nullptr};
             const vk::PipelineCache pipelineCache {
-                reinterpret_cast<VkPipelineCache>(rd.getNativePipelineCacheHandle())};
+                reinterpret_cast<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd))};
             const auto result = device.createGraphicsPipelines(pipelineCache, 1, &graphicsPipelineInfo, nullptr, &handle);
             if (result != vk::Result::eSuccess)
             {
@@ -642,15 +607,15 @@ namespace vultra
                 device.destroyShaderModule(shaderModuleHandle);
             }
 
-            return GraphicsPipeline {rd.getNativeDeviceHandle(),
-                                     std::move(s.pipelineLayout),
-                                     reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(handle))};
+            return GraphicsPipeline {std::move(m_PipelineLayout),
+                                     reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(handle)),
+                                     std::make_unique<VulkanPipelineBackend>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
         }
 
-        GraphicsPipeline::GraphicsPipeline(const std::uintptr_t device,
-                                           PipelineLayout&&       pipelineLayout,
-                                           const std::uintptr_t   pipeline) :
-            BasePipeline {device, std::move(pipelineLayout), pipeline}
+        GraphicsPipeline::GraphicsPipeline(PipelineLayout&&                       pipelineLayout,
+                                           const std::uintptr_t                   pipeline,
+                                           std::unique_ptr<IPipelineBackend> destroyBackend) :
+            BasePipeline {std::move(pipelineLayout), pipeline, std::move(destroyBackend)}
         {}
     } // namespace rhi
 } // namespace vultra

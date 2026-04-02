@@ -5,7 +5,9 @@
 #include "vultra/core/rhi/backends/vk/vulkan_buffer.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_acceleration_structure_backend.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_compute_pipeline_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_pipeline_backend.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device_backend.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_render_device_backend.hpp"
 #include "vultra/core/rhi/raytracing_pipeline.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_radix_sorter.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
@@ -23,6 +25,7 @@
 
 #include <exception>
 #include <set>
+#include <thread>
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
@@ -143,18 +146,176 @@ namespace
 
 namespace
 {
+    [[nodiscard]] std::string toStdString(const WGPUStringView str)
+    {
+        if (!str.data)
+        {
+            return {};
+        }
+        if (str.length == WGPU_STRLEN)
+        {
+            return std::string {str.data};
+        }
+        return std::string {str.data, str.length};
+    }
+
+    [[nodiscard]] const char* toWgpuRequestAdapterStatusString(const WGPURequestAdapterStatus status)
+    {
+        switch (status)
+        {
+            case WGPURequestAdapterStatus_Success:
+                return "Success";
+            case WGPURequestAdapterStatus_InstanceDropped:
+                return "InstanceDropped";
+            case WGPURequestAdapterStatus_Unavailable:
+                return "Unavailable";
+            case WGPURequestAdapterStatus_Error:
+                return "Error";
+            case WGPURequestAdapterStatus_Unknown:
+                return "Unknown";
+            default:
+                return "Invalid";
+        }
+    }
+
+    [[nodiscard]] const char* toWgpuRequestDeviceStatusString(const WGPURequestDeviceStatus status)
+    {
+        switch (status)
+        {
+            case WGPURequestDeviceStatus_Success:
+                return "Success";
+            case WGPURequestDeviceStatus_InstanceDropped:
+                return "InstanceDropped";
+            case WGPURequestDeviceStatus_Error:
+                return "Error";
+            case WGPURequestDeviceStatus_Unknown:
+                return "Unknown";
+            default:
+                return "Invalid";
+        }
+    }
+
+    struct AdapterRequestResult
+    {
+        bool                     completed {false};
+        WGPURequestAdapterStatus status {WGPURequestAdapterStatus_Unknown};
+        WGPUAdapter              adapter {nullptr};
+        std::string              message;
+    };
+
+    struct DeviceRequestResult
+    {
+        bool                    completed {false};
+        WGPURequestDeviceStatus status {WGPURequestDeviceStatus_Unknown};
+        WGPUDevice              device {nullptr};
+        std::string             message;
+    };
+
+    void onRequestAdapter(const WGPURequestAdapterStatus status,
+                          const WGPUAdapter              adapter,
+                          const WGPUStringView           message,
+                          void*                          userdata1,
+                          void*)
+    {
+        auto* result     = static_cast<AdapterRequestResult*>(userdata1);
+        result->completed = true;
+        result->status    = status;
+        result->adapter   = adapter;
+        result->message   = toStdString(message);
+    }
+
+    void onRequestDevice(const WGPURequestDeviceStatus status,
+                         const WGPUDevice              device,
+                         const WGPUStringView          message,
+                         void*                         userdata1,
+                         void*)
+    {
+        auto* result     = static_cast<DeviceRequestResult*>(userdata1);
+        result->completed = true;
+        result->status    = status;
+        result->device    = device;
+        result->message   = toStdString(message);
+    }
+
+    void onDeviceLost(const WGPUDevice*,
+                      const WGPUDeviceLostReason reason,
+                      const WGPUStringView       message,
+                      void*,
+                      void*)
+    {
+        VULTRA_CORE_ERROR("[RenderDevice] WebGPU device lost (reason={}): {}",
+                          static_cast<int>(reason),
+                          toStdString(message));
+    }
+
+    void onUncapturedError(const WGPUDevice*,
+                           const WGPUErrorType type,
+                           const WGPUStringView message,
+                           void*,
+                           void*)
+    {
+        VULTRA_CORE_ERROR("[RenderDevice] WebGPU uncaptured error (type={}): {}",
+                          static_cast<int>(type),
+                          toStdString(message));
+    }
+
+    template<typename Predicate>
+    void waitForFuture(WGPUInstance instance, const WGPUFuture future, Predicate&& done)
+    {
+        WGPUFutureWaitInfo waitInfo {};
+        waitInfo.future    = future;
+
+        while (!done())
+        {
+            waitInfo.completed = false;
+            const auto waitStatus = wgpuInstanceWaitAny(instance, 1, &waitInfo, 0);
+            if (waitStatus != WGPUWaitStatus_Success && waitStatus != WGPUWaitStatus_TimedOut)
+            {
+                throw std::runtime_error(std::format("wgpuInstanceWaitAny failed with status {}", static_cast<int>(waitStatus)));
+            }
+
+            if (waitStatus == WGPUWaitStatus_TimedOut)
+            {
+                wgpuInstanceProcessEvents(instance);
+                std::this_thread::yield();
+            }
+        }
+    }
+
     [[nodiscard]] vultra::rhi::VulkanRenderDeviceBackend&
     backendOf(std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
     {
         assert(backend);
-        return *static_cast<vultra::rhi::VulkanRenderDeviceBackend*>(backend.get());
+        auto* vkBackend = dynamic_cast<vultra::rhi::VulkanRenderDeviceBackend*>(backend.get());
+        assert(vkBackend && "RenderDevice backend is not Vulkan");
+        return *vkBackend;
     }
 
     [[nodiscard]] const vultra::rhi::VulkanRenderDeviceBackend&
     backendOf(const std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
     {
         assert(backend);
-        return *static_cast<const vultra::rhi::VulkanRenderDeviceBackend*>(backend.get());
+        auto* vkBackend = dynamic_cast<const vultra::rhi::VulkanRenderDeviceBackend*>(backend.get());
+        assert(vkBackend && "RenderDevice backend is not Vulkan");
+        return *vkBackend;
+    }
+
+    [[nodiscard]] vultra::rhi::WebGPURenderDeviceBackend&
+    webgpuBackendOf(std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
+    {
+        assert(backend);
+        auto* webgpuBackend = dynamic_cast<vultra::rhi::WebGPURenderDeviceBackend*>(backend.get());
+        assert(webgpuBackend && "RenderDevice backend is not WebGPU");
+        return *webgpuBackend;
+    }
+
+    [[nodiscard]] const vultra::rhi::WebGPURenderDeviceBackend&
+    webgpuBackendOf(const std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
+    {
+        assert(backend);
+        auto* webgpuBackend = dynamic_cast<const vultra::rhi::WebGPURenderDeviceBackend*>(backend.get());
+        assert(webgpuBackend && "RenderDevice backend is not WebGPU");
+        return *webgpuBackend;
     }
 }
 
@@ -248,10 +409,116 @@ namespace vultra
         constexpr auto LOGTAG = "RenderDevice";
 
         RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits featureFlag,
-                                   std::string_view                  appName,
-                                   std::span<const char* const>      requiredInstanceExtensions) :
-            m_Backend(std::make_unique<VulkanRenderDeviceBackend>())
+                                   const std::string_view            appName,
+                                   const std::span<const char* const> requiredInstanceExtensions,
+                                   const RenderBackendApi            backendApi)
         {
+            switch (backendApi)
+            {
+                case RenderBackendApi::eAuto:
+                case RenderBackendApi::eVulkan:
+                    m_Backend = std::make_unique<VulkanRenderDeviceBackend>();
+                    break;
+                case RenderBackendApi::eWebGPU:
+                {
+                    m_Backend = std::make_unique<WebGPURenderDeviceBackend>();
+                    auto& backend      = webgpuBackendOf(m_Backend);
+                    backend.m_FeatureFlag = RenderDeviceFeatureFlagBits::eNormal;
+                    backend.m_AppName     = appName;
+
+                    WGPUInstanceDescriptor instanceDesc {};
+                    instanceDesc.nextInChain = nullptr;
+                    backend.m_Instance        = wgpuCreateInstance(&instanceDesc);
+                    if (!backend.m_Instance)
+                    {
+                        throw std::runtime_error("Failed to create WebGPU instance");
+                    }
+
+                    WGPURequestAdapterOptions adapterOptions {};
+                    adapterOptions.featureLevel = WGPUFeatureLevel_Core;
+                    adapterOptions.powerPreference = WGPUPowerPreference_HighPerformance;
+                    adapterOptions.forceFallbackAdapter = false;
+                    adapterOptions.backendType = WGPUBackendType_Undefined;
+                    adapterOptions.compatibleSurface = nullptr;
+
+                    AdapterRequestResult adapterResult {};
+                    WGPURequestAdapterCallbackInfo adapterCallbackInfo {};
+                    adapterCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
+                    adapterCallbackInfo.callback  = onRequestAdapter;
+                    adapterCallbackInfo.userdata1 = &adapterResult;
+                    adapterCallbackInfo.userdata2 = nullptr;
+
+                    const auto adapterFuture = wgpuInstanceRequestAdapter(backend.m_Instance, &adapterOptions, adapterCallbackInfo);
+                    waitForFuture(backend.m_Instance, adapterFuture, [&adapterResult]() { return adapterResult.completed; });
+                    if (adapterResult.status != WGPURequestAdapterStatus_Success || !adapterResult.adapter)
+                    {
+                        throw std::runtime_error(std::format("Failed to request WebGPU adapter ({}) {}",
+                                                             toWgpuRequestAdapterStatusString(adapterResult.status),
+                                                             adapterResult.message));
+                    }
+                    backend.m_Adapter = adapterResult.adapter;
+
+                    WGPUDeviceDescriptor deviceDesc {};
+                    deviceDesc.label.data   = backend.m_AppName.c_str();
+                    deviceDesc.label.length = WGPU_STRLEN;
+                    deviceDesc.requiredFeatureCount = 0;
+                    deviceDesc.requiredFeatures     = nullptr;
+                    deviceDesc.requiredLimits       = nullptr;
+                    deviceDesc.defaultQueue.label.data = backend.m_AppName.c_str();
+                    deviceDesc.defaultQueue.label.length = WGPU_STRLEN;
+                    deviceDesc.deviceLostCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
+                    deviceDesc.deviceLostCallbackInfo.callback  = onDeviceLost;
+                    deviceDesc.deviceLostCallbackInfo.userdata1 = nullptr;
+                    deviceDesc.deviceLostCallbackInfo.userdata2 = nullptr;
+                    deviceDesc.uncapturedErrorCallbackInfo.callback  = onUncapturedError;
+                    deviceDesc.uncapturedErrorCallbackInfo.userdata1 = nullptr;
+                    deviceDesc.uncapturedErrorCallbackInfo.userdata2 = nullptr;
+
+                    DeviceRequestResult deviceResult {};
+                    WGPURequestDeviceCallbackInfo deviceCallbackInfo {};
+                    deviceCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
+                    deviceCallbackInfo.callback  = onRequestDevice;
+                    deviceCallbackInfo.userdata1 = &deviceResult;
+                    deviceCallbackInfo.userdata2 = nullptr;
+
+                    const auto deviceFuture = wgpuAdapterRequestDevice(backend.m_Adapter, &deviceDesc, deviceCallbackInfo);
+                    waitForFuture(backend.m_Instance, deviceFuture, [&deviceResult]() { return deviceResult.completed; });
+                    if (deviceResult.status != WGPURequestDeviceStatus_Success || !deviceResult.device)
+                    {
+                        throw std::runtime_error(std::format("Failed to request WebGPU device ({}) {}",
+                                                             toWgpuRequestDeviceStatusString(deviceResult.status),
+                                                             deviceResult.message));
+                    }
+                    backend.m_Device = deviceResult.device;
+                    backend.m_Queue  = wgpuDeviceGetQueue(backend.m_Device);
+                    if (!backend.m_Queue)
+                    {
+                        throw std::runtime_error("Failed to get WebGPU queue");
+                    }
+
+                    WGPUAdapterInfo adapterInfo {};
+                    if (wgpuAdapterGetInfo(backend.m_Adapter, &adapterInfo) == WGPUStatus_Success)
+                    {
+                        auto name = toStdString(adapterInfo.description);
+                        if (name.empty())
+                        {
+                            name = toStdString(adapterInfo.device);
+                        }
+                        backend.m_FeatureReport.deviceName = std::move(name);
+                        wgpuAdapterInfoFreeMembers(adapterInfo);
+                    }
+                    if (backend.m_FeatureReport.deviceName.empty())
+                    {
+                        backend.m_FeatureReport.deviceName = "WebGPU Adapter";
+                    }
+
+                    backend.m_FeatureReport.apiMajor = 0;
+                    backend.m_FeatureReport.apiMinor = 0;
+                    backend.m_FeatureReport.apiPatch = 0;
+                    return;
+                }
+            }
+
             backendOf(m_Backend).m_FeatureFlag = featureFlag;
             backendOf(m_Backend).m_AppName     = appName;
             backendOf(m_Backend).m_RequiredInstanceExtensions.assign(requiredInstanceExtensions.begin(),
@@ -276,6 +543,32 @@ namespace vultra
 
         RenderDevice::~RenderDevice()
         {
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                auto& backend = webgpuBackendOf(m_Backend);
+                if (backend.m_Queue)
+                {
+                    wgpuQueueRelease(backend.m_Queue);
+                    backend.m_Queue = nullptr;
+                }
+                if (backend.m_Device)
+                {
+                    wgpuDeviceRelease(backend.m_Device);
+                    backend.m_Device = nullptr;
+                }
+                if (backend.m_Adapter)
+                {
+                    wgpuAdapterRelease(backend.m_Adapter);
+                    backend.m_Adapter = nullptr;
+                }
+                if (backend.m_Instance)
+                {
+                    wgpuInstanceRelease(backend.m_Instance);
+                    backend.m_Instance = nullptr;
+                }
+                return;
+            }
+
             if (backendOf(m_Backend).m_Device)
             {
                 backendOf(m_Backend).m_Device.waitIdle();
@@ -330,58 +623,34 @@ namespace vultra
             }
         }
 
-        RenderDeviceFeatureFlagBits RenderDevice::getFeatureFlag() const { return backendOf(m_Backend).m_FeatureFlag; }
-
-        RenderDeviceFeatureReport RenderDevice::getFeatureReport() const { return backendOf(m_Backend).m_FeatureReport; }
-
-        openxr::XRDevice* RenderDevice::getXRDevice() const { return backendOf(m_Backend).m_XRDevice; }
-
-        std::uintptr_t RenderDevice::getNativeInstanceHandle() const
+        RenderDeviceFeatureFlagBits RenderDevice::getFeatureFlag() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkInstance>(backendOf(m_Backend).m_Instance));
+            return m_Backend->getFeatureFlag();
         }
 
-        std::uintptr_t RenderDevice::getNativePhysicalDeviceHandle() const
+        RenderDeviceFeatureReport RenderDevice::getFeatureReport() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkPhysicalDevice>(backendOf(m_Backend).m_PhysicalDevice));
+            return m_Backend->getFeatureReport();
         }
 
-        std::uintptr_t RenderDevice::getNativeDeviceHandle() const
+        RenderDeviceSyncCapabilities RenderDevice::getSyncCapabilities() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device));
+            return m_Backend->getSyncCapabilities();
         }
 
-        int RenderDevice::getNativeQueueFamilyIndex() const { return backendOf(m_Backend).m_GenericQueueFamilyIndex; }
-
-        std::uintptr_t RenderDevice::getNativeQueueHandle() const
+        openxr::XRDevice* RenderDevice::getXRDevice() const
         {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkQueue>(backendOf(m_Backend).m_GenericQueue));
-        }
-
-        std::uintptr_t RenderDevice::getNativePipelineCacheHandle() const
-        {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkPipelineCache>(backendOf(m_Backend).m_PipelineCache));
-        }
-
-        std::uintptr_t RenderDevice::getNativeDescriptorPoolHandle() const
-        {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorPool>(backendOf(m_Backend).m_DefaultDescriptorPool));
+            return m_Backend->getXRDevice();
         }
 
         std::string RenderDevice::getName() const
         {
-            const auto v = backendOf(m_Backend).m_PhysicalDevice.getProperties().apiVersion;
-            return fmt::format(
-                "Vulkan {}.{}.{}", VK_API_VERSION_MAJOR(v), VK_API_VERSION_MINOR(v), VK_API_VERSION_PATCH(v));
+            return m_Backend->getName();
         }
 
         PhysicalDeviceInfo RenderDevice::getPhysicalDeviceInfo() const
         {
-            return PhysicalDeviceInfo {
-                .vendorId   = backendOf(m_Backend).m_PhysicalDevice.getProperties().vendorID,
-                .deviceId   = backendOf(m_Backend).m_PhysicalDevice.getProperties().deviceID,
-                .deviceName = backendOf(m_Backend).m_PhysicalDevice.getProperties().deviceName,
-            };
+            return m_Backend->getPhysicalDeviceInfo();
         }
 
         std::array<float, 2> RenderDevice::getLineWidthRange() const
@@ -423,6 +692,14 @@ namespace vultra
 
         FenceHandle RenderDevice::createFence(const bool signaled) const
         {
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                auto& backend = webgpuBackendOf(m_Backend);
+                const auto handle = backend.m_NextSyncHandle++;
+                backend.m_EmulatedFences[handle] = signaled;
+                return FenceHandle {handle};
+            }
+
             assert(backendOf(m_Backend).m_Device);
             vk::FenceCreateInfo createInfo {};
             createInfo.flags = signaled ? vk::FenceCreateFlagBits::eSignaled : vk::FenceCreateFlags(0u);
@@ -433,6 +710,14 @@ namespace vultra
 
         SemaphoreHandle RenderDevice::createSemaphore()
         {
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                auto& backend = webgpuBackendOf(m_Backend);
+                const auto handle = backend.m_NextSyncHandle++;
+                backend.m_EmulatedSemaphores.insert(handle);
+                return SemaphoreHandle {handle};
+            }
+
             assert(backendOf(m_Backend).m_Device);
             vk::SemaphoreCreateInfo createInfo {};
             createInfo.flags = vk::SemaphoreCreateFlags(0);
@@ -671,7 +956,7 @@ namespace vultra
             return DescriptorSetLayoutKey {hash};
         }
 
-        std::uintptr_t RenderDevice::getDescriptorSetLayoutNativeHandle(const DescriptorSetLayoutKey layoutKey) const
+        std::uintptr_t RenderDevice::getDescriptorSetLayoutBackendHandle(const DescriptorSetLayoutKey layoutKey) const
         {
             assert(layoutKey);
             if (const auto it = backendOf(m_Backend).m_DescriptorSetLayouts.find(layoutKey.value);
@@ -701,7 +986,7 @@ namespace vultra
                 descriptorSetLayoutKeys[set] = createDescriptorSetLayout(bindings);
                 descriptorSetLayouts[set] = vk::DescriptorSetLayout {
                     reinterpret_cast<VkDescriptorSetLayout>(
-                        getDescriptorSetLayoutNativeHandle(descriptorSetLayoutKeys[set]))};
+                        getDescriptorSetLayoutBackendHandle(descriptorSetLayoutKeys[set]))};
             }
             for (const auto& range : layoutInfo.pushConstantRanges)
             {
@@ -927,10 +1212,11 @@ namespace vultra
             }
 
             return ComputePipeline {
-                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device)),
                 std::move(pipelineLayout.value()),
                 reflection ? reflection->localSize.value() : glm::uvec3 {},
                 reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
+                std::make_unique<VulkanPipelineBackend>(
+                    reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device))),
                 std::make_unique<VulkanComputePipelineBackend>(
                     reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
                     reflection ? reflection->localSize.value() : glm::uvec3 {}),
@@ -966,10 +1252,11 @@ namespace vultra
             }
 
             return ComputePipeline {
-                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device)),
                 std::move(pipelineLayout.value()),
                 reflection ? reflection->localSize.value() : glm::uvec3 {},
                 reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
+                std::make_unique<VulkanPipelineBackend>(
+                    reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device))),
                 std::make_unique<VulkanComputePipelineBackend>(
                     reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
                     reflection ? reflection->localSize.value() : glm::uvec3 {}),
@@ -1064,6 +1351,15 @@ namespace vultra
         RenderDevice& RenderDevice::destroy(FenceHandle& fence)
         {
             assert(static_cast<bool>(fence));
+
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                auto& backend = webgpuBackendOf(m_Backend);
+                backend.m_EmulatedFences.erase(fence.value);
+                fence = {};
+                return *this;
+            }
+
             assert(backendOf(m_Backend).m_Device);
             backendOf(m_Backend).m_Device.destroyFence(vk::Fence {reinterpret_cast<VkFence>(fence.value)});
             fence = {};
@@ -1073,6 +1369,15 @@ namespace vultra
         RenderDevice& RenderDevice::destroy(SemaphoreHandle& semaphore)
         {
             assert(static_cast<bool>(semaphore));
+
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                auto& backend = webgpuBackendOf(m_Backend);
+                backend.m_EmulatedSemaphores.erase(semaphore.value);
+                semaphore = {};
+                return *this;
+            }
+
             assert(backendOf(m_Backend).m_Device);
             backendOf(m_Backend).m_Device.destroySemaphore(vk::Semaphore {reinterpret_cast<VkSemaphore>(semaphore.value)});
             semaphore = {};
@@ -2064,7 +2369,7 @@ namespace vultra
             presentInfo.pWaitSemaphores    = static_cast<bool>(wait) ? &waitSemaphore : nullptr;
             presentInfo.swapchainCount     = 1;
             const auto swapchainHandle     = vk::SwapchainKHR {
-                reinterpret_cast<VkSwapchainKHR>(swapchain.getNativeHandle())};
+                reinterpret_cast<VkSwapchainKHR>(swapchain.getHandle())};
             const auto imageIndex = swapchain.getCurrentBufferIndex();
             presentInfo.pSwapchains   = &swapchainHandle;
             presentInfo.pImageIndices = &imageIndex;
@@ -2089,6 +2394,17 @@ namespace vultra
         RenderDevice& RenderDevice::wait(const FenceHandle fence)
         {
             assert(static_cast<bool>(fence));
+
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                auto& backend = webgpuBackendOf(m_Backend);
+                if (const auto it = backend.m_EmulatedFences.find(fence.value); it != backend.m_EmulatedFences.end())
+                {
+                    it->second = true;
+                }
+                return *this;
+            }
+
             assert(backendOf(m_Backend).m_Device);
             const vk::Fence vkFence {reinterpret_cast<VkFence>(fence.value)};
             VK_CHECK(backendOf(m_Backend).m_Device.waitForFences(1, &vkFence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
@@ -2100,6 +2416,17 @@ namespace vultra
         RenderDevice& RenderDevice::reset(const FenceHandle fence)
         {
             assert(static_cast<bool>(fence));
+
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                auto& backend = webgpuBackendOf(m_Backend);
+                if (const auto it = backend.m_EmulatedFences.find(fence.value); it != backend.m_EmulatedFences.end())
+                {
+                    it->second = false;
+                }
+                return *this;
+            }
+
             assert(backendOf(m_Backend).m_Device);
             const vk::Fence vkFence {reinterpret_cast<VkFence>(fence.value)};
             VK_CHECK(backendOf(m_Backend).m_Device.resetFences(1, &vkFence), LOGTAG, "Failed to reset fence");
@@ -2209,7 +2536,7 @@ namespace vultra
                     break;
             }
             createInfo.size   = buildSizesInfo.accelerationStructureSize;
-            createInfo.buffer = vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getNativeHandle())};
+            createInfo.buffer = vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getHandle())};
             createInfo.offset = 0;
 
             vk::AccelerationStructureKHR handle {nullptr};
@@ -2690,7 +3017,7 @@ namespace vultra
         {
             assert(backendOf(m_Backend).m_Device);
             vk::BufferDeviceAddressInfo bufferDeviceAddressInfo {};
-            bufferDeviceAddressInfo.buffer = vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getNativeHandle())};
+            bufferDeviceAddressInfo.buffer = vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getHandle())};
             return DeviceAddress {backendOf(m_Backend).m_Device.getBufferAddress(bufferDeviceAddressInfo)};
         }
 

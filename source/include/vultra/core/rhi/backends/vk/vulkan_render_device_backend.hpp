@@ -3,7 +3,7 @@
 #include "vultra/core/profiling/tracy_wrapper.hpp"
 #include "vultra/core/rhi/interfaces/irender_device_backend.hpp"
 #include "vultra/core/rhi/shader_compiler.hpp"
-#include "vultra/core/rhi/structs/native_handles.hpp"
+#include "vultra/core/rhi/structs/handles.hpp"
 #include "vultra/core/rhi/structs/render_device_structs.hpp"
 
 #include <vulkan/vulkan.hpp>
@@ -28,6 +28,46 @@ namespace vultra
         struct VulkanRenderDeviceBackend final : IRenderDeviceBackend
         {
             friend class VulkanImGuiBackend;
+
+            [[nodiscard]] RenderBackendApi getBackendApi() const override { return RenderBackendApi::eVulkan; }
+
+            [[nodiscard]] RenderDeviceFeatureFlagBits getFeatureFlag() const override { return m_FeatureFlag; }
+
+            [[nodiscard]] RenderDeviceFeatureReport getFeatureReport() const override { return m_FeatureReport; }
+
+            [[nodiscard]] RenderDeviceSyncCapabilities getSyncCapabilities() const override
+            {
+                return RenderDeviceSyncCapabilities {
+                    .fence     = SyncPrimitiveSupport::eNative,
+                    .semaphore = SyncPrimitiveSupport::eNative,
+                };
+            }
+
+            [[nodiscard]] std::string getName() const override
+            {
+                if (!m_PhysicalDevice)
+                {
+                    return "Vulkan";
+                }
+                const auto v = m_PhysicalDevice.getProperties().apiVersion;
+                return std::format("Vulkan {}.{}.{}",
+                                   VK_API_VERSION_MAJOR(v),
+                                   VK_API_VERSION_MINOR(v),
+                                   VK_API_VERSION_PATCH(v));
+            }
+
+            [[nodiscard]] PhysicalDeviceInfo getPhysicalDeviceInfo() const override
+            {
+                if (!m_PhysicalDevice)
+                {
+                    return PhysicalDeviceInfo {.vendorId = 0u, .deviceId = 0u, .deviceName = "Unknown Vulkan Device"};
+                }
+
+                const auto props = m_PhysicalDevice.getProperties();
+                return PhysicalDeviceInfo {.vendorId = props.vendorID, .deviceId = props.deviceID, .deviceName = props.deviceName};
+            }
+
+            [[nodiscard]] openxr::XRDevice* getXRDevice() const override { return m_XRDevice; }
 
             std::set<std::string>       m_SupportedExtensions;
             RenderDeviceFeatureReport   m_FeatureReport {};

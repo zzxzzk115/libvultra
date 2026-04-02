@@ -13,12 +13,14 @@ namespace vultra
             return m_Backend->getWorkGroupSize();
         }
 
-        ComputePipeline::ComputePipeline(const std::uintptr_t device,
-                                         PipelineLayout&&     pipelineLayout,
-                                         const glm::uvec3     localSize,
-                                         const std::uintptr_t pipeline,
+        ComputePipeline::ComputePipeline(PipelineLayout&&                       pipelineLayout,
+                                         const glm::uvec3                       localSize,
+                                         const std::uintptr_t                   pipeline,
+                                         std::unique_ptr<IPipelineBackend> destroyBackend,
                                          std::unique_ptr<IComputePipelineBackend> backend) :
-            BasePipeline(device, std::move(pipelineLayout), pipeline), m_Backend(std::move(backend)), m_LocalSize(localSize)
+            BasePipeline(std::move(pipelineLayout), pipeline, std::move(destroyBackend)),
+            m_Backend(std::move(backend)),
+            m_LocalSize(localSize)
         {}
 
         glm::uvec2 calcNumWorkGroups(const glm::uvec2 extent, const glm::uvec2 localSize)

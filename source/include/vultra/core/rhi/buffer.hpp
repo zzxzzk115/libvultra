@@ -35,7 +35,6 @@ namespace vultra
             using Stride = uint32_t;
 
             [[nodiscard]] std::uintptr_t getHandle() const;
-            [[nodiscard]] std::uintptr_t getNativeHandle() const;
             [[nodiscard]] uint64_t       getSize() const;
 
             void*   map();

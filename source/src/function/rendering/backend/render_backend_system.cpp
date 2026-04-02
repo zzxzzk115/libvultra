@@ -83,15 +83,17 @@ namespace vultra
             case rhi::RenderBackendApi::eVulkan:
                 m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
                                                                       ctx().config.window.title,
-                                                                      window.getRequiredVulkanInstanceExtensions());
+                                                                      window.getRequiredVulkanInstanceExtensions(),
+                                                                      rhi::RenderBackendApi::eVulkan);
                 m_ImGuiBackend = std::make_unique<rhi::VulkanImGuiBackend>(*m_RenderDevice);
                 break;
 
             case rhi::RenderBackendApi::eWebGPU:
-                VULTRA_CORE_ERROR(
-                    "[RenderBackendSystem] WebGPU backend is not implemented yet. TODO: wire in a WebGPU render "
-                    "device backend (wgpu-native)");
-                throw std::runtime_error("WebGPU backend is not implemented yet");
+                m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
+                                                                      ctx().config.window.title,
+                                                                      std::span<const char* const> {},
+                                                                      rhi::RenderBackendApi::eWebGPU);
+                throw std::runtime_error("WebGPU backend path is not fully wired yet");
         }
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");

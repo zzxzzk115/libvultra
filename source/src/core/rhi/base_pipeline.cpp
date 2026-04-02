@@ -1,15 +1,12 @@
 #include "vultra/core/rhi/base_pipeline.hpp"
 
-#include <vulkan/vulkan.hpp>
-
 namespace vultra
 {
     namespace rhi
     {
         BasePipeline::BasePipeline(BasePipeline&& other) noexcept :
-            m_Device(other.m_Device), m_Layout(std::move(other.m_Layout)), m_Handle(other.m_Handle)
+            m_Layout(std::move(other.m_Layout)), m_Handle(other.m_Handle), m_Backend(std::move(other.m_Backend))
         {
-            other.m_Device = 0;
             other.m_Handle = 0;
         }
 
@@ -21,9 +18,9 @@ namespace vultra
             {
                 destroy();
 
-                std::swap(m_Device, rhs.m_Device);
                 m_Layout = std::move(rhs.m_Layout);
                 std::swap(m_Handle, rhs.m_Handle);
+                std::swap(m_Backend, rhs.m_Backend);
             }
 
             return *this;
@@ -40,10 +37,12 @@ namespace vultra
             return m_Layout.getDescriptorSet(index);
         }
 
-        BasePipeline::BasePipeline(const std::uintptr_t device, PipelineLayout&& layout, const std::uintptr_t pipeline) :
-            m_Device(device), m_Layout(std::move(layout)), m_Handle(pipeline)
+        BasePipeline::BasePipeline(PipelineLayout&&                     layout,
+                                   const std::uintptr_t                pipeline,
+                                   std::unique_ptr<IPipelineBackend> destroyBackend) :
+            m_Layout(std::move(layout)), m_Handle(pipeline), m_Backend(std::move(destroyBackend))
         {
-            assert(device != 0);
+            assert(m_Backend);
         }
 
         void BasePipeline::destroy() noexcept
@@ -53,10 +52,7 @@ namespace vultra
                 return;
             }
 
-            auto device = vk::Device {reinterpret_cast<VkDevice>(m_Device)};
-            device.destroyPipeline(vk::Pipeline {reinterpret_cast<VkPipeline>(m_Handle)});
-
-            m_Device = 0;
+            m_Backend->destroy(m_Handle);
             m_Handle = 0;
         }
     } // namespace rhi

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/structs/native_handles.hpp"
+#include "vultra/core/rhi/structs/handles.hpp"
 #include "vultra/core/rhi/structs/pipeline_stage.hpp"
 
 namespace vultra

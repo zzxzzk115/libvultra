@@ -3,6 +3,7 @@
 #include "vultra/core/event/window_events.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/swapchain.hpp"
@@ -49,13 +50,13 @@ namespace vultra::rhi
         renderingCreateInfo.setColorAttachmentFormats(colorFormat);
 
         ImGui_ImplVulkan_InitInfo initInfo {};
-        initInfo.Instance                    = reinterpret_cast<VkInstance>(renderDevice.getNativeInstanceHandle());
-        initInfo.PhysicalDevice              = reinterpret_cast<VkPhysicalDevice>(renderDevice.getNativePhysicalDeviceHandle());
-        initInfo.Device                      = reinterpret_cast<VkDevice>(renderDevice.getNativeDeviceHandle());
-        initInfo.QueueFamily                 = renderDevice.getNativeQueueFamilyIndex();
-        initInfo.Queue                       = reinterpret_cast<VkQueue>(renderDevice.getNativeQueueHandle());
+        initInfo.Instance = reinterpret_cast<VkInstance>(VulkanRenderDeviceAccess::getInstanceHandle(renderDevice));
+        initInfo.PhysicalDevice = reinterpret_cast<VkPhysicalDevice>(VulkanRenderDeviceAccess::getPhysicalDeviceHandle(renderDevice));
+        initInfo.Device         = reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(renderDevice));
+        initInfo.QueueFamily    = VulkanRenderDeviceAccess::getQueueFamilyIndex(renderDevice);
+        initInfo.Queue          = reinterpret_cast<VkQueue>(VulkanRenderDeviceAccess::getQueueHandle(renderDevice));
         initInfo.PipelineCache               = VK_NULL_HANDLE;
-        initInfo.DescriptorPool              = reinterpret_cast<VkDescriptorPool>(renderDevice.getNativeDescriptorPoolHandle());
+        initInfo.DescriptorPool = reinterpret_cast<VkDescriptorPool>(VulkanRenderDeviceAccess::getDescriptorPoolHandle(renderDevice));
         initInfo.Subpass                     = 0;
         initInfo.MinImageCount               = static_cast<uint32_t>(swapchain.getNumBuffers());
         initInfo.ImageCount                  = static_cast<uint32_t>(swapchain.getNumBuffers());
@@ -129,7 +130,7 @@ namespace vultra::rhi
     std::uintptr_t VulkanImGuiBackend::addTexture(const Texture& texture)
     {
         return reinterpret_cast<std::uintptr_t>(ImGui_ImplVulkan_AddTexture(reinterpret_cast<VkSampler>(m_RenderDevice.getSamplerHandle(texture.getSampler()).value),
-                                                                            reinterpret_cast<VkImageView>(texture.getImageView().getNativeHandle()),
+                                                                            reinterpret_cast<VkImageView>(texture.getImageView().getHandle()),
                                                                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
     }
 

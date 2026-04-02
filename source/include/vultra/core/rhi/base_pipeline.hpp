@@ -1,10 +1,12 @@
 #pragma once
 
 #include "vultra/core/rhi/pipeline_layout.hpp"
+#include "vultra/core/rhi/interfaces/ipipeline_backend.hpp"
 #include "vultra/core/rhi/structs/pipeline_bind_point.hpp"
 #include "vultra/core/rhi/structs/shader_stage_info.hpp"
 
 #include <cstdint>
+#include <memory>
 
 namespace vultra
 {
@@ -30,15 +32,15 @@ namespace vultra
             [[nodiscard]] DescriptorSetLayoutKey getDescriptorSetLayout(const DescriptorSetIndex) const;
 
         protected:
-            BasePipeline(std::uintptr_t, PipelineLayout&&, std::uintptr_t);
+            BasePipeline(PipelineLayout&&, std::uintptr_t, std::unique_ptr<IPipelineBackend>);
 
         private:
             void destroy() noexcept;
 
         private:
-            std::uintptr_t m_Device {0};
-            PipelineLayout m_Layout;
-            std::uintptr_t m_Handle {0};
+            PipelineLayout                                m_Layout;
+            std::uintptr_t                                m_Handle {0};
+            std::unique_ptr<IPipelineBackend> m_Backend;
         };
     } // namespace rhi
 } // namespace vultra

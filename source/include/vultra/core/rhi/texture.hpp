@@ -69,7 +69,7 @@ namespace vultra
             [[nodiscard]] PixelFormat getPixelFormat() const;
             [[nodiscard]] ImageUsage  getUsageFlags() const;
 
-            [[nodiscard]] std::uintptr_t getNativeImageHandle() const;
+            [[nodiscard]] std::uintptr_t getImageHandle() const;
             [[nodiscard]] ImageLayout getImageLayout() const;
             [[nodiscard]] uint32_t    getBaseArrayLayer() const;
             [[nodiscard]] uint32_t    getLayerFaceCount() const;
@@ -90,6 +90,16 @@ namespace vultra
                 getLayers(ImageAspectFlags = ImageAspectFlags::eNone) const;
 
             [[nodiscard]] Sampler getSampler() const;
+
+            // Wrap an externally created image into RHI Texture.
+            [[nodiscard]] static Texture
+            fromExternalImage(std::uintptr_t device, std::uintptr_t image, Extent2D, PixelFormat, uint32_t baseLayer = 0u);
+            [[nodiscard]] static Texture fromExternalImage(std::uintptr_t device,
+                                                           std::uintptr_t image,
+                                                           Extent2D,
+                                                           PixelFormat,
+                                                           uint32_t baseLayer,
+                                                           uint32_t numLayers);
 
             class Builder
             {

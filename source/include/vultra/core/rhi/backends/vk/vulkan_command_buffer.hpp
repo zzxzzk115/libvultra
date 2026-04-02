@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/interfaces/icommand_buffer_backend.hpp"
+#include "vultra/core/rhi/descriptorset_builder.hpp"
 #include "vultra/core/rhi/descriptorset_allocator.hpp"
 #include "vultra/core/profiling/tracy_wrapper.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
@@ -36,7 +37,6 @@ namespace vultra
             VulkanCommandBuffer& operator=(VulkanCommandBuffer&&) noexcept;
 
             [[nodiscard]] std::uintptr_t getHandle() const override;
-            [[nodiscard]] std::uintptr_t     getNativeHandle() const override;
             [[nodiscard]] TracyGpuContext    getTracyContext() const override;
 
             [[nodiscard]] Barrier::Builder& getBarrierBuilder() override;

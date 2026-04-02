@@ -9,7 +9,7 @@
 #include "vultra/core/rhi/structs/draw_indirect_command.hpp"
 #include "vultra/core/rhi/structs/device_address.hpp"
 #include "vultra/core/rhi/structs/image_aspect.hpp"
-#include "vultra/core/rhi/structs/native_handles.hpp"
+#include "vultra/core/rhi/structs/handles.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/radix_sorter.hpp"
@@ -31,6 +31,7 @@
 #include "vultra/core/rhi/vertex_buffer.hpp"
 #include "vultra/core/rhi/interfaces/irender_device_backend.hpp"
 #include "vultra/core/rhi/structs/job_info.hpp"
+#include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/core/rhi/structs/render_device_structs.hpp"
 
 #include <vbase/core/scoped_enum_flags.hpp>
@@ -63,19 +64,23 @@ namespace vultra
 
     namespace rhi
     {
+        class RenderDeviceBackendAccess;
+
         class RenderDevice final
         {
             friend class GraphicsPipeline;
             friend class RayTracingPipeline;
             friend class RadixSorter;
             friend class DescriptorSetBuilder;
+            friend class RenderDeviceBackendAccess;
             friend class vultra::ImGuiSystem;
             friend class openxr::XRHeadset;
 
         public:
             explicit RenderDevice(RenderDeviceFeatureFlagBits,
                                   std::string_view             appName                    = "Untitled Vultra App",
-                                  std::span<const char* const> requiredInstanceExtensions = {});
+                                  std::span<const char* const> requiredInstanceExtensions = {},
+                                  RenderBackendApi            backendApi                 = RenderBackendApi::eAuto);
             RenderDevice(const RenderDevice&)     = delete;
             RenderDevice(RenderDevice&&) noexcept = delete;
             ~RenderDevice();
@@ -85,6 +90,7 @@ namespace vultra
 
             [[nodiscard]] RenderDeviceFeatureFlagBits getFeatureFlag() const;
             [[nodiscard]] RenderDeviceFeatureReport   getFeatureReport() const;
+            [[nodiscard]] RenderDeviceSyncCapabilities getSyncCapabilities() const;
 
             [[nodiscard]] std::string getName() const;
 
@@ -240,15 +246,6 @@ namespace vultra
             // For the OpenXR
             openxr::XRDevice* getXRDevice() const;
 
-            // Native backend handles for backend-specific implementation code.
-            [[nodiscard]] std::uintptr_t getNativeInstanceHandle() const;
-            [[nodiscard]] std::uintptr_t getNativePhysicalDeviceHandle() const;
-            [[nodiscard]] std::uintptr_t getNativeDeviceHandle() const;
-            [[nodiscard]] int           getNativeQueueFamilyIndex() const;
-            [[nodiscard]] std::uintptr_t getNativeQueueHandle() const;
-            [[nodiscard]] std::uintptr_t getNativePipelineCacheHandle() const;
-            [[nodiscard]] std::uintptr_t getNativeDescriptorPoolHandle() const;
-
             // Bindless
             // Bindless resource ownership is higher-level (e.g., resource::GpuScene).
             // RenderDevice only provides helpers for creating bindless-capable resources.
@@ -274,7 +271,7 @@ namespace vultra
             [[nodiscard]] DescriptorSetLayoutKey
             createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>&);
             [[nodiscard]] std::uintptr_t
-            getDescriptorSetLayoutNativeHandle(DescriptorSetLayoutKey) const;
+            getDescriptorSetLayoutBackendHandle(DescriptorSetLayoutKey) const;
 
             std::uintptr_t allocateCommandBuffer() const;
             SamplerHandle   createSampler(const SamplerInfo&) const;

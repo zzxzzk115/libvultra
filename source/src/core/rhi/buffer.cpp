@@ -25,8 +25,6 @@ namespace vultra::rhi
         return m_Impl->getHandle();
     }
 
-    std::uintptr_t Buffer::getNativeHandle() const { return getHandle(); }
-
     uint64_t Buffer::getSize() const
     {
         assert(m_Impl);

@@ -70,12 +70,26 @@ namespace vultra
                 [[nodiscard]] GraphicsPipeline build(RenderDevice&);
 
             private:
-                struct InternalState;
-                std::unique_ptr<InternalState> m_State;
+                PixelFormat             m_DepthFormat {PixelFormat::eUndefined};
+                PixelFormat             m_StencilFormat {PixelFormat::eUndefined};
+                std::vector<PixelFormat> m_ColorAttachmentFormats;
+                uint32_t                m_ViewMask {0};
+
+                VertexAttributes m_VertexAttributes;
+                PrimitiveTopology m_PrimitiveTopology {PrimitiveTopology::eTriangleList};
+
+                std::unordered_map<ShaderType, ShaderStageInfo> m_ShaderStages;
+                std::unordered_map<ShaderType, SPIRV>           m_BuiltinShaderStages;
+                PipelineLayout                                  m_PipelineLayout;
+
+                DepthStencilState               m_DepthStencilState {};
+                RasterizerState                 m_RasterizerState {};
+                std::vector<BlendState>         m_BlendStates;
+                std::vector<DynamicState> m_DynamicStates {DynamicState::eViewport, DynamicState::eScissor};
             };
 
         private:
-            GraphicsPipeline(std::uintptr_t, PipelineLayout&&, std::uintptr_t);
+            GraphicsPipeline(PipelineLayout&&, std::uintptr_t, std::unique_ptr<IPipelineBackend>);
         };
     } // namespace rhi
 } // namespace vultra

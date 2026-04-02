@@ -51,6 +51,19 @@ namespace vultra
             uint32_t    apiPatch {0};
         };
 
+        enum class SyncPrimitiveSupport : uint8_t
+        {
+            eUnsupported,
+            eEmulated,
+            eNative,
+        };
+
+        struct RenderDeviceSyncCapabilities
+        {
+            SyncPrimitiveSupport fence {SyncPrimitiveSupport::eUnsupported};
+            SyncPrimitiveSupport semaphore {SyncPrimitiveSupport::eUnsupported};
+        };
+
         struct PhysicalDeviceInfo
         {
             uint32_t    vendorId;

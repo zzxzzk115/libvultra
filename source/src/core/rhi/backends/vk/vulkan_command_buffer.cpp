@@ -8,10 +8,14 @@
 #include "vultra/core/rhi/shader_binding_table.hpp"
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_descriptor_set_allocator_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_descriptor_set_builder_backend.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
 
 #include <glm/gtc/type_ptr.hpp> // value_ptr
+#include <memory>
 
 namespace vultra
 {
@@ -69,9 +73,9 @@ namespace vultra
                 vk::RenderingAttachmentInfo attachmentInfo {};
                 attachmentInfo.imageView = layer
                                                 ? vk::ImageView {reinterpret_cast<VkImageView>(
-                                                      target->getLayer(*layer, face).getNativeHandle())}
+                                                      target->getLayer(*layer, face).getHandle())}
                                                 : vk::ImageView {
-                                                      reinterpret_cast<VkImageView>(target->getImageView().getNativeHandle())};
+                                                      reinterpret_cast<VkImageView>(target->getImageView().getHandle())};
                 attachmentInfo.imageLayout = toVk(target->getImageLayout());
                 attachmentInfo.resolveMode = vk::ResolveModeFlagBits::eNone;
                 attachmentInfo.loadOp      = clearValue ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
@@ -157,11 +161,6 @@ namespace vultra
             return reinterpret_cast<std::uintptr_t>(static_cast<VkCommandBuffer>(m_Handle));
         }
 
-        std::uintptr_t VulkanCommandBuffer::getNativeHandle() const
-        {
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkCommandBuffer>(m_Handle));
-        }
-
         TracyGpuContext VulkanCommandBuffer::getTracyContext() const { return m_TracyContext; }
 
         Barrier::Builder& VulkanCommandBuffer::getBarrierBuilder() { return m_BarrierBuilder; }
@@ -169,10 +168,11 @@ namespace vultra
         DescriptorSetBuilder VulkanCommandBuffer::createDescriptorSetBuilder()
         {
             assert(m_RenderDevice);
-            return DescriptorSetBuilder(*m_RenderDevice,
-                                        reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(m_Device)),
-                                        m_DescriptorSetAllocator,
-                                        m_DescriptorSetCache);
+            return DescriptorSetBuilder(std::make_unique<VulkanDescriptorSetBuilderBackend>(
+                *m_RenderDevice,
+                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(m_Device)),
+                m_DescriptorSetAllocator,
+                m_DescriptorSetCache));
         }
 
         VulkanCommandBuffer& VulkanCommandBuffer::begin()
@@ -253,7 +253,7 @@ namespace vultra
             submitInfo.signalSemaphoreInfoCount = static_cast<bool>(jobInfo.signal) ? 1u : 0u;
             submitInfo.pSignalSemaphoreInfos    = static_cast<bool>(jobInfo.signal) ? &signalSemaphoreInfo : nullptr;
 
-            const vk::Queue queue {reinterpret_cast<VkQueue>(m_RenderDevice->getNativeQueueHandle())};
+            const vk::Queue queue {reinterpret_cast<VkQueue>(VulkanRenderDeviceAccess::getQueueHandle(*m_RenderDevice))};
             if (m_UseKhrSynchronization2)
             {
                 VK_CHECK(queue.submit2KHR(1, &submitInfo, m_Fence), "VulkanCommandBuffer", "Failed to submit command buffer");
@@ -318,7 +318,7 @@ namespace vultra
 
             TRACY_GPU_ZONE2_("DispatchIndirect");
             flushBarriers();
-            m_Handle.dispatchIndirect(vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getNativeHandle())},
+            m_Handle.dispatchIndirect(vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getHandle())},
                                       static_cast<vk::DeviceSize>(offset));
 
             return *this;
@@ -569,7 +569,7 @@ namespace vultra
 
                 setIndexBuffer(gi.indexBuffer);
                 flushBarriers();
-                m_Handle.drawIndexedIndirect(reinterpret_cast<VkBuffer>(dii.buffer->getNativeHandle()),
+                m_Handle.drawIndexedIndirect(reinterpret_cast<VkBuffer>(dii.buffer->getHandle()),
                                              dii.firstCommand * dii.buffer->getStride(),
                                              dii.commandCount,
                                              dii.buffer->getStride());
@@ -577,7 +577,7 @@ namespace vultra
             else
             {
                 flushBarriers();
-                m_Handle.drawIndirect(reinterpret_cast<VkBuffer>(dii.buffer->getNativeHandle()),
+                m_Handle.drawIndirect(reinterpret_cast<VkBuffer>(dii.buffer->getHandle()),
                                       dii.firstCommand * dii.buffer->getStride(),
                                       dii.commandCount,
                                       dii.buffer->getStride());
@@ -607,9 +607,9 @@ namespace vultra
 
                 setIndexBuffer(gi.indexBuffer);
                 flushBarriers();
-                m_Handle.drawIndexedIndirectCount(reinterpret_cast<VkBuffer>(dii.buffer->getNativeHandle()),
+                m_Handle.drawIndexedIndirectCount(reinterpret_cast<VkBuffer>(dii.buffer->getHandle()),
                                                   dii.firstCommand * dii.buffer->getStride(),
-                                                  reinterpret_cast<VkBuffer>(countBuffer.getNativeHandle()),
+                                                  reinterpret_cast<VkBuffer>(countBuffer.getHandle()),
                                                   countOffset,
                                                   dii.commandCount,
                                                   dii.buffer->getStride());
@@ -617,9 +617,9 @@ namespace vultra
             else
             {
                 flushBarriers();
-                m_Handle.drawIndirectCount(reinterpret_cast<VkBuffer>(dii.buffer->getNativeHandle()),
+                m_Handle.drawIndirectCount(reinterpret_cast<VkBuffer>(dii.buffer->getHandle()),
                                            dii.firstCommand * dii.buffer->getStride(),
-                                           reinterpret_cast<VkBuffer>(countBuffer.getNativeHandle()),
+                                           reinterpret_cast<VkBuffer>(countBuffer.getHandle()),
                                            countOffset,
                                            dii.commandCount,
                                            dii.buffer->getStride());
@@ -648,7 +648,7 @@ namespace vultra
             TRACY_GPU_ZONE2_("ClearBuffer");
             flushBarriers();
 
-            m_Handle.fillBuffer(reinterpret_cast<VkBuffer>(buffer.getNativeHandle()), 0, vk::WholeSize, value);
+            m_Handle.fillBuffer(reinterpret_cast<VkBuffer>(buffer.getHandle()), 0, vk::WholeSize, value);
             return *this;
         }
 
@@ -659,7 +659,7 @@ namespace vultra
 
             TRACY_GPU_ZONE2_("ClearTexture");
 
-            const auto                imageHandle = reinterpret_cast<VkImage>(texture.getNativeImageHandle());
+            const auto                imageHandle = reinterpret_cast<VkImage>(texture.getImageHandle());
             const auto                imageLayout = toVk(texture.getImageLayout());
             const auto                v           = toVk(clearValue);
             vk::ImageSubresourceRange range {};
@@ -692,8 +692,8 @@ namespace vultra
             vkCopyRegion.dstOffset = copyRegion.dstOffset;
             vkCopyRegion.size      = copyRegion.size;
 
-            m_Handle.copyBuffer(reinterpret_cast<VkBuffer>(src.getNativeHandle()),
-                                reinterpret_cast<VkBuffer>(dst.getNativeHandle()),
+            m_Handle.copyBuffer(reinterpret_cast<VkBuffer>(src.getHandle()),
+                                reinterpret_cast<VkBuffer>(dst.getHandle()),
                                 1,
                                 &vkCopyRegion);
             return *this;
@@ -747,8 +747,8 @@ namespace vultra
                 {.image = dst, .newLayout = kExpectedLayout},
                 {.dstStage = PipelineStages::eTransfer, .dstAccess = Access::eTransferWrite});
             flushBarriers();
-            m_Handle.copyBufferToImage(reinterpret_cast<VkBuffer>(src.getNativeHandle()),
-                                       reinterpret_cast<VkImage>(dst.getNativeImageHandle()),
+            m_Handle.copyBufferToImage(reinterpret_cast<VkBuffer>(src.getHandle()),
+                                       reinterpret_cast<VkImage>(dst.getImageHandle()),
                                        toVk(kExpectedLayout),
                                        static_cast<uint32_t>(vkCopyRegions.size()),
                                        vkCopyRegions.data());
@@ -771,9 +771,9 @@ namespace vultra
             region.imageExtent.depth           = 1;
 
             vk::CopyImageToBufferInfo2 info {};
-            info.srcImage       = reinterpret_cast<VkImage>(src.getNativeImageHandle());
+            info.srcImage       = reinterpret_cast<VkImage>(src.getImageHandle());
             info.srcImageLayout = toVk(src.getImageLayout());
-            info.dstBuffer      = reinterpret_cast<VkBuffer>(dst.getNativeHandle());
+            info.dstBuffer      = reinterpret_cast<VkBuffer>(dst.getHandle());
             info.regionCount    = 1;
             info.pRegions       = &region;
 
@@ -794,14 +794,14 @@ namespace vultra
             flushBarriers();
             if (size > kMaxDataSize)
             {
-                chunkedUpdate(reinterpret_cast<VkBuffer>(buffer.getNativeHandle()),
+                chunkedUpdate(reinterpret_cast<VkBuffer>(buffer.getHandle()),
                               static_cast<vk::DeviceSize>(offset),
                               static_cast<vk::DeviceSize>(size),
                               data);
             }
             else
             {
-                m_Handle.updateBuffer(reinterpret_cast<VkBuffer>(buffer.getNativeHandle()),
+                m_Handle.updateBuffer(reinterpret_cast<VkBuffer>(buffer.getHandle()),
                                       static_cast<vk::DeviceSize>(offset),
                                       static_cast<vk::DeviceSize>(size),
                                       data);
@@ -882,9 +882,9 @@ namespace vultra
             region.dstSubresource.layerCount     = 1;
             region.dstOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(dst)};
 
-            m_Handle.blitImage(reinterpret_cast<VkImage>(src.getNativeImageHandle()),
+            m_Handle.blitImage(reinterpret_cast<VkImage>(src.getImageHandle()),
                                toVk(src.getImageLayout()),
-                               reinterpret_cast<VkImage>(dst.getNativeImageHandle()),
+                               reinterpret_cast<VkImage>(dst.getImageHandle()),
                                toVk(dst.getImageLayout()),
                                1,
                                &region,
@@ -972,9 +972,9 @@ namespace vultra
                                                   }};
 
                 // Blit from previous level
-                m_Handle.blitImage(reinterpret_cast<VkImage>(texture.getNativeImageHandle()),
+                m_Handle.blitImage(reinterpret_cast<VkImage>(texture.getImageHandle()),
                                    vk::ImageLayout::eTransferSrcOptimal,
-                                   reinterpret_cast<VkImage>(texture.getNativeImageHandle()),
+                                   reinterpret_cast<VkImage>(texture.getImageHandle()),
                                    vk::ImageLayout::eTransferDstOptimal,
                                    1,
                                    &blitInfo,
@@ -1045,7 +1045,7 @@ namespace vultra
                     vkBarrier.dstAccessMask       = toVk(buffer.dst.dstAccess);
                     vkBarrier.srcQueueFamilyIndex = vk::QueueFamilyIgnored;
                     vkBarrier.dstQueueFamilyIndex = vk::QueueFamilyIgnored;
-                    vkBarrier.buffer              = reinterpret_cast<VkBuffer>(buffer.buffer->getNativeHandle());
+                    vkBarrier.buffer              = reinterpret_cast<VkBuffer>(buffer.buffer->getHandle());
                     vkBarrier.offset              = buffer.offset;
                     vkBarrier.size                = buffer.size;
                     bufferBarriers.emplace_back(vkBarrier);
@@ -1063,7 +1063,7 @@ namespace vultra
                     vkBarrier.newLayout           = toVk(image.newLayout);
                     vkBarrier.srcQueueFamilyIndex = vk::QueueFamilyIgnored;
                     vkBarrier.dstQueueFamilyIndex = vk::QueueFamilyIgnored;
-                    vkBarrier.image               = reinterpret_cast<VkImage>(image.image->getNativeImageHandle());
+                    vkBarrier.image               = reinterpret_cast<VkImage>(image.image->getImageHandle());
                     vkBarrier.subresourceRange = vk::ImageSubresourceRange {
                         toVk(image.subresourceRange.aspectMask),
                         image.subresourceRange.baseMipLevel,
@@ -1105,7 +1105,10 @@ namespace vultra
                                      const bool              enableRaytracing) :
             m_Device(device), m_CommandPool(commandPool), m_State(State::eInitial), m_Handle(handle),
             m_TracyContext(tracyContext), m_Fence(fence), m_RenderDevice(renderDevice),
-            m_DescriptorSetAllocator(reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(device)), enableRaytracing),
+            m_DescriptorSetAllocator(
+                std::make_unique<VulkanDescriptorSetAllocatorBackend>(
+                    reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(device))),
+                enableRaytracing),
             m_UseKhrDynamicRendering(useKhrDynamicRendering), m_UseKhrSynchronization2(useKhrSynchronization2)
         {}
 
@@ -1209,7 +1212,7 @@ namespace vultra
             if (vertexBuffer)
             {
                 TRACY_GPU_ZONE2_("SetVertexBuffer");
-                const auto bufferHandle = vk::Buffer {reinterpret_cast<VkBuffer>(vertexBuffer->getNativeHandle())};
+                const auto bufferHandle = vk::Buffer {reinterpret_cast<VkBuffer>(vertexBuffer->getHandle())};
                 m_Handle.bindVertexBuffers(0, 1, &bufferHandle, &offset);
             }
             m_VertexBuffer = vertexBuffer;
@@ -1226,7 +1229,7 @@ namespace vultra
             {
                 TRACY_GPU_ZONE2_("SetIndexBuffer");
                 const auto indexType = toVk(indexBuffer->getIndexType());
-                m_Handle.bindIndexBuffer(vk::Buffer {reinterpret_cast<VkBuffer>(indexBuffer->getNativeHandle())},
+                m_Handle.bindIndexBuffer(vk::Buffer {reinterpret_cast<VkBuffer>(indexBuffer->getHandle())},
                                          0,
                                          indexType);
             }

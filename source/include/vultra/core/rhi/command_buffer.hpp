@@ -4,8 +4,9 @@
 #include "vultra/core/profiling/tracky.hpp"
 #include "vultra/core/profiling/tracy_wrapper.hpp"
 #include "vultra/core/rhi/interfaces/icommand_buffer_backend.hpp"
+#include "vultra/core/rhi/descriptorset_builder.hpp"
 #include "vultra/core/rhi/debug_marker.hpp"
-#include "vultra/core/rhi/structs/native_handles.hpp"
+#include "vultra/core/rhi/structs/handles.hpp"
 #include "vultra/core/rhi/structs/buffer_image_copy.hpp"
 
 #include <vbase/core/scoped_enum_flags.hpp>
@@ -50,11 +51,6 @@ namespace vultra
             {
                 assert(m_Impl);
                 return m_Impl->getHandle();
-            }
-            [[nodiscard]] std::uintptr_t getNativeHandle() const
-            {
-                assert(m_Impl);
-                return m_Impl->getNativeHandle();
             }
             [[nodiscard]] TracyGpuContext getTracyContext() const
             {

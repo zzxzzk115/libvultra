@@ -87,16 +87,16 @@ namespace vultra
             return *this;
         }
 
-        RayTracingPipeline::RayTracingPipeline(const std::uintptr_t                         device,
-                                               PipelineLayout&&                             pipelineLayout,
+        RayTracingPipeline::RayTracingPipeline(PipelineLayout&&                             pipelineLayout,
                                                const std::uintptr_t                         handle,
+                                               std::unique_ptr<IPipelineBackend> destroyBackend,
                                                std::vector<RaytracingShaderGroup>&&        groups,
                                                std::vector<uint32_t>&&                      raygenGroupIndices,
                                                std::vector<uint32_t>&&                      missGroupIndices,
                                                std::vector<uint32_t>&&                      hitGroupIndices,
                                                std::vector<uint32_t>&&                      callableGroupIndices,
                                                std::unique_ptr<IRayTracingPipelineBackend> backend) :
-            BasePipeline {device, std::move(pipelineLayout), handle}, m_Groups(std::move(groups)),
+            BasePipeline {std::move(pipelineLayout), handle, std::move(destroyBackend)}, m_Groups(std::move(groups)),
             m_RaygenGroupIndices(std::move(raygenGroupIndices)), m_MissGroupIndices(std::move(missGroupIndices)),
             m_HitGroupIndices(std::move(hitGroupIndices)), m_CallableGroupIndices(std::move(callableGroupIndices)),
             m_Backend(std::move(backend))
