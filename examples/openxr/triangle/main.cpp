@@ -184,8 +184,8 @@ protected:
     Ref<Renderer> makeRenderer() const override { return createRef<OpenXRTriangleRenderer>(); }
 };
 
-int main()
+int main(int argc, char** argv)
 {
     OpenXRExampleApp app {};
-    return app.run();
+    return app.run(argc, argv);
 }

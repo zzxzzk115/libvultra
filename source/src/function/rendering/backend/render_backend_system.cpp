@@ -2,7 +2,8 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_imgui_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_imgui.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_imgui.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
@@ -77,7 +78,17 @@ namespace vultra
         }
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating render device");
-        switch (ctx().config.render.backendApi)
+        auto requestedBackendApi = ctx().config.render.backendApi;
+#if defined(__ANDROID__)
+        if (requestedBackendApi == rhi::RenderBackendApi::eWebGPU)
+        {
+            VULTRA_CORE_WARN(
+                "[RenderBackendSystem] WebGPU is disabled on Android. Falling back to Vulkan backend.");
+            requestedBackendApi = rhi::RenderBackendApi::eVulkan;
+        }
+#endif
+
+        switch (requestedBackendApi)
         {
             case rhi::RenderBackendApi::eAuto:
             case rhi::RenderBackendApi::eVulkan:
@@ -85,7 +96,7 @@ namespace vultra
                                                                       ctx().config.window.title,
                                                                       window.getRequiredVulkanInstanceExtensions(),
                                                                       rhi::RenderBackendApi::eVulkan);
-                m_ImGuiBackend = std::make_unique<rhi::VulkanImGuiBackend>(*m_RenderDevice);
+                m_ImGuiBackend = std::make_unique<rhi::VulkanImGui>(*m_RenderDevice);
                 break;
 
             case rhi::RenderBackendApi::eWebGPU:
@@ -93,7 +104,14 @@ namespace vultra
                                                                       ctx().config.window.title,
                                                                       std::span<const char* const> {},
                                                                       rhi::RenderBackendApi::eWebGPU);
-                throw std::runtime_error("WebGPU backend path is not fully wired yet");
+                m_ImGuiBackend = std::make_unique<rhi::WebGPUImGui>(*m_RenderDevice);
+                break;
+        }
+
+        if (!m_RenderDevice->supportsSwapchain())
+        {
+            throw std::runtime_error(std::format("Backend '{}' does not support swapchain yet",
+                                                 m_RenderDevice->getName()));
         }
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");
@@ -158,7 +176,7 @@ namespace vultra
 
     rhi::FrameController& RenderBackendSystem::frameController() { return *m_FrameController; }
 
-    rhi::IImGuiBackend& RenderBackendSystem::imguiBackend() { return *m_ImGuiBackend; }
+    rhi::IImGui& RenderBackendSystem::imguiBackend() { return *m_ImGuiBackend; }
 
     bool RenderBackendSystem::beginFrame()
     {

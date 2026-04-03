@@ -1,0 +1,789 @@
+#include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer.hpp"
+#include "vultra/core/rhi/backends/webgpu/conversions.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_descriptor_set.hpp"
+
+#include "vultra/core/base/common_context.hpp"
+#include "vultra/core/base/visitor_helper.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_swapchain.hpp"
+#include "vultra/core/rhi/descriptorset_builder.hpp"
+#include "vultra/core/rhi/index_buffer.hpp"
+#include "vultra/core/rhi/interfaces/idescriptor_set_builder.hpp"
+#include "vultra/core/rhi/interfaces/texture_access.hpp"
+#include "vultra/core/rhi/structs/pipeline_layout_structs.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
+#include "vultra/core/rhi/texture.hpp"
+#include "vultra/core/rhi/vertex_buffer.hpp"
+
+#include <stdexcept>
+#include <string>
+#include <cstring>
+#include <unordered_map>
+
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+#include <webgpu/webgpu.h>
+#endif
+
+namespace vultra
+{
+    namespace rhi
+    {
+        namespace
+        {
+            class WebGPUDescriptorSetBuilder final : public IDescriptorSetBuilder
+            {
+            public:
+                explicit WebGPUDescriptorSetBuilder(std::vector<std::unique_ptr<WebGPUDescriptorSet>>& storage) :
+                    m_Storage(storage)
+                {}
+
+                void bind(const BindingIndex index, const ResourceBinding& binding) override
+                {
+                    m_Bindings[index] = binding;
+                }
+                void bind(const BindingIndex index, const bindings::SeparateSampler& value) override
+                {
+                    m_Bindings[index] = value;
+                }
+                void bind(const BindingIndex index, const bindings::CombinedImageSampler& value) override
+                {
+                    m_Bindings[index] = value;
+                }
+                void bind(const BindingIndex index, const bindings::CombinedImageSamplerArray& value) override
+                {
+                    m_Bindings[index] = value;
+                }
+                void bind(const BindingIndex index, const bindings::SampledImage& value) override
+                {
+                    m_Bindings[index] = value;
+                }
+                void bind(const BindingIndex index, const bindings::StorageImage& value) override
+                {
+                    m_Bindings[index] = value;
+                }
+                void bind(const BindingIndex index, const bindings::UniformBuffer& value) override
+                {
+                    m_Bindings[index] = value;
+                }
+                void bind(const BindingIndex index, const bindings::StorageBuffer& value) override
+                {
+                    m_Bindings[index] = value;
+                }
+                void bind(const BindingIndex index, const bindings::AccelerationStructureKHR& value) override
+                {
+                    m_Bindings[index] = value;
+                }
+
+                [[nodiscard]] DescriptorSetHandle build(const DescriptorSetLayoutKey layoutKey) override
+                {
+                    auto descriptorSet = std::make_unique<WebGPUDescriptorSet>(layoutKey, std::move(m_Bindings));
+                    auto* handle = descriptorSet.get();
+                    m_Storage.emplace_back(std::move(descriptorSet));
+                    return DescriptorSetHandle {reinterpret_cast<std::uintptr_t>(handle)};
+                }
+
+            private:
+                std::unordered_map<BindingIndex, ResourceBinding>      m_Bindings;
+                std::vector<std::unique_ptr<WebGPUDescriptorSet>>& m_Storage;
+            };
+
+            [[nodiscard]] WGPUColor toWgpuColor(const std::optional<ClearValue>& clearValue)
+            {
+                if (!clearValue.has_value())
+                {
+                    return WGPUColor {.r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0};
+                }
+
+                return std::visit(
+                    Overload {
+                        [](const glm::vec4& v) { return WGPUColor {.r = v.x, .g = v.y, .b = v.z, .a = v.w}; },
+                        [](const glm::ivec4& v) {
+                            return WGPUColor {.r = static_cast<float>(v.x),
+                                              .g = static_cast<float>(v.y),
+                                              .b = static_cast<float>(v.z),
+                                              .a = static_cast<float>(v.w)};
+                        },
+                        [](const glm::uvec4& v) {
+                            return WGPUColor {.r = static_cast<float>(v.x),
+                                              .g = static_cast<float>(v.y),
+                                              .b = static_cast<float>(v.z),
+                                              .a = static_cast<float>(v.w)};
+                        },
+                        [](const float v) { return WGPUColor {.r = v, .g = 0.0, .b = 0.0, .a = 1.0}; },
+                        [](const uint32_t v) {
+                            return WGPUColor {.r = static_cast<float>(v), .g = 0.0, .b = 0.0, .a = 1.0};
+                        },
+                    },
+                    *clearValue);
+            }
+
+            [[nodiscard]] float toWgpuDepthClear(const std::optional<ClearValue>& clearValue)
+            {
+                if (!clearValue.has_value())
+                {
+                    return 1.0f;
+                }
+
+                return std::visit(
+                    Overload {
+                        [](const glm::vec4& v) { return v.x; },
+                        [](const glm::ivec4& v) { return static_cast<float>(v.x); },
+                        [](const glm::uvec4& v) { return static_cast<float>(v.x); },
+                        [](const float v) { return v; },
+                        [](const uint32_t v) { return static_cast<float>(v); },
+                    },
+                    *clearValue);
+            }
+
+            [[nodiscard]] uint32_t toWgpuStencilClear(const std::optional<ClearValue>& clearValue)
+            {
+                if (!clearValue.has_value())
+                {
+                    return 0u;
+                }
+
+                return std::visit(
+                    Overload {
+                        [](const glm::vec4& v) { return static_cast<uint32_t>(v.y); },
+                        [](const glm::ivec4& v) { return static_cast<uint32_t>(v.y); },
+                        [](const glm::uvec4& v) { return v.y; },
+                        [](const float) { return 0u; },
+                        [](const uint32_t v) { return v; },
+                    },
+                    *clearValue);
+            }
+
+        } // namespace
+
+        WebGPUCommandBuffer::WebGPUCommandBuffer(const WebGPURenderDevice& backend) :
+            m_Instance(backend.m_Instance), m_Device(backend.m_Device), m_Queue(backend.m_Queue), m_Backend(&backend)
+        {}
+
+        WebGPUCommandBuffer::~WebGPUCommandBuffer() { releaseTransientResources(); }
+
+        std::uintptr_t WebGPUCommandBuffer::getHandle() const
+        {
+            return reinterpret_cast<std::uintptr_t>(m_Encoder);
+        }
+
+        TracyGpuContext WebGPUCommandBuffer::getTracyContext() const { return nullptr; }
+
+        Barrier::Builder& WebGPUCommandBuffer::getBarrierBuilder() { return m_BarrierBuilder; }
+
+        DescriptorSetBuilder WebGPUCommandBuffer::createDescriptorSetBuilder()
+        {
+            return DescriptorSetBuilder {std::make_unique<WebGPUDescriptorSetBuilder>(m_DescriptorSets)};
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::begin()
+        {
+            if (m_Recording)
+            {
+                return *this;
+            }
+
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_Device == nullptr)
+            {
+                throw std::runtime_error("WebGPUCommandBuffer begin failed: invalid WebGPU device");
+            }
+
+            WGPUCommandEncoderDescriptor encoderDesc {};
+            m_Encoder = wgpuDeviceCreateCommandEncoder(m_Device, &encoderDesc);
+            if (m_Encoder == nullptr)
+            {
+                throw std::runtime_error("WebGPUCommandBuffer begin failed: wgpuDeviceCreateCommandEncoder returned null");
+            }
+#endif
+            m_Recording       = true;
+            m_InsideRendering = false;
+            m_PipelineBoundInCurrentPass = false;
+            return *this;
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::end()
+        {
+            if (!m_Recording)
+            {
+                return *this;
+            }
+            if (m_InsideRendering)
+            {
+                endRendering();
+            }
+            m_Recording = false;
+            return *this;
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::reset()
+        {
+            releaseTransientResources();
+            m_Recording       = false;
+            m_InsideRendering = false;
+            m_SkipCurrentRendering = false;
+            m_BoundPipeline = nullptr;
+            m_BoundPipelineObject = nullptr;
+            m_BarrierBuilder      = Barrier::Builder {};
+            m_OwnsRenderView      = false;
+            m_OwnsDepthView       = false;
+            m_PipelineBoundInCurrentPass = false;
+            return *this;
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::submit(const JobInfo&, const bool)
+        {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_Encoder == nullptr)
+            {
+                return *this;
+            }
+            if (m_InsideRendering)
+            {
+                endRendering();
+            }
+            if (m_Recording)
+            {
+                end();
+            }
+
+            WGPUCommandBuffer commandBuffer = wgpuCommandEncoderFinish(m_Encoder, nullptr);
+            if (commandBuffer != nullptr)
+            {
+                if (m_Queue != nullptr)
+                {
+                    wgpuQueueSubmit(m_Queue, 1, &commandBuffer);
+                }
+                wgpuCommandBufferRelease(commandBuffer);
+            }
+#endif
+            releaseTransientResources();
+            m_BarrierBuilder = Barrier::Builder {};
+            return *this;
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::bindPipeline(const BasePipeline& pipeline)
+        {
+            m_BoundPipeline = reinterpret_cast<WGPURenderPipeline>(pipeline.getHandle());
+            m_BoundPipelineObject = &pipeline;
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_InsideRendering && m_RenderPass != nullptr && m_BoundPipeline != nullptr)
+            {
+                wgpuRenderPassEncoderSetPipeline(m_RenderPass, m_BoundPipeline);
+                m_PipelineBoundInCurrentPass = true;
+            }
+#endif
+            return *this;
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::dispatch(const ComputePipeline&, const glm::uvec3&) { unsupported("dispatch(ComputePipeline)"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::dispatch(const glm::uvec3&) { unsupported("dispatch"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::dispatchIndirect(const Buffer&, uint64_t) { unsupported("dispatchIndirect"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::insertComputeUavBarrier() { return *this; }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::traceRays(const ShaderBindingTable&, const glm::uvec3&) { unsupported("traceRays"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::bindDescriptorSet(const DescriptorSetIndex index, const DescriptorSetHandle descriptorSet)
+        {
+#if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
+            (void)index;
+            (void)descriptorSet;
+            return *this;
+#else
+            if (m_RenderPass == nullptr || m_BoundPipeline == nullptr || m_BoundPipelineObject == nullptr || m_Backend == nullptr ||
+                !descriptorSet)
+            {
+                return *this;
+            }
+
+            auto* setData = reinterpret_cast<WebGPUDescriptorSet*>(descriptorSet.value);
+            if (setData == nullptr)
+            {
+                return *this;
+            }
+
+            const auto expectedLayoutKey = m_BoundPipelineObject->getDescriptorSetLayout(index);
+            if (!expectedLayoutKey)
+            {
+                return *this;
+            }
+
+            if (setData->layoutKey() && setData->layoutKey().value != expectedLayoutKey.value)
+            {
+                VULTRA_CORE_WARN(
+                    "[WebGPUCommandBuffer] DescriptorSet layout mismatch at set={} (built={}, expected={})",
+                    index,
+                    setData->layoutKey().value,
+                    expectedLayoutKey.value);
+            }
+
+            const auto bindGroup = setData->getOrCreateBindGroup(*m_Backend, expectedLayoutKey);
+            if (bindGroup == nullptr)
+            {
+                return *this;
+            }
+            wgpuRenderPassEncoderSetBindGroup(m_RenderPass, index, bindGroup, 0, nullptr);
+            return *this;
+#endif
+        }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::pushConstants(ShaderStages, uint32_t, uint32_t, const void*) { return *this; }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::beginRendering(const FramebufferInfo& framebufferInfo)
+        {
+            if (m_Encoder == nullptr)
+            {
+                throw std::runtime_error("WebGPUCommandBuffer beginRendering failed: encoder is null, call begin() first");
+            }
+            if (m_InsideRendering)
+            {
+                throw std::runtime_error("WebGPUCommandBuffer beginRendering failed: already inside rendering");
+            }
+
+            // WebGPU texture backend is still being completed.
+            // If the requested color target is unavailable (null/invalid handle), skip this pass safely.
+            if (framebufferInfo.colorAttachments.empty() || framebufferInfo.colorAttachments.front().target == nullptr ||
+                TextureAccess::getImageHandle(*framebufferInfo.colorAttachments.front().target) == 0)
+            {
+                m_SkipCurrentRendering = true;
+                m_InsideRendering      = true;
+                return *this;
+            }
+
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            const auto colorAttachment = framebufferInfo.colorAttachments.empty() ? AttachmentInfo {} :
+                                                                                framebufferInfo.colorAttachments.front();
+            const auto clearColor = toWgpuColor(colorAttachment.clearValue);
+
+            m_RenderView = nullptr;
+            m_DepthView  = nullptr;
+            m_OwnsRenderView = false;
+            m_OwnsDepthView  = false;
+
+            if (colorAttachment.target != nullptr)
+            {
+                const auto colorViewHandle =
+                    colorAttachment.target->getImageView(ImageAspectFlags::eColor).getHandle();
+                m_RenderView = reinterpret_cast<WGPUTextureView>(colorViewHandle);
+            }
+            if (m_RenderView == nullptr)
+            {
+                const auto currentTexture = getCurrentWebGPUSwapchainTexture();
+                if (currentTexture == nullptr)
+                {
+                    throw std::runtime_error("WebGPUCommandBuffer beginRendering failed: no acquired swapchain texture");
+                }
+                m_RenderView = wgpuTextureCreateView(currentTexture, nullptr);
+                m_OwnsRenderView = true;
+            }
+            if (m_RenderView == nullptr)
+            {
+                throw std::runtime_error("WebGPUCommandBuffer beginRendering failed: cannot create texture view");
+            }
+
+            WGPURenderPassColorAttachment colorDesc {};
+            colorDesc.view       = m_RenderView;
+            colorDesc.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            colorDesc.loadOp = colorAttachment.clearValue.has_value() ? WGPULoadOp_Clear : WGPULoadOp_Load;
+            colorDesc.storeOp    = WGPUStoreOp_Store;
+            colorDesc.clearValue = clearColor;
+
+            WGPURenderPassDepthStencilAttachment depthDesc {};
+            if (framebufferInfo.depthAttachment && framebufferInfo.depthAttachment->target != nullptr)
+            {
+                const auto depthViewHandle =
+                    framebufferInfo.depthAttachment->target->getImageView(ImageAspectFlags::eDepth).getHandle();
+                m_DepthView = reinterpret_cast<WGPUTextureView>(depthViewHandle);
+                if (m_DepthView != nullptr)
+                {
+                    depthDesc.view            = m_DepthView;
+                    depthDesc.depthLoadOp     = framebufferInfo.depthAttachment->clearValue.has_value() ?
+                                                    WGPULoadOp_Clear :
+                                                    WGPULoadOp_Load;
+                    depthDesc.depthStoreOp    = framebufferInfo.depthReadOnly ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
+                    depthDesc.depthClearValue = toWgpuDepthClear(framebufferInfo.depthAttachment->clearValue);
+                    depthDesc.depthReadOnly   = framebufferInfo.depthReadOnly;
+
+                    if (framebufferInfo.stencilAttachment && framebufferInfo.stencilAttachment->target != nullptr)
+                    {
+                        depthDesc.stencilLoadOp =
+                            framebufferInfo.stencilAttachment->clearValue.has_value() ? WGPULoadOp_Clear : WGPULoadOp_Load;
+                        depthDesc.stencilStoreOp =
+                            framebufferInfo.stencilReadOnly ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
+                        depthDesc.stencilClearValue = toWgpuStencilClear(framebufferInfo.stencilAttachment->clearValue);
+                        depthDesc.stencilReadOnly   = framebufferInfo.stencilReadOnly;
+                    }
+                    else
+                    {
+                        depthDesc.stencilLoadOp     = WGPULoadOp_Load;
+                        depthDesc.stencilStoreOp    = WGPUStoreOp_Store;
+                        depthDesc.stencilClearValue = 0u;
+                        depthDesc.stencilReadOnly   = true;
+                    }
+                }
+            }
+
+            WGPURenderPassDescriptor passDesc {};
+            passDesc.colorAttachmentCount = 1;
+            passDesc.colorAttachments     = &colorDesc;
+            passDesc.depthStencilAttachment = m_DepthView != nullptr ? &depthDesc : nullptr;
+
+            m_RenderPass = wgpuCommandEncoderBeginRenderPass(m_Encoder, &passDesc);
+            if (m_RenderPass == nullptr)
+            {
+                throw std::runtime_error("WebGPUCommandBuffer beginRendering failed: cannot begin render pass");
+            }
+
+#endif
+            m_SkipCurrentRendering = false;
+            m_InsideRendering = true;
+            m_PipelineBoundInCurrentPass = false;
+            return *this;
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::endRendering()
+        {
+            if (!m_InsideRendering)
+            {
+                return *this;
+            }
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (!m_SkipCurrentRendering && m_RenderPass != nullptr)
+            {
+                wgpuRenderPassEncoderEnd(m_RenderPass);
+                wgpuRenderPassEncoderRelease(m_RenderPass);
+                m_RenderPass = nullptr;
+            }
+            if (!m_SkipCurrentRendering && m_RenderView != nullptr)
+            {
+                if (m_OwnsRenderView)
+                {
+                    wgpuTextureViewRelease(m_RenderView);
+                }
+                m_RenderView = nullptr;
+                m_OwnsRenderView = false;
+            }
+            if (!m_SkipCurrentRendering && m_DepthView != nullptr)
+            {
+                if (m_OwnsDepthView)
+                {
+                    wgpuTextureViewRelease(m_DepthView);
+                }
+                m_DepthView = nullptr;
+                m_OwnsDepthView = false;
+            }
+#endif
+            m_InsideRendering = false;
+            m_SkipCurrentRendering = false;
+            m_PipelineBoundInCurrentPass = false;
+            return *this;
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::setViewport(const Rect2D&) { return *this; }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::setScissor(const Rect2D&) { return *this; }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::draw(const GeometryInfo& geometryInfo, const uint32_t numInstances)
+        {
+            if (m_SkipCurrentRendering)
+            {
+                return *this;
+            }
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (!m_InsideRendering || m_RenderPass == nullptr)
+            {
+                throw std::runtime_error("WebGPUCommandBuffer draw failed: not inside render pass");
+            }
+            if (!m_PipelineBoundInCurrentPass && m_BoundPipeline != nullptr)
+            {
+                wgpuRenderPassEncoderSetPipeline(m_RenderPass, m_BoundPipeline);
+                m_PipelineBoundInCurrentPass = true;
+            }
+
+            if (m_BoundPipelineObject != nullptr && m_Backend != nullptr)
+            {
+                for (DescriptorSetIndex set = 0; set < kMinNumDescriptorSets; ++set)
+                {
+                    const auto key = m_BoundPipelineObject->getDescriptorSetLayout(set);
+                    if (!key)
+                    {
+                        continue;
+                    }
+                    const auto bindingsIt = m_Backend->m_DescriptorSetLayoutBindings.find(key.value);
+                    if (bindingsIt == m_Backend->m_DescriptorSetLayoutBindings.end() || !bindingsIt->second.empty())
+                    {
+                        continue;
+                    }
+
+                    auto emptyIt = m_EmptyBindGroups.find(key.value);
+                    if (emptyIt == m_EmptyBindGroups.end())
+                    {
+                        const auto layoutIt = m_Backend->m_DescriptorSetLayouts.find(key.value);
+                        if (layoutIt == m_Backend->m_DescriptorSetLayouts.end())
+                        {
+                            continue;
+                        }
+                        WGPUBindGroupDescriptor emptyDesc {};
+                        emptyDesc.layout = layoutIt->second;
+                        const auto emptyBindGroup = wgpuDeviceCreateBindGroup(m_Device, &emptyDesc);
+                        if (emptyBindGroup == nullptr)
+                        {
+                            continue;
+                        }
+                        emptyIt = m_EmptyBindGroups.emplace(key.value, emptyBindGroup).first;
+                    }
+
+                    wgpuRenderPassEncoderSetBindGroup(m_RenderPass, set, emptyIt->second, 0, nullptr);
+                }
+            }
+
+            if (geometryInfo.vertexBuffer != nullptr && geometryInfo.vertexBuffer->getHandle() != 0)
+            {
+                const auto vertexBufferHandle = reinterpret_cast<WGPUBuffer>(geometryInfo.vertexBuffer->getHandle());
+                const uint64_t maxSize = geometryInfo.vertexBuffer->getSize();
+                wgpuRenderPassEncoderSetVertexBuffer(m_RenderPass, 0, vertexBufferHandle, 0u, maxSize);
+            }
+
+            if (geometryInfo.indexBuffer != nullptr && geometryInfo.indexBuffer->getHandle() != 0 &&
+                geometryInfo.numIndices > 0)
+            {
+                const auto indexBufferHandle = reinterpret_cast<WGPUBuffer>(geometryInfo.indexBuffer->getHandle());
+                const auto indexFormat = geometryInfo.indexBuffer->getIndexType() == IndexType::eUInt16 ?
+                                             WGPUIndexFormat_Uint16 :
+                                             WGPUIndexFormat_Uint32;
+                const auto indexStride = geometryInfo.indexBuffer->getStride();
+                const uint64_t byteOffset =
+                    static_cast<uint64_t>(geometryInfo.indexOffset) * static_cast<uint64_t>(indexStride);
+                const uint64_t maxSize = geometryInfo.indexBuffer->getSize();
+                const uint64_t size    = byteOffset <= maxSize ? (maxSize - byteOffset) : 0u;
+                wgpuRenderPassEncoderSetIndexBuffer(m_RenderPass, indexBufferHandle, indexFormat, byteOffset, size);
+                wgpuRenderPassEncoderDrawIndexed(
+                    m_RenderPass, geometryInfo.numIndices, numInstances, 0u, static_cast<int32_t>(geometryInfo.vertexOffset), 0u);
+            }
+            else
+            {
+                wgpuRenderPassEncoderDraw(
+                    m_RenderPass, geometryInfo.numVertices, numInstances, geometryInfo.vertexOffset, 0u);
+            }
+#else
+            (void)geometryInfo;
+            (void)numInstances;
+#endif
+            return *this;
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::drawFullScreenTriangle() { return draw({.numVertices = 3u}, 1u); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::drawCube() { unsupported("drawCube"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::drawIndirect(const DrawIndirectInfo&) { unsupported("drawIndirect"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::drawIndirectCount(const DrawIndirectInfo&, const Buffer&, uint32_t) { unsupported("drawIndirectCount"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::drawMeshTask(const glm::uvec3&) { unsupported("drawMeshTask"); }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::clear(const Buffer&, uint32_t) { unsupported("clear(Buffer)"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::clear(Texture&, const ClearValue&) { unsupported("clear(Texture)"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::copyBuffer(const Buffer& src, Buffer& dst, const rhi::BufferCopy& region)
+        {
+            if (region.size == 0)
+            {
+                return *this;
+            }
+
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_Encoder != nullptr && src.getHandle() != 0 && dst.getHandle() != 0)
+            {
+                wgpuCommandEncoderCopyBufferToBuffer(m_Encoder,
+                                                     reinterpret_cast<WGPUBuffer>(src.getHandle()),
+                                                     region.srcOffset,
+                                                     reinterpret_cast<WGPUBuffer>(dst.getHandle()),
+                                                     region.dstOffset,
+                                                     region.size);
+                return *this;
+            }
+#endif
+            auto* srcPtr = static_cast<std::byte*>(const_cast<Buffer&>(src).map());
+            auto* dstPtr = static_cast<std::byte*>(dst.map());
+            std::memcpy(dstPtr + region.dstOffset, srcPtr + region.srcOffset, static_cast<size_t>(region.size));
+            dst.unmap();
+            return *this;
+        }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::copyBuffer(const Buffer& src, Texture& dst)
+        {
+            const auto extent = dst.getExtent();
+            const auto regions = std::array {
+                BufferImageCopy {
+                    .aspectMask        = ImageAspectFlags::eColor,
+                    .layerCount        = std::max(1u, dst.getLayerFaceCount()),
+                    .imageExtentWidth  = extent.width,
+                    .imageExtentHeight = extent.height,
+                    .imageExtentDepth  = 1u,
+                },
+            };
+            return copyBuffer(src, dst, regions);
+        }
+        WebGPUCommandBuffer&
+        WebGPUCommandBuffer::copyBuffer(const Buffer& src, Texture& dst, std::span<const BufferImageCopy> regions)
+        {
+#if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
+            (void)src;
+            (void)dst;
+            (void)regions;
+            return *this;
+#else
+            if (m_Queue == nullptr || !src || !dst || TextureAccess::getImageHandle(dst) == 0 || regions.empty())
+            {
+                return *this;
+            }
+
+            const auto bytesPerPixel = getBytesPerPixel(dst.getPixelFormat());
+            if (bytesPerPixel == 0)
+            {
+                unsupported("copyBuffer(Buffer,Texture,Regions unsupported pixel format)");
+                return *this;
+            }
+
+            auto* srcData = static_cast<std::byte*>(const_cast<Buffer&>(src).map());
+            if (srcData == nullptr)
+            {
+                return *this;
+            }
+
+            const auto texture = reinterpret_cast<WGPUTexture>(TextureAccess::getImageHandle(dst));
+            for (const auto& region : regions)
+            {
+                const auto width        = std::max(1u, region.imageExtentWidth);
+                const auto height       = std::max(1u, region.imageExtentHeight);
+                const auto rowLength    = region.bufferRowLength == 0 ? width : region.bufferRowLength;
+                const auto rowsPerImage = region.bufferImageHeight == 0 ? height : region.bufferImageHeight;
+                const auto depthOrLayers = std::max(1u, region.layerCount > 1u ? region.layerCount : region.imageExtentDepth);
+                const auto bytesPerRow  = rowLength * bytesPerPixel;
+                const auto dataSize     = static_cast<uint64_t>(bytesPerRow) *
+                                      static_cast<uint64_t>(rowsPerImage) *
+                                      static_cast<uint64_t>(depthOrLayers - 1u) +
+                                  static_cast<uint64_t>(bytesPerRow) * static_cast<uint64_t>(height);
+
+                WGPUTexelCopyTextureInfo dstCopy {};
+                dstCopy.texture  = texture;
+                dstCopy.mipLevel = region.mipLevel;
+                dstCopy.origin.x = static_cast<uint32_t>(std::max(0, region.imageOffsetX));
+                dstCopy.origin.y = static_cast<uint32_t>(std::max(0, region.imageOffsetY));
+                dstCopy.origin.z =
+                    region.baseArrayLayer + static_cast<uint32_t>(std::max(0, region.imageOffsetZ));
+                dstCopy.aspect = webgpu::toWgpuTextureAspect(region.aspectMask);
+
+                WGPUTexelCopyBufferLayout srcLayout {};
+                srcLayout.offset       = region.bufferOffset;
+                srcLayout.bytesPerRow  = bytesPerRow;
+                srcLayout.rowsPerImage = rowsPerImage;
+
+                WGPUExtent3D writeExtent {};
+                writeExtent.width              = width;
+                writeExtent.height             = height;
+                writeExtent.depthOrArrayLayers = depthOrLayers;
+
+                wgpuQueueWriteTexture(m_Queue,
+                                      &dstCopy,
+                                      srcData,
+                                      dataSize,
+                                      &srcLayout,
+                                      &writeExtent);
+            }
+
+            return *this;
+#endif
+        }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::copyImage(const Texture&, const Buffer&, const rhi::ImageAspect) { unsupported("copyImage"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::update(Buffer& dst, const uint64_t offset, const uint64_t size, const void* data)
+        {
+            if (size == 0 || data == nullptr)
+            {
+                return *this;
+            }
+
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_Queue != nullptr && dst.getHandle() != 0)
+            {
+                wgpuQueueWriteBuffer(m_Queue, reinterpret_cast<WGPUBuffer>(dst.getHandle()), offset, data, size);
+                return *this;
+            }
+#endif
+            auto* dstPtr = static_cast<std::byte*>(dst.map());
+            std::memcpy(dstPtr + offset, data, static_cast<size_t>(size));
+            dst.unmap();
+            return *this;
+        }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::blit(Texture&, Texture&, TexelFilter, uint32_t, uint32_t) { unsupported("blit"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::generateMipmaps(Texture&, TexelFilter) { unsupported("generateMipmaps"); }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::flushBarriers()
+        {
+            m_BarrierBuilder = Barrier::Builder {};
+            return *this;
+        }
+
+        void WebGPUCommandBuffer::pushDebugGroup(const std::string_view label) const
+        {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_Encoder != nullptr)
+            {
+                WGPUStringView labelView {};
+                labelView.data   = label.data();
+                labelView.length = label.size();
+                wgpuCommandEncoderPushDebugGroup(m_Encoder, labelView);
+            }
+#else
+            (void)label;
+#endif
+        }
+
+        void WebGPUCommandBuffer::popDebugGroup() const
+        {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_Encoder != nullptr)
+            {
+                wgpuCommandEncoderPopDebugGroup(m_Encoder);
+            }
+#endif
+        }
+
+        [[noreturn]] void WebGPUCommandBuffer::unsupported(const char* name)
+        {
+            throw std::runtime_error(std::string("WebGPUCommandBuffer operation is not implemented: ") + name);
+        }
+
+        void WebGPUCommandBuffer::releaseTransientResources() noexcept
+        {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_RenderPass != nullptr)
+            {
+                wgpuRenderPassEncoderRelease(m_RenderPass);
+                m_RenderPass = nullptr;
+            }
+            if (m_RenderView != nullptr)
+            {
+                if (m_OwnsRenderView)
+                {
+                    wgpuTextureViewRelease(m_RenderView);
+                }
+                m_RenderView = nullptr;
+                m_OwnsRenderView = false;
+            }
+            if (m_DepthView != nullptr)
+            {
+                if (m_OwnsDepthView)
+                {
+                    wgpuTextureViewRelease(m_DepthView);
+                }
+                m_DepthView = nullptr;
+                m_OwnsDepthView = false;
+            }
+            if (m_Encoder != nullptr)
+            {
+                wgpuCommandEncoderRelease(m_Encoder);
+                m_Encoder = nullptr;
+            }
+            for (auto& [_, bindGroup] : m_EmptyBindGroups)
+            {
+                if (bindGroup != nullptr)
+                {
+                    wgpuBindGroupRelease(bindGroup);
+                }
+            }
+#endif
+            m_EmptyBindGroups.clear();
+            m_DescriptorSets.clear();
+        }
+    } // namespace rhi
+} // namespace vultra

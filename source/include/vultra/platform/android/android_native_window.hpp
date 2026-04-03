@@ -54,6 +54,7 @@ namespace vultra::platform::android
 
         [[nodiscard]] std::span<const char* const> getRequiredVulkanInstanceExtensions() const override;
         [[nodiscard]] vk::SurfaceKHR               createVulkanSurface(vk::Instance instance) const override;
+        [[nodiscard]] WGPUSurface                  createWebGPUSurface(WGPUInstance instance) const override;
 
         void pollEvents(int timeoutMillis) override;
         void close() override;

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/interfaces/ibuffer_backend.hpp"
+#include "vultra/core/rhi/interfaces/ibuffer.hpp"
 
 #include "vultra/core/rhi/structs/buffer_usage.hpp"
 
@@ -13,7 +13,7 @@ namespace vultra
 {
     namespace rhi
     {
-        class VulkanBuffer final : public IBufferBackend
+        class VulkanBuffer final : public IBuffer
         {
         public:
             VulkanBuffer(vma::Allocator,

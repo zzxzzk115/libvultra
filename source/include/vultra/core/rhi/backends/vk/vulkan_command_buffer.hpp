@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/interfaces/icommand_buffer_backend.hpp"
+#include "vultra/core/rhi/interfaces/icommand_buffer.hpp"
 #include "vultra/core/rhi/descriptorset_builder.hpp"
 #include "vultra/core/rhi/descriptorset_allocator.hpp"
 #include "vultra/core/profiling/tracy_wrapper.hpp"
@@ -18,7 +18,7 @@ namespace vultra
     {
         class RenderDevice;
 
-        class VulkanCommandBuffer final : public ICommandBufferBackend
+        class VulkanCommandBuffer final : public ICommandBuffer
         {
         public:
             VulkanCommandBuffer();

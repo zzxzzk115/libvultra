@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/frame_controller.hpp"
-#include "vultra/core/rhi/interfaces/iimgui_backend.hpp"
+#include "vultra/core/rhi/interfaces/iimgui.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/swapchain.hpp"
 
@@ -34,7 +34,7 @@ namespace vultra
         virtual rhi::Swapchain& swapchain() = 0;
 
         virtual rhi::FrameController& frameController() = 0;
-        virtual rhi::IImGuiBackend&    imguiBackend() = 0;
+        virtual rhi::IImGui&    imguiBackend() = 0;
 
         virtual bool beginFrame() = 0;
 

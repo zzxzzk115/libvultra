@@ -1,10 +1,11 @@
 #include "vultra/core/rhi/raytracing_pipeline.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_pipeline_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_pipeline.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_raytracing_pipeline_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_raytracing_pipeline.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/shader_module.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
@@ -85,7 +86,7 @@ namespace vultra
                     vk::ShaderModuleCreateInfo createInfo {};
                     createInfo.codeSize = sizeof(uint32_t) * shaderModule.getSpirv().size();
                     createInfo.pCode    = shaderModule.getSpirv().data();
-                    const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+                    const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
                     VK_CHECK(device.createShaderModule(&createInfo, nullptr, &shaderModuleHandle),
                              "RayTracingPipeline",
                              "Failed to create shader module");
@@ -116,7 +117,7 @@ namespace vultra
                     vk::ShaderModuleCreateInfo createInfo {};
                     createInfo.codeSize = sizeof(uint32_t) * shaderModule.getSpirv().size();
                     createInfo.pCode    = shaderModule.getSpirv().data();
-                    const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+                    const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
                     VK_CHECK(device.createShaderModule(&createInfo, nullptr, &shaderModuleHandle),
                              "RayTracingPipeline",
                              "Failed to create shader module");
@@ -135,7 +136,7 @@ namespace vultra
             {
                 for (const auto shaderModuleHandle : shaderModuleHandles)
                 {
-                    const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+                    const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
                     device.destroyShaderModule(shaderModuleHandle);
                 }
                 return {};
@@ -152,12 +153,12 @@ namespace vultra
             pipelineInfo.pGroups                      = groupInfos.data();
             pipelineInfo.maxPipelineRayRecursionDepth = m_MaxRecursionDepth;
             pipelineInfo.layout =
-                vk::PipelineLayout {reinterpret_cast<VkPipelineLayout>(m_PipelineLayout.getHandle())};
+                vk::PipelineLayout {asVkHandle<VkPipelineLayout>(m_PipelineLayout.getHandle())};
 
-            const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+            const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
             auto result = device.createRayTracingPipelineKHR(
                 nullptr,
-                vk::PipelineCache {reinterpret_cast<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd))},
+                vk::PipelineCache {asVkHandle<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd))},
                 pipelineInfo);
             for (const auto shaderModuleHandle : shaderModuleHandles)
             {
@@ -170,13 +171,13 @@ namespace vultra
                 throw std::runtime_error("Failed to create raytracing pipeline");
             }
 
-            auto backend = std::make_unique<VulkanRayTracingPipelineBackend>(
-                reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(result.value)),
+            auto backend = std::make_unique<VulkanRayTracingPipeline>(
+                toBackendHandle(static_cast<VkPipeline>(result.value)),
                 rd.getRayTracingPipelineProperties());
 
             return RayTracingPipeline {std::move(m_PipelineLayout),
                                        backend->getHandle(),
-                                       std::make_unique<VulkanPipelineBackend>(VulkanRenderDeviceAccess::getDeviceHandle(rd)),
+                                       std::make_unique<VulkanPipeline>(VulkanRenderDeviceAccess::getDeviceHandle(rd)),
                                        std::move(m_Groups),
                                        std::move(m_RaygenGroupIndices),
                                        std::move(m_MissGroupIndices),

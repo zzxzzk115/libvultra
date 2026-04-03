@@ -19,7 +19,9 @@
 #include <ImGuiAl/fonts/RobotoBold.inl>
 #include <ImGuiAl/fonts/RobotoRegular.inl>
 #include <ImGuizmo/ImGuizmo.h>
+#if !defined(__ANDROID__)
 #include <SDL3/SDL_video.h>
+#endif
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <implot/implot.h>

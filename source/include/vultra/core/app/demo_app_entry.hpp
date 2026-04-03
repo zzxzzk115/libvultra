@@ -41,9 +41,9 @@
     }
 #else
 #define VULTRA_DEMO_APP_MAIN(AppType) \
-    int main() \
+    int main(int argc, char** argv) \
     { \
         AppType app {}; \
-        return app.run(); \
+        return app.run(argc, argv); \
     }
 #endif

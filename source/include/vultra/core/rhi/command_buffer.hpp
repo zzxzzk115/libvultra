@@ -3,7 +3,7 @@
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/profiling/tracky.hpp"
 #include "vultra/core/profiling/tracy_wrapper.hpp"
-#include "vultra/core/rhi/interfaces/icommand_buffer_backend.hpp"
+#include "vultra/core/rhi/interfaces/icommand_buffer.hpp"
 #include "vultra/core/rhi/descriptorset_builder.hpp"
 #include "vultra/core/rhi/debug_marker.hpp"
 #include "vultra/core/rhi/structs/handles.hpp"
@@ -21,6 +21,8 @@ namespace vultra
 
     namespace rhi
     {
+        class WebGPUCommandBufferAccess;
+
         class RenderDevice;
         class Buffer;
         class VertexBuffer;
@@ -37,6 +39,7 @@ namespace vultra
             friend class RenderDevice;
             friend class DebugMarker;
             friend class vultra::ImGuiSystem;
+            friend class WebGPUCommandBufferAccess;
 
         public:
             CommandBuffer() = default;
@@ -294,7 +297,7 @@ namespace vultra
             }
 
         private:
-            explicit CommandBuffer(std::unique_ptr<ICommandBufferBackend> impl) : m_Impl(std::move(impl)) {}
+            explicit CommandBuffer(std::unique_ptr<ICommandBuffer> impl) : m_Impl(std::move(impl)) {}
 
             void pushDebugGroup(const std::string_view label) const
             {
@@ -308,7 +311,7 @@ namespace vultra
             }
 
         private:
-            std::unique_ptr<ICommandBufferBackend> m_Impl;
+            std::unique_ptr<ICommandBuffer> m_Impl;
         };
 
         void prepareForAttachment(CommandBuffer&, const Texture&, const bool readOnly);

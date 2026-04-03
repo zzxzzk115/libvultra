@@ -87,9 +87,12 @@ end
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "cereal", "wgpu-native v27.0.4+0", "vulkan-headers 1.4.309+0", "vulkan-memory-allocator-hpp", "sol2")
+add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.335+0", "vulkan-memory-allocator-hpp", "sol2")
+if not is_plat("android") then
+    add_requires("wgpu-native v27.0.4+0")
+end
 add_requireconfs("vulkan-memory-allocator-hpp", {configs = {use_vulkanheaders = true}})
-add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"})
+add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"}) -- unfortunately, some dependencies (e.g. vulkan-memory-allocator-hpp) still rely on older Vulkan-Headers, we need to override it to avoid version conflicts
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
@@ -145,7 +148,10 @@ target("vultra")
     add_rules("vulkansdk")
 
     -- add packages
-    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "wgpu-native", "vulkan-headers", "vulkan-memory-allocator-hpp", "vrendergraph", "sol2", { public = true })
+    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vulkan-headers", "vulkan-memory-allocator-hpp", "vrendergraph", "sol2", { public = true })
+    if not is_plat("android") then
+        add_packages("wgpu-native", { public = true })
+    end
     add_packages("openxr", { public = true })
     if not is_plat("android") then
         add_packages("libsdl3", { public = true })
@@ -171,6 +177,8 @@ target("vultra")
 
     -- fmt fix
     add_defines("FMT_UNICODE=0", { public = true })
+    -- lock GLM clip/depth convention explicitly for this target
+    add_defines("GLM_FORCE_DEPTH_ZERO_TO_ONE", "GLM_FORCE_RADIANS", { public = true })
 
     if is_mode("debug") then
         add_defines("_DEBUG", { public = true })
@@ -179,6 +187,16 @@ target("vultra")
         end
     else
         add_defines("NDEBUG", { public = true })
+    end
+
+    if is_plat("android") then
+        add_defines("VULTRA_ENABLE_WEBGPU=0", { public = true })
+    else
+        add_defines("VULTRA_ENABLE_WEBGPU=1", { public = true })
+    end
+
+    if is_plat("android") and get_config("android_allow_32bit_unsafe") then
+        add_defines("VULTRA_ALLOW_UNSAFE_32BIT_VULKAN_HANDLES=1", { public = true })
     end
 
     -- set target directory

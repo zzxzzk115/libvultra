@@ -14,7 +14,11 @@ namespace vultra
             {
                 std::vector<PixelFormat> out(v.size());
                 std::ranges::transform(
-                    v, out.begin(), [](const auto& attachment) { return attachment.target->getPixelFormat(); });
+                    v,
+                    out.begin(),
+                    [](const auto& attachment) {
+                        return attachment.target ? attachment.target->getPixelFormat() : PixelFormat::eUndefined;
+                    });
                 return out;
             }
 
@@ -22,12 +26,17 @@ namespace vultra
 
         PixelFormat getDepthFormat(const FramebufferInfo& info)
         {
-            return info.depthAttachment ? info.depthAttachment->target->getPixelFormat() : PixelFormat::eUndefined;
+            if (!info.depthAttachment || !info.depthAttachment->target)
+            {
+                return PixelFormat::eUndefined;
+            }
+            return info.depthAttachment->target->getPixelFormat();
         }
         PixelFormat getColorFormat(const FramebufferInfo& info, const AttachmentIndex index)
         {
             assert(index < info.colorAttachments.size());
-            return info.colorAttachments[index].target->getPixelFormat();
+            const auto* target = info.colorAttachments[index].target;
+            return target ? target->getPixelFormat() : PixelFormat::eUndefined;
         }
 
         std::vector<PixelFormat> getColorFormats(const FramebufferInfo& info)

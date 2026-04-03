@@ -466,7 +466,7 @@ namespace vultra
 
             {
                 ImmediateResourceUploader immediateUploader {m_FrameResources, rd};
-                prepareCameraData(immediateUploader, viewData, renderArea.extent, cam);
+                prepareCameraData(immediateUploader, viewData, renderArea.extent, cam, rd.getBackendApi());
             }
 
             ImmediateRenderContext immediateCtx {
@@ -484,7 +484,7 @@ namespace vultra
             {
                 FrameGraphResourceUploader fgUploader {fg};
                 prepareFrameData(fgUploader, m_PreparedFrameData, m_RenderWorldFront.frameIndex, 0.0f, 0.0f);
-                prepareCameraData(fgUploader, viewData, renderArea.extent, cam);
+                prepareCameraData(fgUploader, viewData, renderArea.extent, cam, rd.getBackendApi());
                 bb.add<FrameData>(m_PreparedFrameData.frameData);
                 bb.add<CameraData>(viewData.cameraData);
             }

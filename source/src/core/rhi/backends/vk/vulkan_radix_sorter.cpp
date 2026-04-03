@@ -1,6 +1,7 @@
 #include "vultra/core/rhi/backends/vk/vulkan_radix_sorter.hpp"
 
 #include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
+#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 
@@ -49,9 +50,9 @@ namespace vultra
             assert(maxElementCount > 0u);
 
             VrdxSorterCreateInfo createInfo {};
-            createInfo.physicalDevice = reinterpret_cast<VkPhysicalDevice>(VulkanRenderDeviceAccess::getPhysicalDeviceHandle(rd));
-            createInfo.device         = reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd));
-            createInfo.pipelineCache  = reinterpret_cast<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd));
+            createInfo.physicalDevice = asVkHandle<VkPhysicalDevice>(VulkanRenderDeviceAccess::getPhysicalDeviceHandle(rd));
+            createInfo.device         = asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd));
+            createInfo.pipelineCache  = asVkHandle<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd));
 
             vrdxCreateSorter(&createInfo, &m_Sorter);
             if (m_Sorter)
@@ -100,12 +101,12 @@ namespace vultra
             if (elementCount <= 1u)
                 return;
 
-            vrdxCmdSort(reinterpret_cast<VkCommandBuffer>(cb.getHandle()),
+            vrdxCmdSort(asVkHandle<VkCommandBuffer>(cb.getHandle()),
                         m_Sorter,
                         elementCount,
-                        reinterpret_cast<VkBuffer>(keys.getHandle()),
+                        asVkHandle<VkBuffer>(keys.getHandle()),
                         keysOffset,
-                        reinterpret_cast<VkBuffer>(storage.getHandle()),
+                        asVkHandle<VkBuffer>(storage.getHandle()),
                         storageOffset,
                         VK_NULL_HANDLE,
                         0u);
@@ -123,14 +124,14 @@ namespace vultra
             if (elementCount <= 1u)
                 return;
 
-            vrdxCmdSortKeyValue(reinterpret_cast<VkCommandBuffer>(cb.getHandle()),
+            vrdxCmdSortKeyValue(asVkHandle<VkCommandBuffer>(cb.getHandle()),
                                 m_Sorter,
                                 elementCount,
-                                reinterpret_cast<VkBuffer>(keys.getHandle()),
+                                asVkHandle<VkBuffer>(keys.getHandle()),
                                 keysOffset,
-                                reinterpret_cast<VkBuffer>(values.getHandle()),
+                                asVkHandle<VkBuffer>(values.getHandle()),
                                 valuesOffset,
-                                reinterpret_cast<VkBuffer>(storage.getHandle()),
+                                asVkHandle<VkBuffer>(storage.getHandle()),
                                 storageOffset,
                                 VK_NULL_HANDLE,
                                 0u);
@@ -150,16 +151,16 @@ namespace vultra
             if (maxElementCount <= 1u)
                 return;
 
-            vrdxCmdSortKeyValueIndirect(reinterpret_cast<VkCommandBuffer>(cb.getHandle()),
+            vrdxCmdSortKeyValueIndirect(asVkHandle<VkCommandBuffer>(cb.getHandle()),
                                         m_Sorter,
                                         maxElementCount,
-                                        reinterpret_cast<VkBuffer>(indirect.getHandle()),
+                                        asVkHandle<VkBuffer>(indirect.getHandle()),
                                         indirectOffset,
-                                        reinterpret_cast<VkBuffer>(keys.getHandle()),
+                                        asVkHandle<VkBuffer>(keys.getHandle()),
                                         keysOffset,
-                                        reinterpret_cast<VkBuffer>(values.getHandle()),
+                                        asVkHandle<VkBuffer>(values.getHandle()),
                                         valuesOffset,
-                                        reinterpret_cast<VkBuffer>(storage.getHandle()),
+                                        asVkHandle<VkBuffer>(storage.getHandle()),
                                         storageOffset,
                                         VK_NULL_HANDLE,
                                         0u);

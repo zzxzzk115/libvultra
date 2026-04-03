@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/base_pipeline.hpp"
-#include "vultra/core/rhi/interfaces/icompute_pipeline_backend.hpp"
+#include "vultra/core/rhi/interfaces/icompute_pipeline.hpp"
 
 #include <glm/ext/vector_uint2.hpp>
 #include <glm/ext/vector_uint3.hpp>
@@ -33,11 +33,11 @@ namespace vultra
             ComputePipeline(PipelineLayout&&,
                             const glm::uvec3 localSize,
                             std::uintptr_t,
-                            std::unique_ptr<IPipelineBackend> destroyBackend,
-                            std::unique_ptr<IComputePipelineBackend> backend);
+                            std::unique_ptr<IPipeline> destroyBackend,
+                            std::unique_ptr<IComputePipeline> backend);
 
         private:
-            std::unique_ptr<IComputePipelineBackend> m_Backend;
+            std::unique_ptr<IComputePipeline> m_Backend;
             glm::uvec3 m_LocalSize {};
         };
 

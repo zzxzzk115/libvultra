@@ -26,8 +26,8 @@ protected:
     }
 };
 
-int main()
+int main(int argc, char** argv)
 {
     GaussianSplattingDemoApp app {};
-    return app.run();
+    return app.run(argc, argv);
 }

@@ -81,6 +81,42 @@ namespace vultra::platform::android
         return vk::SurfaceKHR {surface};
     }
 
+    WGPUSurface AndroidNativeWindow::createWebGPUSurface(const WGPUInstance instance) const
+    {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+        if (instance == nullptr)
+        {
+            VULTRA_CORE_ERROR("[AndroidNativeWindow] Cannot create WebGPU surface: instance is null");
+            throw std::runtime_error("WebGPU instance is null");
+        }
+        if (m_NativeWindow == nullptr)
+        {
+            VULTRA_CORE_ERROR("[AndroidNativeWindow] Cannot create WebGPU surface: native window is null");
+            throw std::runtime_error("Android native window is null");
+        }
+
+        WGPUSurfaceSourceAndroidNativeWindow source {};
+        source.chain.sType = WGPUSType_SurfaceSourceAndroidNativeWindow;
+        source.window      = m_NativeWindow;
+
+        WGPUSurfaceDescriptor descriptor {};
+        descriptor.nextInChain = reinterpret_cast<const WGPUChainedStruct*>(&source);
+
+        auto surface = wgpuInstanceCreateSurface(instance, &descriptor);
+        if (surface == nullptr)
+        {
+            VULTRA_CORE_ERROR("[AndroidNativeWindow] Failed to create WebGPU surface from ANativeWindow");
+            throw std::runtime_error("Failed to create WebGPU surface");
+        }
+
+        return surface;
+#else
+        (void)instance;
+        VULTRA_CORE_ERROR("[AndroidNativeWindow] WebGPU is disabled for Android build");
+        throw std::runtime_error("WebGPU is disabled for Android build");
+#endif
+    }
+
     void AndroidNativeWindow::pollEvents(const int timeoutMillis)
     {
         if (m_App == nullptr)

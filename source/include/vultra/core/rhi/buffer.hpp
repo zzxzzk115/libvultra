@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/structs/barrier_scope.hpp"
-#include "vultra/core/rhi/interfaces/ibuffer_backend.hpp"
+#include "vultra/core/rhi/interfaces/ibuffer.hpp"
 #include "vultra/core/rhi/structs/buffer_usage.hpp"
 #include "vultra/core/rhi/structs/buffer_structs.hpp"
 
@@ -25,7 +25,7 @@ namespace vultra
             Buffer(const Buffer&) = delete;
             Buffer(Buffer&&) noexcept;
             virtual ~Buffer();
-            explicit Buffer(std::unique_ptr<IBufferBackend>);
+            explicit Buffer(std::unique_ptr<IBuffer>);
 
             Buffer& operator=(const Buffer&) = delete;
             Buffer& operator=(Buffer&&) noexcept;
@@ -48,7 +48,7 @@ namespace vultra
             void                       setBarrierScope(BarrierScope);
 
         private:
-            std::unique_ptr<IBufferBackend> m_Impl;
+            std::unique_ptr<IBuffer> m_Impl;
         };
 
     } // namespace rhi

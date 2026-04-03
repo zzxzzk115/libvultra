@@ -392,7 +392,6 @@ namespace vultra
         }
 
         auto vertexAttributes = buildPipelineVertexAttributes(vertexLayoutMask);
-
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({colorFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
@@ -412,4 +411,3 @@ namespace vultra
             .build(getRenderDevice());
     }
 } // namespace vultra
-

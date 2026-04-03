@@ -1,6 +1,7 @@
 #include "vultra/core/rhi/frame_controller.hpp"
 
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/rhi/interfaces/texture_access.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/swapchain.hpp"
 
@@ -55,7 +56,7 @@ namespace vultra
 
             return {
                 m_FrameIndex,
-                m_Swapchain->getCurrentBuffer().getImageHandle(),
+                TextureAccess::getImageHandle(m_Swapchain->getCurrentBuffer()),
             };
         }
 

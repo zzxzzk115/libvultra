@@ -6,7 +6,10 @@ namespace vultra
     {
         void prepareForAttachment(CommandBuffer& cb, const Texture& texture, const bool readOnly)
         {
-            assert(texture);
+            if (!texture)
+            {
+                return;
+            }
 
             BarrierScope dst {};
             ImageLayout  newLayout {ImageLayout::eUndefined};
@@ -44,7 +47,10 @@ namespace vultra
 
         void prepareForReading(CommandBuffer& cb, const Texture& texture, uint32_t mipLevel, uint32_t layer)
         {
-            assert(texture);
+            if (!texture)
+            {
+                return;
+            }
             cb.getBarrierBuilder().imageBarrier(
                 {
                     .image     = const_cast<Texture&>(texture),
@@ -66,7 +72,10 @@ namespace vultra
 
         void prepareForPresent(CommandBuffer& cb, const Texture& texture)
         {
-            assert(texture);
+            if (!texture)
+            {
+                return;
+            }
 
             cb.getBarrierBuilder().imageBarrier(
                 {
@@ -95,7 +104,10 @@ namespace vultra
 
         void prepareForComputing(CommandBuffer& cb, const Texture& texture)
         {
-            assert(texture);
+            if (!texture)
+            {
+                return;
+            }
 
             cb.getBarrierBuilder().imageBarrier(
                 {
@@ -110,7 +122,10 @@ namespace vultra
 
         void prepareForRaytracing(CommandBuffer& cb, const Texture& texture)
         {
-            assert(texture);
+            if (!texture)
+            {
+                return;
+            }
 
             cb.getBarrierBuilder().imageBarrier(
                 {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/structs/handles.hpp"
-#include "vultra/core/rhi/interfaces/idescriptor_set_allocator_backend.hpp"
+#include "vultra/core/rhi/interfaces/idescriptor_set_allocator.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -37,7 +37,7 @@ namespace vultra
             DescriptorSetAllocator& operator=(DescriptorSetAllocator&&) noexcept;
 
             // Internal constructor used by backend command buffers.
-            explicit DescriptorSetAllocator(std::unique_ptr<IDescriptorSetAllocatorBackend> backend, bool raytracing = false);
+            explicit DescriptorSetAllocator(std::unique_ptr<IDescriptorSetAllocator> backend, bool raytracing = false);
 
             [[nodiscard]] DescriptorSetHandle allocate(std::uintptr_t descriptorSetLayout, uint32_t);
             void                            reset();
@@ -50,7 +50,7 @@ namespace vultra
             [[nodiscard]] DescriptorSetHandle  allocate(DescriptorPool&, std::uintptr_t descriptorSetLayout, uint32_t) const;
 
         private:
-            std::unique_ptr<IDescriptorSetAllocatorBackend> m_Backend;
+            std::unique_ptr<IDescriptorSetAllocator> m_Backend;
 
             std::vector<DescriptorPool> m_DescriptorPools;
             int32_t                     m_LastPoolIndex {-1};

@@ -39,7 +39,7 @@ namespace vultra
             return m_Backend->getBuffer();
         }
 
-        AccelerationStructure::AccelerationStructure(std::unique_ptr<IAccelerationStructureBackend> backend) :
+        AccelerationStructure::AccelerationStructure(std::unique_ptr<IAccelerationStructure> backend) :
             m_Backend(std::move(backend))
         {}
     } // namespace rhi

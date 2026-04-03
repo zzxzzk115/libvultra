@@ -38,7 +38,13 @@ rule_end()
 
 includes("window")
 includes("rhi/triangle")
+if not is_plat("android") then
+    includes("rhi/triangle_webgpu")
+end
 includes("imgui")
+if not is_plat("android") then
+    includes("imgui_webgpu")
+end
 includes("framegraph/triangle")
 includes("openxr/triangle")
 -- includes("openxr/sponza")

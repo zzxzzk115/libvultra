@@ -53,8 +53,8 @@ protected:
     }
 };
 
-int main()
+int main(int argc, char** argv)
 {
     ImGuiExampleApp app {};
-    return app.run();
+    return app.run(argc, argv);
 }

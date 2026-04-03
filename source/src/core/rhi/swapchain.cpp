@@ -1,6 +1,6 @@
 #include "vultra/core/rhi/swapchain.hpp"
 
-#include "vultra/core/rhi/interfaces/iswapchain_backend.hpp"
+#include "vultra/core/rhi/interfaces/iswapchain.hpp"
 
 namespace vultra
 {
@@ -50,11 +50,12 @@ namespace vultra
         Swapchain::Swapchain(const std::uintptr_t instance,
                              const std::uintptr_t physicalDevice,
                              const std::uintptr_t device,
+                             const RenderBackendApi backendApi,
                              os::Window*          window,
                              const SwapchainFormat format,
                              const VerticalSync   vsync)
         {
-            m_Backend = createSwapchainBackend(instance, physicalDevice, device, window, format, vsync);
+            m_Backend = createSwapchain(instance, physicalDevice, device, backendApi, window, format, vsync);
         }
 
         void Swapchain::destroy() { m_Backend.reset(); }

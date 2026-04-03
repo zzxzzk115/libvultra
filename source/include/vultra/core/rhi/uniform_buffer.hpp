@@ -6,6 +6,17 @@ namespace vultra
 {
     namespace rhi
     {
-        using UniformBuffer = Buffer;
+        class UniformBuffer final : public Buffer
+        {
+            friend class RenderDevice;
+
+        public:
+            UniformBuffer() = default;
+
+            [[nodiscard]] uint64_t getCapacity() const;
+
+        private:
+            explicit UniformBuffer(Buffer&&);
+        };
     }
 } // namespace vultra

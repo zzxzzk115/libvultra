@@ -4,10 +4,11 @@
 #include <memory>
 
 #include "vultra/core/rhi/structs/rect2d.hpp"
+#include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/core/rhi/structs/swapchain_format.hpp"
 #include "vultra/core/rhi/structs/vertical_sync.hpp"
 #include "vultra/core/rhi/texture.hpp"
-#include "vultra/core/rhi/interfaces/iswapchain_backend.hpp"
+#include "vultra/core/rhi/interfaces/iswapchain.hpp"
 
 namespace vultra
 {
@@ -51,11 +52,17 @@ namespace vultra
             bool acquireNextImage(std::uintptr_t imageAcquired = 0);
 
         private:
-            Swapchain(std::uintptr_t, std::uintptr_t, std::uintptr_t, os::Window*, SwapchainFormat, VerticalSync);
+            Swapchain(std::uintptr_t,
+                      std::uintptr_t,
+                      std::uintptr_t,
+                      RenderBackendApi,
+                      os::Window*,
+                      SwapchainFormat,
+                      VerticalSync);
             void destroy();
 
         private:
-            std::shared_ptr<ISwapchainBackend> m_Backend;
+            std::shared_ptr<ISwapchain> m_Backend;
         };
 
         [[nodiscard]] Rect2D getRenderArea(const Swapchain&);

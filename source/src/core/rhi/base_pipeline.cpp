@@ -39,7 +39,7 @@ namespace vultra
 
         BasePipeline::BasePipeline(PipelineLayout&&                     layout,
                                    const std::uintptr_t                pipeline,
-                                   std::unique_ptr<IPipelineBackend> destroyBackend) :
+                                   std::unique_ptr<IPipeline> destroyBackend) :
             m_Layout(std::move(layout)), m_Handle(pipeline), m_Backend(std::move(destroyBackend))
         {
             assert(m_Backend);

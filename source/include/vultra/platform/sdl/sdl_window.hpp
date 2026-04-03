@@ -55,6 +55,7 @@ namespace vultra::platform::sdl
 
         [[nodiscard]] std::span<const char* const> getRequiredVulkanInstanceExtensions() const override;
         [[nodiscard]] vk::SurfaceKHR               createVulkanSurface(vk::Instance instance) const override;
+        [[nodiscard]] WGPUSurface                  createWebGPUSurface(WGPUInstance instance) const override;
 
         void pollEvents(int timeoutMillis = 0) override;
         void close() override;
@@ -82,6 +83,7 @@ namespace vultra::platform::sdl
         bool        m_IsMinimized {false};
 
         SDL_Window*              m_WindowHandle {nullptr};
+        mutable void*            m_WebGpuMetalView {nullptr};
         std::vector<const char*> m_VulkanExtensions;
     };
 } // namespace vultra::platform::sdl

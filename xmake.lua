@@ -7,8 +7,17 @@ set_version("0.1.0")
 -- set language version: C++ 23
 set_languages("cxx23")
 
+option("android_allow_32bit_unsafe")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Allow 32-bit Android builds (unsafe: Vulkan handle truncation risk)")
+option_end()
+
 if is_plat("android") then
     set_toolchains("@ndk", {sdkver = "26"})
+    if not get_config("android_allow_32bit_unsafe") then
+        set_allowedarchs("arm64-v8a")
+    end
 end
 
 -- root ?

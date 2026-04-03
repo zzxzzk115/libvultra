@@ -32,6 +32,8 @@ namespace vultra
 
         virtual std::string_view                 demoWindowTitle() const { return "Vultra Demo App"; }
         virtual bool                             demoWindowResizable() const { return true; }
+        virtual rhi::RenderBackendApi            demoRenderBackendApi() const { return rhi::RenderBackendApi::eVulkan; }
+        virtual bool                             demoAllowCliBackendOverride() const { return true; }
         virtual rhi::RenderDeviceFeatureFlagBits demoRenderDeviceFeatureFlag() const
         {
             return rhi::RenderDeviceFeatureFlagBits::eNormal;
@@ -41,6 +43,9 @@ namespace vultra
         virtual Ref<Renderer>       makeRenderer() const;
 
         virtual void onWindowEvent(const os::GeneralWindowEvent& e);
+
+        // WebGPU path is still under active bring-up. Demo apps can opt-in to full scene/render content explicitly.
+        virtual bool demoEnableExperimentalWebGPUContent() const { return false; }
 
         virtual void onConfigureDemo(Engine& /*engine*/) {}
         virtual void onPostConfigureDemo(Engine& /*engine*/) {}

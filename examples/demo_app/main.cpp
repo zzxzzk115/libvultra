@@ -9,6 +9,7 @@ class DemoApp final : public DemoAppHost
 {
 protected:
     void onPostConfigureDemo(Engine& engine) override { examples::setupDemoScene(engine); }
+    bool demoEnableExperimentalWebGPUContent() const override { return true; }
 };
 
 VULTRA_DEMO_APP_MAIN(DemoApp)

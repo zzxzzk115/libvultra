@@ -3,6 +3,7 @@
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/rendering/framework/prepared_render_data.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
+#include "vultra/core/rhi/structs/render_backend_api.hpp"
 
 namespace vultra
 {
@@ -18,7 +19,7 @@ namespace vultra
     struct alignas(16) GPUCameraBlock
     {
         GPUCameraBlock() = default;
-        GPUCameraBlock(const rhi::Extent2D extent, const RenderCamera& camera);
+        GPUCameraBlock(const rhi::Extent2D extent, const RenderCamera& camera, rhi::RenderBackendApi backendApi);
 
         glm::mat4 projection {1.0f};
         glm::mat4 inverseProjection {1.0f};
@@ -45,9 +46,13 @@ namespace vultra
     static_assert(sizeof(GPUStereoCameraBlock) % 16 == 0, "GPUStereoCameraBlock must be 16-byte aligned");
 
     [[nodiscard]] GPUFrameBlock  makeGPUFrameBlock(uint64_t frameIndex, float time = 0.0f, float deltaTime = 0.0f);
-    [[nodiscard]] GPUCameraBlock makeGPUCameraBlock(rhi::Extent2D extent, const RenderCamera& camera);
+    [[nodiscard]] GPUCameraBlock
+    makeGPUCameraBlock(rhi::Extent2D extent, const RenderCamera& camera, rhi::RenderBackendApi backendApi);
     [[nodiscard]] GPUStereoCameraBlock
-    makeGPUStereoCameraBlock(rhi::Extent2D extent, const RenderCamera& left, const RenderCamera* right);
+    makeGPUStereoCameraBlock(rhi::Extent2D      extent,
+                             const RenderCamera& left,
+                             const RenderCamera* right,
+                             rhi::RenderBackendApi backendApi);
 
     template<typename Uploader>
     void prepareFrameData(Uploader&        uploader,
@@ -65,12 +70,16 @@ namespace vultra
 
     template<typename Uploader>
     void
-    prepareCameraData(Uploader& uploader, ViewRenderData& out, const rhi::Extent2D extent, const RenderCamera& camera)
+    prepareCameraData(Uploader&               uploader,
+                      ViewRenderData&         out,
+                      const rhi::Extent2D     extent,
+                      const RenderCamera&     camera,
+                      rhi::RenderBackendApi backendApi)
     {
         out.cameraData.cameraBlock = uploader.uploadStruct("UploadCameraBlock",
                                                            "CameraBlock",
                                                            framegraph::BufferType::eUniformBuffer,
-                                                           makeGPUCameraBlock(extent, camera));
+                                                           makeGPUCameraBlock(extent, camera, backendApi));
 
         if (out.view.enableMultiview && out.view.multiviewCameraCount >= 2u && out.view.multiviewCameras[0] &&
             out.view.multiviewCameras[1])
@@ -79,7 +88,8 @@ namespace vultra
                 "UploadStereoCameraBlock",
                 "StereoCameraBlock",
                 framegraph::BufferType::eUniformBuffer,
-                makeGPUStereoCameraBlock(extent, *out.view.multiviewCameras[0], out.view.multiviewCameras[1]));
+                makeGPUStereoCameraBlock(
+                    extent, *out.view.multiviewCameras[0], out.view.multiviewCameras[1], backendApi));
         }
     }
 } // namespace vultra

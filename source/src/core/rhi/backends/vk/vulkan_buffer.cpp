@@ -1,5 +1,6 @@
 #include "vultra/core/rhi/backends/vk/vulkan_buffer.hpp"
 
+#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
 
 namespace vultra::rhi
@@ -66,7 +67,7 @@ namespace vultra::rhi
 
     std::uintptr_t VulkanBuffer::getHandle() const
     {
-        return reinterpret_cast<std::uintptr_t>(static_cast<VkBuffer>(m_Handle));
+        return toBackendHandle(static_cast<VkBuffer>(m_Handle));
     }
 
     uint64_t VulkanBuffer::getSize() const { return m_Size; }

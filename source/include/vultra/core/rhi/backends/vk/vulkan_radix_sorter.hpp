@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/interfaces/iradix_sorter_backend.hpp"
+#include "vultra/core/rhi/interfaces/iradix_sorter.hpp"
 #include "vultra/core/rhi/structs/radix_sorter_types.hpp"
 #include <vk_radix_sort.h>
 
@@ -10,7 +10,7 @@ namespace vultra
     {
         class RenderDevice;
 
-        class VulkanRadixSorter final : public IRadixSorterBackend
+        class VulkanRadixSorter final : public IRadixSorter
         {
         public:
             VulkanRadixSorter(const RenderDevice&, uint32_t maxElementCount);

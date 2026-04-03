@@ -3,6 +3,10 @@
 #include <vultra/core/base/api.hpp>
 #include <vultra/core/engine/engine.hpp>
 
+#include <span>
+#include <string>
+#include <vector>
+
 namespace vultra
 {
     class VULTRA_API AppHost
@@ -17,6 +21,7 @@ namespace vultra
         AppHost& operator=(AppHost&&)      = delete;
 
         int run();
+        int run(int argc, char** argv);
 
     protected:
         // App configuration entry point
@@ -35,8 +40,10 @@ namespace vultra
 
         EngineContext&       engineCtx() { return m_Engine.ctx(); }
         const EngineContext& engineCtx() const { return m_Engine.ctx(); }
+        std::span<const std::string> commandLineArgs() const { return m_CommandLineArgs; }
 
     protected:
         Engine m_Engine;
+        std::vector<std::string> m_CommandLineArgs;
     };
 } // namespace vultra

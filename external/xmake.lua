@@ -1,7 +1,7 @@
 if is_plat("android") then
     add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, android = true, wchar32 = true}})
 else
-    add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, sdl3 = true, wchar32 = true}})
+    add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, wgpu = true, sdl3 = true, wchar32 = true}})
 end
 
 add_requires("zlib")

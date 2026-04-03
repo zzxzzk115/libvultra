@@ -29,7 +29,7 @@
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/rhi/uniform_buffer.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
-#include "vultra/core/rhi/interfaces/irender_device_backend.hpp"
+#include "vultra/core/rhi/interfaces/irender_device.hpp"
 #include "vultra/core/rhi/structs/job_info.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/core/rhi/structs/render_device_structs.hpp"
@@ -64,7 +64,7 @@ namespace vultra
 
     namespace rhi
     {
-        class RenderDeviceBackendAccess;
+        class RenderDeviceAccess;
 
         class RenderDevice final
         {
@@ -72,7 +72,7 @@ namespace vultra
             friend class RayTracingPipeline;
             friend class RadixSorter;
             friend class DescriptorSetBuilder;
-            friend class RenderDeviceBackendAccess;
+            friend class RenderDeviceAccess;
             friend class vultra::ImGuiSystem;
             friend class openxr::XRHeadset;
 
@@ -91,6 +91,8 @@ namespace vultra
             [[nodiscard]] RenderDeviceFeatureFlagBits getFeatureFlag() const;
             [[nodiscard]] RenderDeviceFeatureReport   getFeatureReport() const;
             [[nodiscard]] RenderDeviceSyncCapabilities getSyncCapabilities() const;
+            [[nodiscard]] RenderBackendApi            getBackendApi() const;
+            [[nodiscard]] bool                        supportsSwapchain() const;
 
             [[nodiscard]] std::string getName() const;
 
@@ -271,7 +273,7 @@ namespace vultra
             [[nodiscard]] DescriptorSetLayoutKey
             createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>&);
             [[nodiscard]] std::uintptr_t
-            getDescriptorSetLayoutBackendHandle(DescriptorSetLayoutKey) const;
+            getDescriptorSetLayoutHandle(DescriptorSetLayoutKey) const;
 
             std::uintptr_t allocateCommandBuffer() const;
             SamplerHandle   createSampler(const SamplerInfo&) const;
@@ -285,7 +287,7 @@ namespace vultra
             getSbtEntryStrideDeviceAddressRegion(const Buffer& sbt, uint32_t handleCount, DeviceAddress offset) const;
 
         private:
-            std::unique_ptr<IRenderDeviceBackend> m_Backend;
+            std::unique_ptr<IRenderDevice> m_Backend;
         };
     } // namespace rhi
 } // namespace vultra

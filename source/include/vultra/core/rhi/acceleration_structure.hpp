@@ -3,7 +3,7 @@
 #include "vultra/core/rhi/structs/acceleration_structure_build_sizes_info.hpp"
 #include "vultra/core/rhi/structs/acceleration_structure_type.hpp"
 #include "vultra/core/rhi/structs/device_address.hpp"
-#include "vultra/core/rhi/interfaces/iacceleration_structure_backend.hpp"
+#include "vultra/core/rhi/interfaces/iacceleration_structure.hpp"
 #include "vultra/core/rhi/structs/raytracing_buffer_aliases.hpp"
 
 #include <cstdint>
@@ -38,9 +38,9 @@ namespace vultra
 
         private:
             friend class RenderDevice;
-            explicit AccelerationStructure(std::unique_ptr<IAccelerationStructureBackend>);
+            explicit AccelerationStructure(std::unique_ptr<IAccelerationStructure>);
 
-            std::unique_ptr<IAccelerationStructureBackend> m_Backend;
+            std::unique_ptr<IAccelerationStructure> m_Backend;
         };
     } // namespace rhi
 } // namespace vultra

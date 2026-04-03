@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <memory>
 
-#include "vultra/core/rhi/interfaces/iradix_sorter_backend.hpp"
+#include "vultra/core/rhi/interfaces/iradix_sorter.hpp"
 #include "vultra/core/rhi/structs/radix_sorter_types.hpp"
  
 namespace vultra
@@ -61,12 +61,12 @@ namespace vultra
                                        uint64_t       storageOffset) const;
 
         private:
-            explicit RadixSorter(std::unique_ptr<IRadixSorterBackend>&&);
-            static RadixSorter create(std::unique_ptr<IRadixSorterBackend>&&);
+            explicit RadixSorter(std::unique_ptr<IRadixSorter>&&);
+            static RadixSorter create(std::unique_ptr<IRadixSorter>&&);
             static RadixSorter create(RenderDevice&, uint32_t maxElementCount);
 
         private:
-            std::unique_ptr<IRadixSorterBackend> m_Backend;
+            std::unique_ptr<IRadixSorter> m_Backend;
         };
     } // namespace rhi
 } // namespace vultra

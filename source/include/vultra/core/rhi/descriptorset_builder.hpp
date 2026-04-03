@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/interfaces/idescriptor_set_builder_backend.hpp"
+#include "vultra/core/rhi/interfaces/idescriptor_set_builder.hpp"
 #include "vultra/core/rhi/structs/pipeline_layout_structs.hpp"
 #include "vultra/core/rhi/structs/resource_binding.hpp"
 #include "vultra/core/rhi/structs/resource_indices.hpp"
@@ -20,7 +20,7 @@ namespace vultra
         {
         public:
             DescriptorSetBuilder() = delete;
-            explicit DescriptorSetBuilder(std::unique_ptr<IDescriptorSetBuilderBackend> impl);
+            explicit DescriptorSetBuilder(std::unique_ptr<IDescriptorSetBuilder> impl);
             DescriptorSetBuilder(const DescriptorSetBuilder&)     = delete;
             DescriptorSetBuilder(DescriptorSetBuilder&&) noexcept = default;
             ~DescriptorSetBuilder()                               = default;
@@ -41,7 +41,7 @@ namespace vultra
             [[nodiscard]] DescriptorSetHandle build(DescriptorSetLayoutKey);
 
         private:
-            std::unique_ptr<IDescriptorSetBuilderBackend> m_Impl;
+            std::unique_ptr<IDescriptorSetBuilder> m_Impl;
         };
 
         [[nodiscard]] std::string_view toString(const ResourceBinding&);

@@ -1,18 +1,20 @@
 #include "vultra/core/rhi/backends/vk/vulkan_command_buffer.hpp"
-#include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/base/visitor_helper.hpp"
+#include "vultra/core/rhi/backends/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
+#include "vultra/core/rhi/backends/vk/macro.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_descriptor_set_allocator.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_descriptor_set_builder.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
 #include "vultra/core/rhi/buffer.hpp"
 #include "vultra/core/rhi/compute_pipeline.hpp"
-#include "vultra/core/rhi/structs/draw_indirect_info.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
+#include "vultra/core/rhi/interfaces/texture_access.hpp"
+#include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/shader_binding_table.hpp"
+#include "vultra/core/rhi/structs/draw_indirect_info.hpp"
 #include "vultra/core/rhi/texture.hpp"
-#include "vultra/core/rhi/backends/vk/conversions.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_descriptor_set_allocator_backend.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_descriptor_set_builder_backend.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
-#include "vultra/core/rhi/backends/vk/macro.hpp"
 
 #include <glm/gtc/type_ptr.hpp> // value_ptr
 #include <memory>
@@ -71,11 +73,9 @@ namespace vultra
                 const auto& [target, layer, face, clearValue] = attachment;
                 assert(!readOnly || !clearValue.has_value());
                 vk::RenderingAttachmentInfo attachmentInfo {};
-                attachmentInfo.imageView = layer
-                                                ? vk::ImageView {reinterpret_cast<VkImageView>(
-                                                      target->getLayer(*layer, face).getHandle())}
-                                                : vk::ImageView {
-                                                      reinterpret_cast<VkImageView>(target->getImageView().getHandle())};
+                attachmentInfo.imageView =
+                    layer ? vk::ImageView {asVkHandle<VkImageView>(target->getLayer(*layer, face).getHandle())} :
+                            vk::ImageView {asVkHandle<VkImageView>(target->getImageView().getHandle())};
                 attachmentInfo.imageLayout = toVk(target->getImageLayout());
                 attachmentInfo.resolveMode = vk::ResolveModeFlagBits::eNone;
                 attachmentInfo.loadOp      = clearValue ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
@@ -96,28 +96,26 @@ namespace vultra
         VulkanCommandBuffer::VulkanCommandBuffer(VulkanCommandBuffer&& other) noexcept :
             m_Device(other.m_Device), m_CommandPool(other.m_CommandPool), m_State(other.m_State),
             m_Handle(other.m_Handle), m_TracyContext(other.m_TracyContext), m_Fence(other.m_Fence),
-            m_RenderDevice(other.m_RenderDevice),
-            m_DescriptorSetAllocator(std::move(other.m_DescriptorSetAllocator)),
+            m_RenderDevice(other.m_RenderDevice), m_DescriptorSetAllocator(std::move(other.m_DescriptorSetAllocator)),
             m_DescriptorSetCache(std::move(other.m_DescriptorSetCache)),
             m_BarrierBuilder(std::move(other.m_BarrierBuilder)), m_Pipeline(other.m_Pipeline),
             m_VertexBuffer(other.m_VertexBuffer), m_IndexBuffer(other.m_IndexBuffer),
             m_UseKhrDynamicRendering(other.m_UseKhrDynamicRendering),
-            m_UseKhrSynchronization2(other.m_UseKhrSynchronization2),
-            m_InsideRenderPass(other.m_InsideRenderPass)
+            m_UseKhrSynchronization2(other.m_UseKhrSynchronization2), m_InsideRenderPass(other.m_InsideRenderPass)
         {
-            other.m_Device           = nullptr;
-            other.m_CommandPool      = nullptr;
-            other.m_Handle           = nullptr;
-            other.m_TracyContext     = nullptr;
-            other.m_Fence            = nullptr;
-            other.m_RenderDevice     = nullptr;
-            other.m_State            = State::eInvalid;
-            other.m_Pipeline         = nullptr;
-            other.m_VertexBuffer     = nullptr;
-            other.m_IndexBuffer      = nullptr;
+            other.m_Device                 = nullptr;
+            other.m_CommandPool            = nullptr;
+            other.m_Handle                 = nullptr;
+            other.m_TracyContext           = nullptr;
+            other.m_Fence                  = nullptr;
+            other.m_RenderDevice           = nullptr;
+            other.m_State                  = State::eInvalid;
+            other.m_Pipeline               = nullptr;
+            other.m_VertexBuffer           = nullptr;
+            other.m_IndexBuffer            = nullptr;
             other.m_UseKhrDynamicRendering = false;
             other.m_UseKhrSynchronization2 = false;
-            other.m_InsideRenderPass = false;
+            other.m_InsideRenderPass       = false;
         }
 
         VulkanCommandBuffer::~VulkanCommandBuffer() { destroy(); }
@@ -168,7 +166,7 @@ namespace vultra
         DescriptorSetBuilder VulkanCommandBuffer::createDescriptorSetBuilder()
         {
             assert(m_RenderDevice);
-            return DescriptorSetBuilder(std::make_unique<VulkanDescriptorSetBuilderBackend>(
+            return DescriptorSetBuilder(std::make_unique<VulkanDescriptorSetBuilder>(
                 *m_RenderDevice,
                 reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(m_Device)),
                 m_DescriptorSetAllocator,
@@ -238,11 +236,11 @@ namespace vultra
             commandBufferInfo.commandBuffer = m_Handle;
 
             vk::SemaphoreSubmitInfo waitSemaphoreInfo {};
-            waitSemaphoreInfo.semaphore = vk::Semaphore {reinterpret_cast<VkSemaphore>(jobInfo.wait.value)};
+            waitSemaphoreInfo.semaphore = vk::Semaphore {asVkHandle<VkSemaphore>(jobInfo.wait.value)};
             waitSemaphoreInfo.stageMask = toVk(jobInfo.waitStage);
 
             vk::SemaphoreSubmitInfo signalSemaphoreInfo {};
-            signalSemaphoreInfo.semaphore = vk::Semaphore {reinterpret_cast<VkSemaphore>(jobInfo.signal.value)};
+            signalSemaphoreInfo.semaphore = vk::Semaphore {asVkHandle<VkSemaphore>(jobInfo.signal.value)};
             signalSemaphoreInfo.stageMask = vk::PipelineStageFlagBits2::eAllCommands;
 
             vk::SubmitInfo2 submitInfo {};
@@ -253,14 +251,18 @@ namespace vultra
             submitInfo.signalSemaphoreInfoCount = static_cast<bool>(jobInfo.signal) ? 1u : 0u;
             submitInfo.pSignalSemaphoreInfos    = static_cast<bool>(jobInfo.signal) ? &signalSemaphoreInfo : nullptr;
 
-            const vk::Queue queue {reinterpret_cast<VkQueue>(VulkanRenderDeviceAccess::getQueueHandle(*m_RenderDevice))};
+            const vk::Queue queue {
+                asVkHandle<VkQueue>(VulkanRenderDeviceAccess::getQueueHandle(*m_RenderDevice))};
             if (m_UseKhrSynchronization2)
             {
-                VK_CHECK(queue.submit2KHR(1, &submitInfo, m_Fence), "VulkanCommandBuffer", "Failed to submit command buffer");
+                VK_CHECK(queue.submit2KHR(1, &submitInfo, m_Fence),
+                         "VulkanCommandBuffer",
+                         "Failed to submit command buffer");
             }
             else
             {
-                VK_CHECK(queue.submit2(1, &submitInfo, m_Fence), "VulkanCommandBuffer", "Failed to submit command buffer");
+                VK_CHECK(
+                    queue.submit2(1, &submitInfo, m_Fence), "VulkanCommandBuffer", "Failed to submit command buffer");
             }
 
             if (oneTime)
@@ -268,7 +270,7 @@ namespace vultra
                 VK_CHECK(m_Device.waitForFences(1, &m_Fence, VK_TRUE, UINT64_MAX),
                          "VulkanCommandBuffer",
                          "Failed to wait for fence");
-                m_Device.resetFences(1, &m_Fence);
+                VK_CHECK(m_Device.resetFences(1, &m_Fence), "VulkanCommandBuffer", "Failed to reset fence");
                 m_State = State::eInitial;
             }
             else
@@ -288,14 +290,15 @@ namespace vultra
             {
                 TRACY_GPU_ZONE2_("BindPipeline");
                 m_Handle.bindPipeline(toVk(pipeline.getBindPoint()),
-                                      vk::Pipeline {reinterpret_cast<VkPipeline>(pipeline.getHandle())});
+                                      vk::Pipeline {asVkHandle<VkPipeline>(pipeline.getHandle())});
                 m_Pipeline = std::addressof(pipeline);
             }
 
             return *this;
         }
 
-        VulkanCommandBuffer& VulkanCommandBuffer::dispatch(const ComputePipeline& pipeline, const glm::uvec3& groupCount)
+        VulkanCommandBuffer& VulkanCommandBuffer::dispatch(const ComputePipeline& pipeline,
+                                                           const glm::uvec3&      groupCount)
         {
             return bindPipeline(pipeline).dispatch(groupCount);
         }
@@ -318,7 +321,7 @@ namespace vultra
 
             TRACY_GPU_ZONE2_("DispatchIndirect");
             flushBarriers();
-            m_Handle.dispatchIndirect(vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getHandle())},
+            m_Handle.dispatchIndirect(vk::Buffer {asVkHandle<VkBuffer>(buffer.getHandle())},
                                       static_cast<vk::DeviceSize>(offset));
 
             return *this;
@@ -384,41 +387,41 @@ namespace vultra
             return *this;
         }
 
-        VulkanCommandBuffer& VulkanCommandBuffer::bindDescriptorSet(const DescriptorSetIndex index,
+        VulkanCommandBuffer& VulkanCommandBuffer::bindDescriptorSet(const DescriptorSetIndex  index,
                                                                     const DescriptorSetHandle descriptorSet)
         {
             assert(static_cast<bool>(descriptorSet));
             assert(invariant(State::eRecording, InvariantFlags::eValidPipeline));
 
             TRACY_GPU_ZONE2_("BindDescriptorSet");
-            const vk::DescriptorSet vkDescriptorSet {reinterpret_cast<VkDescriptorSet>(descriptorSet.value)};
-            m_Handle.bindDescriptorSets(toVk(m_Pipeline->getBindPoint()),
-                                        vk::PipelineLayout {
-                                            reinterpret_cast<VkPipelineLayout>(m_Pipeline->getLayout().getHandle())},
-                                        index,
-                                        1,
-                                        &vkDescriptorSet,
-                                        0,
-                                        nullptr);
+            const vk::DescriptorSet vkDescriptorSet {asVkHandle<VkDescriptorSet>(descriptorSet.value)};
+            m_Handle.bindDescriptorSets(
+                toVk(m_Pipeline->getBindPoint()),
+                vk::PipelineLayout {asVkHandle<VkPipelineLayout>(m_Pipeline->getLayout().getHandle())},
+                index,
+                1,
+                &vkDescriptorSet,
+                0,
+                nullptr);
 
             return *this;
         }
 
         VulkanCommandBuffer& VulkanCommandBuffer::pushConstants(const ShaderStages shaderStages,
-                                                    const uint32_t     offset,
-                                                    const uint32_t     size,
-                                                    const void*        data)
+                                                                const uint32_t     offset,
+                                                                const uint32_t     size,
+                                                                const void*        data)
         {
             assert(data && size > 0);
             assert(invariant(State::eRecording, InvariantFlags::eValidPipeline));
 
             TRACY_GPU_ZONE2_("PushConstants");
-            m_Handle.pushConstants(vk::PipelineLayout {
-                                       reinterpret_cast<VkPipelineLayout>(m_Pipeline->getLayout().getHandle())},
-                                   toVk(shaderStages),
-                                   offset,
-                                   size,
-                                   data);
+            m_Handle.pushConstants(
+                vk::PipelineLayout {asVkHandle<VkPipelineLayout>(m_Pipeline->getLayout().getHandle())},
+                toVk(shaderStages),
+                offset,
+                size,
+                data);
 
             return *this;
         }
@@ -486,7 +489,7 @@ namespace vultra
 
             m_InsideRenderPass = false;
 
-            return *this;
+            return flushBarriers();
         }
 
         VulkanCommandBuffer& VulkanCommandBuffer::setViewport(const Rect2D& rect)
@@ -530,13 +533,11 @@ namespace vultra
             if (gi.indexBuffer && gi.numIndices > 0)
             {
                 setIndexBuffer(gi.indexBuffer);
-                flushBarriers();
                 m_Handle.drawIndexed(gi.numIndices, numInstances, gi.indexOffset, gi.vertexOffset, kFirstInstance);
             }
             else
             {
                 assert(gi.numVertices > 0);
-                flushBarriers();
                 m_Handle.draw(gi.numVertices, numInstances, gi.vertexOffset, kFirstInstance);
             }
             return *this;
@@ -568,16 +569,14 @@ namespace vultra
                 assert(gi.numIndices > 0);
 
                 setIndexBuffer(gi.indexBuffer);
-                flushBarriers();
-                m_Handle.drawIndexedIndirect(reinterpret_cast<VkBuffer>(dii.buffer->getHandle()),
+                m_Handle.drawIndexedIndirect(vk::Buffer {asVkHandle<VkBuffer>(dii.buffer->getHandle())},
                                              dii.firstCommand * dii.buffer->getStride(),
                                              dii.commandCount,
                                              dii.buffer->getStride());
             }
             else
             {
-                flushBarriers();
-                m_Handle.drawIndirect(reinterpret_cast<VkBuffer>(dii.buffer->getHandle()),
+                m_Handle.drawIndirect(vk::Buffer {asVkHandle<VkBuffer>(dii.buffer->getHandle())},
                                       dii.firstCommand * dii.buffer->getStride(),
                                       dii.commandCount,
                                       dii.buffer->getStride());
@@ -587,8 +586,8 @@ namespace vultra
         }
 
         VulkanCommandBuffer& VulkanCommandBuffer::drawIndirectCount(const DrawIndirectInfo& dii,
-                                                        const Buffer&           countBuffer,
-                                                        const uint32_t          countOffset)
+                                                                    const Buffer&           countBuffer,
+                                                                    const uint32_t          countOffset)
         {
             assert(invariant(State::eRecording,
                              InvariantFlags::eValidGraphicsPipeline | InvariantFlags::eInsideRenderPass));
@@ -606,20 +605,18 @@ namespace vultra
                 assert(gi.numIndices > 0);
 
                 setIndexBuffer(gi.indexBuffer);
-                flushBarriers();
-                m_Handle.drawIndexedIndirectCount(reinterpret_cast<VkBuffer>(dii.buffer->getHandle()),
+                m_Handle.drawIndexedIndirectCount(vk::Buffer {asVkHandle<VkBuffer>(dii.buffer->getHandle())},
                                                   dii.firstCommand * dii.buffer->getStride(),
-                                                  reinterpret_cast<VkBuffer>(countBuffer.getHandle()),
+                                                  vk::Buffer {asVkHandle<VkBuffer>(countBuffer.getHandle())},
                                                   countOffset,
                                                   dii.commandCount,
                                                   dii.buffer->getStride());
             }
             else
             {
-                flushBarriers();
-                m_Handle.drawIndirectCount(reinterpret_cast<VkBuffer>(dii.buffer->getHandle()),
+                m_Handle.drawIndirectCount(vk::Buffer {asVkHandle<VkBuffer>(dii.buffer->getHandle())},
                                            dii.firstCommand * dii.buffer->getStride(),
-                                           reinterpret_cast<VkBuffer>(countBuffer.getHandle()),
+                                           vk::Buffer {asVkHandle<VkBuffer>(countBuffer.getHandle())},
                                            countOffset,
                                            dii.commandCount,
                                            dii.buffer->getStride());
@@ -634,7 +631,6 @@ namespace vultra
                              InvariantFlags::eValidGraphicsPipeline | InvariantFlags::eInsideRenderPass));
 
             TRACY_GPU_ZONE2_("DrawMeshTask");
-            flushBarriers();
             m_Handle.drawMeshTasksEXT(numTaskGroups.x, numTaskGroups.y, numTaskGroups.z);
 
             return *this;
@@ -648,7 +644,7 @@ namespace vultra
             TRACY_GPU_ZONE2_("ClearBuffer");
             flushBarriers();
 
-            m_Handle.fillBuffer(reinterpret_cast<VkBuffer>(buffer.getHandle()), 0, vk::WholeSize, value);
+            m_Handle.fillBuffer(vk::Buffer {asVkHandle<VkBuffer>(buffer.getHandle())}, 0, vk::WholeSize, value);
             return *this;
         }
 
@@ -659,7 +655,7 @@ namespace vultra
 
             TRACY_GPU_ZONE2_("ClearTexture");
 
-            const auto                imageHandle = reinterpret_cast<VkImage>(texture.getImageHandle());
+            const auto                imageHandle = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(texture))};
             const auto                imageLayout = toVk(texture.getImageLayout());
             const auto                v           = toVk(clearValue);
             vk::ImageSubresourceRange range {};
@@ -679,7 +675,8 @@ namespace vultra
             return *this;
         }
 
-        VulkanCommandBuffer& VulkanCommandBuffer::copyBuffer(const Buffer& src, Buffer& dst, const rhi::BufferCopy& copyRegion)
+        VulkanCommandBuffer&
+        VulkanCommandBuffer::copyBuffer(const Buffer& src, Buffer& dst, const rhi::BufferCopy& copyRegion)
         {
             assert(src && dst);
             assert(invariant(State::eRecording, InvariantFlags::eOutsideRenderPass));
@@ -692,8 +689,8 @@ namespace vultra
             vkCopyRegion.dstOffset = copyRegion.dstOffset;
             vkCopyRegion.size      = copyRegion.size;
 
-            m_Handle.copyBuffer(reinterpret_cast<VkBuffer>(src.getHandle()),
-                                reinterpret_cast<VkBuffer>(dst.getHandle()),
+            m_Handle.copyBuffer(vk::Buffer {asVkHandle<VkBuffer>(src.getHandle())},
+                                vk::Buffer {asVkHandle<VkBuffer>(dst.getHandle())},
                                 1,
                                 &vkCopyRegion);
             return *this;
@@ -743,12 +740,11 @@ namespace vultra
             }
 
             constexpr auto kExpectedLayout = ImageLayout::eTransferDst;
-            m_BarrierBuilder.imageBarrier(
-                {.image = dst, .newLayout = kExpectedLayout},
-                {.dstStage = PipelineStages::eTransfer, .dstAccess = Access::eTransferWrite});
+            m_BarrierBuilder.imageBarrier({.image = dst, .newLayout = kExpectedLayout},
+                                          {.dstStage = PipelineStages::eTransfer, .dstAccess = Access::eTransferWrite});
             flushBarriers();
-            m_Handle.copyBufferToImage(reinterpret_cast<VkBuffer>(src.getHandle()),
-                                       reinterpret_cast<VkImage>(dst.getImageHandle()),
+            m_Handle.copyBufferToImage(vk::Buffer {asVkHandle<VkBuffer>(src.getHandle())},
+                                       vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(dst))},
                                        toVk(kExpectedLayout),
                                        static_cast<uint32_t>(vkCopyRegions.size()),
                                        vkCopyRegions.data());
@@ -756,7 +752,8 @@ namespace vultra
             return *this;
         }
 
-        VulkanCommandBuffer& VulkanCommandBuffer::copyImage(const Texture& src, const Buffer& dst, const ImageAspect aspectMask)
+        VulkanCommandBuffer&
+        VulkanCommandBuffer::copyImage(const Texture& src, const Buffer& dst, const ImageAspect aspectMask)
         {
             assert(src && dst);
             assert(invariant(State::eRecording, InvariantFlags::eOutsideRenderPass));
@@ -771,9 +768,9 @@ namespace vultra
             region.imageExtent.depth           = 1;
 
             vk::CopyImageToBufferInfo2 info {};
-            info.srcImage       = reinterpret_cast<VkImage>(src.getImageHandle());
+            info.srcImage       = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(src))};
             info.srcImageLayout = toVk(src.getImageLayout());
-            info.dstBuffer      = reinterpret_cast<VkBuffer>(dst.getHandle());
+            info.dstBuffer      = vk::Buffer {asVkHandle<VkBuffer>(dst.getHandle())};
             info.regionCount    = 1;
             info.pRegions       = &region;
 
@@ -794,14 +791,14 @@ namespace vultra
             flushBarriers();
             if (size > kMaxDataSize)
             {
-                chunkedUpdate(reinterpret_cast<VkBuffer>(buffer.getHandle()),
+                chunkedUpdate(vk::Buffer {asVkHandle<VkBuffer>(buffer.getHandle())},
                               static_cast<vk::DeviceSize>(offset),
                               static_cast<vk::DeviceSize>(size),
                               data);
             }
             else
             {
-                m_Handle.updateBuffer(reinterpret_cast<VkBuffer>(buffer.getHandle()),
+                m_Handle.updateBuffer(vk::Buffer {asVkHandle<VkBuffer>(buffer.getHandle())},
                                       static_cast<vk::DeviceSize>(offset),
                                       static_cast<vk::DeviceSize>(size),
                                       data);
@@ -809,11 +806,11 @@ namespace vultra
             return *this;
         }
 
-        VulkanCommandBuffer& VulkanCommandBuffer::blit(Texture&           src,
-                                                       Texture&           dst,
-                                                       const TexelFilter  filter,
-                                                       uint32_t           srcMipLevel,
-                                                       uint32_t           dstMipLevel)
+        VulkanCommandBuffer& VulkanCommandBuffer::blit(Texture&          src,
+                                                       Texture&          dst,
+                                                       const TexelFilter filter,
+                                                       uint32_t          srcMipLevel,
+                                                       uint32_t          dstMipLevel)
         {
             assert(src && static_cast<bool>(src.getUsageFlags() & ImageUsage::eTransferSrc));
             const auto aspectMask = getAspectMask(dst);
@@ -882,9 +879,9 @@ namespace vultra
             region.dstSubresource.layerCount     = 1;
             region.dstOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(dst)};
 
-            m_Handle.blitImage(reinterpret_cast<VkImage>(src.getImageHandle()),
+            m_Handle.blitImage(vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(src))},
                                toVk(src.getImageLayout()),
-                               reinterpret_cast<VkImage>(dst.getImageHandle()),
+                               vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(dst))},
                                toVk(dst.getImageLayout()),
                                1,
                                &region,
@@ -933,14 +930,13 @@ namespace vultra
                 // Transition current mip level to transfer dst
                 m_BarrierBuilder.imageBarrier(
                     {
-                        .image     = texture,
-                        .newLayout = ImageLayout::eTransferDst,
-                        .subresourceRange =
-                            ImageSubresourceRange {mipSubRange.aspectMask,
-                                                   mipSubRange.baseMipLevel,
-                                                   mipSubRange.levelCount,
-                                                   mipSubRange.baseArrayLayer,
-                                                   mipSubRange.layerCount},
+                        .image            = texture,
+                        .newLayout        = ImageLayout::eTransferDst,
+                        .subresourceRange = ImageSubresourceRange {mipSubRange.aspectMask,
+                                                                   mipSubRange.baseMipLevel,
+                                                                   mipSubRange.levelCount,
+                                                                   mipSubRange.baseArrayLayer,
+                                                                   mipSubRange.layerCount},
                     },
                     {
                         .dstStage  = PipelineStages::eTransfer,
@@ -953,14 +949,13 @@ namespace vultra
                 blitInfo.srcSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
                 blitInfo.srcSubresource.mipLevel   = i - 1;
                 blitInfo.srcSubresource.layerCount = texture.getLayerFaceCount();
-                const auto extent = texture.getExtent();
-                blitInfo.srcOffsets =
-                    std::array {vk::Offset3D {},
-                                vk::Offset3D {
-                                    std::max(1, static_cast<int32_t>(extent.width) >> (i - 1)),
-                                    std::max(1, static_cast<int32_t>(extent.height) >> (i - 1)),
-                                    std::max(1, static_cast<int32_t>(texture.getDepth()) >> (i - 1)),
-                                }};
+                const auto extent                  = texture.getExtent();
+                blitInfo.srcOffsets                = std::array {vk::Offset3D {},
+                                                  vk::Offset3D {
+                                                      std::max(1, static_cast<int32_t>(extent.width) >> (i - 1)),
+                                                      std::max(1, static_cast<int32_t>(extent.height) >> (i - 1)),
+                                                      std::max(1, static_cast<int32_t>(texture.getDepth()) >> (i - 1)),
+                                                  }};
                 blitInfo.dstSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
                 blitInfo.dstSubresource.mipLevel   = i;
                 blitInfo.dstSubresource.layerCount = texture.getLayerFaceCount();
@@ -972,9 +967,9 @@ namespace vultra
                                                   }};
 
                 // Blit from previous level
-                m_Handle.blitImage(reinterpret_cast<VkImage>(texture.getImageHandle()),
+                m_Handle.blitImage(vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(texture))},
                                    vk::ImageLayout::eTransferSrcOptimal,
-                                   reinterpret_cast<VkImage>(texture.getImageHandle()),
+                                   vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(texture))},
                                    vk::ImageLayout::eTransferDstOptimal,
                                    1,
                                    &blitInfo,
@@ -983,14 +978,13 @@ namespace vultra
                 // Transition current mip level to transfer src
                 m_BarrierBuilder.imageBarrier(
                     {
-                        .image     = texture,
-                        .newLayout = ImageLayout::eTransferSrc,
-                        .subresourceRange =
-                            ImageSubresourceRange {mipSubRange.aspectMask,
-                                                   mipSubRange.baseMipLevel,
-                                                   mipSubRange.levelCount,
-                                                   mipSubRange.baseArrayLayer,
-                                                   mipSubRange.layerCount},
+                        .image            = texture,
+                        .newLayout        = ImageLayout::eTransferSrc,
+                        .subresourceRange = ImageSubresourceRange {mipSubRange.aspectMask,
+                                                                   mipSubRange.baseMipLevel,
+                                                                   mipSubRange.levelCount,
+                                                                   mipSubRange.baseArrayLayer,
+                                                                   mipSubRange.layerCount},
                     },
                     {
                         .dstStage  = PipelineStages::eTransfer,
@@ -1001,18 +995,18 @@ namespace vultra
             }
 
             // After the loop, all mip layers are in transfer src layout.
-            texture.setBarrierState({
-                .dstStage  = PipelineStages::eBlit,
-                .dstAccess = Access::eTransferRead,
-            }, ImageLayout::eTransferSrc);
+            texture.setBarrierState(
+                {
+                    .dstStage  = PipelineStages::eBlit,
+                    .dstAccess = Access::eTransferRead,
+                },
+                ImageLayout::eTransferSrc);
 
             return *this;
         }
 
         VulkanCommandBuffer& VulkanCommandBuffer::flushBarriers()
         {
-            assert(invariant(State::eRecording, InvariantFlags::eOutsideRenderPass));
-
             if (auto barrier = m_BarrierBuilder.build(); barrier.isEffective())
             {
                 TRACY_GPU_ZONE2_("FlushBarriers");
@@ -1045,7 +1039,7 @@ namespace vultra
                     vkBarrier.dstAccessMask       = toVk(buffer.dst.dstAccess);
                     vkBarrier.srcQueueFamilyIndex = vk::QueueFamilyIgnored;
                     vkBarrier.dstQueueFamilyIndex = vk::QueueFamilyIgnored;
-                    vkBarrier.buffer              = reinterpret_cast<VkBuffer>(buffer.buffer->getHandle());
+                    vkBarrier.buffer              = vk::Buffer {asVkHandle<VkBuffer>(buffer.buffer->getHandle())};
                     vkBarrier.offset              = buffer.offset;
                     vkBarrier.size                = buffer.size;
                     bufferBarriers.emplace_back(vkBarrier);
@@ -1063,8 +1057,8 @@ namespace vultra
                     vkBarrier.newLayout           = toVk(image.newLayout);
                     vkBarrier.srcQueueFamilyIndex = vk::QueueFamilyIgnored;
                     vkBarrier.dstQueueFamilyIndex = vk::QueueFamilyIgnored;
-                    vkBarrier.image               = reinterpret_cast<VkImage>(image.image->getImageHandle());
-                    vkBarrier.subresourceRange = vk::ImageSubresourceRange {
+                    vkBarrier.image               = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(*image.image))};
+                    vkBarrier.subresourceRange    = vk::ImageSubresourceRange {
                         toVk(image.subresourceRange.aspectMask),
                         image.subresourceRange.baseMipLevel,
                         image.subresourceRange.levelCount,
@@ -1095,20 +1089,19 @@ namespace vultra
         }
 
         VulkanCommandBuffer::VulkanCommandBuffer(const vk::Device        device,
-                                     const vk::CommandPool   commandPool,
-                                     const vk::CommandBuffer handle,
-                                     TracyGpuContext         tracyContext,
-                                     const vk::Fence         fence,
-                                     const RenderDevice*     renderDevice,
-                                     const bool              useKhrDynamicRendering,
-                                     const bool              useKhrSynchronization2,
-                                     const bool              enableRaytracing) :
+                                                 const vk::CommandPool   commandPool,
+                                                 const vk::CommandBuffer handle,
+                                                 TracyGpuContext         tracyContext,
+                                                 const vk::Fence         fence,
+                                                 const RenderDevice*     renderDevice,
+                                                 const bool              useKhrDynamicRendering,
+                                                 const bool              useKhrSynchronization2,
+                                                 const bool              enableRaytracing) :
             m_Device(device), m_CommandPool(commandPool), m_State(State::eInitial), m_Handle(handle),
             m_TracyContext(tracyContext), m_Fence(fence), m_RenderDevice(renderDevice),
-            m_DescriptorSetAllocator(
-                std::make_unique<VulkanDescriptorSetAllocatorBackend>(
-                    reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(device))),
-                enableRaytracing),
+            m_DescriptorSetAllocator(std::make_unique<VulkanDescriptorSetAllocator>(
+                                         reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(device))),
+                                     enableRaytracing),
             m_UseKhrDynamicRendering(useKhrDynamicRendering), m_UseKhrSynchronization2(useKhrSynchronization2)
         {}
 
@@ -1182,9 +1175,9 @@ namespace vultra
         }
 
         void VulkanCommandBuffer::chunkedUpdate(const vk::Buffer bufferHandle,
-                                          vk::DeviceSize   offset,
-                                          vk::DeviceSize   size,
-                                          const void*      data) const
+                                                vk::DeviceSize   offset,
+                                                vk::DeviceSize   size,
+                                                const void*      data) const
         {
             const auto numChunks =
                 static_cast<vk::DeviceSize>(std::ceil(static_cast<float>(size) / static_cast<float>(kMaxDataSize)));
@@ -1212,7 +1205,7 @@ namespace vultra
             if (vertexBuffer)
             {
                 TRACY_GPU_ZONE2_("SetVertexBuffer");
-                const auto bufferHandle = vk::Buffer {reinterpret_cast<VkBuffer>(vertexBuffer->getHandle())};
+                const auto bufferHandle = vk::Buffer {asVkHandle<VkBuffer>(vertexBuffer->getHandle())};
                 m_Handle.bindVertexBuffers(0, 1, &bufferHandle, &offset);
             }
             m_VertexBuffer = vertexBuffer;
@@ -1229,9 +1222,8 @@ namespace vultra
             {
                 TRACY_GPU_ZONE2_("SetIndexBuffer");
                 const auto indexType = toVk(indexBuffer->getIndexType());
-                m_Handle.bindIndexBuffer(vk::Buffer {reinterpret_cast<VkBuffer>(indexBuffer->getHandle())},
-                                         0,
-                                         indexType);
+                m_Handle.bindIndexBuffer(
+                    vk::Buffer {asVkHandle<VkBuffer>(indexBuffer->getHandle())}, 0, indexType);
             }
             m_IndexBuffer = indexBuffer;
         }
@@ -1272,13 +1264,13 @@ namespace vultra
             {
                 dst.dstStage  = PipelineStages::eColorAttachmentOutput;
                 dst.dstAccess = Access::eColorAttachmentRead | Access::eColorAttachmentWrite;
-                newLayout      = ImageLayout::eAttachment;
+                newLayout     = ImageLayout::eAttachment;
             }
             else
             {
                 dst.dstStage  = PipelineStages::eFragmentTests;
                 dst.dstAccess = readOnly ? Access::eDepthStencilAttachmentRead : Access::eDepthStencilAttachmentWrite;
-                newLayout      = readOnly ? ImageLayout::eReadOnly : ImageLayout::eAttachment;
+                newLayout     = readOnly ? ImageLayout::eReadOnly : ImageLayout::eAttachment;
             }
 
             cb.getBarrierBuilder().imageBarrier(

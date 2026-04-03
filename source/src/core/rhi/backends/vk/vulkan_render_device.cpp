@@ -3,21 +3,15 @@
 #include "vultra/core/base/ranges.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_buffer.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_acceleration_structure_backend.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_compute_pipeline_backend.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_pipeline_backend.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_render_device_backend.hpp"
-#include "vultra/core/rhi/backends/webgpu/webgpu_render_device_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_acceleration_structure.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device.hpp"
 #include "vultra/core/rhi/raytracing_pipeline.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_radix_sorter.hpp"
-#include "vultra/core/rhi/shader_reflection.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_command_buffer.hpp"
+#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
-
-#include <vshadersystem/reflect.hpp>
 
 #include <glm/glm.hpp>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -25,7 +19,10 @@
 
 #include <exception>
 #include <set>
-#include <thread>
+
+#if UINTPTR_MAX < UINT64_MAX && !defined(VULTRA_ALLOW_UNSAFE_32BIT_VULKAN_HANDLES)
+#error "32-bit Vulkan build is blocked by default due to handle truncation risk. Enable android_allow_32bit_unsafe to override."
+#endif
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
@@ -110,18 +107,6 @@ namespace std
 
 namespace
 {
-    [[nodiscard]] vk::ShaderModule createVulkanShaderModule(const vk::Device device, const vultra::rhi::SPIRV& spv)
-    {
-        vk::ShaderModule handle {nullptr};
-        vk::ShaderModuleCreateInfo createInfo {};
-        createInfo.codeSize = sizeof(uint32_t) * spv.size();
-        createInfo.pCode    = spv.data();
-        VK_CHECK(device.createShaderModule(&createInfo, nullptr, &handle),
-                 "RenderDevice",
-                 "Failed to create shader module");
-        return handle;
-    }
-
     [[nodiscard]] vk::IndexType toVkIndexType(const vultra::rhi::IndexType indexType)
     {
         switch (indexType)
@@ -146,177 +131,24 @@ namespace
 
 namespace
 {
-    [[nodiscard]] std::string toStdString(const WGPUStringView str)
-    {
-        if (!str.data)
-        {
-            return {};
-        }
-        if (str.length == WGPU_STRLEN)
-        {
-            return std::string {str.data};
-        }
-        return std::string {str.data, str.length};
-    }
-
-    [[nodiscard]] const char* toWgpuRequestAdapterStatusString(const WGPURequestAdapterStatus status)
-    {
-        switch (status)
-        {
-            case WGPURequestAdapterStatus_Success:
-                return "Success";
-            case WGPURequestAdapterStatus_InstanceDropped:
-                return "InstanceDropped";
-            case WGPURequestAdapterStatus_Unavailable:
-                return "Unavailable";
-            case WGPURequestAdapterStatus_Error:
-                return "Error";
-            case WGPURequestAdapterStatus_Unknown:
-                return "Unknown";
-            default:
-                return "Invalid";
-        }
-    }
-
-    [[nodiscard]] const char* toWgpuRequestDeviceStatusString(const WGPURequestDeviceStatus status)
-    {
-        switch (status)
-        {
-            case WGPURequestDeviceStatus_Success:
-                return "Success";
-            case WGPURequestDeviceStatus_InstanceDropped:
-                return "InstanceDropped";
-            case WGPURequestDeviceStatus_Error:
-                return "Error";
-            case WGPURequestDeviceStatus_Unknown:
-                return "Unknown";
-            default:
-                return "Invalid";
-        }
-    }
-
-    struct AdapterRequestResult
-    {
-        bool                     completed {false};
-        WGPURequestAdapterStatus status {WGPURequestAdapterStatus_Unknown};
-        WGPUAdapter              adapter {nullptr};
-        std::string              message;
-    };
-
-    struct DeviceRequestResult
-    {
-        bool                    completed {false};
-        WGPURequestDeviceStatus status {WGPURequestDeviceStatus_Unknown};
-        WGPUDevice              device {nullptr};
-        std::string             message;
-    };
-
-    void onRequestAdapter(const WGPURequestAdapterStatus status,
-                          const WGPUAdapter              adapter,
-                          const WGPUStringView           message,
-                          void*                          userdata1,
-                          void*)
-    {
-        auto* result     = static_cast<AdapterRequestResult*>(userdata1);
-        result->completed = true;
-        result->status    = status;
-        result->adapter   = adapter;
-        result->message   = toStdString(message);
-    }
-
-    void onRequestDevice(const WGPURequestDeviceStatus status,
-                         const WGPUDevice              device,
-                         const WGPUStringView          message,
-                         void*                         userdata1,
-                         void*)
-    {
-        auto* result     = static_cast<DeviceRequestResult*>(userdata1);
-        result->completed = true;
-        result->status    = status;
-        result->device    = device;
-        result->message   = toStdString(message);
-    }
-
-    void onDeviceLost(const WGPUDevice*,
-                      const WGPUDeviceLostReason reason,
-                      const WGPUStringView       message,
-                      void*,
-                      void*)
-    {
-        VULTRA_CORE_ERROR("[RenderDevice] WebGPU device lost (reason={}): {}",
-                          static_cast<int>(reason),
-                          toStdString(message));
-    }
-
-    void onUncapturedError(const WGPUDevice*,
-                           const WGPUErrorType type,
-                           const WGPUStringView message,
-                           void*,
-                           void*)
-    {
-        VULTRA_CORE_ERROR("[RenderDevice] WebGPU uncaptured error (type={}): {}",
-                          static_cast<int>(type),
-                          toStdString(message));
-    }
-
-    template<typename Predicate>
-    void waitForFuture(WGPUInstance instance, const WGPUFuture future, Predicate&& done)
-    {
-        WGPUFutureWaitInfo waitInfo {};
-        waitInfo.future    = future;
-
-        while (!done())
-        {
-            waitInfo.completed = false;
-            const auto waitStatus = wgpuInstanceWaitAny(instance, 1, &waitInfo, 0);
-            if (waitStatus != WGPUWaitStatus_Success && waitStatus != WGPUWaitStatus_TimedOut)
-            {
-                throw std::runtime_error(std::format("wgpuInstanceWaitAny failed with status {}", static_cast<int>(waitStatus)));
-            }
-
-            if (waitStatus == WGPUWaitStatus_TimedOut)
-            {
-                wgpuInstanceProcessEvents(instance);
-                std::this_thread::yield();
-            }
-        }
-    }
-
-    [[nodiscard]] vultra::rhi::VulkanRenderDeviceBackend&
-    backendOf(std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
+    [[nodiscard]] vultra::rhi::VulkanRenderDevice&
+    backendOf(std::unique_ptr<vultra::rhi::IRenderDevice>& backend)
     {
         assert(backend);
-        auto* vkBackend = dynamic_cast<vultra::rhi::VulkanRenderDeviceBackend*>(backend.get());
+        auto* vkBackend = dynamic_cast<vultra::rhi::VulkanRenderDevice*>(backend.get());
         assert(vkBackend && "RenderDevice backend is not Vulkan");
         return *vkBackend;
     }
 
-    [[nodiscard]] const vultra::rhi::VulkanRenderDeviceBackend&
-    backendOf(const std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
+    [[nodiscard]] const vultra::rhi::VulkanRenderDevice&
+    backendOf(const std::unique_ptr<vultra::rhi::IRenderDevice>& backend)
     {
         assert(backend);
-        auto* vkBackend = dynamic_cast<const vultra::rhi::VulkanRenderDeviceBackend*>(backend.get());
+        auto* vkBackend = dynamic_cast<const vultra::rhi::VulkanRenderDevice*>(backend.get());
         assert(vkBackend && "RenderDevice backend is not Vulkan");
         return *vkBackend;
     }
 
-    [[nodiscard]] vultra::rhi::WebGPURenderDeviceBackend&
-    webgpuBackendOf(std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
-    {
-        assert(backend);
-        auto* webgpuBackend = dynamic_cast<vultra::rhi::WebGPURenderDeviceBackend*>(backend.get());
-        assert(webgpuBackend && "RenderDevice backend is not WebGPU");
-        return *webgpuBackend;
-    }
-
-    [[nodiscard]] const vultra::rhi::WebGPURenderDeviceBackend&
-    webgpuBackendOf(const std::unique_ptr<vultra::rhi::IRenderDeviceBackend>& backend)
-    {
-        assert(backend);
-        auto* webgpuBackend = dynamic_cast<const vultra::rhi::WebGPURenderDeviceBackend*>(backend.get());
-        assert(webgpuBackend && "RenderDevice backend is not WebGPU");
-        return *webgpuBackend;
-    }
 }
 
 namespace
@@ -400,6 +232,7 @@ namespace
         return vultra::rhi::Buffer {
             std::make_unique<vultra::rhi::VulkanBuffer>(allocator, size, usage, flags, memoryUsage)};
     }
+
 } // namespace
 
 namespace vultra
@@ -407,221 +240,6 @@ namespace vultra
     namespace rhi
     {
         constexpr auto LOGTAG = "RenderDevice";
-
-        RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits featureFlag,
-                                   const std::string_view            appName,
-                                   const std::span<const char* const> requiredInstanceExtensions,
-                                   const RenderBackendApi            backendApi)
-        {
-            switch (backendApi)
-            {
-                case RenderBackendApi::eAuto:
-                case RenderBackendApi::eVulkan:
-                    m_Backend = std::make_unique<VulkanRenderDeviceBackend>();
-                    break;
-                case RenderBackendApi::eWebGPU:
-                {
-                    m_Backend = std::make_unique<WebGPURenderDeviceBackend>();
-                    auto& backend      = webgpuBackendOf(m_Backend);
-                    backend.m_FeatureFlag = RenderDeviceFeatureFlagBits::eNormal;
-                    backend.m_AppName     = appName;
-
-                    WGPUInstanceDescriptor instanceDesc {};
-                    instanceDesc.nextInChain = nullptr;
-                    backend.m_Instance        = wgpuCreateInstance(&instanceDesc);
-                    if (!backend.m_Instance)
-                    {
-                        throw std::runtime_error("Failed to create WebGPU instance");
-                    }
-
-                    WGPURequestAdapterOptions adapterOptions {};
-                    adapterOptions.featureLevel = WGPUFeatureLevel_Core;
-                    adapterOptions.powerPreference = WGPUPowerPreference_HighPerformance;
-                    adapterOptions.forceFallbackAdapter = false;
-                    adapterOptions.backendType = WGPUBackendType_Undefined;
-                    adapterOptions.compatibleSurface = nullptr;
-
-                    AdapterRequestResult adapterResult {};
-                    WGPURequestAdapterCallbackInfo adapterCallbackInfo {};
-                    adapterCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
-                    adapterCallbackInfo.callback  = onRequestAdapter;
-                    adapterCallbackInfo.userdata1 = &adapterResult;
-                    adapterCallbackInfo.userdata2 = nullptr;
-
-                    const auto adapterFuture = wgpuInstanceRequestAdapter(backend.m_Instance, &adapterOptions, adapterCallbackInfo);
-                    waitForFuture(backend.m_Instance, adapterFuture, [&adapterResult]() { return adapterResult.completed; });
-                    if (adapterResult.status != WGPURequestAdapterStatus_Success || !adapterResult.adapter)
-                    {
-                        throw std::runtime_error(std::format("Failed to request WebGPU adapter ({}) {}",
-                                                             toWgpuRequestAdapterStatusString(adapterResult.status),
-                                                             adapterResult.message));
-                    }
-                    backend.m_Adapter = adapterResult.adapter;
-
-                    WGPUDeviceDescriptor deviceDesc {};
-                    deviceDesc.label.data   = backend.m_AppName.c_str();
-                    deviceDesc.label.length = WGPU_STRLEN;
-                    deviceDesc.requiredFeatureCount = 0;
-                    deviceDesc.requiredFeatures     = nullptr;
-                    deviceDesc.requiredLimits       = nullptr;
-                    deviceDesc.defaultQueue.label.data = backend.m_AppName.c_str();
-                    deviceDesc.defaultQueue.label.length = WGPU_STRLEN;
-                    deviceDesc.deviceLostCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
-                    deviceDesc.deviceLostCallbackInfo.callback  = onDeviceLost;
-                    deviceDesc.deviceLostCallbackInfo.userdata1 = nullptr;
-                    deviceDesc.deviceLostCallbackInfo.userdata2 = nullptr;
-                    deviceDesc.uncapturedErrorCallbackInfo.callback  = onUncapturedError;
-                    deviceDesc.uncapturedErrorCallbackInfo.userdata1 = nullptr;
-                    deviceDesc.uncapturedErrorCallbackInfo.userdata2 = nullptr;
-
-                    DeviceRequestResult deviceResult {};
-                    WGPURequestDeviceCallbackInfo deviceCallbackInfo {};
-                    deviceCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
-                    deviceCallbackInfo.callback  = onRequestDevice;
-                    deviceCallbackInfo.userdata1 = &deviceResult;
-                    deviceCallbackInfo.userdata2 = nullptr;
-
-                    const auto deviceFuture = wgpuAdapterRequestDevice(backend.m_Adapter, &deviceDesc, deviceCallbackInfo);
-                    waitForFuture(backend.m_Instance, deviceFuture, [&deviceResult]() { return deviceResult.completed; });
-                    if (deviceResult.status != WGPURequestDeviceStatus_Success || !deviceResult.device)
-                    {
-                        throw std::runtime_error(std::format("Failed to request WebGPU device ({}) {}",
-                                                             toWgpuRequestDeviceStatusString(deviceResult.status),
-                                                             deviceResult.message));
-                    }
-                    backend.m_Device = deviceResult.device;
-                    backend.m_Queue  = wgpuDeviceGetQueue(backend.m_Device);
-                    if (!backend.m_Queue)
-                    {
-                        throw std::runtime_error("Failed to get WebGPU queue");
-                    }
-
-                    WGPUAdapterInfo adapterInfo {};
-                    if (wgpuAdapterGetInfo(backend.m_Adapter, &adapterInfo) == WGPUStatus_Success)
-                    {
-                        auto name = toStdString(adapterInfo.description);
-                        if (name.empty())
-                        {
-                            name = toStdString(adapterInfo.device);
-                        }
-                        backend.m_FeatureReport.deviceName = std::move(name);
-                        wgpuAdapterInfoFreeMembers(adapterInfo);
-                    }
-                    if (backend.m_FeatureReport.deviceName.empty())
-                    {
-                        backend.m_FeatureReport.deviceName = "WebGPU Adapter";
-                    }
-
-                    backend.m_FeatureReport.apiMajor = 0;
-                    backend.m_FeatureReport.apiMinor = 0;
-                    backend.m_FeatureReport.apiPatch = 0;
-                    return;
-                }
-            }
-
-            backendOf(m_Backend).m_FeatureFlag = featureFlag;
-            backendOf(m_Backend).m_AppName     = appName;
-            backendOf(m_Backend).m_RequiredInstanceExtensions.assign(requiredInstanceExtensions.begin(),
-                                                requiredInstanceExtensions.end());
-
-            if (HasFlagValues(featureFlag, RenderDeviceFeatureFlagBits::eXR))
-            {
-                createXRDevice();
-            }
-
-            createInstance();
-            selectPhysicalDevice();
-            findGenericQueue();
-            createLogicalDevice();
-            createMemoryAllocator();
-            createCommandPool();
-            createPipelineCache();
-            createDefaultDescriptorPool();
-            createTracyContext();
-            createTracky();
-        }
-
-        RenderDevice::~RenderDevice()
-        {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = webgpuBackendOf(m_Backend);
-                if (backend.m_Queue)
-                {
-                    wgpuQueueRelease(backend.m_Queue);
-                    backend.m_Queue = nullptr;
-                }
-                if (backend.m_Device)
-                {
-                    wgpuDeviceRelease(backend.m_Device);
-                    backend.m_Device = nullptr;
-                }
-                if (backend.m_Adapter)
-                {
-                    wgpuAdapterRelease(backend.m_Adapter);
-                    backend.m_Adapter = nullptr;
-                }
-                if (backend.m_Instance)
-                {
-                    wgpuInstanceRelease(backend.m_Instance);
-                    backend.m_Instance = nullptr;
-                }
-                return;
-            }
-
-            if (backendOf(m_Backend).m_Device)
-            {
-                backendOf(m_Backend).m_Device.waitIdle();
-            }
-
-            for (auto [_, layout] : backendOf(m_Backend).m_DescriptorSetLayouts)
-            {
-                backendOf(m_Backend).m_Device.destroyDescriptorSetLayout(layout);
-            }
-
-            for (auto [_, layout] : backendOf(m_Backend).m_PipelineLayouts)
-            {
-                backendOf(m_Backend).m_Device.destroyPipelineLayout(layout);
-            }
-
-            for (auto [_, sampler] : backendOf(m_Backend).m_Samplers)
-            {
-                backendOf(m_Backend).m_Device.destroySampler(vk::Sampler {reinterpret_cast<VkSampler>(sampler.value)});
-            }
-
-            TracyGpuDestroy(backendOf(m_Backend).m_TracyContext);
-            TRACKY_TEARDOWN();
-
-            if (backendOf(m_Backend).m_MemoryAllocator)
-            {
-                backendOf(m_Backend).m_MemoryAllocator.destroy();
-            }
-
-            if (backendOf(m_Backend).m_Device)
-            {
-                backendOf(m_Backend).m_Device.destroyDescriptorPool(backendOf(m_Backend).m_DefaultDescriptorPool);
-                backendOf(m_Backend).m_Device.destroyPipelineCache(backendOf(m_Backend).m_PipelineCache);
-                backendOf(m_Backend).m_Device.destroyCommandPool(backendOf(m_Backend).m_CommandPool);
-                backendOf(m_Backend).m_Device.destroy();
-            }
-
-            if (backendOf(m_Backend).m_Instance)
-            {
-#if _DEBUG
-                if (backendOf(m_Backend).m_DebugMessenger)
-                {
-                    backendOf(m_Backend).m_Instance.destroyDebugUtilsMessengerEXT(backendOf(m_Backend).m_DebugMessenger);
-                }
-#endif
-                backendOf(m_Backend).m_Instance.destroy();
-            }
-
-            if (backendOf(m_Backend).m_XRDevice)
-            {
-                delete backendOf(m_Backend).m_XRDevice;
-                backendOf(m_Backend).m_XRDevice = nullptr;
-            }
-        }
 
         RenderDeviceFeatureFlagBits RenderDevice::getFeatureFlag() const
         {
@@ -636,6 +254,16 @@ namespace vultra
         RenderDeviceSyncCapabilities RenderDevice::getSyncCapabilities() const
         {
             return m_Backend->getSyncCapabilities();
+        }
+
+        RenderBackendApi RenderDevice::getBackendApi() const
+        {
+            return m_Backend->getBackendApi();
+        }
+
+        bool RenderDevice::supportsSwapchain() const
+        {
+            return m_Backend->supportsSwapchain();
         }
 
         openxr::XRDevice* RenderDevice::getXRDevice() const
@@ -653,646 +281,9 @@ namespace vultra
             return m_Backend->getPhysicalDeviceInfo();
         }
 
-        std::array<float, 2> RenderDevice::getLineWidthRange() const
-        {
-            assert(backendOf(m_Backend).m_PhysicalDevice);
-            const auto& limits = backendOf(m_Backend).m_PhysicalDevice.getProperties().limits;
-            return {limits.lineWidthRange[0], limits.lineWidthRange[1]};
-        }
-
-        float RenderDevice::getMaxSamplerAnisotropy() const
-        {
-            assert(backendOf(m_Backend).m_PhysicalDevice);
-            return backendOf(m_Backend).m_PhysicalDevice.getProperties().limits.maxSamplerAnisotropy;
-        }
-
-        uint64_t RenderDevice::getFormatFeatureFlagsOptimal(const PixelFormat pixelFormat) const
-        {
-            assert(backendOf(m_Backend).m_PhysicalDevice);
-            vk::FormatProperties props {};
-            backendOf(m_Backend).m_PhysicalDevice.getFormatProperties(toVk(pixelFormat), &props);
-            return static_cast<uint64_t>(static_cast<VkFormatFeatureFlags>(props.optimalTilingFeatures));
-        }
-
-        Swapchain RenderDevice::createSwapchain(os::Window&             window,
-                                                const SwapchainFormat   format,
-                                                const VerticalSync      vsync) const
-        {
-            assert(backendOf(m_Backend).m_Device);
-
-            return Swapchain {
-                reinterpret_cast<std::uintptr_t>(static_cast<VkInstance>(backendOf(m_Backend).m_Instance)),
-                reinterpret_cast<std::uintptr_t>(static_cast<VkPhysicalDevice>(backendOf(m_Backend).m_PhysicalDevice)),
-                reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device)),
-                &window,
-                format,
-                vsync,
-            };
-        }
-
-        FenceHandle RenderDevice::createFence(const bool signaled) const
-        {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = webgpuBackendOf(m_Backend);
-                const auto handle = backend.m_NextSyncHandle++;
-                backend.m_EmulatedFences[handle] = signaled;
-                return FenceHandle {handle};
-            }
-
-            assert(backendOf(m_Backend).m_Device);
-            vk::FenceCreateInfo createInfo {};
-            createInfo.flags = signaled ? vk::FenceCreateFlagBits::eSignaled : vk::FenceCreateFlags(0u);
-            vk::Fence fence {nullptr};
-            VK_CHECK(backendOf(m_Backend).m_Device.createFence(&createInfo, nullptr, &fence), LOGTAG, "Failed to create fence");
-            return FenceHandle {reinterpret_cast<std::uintptr_t>(static_cast<VkFence>(fence))};
-        }
-
-        SemaphoreHandle RenderDevice::createSemaphore()
-        {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = webgpuBackendOf(m_Backend);
-                const auto handle = backend.m_NextSyncHandle++;
-                backend.m_EmulatedSemaphores.insert(handle);
-                return SemaphoreHandle {handle};
-            }
-
-            assert(backendOf(m_Backend).m_Device);
-            vk::SemaphoreCreateInfo createInfo {};
-            createInfo.flags = vk::SemaphoreCreateFlags(0);
-            vk::Semaphore semaphore {nullptr};
-            VK_CHECK(backendOf(m_Backend).m_Device.createSemaphore(&createInfo, nullptr, &semaphore), LOGTAG, "Failed to create semaphore");
-            return SemaphoreHandle {reinterpret_cast<std::uintptr_t>(static_cast<VkSemaphore>(semaphore))};
-        }
-
-        Buffer RenderDevice::createStagingBuffer(const uint64_t size, const void* data) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-
-            Buffer stagingBuffer = makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                                              size,
-                                              BufferUsage::eTransferSrc,
-                                              makeAllocationFlags(AllocationHints::eSequentialWrite),
-                                              vma::MemoryUsage::eAutoPreferHost);
-
-            if (data)
-            {
-                auto* mappedPtr = stagingBuffer.map();
-                std::memcpy(mappedPtr, data, size);
-                stagingBuffer.unmap();
-            }
-            return stagingBuffer;
-        }
-
-        VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
-                                                      const uint64_t        vertexCount,
-                                                      const AllocationHints allocationHint) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-
-            BufferUsage usage = BufferUsage::eVertexBuffer | BufferUsage::eTransferDst;
-
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
-            {
-                usage |= BufferUsage::eShaderDeviceAddress;
-            }
-
-            if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
-            {
-                usage |= BufferUsage::eAccelerationBuildInput;
-            }
-
-            return VertexBuffer {
-                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                           stride * vertexCount,
-                           usage,
-                           makeAllocationFlags(allocationHint),
-                           vma::MemoryUsage::eAutoPreferDevice),
-                stride,
-            };
-        }
-
-        IndexBuffer RenderDevice::createIndexBuffer(IndexType             indexType,
-                                                    const uint64_t        indexCount,
-                                                    const AllocationHints allocationHint) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-
-            BufferUsage usage = BufferUsage::eIndexBuffer | BufferUsage::eTransferDst;
-
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
-            {
-                usage |= BufferUsage::eShaderDeviceAddress;
-            }
-
-            if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
-            {
-                usage |= BufferUsage::eAccelerationBuildInput;
-            }
-
-            const auto indexStride = indexType == IndexType::eUInt16 ? 2 : 4;
-
-            return IndexBuffer {
-                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                           indexStride * indexCount,
-                           usage,
-                           makeAllocationFlags(allocationHint),
-                           vma::MemoryUsage::eAutoPreferDevice),
-                indexType,
-            };
-        }
-
-        UniformBuffer RenderDevice::createUniformBuffer(const uint64_t        size,
-                                                        const AllocationHints allocationHint) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-
-            return UniformBuffer {
-                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                           size,
-                           BufferUsage::eUniformBuffer | BufferUsage::eTransferDst,
-                           makeAllocationFlags(allocationHint),
-                           vma::MemoryUsage::eAutoPreferDevice),
-            };
-        }
-
-        StorageBuffer RenderDevice::createStorageBuffer(const uint64_t        size,
-                                                        const AllocationHints allocationHint) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-
-            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst;
-
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
-            {
-                usage |= BufferUsage::eShaderDeviceAddress;
-            }
-
-            if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
-            {
-                usage |= BufferUsage::eAccelerationBuildInput;
-            }
-
-            return StorageBuffer {
-                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                           size,
-                           usage,
-                           makeAllocationFlags(allocationHint),
-                           vma::MemoryUsage::eAutoPreferDevice),
-            };
-        }
-
-        StorageBuffer RenderDevice::createStorageBufferWithUsage(const uint64_t       size,
-                                                                 const BufferUsage    extraUsage,
-                                                                 const AllocationHints allocationHint) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-
-            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | extraUsage;
-
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
-            {
-                usage |= BufferUsage::eShaderDeviceAddress;
-            }
-
-            if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
-            {
-                usage |= BufferUsage::eAccelerationBuildInput;
-            }
-
-            return StorageBuffer {
-                makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                           size,
-                           usage,
-                           makeAllocationFlags(allocationHint),
-                           vma::MemoryUsage::eAutoPreferDevice),
-            };
-        }
-
-        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferByCount(const uint32_t         commandCount,
-                                                                         const DrawIndirectType type,
-                                                                         const AllocationHints  allocationHint) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-
-            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer;
-
-            const auto stride = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
-                                                                     sizeof(vk::DrawIndirectCommand);
-
-            return DrawIndirectBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                                                 commandCount * stride,
-                                                 usage,
-                                                 makeAllocationFlags(allocationHint),
-                                                 vma::MemoryUsage::eCpuToGpu),
-                                       type};
-        }
-
-        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferBySize(const uint64_t         size,
-                                                                        const DrawIndirectType type,
-                                                                        const AllocationHints  allocationHint) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-
-            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer;
-
-            return DrawIndirectBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                                                 size,
-                                                 usage,
-                                                 makeAllocationFlags(allocationHint),
-                                                 vma::MemoryUsage::eCpuToGpu),
-                                       type};
-        }
-
-        DescriptorSetLayoutKey
-        RenderDevice::createDescriptorSetLayout(const std::vector<DescriptorSetLayoutBindingEx>& bindings)
-        {
-            assert(backendOf(m_Backend).m_Device);
-
-            std::size_t hash {0};
-            for (const auto& b : bindings)
-                hashCombine(hash, b);
-
-            if (const auto it = backendOf(m_Backend).m_DescriptorSetLayouts.find(hash); it != backendOf(m_Backend).m_DescriptorSetLayouts.cend())
-            {
-                return DescriptorSetLayoutKey {hash};
-            }
-
-            std::vector<vk::DescriptorSetLayoutBinding> vkBindings;
-            vkBindings.reserve(bindings.size());
-            for (const auto& b : bindings)
-            {
-                vkBindings.push_back(vk::DescriptorSetLayoutBinding {
-                    b.binding,
-                    toVk(b.type),
-                    b.count,
-                    toVk(b.stageFlags)});
-            }
-
-            std::vector<vk::DescriptorBindingFlags> vkFlags;
-            vkFlags.reserve(bindings.size());
-            for (const auto& b : bindings)
-                vkFlags.push_back(static_cast<vk::DescriptorBindingFlags>(b.flags));
-
-            vk::DescriptorSetLayoutBindingFlagsCreateInfo flagsInfo {};
-            flagsInfo.bindingCount  = static_cast<uint32_t>(vkFlags.size());
-            flagsInfo.pBindingFlags = vkFlags.data();
-
-            vk::DescriptorSetLayoutCreateInfo createInfo {};
-            createInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
-            createInfo.pBindings    = vkBindings.data();
-            createInfo.pNext        = &flagsInfo;
-#if __APPLE__
-            createInfo.flags = vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool;
-#endif
-
-            vk::DescriptorSetLayout descriptorSetLayout {nullptr};
-            VK_CHECK(backendOf(m_Backend).m_Device.createDescriptorSetLayout(&createInfo, nullptr, &descriptorSetLayout),
-                     LOGTAG,
-                     "Failed to create descriptor set layout");
-
-            const auto& [inserted, _] = backendOf(m_Backend).m_DescriptorSetLayouts.emplace(hash, descriptorSetLayout);
-            return DescriptorSetLayoutKey {hash};
-        }
-
-        std::uintptr_t RenderDevice::getDescriptorSetLayoutBackendHandle(const DescriptorSetLayoutKey layoutKey) const
-        {
-            assert(layoutKey);
-            if (const auto it = backendOf(m_Backend).m_DescriptorSetLayouts.find(layoutKey.value);
-                it != backendOf(m_Backend).m_DescriptorSetLayouts.end())
-            {
-                return reinterpret_cast<std::uintptr_t>(static_cast<VkDescriptorSetLayout>(it->second));
-            }
-            return 0;
-        }
-
-        PipelineLayout RenderDevice::createPipelineLayout(const PipelineLayoutInfo& layoutInfo)
-        {
-            assert(backendOf(m_Backend).m_Device);
-
-            std::size_t                           hash {0};
-            std::vector<DescriptorSetLayoutKey>   descriptorSetLayoutKeys(kMinNumDescriptorSets);
-            std::vector<vk::DescriptorSetLayout>  descriptorSetLayouts(kMinNumDescriptorSets);
-            std::vector<vk::PushConstantRange>    vkPushConstantRanges;
-            vkPushConstantRanges.reserve(layoutInfo.pushConstantRanges.size());
-
-            for (const auto& [set, bindings] : vultra::enumerate(layoutInfo.descriptorSets))
-            {
-                for (const auto& binding : bindings)
-                {
-                    hashCombine(hash, set, binding);
-                }
-                descriptorSetLayoutKeys[set] = createDescriptorSetLayout(bindings);
-                descriptorSetLayouts[set] = vk::DescriptorSetLayout {
-                    reinterpret_cast<VkDescriptorSetLayout>(
-                        getDescriptorSetLayoutBackendHandle(descriptorSetLayoutKeys[set]))};
-            }
-            for (const auto& range : layoutInfo.pushConstantRanges)
-            {
-                hashCombine(hash, range);
-                vk::PushConstantRange vkRange {};
-                vkRange.offset     = range.offset;
-                vkRange.size       = range.size;
-                vkRange.stageFlags = toVk(range.stageFlags);
-                vkPushConstantRanges.push_back(vkRange);
-            }
-
-            if (const auto it = backendOf(m_Backend).m_PipelineLayouts.find(hash); it != backendOf(m_Backend).m_PipelineLayouts.cend())
-            {
-                return PipelineLayout {reinterpret_cast<std::uintptr_t>(static_cast<VkPipelineLayout>(it->second)),
-                                       std::move(descriptorSetLayoutKeys)};
-            }
-
-            vk::PipelineLayoutCreateInfo createInfo {};
-            createInfo.setLayoutCount         = static_cast<uint32_t>(descriptorSetLayouts.size());
-            createInfo.pSetLayouts            = descriptorSetLayouts.data();
-            createInfo.pushConstantRangeCount = static_cast<uint32_t>(vkPushConstantRanges.size());
-            createInfo.pPushConstantRanges    = vkPushConstantRanges.data();
-
-            vk::PipelineLayout handle {nullptr};
-            VK_CHECK(backendOf(m_Backend).m_Device.createPipelineLayout(&createInfo, nullptr, &handle),
-                     LOGTAG,
-                     "Failed to create pipeline layout");
-
-            const auto& [inserted, _] = backendOf(m_Backend).m_PipelineLayouts.emplace(hash, handle);
-            return PipelineLayout {reinterpret_cast<std::uintptr_t>(static_cast<VkPipelineLayout>(inserted->second)),
-                                   std::move(descriptorSetLayoutKeys)};
-        }
-
-        Texture RenderDevice::createTexture2D(const Extent2D    extent,
-                                              const PixelFormat format,
-                                              const uint32_t    numMipLevels,
-                                              const uint32_t    numLayers,
-                                              const ImageUsage  usageFlags) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-            const auto allocatorHandle =
-                reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(backendOf(m_Backend).m_MemoryAllocator));
-
-            return Texture {
-                allocatorHandle,
-                Texture::CreateInfo {
-                    .extent       = extent,
-                    .depth        = 0,
-                    .pixelFormat  = format,
-                    .numMipLevels = numMipLevels,
-                    .numLayers    = numLayers,
-                    .numFaces     = 1,
-                    .usageFlags   = usageFlags,
-                },
-            };
-        }
-
-        Texture RenderDevice::createTexture3D(const Extent2D    extent,
-                                              const uint32_t    depth,
-                                              const PixelFormat format,
-                                              const uint32_t    numMipLevels,
-                                              const ImageUsage  usageFlags) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-            const auto allocatorHandle =
-                reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(backendOf(m_Backend).m_MemoryAllocator));
-
-            return Texture {
-                allocatorHandle,
-                Texture::CreateInfo {
-                    .extent       = extent,
-                    .depth        = depth,
-                    .pixelFormat  = format,
-                    .numMipLevels = numMipLevels,
-                    .numLayers    = 0,
-                    .numFaces     = 1,
-                    .usageFlags   = usageFlags,
-                },
-            };
-        }
-
-        Texture RenderDevice::createCubemap(const uint32_t    size,
-                                            const PixelFormat format,
-                                            const uint32_t    numMipLevels,
-                                            const uint32_t    numLayers,
-                                            const ImageUsage  usageFlags) const
-        {
-            assert(backendOf(m_Backend).m_MemoryAllocator);
-            const auto allocatorHandle =
-                reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(backendOf(m_Backend).m_MemoryAllocator));
-
-            return Texture {
-                allocatorHandle,
-                Texture::CreateInfo {
-                    .extent       = {size, size},
-                    .depth        = 0,
-                    .pixelFormat  = format,
-                    .numMipLevels = numMipLevels,
-                    .numLayers    = numLayers,
-                    .numFaces     = 6,
-                    .usageFlags   = usageFlags,
-                },
-            };
-        }
-
-        RenderDevice& RenderDevice::setupSampler(Texture& texture, SamplerInfo samplerInfo)
-        {
-            assert(texture && HasFlagValues(texture.getUsageFlags(), ImageUsage::eSampled));
-
-            if ((getFormatFeatureFlagsOptimal(texture.getPixelFormat()) &
-                 static_cast<uint64_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) == 0)
-            {
-                samplerInfo.minFilter  = TexelFilter::eNearest;
-                samplerInfo.magFilter  = TexelFilter::eNearest;
-                samplerInfo.mipmapMode = MipmapMode::eNearest;
-            }
-            texture.setSampler(getSampler(samplerInfo));
-            return *this;
-        }
-
-        Sampler RenderDevice::getSampler(const SamplerInfo& samplerInfo)
-        {
-            const auto hash = std::hash<SamplerInfo> {}(samplerInfo);
-
-            auto it = backendOf(m_Backend).m_Samplers.find(hash);
-            if (it == backendOf(m_Backend).m_Samplers.cend())
-            {
-                it = backendOf(m_Backend).m_Samplers.emplace(hash, createSampler(samplerInfo)).first;
-                VULTRA_CORE_TRACE("[RenderDevice] Created Sampler {}", hash);
-            }
-
-            return Sampler {samplerInfo};
-        }
-
-        SamplerHandle RenderDevice::getSamplerHandle(const Sampler& sampler) const
-        {
-            assert(sampler);
-            const auto hash = std::hash<SamplerInfo> {}(sampler.info());
-
-            auto it = backendOf(m_Backend).m_Samplers.find(hash);
-            if (it == backendOf(m_Backend).m_Samplers.cend())
-            {
-                it = backendOf(m_Backend).m_Samplers.emplace(hash, createSampler(sampler.info())).first;
-            }
-
-            return it->second;
-        }
-
-        ShaderCompiler::Result
-        RenderDevice::compile(const ShaderType                                                   shaderType,
-                              const std::string_view                                             code,
-                              const std::string_view                                             entryPointName,
-                              const std::unordered_map<std::string, std::optional<std::string>>& defines) const
-        {
-            return backendOf(m_Backend).m_ShaderCompiler.compile(shaderType, code, entryPointName, defines);
-        }
-
-        ShaderModule
-        RenderDevice::createShaderModule(const ShaderType       shaderType,
-                                         const std::string_view code,
-                                         const std::string_view entryPointName,
-                                         const std::unordered_map<std::string, std::optional<std::string>>& defines,
-                                         ShaderReflection* reflection) const
-        {
-            if (auto spv = compile(shaderType, code, entryPointName, defines); spv)
-            {
-                return createShaderModule(*spv, reflection);
-            }
-            else
-            {
-                VULTRA_CORE_ERROR("[RenderDevice] Failed to compile shader: {}", spv.error());
-                return {};
-            }
-        }
-
-        ShaderModule RenderDevice::createShaderModule(SPIRV spv, ShaderReflection* reflection) const
-        {
-            assert(backendOf(m_Backend).m_Device != nullptr);
-            if (reflection)
-            {
-                auto rr = vshadersystem::reflect_spirv(spv);
-                if (rr.isOk())
-                {
-                    reflection->accumulate(rr.value());
-                }
-                else
-                {
-                    VULTRA_CORE_ERROR("[RenderDevice] Failed to reflect SPIR-V: {}", rr.error().message);
-                }
-            }
-            return ShaderModule {std::move(spv)};
-        }
-
-        ComputePipeline RenderDevice::createComputePipeline(const ShaderStageInfo&        shaderStageInfo,
-                                                            std::optional<PipelineLayout> pipelineLayout)
-        {
-            auto reflection = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
-
-            const auto shaderModule = createShaderModule(ShaderType::eCompute,
-                                                         shaderStageInfo.code,
-                                                         shaderStageInfo.entryPointName,
-                                                         shaderStageInfo.defines,
-                                                         reflection ? std::addressof(reflection.value()) : nullptr);
-            if (!shaderModule)
-                return {};
-
-            if (reflection)
-                pipelineLayout = reflectPipelineLayout(*this, *reflection);
-            assert(*pipelineLayout);
-
-            const auto shaderModuleHandle = createVulkanShaderModule(backendOf(m_Backend).m_Device, shaderModule.getSpirv());
-
-            vk::ComputePipelineCreateInfo createInfo {};
-            createInfo.stage  = vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eCompute, shaderModuleHandle, "main"};
-            createInfo.layout = vk::PipelineLayout {reinterpret_cast<VkPipelineLayout>(pipelineLayout->getHandle())};
-
-            auto [result, computePipeline] = backendOf(m_Backend).m_Device.createComputePipeline(backendOf(m_Backend).m_PipelineCache, createInfo, nullptr);
-            backendOf(m_Backend).m_Device.destroyShaderModule(shaderModuleHandle);
-            if (result != vk::Result::eSuccess)
-            {
-                VULTRA_CORE_ERROR("[RenderDevice] Failed to create compute pipeline: {}", vk::to_string(result));
-                throw std::runtime_error("Failed to create compute pipeline");
-            }
-
-            return ComputePipeline {
-                std::move(pipelineLayout.value()),
-                reflection ? reflection->localSize.value() : glm::uvec3 {},
-                reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
-                std::make_unique<VulkanPipelineBackend>(
-                    reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device))),
-                std::make_unique<VulkanComputePipelineBackend>(
-                    reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
-                    reflection ? reflection->localSize.value() : glm::uvec3 {}),
-            };
-        }
-
-        ComputePipeline RenderDevice::createComputePipelineBuiltin(const SPIRV&                  spv,
-                                                                   std::optional<PipelineLayout> pipelineLayout)
-        {
-            auto reflection = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
-
-            const auto shaderModule =
-                createShaderModule(spv, reflection ? std::addressof(reflection.value()) : nullptr);
-            if (!shaderModule)
-                return {};
-
-            if (reflection)
-                pipelineLayout = reflectPipelineLayout(*this, *reflection);
-            assert(*pipelineLayout);
-
-            vk::ComputePipelineCreateInfo createInfo {};
-            const auto shaderModuleHandle = createVulkanShaderModule(backendOf(m_Backend).m_Device, shaderModule.getSpirv());
-            createInfo.stage              = vk::PipelineShaderStageCreateInfo {
-                                 {}, vk::ShaderStageFlagBits::eCompute, shaderModuleHandle, "main"};
-            createInfo.layout = vk::PipelineLayout {reinterpret_cast<VkPipelineLayout>(pipelineLayout->getHandle())};
-
-            auto [result, computePipeline] = backendOf(m_Backend).m_Device.createComputePipeline(backendOf(m_Backend).m_PipelineCache, createInfo, nullptr);
-            backendOf(m_Backend).m_Device.destroyShaderModule(shaderModuleHandle);
-            if (result != vk::Result::eSuccess)
-            {
-                VULTRA_CORE_ERROR("[RenderDevice] Failed to create compute pipeline: {}", vk::to_string(result));
-                throw std::runtime_error("Failed to create compute pipeline");
-            }
-
-            return ComputePipeline {
-                std::move(pipelineLayout.value()),
-                reflection ? reflection->localSize.value() : glm::uvec3 {},
-                reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
-                std::make_unique<VulkanPipelineBackend>(
-                    reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(backendOf(m_Backend).m_Device))),
-                std::make_unique<VulkanComputePipelineBackend>(
-                    reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(computePipeline)),
-                    reflection ? reflection->localSize.value() : glm::uvec3 {}),
-            };
-        }
-
         RadixSorter RenderDevice::createRadixSorter(const uint32_t maxElementCount)
         {
             return RadixSorter::create(std::make_unique<VulkanRadixSorter>(*this, maxElementCount));
-        }
-
-        RenderDevice& RenderDevice::upload(Buffer& buffer, const uint64_t offset, const uint64_t size, const void* data)
-        {
-            assert(buffer && data);
-            assert(backendOf(m_Backend).m_Device);
-
-            auto* mappedMemory = std::bit_cast<std::byte*>(buffer.map());
-            std::memcpy(mappedMemory + offset, data, size);
-            buffer.flush().unmap();
-            return *this;
-        }
-
-        RenderDevice& RenderDevice::uploadS(Buffer& buffer, const uint64_t offset, const uint64_t size, const void* data)
-        {
-            assert(buffer && data);
-            assert(backendOf(m_Backend).m_Device);
-
-            // NOTE: Synchronous upload path. This submits immediately and waits for completion.
-            // Keep this for initialization/setup/debug utilities only.
-            // Do not call from framegraph/pass execution paths.
-
-            auto stagingBuffer = createStagingBuffer(size, data);
-
-            return execute(
-                [&](CommandBuffer& cb) { cb.copyBuffer(stagingBuffer, buffer, rhi::BufferCopy {0, offset, size}); },
-                true);
         }
 
         RenderDevice& RenderDevice::uploadDrawIndirect(DrawIndirectBuffer&                     buffer,
@@ -1345,42 +336,6 @@ namespace vultra
 
             buffer.flush().unmap();
 
-            return *this;
-        }
-
-        RenderDevice& RenderDevice::destroy(FenceHandle& fence)
-        {
-            assert(static_cast<bool>(fence));
-
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = webgpuBackendOf(m_Backend);
-                backend.m_EmulatedFences.erase(fence.value);
-                fence = {};
-                return *this;
-            }
-
-            assert(backendOf(m_Backend).m_Device);
-            backendOf(m_Backend).m_Device.destroyFence(vk::Fence {reinterpret_cast<VkFence>(fence.value)});
-            fence = {};
-            return *this;
-        }
-
-        RenderDevice& RenderDevice::destroy(SemaphoreHandle& semaphore)
-        {
-            assert(static_cast<bool>(semaphore));
-
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = webgpuBackendOf(m_Backend);
-                backend.m_EmulatedSemaphores.erase(semaphore.value);
-                semaphore = {};
-                return *this;
-            }
-
-            assert(backendOf(m_Backend).m_Device);
-            backendOf(m_Backend).m_Device.destroySemaphore(vk::Semaphore {reinterpret_cast<VkSemaphore>(semaphore.value)});
-            semaphore = {};
             return *this;
         }
 
@@ -2248,7 +1203,7 @@ namespace vultra
         void RenderDevice::createTracyContext()
         {
 #ifdef TRACY_ENABLE
-            const auto cmdBuffer = vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(allocateCommandBuffer())};
+            const auto cmdBuffer = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(allocateCommandBuffer())};
             backendOf(m_Backend).m_TracyContext =
                 TracyVkContext(backendOf(m_Backend).m_PhysicalDevice,
                                backendOf(m_Backend).m_Device,
@@ -2286,158 +1241,7 @@ namespace vultra
             VK_CHECK(backendOf(m_Backend).m_Device.allocateCommandBuffers(&allocateInfo, &commandBuffer),
                      LOGTAG,
                      "Failed to allocate command buffer");
-            return reinterpret_cast<std::uintptr_t>(static_cast<VkCommandBuffer>(commandBuffer));
-        }
-
-        SamplerHandle RenderDevice::createSampler(const SamplerInfo& samplerInfo) const
-        {
-            vk::SamplerCreateInfo samplerCreateInfo {};
-            samplerCreateInfo.magFilter               = toVk(samplerInfo.magFilter);
-            samplerCreateInfo.minFilter               = toVk(samplerInfo.minFilter);
-            samplerCreateInfo.mipmapMode              = toVk(samplerInfo.mipmapMode);
-            samplerCreateInfo.addressModeU            = toVk(samplerInfo.addressModeS);
-            samplerCreateInfo.addressModeV            = toVk(samplerInfo.addressModeT);
-            samplerCreateInfo.addressModeW            = toVk(samplerInfo.addressModeR);
-            samplerCreateInfo.minLod                  = samplerInfo.minLod;
-            samplerCreateInfo.maxLod                  = samplerInfo.maxLod;
-            samplerCreateInfo.mipLodBias              = 0.0f;
-            samplerCreateInfo.borderColor             = toVk(samplerInfo.borderColor);
-            samplerCreateInfo.unnormalizedCoordinates = false;
-            samplerCreateInfo.compareEnable           = samplerInfo.compareOp.has_value();
-            samplerCreateInfo.compareOp = toVk(samplerInfo.compareOp.value_or(CompareOp::eLess));
-            samplerCreateInfo.anisotropyEnable = samplerInfo.maxAnisotropy.has_value();
-            samplerCreateInfo.maxAnisotropy =
-                samplerInfo.maxAnisotropy ?
-                    glm::clamp(*samplerInfo.maxAnisotropy, 1.0f, getMaxSamplerAnisotropy()) :
-                    0.0f;
-
-            vk::Sampler sampler {nullptr};
-            VK_CHECK(backendOf(m_Backend).m_Device.createSampler(&samplerCreateInfo, nullptr, &sampler), LOGTAG, "Failed to create sampler");
-
-            return SamplerHandle {reinterpret_cast<std::uintptr_t>(static_cast<VkSampler>(sampler))};
-        }
-
-        CommandBuffer RenderDevice::createCommandBuffer() const
-        {
-            const auto fenceHandle = createFence();
-            const vk::Fence fence {reinterpret_cast<VkFence>(fenceHandle.value)};
-            return CommandBuffer {std::make_unique<VulkanCommandBuffer>(backendOf(m_Backend).m_Device,
-                                                                         backendOf(m_Backend).m_CommandPool,
-                                                                         vk::CommandBuffer {
-                                                                             reinterpret_cast<VkCommandBuffer>(allocateCommandBuffer())},
-                                                                         backendOf(m_Backend).m_TracyContext,
-                                                                         fence,
-                                                                         this,
-                                                                         backendOf(m_Backend).m_UseKhrDynamicRendering,
-                                                                         backendOf(m_Backend).m_UseKhrSynchronization2,
-                                                                         isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))};
-        }
-
-        RenderDevice& RenderDevice::execute(const std::function<void(CommandBuffer&)>& f, bool oneTime)
-        {
-            auto cb = createCommandBuffer();
-            cb.begin();
-            // TRACKY_GPU_NEXT_FRAME(cb);
-            {
-                TRACY_GPU_ZONE(cb, "ExecuteCommandBuffer");
-                // TRACKY_GPU_ZONE(cb, "ExecuteCommandBuffer");
-                std::invoke(f, cb);
-            }
-            return execute(cb, JobInfo {}, oneTime);
-        }
-
-        RenderDevice& RenderDevice::execute(CommandBuffer& cb, const JobInfo& jobInfo, bool oneTime)
-        {
-            cb.flushBarriers();
-            TracyGpuCollect(backendOf(m_Backend).m_TracyContext, reinterpret_cast<VkCommandBuffer>(cb.getHandle()));
-            cb.end();
-            cb.submit(jobInfo, oneTime);
-
-            return *this;
-        }
-
-        RenderDevice& RenderDevice::present(Swapchain& swapchain, const SemaphoreHandle wait)
-        {
-            ZoneScopedN("RHI::Present");
-
-            assert(swapchain);
-            assert(backendOf(m_Backend).m_GenericQueue);
-
-            vk::PresentInfoKHR presentInfo {};
-            const vk::Semaphore waitSemaphore {reinterpret_cast<VkSemaphore>(wait.value)};
-            presentInfo.waitSemaphoreCount = static_cast<bool>(wait) ? 1u : 0u;
-            presentInfo.pWaitSemaphores    = static_cast<bool>(wait) ? &waitSemaphore : nullptr;
-            presentInfo.swapchainCount     = 1;
-            const auto swapchainHandle     = vk::SwapchainKHR {
-                reinterpret_cast<VkSwapchainKHR>(swapchain.getHandle())};
-            const auto imageIndex = swapchain.getCurrentBufferIndex();
-            presentInfo.pSwapchains   = &swapchainHandle;
-            presentInfo.pImageIndices = &imageIndex;
-
-            auto result = backendOf(m_Backend).m_GenericQueue.presentKHR(&presentInfo);
-            switch (result)
-            {
-                case vk::Result::eSuboptimalKHR:
-                case vk::Result::eErrorOutOfDateKHR:
-                    swapchain.recreate();
-                    [[fallthrough]];
-                case vk::Result::eSuccess:
-                    break;
-
-                default:
-                    assert(false);
-            }
-
-            return *this;
-        }
-
-        RenderDevice& RenderDevice::wait(const FenceHandle fence)
-        {
-            assert(static_cast<bool>(fence));
-
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = webgpuBackendOf(m_Backend);
-                if (const auto it = backend.m_EmulatedFences.find(fence.value); it != backend.m_EmulatedFences.end())
-                {
-                    it->second = true;
-                }
-                return *this;
-            }
-
-            assert(backendOf(m_Backend).m_Device);
-            const vk::Fence vkFence {reinterpret_cast<VkFence>(fence.value)};
-            VK_CHECK(backendOf(m_Backend).m_Device.waitForFences(1, &vkFence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
-                     LOGTAG,
-                     "Failed to wait for fence");
-            return reset(fence);
-        }
-
-        RenderDevice& RenderDevice::reset(const FenceHandle fence)
-        {
-            assert(static_cast<bool>(fence));
-
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                auto& backend = webgpuBackendOf(m_Backend);
-                if (const auto it = backend.m_EmulatedFences.find(fence.value); it != backend.m_EmulatedFences.end())
-                {
-                    it->second = false;
-                }
-                return *this;
-            }
-
-            assert(backendOf(m_Backend).m_Device);
-            const vk::Fence vkFence {reinterpret_cast<VkFence>(fence.value)};
-            VK_CHECK(backendOf(m_Backend).m_Device.resetFences(1, &vkFence), LOGTAG, "Failed to reset fence");
-            return *this;
-        }
-
-        RenderDevice& RenderDevice::waitIdle()
-        {
-            assert(backendOf(m_Backend).m_Device);
-            backendOf(m_Backend).m_Device.waitIdle();
-            return *this;
+            return toBackendHandle(static_cast<VkCommandBuffer>(commandBuffer));
         }
 
         bool RenderDevice::saveTextureToFile(const Texture&         texture,
@@ -2536,7 +1340,7 @@ namespace vultra
                     break;
             }
             createInfo.size   = buildSizesInfo.accelerationStructureSize;
-            createInfo.buffer = vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getHandle())};
+            createInfo.buffer = vk::Buffer {asVkHandle<VkBuffer>(buffer.getHandle())};
             createInfo.offset = 0;
 
             vk::AccelerationStructureKHR handle {nullptr};
@@ -2550,7 +1354,7 @@ namespace vultra
                 backendOf(m_Backend).m_Device.getAccelerationStructureAddressKHR(addressInfo)};
 
             return AccelerationStructure {
-                std::make_unique<VulkanAccelerationStructureBackend>(
+                std::make_unique<VulkanAccelerationStructure>(
                     backendOf(m_Backend).m_Device, handle, deviceAddress, type, std::move(buildSizesInfo), std::move(buffer))};
         }
 
@@ -2612,14 +1416,14 @@ namespace vultra
 
             // Fill geometry info
             buildGeometryInfo.dstAccelerationStructure =
-                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(blas.getHandle())};
+                vk::AccelerationStructureKHR {asVkHandle<VkAccelerationStructureKHR>(blas.getHandle())};
             buildGeometryInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer).value;
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> buildRangeInfos = {&buildRangeInfo};
 
             // Build the BLAS using a one-time command buffer
             execute(
                 [&](CommandBuffer& cb) {
-                    vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
+                    vk::CommandBuffer {asVkHandle<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
                         1,
                         &buildGeometryInfo,
                         buildRangeInfos.data());
@@ -2702,7 +1506,7 @@ namespace vultra
 
             // Fill geometry info
             buildGeometryInfo.dstAccelerationStructure =
-                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(blas.getHandle())};
+                vk::AccelerationStructureKHR {asVkHandle<VkAccelerationStructureKHR>(blas.getHandle())};
             buildGeometryInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer).value;
 
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> buildRangePtrs;
@@ -2713,7 +1517,7 @@ namespace vultra
             // Build the BLAS using a one-time command buffer
             execute(
                 [&](CommandBuffer& cb) {
-                    vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
+                    vk::CommandBuffer {asVkHandle<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
                         1,
                         &buildGeometryInfo,
                         buildRangePtrs.data());
@@ -2782,13 +1586,13 @@ namespace vultra
             auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
 
             buildInfo.dstAccelerationStructure =
-                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(tlas.getHandle())};
+                vk::AccelerationStructureKHR {asVkHandle<VkAccelerationStructureKHR>(tlas.getHandle())};
             buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer).value;
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> ranges = {&rangeInfo};
 
             execute(
                 [&](CommandBuffer& cb) {
-                    vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
+                    vk::CommandBuffer {asVkHandle<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
                         1,
                         &buildInfo,
                         ranges.data());
@@ -2866,13 +1670,13 @@ namespace vultra
             auto scratchBuffer = createScratchBuffer(buildSizes.buildScratchSize);
 
             buildInfo.dstAccelerationStructure =
-                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(tlas.getHandle())};
+                vk::AccelerationStructureKHR {asVkHandle<VkAccelerationStructureKHR>(tlas.getHandle())};
             buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer).value;
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> ranges = {&rangeInfo};
 
             execute(
                 [&](CommandBuffer& cb) {
-                    vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
+                    vk::CommandBuffer {asVkHandle<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
                         1,
                         &buildInfo,
                         ranges.data());
@@ -2901,26 +1705,26 @@ namespace vultra
         {
             assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            return InstanceBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                                              instanceCount * sizeof(VkAccelerationStructureInstanceKHR),
-                                              BufferUsage::eShaderDeviceAddress |
-                                                  BufferUsage::eAccelerationBuildInput,
-                                              makeAllocationFlags(allocationHint),
-                                              vma::MemoryUsage::eCpuToGpu)}; // Host visible & coherent for easy
-                                                                               // mapping
+            return InstanceBuffer {Buffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
+                                                      instanceCount * sizeof(VkAccelerationStructureInstanceKHR),
+                                                      BufferUsage::eShaderDeviceAddress |
+                                                          BufferUsage::eAccelerationBuildInput,
+                                                      makeAllocationFlags(allocationHint),
+                                                      vma::MemoryUsage::eCpuToGpu)},
+                                   instanceCount}; // Host visible & coherent for easy mapping
         }
 
         TransformBuffer RenderDevice::createTransformBuffer(AllocationHints allocationHint) const
         {
             assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            return TransformBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                                               sizeof(vk::TransformMatrixKHR),
-                                               BufferUsage::eShaderDeviceAddress |
-                                                   BufferUsage::eAccelerationBuildInput,
-                                               makeAllocationFlags(allocationHint),
-                                               vma::MemoryUsage::eCpuToGpu)}; // Host visible & coherent for easy
-                                                                               // mapping
+            return TransformBuffer {Buffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
+                                                       sizeof(vk::TransformMatrixKHR),
+                                                       BufferUsage::eShaderDeviceAddress |
+                                                           BufferUsage::eAccelerationBuildInput,
+                                                       makeAllocationFlags(allocationHint),
+                                                       vma::MemoryUsage::eCpuToGpu)}}; // Host visible & coherent for
+                                                                                         // easy mapping
         }
 
         ShaderBindingTable RenderDevice::createShaderBindingTable(const rhi::RayTracingPipeline& pipeline,
@@ -2966,7 +1770,7 @@ namespace vultra
 
             std::vector<uint8_t> handles(sbtSize);
             VK_CHECK(backendOf(m_Backend).m_Device.getRayTracingShaderGroupHandlesKHR(
-                         vk::Pipeline {reinterpret_cast<VkPipeline>(pipeline.getHandle())},
+                         vk::Pipeline {asVkHandle<VkPipeline>(pipeline.getHandle())},
                          0,
                          pipeline.getGroupCount(),
                          handles.size(),
@@ -3015,9 +1819,14 @@ namespace vultra
 
         DeviceAddress RenderDevice::getBufferDeviceAddress(const Buffer& buffer) const
         {
+            if (m_Backend->getBackendApi() != RenderBackendApi::eVulkan)
+            {
+                // WebGPU has no Vulkan-style buffer device address; keep API stable and return null address.
+                return {};
+            }
             assert(backendOf(m_Backend).m_Device);
             vk::BufferDeviceAddressInfo bufferDeviceAddressInfo {};
-            bufferDeviceAddressInfo.buffer = vk::Buffer {reinterpret_cast<VkBuffer>(buffer.getHandle())};
+            bufferDeviceAddressInfo.buffer = vk::Buffer {asVkHandle<VkBuffer>(buffer.getHandle())};
             return DeviceAddress {backendOf(m_Backend).m_Device.getBufferAddress(bufferDeviceAddressInfo)};
         }
 
@@ -3040,12 +1849,12 @@ namespace vultra
         {
             assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            return AccelerationStructureBuffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                                                            size,
-                                                            BufferUsage::eAccelerationStorage |
-                                                                BufferUsage::eShaderDeviceAddress,
-                                                            makeAllocationFlags(allocationHint),
-                                                            vma::MemoryUsage::eAutoPreferDevice)};
+            return AccelerationStructureBuffer {Buffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
+                                                                    size,
+                                                                    BufferUsage::eAccelerationStorage |
+                                                                        BufferUsage::eShaderDeviceAddress,
+                                                                    makeAllocationFlags(allocationHint),
+                                                                    vma::MemoryUsage::eAutoPreferDevice)}};
         }
 
         DeviceAddress RenderDevice::getAccelerationStructureDeviceAddress(const AccelerationStructure& accel) const
@@ -3053,7 +1862,7 @@ namespace vultra
             assert(backendOf(m_Backend).m_Device);
             vk::AccelerationStructureDeviceAddressInfoKHR addressInfo {};
             addressInfo.accelerationStructure =
-                vk::AccelerationStructureKHR {reinterpret_cast<VkAccelerationStructureKHR>(accel.getHandle())};
+                vk::AccelerationStructureKHR {asVkHandle<VkAccelerationStructureKHR>(accel.getHandle())};
             return DeviceAddress {backendOf(m_Backend).m_Device.getAccelerationStructureAddressKHR(addressInfo)};
         }
 
@@ -3086,22 +1895,5 @@ namespace vultra
             return createRef<rhi::Buffer>(std::move(buffer));
         }
 
-        Ref<rhi::Texture> RenderDevice::createDefaultWhite1x1Texture2D()
-        {
-            uint32_t whitePixel = 0xFFFFFFFF; // RGBA8 white
-
-            auto texture = Texture::Builder {}
-                               .setExtent({1, 1})
-                               .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
-                               .setUsageFlags(ImageUsage::eSampled | ImageUsage::eTransferDst)
-                               .setupOptimalSampler(true)
-                               .build(*this);
-
-            // Upload the white pixel using a staging buffer
-            auto stagingBuffer = createStagingBuffer(sizeof(whitePixel));
-            rhi::upload(*this, stagingBuffer, {}, texture, false);
-
-            return createRef<rhi::Texture>(std::move(texture));
-        }
     } // namespace rhi
 } // namespace vultra

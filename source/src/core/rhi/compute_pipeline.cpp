@@ -16,8 +16,8 @@ namespace vultra
         ComputePipeline::ComputePipeline(PipelineLayout&&                       pipelineLayout,
                                          const glm::uvec3                       localSize,
                                          const std::uintptr_t                   pipeline,
-                                         std::unique_ptr<IPipelineBackend> destroyBackend,
-                                         std::unique_ptr<IComputePipelineBackend> backend) :
+                                         std::unique_ptr<IPipeline> destroyBackend,
+                                         std::unique_ptr<IComputePipeline> backend) :
             BasePipeline(std::move(pipelineLayout), pipeline, std::move(destroyBackend)),
             m_Backend(std::move(backend)),
             m_LocalSize(localSize)

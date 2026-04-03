@@ -3,8 +3,9 @@
 #include "vultra/core/rhi/shader_module.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_pipeline_backend.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_pipeline.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
 
 #include <glm/common.hpp>
@@ -207,7 +208,7 @@ namespace vultra
                 return vk::PrimitiveTopology::eTriangleList;
             }
 
-            [[nodiscard]] constexpr vk::DynamicState toVk(const DynamicState state)
+        [[nodiscard]] constexpr vk::DynamicState toVk(const DynamicState state)
             {
                 switch (state)
                 {
@@ -216,8 +217,8 @@ namespace vultra
                     case DynamicState::eScissor:
                         return vk::DynamicState::eScissor;
                 }
-                return vk::DynamicState::eViewport;
-            }
+            return vk::DynamicState::eViewport;
+        }
 
             [[nodiscard]] auto toVk(const StencilOpState& desc)
             {
@@ -236,7 +237,7 @@ namespace vultra
         {
             std::vector<vk::Format> out(container.size());
             std::ranges::transform(container, out.begin(), [](const PixelFormat format) {
-                assert(getAspectMask(format) & vk::ImageAspectFlagBits::eColor);
+                assert(HasFlagValues(getAspectMask(format), ImageAspectFlags::eColor));
                 return toVk(format);
             });
             return out;
@@ -311,6 +312,12 @@ namespace vultra
             return *this;
         }
 
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::setVertexStride(const uint32_t vertexStride)
+        {
+            m_VertexStride = vertexStride;
+            return *this;
+        }
+
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setTopology(const PrimitiveTopology topology)
         {
             m_PrimitiveTopology = topology;
@@ -364,7 +371,7 @@ namespace vultra
             return *this;
         }
 
-        GraphicsPipeline GraphicsPipeline::Builder::build(RenderDevice& rd)
+        GraphicsPipeline GraphicsPipeline::Builder::buildVulkan(RenderDevice& rd)
         {
             const auto vkColorAttachmentFormats = convert(m_ColorAttachmentFormats);
             // -- Dynamic rendering:
@@ -383,7 +390,7 @@ namespace vultra
             if (!m_VertexAttributes.empty())
             {
                 vertexInputAttributes.reserve(m_VertexAttributes.size());
-                uint32_t stride {0};
+                uint32_t inferredStride {0};
                 for (const auto& [location, attrib] : m_VertexAttributes)
                 {
                     if (attrib.offset != kIgnoreVertexAttribute)
@@ -394,12 +401,12 @@ namespace vultra
                             toVk(attrib.type),
                             attrib.offset,
                         });
+                        inferredStride = std::max(inferredStride, attrib.offset + getSize(attrib.type));
                     }
-                    stride += getSize(attrib.type);
                 }
                 vertexInput = {
                     .binding   = 0,
-                    .stride    = stride,
+                    .stride    = m_VertexStride > 0 ? m_VertexStride : inferredStride,
                     .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
                 };
             }
@@ -446,7 +453,7 @@ namespace vultra
                     vk::ShaderModuleCreateInfo createInfo {};
                     createInfo.codeSize = sizeof(uint32_t) * shaderModule.getSpirv().size();
                     createInfo.pCode    = shaderModule.getSpirv().data();
-                    const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+                    const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
                     VK_CHECK(device.createShaderModule(&createInfo, nullptr, &shaderModuleHandle),
                              "GraphicsPipeline",
                              "Failed to create shader module");
@@ -478,7 +485,7 @@ namespace vultra
                     vk::ShaderModuleCreateInfo createInfo {};
                     createInfo.codeSize = sizeof(uint32_t) * shaderModule.getSpirv().size();
                     createInfo.pCode    = shaderModule.getSpirv().data();
-                    const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+                    const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
                     VK_CHECK(device.createShaderModule(&createInfo, nullptr, &shaderModuleHandle),
                              "GraphicsPipeline",
                              "Failed to create shader module");
@@ -497,7 +504,7 @@ namespace vultra
             {
                 for (const auto shaderModuleHandle : shaderModuleHandles)
                 {
-                    const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+                    const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
                     device.destroyShaderModule(shaderModuleHandle);
                 }
                 return {};
@@ -585,15 +592,15 @@ namespace vultra
             graphicsPipelineInfo.pColorBlendState    = &colorBlendInfo;
             graphicsPipelineInfo.pDynamicState       = &dynamicStateInfo;
             graphicsPipelineInfo.layout =
-                vk::PipelineLayout {reinterpret_cast<VkPipelineLayout>(m_PipelineLayout.getHandle())};
+                vk::PipelineLayout {asVkHandle<VkPipelineLayout>(m_PipelineLayout.getHandle())};
             graphicsPipelineInfo.renderPass          = nullptr;
             graphicsPipelineInfo.subpass = 0, graphicsPipelineInfo.basePipelineHandle = nullptr;
 
-            const vk::Device device {reinterpret_cast<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+            const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
 
             vk::Pipeline handle {nullptr};
             const vk::PipelineCache pipelineCache {
-                reinterpret_cast<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd))};
+                asVkHandle<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd))};
             const auto result = device.createGraphicsPipelines(pipelineCache, 1, &graphicsPipelineInfo, nullptr, &handle);
             if (result != vk::Result::eSuccess)
             {
@@ -608,13 +615,13 @@ namespace vultra
             }
 
             return GraphicsPipeline {std::move(m_PipelineLayout),
-                                     reinterpret_cast<std::uintptr_t>(static_cast<VkPipeline>(handle)),
-                                     std::make_unique<VulkanPipelineBackend>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+                                     toBackendHandle(static_cast<VkPipeline>(handle)),
+                                     std::make_unique<VulkanPipeline>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
         }
 
         GraphicsPipeline::GraphicsPipeline(PipelineLayout&&                       pipelineLayout,
                                            const std::uintptr_t                   pipeline,
-                                           std::unique_ptr<IPipelineBackend> destroyBackend) :
+                                           std::unique_ptr<IPipeline> destroyBackend) :
             BasePipeline {std::move(pipelineLayout), pipeline, std::move(destroyBackend)}
         {}
     } // namespace rhi

@@ -5,6 +5,19 @@
 
 namespace
 {
+    template <typename ShaderBinaryLike>
+    std::string extractWgsl(ShaderBinaryLike& shaderBinary)
+    {
+        if constexpr (requires { shaderBinary.wgsl; })
+        {
+            return std::move(shaderBinary.wgsl);
+        }
+        else
+        {
+            return {};
+        }
+    }
+
     bool populate_shader_library_runtime(vshadersystem::ShaderLibrary&                     library,
                                          std::optional<vshadersystem::EngineKeywordsFile>& engineKeywords,
                                          bool&                                             loaded)
@@ -91,14 +104,17 @@ namespace vultra
                 return std::nullopt;
             }
 
-            LoadedShader out;
-            out.spirv        = std::move(bin.value().spirv);
-            out.materialDesc = std::move(bin.value().materialDesc);
-            out.shaderIdHash = bin.value().shaderIdHash;
-            out.variantHash  = bin.value().variantHash;
-            out.stage        = bin.value().stage;
+            auto parsed = std::move(bin.value());
 
-            out.reflection.accumulate(bin.value().reflection);
+            LoadedShader out;
+            out.spirv        = std::move(parsed.spirv);
+            out.wgsl         = extractWgsl(parsed);
+            out.materialDesc = std::move(parsed.materialDesc);
+            out.shaderIdHash = parsed.shaderIdHash;
+            out.variantHash  = parsed.variantHash;
+            out.stage        = parsed.stage;
+
+            out.reflection.accumulate(parsed.reflection);
             return out;
         }
 

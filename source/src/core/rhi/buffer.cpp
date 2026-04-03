@@ -1,5 +1,5 @@
 #include "vultra/core/rhi/buffer.hpp"
-#include "vultra/core/rhi/interfaces/ibuffer_backend.hpp"
+#include "vultra/core/rhi/interfaces/ibuffer.hpp"
 
 namespace vultra::rhi
 {
@@ -63,7 +63,7 @@ namespace vultra::rhi
         m_Impl->setLastScope(scope);
     }
 
-    Buffer::Buffer(std::unique_ptr<IBufferBackend> impl) : m_Impl(std::move(impl)) {}
+    Buffer::Buffer(std::unique_ptr<IBuffer> impl) : m_Impl(std::move(impl)) {}
 
     void Buffer::destroy() noexcept { m_Impl.reset(); }
 } // namespace vultra::rhi

@@ -1,5 +1,4 @@
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
-#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
@@ -12,34 +11,28 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <cstdint>
 
 namespace vultra
 {
     namespace
     {
-        uint64_t getTextureHandleId(const rhi::Texture& texture)
-        {
-            return rhi::getVulkanHandleId(reinterpret_cast<VkImage>(texture.getImageHandle()));
-        }
-
         void syncImGuiTextureRegistration(IImGuiService&            imguiService,
                                           const rhi::Texture*       texture,
-                                          const uint64_t            textureHandleId,
                                           const rhi::Texture*&      registeredTexture,
-                                          uint64_t&                 registeredTextureHandleId,
                                           IImGuiService::TextureID& textureId)
         {
-            const bool sameTexture = registeredTexture == texture && registeredTextureHandleId == textureHandleId;
+            const bool alreadyCleared = registeredTexture == nullptr && texture == nullptr && textureId == 0;
+            if (alreadyCleared)
+                return;
+            const bool sameTexture = texture != nullptr && textureId != 0 && registeredTexture == texture;
             if (sameTexture)
                 return;
 
             if (textureId)
                 imguiService.removeTexture(textureId);
 
-            registeredTexture         = texture;
-            registeredTextureHandleId = textureHandleId;
-            textureId                 = texture ? imguiService.addTexture(*texture) : 0;
+            registeredTexture = texture;
+            textureId         = texture ? imguiService.addTexture(*texture) : 0;
         }
 
         void drawFpsOverlay()
@@ -159,9 +152,7 @@ namespace vultra
 
                     syncImGuiTextureRegistration(imguiService,
                                                  eyeView.mirrorTarget,
-                                                 getTextureHandleId(*eyeView.mirrorTarget),
                                                  m_XRMirrorTextures[eyeIndex],
-                                                 m_XRMirrorImageHandles[eyeIndex],
                                                  m_XRMirrorTextureIds[eyeIndex]);
                 }
 
@@ -217,7 +208,6 @@ namespace vultra
                     imguiService.removeTexture(textureId);
             }
             m_XRMirrorTextures.fill(nullptr);
-            m_XRMirrorImageHandles.fill(0u);
         }
 
 #ifdef VULTRA_ENABLE_RENDERDOC

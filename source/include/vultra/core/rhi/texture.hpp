@@ -7,6 +7,7 @@
 #include "vultra/core/rhi/structs/image_layout.hpp"
 #include "vultra/core/rhi/structs/image_usage.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
+#include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/core/rhi/sampler.hpp"
 #include "vultra/core/rhi/texture_view.hpp"
 #include "vultra/core/rhi/structs/texture_type.hpp"
@@ -33,6 +34,7 @@ namespace vultra
         class Swapchain;
         class CommandBuffer;
         class Barrier;
+        class TextureAccess;
 
         class Texture
         {
@@ -40,6 +42,7 @@ namespace vultra
             friend class Swapchain;
             friend class CommandBuffer;
             friend class Barrier;
+            friend class TextureAccess;
             friend class openxr::XRHeadset;
 
         public:
@@ -69,7 +72,6 @@ namespace vultra
             [[nodiscard]] PixelFormat getPixelFormat() const;
             [[nodiscard]] ImageUsage  getUsageFlags() const;
 
-            [[nodiscard]] std::uintptr_t getImageHandle() const;
             [[nodiscard]] ImageLayout getImageLayout() const;
             [[nodiscard]] uint32_t    getBaseArrayLayer() const;
             [[nodiscard]] uint32_t    getLayerFaceCount() const;
@@ -90,16 +92,6 @@ namespace vultra
                 getLayers(ImageAspectFlags = ImageAspectFlags::eNone) const;
 
             [[nodiscard]] Sampler getSampler() const;
-
-            // Wrap an externally created image into RHI Texture.
-            [[nodiscard]] static Texture
-            fromExternalImage(std::uintptr_t device, std::uintptr_t image, Extent2D, PixelFormat, uint32_t baseLayer = 0u);
-            [[nodiscard]] static Texture fromExternalImage(std::uintptr_t device,
-                                                           std::uintptr_t image,
-                                                           Extent2D,
-                                                           PixelFormat,
-                                                           uint32_t baseLayer,
-                                                           uint32_t numLayers);
 
             class Builder
             {
@@ -156,10 +148,62 @@ namespace vultra
                     PixelFormat,
                     uint32_t baseLayer,
                     uint32_t numLayers);
+            Texture(RenderBackendApi api,
+                    bool             ownsImage,
+                    std::uintptr_t   device,
+                    std::uintptr_t   image,
+                    Extent2D,
+                    PixelFormat,
+                    uint32_t         baseLayer = 0u);
+            Texture(RenderBackendApi api,
+                    bool             ownsImage,
+                    std::uintptr_t   device,
+                    std::uintptr_t   image,
+                    Extent2D,
+                    PixelFormat,
+                    uint32_t         baseLayer,
+                    uint32_t         numLayers);
 
             void destroy() noexcept;
 
+            [[nodiscard]] std::uintptr_t getImageHandle() const;
             std::uintptr_t getDeviceHandle() const;
+            // Wrap an externally created image into RHI Texture.
+            [[nodiscard]] static Texture
+            fromExternalImage(std::uintptr_t device, std::uintptr_t image, Extent2D, PixelFormat, uint32_t baseLayer = 0u);
+            [[nodiscard]] static Texture fromExternalImage(std::uintptr_t device,
+                                                           std::uintptr_t image,
+                                                           Extent2D,
+                                                           PixelFormat,
+                                                           uint32_t baseLayer,
+                                                           uint32_t numLayers);
+            [[nodiscard]] static Texture fromExternalImage(RenderBackendApi api,
+                                                           std::uintptr_t   device,
+                                                           std::uintptr_t   image,
+                                                           Extent2D,
+                                                           PixelFormat,
+                                                           uint32_t baseLayer = 0u);
+            [[nodiscard]] static Texture fromExternalImage(RenderBackendApi api,
+                                                           std::uintptr_t   device,
+                                                           std::uintptr_t   image,
+                                                           Extent2D,
+                                                           PixelFormat,
+                                                           uint32_t baseLayer,
+                                                           uint32_t numLayers);
+            [[nodiscard]] static Texture
+            fromOwnedImage(RenderBackendApi api,
+                           std::uintptr_t   device,
+                           std::uintptr_t   image,
+                           Extent2D,
+                           PixelFormat,
+                           uint32_t baseLayer = 0u);
+            [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi api,
+                                                        std::uintptr_t   device,
+                                                        std::uintptr_t   image,
+                                                        Extent2D,
+                                                        PixelFormat,
+                                                        uint32_t baseLayer,
+                                                        uint32_t numLayers);
 
             struct AspectData
             {
@@ -168,6 +212,9 @@ namespace vultra
                 std::vector<TextureView> layers;
             };
             void              createAspect(std::uintptr_t, std::uintptr_t, uint32_t, ImageAspectFlags, AspectData&);
+            void              initImportedNativeAspects(std::uintptr_t, PixelFormat);
+            void              createAspectNative(std::uintptr_t, uint32_t, ImageAspectFlags, AspectData&);
+            void              destroyNativeResources() noexcept;
             const AspectData* getAspect(ImageAspectFlags) const;
 
         private:
@@ -209,6 +256,8 @@ namespace vultra
             };
             using ImageVariant = std::variant<std::monostate, std::uintptr_t, AllocatedImage>;
             ImageVariant m_Image;
+            RenderBackendApi m_BackendApi {RenderBackendApi::eVulkan};
+            bool             m_OwnsImage {false};
 
             TextureType m_Type {TextureType::eUndefined};
 

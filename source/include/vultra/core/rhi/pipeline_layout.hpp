@@ -1,8 +1,10 @@
 #pragma once
 
+#include "vultra/core/rhi/interfaces/ipipeline_layout.hpp"
 #include "vultra/core/rhi/structs/pipeline_layout_structs.hpp"
 
 #include <cstdint>
+#include <memory>
 
 namespace vultra
 {
@@ -16,11 +18,11 @@ namespace vultra
 
         public:
             PipelineLayout()                      = default;
-            PipelineLayout(const PipelineLayout&) = default;
+            PipelineLayout(const PipelineLayout&) = delete;
             PipelineLayout(PipelineLayout&&) noexcept;
             ~PipelineLayout() = default;
 
-            PipelineLayout& operator=(const PipelineLayout&) = default;
+            PipelineLayout& operator=(const PipelineLayout&) = delete;
             PipelineLayout& operator=(PipelineLayout&&) noexcept;
 
             [[nodiscard]] explicit operator bool() const;
@@ -69,11 +71,10 @@ namespace vultra
             };
 
         private:
-            PipelineLayout(std::uintptr_t, std::vector<DescriptorSetLayoutKey>&&);
+            explicit PipelineLayout(std::unique_ptr<IPipelineLayout>);
 
         private:
-            std::uintptr_t                       m_Handle {0}; // Non-owning.
-            std::vector<DescriptorSetLayoutKey> m_DescriptorSetLayouts;
+            std::unique_ptr<IPipelineLayout> m_Impl;
         };
 
         struct ShaderReflection;

@@ -40,32 +40,30 @@ namespace vultra
             using DescriptorContainerSize = std::tuple_size<decltype(T::descriptorSets)>;
         } // namespace
 
-        PipelineLayout::PipelineLayout(PipelineLayout&& other) noexcept :
-            m_Handle(other.m_Handle), m_DescriptorSetLayouts(std::move(other.m_DescriptorSetLayouts))
-        {
-            other.m_Handle = 0;
-        }
+        PipelineLayout::PipelineLayout(PipelineLayout&& other) noexcept : m_Impl(std::move(other.m_Impl)) {}
 
         PipelineLayout& PipelineLayout::operator=(PipelineLayout&& rhs) noexcept
         {
             if (this != &rhs)
             {
-                m_Handle               = std::exchange(rhs.m_Handle, 0);
-                m_DescriptorSetLayouts = std::move(rhs.m_DescriptorSetLayouts);
+                m_Impl = std::move(rhs.m_Impl);
             }
 
             return *this;
         }
 
-        PipelineLayout::operator bool() const { return m_Handle != 0; }
+        PipelineLayout::operator bool() const { return m_Impl && m_Impl->isValid(); }
 
-        std::uintptr_t PipelineLayout::getHandle() const { return m_Handle; }
+        std::uintptr_t PipelineLayout::getHandle() const
+        {
+            assert(m_Impl);
+            return m_Impl->getHandle();
+        }
 
         DescriptorSetLayoutKey PipelineLayout::getDescriptorSet(const DescriptorSetIndex index) const
         {
-            assert(index < m_DescriptorSetLayouts.size());
-
-            return m_DescriptorSetLayouts[index];
+            assert(m_Impl);
+            return m_Impl->getDescriptorSet(index);
         }
 
         PipelineLayout::Builder& PipelineLayout::Builder::addImage(const DescriptorSetIndex         setIndex,
@@ -177,10 +175,7 @@ namespace vultra
             return rd.createPipelineLayout(m_LayoutInfo);
         }
 
-        PipelineLayout::PipelineLayout(const std::uintptr_t                    handle,
-                                       std::vector<DescriptorSetLayoutKey>&& descriptorSetLayouts) :
-            m_Handle(handle), m_DescriptorSetLayouts(std::move(descriptorSetLayouts))
-        {}
+        PipelineLayout::PipelineLayout(std::unique_ptr<IPipelineLayout> impl) : m_Impl(std::move(impl)) {}
 
         PipelineLayout reflectPipelineLayout(RenderDevice& rd, const ShaderReflection& reflection)
         {

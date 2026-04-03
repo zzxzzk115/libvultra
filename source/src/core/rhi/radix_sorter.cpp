@@ -1,6 +1,6 @@
 #include "vultra/core/rhi/radix_sorter.hpp"
 
-#include "vultra/core/rhi/interfaces/iradix_sorter_backend.hpp"
+#include "vultra/core/rhi/interfaces/iradix_sorter.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 
@@ -11,9 +11,9 @@ namespace vultra
 {
     namespace rhi
     {
-        RadixSorter::RadixSorter(std::unique_ptr<IRadixSorterBackend>&& backend) : m_Backend(std::move(backend)) {}
+        RadixSorter::RadixSorter(std::unique_ptr<IRadixSorter>&& backend) : m_Backend(std::move(backend)) {}
 
-        RadixSorter RadixSorter::create(std::unique_ptr<IRadixSorterBackend>&& backend)
+        RadixSorter RadixSorter::create(std::unique_ptr<IRadixSorter>&& backend)
         {
             return RadixSorter {std::move(backend)};
         }

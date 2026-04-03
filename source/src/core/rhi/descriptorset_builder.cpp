@@ -6,7 +6,7 @@ namespace vultra
 {
     namespace rhi
     {
-        DescriptorSetBuilder::DescriptorSetBuilder(std::unique_ptr<IDescriptorSetBuilderBackend> impl) :
+        DescriptorSetBuilder::DescriptorSetBuilder(std::unique_ptr<IDescriptorSetBuilder> impl) :
             m_Impl(std::move(impl))
         {
             assert(m_Impl);

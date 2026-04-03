@@ -2,7 +2,7 @@
 
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/base_pipeline.hpp"
-#include "vultra/core/rhi/interfaces/iraytracing_pipeline_backend.hpp"
+#include "vultra/core/rhi/interfaces/iraytracing_pipeline.hpp"
 #include "vultra/core/rhi/shader_binding_table.hpp"
 #include "vultra/core/rhi/structs/raytracing_pipeline_properties.hpp"
 #include "vultra/core/rhi/structs/raytracing_shader_group.hpp"
@@ -91,17 +91,17 @@ namespace vultra
         private:
             RayTracingPipeline(PipelineLayout&&                                  pipelineLayout,
                                std::uintptr_t                                    handle,
-                               std::unique_ptr<IPipelineBackend> destroyBackend,
+                               std::unique_ptr<IPipeline> destroyBackend,
                                std::vector<RaytracingShaderGroup>&&              groups,
                                std::vector<uint32_t>&&                           raygenGroupIndices,
                                std::vector<uint32_t>&&                           missGroupIndices,
                                std::vector<uint32_t>&&                           hitGroupIndices,
                                std::vector<uint32_t>&&                           callableGroupIndices,
-                               std::unique_ptr<IRayTracingPipelineBackend> backend);
+                               std::unique_ptr<IRayTracingPipeline> backend);
 
         private:
             std::vector<RaytracingShaderGroup>                m_Groups;
-            std::unique_ptr<IRayTracingPipelineBackend> m_Backend;
+            std::unique_ptr<IRayTracingPipeline> m_Backend;
 
             std::vector<uint32_t> m_RaygenGroupIndices;
             std::vector<uint32_t> m_MissGroupIndices;

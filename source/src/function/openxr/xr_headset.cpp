@@ -1,6 +1,7 @@
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
+#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/structs/extent2d.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
@@ -191,7 +192,7 @@ namespace vultra
 
                     m_SwapchainStereoRenderTargetViews[i].stereo =
                         rhi::Texture {rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice),
-                                      reinterpret_cast<std::uintptr_t>(swapchainImage.image),
+                                      static_cast<std::uintptr_t>(rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image))),
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
                                       m_SwapchainPixelFormat,
@@ -200,7 +201,7 @@ namespace vultra
 
                     m_SwapchainStereoRenderTargetViews[i].left =
                         rhi::Texture {rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice),
-                                      reinterpret_cast<std::uintptr_t>(swapchainImage.image),
+                                      static_cast<std::uintptr_t>(rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image))),
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
                                       m_SwapchainPixelFormat,
@@ -208,7 +209,7 @@ namespace vultra
 
                     m_SwapchainStereoRenderTargetViews[i].right =
                         rhi::Texture {rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice),
-                                      reinterpret_cast<std::uintptr_t>(swapchainImage.image),
+                                      static_cast<std::uintptr_t>(rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image))),
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
                                       m_SwapchainPixelFormat,

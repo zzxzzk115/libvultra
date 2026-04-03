@@ -33,7 +33,8 @@ namespace vultra
                 cb.copyBuffer(srcStagingBuffer,
                               dst,
                               copyRegions.empty() ? std::array {getDefaultRegion(dst)} : copyRegions);
-                if (generateMipmaps)
+                // WebGPU path does not have runtime mipmap generation wired yet.
+                if (generateMipmaps && rd.getBackendApi() != RenderBackendApi::eWebGPU)
                     cb.generateMipmaps(dst);
 
                 cb.getBarrierBuilder().imageBarrier(

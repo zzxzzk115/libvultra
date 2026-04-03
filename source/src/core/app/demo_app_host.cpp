@@ -1,5 +1,6 @@
 #include "vultra/core/app/demo_app_host.hpp"
 #include "vultra/core/base/base.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/input/input_system.hpp"
 #include "vultra/core/os/window_system.hpp"
 #include "vultra/core/services/input_service.hpp"
@@ -14,6 +15,7 @@
 #include "vultra/function/rendering/shader_system.hpp"
 #include "vultra/function/rendering/srp/builtin/android_compat_renderer.hpp"
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
+#include "vultra/function/rendering/srp/builtin/webgpu_compat_renderer.hpp"
 #include "vultra/function/resource/gpu_resource_system.hpp"
 #include "vultra/function/scene/scene_system.hpp"
 #include "vultra/function/scripting/script_system.hpp"
@@ -27,6 +29,9 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <optional>
+#include <span>
+#include <string_view>
 
 namespace vultra
 {
@@ -42,6 +47,83 @@ namespace vultra
                 std::sin(pitchRad),
                 std::sin(yawRad) * std::cos(pitchRad),
             });
+        }
+
+        [[nodiscard]] std::optional<rhi::RenderBackendApi> parseBackendToken(const std::string_view token)
+        {
+            if (token == "vulkan" || token == "vk")
+            {
+                return rhi::RenderBackendApi::eVulkan;
+            }
+            if (token == "webgpu" || token == "wgpu")
+            {
+                return rhi::RenderBackendApi::eWebGPU;
+            }
+            if (token == "auto")
+            {
+                return rhi::RenderBackendApi::eAuto;
+            }
+            return std::nullopt;
+        }
+
+        [[nodiscard]] std::optional<rhi::RenderBackendApi>
+        parseCliBackend(std::span<const std::string> args, bool& sawBackendArg, bool& invalidBackendValue)
+        {
+            std::optional<rhi::RenderBackendApi> parsed;
+            for (size_t i = 0; i < args.size(); ++i)
+            {
+                const std::string_view arg = args[i];
+                constexpr std::string_view kBackendEqPrefix {"--backend="};
+                constexpr std::string_view kRenderBackendEqPrefix {"--render-backend="};
+
+                if (arg.starts_with(kBackendEqPrefix))
+                {
+                    sawBackendArg = true;
+                    if (auto value = parseBackendToken(arg.substr(kBackendEqPrefix.size())); value.has_value())
+                    {
+                        parsed = value;
+                    }
+                    else
+                    {
+                        invalidBackendValue = true;
+                    }
+                    continue;
+                }
+                if (arg.starts_with(kRenderBackendEqPrefix))
+                {
+                    sawBackendArg = true;
+                    if (auto value = parseBackendToken(arg.substr(kRenderBackendEqPrefix.size())); value.has_value())
+                    {
+                        parsed = value;
+                    }
+                    else
+                    {
+                        invalidBackendValue = true;
+                    }
+                    continue;
+                }
+                if (arg == "--backend" || arg == "--render-backend")
+                {
+                    sawBackendArg = true;
+                    if ((i + 1) < args.size())
+                    {
+                        if (auto value = parseBackendToken(args[i + 1]); value.has_value())
+                        {
+                            parsed = value;
+                        }
+                        else
+                        {
+                            invalidBackendValue = true;
+                        }
+                        ++i;
+                    }
+                    else
+                    {
+                        invalidBackendValue = true;
+                    }
+                }
+            }
+            return parsed;
         }
     } // namespace
 
@@ -74,14 +156,41 @@ namespace vultra
 #if defined(__ANDROID__)
         return createRef<AndroidCompatRenderer>();
 #else
+        if (engineCtx().config.render.backendApi == rhi::RenderBackendApi::eWebGPU)
+        {
+            // WebGPU currently reuses the feature-pass compatibility path.
+            return createRef<WebGPUCompatRenderer>();
+        }
         return createRef<UniversalRenderer>();
 #endif
     }
 
     void DemoAppHost::onConfigure(Engine& engine)
     {
+        auto backendApi = demoRenderBackendApi();
+        if (demoAllowCliBackendOverride())
+        {
+            bool sawBackendArg      = false;
+            bool invalidBackendValue = false;
+            if (auto parsed = parseCliBackend(commandLineArgs(), sawBackendArg, invalidBackendValue); parsed.has_value())
+            {
+                backendApi = *parsed;
+            }
+
+            if (invalidBackendValue)
+            {
+                VULTRA_CORE_WARN(
+                    "[DemoAppHost] Invalid backend CLI value. Use --backend=(auto|vulkan|webgpu) or --render-backend=(...)");
+            }
+            if (sawBackendArg)
+            {
+                VULTRA_CORE_INFO("[DemoAppHost] Backend selected from CLI: {}", static_cast<int>(backendApi));
+            }
+        }
+
         engine.ctx().config.window.title                   = demoWindowTitle();
         engine.ctx().config.window.resizable               = demoWindowResizable();
+        engine.ctx().config.render.backendApi              = backendApi;
         engine.ctx().config.render.renderDeviceFeatureFlag = demoRenderDeviceFeatureFlag();
 
 #if defined(__ANDROID__)
@@ -130,8 +239,10 @@ namespace vultra
         const glm::vec3 forward = makeForward(fpsController.yawDegrees, fpsController.pitchDegrees);
         camera.view = glm::lookAt(fpsController.position, fpsController.position + forward, glm::vec3(0, 1, 0));
         camera.projection =
-            glm::perspective(glm::radians(fpsController.fovYDegrees), aspect, fpsController.zNear, fpsController.zFar);
-        camera.projection[1][1] *= -1.0f; // Vulkan clip space adjustment
+            glm::perspectiveRH_ZO(glm::radians(fpsController.fovYDegrees),
+                                  aspect,
+                                  fpsController.zNear,
+                                  fpsController.zFar);
         camera.fovY  = glm::radians(fpsController.fovYDegrees);
         camera.zNear = fpsController.zNear;
         camera.zFar  = fpsController.zFar;
@@ -145,13 +256,22 @@ namespace vultra
         engine.emplaceSubsystem<RenderBackendSystem>();
         engine.emplaceSubsystem<ImGuiSystem>();
 
-        auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
-        renderSystem.registerRenderer(renderer);
+        const bool webgpuSafeMode = (backendApi == rhi::RenderBackendApi::eWebGPU) && !demoEnableExperimentalWebGPUContent();
+        if (webgpuSafeMode)
+        {
+            VULTRA_CORE_WARN(
+                "[DemoAppHost] WebGPU safe mode is enabled: skipping render/asset/scene/script systems to avoid unstable paths");
+        }
+        else
+        {
+            auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
+            renderSystem.registerRenderer(renderer);
 
-        engine.emplaceSubsystem<GpuResourceSystem>();
-        engine.emplaceSubsystem<AssetSystem>();
-        engine.emplaceSubsystem<SceneSystem>();
-        engine.emplaceSubsystem<ScriptSystem>();
+            engine.emplaceSubsystem<GpuResourceSystem>();
+            engine.emplaceSubsystem<AssetSystem>();
+            engine.emplaceSubsystem<SceneSystem>();
+            engine.emplaceSubsystem<ScriptSystem>();
+        }
 
         onConfigureDemo(engine);
     }
@@ -161,7 +281,12 @@ namespace vultra
         auto& window = engine.ctx().services.require<IWindowService>().window();
         window.on<os::GeneralWindowEvent>([this](const os::GeneralWindowEvent& e, os::Window&) { onWindowEvent(e); });
 
-        onPostConfigureDemo(engine);
+        const bool webgpuSafeMode =
+            (engine.ctx().config.render.backendApi == rhi::RenderBackendApi::eWebGPU) && !demoEnableExperimentalWebGPUContent();
+        if (!webgpuSafeMode)
+        {
+            onPostConfigureDemo(engine);
+        }
     }
 
     void DemoAppHost::onWindowEvent(const os::GeneralWindowEvent& e)

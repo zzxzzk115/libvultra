@@ -63,7 +63,7 @@ namespace vultra
             m_LastPoolIndex = m_DescriptorPools.empty() ? -1 : 0;
         }
 
-        DescriptorSetAllocator::DescriptorSetAllocator(std::unique_ptr<IDescriptorSetAllocatorBackend> backend,
+        DescriptorSetAllocator::DescriptorSetAllocator(std::unique_ptr<IDescriptorSetAllocator> backend,
                                                        const bool                                       raytracing) :
             m_Backend(std::move(backend)), m_EnableRaytracing(raytracing)
         {

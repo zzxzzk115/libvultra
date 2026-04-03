@@ -8,6 +8,9 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_vulkan.h>
+#if defined(SDL_PLATFORM_MACOS)
+#include <SDL3/SDL_metal.h>
+#endif
 
 namespace vultra::platform::sdl
 {
@@ -81,6 +84,14 @@ namespace vultra::platform::sdl
 
     SDLWindow::~SDLWindow()
     {
+        if (m_WebGpuMetalView)
+        {
+#if defined(SDL_PLATFORM_MACOS)
+            SDL_Metal_DestroyView(static_cast<SDL_MetalView>(m_WebGpuMetalView));
+#endif
+            m_WebGpuMetalView = nullptr;
+        }
+
         if (m_WindowHandle)
         {
             SDL_DestroyWindow(m_WindowHandle);
@@ -181,6 +192,59 @@ namespace vultra::platform::sdl
         }
 
         return vk::SurfaceKHR {surface};
+    }
+
+    WGPUSurface SDLWindow::createWebGPUSurface(const WGPUInstance instance) const
+    {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+        if (instance == nullptr)
+        {
+            VULTRA_CORE_ERROR("[SDLWindow] Cannot create WebGPU surface: instance is null");
+            throw std::runtime_error("WebGPU instance is null");
+        }
+
+#if defined(SDL_PLATFORM_MACOS)
+        if (!m_WebGpuMetalView)
+        {
+            m_WebGpuMetalView = SDL_Metal_CreateView(m_WindowHandle);
+        }
+        if (!m_WebGpuMetalView)
+        {
+            VULTRA_CORE_ERROR("[SDLWindow] Failed to create SDL metal view for WebGPU surface");
+            throw std::runtime_error("Failed to create SDL metal view");
+        }
+
+        void* metalLayer = SDL_Metal_GetLayer(static_cast<SDL_MetalView>(m_WebGpuMetalView));
+        if (!metalLayer)
+        {
+            VULTRA_CORE_ERROR("[SDLWindow] Failed to get CAMetalLayer from SDL metal view");
+            throw std::runtime_error("Failed to get CAMetalLayer");
+        }
+
+        WGPUSurfaceSourceMetalLayer source {};
+        source.chain.sType = WGPUSType_SurfaceSourceMetalLayer;
+        source.layer       = metalLayer;
+
+        WGPUSurfaceDescriptor descriptor {};
+        descriptor.nextInChain = reinterpret_cast<const WGPUChainedStruct*>(&source);
+
+        auto surface = wgpuInstanceCreateSurface(instance, &descriptor);
+        if (surface == nullptr)
+        {
+            VULTRA_CORE_ERROR("[SDLWindow] Failed to create WebGPU surface from CAMetalLayer");
+            throw std::runtime_error("Failed to create WebGPU surface");
+        }
+
+        return surface;
+#else
+        VULTRA_CORE_ERROR("[SDLWindow] WebGPU surface creation is not implemented for this platform");
+        throw std::runtime_error("WebGPU surface creation is not implemented for this platform");
+#endif
+#else
+        (void)instance;
+        VULTRA_CORE_ERROR("[SDLWindow] WebGPU is disabled for this build");
+        throw std::runtime_error("WebGPU is disabled for this build");
+#endif
     }
 
     void SDLWindow::pollEvents(int)

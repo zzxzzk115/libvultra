@@ -1,9 +1,8 @@
 #include "vultra/function/resource/vtexture_loader.hpp"
-#include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/render_device.hpp"
+#include "vultra/core/rhi/texture.hpp"
 #include "vultra/core/rhi/util.hpp"
 
-#include <ktxvulkan.h>
 #include <vbase/core/scope_exit.hpp>
 
 #define DDSKTX_API static
@@ -18,6 +17,7 @@
 
 #include <magic_enum.hpp>
 #include <algorithm>
+#include <utility>
 
 namespace vultra::resource
 {
@@ -147,6 +147,11 @@ namespace vultra::resource
             const rhi::Extent2D extent {static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
 
             auto mip = rhi::calcMipLevels(extent);
+            if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+            {
+                // WebGPU runtime mip generation is not implemented yet.
+                mip = 1u;
+            }
 
             auto format = hdr ? rhi::PixelFormat::eRGBA32F : rhi::PixelFormat::eRGBA8_UNorm;
 
@@ -193,6 +198,11 @@ namespace vultra::resource
             const rhi::Extent2D extent {static_cast<uint32_t>(w), static_cast<uint32_t>(h)};
 
             auto mip = rhi::calcMipLevels(extent);
+            if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+            {
+                // WebGPU runtime mip generation is not implemented yet.
+                mip = 1u;
+            }
 
             auto tex = rhi::Texture::Builder {}
                            .setExtent(extent)
@@ -224,17 +234,37 @@ namespace vultra::resource
 
             vbase::ScopeExit freeTex([&] { ktxTexture_Destroy((ktxTexture*)tex); });
 
+            auto chooseBasisTarget = [&rd]() {
+                const auto usage = rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst;
+                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                {
+                    // Current WebGPU format mapping path only guarantees uncompressed RGBA.
+                    // Prefer correctness/stability first, then add compressed-format mappings later.
+                    return std::pair {KTX_TTF_RGBA32, rhi::PixelFormat::eRGBA8_UNorm};
+                }
+                if (rhi::isFormatSupported(rd, rhi::PixelFormat::eBC7_RGBA8_UNorm, usage))
+                {
+                    return std::pair {KTX_TTF_BC7_RGBA, rhi::PixelFormat::eBC7_RGBA8_UNorm};
+                }
+                if (rhi::isFormatSupported(rd, rhi::PixelFormat::eBC3_UNorm, usage))
+                {
+                    return std::pair {KTX_TTF_BC3_RGBA, rhi::PixelFormat::eBC3_UNorm};
+                }
+                if (rhi::isFormatSupported(rd, rhi::PixelFormat::eBC1_UNorm, usage))
+                {
+                    return std::pair {KTX_TTF_BC1_RGB, rhi::PixelFormat::eBC1_UNorm};
+                }
+                return std::pair {KTX_TTF_RGBA32, rhi::PixelFormat::eRGBA8_UNorm};
+            };
+
+            auto [basisTarget, pixelFormat] = chooseBasisTarget();
             if (ktxTexture2_NeedsTranscoding(tex))
             {
-                ktxTexture2_TranscodeBasis(tex, KTX_TTF_BC7_RGBA, 0);
-            }
-
-            VkFormat         vkFormat    = ktxTexture2_GetVkFormat(tex);
-            rhi::PixelFormat pixelFormat = rhi::fromVk(static_cast<vk::Format>(vkFormat));
-
-            if (pixelFormat == rhi::PixelFormat::eUndefined)
-            {
-                return vbase::Result<rhi::Texture, std::string>::err("Unsupported KTX2 VkFormat");
+                const auto transcodeResult = ktxTexture2_TranscodeBasis(tex, basisTarget, 0);
+                if (transcodeResult != KTX_SUCCESS)
+                {
+                    return vbase::Result<rhi::Texture, std::string>::err("KTX2 transcode failed");
+                }
             }
 
             auto rhiTex = rhi::Texture::Builder {}
@@ -274,8 +304,8 @@ namespace vultra::resource
                             copyRegions[0].imageOffsetX      = 0;
                             copyRegions[0].imageOffsetY      = 0;
                             copyRegions[0].imageOffsetZ      = 0;
-                            copyRegions[0].imageExtentWidth  = static_cast<uint32_t>(tex->baseWidth >> mip);
-                            copyRegions[0].imageExtentHeight = static_cast<uint32_t>(tex->baseHeight >> mip);
+                            copyRegions[0].imageExtentWidth  = std::max(1u, static_cast<uint32_t>(tex->baseWidth >> mip));
+                            copyRegions[0].imageExtentHeight = std::max(1u, static_cast<uint32_t>(tex->baseHeight >> mip));
                             copyRegions[0].imageExtentDepth  = std::max(1u, static_cast<uint32_t>(tex->baseDepth));
 
                             rhi::upload(rd, staging, copyRegions, rhiTex, false);
@@ -293,7 +323,8 @@ namespace vultra::resource
                 auto staging =
                     rd.createStagingBuffer(ktxTexture_GetImageSize((ktxTexture*)tex, 0), tex->pData + offset);
 
-                rhi::upload(rd, staging, {}, rhiTex, true);
+                const bool generateMipmaps = rd.getBackendApi() != rhi::RenderBackendApi::eWebGPU;
+                rhi::upload(rd, staging, {}, rhiTex, generateMipmaps);
             }
 
             return vbase::Result<rhi::Texture, std::string>::ok(std::move(rhiTex));

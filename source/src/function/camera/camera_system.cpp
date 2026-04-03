@@ -7,6 +7,7 @@
 #include "vultra/function/services/render_backend_service.hpp"
 
 #include <glm/common.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 
@@ -238,8 +239,7 @@ namespace vultra
 
         camera.view = glm::lookAt(controller.position, controller.position + forward, kWorldUp);
         camera.projection =
-            glm::perspective(glm::radians(controller.fovYDegrees), aspect, controller.zNear, controller.zFar);
-        camera.projection[1][1] *= -1.0f; // Vulkan clip space adjustment
+            glm::perspectiveRH_ZO(glm::radians(controller.fovYDegrees), aspect, controller.zNear, controller.zFar);
 
         camera.fovY  = glm::radians(controller.fovYDegrees);
         camera.zNear = controller.zNear;

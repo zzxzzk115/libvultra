@@ -7,6 +7,15 @@
 #include <vbase/event/event_bus.hpp>
 #include <vulkan/vulkan.hpp>
 
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+#include <webgpu/webgpu.h>
+#else
+struct WGPUInstanceImpl;
+struct WGPUSurfaceImpl;
+using WGPUInstance = WGPUInstanceImpl*;
+using WGPUSurface  = WGPUSurfaceImpl*;
+#endif
+
 #include <functional>
 #include <memory>
 #include <span>
@@ -113,6 +122,7 @@ namespace vultra
 
             [[nodiscard]] virtual std::span<const char* const> getRequiredVulkanInstanceExtensions() const      = 0;
             [[nodiscard]] virtual vk::SurfaceKHR               createVulkanSurface(vk::Instance instance) const = 0;
+            [[nodiscard]] virtual WGPUSurface createWebGPUSurface(WGPUInstance instance) const = 0;
 
             virtual void pollEvents(int timeoutMillis = 0) = 0;
             virtual void close()                           = 0;

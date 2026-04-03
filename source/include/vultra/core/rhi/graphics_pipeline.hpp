@@ -55,6 +55,7 @@ namespace vultra
                 Builder& setViewMask(uint32_t);
 
                 Builder& setInputAssembly(const VertexAttributes&);
+                Builder& setVertexStride(uint32_t);
                 Builder& setTopology(const PrimitiveTopology);
 
                 Builder& setPipelineLayout(PipelineLayout);
@@ -70,12 +71,16 @@ namespace vultra
                 [[nodiscard]] GraphicsPipeline build(RenderDevice&);
 
             private:
+                [[nodiscard]] std::optional<GraphicsPipeline> buildWebGPU(RenderDevice&);
+                [[nodiscard]] GraphicsPipeline                buildVulkan(RenderDevice&);
+
                 PixelFormat             m_DepthFormat {PixelFormat::eUndefined};
                 PixelFormat             m_StencilFormat {PixelFormat::eUndefined};
                 std::vector<PixelFormat> m_ColorAttachmentFormats;
                 uint32_t                m_ViewMask {0};
 
                 VertexAttributes m_VertexAttributes;
+                uint32_t         m_VertexStride {0};
                 PrimitiveTopology m_PrimitiveTopology {PrimitiveTopology::eTriangleList};
 
                 std::unordered_map<ShaderType, ShaderStageInfo> m_ShaderStages;
@@ -89,7 +94,7 @@ namespace vultra
             };
 
         private:
-            GraphicsPipeline(PipelineLayout&&, std::uintptr_t, std::unique_ptr<IPipelineBackend>);
+            GraphicsPipeline(PipelineLayout&&, std::uintptr_t, std::unique_ptr<IPipeline>);
         };
     } // namespace rhi
 } // namespace vultra

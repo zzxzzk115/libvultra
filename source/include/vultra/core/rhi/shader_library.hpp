@@ -35,6 +35,7 @@ namespace vultra
             struct LoadedShader
             {
                 rhi::SPIRV                         spirv;
+                std::string                        wgsl;
                 rhi::ShaderReflection              reflection;
                 vshadersystem::MaterialDescription materialDesc;
 
@@ -71,4 +72,3 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
-
