@@ -145,8 +145,8 @@ namespace vultra
                             {
                                 m_Buffers[0] = TextureAccess::fromExternalImage(
                                     RenderBackendApi::eWebGPU,
-                                    reinterpret_cast<std::uintptr_t>(m_Device),
-                                    reinterpret_cast<std::uintptr_t>(m_CurrentSurfaceTexture.texture),
+                                    TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(m_Device)},
+                                    TextureImageHandle {reinterpret_cast<std::uintptr_t>(m_CurrentSurfaceTexture.texture)},
                                     m_Extent,
                                     m_PixelFormat);
                             }
@@ -169,8 +169,8 @@ namespace vultra
                                 {
                                     m_Buffers[0] = TextureAccess::fromExternalImage(
                                         RenderBackendApi::eWebGPU,
-                                        reinterpret_cast<std::uintptr_t>(m_Device),
-                                        reinterpret_cast<std::uintptr_t>(m_CurrentSurfaceTexture.texture),
+                                        TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(m_Device)},
+                                        TextureImageHandle {reinterpret_cast<std::uintptr_t>(m_CurrentSurfaceTexture.texture)},
                                         m_Extent,
                                         m_PixelFormat);
                                 }

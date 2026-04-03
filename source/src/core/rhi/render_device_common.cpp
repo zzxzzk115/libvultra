@@ -789,16 +789,16 @@ namespace vultra
                 if (numLayers > 1u)
                 {
                     return TextureAccess::fromOwnedImage(RenderBackendApi::eWebGPU,
-                                                   reinterpret_cast<std::uintptr_t>(backend.m_Device),
-                                                   reinterpret_cast<std::uintptr_t>(textureHandle),
+                                                   TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(backend.m_Device)},
+                                                   TextureImageHandle {reinterpret_cast<std::uintptr_t>(textureHandle)},
                                                    extent,
                                                    format,
                                                    0u,
                                                    numLayers);
                 }
                 return TextureAccess::fromOwnedImage(RenderBackendApi::eWebGPU,
-                                               reinterpret_cast<std::uintptr_t>(backend.m_Device),
-                                               reinterpret_cast<std::uintptr_t>(textureHandle),
+                                               TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(backend.m_Device)},
+                                               TextureImageHandle {reinterpret_cast<std::uintptr_t>(textureHandle)},
                                                extent,
                                                format,
                                                0u);
@@ -808,7 +808,7 @@ namespace vultra
             const auto allocatorHandle =
                 reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(vkBackend(m_Backend).m_MemoryAllocator));
             return Texture {
-                allocatorHandle,
+                TextureAllocatorHandle {allocatorHandle},
                 Texture::CreateInfo {
                     .extent       = extent,
                     .depth        = 0,
@@ -835,7 +835,7 @@ namespace vultra
             const auto allocatorHandle =
                 reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(vkBackend(m_Backend).m_MemoryAllocator));
             return Texture {
-                allocatorHandle,
+                TextureAllocatorHandle {allocatorHandle},
                 Texture::CreateInfo {
                     .extent       = extent,
                     .depth        = depth,
@@ -862,7 +862,7 @@ namespace vultra
             const auto allocatorHandle =
                 reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(vkBackend(m_Backend).m_MemoryAllocator));
             return Texture {
-                allocatorHandle,
+                TextureAllocatorHandle {allocatorHandle},
                 Texture::CreateInfo {
                     .extent       = {size, size},
                     .depth        = 0,

@@ -30,6 +30,34 @@ namespace vultra
 
     namespace rhi
     {
+        struct TextureDeviceHandle
+        {
+            std::uintptr_t value {0};
+
+            bool operator==(const TextureDeviceHandle&) const = default;
+        };
+
+        struct TextureImageHandle
+        {
+            std::uintptr_t value {0};
+
+            bool operator==(const TextureImageHandle&) const = default;
+        };
+
+        struct TextureAllocatorHandle
+        {
+            std::uintptr_t value {0};
+
+            bool operator==(const TextureAllocatorHandle&) const = default;
+        };
+
+        struct TextureAllocationHandle
+        {
+            std::uintptr_t value {0};
+
+            bool operator==(const TextureAllocationHandle&) const = default;
+        };
+
         class RenderDevice;
         class Swapchain;
         class CommandBuffer;
@@ -139,26 +167,26 @@ namespace vultra
                 uint32_t    numFaces {1u};
                 ImageUsage  usageFlags {ImageUsage::eSampled};
             };
-            Texture(std::uintptr_t allocatorHandle, CreateInfo&&);
+            Texture(TextureAllocatorHandle allocatorHandle, CreateInfo&&);
             // "Import" image (from a Swapchain).
-            Texture(std::uintptr_t device, std::uintptr_t image, Extent2D, PixelFormat, uint32_t baseLayer = 0u);
-            Texture(std::uintptr_t device,
-                    std::uintptr_t image,
+            Texture(TextureDeviceHandle device, TextureImageHandle image, Extent2D, PixelFormat, uint32_t baseLayer = 0u);
+            Texture(TextureDeviceHandle device,
+                    TextureImageHandle image,
                     Extent2D,
                     PixelFormat,
                     uint32_t baseLayer,
                     uint32_t numLayers);
             Texture(RenderBackendApi api,
                     bool             ownsImage,
-                    std::uintptr_t   device,
-                    std::uintptr_t   image,
+                    TextureDeviceHandle device,
+                    TextureImageHandle  image,
                     Extent2D,
                     PixelFormat,
                     uint32_t         baseLayer = 0u);
             Texture(RenderBackendApi api,
                     bool             ownsImage,
-                    std::uintptr_t   device,
-                    std::uintptr_t   image,
+                    TextureDeviceHandle device,
+                    TextureImageHandle  image,
                     Extent2D,
                     PixelFormat,
                     uint32_t         baseLayer,
@@ -167,39 +195,43 @@ namespace vultra
             void destroy() noexcept;
 
             [[nodiscard]] std::uintptr_t getImageHandle() const;
-            std::uintptr_t getDeviceHandle() const;
+            TextureDeviceHandle getDeviceHandle() const;
             // Wrap an externally created image into RHI Texture.
             [[nodiscard]] static Texture
-            fromExternalImage(std::uintptr_t device, std::uintptr_t image, Extent2D, PixelFormat, uint32_t baseLayer = 0u);
-            [[nodiscard]] static Texture fromExternalImage(std::uintptr_t device,
-                                                           std::uintptr_t image,
+            fromExternalImage(TextureDeviceHandle device,
+                              TextureImageHandle  image,
+                              Extent2D,
+                              PixelFormat,
+                              uint32_t baseLayer = 0u);
+            [[nodiscard]] static Texture fromExternalImage(TextureDeviceHandle device,
+                                                           TextureImageHandle  image,
                                                            Extent2D,
                                                            PixelFormat,
                                                            uint32_t baseLayer,
                                                            uint32_t numLayers);
             [[nodiscard]] static Texture fromExternalImage(RenderBackendApi api,
-                                                           std::uintptr_t   device,
-                                                           std::uintptr_t   image,
+                                                           TextureDeviceHandle device,
+                                                           TextureImageHandle  image,
                                                            Extent2D,
                                                            PixelFormat,
                                                            uint32_t baseLayer = 0u);
             [[nodiscard]] static Texture fromExternalImage(RenderBackendApi api,
-                                                           std::uintptr_t   device,
-                                                           std::uintptr_t   image,
+                                                           TextureDeviceHandle device,
+                                                           TextureImageHandle  image,
                                                            Extent2D,
                                                            PixelFormat,
                                                            uint32_t baseLayer,
                                                            uint32_t numLayers);
             [[nodiscard]] static Texture
             fromOwnedImage(RenderBackendApi api,
-                           std::uintptr_t   device,
-                           std::uintptr_t   image,
+                           TextureDeviceHandle device,
+                           TextureImageHandle  image,
                            Extent2D,
                            PixelFormat,
                            uint32_t baseLayer = 0u);
             [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi api,
-                                                        std::uintptr_t   device,
-                                                        std::uintptr_t   image,
+                                                        TextureDeviceHandle device,
+                                                        TextureImageHandle  image,
                                                         Extent2D,
                                                         PixelFormat,
                                                         uint32_t baseLayer,
@@ -211,48 +243,23 @@ namespace vultra
                 std::vector<TextureView> mipLevels;
                 std::vector<TextureView> layers;
             };
-            void              createAspect(std::uintptr_t, std::uintptr_t, uint32_t, ImageAspectFlags, AspectData&);
-            void              initImportedNativeAspects(std::uintptr_t, PixelFormat);
-            void              createAspectNative(std::uintptr_t, uint32_t, ImageAspectFlags, AspectData&);
+            void              createAspect(TextureDeviceHandle, TextureImageHandle, uint32_t, ImageAspectFlags, AspectData&);
+            void              initImportedNativeAspects(TextureImageHandle, PixelFormat);
+            void              createAspectNative(TextureImageHandle, uint32_t, ImageAspectFlags, AspectData&);
             void              destroyNativeResources() noexcept;
             const AspectData* getAspect(ImageAspectFlags) const;
 
         private:
-            struct DeviceHandle
-            {
-                std::uintptr_t value {0};
-
-#if defined(__ANDROID__)
-                bool operator==(const DeviceHandle&) const = default;
-#else
-                auto operator<=>(const DeviceHandle&) const = default;
-#endif
-            };
-            struct AllocatorHandle
-            {
-                std::uintptr_t value {0};
-
-#if defined(__ANDROID__)
-                bool operator==(const AllocatorHandle&) const = default;
-#else
-                auto operator<=>(const AllocatorHandle&) const = default;
-#endif
-            };
-
-            using DeviceOrAllocator = std::variant<std::monostate, DeviceHandle, AllocatorHandle>;
+            using DeviceOrAllocator = std::variant<std::monostate, TextureDeviceHandle, TextureAllocatorHandle>;
             DeviceOrAllocator m_DeviceOrAllocator;
 
             struct AllocatedImage
             {
-                std::uintptr_t allocationHandle {0};
+                TextureAllocationHandle allocationHandle {};
                 std::uintptr_t handle {0};
                 uint64_t       allocationSize {0};
 
-#if defined(__ANDROID__)
                 bool operator==(const AllocatedImage&) const = default;
-#else
-                auto operator<=>(const AllocatedImage&) const = default;
-#endif
             };
             using ImageVariant = std::variant<std::monostate, std::uintptr_t, AllocatedImage>;
             ImageVariant m_Image;

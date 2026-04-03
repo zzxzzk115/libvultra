@@ -1,7 +1,5 @@
 #include "vultra/core/rhi/interfaces/texture_access.hpp"
 
-#include "vultra/core/rhi/texture.hpp"
-
 namespace vultra
 {
     namespace rhi
@@ -9,8 +7,8 @@ namespace vultra
         std::uintptr_t TextureAccess::getImageHandle(const Texture& texture) { return texture.getImageHandle(); }
 
         Texture TextureAccess::fromExternalImage(const RenderBackendApi api,
-                                                 const std::uintptr_t   device,
-                                                 const std::uintptr_t   image,
+                                                 const TextureDeviceHandle device,
+                                                 const TextureImageHandle  image,
                                                  const Extent2D         extent,
                                                  const PixelFormat      format,
                                                  const uint32_t         baseLayer)
@@ -19,8 +17,8 @@ namespace vultra
         }
 
         Texture TextureAccess::fromExternalImage(const RenderBackendApi api,
-                                                 const std::uintptr_t   device,
-                                                 const std::uintptr_t   image,
+                                                 const TextureDeviceHandle device,
+                                                 const TextureImageHandle  image,
                                                  const Extent2D         extent,
                                                  const PixelFormat      format,
                                                  const uint32_t         baseLayer,
@@ -30,8 +28,8 @@ namespace vultra
         }
 
         Texture TextureAccess::fromOwnedImage(const RenderBackendApi api,
-                                              const std::uintptr_t   device,
-                                              const std::uintptr_t   image,
+                                              const TextureDeviceHandle device,
+                                              const TextureImageHandle  image,
                                               const Extent2D         extent,
                                               const PixelFormat      format,
                                               const uint32_t         baseLayer)
@@ -40,8 +38,8 @@ namespace vultra
         }
 
         Texture TextureAccess::fromOwnedImage(const RenderBackendApi api,
-                                              const std::uintptr_t   device,
-                                              const std::uintptr_t   image,
+                                              const TextureDeviceHandle device,
+                                              const TextureImageHandle  image,
                                               const Extent2D         extent,
                                               const PixelFormat      format,
                                               const uint32_t         baseLayer,

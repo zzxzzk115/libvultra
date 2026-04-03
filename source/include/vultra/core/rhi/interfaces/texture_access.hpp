@@ -1,8 +1,6 @@
 #pragma once
 
-#include "vultra/core/rhi/structs/extent2d.hpp"
-#include "vultra/core/rhi/structs/pixel_format.hpp"
-#include "vultra/core/rhi/structs/render_backend_api.hpp"
+#include "vultra/core/rhi/texture.hpp"
 
 #include <cstdint>
 
@@ -10,8 +8,6 @@ namespace vultra
 {
     namespace rhi
     {
-        class Texture;
-
         class TextureAccess final
         {
         public:
@@ -19,14 +15,14 @@ namespace vultra
 
             [[nodiscard]] static Texture
             fromExternalImage(RenderBackendApi api,
-                              std::uintptr_t   device,
-                              std::uintptr_t   image,
+                              TextureDeviceHandle device,
+                              TextureImageHandle  image,
                               Extent2D         extent,
                               PixelFormat      format,
                               uint32_t         baseLayer = 0u);
             [[nodiscard]] static Texture fromExternalImage(RenderBackendApi api,
-                                                           std::uintptr_t   device,
-                                                           std::uintptr_t   image,
+                                                           TextureDeviceHandle device,
+                                                           TextureImageHandle  image,
                                                            Extent2D         extent,
                                                            PixelFormat      format,
                                                            uint32_t         baseLayer,
@@ -34,14 +30,14 @@ namespace vultra
 
             [[nodiscard]] static Texture
             fromOwnedImage(RenderBackendApi api,
-                           std::uintptr_t   device,
-                           std::uintptr_t   image,
+                           TextureDeviceHandle device,
+                           TextureImageHandle  image,
                            Extent2D         extent,
                            PixelFormat      format,
                            uint32_t         baseLayer = 0u);
             [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi api,
-                                                        std::uintptr_t   device,
-                                                        std::uintptr_t   image,
+                                                        TextureDeviceHandle device,
+                                                        TextureImageHandle  image,
                                                         Extent2D         extent,
                                                         PixelFormat      format,
                                                         uint32_t         baseLayer,

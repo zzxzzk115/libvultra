@@ -189,10 +189,14 @@ namespace vultra
                 for (size_t i = 0u; i < m_SwapchainImages.size(); ++i)
                 {
                     const XrSwapchainImageVulkan2KHR& swapchainImage = m_SwapchainImages[i];
+                    const auto deviceHandle = rhi::TextureDeviceHandle {
+                        rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice)};
+                    const auto imageHandle  = rhi::TextureImageHandle {
+                        static_cast<std::uintptr_t>(rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image)))};
 
                     m_SwapchainStereoRenderTargetViews[i].stereo =
-                        rhi::Texture {rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice),
-                                      static_cast<std::uintptr_t>(rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image))),
+                        rhi::Texture {deviceHandle,
+                                      imageHandle,
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
                                       m_SwapchainPixelFormat,
@@ -200,16 +204,16 @@ namespace vultra
                                       static_cast<uint32_t>(m_EyeCount)};
 
                     m_SwapchainStereoRenderTargetViews[i].left =
-                        rhi::Texture {rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice),
-                                      static_cast<std::uintptr_t>(rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image))),
+                        rhi::Texture {deviceHandle,
+                                      imageHandle,
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
                                       m_SwapchainPixelFormat,
                                       0};
 
                     m_SwapchainStereoRenderTargetViews[i].right =
-                        rhi::Texture {rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice),
-                                      static_cast<std::uintptr_t>(rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image))),
+                        rhi::Texture {deviceHandle,
+                                      imageHandle,
                                       {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
                                        static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
                                       m_SwapchainPixelFormat,

@@ -124,14 +124,22 @@ namespace vultra
             return alignment == 0u ? value : ((value + alignment - 1u) / alignment) * alignment;
         }
 
+        [[nodiscard]] const rhi::Texture* findFirstValidTexture(std::span<const rhi::Texture* const> textures)
+        {
+            for (const auto* texture : textures)
+            {
+                if (texture != nullptr)
+                {
+                    return texture;
+                }
+            }
+            return nullptr;
+        }
+
     } // namespace
 
     void WebGPUBaseColorPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource target)
     {
-        static bool s_LoggedSolidNoUv      = false;
-        static bool s_LoggedSolidNoTexture = false;
-        static bool s_LoggedTexturedPath   = false;
-
         struct PassData
         {
             FrameGraphResource camera;
@@ -178,6 +186,7 @@ namespace vultra
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 assert(rc.framebufferInfo().has_value());
+                const auto framebufferInfo = rc.framebufferInfo().value();
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
                 const auto* renderWorld      = rc.view().renderWorld;
                 const auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
@@ -185,15 +194,7 @@ namespace vultra
                     return;
 
                 const auto          materialTextures = gpuSceneDatabase->resources->getBindlessTextureHandles();
-                const rhi::Texture* fallbackTexture  = nullptr;
-                for (const auto* tex : materialTextures)
-                {
-                    if (tex != nullptr)
-                    {
-                        fallbackTexture = tex;
-                        break;
-                    }
-                }
+                const rhi::Texture* fallbackTexture  = findFirstValidTexture(materialTextures);
                 const uint64_t drawParamStride = alignUp(sizeof(glm::mat4), kWebGPUUniformOffsetAlignment);
                 const uint64_t drawParamBufferSize =
                     std::max<uint64_t>(1u, renderWorld->instances.size()) * drawParamStride;
@@ -205,7 +206,7 @@ namespace vultra
                 if (gpuSceneDatabase->resources->materialParams.gpu)
                     rhi::prepareForReading(rc.cb, *gpuSceneDatabase->resources->materialParams.gpu);
 
-                rc.cb.beginRendering(rc.framebufferInfo().value());
+                rc.cb.beginRendering(framebufferInfo);
 
                 uint64_t instanceDrawIndex = 0u;
                 for (const auto& instance : renderWorld->instances)
@@ -214,8 +215,6 @@ namespace vultra
                         continue;
                     const auto& mesh = gpuSceneDatabase->resources->meshes[instance.meshIndex];
                     if (!mesh.vertexBuffer || !mesh.indexBuffer)
-                        continue;
-                    if (!mesh.vertexAttributes.contains(0u))
                         continue;
 
                     rhi::prepareForReading(rc.cb, mesh.vertexBuffer);
@@ -243,27 +242,7 @@ namespace vultra
                                 fallbackTexture;
 
                         const bool textured = boundTexture != nullptr && hasUv0;
-                        if (!textured)
-                        {
-                            if (!hasUv0 && !s_LoggedSolidNoUv)
-                            {
-                                VULTRA_CORE_WARN(
-                                    "[WebGPUBaseColorPass] Solid fallback: mesh has no TEXCOORD_0 (location=3).");
-                                s_LoggedSolidNoUv = true;
-                            }
-                            else if (hasUv0 && boundTexture == nullptr && !s_LoggedSolidNoTexture)
-                            {
-                                VULTRA_CORE_WARN(
-                                    "[WebGPUBaseColorPass] Solid fallback: no bound texture handle for material.");
-                                s_LoggedSolidNoTexture = true;
-                            }
-                        }
-                        else if (!s_LoggedTexturedPath)
-                        {
-                            VULTRA_CORE_INFO("[WebGPUBaseColorPass] Textured path active (webgpu_basecolor.frag).");
-                            s_LoggedTexturedPath = true;
-                        }
-                        const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0),
+                        const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0),
                                                            texCoord0Offset,
                                                            positionOffset,
                                                            mesh.vertexStrideBytes,
@@ -274,10 +253,7 @@ namespace vultra
                         }
                         rc.cb.bindPipeline(*pipeline);
 
-                        if (!textured)
-                        {
-                        }
-                        else
+                        if (textured)
                         {
                             rc.resourceSet[3] = {
                                 {4,

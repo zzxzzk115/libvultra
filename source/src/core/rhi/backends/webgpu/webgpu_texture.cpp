@@ -47,7 +47,7 @@ namespace vultra::rhi
 #endif
     } // namespace
 
-    void Texture::initImportedNativeAspects(const std::uintptr_t imageHandle, const PixelFormat pixelFormat)
+    void Texture::initImportedNativeAspects(const TextureImageHandle imageHandle, const PixelFormat pixelFormat)
     {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
         (void)imageHandle;
@@ -81,7 +81,7 @@ namespace vultra::rhi
 #endif
     }
 
-    void Texture::createAspectNative(const std::uintptr_t imageHandle,
+    void Texture::createAspectNative(const TextureImageHandle imageHandle,
                                      const uint32_t       viewType,
                                      const ImageAspectFlags aspectMask,
                                      AspectData&          data)
@@ -92,7 +92,7 @@ namespace vultra::rhi
         (void)aspectMask;
         (void)data;
 #else
-        const auto texture      = reinterpret_cast<WGPUTexture>(imageHandle);
+        const auto texture      = reinterpret_cast<WGPUTexture>(imageHandle.value);
         const auto format       = webgpu::toWgpuTextureFormat(m_Format);
         const auto wgpuViewType = static_cast<WGPUTextureViewDimension>(viewType);
         const auto wgpuAspect   = webgpu::toWgpuTextureAspect(aspectMask);

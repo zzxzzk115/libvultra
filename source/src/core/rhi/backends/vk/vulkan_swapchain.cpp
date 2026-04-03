@@ -219,8 +219,8 @@ namespace vultra
             {
                 m_Buffers.emplace_back(TextureAccess::fromExternalImage(
                     RenderBackendApi::eVulkan,
-                    toBackendHandle(static_cast<VkDevice>(m_Device)),
-                    toBackendHandle(static_cast<VkImage>(image)),
+                    TextureDeviceHandle {toBackendHandle(static_cast<VkDevice>(m_Device))},
+                    TextureImageHandle {toBackendHandle(static_cast<VkImage>(image))},
                     extent,
                     pixelFormat));
             }
