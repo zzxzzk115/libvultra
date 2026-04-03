@@ -7,9 +7,6 @@ namespace vultra
 {
     namespace rhi
     {
-        void RenderMesh::createBuildBLAS(RenderDevice& rd)
-        {
-            blas = rd.createBuildRenderMeshBLAS(subMeshes);
-        }
+        void RenderMesh::createBuildBLAS(RenderDevice& rd) { blas = rd.createBuildRenderMeshBLAS(subMeshes); }
     } // namespace rhi
 } // namespace vultra

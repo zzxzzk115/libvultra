@@ -1,9 +1,9 @@
 #pragma once
 
-#include "vultra/core/rhi/structs/barrier_scope.hpp"
 #include "vultra/core/rhi/interfaces/ibuffer.hpp"
-#include "vultra/core/rhi/structs/buffer_usage.hpp"
+#include "vultra/core/rhi/structs/barrier_scope.hpp"
 #include "vultra/core/rhi/structs/buffer_structs.hpp"
+#include "vultra/core/rhi/structs/buffer_usage.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -43,7 +43,7 @@ namespace vultra
             Buffer& flush(uint64_t offset = 0, uint64_t size = UINT64_MAX);
 
         private:
-            void destroy() noexcept;
+            void                       destroy() noexcept;
             [[nodiscard]] BarrierScope getBarrierScope() const;
             void                       setBarrierScope(BarrierScope);
 

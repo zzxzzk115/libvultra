@@ -5,15 +5,14 @@ namespace vultra
 {
     namespace rhi
     {
-        VulkanAccelerationStructure::VulkanAccelerationStructure(
-            const vk::Device                            device,
-            const vk::AccelerationStructureKHR          handle,
-            const DeviceAddress                         deviceAddress,
-            const AccelerationStructureType             type,
-            AccelerationStructureBuildSizesInfo&&       buildSizesInfo,
-            AccelerationStructureBuffer&&               buffer) :
-            m_Device(device), m_Handle(handle), m_DeviceAddress(deviceAddress), m_BuildSizesInfo(std::move(buildSizesInfo)),
-            m_Type(type), m_Buffer(std::move(buffer))
+        VulkanAccelerationStructure::VulkanAccelerationStructure(const vk::Device                      device,
+                                                                 const vk::AccelerationStructureKHR    handle,
+                                                                 const DeviceAddress                   deviceAddress,
+                                                                 const AccelerationStructureType       type,
+                                                                 AccelerationStructureBuildSizesInfo&& buildSizesInfo,
+                                                                 AccelerationStructureBuffer&&         buffer) :
+            m_Device(device), m_Handle(handle), m_DeviceAddress(deviceAddress),
+            m_BuildSizesInfo(std::move(buildSizesInfo)), m_Type(type), m_Buffer(std::move(buffer))
         {}
 
         VulkanAccelerationStructure::~VulkanAccelerationStructure() { destroy(); }

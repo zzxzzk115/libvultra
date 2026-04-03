@@ -10,8 +10,8 @@ namespace vultra
 
         const IRenderDevice* RenderDeviceAccess::get(const RenderDevice& rd) { return rd.m_Backend.get(); }
 
-        std::uintptr_t RenderDeviceAccess::getDescriptorSetLayoutHandle(
-            const RenderDevice& rd, const DescriptorSetLayoutKey layoutKey)
+        std::uintptr_t RenderDeviceAccess::getDescriptorSetLayoutHandle(const RenderDevice&          rd,
+                                                                        const DescriptorSetLayoutKey layoutKey)
         {
             return rd.getDescriptorSetLayoutHandle(layoutKey);
         }

@@ -14,9 +14,9 @@ namespace vultra
         public:
             IndexBuffer() = default;
 
-            [[nodiscard]] IndexType      getIndexType() const;
-            [[nodiscard]] Stride         getStride() const;
-            [[nodiscard]] uint64_t       getCapacity() const;
+            [[nodiscard]] IndexType getIndexType() const;
+            [[nodiscard]] Stride    getStride() const;
+            [[nodiscard]] uint64_t  getCapacity() const;
 
         private:
             IndexBuffer(Buffer&&, IndexType);

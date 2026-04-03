@@ -37,8 +37,8 @@ namespace vultra
             return m_Layout.getDescriptorSet(index);
         }
 
-        BasePipeline::BasePipeline(PipelineLayout&&                     layout,
-                                   const std::uintptr_t                pipeline,
+        BasePipeline::BasePipeline(PipelineLayout&&           layout,
+                                   const std::uintptr_t       pipeline,
                                    std::unique_ptr<IPipeline> destroyBackend) :
             m_Layout(std::move(layout)), m_Handle(pipeline), m_Backend(std::move(destroyBackend))
         {

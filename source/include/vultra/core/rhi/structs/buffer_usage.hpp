@@ -12,19 +12,19 @@ namespace vultra
     {
         enum class BufferUsage
         {
-            eNone               = ZERO_BIT,
-            eTransferSrc        = BIT(0),
-            eTransferDst        = BIT(1),
-            eTransfer           = eTransferSrc | eTransferDst,
-            eVertexBuffer       = BIT(2),
-            eIndexBuffer        = BIT(3),
-            eUniformBuffer      = BIT(4),
-            eStorageBuffer      = BIT(5),
-            eIndirectBuffer     = BIT(6),
-            eShaderDeviceAddress = BIT(7),
+            eNone                   = ZERO_BIT,
+            eTransferSrc            = BIT(0),
+            eTransferDst            = BIT(1),
+            eTransfer               = eTransferSrc | eTransferDst,
+            eVertexBuffer           = BIT(2),
+            eIndexBuffer            = BIT(3),
+            eUniformBuffer          = BIT(4),
+            eStorageBuffer          = BIT(5),
+            eIndirectBuffer         = BIT(6),
+            eShaderDeviceAddress    = BIT(7),
             eAccelerationBuildInput = BIT(8),
-            eAccelerationStorage = BIT(9),
-            eShaderBindingTable  = BIT(10),
+            eAccelerationStorage    = BIT(9),
+            eShaderBindingTable     = BIT(10),
         };
 
         [[nodiscard]] std::string_view toString(BufferUsage);

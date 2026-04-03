@@ -1,7 +1,7 @@
 #pragma once
 
-#include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/core/rhi/structs/primitive_topology.hpp"
+#include "vultra/core/rhi/structs/vertex_attributes.hpp"
 
 namespace vultra
 {
@@ -12,7 +12,7 @@ namespace vultra
 
         struct GeometryInfo
         {
-            PrimitiveTopology topology {PrimitiveTopology::eTriangleList};
+            PrimitiveTopology   topology {PrimitiveTopology::eTriangleList};
             const VertexBuffer* vertexBuffer {nullptr};
             uint32_t            vertexOffset {0};
             uint32_t            numVertices {0};

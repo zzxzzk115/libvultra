@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/core/rhi/structs/render_device_structs.hpp"
 
 namespace vultra
@@ -8,7 +9,7 @@ namespace vultra
     {
         class XRDevice;
     }
-}
+} // namespace vultra
 
 namespace vultra
 {
@@ -19,14 +20,14 @@ namespace vultra
         public:
             virtual ~IRenderDevice() = default;
 
-            [[nodiscard]] virtual RenderBackendApi            getBackendApi() const        = 0;
-            [[nodiscard]] virtual RenderDeviceFeatureFlagBits getFeatureFlag() const       = 0;
-            [[nodiscard]] virtual RenderDeviceFeatureReport   getFeatureReport() const     = 0;
-            [[nodiscard]] virtual RenderDeviceSyncCapabilities getSyncCapabilities() const = 0;
-            [[nodiscard]] virtual bool                        supportsSwapchain() const     = 0;
-            [[nodiscard]] virtual std::string                 getName() const              = 0;
-            [[nodiscard]] virtual PhysicalDeviceInfo          getPhysicalDeviceInfo() const = 0;
-            [[nodiscard]] virtual openxr::XRDevice*           getXRDevice() const          = 0;
+            [[nodiscard]] virtual RenderBackendApi             getBackendApi() const         = 0;
+            [[nodiscard]] virtual RenderDeviceFeatureFlagBits  getFeatureFlag() const        = 0;
+            [[nodiscard]] virtual RenderDeviceFeatureReport    getFeatureReport() const      = 0;
+            [[nodiscard]] virtual RenderDeviceSyncCapabilities getSyncCapabilities() const   = 0;
+            [[nodiscard]] virtual bool                         supportsSwapchain() const     = 0;
+            [[nodiscard]] virtual std::string                  getName() const               = 0;
+            [[nodiscard]] virtual PhysicalDeviceInfo           getPhysicalDeviceInfo() const = 0;
+            [[nodiscard]] virtual openxr::XRDevice*            getXRDevice() const           = 0;
         };
     } // namespace rhi
 } // namespace vultra

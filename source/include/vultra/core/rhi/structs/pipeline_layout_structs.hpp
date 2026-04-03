@@ -26,11 +26,11 @@ namespace vultra
 
         struct DescriptorSetLayoutBindingEx
         {
-            BindingIndex    binding {0};
-            DescriptorType  type {DescriptorType::eSampler};
-            uint32_t        count {1};
-            ShaderStages    stageFlags {ShaderStages::eNone};
-            uint32_t        flags {0};
+            BindingIndex   binding {0};
+            DescriptorType type {DescriptorType::eSampler};
+            uint32_t       count {1};
+            ShaderStages   stageFlags {ShaderStages::eNone};
+            uint32_t       flags {0};
         };
 
         struct PushConstantRange

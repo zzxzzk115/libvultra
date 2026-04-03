@@ -13,12 +13,9 @@ namespace vultra
             [[nodiscard]] auto getColorFormats(std::span<const AttachmentInfo> v)
             {
                 std::vector<PixelFormat> out(v.size());
-                std::ranges::transform(
-                    v,
-                    out.begin(),
-                    [](const auto& attachment) {
-                        return attachment.target ? attachment.target->getPixelFormat() : PixelFormat::eUndefined;
-                    });
+                std::ranges::transform(v, out.begin(), [](const auto& attachment) {
+                    return attachment.target ? attachment.target->getPixelFormat() : PixelFormat::eUndefined;
+                });
                 return out;
             }
 

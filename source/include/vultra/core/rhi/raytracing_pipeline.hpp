@@ -8,8 +8,8 @@
 #include "vultra/core/rhi/structs/raytracing_shader_group.hpp"
 #include "vultra/core/rhi/structs/shader_type.hpp"
 
-#include <vector>
 #include <memory>
+#include <vector>
 
 namespace vultra
 {
@@ -30,10 +30,7 @@ namespace vultra
             RayTracingPipeline& operator=(const RayTracingPipeline&)     = delete;
             RayTracingPipeline& operator=(RayTracingPipeline&&) noexcept = default;
 
-            constexpr PipelineBindPoint getBindPoint() const override
-            {
-                return PipelineBindPoint::eRayTracing;
-            }
+            constexpr PipelineBindPoint getBindPoint() const override { return PipelineBindPoint::eRayTracing; }
 
             const std::vector<RaytracingShaderGroup>& getShaderGroups() const { return m_Groups; }
             uint32_t getGroupCount() const { return static_cast<uint32_t>(m_Groups.size()); }
@@ -89,18 +86,18 @@ namespace vultra
             };
 
         private:
-            RayTracingPipeline(PipelineLayout&&                                  pipelineLayout,
-                               std::uintptr_t                                    handle,
-                               std::unique_ptr<IPipeline> destroyBackend,
-                               std::vector<RaytracingShaderGroup>&&              groups,
-                               std::vector<uint32_t>&&                           raygenGroupIndices,
-                               std::vector<uint32_t>&&                           missGroupIndices,
-                               std::vector<uint32_t>&&                           hitGroupIndices,
-                               std::vector<uint32_t>&&                           callableGroupIndices,
+            RayTracingPipeline(PipelineLayout&&                     pipelineLayout,
+                               std::uintptr_t                       handle,
+                               std::unique_ptr<IPipeline>           destroyBackend,
+                               std::vector<RaytracingShaderGroup>&& groups,
+                               std::vector<uint32_t>&&              raygenGroupIndices,
+                               std::vector<uint32_t>&&              missGroupIndices,
+                               std::vector<uint32_t>&&              hitGroupIndices,
+                               std::vector<uint32_t>&&              callableGroupIndices,
                                std::unique_ptr<IRayTracingPipeline> backend);
 
         private:
-            std::vector<RaytracingShaderGroup>                m_Groups;
+            std::vector<RaytracingShaderGroup>   m_Groups;
             std::unique_ptr<IRayTracingPipeline> m_Backend;
 
             std::vector<uint32_t> m_RaygenGroupIndices;

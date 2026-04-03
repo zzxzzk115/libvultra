@@ -251,8 +251,7 @@ namespace vultra
             submitInfo.signalSemaphoreInfoCount = static_cast<bool>(jobInfo.signal) ? 1u : 0u;
             submitInfo.pSignalSemaphoreInfos    = static_cast<bool>(jobInfo.signal) ? &signalSemaphoreInfo : nullptr;
 
-            const vk::Queue queue {
-                asVkHandle<VkQueue>(VulkanRenderDeviceAccess::getQueueHandle(*m_RenderDevice))};
+            const vk::Queue queue {asVkHandle<VkQueue>(VulkanRenderDeviceAccess::getQueueHandle(*m_RenderDevice))};
             if (m_UseKhrSynchronization2)
             {
                 VK_CHECK(queue.submit2KHR(1, &submitInfo, m_Fence),
@@ -655,9 +654,9 @@ namespace vultra
 
             TRACY_GPU_ZONE2_("ClearTexture");
 
-            const auto                imageHandle = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(texture))};
-            const auto                imageLayout = toVk(texture.getImageLayout());
-            const auto                v           = toVk(clearValue);
+            const auto imageHandle = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(texture))};
+            const auto imageLayout = toVk(texture.getImageLayout());
+            const auto v           = toVk(clearValue);
             vk::ImageSubresourceRange range {};
             range.aspectMask = toVk(getAspectMask(texture));
             range.levelCount = vk::RemainingMipLevels;
@@ -1057,8 +1056,8 @@ namespace vultra
                     vkBarrier.newLayout           = toVk(image.newLayout);
                     vkBarrier.srcQueueFamilyIndex = vk::QueueFamilyIgnored;
                     vkBarrier.dstQueueFamilyIndex = vk::QueueFamilyIgnored;
-                    vkBarrier.image               = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(*image.image))};
-                    vkBarrier.subresourceRange    = vk::ImageSubresourceRange {
+                    vkBarrier.image = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(*image.image))};
+                    vkBarrier.subresourceRange = vk::ImageSubresourceRange {
                         toVk(image.subresourceRange.aspectMask),
                         image.subresourceRange.baseMipLevel,
                         image.subresourceRange.levelCount,
@@ -1222,8 +1221,7 @@ namespace vultra
             {
                 TRACY_GPU_ZONE2_("SetIndexBuffer");
                 const auto indexType = toVk(indexBuffer->getIndexType());
-                m_Handle.bindIndexBuffer(
-                    vk::Buffer {asVkHandle<VkBuffer>(indexBuffer->getHandle())}, 0, indexType);
+                m_Handle.bindIndexBuffer(vk::Buffer {asVkHandle<VkBuffer>(indexBuffer->getHandle())}, 0, indexType);
             }
             m_IndexBuffer = indexBuffer;
         }

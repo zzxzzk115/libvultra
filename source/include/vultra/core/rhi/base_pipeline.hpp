@@ -1,7 +1,7 @@
 #pragma once
 
-#include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/interfaces/ipipeline.hpp"
+#include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/structs/pipeline_bind_point.hpp"
 #include "vultra/core/rhi/structs/shader_stage_info.hpp"
 
@@ -25,10 +25,10 @@ namespace vultra
 
             [[nodiscard]] explicit operator bool() const;
 
-            [[nodiscard]] std::uintptr_t getHandle() const;
+            [[nodiscard]] std::uintptr_t                      getHandle() const;
             [[nodiscard]] constexpr virtual PipelineBindPoint getBindPoint() const = 0;
 
-            [[nodiscard]] const PipelineLayout&   getLayout() const;
+            [[nodiscard]] const PipelineLayout&  getLayout() const;
             [[nodiscard]] DescriptorSetLayoutKey getDescriptorSetLayout(const DescriptorSetIndex) const;
 
         protected:
@@ -38,8 +38,8 @@ namespace vultra
             void destroy() noexcept;
 
         private:
-            PipelineLayout                                m_Layout;
-            std::uintptr_t                                m_Handle {0};
+            PipelineLayout             m_Layout;
+            std::uintptr_t             m_Handle {0};
             std::unique_ptr<IPipeline> m_Backend;
         };
     } // namespace rhi

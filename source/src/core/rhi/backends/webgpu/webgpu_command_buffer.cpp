@@ -14,9 +14,9 @@
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
+#include <cstring>
 #include <stdexcept>
 #include <string>
-#include <cstring>
 #include <unordered_map>
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
@@ -75,14 +75,14 @@ namespace vultra
 
                 [[nodiscard]] DescriptorSetHandle build(const DescriptorSetLayoutKey layoutKey) override
                 {
-                    auto descriptorSet = std::make_unique<WebGPUDescriptorSet>(layoutKey, std::move(m_Bindings));
-                    auto* handle = descriptorSet.get();
+                    auto  descriptorSet = std::make_unique<WebGPUDescriptorSet>(layoutKey, std::move(m_Bindings));
+                    auto* handle        = descriptorSet.get();
                     m_Storage.emplace_back(std::move(descriptorSet));
                     return DescriptorSetHandle {reinterpret_cast<std::uintptr_t>(handle)};
                 }
 
             private:
-                std::unordered_map<BindingIndex, ResourceBinding>      m_Bindings;
+                std::unordered_map<BindingIndex, ResourceBinding>  m_Bindings;
                 std::vector<std::unique_ptr<WebGPUDescriptorSet>>& m_Storage;
             };
 
@@ -123,15 +123,14 @@ namespace vultra
                     return 1.0f;
                 }
 
-                return std::visit(
-                    Overload {
-                        [](const glm::vec4& v) { return v.x; },
-                        [](const glm::ivec4& v) { return static_cast<float>(v.x); },
-                        [](const glm::uvec4& v) { return static_cast<float>(v.x); },
-                        [](const float v) { return v; },
-                        [](const uint32_t v) { return static_cast<float>(v); },
-                    },
-                    *clearValue);
+                return std::visit(Overload {
+                                      [](const glm::vec4& v) { return v.x; },
+                                      [](const glm::ivec4& v) { return static_cast<float>(v.x); },
+                                      [](const glm::uvec4& v) { return static_cast<float>(v.x); },
+                                      [](const float v) { return v; },
+                                      [](const uint32_t v) { return static_cast<float>(v); },
+                                  },
+                                  *clearValue);
             }
 
             [[nodiscard]] uint32_t toWgpuStencilClear(const std::optional<ClearValue>& clearValue)
@@ -141,15 +140,14 @@ namespace vultra
                     return 0u;
                 }
 
-                return std::visit(
-                    Overload {
-                        [](const glm::vec4& v) { return static_cast<uint32_t>(v.y); },
-                        [](const glm::ivec4& v) { return static_cast<uint32_t>(v.y); },
-                        [](const glm::uvec4& v) { return v.y; },
-                        [](const float) { return 0u; },
-                        [](const uint32_t v) { return v; },
-                    },
-                    *clearValue);
+                return std::visit(Overload {
+                                      [](const glm::vec4& v) { return static_cast<uint32_t>(v.y); },
+                                      [](const glm::ivec4& v) { return static_cast<uint32_t>(v.y); },
+                                      [](const glm::uvec4& v) { return v.y; },
+                                      [](const float) { return 0u; },
+                                      [](const uint32_t v) { return v; },
+                                  },
+                                  *clearValue);
             }
 
         } // namespace
@@ -160,10 +158,7 @@ namespace vultra
 
         WebGPUCommandBuffer::~WebGPUCommandBuffer() { releaseTransientResources(); }
 
-        std::uintptr_t WebGPUCommandBuffer::getHandle() const
-        {
-            return reinterpret_cast<std::uintptr_t>(m_Encoder);
-        }
+        std::uintptr_t WebGPUCommandBuffer::getHandle() const { return reinterpret_cast<std::uintptr_t>(m_Encoder); }
 
         TracyGpuContext WebGPUCommandBuffer::getTracyContext() const { return nullptr; }
 
@@ -191,11 +186,12 @@ namespace vultra
             m_Encoder = wgpuDeviceCreateCommandEncoder(m_Device, &encoderDesc);
             if (m_Encoder == nullptr)
             {
-                throw std::runtime_error("WebGPUCommandBuffer begin failed: wgpuDeviceCreateCommandEncoder returned null");
+                throw std::runtime_error(
+                    "WebGPUCommandBuffer begin failed: wgpuDeviceCreateCommandEncoder returned null");
             }
 #endif
-            m_Recording       = true;
-            m_InsideRendering = false;
+            m_Recording                  = true;
+            m_InsideRendering            = false;
             m_PipelineBoundInCurrentPass = false;
             return *this;
         }
@@ -217,14 +213,14 @@ namespace vultra
         WebGPUCommandBuffer& WebGPUCommandBuffer::reset()
         {
             releaseTransientResources();
-            m_Recording       = false;
-            m_InsideRendering = false;
-            m_SkipCurrentRendering = false;
-            m_BoundPipeline = nullptr;
-            m_BoundPipelineObject = nullptr;
-            m_BarrierBuilder      = Barrier::Builder {};
-            m_OwnsRenderView      = false;
-            m_OwnsDepthView       = false;
+            m_Recording                  = false;
+            m_InsideRendering            = false;
+            m_SkipCurrentRendering       = false;
+            m_BoundPipeline              = nullptr;
+            m_BoundPipelineObject        = nullptr;
+            m_BarrierBuilder             = Barrier::Builder {};
+            m_OwnsRenderView             = false;
+            m_OwnsDepthView              = false;
             m_PipelineBoundInCurrentPass = false;
             return *this;
         }
@@ -262,7 +258,7 @@ namespace vultra
 
         WebGPUCommandBuffer& WebGPUCommandBuffer::bindPipeline(const BasePipeline& pipeline)
         {
-            m_BoundPipeline = reinterpret_cast<WGPURenderPipeline>(pipeline.getHandle());
+            m_BoundPipeline       = reinterpret_cast<WGPURenderPipeline>(pipeline.getHandle());
             m_BoundPipelineObject = &pipeline;
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             if (m_InsideRendering && m_RenderPass != nullptr && m_BoundPipeline != nullptr)
@@ -274,20 +270,30 @@ namespace vultra
             return *this;
         }
 
-        WebGPUCommandBuffer& WebGPUCommandBuffer::dispatch(const ComputePipeline&, const glm::uvec3&) { unsupported("dispatch(ComputePipeline)"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::dispatch(const ComputePipeline&, const glm::uvec3&)
+        {
+            unsupported("dispatch(ComputePipeline)");
+        }
         WebGPUCommandBuffer& WebGPUCommandBuffer::dispatch(const glm::uvec3&) { unsupported("dispatch"); }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::dispatchIndirect(const Buffer&, uint64_t) { unsupported("dispatchIndirect"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::dispatchIndirect(const Buffer&, uint64_t)
+        {
+            unsupported("dispatchIndirect");
+        }
         WebGPUCommandBuffer& WebGPUCommandBuffer::insertComputeUavBarrier() { return *this; }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::traceRays(const ShaderBindingTable&, const glm::uvec3&) { unsupported("traceRays"); }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::bindDescriptorSet(const DescriptorSetIndex index, const DescriptorSetHandle descriptorSet)
+        WebGPUCommandBuffer& WebGPUCommandBuffer::traceRays(const ShaderBindingTable&, const glm::uvec3&)
+        {
+            unsupported("traceRays");
+        }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::bindDescriptorSet(const DescriptorSetIndex  index,
+                                                                    const DescriptorSetHandle descriptorSet)
         {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
             (void)index;
             (void)descriptorSet;
             return *this;
 #else
-            if (m_RenderPass == nullptr || m_BoundPipeline == nullptr || m_BoundPipelineObject == nullptr || m_Backend == nullptr ||
-                !descriptorSet)
+            if (m_RenderPass == nullptr || m_BoundPipeline == nullptr || m_BoundPipelineObject == nullptr ||
+                m_Backend == nullptr || !descriptorSet)
             {
                 return *this;
             }
@@ -313,7 +319,7 @@ namespace vultra
                     expectedLayoutKey.value);
             }
 
-            const auto bindGroup = setData->getOrCreateBindGroup(*m_Backend, expectedLayoutKey);
+            auto* const bindGroup = setData->getOrCreateBindGroup(*m_Backend, expectedLayoutKey);
             if (bindGroup == nullptr)
             {
                 return *this;
@@ -322,13 +328,17 @@ namespace vultra
             return *this;
 #endif
         }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::pushConstants(ShaderStages, uint32_t, uint32_t, const void*) { return *this; }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::pushConstants(ShaderStages, uint32_t, uint32_t, const void*)
+        {
+            return *this;
+        }
 
         WebGPUCommandBuffer& WebGPUCommandBuffer::beginRendering(const FramebufferInfo& framebufferInfo)
         {
             if (m_Encoder == nullptr)
             {
-                throw std::runtime_error("WebGPUCommandBuffer beginRendering failed: encoder is null, call begin() first");
+                throw std::runtime_error(
+                    "WebGPUCommandBuffer beginRendering failed: encoder is null, call begin() first");
             }
             if (m_InsideRendering)
             {
@@ -337,7 +347,8 @@ namespace vultra
 
             // WebGPU texture backend is still being completed.
             // If the requested color target is unavailable (null/invalid handle), skip this pass safely.
-            if (framebufferInfo.colorAttachments.empty() || framebufferInfo.colorAttachments.front().target == nullptr ||
+            if (framebufferInfo.colorAttachments.empty() ||
+                framebufferInfo.colorAttachments.front().target == nullptr ||
                 TextureAccess::getImageHandle(*framebufferInfo.colorAttachments.front().target) == 0)
             {
                 m_SkipCurrentRendering = true;
@@ -346,29 +357,29 @@ namespace vultra
             }
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
-            const auto colorAttachment = framebufferInfo.colorAttachments.empty() ? AttachmentInfo {} :
-                                                                                framebufferInfo.colorAttachments.front();
+            const auto colorAttachment =
+                framebufferInfo.colorAttachments.empty() ? AttachmentInfo {} : framebufferInfo.colorAttachments.front();
             const auto clearColor = toWgpuColor(colorAttachment.clearValue);
 
-            m_RenderView = nullptr;
-            m_DepthView  = nullptr;
+            m_RenderView     = nullptr;
+            m_DepthView      = nullptr;
             m_OwnsRenderView = false;
             m_OwnsDepthView  = false;
 
             if (colorAttachment.target != nullptr)
             {
-                const auto colorViewHandle =
-                    colorAttachment.target->getImageView(ImageAspectFlags::eColor).getHandle();
-                m_RenderView = reinterpret_cast<WGPUTextureView>(colorViewHandle);
+                const auto colorViewHandle = colorAttachment.target->getImageView(ImageAspectFlags::eColor).getHandle();
+                m_RenderView               = reinterpret_cast<WGPUTextureView>(colorViewHandle);
             }
             if (m_RenderView == nullptr)
             {
-                const auto currentTexture = getCurrentWebGPUSwapchainTexture();
+                auto* const currentTexture = getCurrentWebGPUSwapchainTexture();
                 if (currentTexture == nullptr)
                 {
-                    throw std::runtime_error("WebGPUCommandBuffer beginRendering failed: no acquired swapchain texture");
+                    throw std::runtime_error(
+                        "WebGPUCommandBuffer beginRendering failed: no acquired swapchain texture");
                 }
-                m_RenderView = wgpuTextureCreateView(currentTexture, nullptr);
+                m_RenderView     = wgpuTextureCreateView(currentTexture, nullptr);
                 m_OwnsRenderView = true;
             }
             if (m_RenderView == nullptr)
@@ -379,7 +390,7 @@ namespace vultra
             WGPURenderPassColorAttachment colorDesc {};
             colorDesc.view       = m_RenderView;
             colorDesc.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-            colorDesc.loadOp = colorAttachment.clearValue.has_value() ? WGPULoadOp_Clear : WGPULoadOp_Load;
+            colorDesc.loadOp     = colorAttachment.clearValue.has_value() ? WGPULoadOp_Clear : WGPULoadOp_Load;
             colorDesc.storeOp    = WGPUStoreOp_Store;
             colorDesc.clearValue = clearColor;
 
@@ -391,18 +402,18 @@ namespace vultra
                 m_DepthView = reinterpret_cast<WGPUTextureView>(depthViewHandle);
                 if (m_DepthView != nullptr)
                 {
-                    depthDesc.view            = m_DepthView;
-                    depthDesc.depthLoadOp     = framebufferInfo.depthAttachment->clearValue.has_value() ?
-                                                    WGPULoadOp_Clear :
-                                                    WGPULoadOp_Load;
+                    depthDesc.view = m_DepthView;
+                    depthDesc.depthLoadOp =
+                        framebufferInfo.depthAttachment->clearValue.has_value() ? WGPULoadOp_Clear : WGPULoadOp_Load;
                     depthDesc.depthStoreOp    = framebufferInfo.depthReadOnly ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
                     depthDesc.depthClearValue = toWgpuDepthClear(framebufferInfo.depthAttachment->clearValue);
                     depthDesc.depthReadOnly   = framebufferInfo.depthReadOnly;
 
                     if (framebufferInfo.stencilAttachment && framebufferInfo.stencilAttachment->target != nullptr)
                     {
-                        depthDesc.stencilLoadOp =
-                            framebufferInfo.stencilAttachment->clearValue.has_value() ? WGPULoadOp_Clear : WGPULoadOp_Load;
+                        depthDesc.stencilLoadOp = framebufferInfo.stencilAttachment->clearValue.has_value() ?
+                                                      WGPULoadOp_Clear :
+                                                      WGPULoadOp_Load;
                         depthDesc.stencilStoreOp =
                             framebufferInfo.stencilReadOnly ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
                         depthDesc.stencilClearValue = toWgpuStencilClear(framebufferInfo.stencilAttachment->clearValue);
@@ -419,8 +430,8 @@ namespace vultra
             }
 
             WGPURenderPassDescriptor passDesc {};
-            passDesc.colorAttachmentCount = 1;
-            passDesc.colorAttachments     = &colorDesc;
+            passDesc.colorAttachmentCount   = 1;
+            passDesc.colorAttachments       = &colorDesc;
             passDesc.depthStencilAttachment = m_DepthView != nullptr ? &depthDesc : nullptr;
 
             m_RenderPass = wgpuCommandEncoderBeginRenderPass(m_Encoder, &passDesc);
@@ -430,8 +441,8 @@ namespace vultra
             }
 
 #endif
-            m_SkipCurrentRendering = false;
-            m_InsideRendering = true;
+            m_SkipCurrentRendering       = false;
+            m_InsideRendering            = true;
             m_PipelineBoundInCurrentPass = false;
             return *this;
         }
@@ -455,7 +466,7 @@ namespace vultra
                 {
                     wgpuTextureViewRelease(m_RenderView);
                 }
-                m_RenderView = nullptr;
+                m_RenderView     = nullptr;
                 m_OwnsRenderView = false;
             }
             if (!m_SkipCurrentRendering && m_DepthView != nullptr)
@@ -464,12 +475,12 @@ namespace vultra
                 {
                     wgpuTextureViewRelease(m_DepthView);
                 }
-                m_DepthView = nullptr;
+                m_DepthView     = nullptr;
                 m_OwnsDepthView = false;
             }
 #endif
-            m_InsideRendering = false;
-            m_SkipCurrentRendering = false;
+            m_InsideRendering            = false;
+            m_SkipCurrentRendering       = false;
             m_PipelineBoundInCurrentPass = false;
             return *this;
         }
@@ -518,8 +529,8 @@ namespace vultra
                             continue;
                         }
                         WGPUBindGroupDescriptor emptyDesc {};
-                        emptyDesc.layout = layoutIt->second;
-                        const auto emptyBindGroup = wgpuDeviceCreateBindGroup(m_Device, &emptyDesc);
+                        emptyDesc.layout           = layoutIt->second;
+                        auto* const emptyBindGroup = wgpuDeviceCreateBindGroup(m_Device, &emptyDesc);
                         if (emptyBindGroup == nullptr)
                         {
                             continue;
@@ -533,26 +544,30 @@ namespace vultra
 
             if (geometryInfo.vertexBuffer != nullptr && geometryInfo.vertexBuffer->getHandle() != 0)
             {
-                const auto vertexBufferHandle = reinterpret_cast<WGPUBuffer>(geometryInfo.vertexBuffer->getHandle());
-                const uint64_t maxSize = geometryInfo.vertexBuffer->getSize();
+                auto* const vertexBufferHandle = reinterpret_cast<WGPUBuffer>(geometryInfo.vertexBuffer->getHandle());
+                const uint64_t maxSize         = geometryInfo.vertexBuffer->getSize();
                 wgpuRenderPassEncoderSetVertexBuffer(m_RenderPass, 0, vertexBufferHandle, 0u, maxSize);
             }
 
             if (geometryInfo.indexBuffer != nullptr && geometryInfo.indexBuffer->getHandle() != 0 &&
                 geometryInfo.numIndices > 0)
             {
-                const auto indexBufferHandle = reinterpret_cast<WGPUBuffer>(geometryInfo.indexBuffer->getHandle());
-                const auto indexFormat = geometryInfo.indexBuffer->getIndexType() == IndexType::eUInt16 ?
-                                             WGPUIndexFormat_Uint16 :
-                                             WGPUIndexFormat_Uint32;
-                const auto indexStride = geometryInfo.indexBuffer->getStride();
+                auto* const    indexBufferHandle = reinterpret_cast<WGPUBuffer>(geometryInfo.indexBuffer->getHandle());
+                const auto     indexFormat       = geometryInfo.indexBuffer->getIndexType() == IndexType::eUInt16 ?
+                                                       WGPUIndexFormat_Uint16 :
+                                                       WGPUIndexFormat_Uint32;
+                const auto     indexStride       = geometryInfo.indexBuffer->getStride();
                 const uint64_t byteOffset =
                     static_cast<uint64_t>(geometryInfo.indexOffset) * static_cast<uint64_t>(indexStride);
                 const uint64_t maxSize = geometryInfo.indexBuffer->getSize();
                 const uint64_t size    = byteOffset <= maxSize ? (maxSize - byteOffset) : 0u;
                 wgpuRenderPassEncoderSetIndexBuffer(m_RenderPass, indexBufferHandle, indexFormat, byteOffset, size);
-                wgpuRenderPassEncoderDrawIndexed(
-                    m_RenderPass, geometryInfo.numIndices, numInstances, 0u, static_cast<int32_t>(geometryInfo.vertexOffset), 0u);
+                wgpuRenderPassEncoderDrawIndexed(m_RenderPass,
+                                                 geometryInfo.numIndices,
+                                                 numInstances,
+                                                 0u,
+                                                 static_cast<int32_t>(geometryInfo.vertexOffset),
+                                                 0u);
             }
             else
             {
@@ -569,12 +584,16 @@ namespace vultra
         WebGPUCommandBuffer& WebGPUCommandBuffer::drawFullScreenTriangle() { return draw({.numVertices = 3u}, 1u); }
         WebGPUCommandBuffer& WebGPUCommandBuffer::drawCube() { unsupported("drawCube"); }
         WebGPUCommandBuffer& WebGPUCommandBuffer::drawIndirect(const DrawIndirectInfo&) { unsupported("drawIndirect"); }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::drawIndirectCount(const DrawIndirectInfo&, const Buffer&, uint32_t) { unsupported("drawIndirectCount"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::drawIndirectCount(const DrawIndirectInfo&, const Buffer&, uint32_t)
+        {
+            unsupported("drawIndirectCount");
+        }
         WebGPUCommandBuffer& WebGPUCommandBuffer::drawMeshTask(const glm::uvec3&) { unsupported("drawMeshTask"); }
 
         WebGPUCommandBuffer& WebGPUCommandBuffer::clear(const Buffer&, uint32_t) { unsupported("clear(Buffer)"); }
         WebGPUCommandBuffer& WebGPUCommandBuffer::clear(Texture&, const ClearValue&) { unsupported("clear(Texture)"); }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::copyBuffer(const Buffer& src, Buffer& dst, const rhi::BufferCopy& region)
+        WebGPUCommandBuffer&
+        WebGPUCommandBuffer::copyBuffer(const Buffer& src, Buffer& dst, const rhi::BufferCopy& region)
         {
             if (region.size == 0)
             {
@@ -601,7 +620,7 @@ namespace vultra
         }
         WebGPUCommandBuffer& WebGPUCommandBuffer::copyBuffer(const Buffer& src, Texture& dst)
         {
-            const auto extent = dst.getExtent();
+            const auto extent  = dst.getExtent();
             const auto regions = std::array {
                 BufferImageCopy {
                     .aspectMask        = ImageAspectFlags::eColor,
@@ -640,28 +659,27 @@ namespace vultra
                 return *this;
             }
 
-            const auto texture = reinterpret_cast<WGPUTexture>(TextureAccess::getImageHandle(dst));
+            auto* const texture = reinterpret_cast<WGPUTexture>(TextureAccess::getImageHandle(dst));
             for (const auto& region : regions)
             {
                 const auto width        = std::max(1u, region.imageExtentWidth);
                 const auto height       = std::max(1u, region.imageExtentHeight);
                 const auto rowLength    = region.bufferRowLength == 0 ? width : region.bufferRowLength;
                 const auto rowsPerImage = region.bufferImageHeight == 0 ? height : region.bufferImageHeight;
-                const auto depthOrLayers = std::max(1u, region.layerCount > 1u ? region.layerCount : region.imageExtentDepth);
-                const auto bytesPerRow  = rowLength * bytesPerPixel;
-                const auto dataSize     = static_cast<uint64_t>(bytesPerRow) *
-                                      static_cast<uint64_t>(rowsPerImage) *
-                                      static_cast<uint64_t>(depthOrLayers - 1u) +
-                                  static_cast<uint64_t>(bytesPerRow) * static_cast<uint64_t>(height);
+                const auto depthOrLayers =
+                    std::max(1u, region.layerCount > 1u ? region.layerCount : region.imageExtentDepth);
+                const auto bytesPerRow = rowLength * bytesPerPixel;
+                const auto dataSize    = static_cast<uint64_t>(bytesPerRow) * static_cast<uint64_t>(rowsPerImage) *
+                                          static_cast<uint64_t>(depthOrLayers - 1u) +
+                                      static_cast<uint64_t>(bytesPerRow) * static_cast<uint64_t>(height);
 
                 WGPUTexelCopyTextureInfo dstCopy {};
                 dstCopy.texture  = texture;
                 dstCopy.mipLevel = region.mipLevel;
                 dstCopy.origin.x = static_cast<uint32_t>(std::max(0, region.imageOffsetX));
                 dstCopy.origin.y = static_cast<uint32_t>(std::max(0, region.imageOffsetY));
-                dstCopy.origin.z =
-                    region.baseArrayLayer + static_cast<uint32_t>(std::max(0, region.imageOffsetZ));
-                dstCopy.aspect = webgpu::toWgpuTextureAspect(region.aspectMask);
+                dstCopy.origin.z = region.baseArrayLayer + static_cast<uint32_t>(std::max(0, region.imageOffsetZ));
+                dstCopy.aspect   = webgpu::toWgpuTextureAspect(region.aspectMask);
 
                 WGPUTexelCopyBufferLayout srcLayout {};
                 srcLayout.offset       = region.bufferOffset;
@@ -673,19 +691,18 @@ namespace vultra
                 writeExtent.height             = height;
                 writeExtent.depthOrArrayLayers = depthOrLayers;
 
-                wgpuQueueWriteTexture(m_Queue,
-                                      &dstCopy,
-                                      srcData,
-                                      dataSize,
-                                      &srcLayout,
-                                      &writeExtent);
+                wgpuQueueWriteTexture(m_Queue, &dstCopy, srcData, dataSize, &srcLayout, &writeExtent);
             }
 
             return *this;
 #endif
         }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::copyImage(const Texture&, const Buffer&, const rhi::ImageAspect) { unsupported("copyImage"); }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::update(Buffer& dst, const uint64_t offset, const uint64_t size, const void* data)
+        WebGPUCommandBuffer& WebGPUCommandBuffer::copyImage(const Texture&, const Buffer&, const rhi::ImageAspect)
+        {
+            unsupported("copyImage");
+        }
+        WebGPUCommandBuffer&
+        WebGPUCommandBuffer::update(Buffer& dst, const uint64_t offset, const uint64_t size, const void* data)
         {
             if (size == 0 || data == nullptr)
             {
@@ -704,8 +721,14 @@ namespace vultra
             dst.unmap();
             return *this;
         }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::blit(Texture&, Texture&, TexelFilter, uint32_t, uint32_t) { unsupported("blit"); }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::generateMipmaps(Texture&, TexelFilter) { unsupported("generateMipmaps"); }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::blit(Texture&, Texture&, TexelFilter, uint32_t, uint32_t)
+        {
+            unsupported("blit");
+        }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::generateMipmaps(Texture&, TexelFilter)
+        {
+            unsupported("generateMipmaps");
+        }
 
         WebGPUCommandBuffer& WebGPUCommandBuffer::flushBarriers()
         {
@@ -757,7 +780,7 @@ namespace vultra
                 {
                     wgpuTextureViewRelease(m_RenderView);
                 }
-                m_RenderView = nullptr;
+                m_RenderView     = nullptr;
                 m_OwnsRenderView = false;
             }
             if (m_DepthView != nullptr)
@@ -766,7 +789,7 @@ namespace vultra
                 {
                     wgpuTextureViewRelease(m_DepthView);
                 }
-                m_DepthView = nullptr;
+                m_DepthView     = nullptr;
                 m_OwnsDepthView = false;
             }
             if (m_Encoder != nullptr)

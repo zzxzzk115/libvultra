@@ -1,12 +1,12 @@
-#include "vultra/core/rhi/graphics_pipeline.hpp"
-#include "vultra/core/rhi/render_device.hpp"
-#include "vultra/core/rhi/shader_module.hpp"
-#include "vultra/core/rhi/shader_reflection.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_pipeline.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
+#include "vultra/core/rhi/graphics_pipeline.hpp"
+#include "vultra/core/rhi/render_device.hpp"
+#include "vultra/core/rhi/shader_module.hpp"
+#include "vultra/core/rhi/shader_reflection.hpp"
 
 #include <glm/common.hpp>
 
@@ -208,7 +208,7 @@ namespace vultra
                 return vk::PrimitiveTopology::eTriangleList;
             }
 
-        [[nodiscard]] constexpr vk::DynamicState toVk(const DynamicState state)
+            [[nodiscard]] constexpr vk::DynamicState toVk(const DynamicState state)
             {
                 switch (state)
                 {
@@ -217,8 +217,8 @@ namespace vultra
                     case DynamicState::eScissor:
                         return vk::DynamicState::eScissor;
                 }
-            return vk::DynamicState::eViewport;
-        }
+                return vk::DynamicState::eViewport;
+            }
 
             [[nodiscard]] auto toVk(const StencilOpState& desc)
             {
@@ -233,35 +233,35 @@ namespace vultra
                 };
             }
 
-        [[nodiscard]] auto convert(const auto& container)
-        {
-            std::vector<vk::Format> out(container.size());
-            std::ranges::transform(container, out.begin(), [](const PixelFormat format) {
-                assert(HasFlagValues(getAspectMask(format), ImageAspectFlags::eColor));
-                return toVk(format);
-            });
-            return out;
-        }
-
-        [[nodiscard]] constexpr vk::Format toVk(const VertexAttribute::Type type)
-        {
-            switch (type)
+            [[nodiscard]] auto convert(const auto& container)
             {
-                case VertexAttribute::Type::eFloat:
-                    return vk::Format::eR32Sfloat;
-                case VertexAttribute::Type::eFloat2:
-                    return vk::Format::eR32G32Sfloat;
-                case VertexAttribute::Type::eFloat3:
-                    return vk::Format::eR32G32B32Sfloat;
-                case VertexAttribute::Type::eFloat4:
-                    return vk::Format::eR32G32B32A32Sfloat;
-                case VertexAttribute::Type::eInt4:
-                    return vk::Format::eR32G32B32A32Sint;
-                case VertexAttribute::Type::eUByte4_Norm:
-                    return vk::Format::eR8G8B8A8Unorm;
+                std::vector<vk::Format> out(container.size());
+                std::ranges::transform(container, out.begin(), [](const PixelFormat format) {
+                    assert(HasFlagValues(getAspectMask(format), ImageAspectFlags::eColor));
+                    return toVk(format);
+                });
+                return out;
             }
-            return vk::Format::eUndefined;
-        }
+
+            [[nodiscard]] constexpr vk::Format toVk(const VertexAttribute::Type type)
+            {
+                switch (type)
+                {
+                    case VertexAttribute::Type::eFloat:
+                        return vk::Format::eR32Sfloat;
+                    case VertexAttribute::Type::eFloat2:
+                        return vk::Format::eR32G32Sfloat;
+                    case VertexAttribute::Type::eFloat3:
+                        return vk::Format::eR32G32B32Sfloat;
+                    case VertexAttribute::Type::eFloat4:
+                        return vk::Format::eR32G32B32A32Sfloat;
+                    case VertexAttribute::Type::eInt4:
+                        return vk::Format::eR32G32B32A32Sint;
+                    case VertexAttribute::Type::eUByte4_Norm:
+                        return vk::Format::eR8G8B8A8Unorm;
+                }
+                return vk::Format::eUndefined;
+            }
 
         } // namespace
 
@@ -276,8 +276,9 @@ namespace vultra
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthFormat(const PixelFormat depthFormat)
         {
             const auto aspectMask = getAspectMask(depthFormat);
-            m_DepthFormat         = HasFlagValues(aspectMask, ImageAspectFlags::eDepth) ? depthFormat : PixelFormat::eUndefined;
-            m_StencilFormat       = HasFlagValues(aspectMask, ImageAspectFlags::eStencil) ? depthFormat : PixelFormat::eUndefined;
+            m_DepthFormat = HasFlagValues(aspectMask, ImageAspectFlags::eDepth) ? depthFormat : PixelFormat::eUndefined;
+            m_StencilFormat =
+                HasFlagValues(aspectMask, ImageAspectFlags::eStencil) ? depthFormat : PixelFormat::eUndefined;
             return *this;
         }
 
@@ -380,8 +381,10 @@ namespace vultra
             renderingInfo.viewMask                = m_ViewMask;
             renderingInfo.colorAttachmentCount    = static_cast<uint32_t>(vkColorAttachmentFormats.size());
             renderingInfo.pColorAttachmentFormats = vkColorAttachmentFormats.data();
-            renderingInfo.depthAttachmentFormat   = m_DepthFormat != PixelFormat::eUndefined ? toVk(m_DepthFormat) : vk::Format::eUndefined;
-            renderingInfo.stencilAttachmentFormat = m_StencilFormat != PixelFormat::eUndefined ? toVk(m_StencilFormat) : vk::Format::eUndefined;
+            renderingInfo.depthAttachmentFormat =
+                m_DepthFormat != PixelFormat::eUndefined ? toVk(m_DepthFormat) : vk::Format::eUndefined;
+            renderingInfo.stencilAttachmentFormat =
+                m_StencilFormat != PixelFormat::eUndefined ? toVk(m_StencilFormat) : vk::Format::eUndefined;
 
             // -- Vertex Attributes:
 
@@ -412,11 +415,10 @@ namespace vultra
             }
 
             vk::PipelineVertexInputStateCreateInfo vertexInputStateInfo {};
-            vertexInputStateInfo.vertexBindingDescriptionCount = vertexInput.stride > 0 ? 1u : 0u;
-            vertexInputStateInfo.pVertexBindingDescriptions    = &vertexInput;
-            vertexInputStateInfo.vertexAttributeDescriptionCount =
-                static_cast<uint32_t>(vertexInputAttributes.size());
-            vertexInputStateInfo.pVertexAttributeDescriptions = vertexInputAttributes.data();
+            vertexInputStateInfo.vertexBindingDescriptionCount   = vertexInput.stride > 0 ? 1u : 0u;
+            vertexInputStateInfo.pVertexBindingDescriptions      = &vertexInput;
+            vertexInputStateInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexInputAttributes.size());
+            vertexInputStateInfo.pVertexAttributeDescriptions    = vertexInputAttributes.data();
 
             vk::PipelineInputAssemblyStateCreateInfo inputAssemblyInfo {};
             inputAssemblyInfo.topology               = toVk(m_PrimitiveTopology);
@@ -424,9 +426,9 @@ namespace vultra
 
             // --
 
-            const auto lineWidthRange   = rd.getLineWidthRange();
-            auto rasterizerState = m_RasterizerState;
-            rasterizerState.lineWidth = glm::clamp(rasterizerState.lineWidth, lineWidthRange[0], lineWidthRange[1]);
+            const auto lineWidthRange  = rd.getLineWidthRange();
+            auto       rasterizerState = m_RasterizerState;
+            rasterizerState.lineWidth  = glm::clamp(rasterizerState.lineWidth, lineWidthRange[0], lineWidthRange[1]);
 
             // -- Shader stages:
             auto       reflection      = m_PipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
@@ -522,7 +524,7 @@ namespace vultra
             vkBlendStates.reserve(m_BlendStates.size());
             for (const auto& blend : m_BlendStates)
             {
-                auto vkBlendState = vk::PipelineColorBlendAttachmentState {};
+                auto vkBlendState                = vk::PipelineColorBlendAttachmentState {};
                 vkBlendState.blendEnable         = blend.enabled ? VK_TRUE : VK_FALSE;
                 vkBlendState.srcColorBlendFactor = toVk(blend.srcColor);
                 vkBlendState.dstColorBlendFactor = toVk(blend.dstColor);
@@ -593,19 +595,19 @@ namespace vultra
             graphicsPipelineInfo.pDynamicState       = &dynamicStateInfo;
             graphicsPipelineInfo.layout =
                 vk::PipelineLayout {asVkHandle<VkPipelineLayout>(m_PipelineLayout.getHandle())};
-            graphicsPipelineInfo.renderPass          = nullptr;
+            graphicsPipelineInfo.renderPass = nullptr;
             graphicsPipelineInfo.subpass = 0, graphicsPipelineInfo.basePipelineHandle = nullptr;
 
             const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
 
-            vk::Pipeline handle {nullptr};
+            vk::Pipeline            handle {nullptr};
             const vk::PipelineCache pipelineCache {
                 asVkHandle<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd))};
-            const auto result = device.createGraphicsPipelines(pipelineCache, 1, &graphicsPipelineInfo, nullptr, &handle);
+            const auto result =
+                device.createGraphicsPipelines(pipelineCache, 1, &graphicsPipelineInfo, nullptr, &handle);
             if (result != vk::Result::eSuccess)
             {
-                VULTRA_CORE_ERROR("[GraphicsPipeline] Failed to create graphics pipeline: {}",
-                                  vk::to_string(result));
+                VULTRA_CORE_ERROR("[GraphicsPipeline] Failed to create graphics pipeline: {}", vk::to_string(result));
                 throw std::runtime_error("Failed to create graphics pipeline");
             }
 
@@ -619,8 +621,8 @@ namespace vultra
                                      std::make_unique<VulkanPipeline>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
         }
 
-        GraphicsPipeline::GraphicsPipeline(PipelineLayout&&                       pipelineLayout,
-                                           const std::uintptr_t                   pipeline,
+        GraphicsPipeline::GraphicsPipeline(PipelineLayout&&           pipelineLayout,
+                                           const std::uintptr_t       pipeline,
                                            std::unique_ptr<IPipeline> destroyBackend) :
             BasePipeline {std::move(pipelineLayout), pipeline, std::move(destroyBackend)}
         {}

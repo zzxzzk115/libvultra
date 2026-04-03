@@ -97,8 +97,8 @@ namespace vultra::rhi
             dstBarrier.dstAccess = nextState.access;
             dstBarrier.dstLayout = info.newLayout;
 
-            m_ImageBarriers.push_back(BarrierImage {
-                &info.image, oldLayout, info.newLayout, info.subresourceRange, srcBarrier, dstBarrier});
+            m_ImageBarriers.push_back(
+                BarrierImage {&info.image, oldLayout, info.newLayout, info.subresourceRange, srcBarrier, dstBarrier});
 
             BarrierScope storedState {};
             storedState.dstStage  = nextState.stage;

@@ -85,7 +85,7 @@ namespace vultra
             auto& [cb, imageAcquired, _] = m_Frames[m_FrameIndex];
             cb.reset();
 
-            m_ImageAcquired = m_Swapchain->acquireNextImage(imageAcquired);
+            m_ImageAcquired         = m_Swapchain->acquireNextImage(imageAcquired);
             m_ImageAcquireAttempted = true;
             return m_ImageAcquired;
         }

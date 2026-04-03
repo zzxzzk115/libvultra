@@ -17,14 +17,14 @@ namespace vultra
             ShaderModule() = default;
             explicit ShaderModule(std::unique_ptr<IShaderModule> impl);
 
-            ShaderModule(const ShaderModule&)            = delete;
-            ShaderModule(ShaderModule&&) noexcept        = default;
-            ShaderModule& operator=(const ShaderModule&)  = delete;
+            ShaderModule(const ShaderModule&)                = delete;
+            ShaderModule(ShaderModule&&) noexcept            = default;
+            ShaderModule& operator=(const ShaderModule&)     = delete;
             ShaderModule& operator=(ShaderModule&&) noexcept = default;
 
-            [[nodiscard]] explicit operator bool() const;
-            [[nodiscard]] const SPIRV& getSpirv() const;
-            [[nodiscard]] SPIRV&       getSpirv();
+            [[nodiscard]] explicit           operator bool() const;
+            [[nodiscard]] const SPIRV&       getSpirv() const;
+            [[nodiscard]] SPIRV&             getSpirv();
             [[nodiscard]] const std::string& getWgsl() const;
             [[nodiscard]] std::string&       getWgsl();
 

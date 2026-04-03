@@ -3,31 +3,31 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/base/hash.hpp"
 #include "vultra/core/base/ranges.hpp"
-#include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_command_buffer.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_compute_pipeline.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_pipeline.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_buffer.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_command_buffer.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_compute_pipeline.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_pipeline.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_pipeline_layout.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device.hpp"
-#include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_shader_module.hpp"
 #include "vultra/core/rhi/backends/webgpu/conversions.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_buffer.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_pipeline_layout.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_render_device.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_shader_module.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_pipeline_layout.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_shader_module.hpp"
+#include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/interfaces/texture_access.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
 
-#include <glm/glm.hpp>
 #include <bit>
 #include <cstring>
+#include <glm/glm.hpp>
 #include <limits>
 #include <stdexcept>
 #include <vshadersystem/reflect.hpp>
@@ -70,11 +70,10 @@ namespace vultra
                 return *result;
             }
 
-            [[nodiscard]] const VulkanRenderDevice&
-            vkBackend(const std::unique_ptr<IRenderDevice>& backend)
+            [[nodiscard]] const VulkanRenderDevice& vkBackend(const std::unique_ptr<IRenderDevice>& backend)
             {
                 assert(backend);
-                auto* result = dynamic_cast<const VulkanRenderDevice*>(backend.get());
+                const auto* result = dynamic_cast<const VulkanRenderDevice*>(backend.get());
                 assert(result && "RenderDevice backend is not Vulkan");
                 return *result;
             }
@@ -87,11 +86,10 @@ namespace vultra
                 return *result;
             }
 
-            [[nodiscard]] const WebGPURenderDevice&
-            webgpuBackend(const std::unique_ptr<IRenderDevice>& backend)
+            [[nodiscard]] const WebGPURenderDevice& webgpuBackend(const std::unique_ptr<IRenderDevice>& backend)
             {
                 assert(backend);
-                auto* result = dynamic_cast<const WebGPURenderDevice*>(backend.get());
+                const auto* result = dynamic_cast<const WebGPURenderDevice*>(backend.get());
                 assert(result && "RenderDevice backend is not WebGPU");
                 return *result;
             }
@@ -103,20 +101,15 @@ namespace vultra
             }
 
             [[nodiscard]] uint64_t webgpuFormatFeatureFlags(const WebGPURenderDevice& backend,
-                                                            const PixelFormat               pixelFormat)
+                                                            const PixelFormat         pixelFormat)
             {
-                constexpr uint64_t kTransferSrc =
-                    static_cast<uint64_t>(VK_FORMAT_FEATURE_TRANSFER_SRC_BIT);
-                constexpr uint64_t kTransferDst =
-                    static_cast<uint64_t>(VK_FORMAT_FEATURE_TRANSFER_DST_BIT);
-                constexpr uint64_t kSampledImage =
-                    static_cast<uint64_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+                constexpr uint64_t kTransferSrc  = static_cast<uint64_t>(VK_FORMAT_FEATURE_TRANSFER_SRC_BIT);
+                constexpr uint64_t kTransferDst  = static_cast<uint64_t>(VK_FORMAT_FEATURE_TRANSFER_DST_BIT);
+                constexpr uint64_t kSampledImage = static_cast<uint64_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
                 constexpr uint64_t kSampledLinear =
                     static_cast<uint64_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT);
-                constexpr uint64_t kStorageImage =
-                    static_cast<uint64_t>(VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
-                constexpr uint64_t kColorAttachment =
-                    static_cast<uint64_t>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
+                constexpr uint64_t kStorageImage    = static_cast<uint64_t>(VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
+                constexpr uint64_t kColorAttachment = static_cast<uint64_t>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
 
                 switch (pixelFormat)
                 {
@@ -153,8 +146,8 @@ namespace vultra
                 }
                 if (HasFlagValues(hints, AllocationHints::eSequentialWrite))
                 {
-                    flags |=
-                        vma::AllocationCreateFlagBits::eHostAccessSequentialWrite | vma::AllocationCreateFlagBits::eMapped;
+                    flags |= vma::AllocationCreateFlagBits::eHostAccessSequentialWrite |
+                             vma::AllocationCreateFlagBits::eMapped;
                 }
                 if (HasFlagValues(hints, AllocationHints::eRandomAccess))
                 {
@@ -174,7 +167,7 @@ namespace vultra
 
             [[nodiscard]] vk::ShaderModule createVulkanShaderModule(const vk::Device device, const SPIRV& spv)
             {
-                vk::ShaderModule handle {nullptr};
+                vk::ShaderModule           handle {nullptr};
                 vk::ShaderModuleCreateInfo createInfo {};
                 createInfo.codeSize = sizeof(uint32_t) * spv.size();
                 createInfo.pCode    = spv.data();
@@ -184,7 +177,8 @@ namespace vultra
                 return handle;
             }
 
-            [[nodiscard]] Buffer makeWebGPUBuffer(WebGPURenderDevice& backend, const uint64_t size, const BufferUsage usage)
+            [[nodiscard]] Buffer
+            makeWebGPUBuffer(WebGPURenderDevice& backend, const uint64_t size, const BufferUsage usage)
             {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
                 const auto handle = backend.m_NextBufferHandle++;
@@ -220,18 +214,17 @@ namespace vultra
                 }
 
                 WGPUBufferDescriptor descriptor {};
-                descriptor.usage             = wgpuUsage;
-                descriptor.size              = size;
-                descriptor.mappedAtCreation  = false;
+                descriptor.usage            = wgpuUsage;
+                descriptor.size             = size;
+                descriptor.mappedAtCreation = false;
 
-                const auto handle = wgpuDeviceCreateBuffer(backend.m_Device, &descriptor);
+                auto* const handle = wgpuDeviceCreateBuffer(backend.m_Device, &descriptor);
                 if (handle == nullptr)
                 {
                     return {};
                 }
-                return Buffer {std::make_unique<WebGPUBuffer>(size,
-                                                              reinterpret_cast<std::uintptr_t>(handle),
-                                                              reinterpret_cast<std::uintptr_t>(backend.m_Queue))};
+                return Buffer {std::make_unique<WebGPUBuffer>(
+                    size, reinterpret_cast<std::uintptr_t>(handle), reinterpret_cast<std::uintptr_t>(backend.m_Queue))};
 #endif
             }
 
@@ -241,21 +234,18 @@ namespace vultra
                 std::size_t hash {0};
                 for (const auto& binding : bindings)
                 {
-                    hashCombine(hash,
-                                binding.binding,
-                                binding.type,
-                                binding.count,
-                                binding.stageFlags,
-                                binding.flags);
+                    hashCombine(hash, binding.binding, binding.type, binding.count, binding.stageFlags, binding.flags);
                 }
                 return hash;
             }
 
             [[nodiscard]] DescriptorSetLayoutKey
-            createWebGPUDescriptorSetLayout(WebGPURenderDevice& backend, std::vector<DescriptorSetLayoutBindingEx> bindings)
+            createWebGPUDescriptorSetLayout(WebGPURenderDevice&                       backend,
+                                            std::vector<DescriptorSetLayoutBindingEx> bindings)
             {
                 const auto hash = hashDescriptorBindings(bindings);
-                if (const auto it = backend.m_DescriptorSetLayouts.find(hash); it != backend.m_DescriptorSetLayouts.end())
+                if (const auto it = backend.m_DescriptorSetLayouts.find(hash);
+                    it != backend.m_DescriptorSetLayouts.end())
                 {
                     return DescriptorSetLayoutKey {hash};
                 }
@@ -266,19 +256,18 @@ namespace vultra
                 {
                     if (binding.count != 1)
                     {
-                        VULTRA_CORE_ERROR(
-                            "[RenderDevice] WebGPU descriptor array is not supported yet (binding={}, type={}, count={})",
-                            binding.binding,
-                            static_cast<int>(binding.type),
-                            binding.count);
+                        VULTRA_CORE_ERROR("[RenderDevice] WebGPU descriptor array is not supported yet (binding={}, "
+                                          "type={}, count={})",
+                                          binding.binding,
+                                          static_cast<int>(binding.type),
+                                          binding.count);
                         return {};
                     }
 
                     const auto visibility = webgpu::toWgpuShaderStages(binding.stageFlags);
                     switch (binding.type)
                     {
-                        case DescriptorType::eUniformBuffer:
-                        {
+                        case DescriptorType::eUniformBuffer: {
                             WGPUBindGroupLayoutEntry entry {};
                             entry.binding               = binding.binding;
                             entry.visibility            = visibility;
@@ -288,8 +277,7 @@ namespace vultra
                             break;
                         }
                         case DescriptorType::eStorageBuffer:
-                        case DescriptorType::eStorageBufferDynamic:
-                        {
+                        case DescriptorType::eStorageBufferDynamic: {
                             WGPUBindGroupLayoutEntry entry {};
                             entry.binding               = binding.binding;
                             entry.visibility            = visibility;
@@ -298,28 +286,25 @@ namespace vultra
                             entries.push_back(entry);
                             break;
                         }
-                        case DescriptorType::eSampledImage:
-                        {
+                        case DescriptorType::eSampledImage: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding                      = binding.binding;
-                            entry.visibility                   = visibility;
-                            entry.texture.sampleType           = WGPUTextureSampleType_Float;
-                            entry.texture.viewDimension        = WGPUTextureViewDimension_2D;
-                            entry.texture.multisampled         = false;
+                            entry.binding               = binding.binding;
+                            entry.visibility            = visibility;
+                            entry.texture.sampleType    = WGPUTextureSampleType_Float;
+                            entry.texture.viewDimension = WGPUTextureViewDimension_2D;
+                            entry.texture.multisampled  = false;
                             entries.push_back(entry);
                             break;
                         }
-                        case DescriptorType::eSampler:
-                        {
+                        case DescriptorType::eSampler: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding             = binding.binding;
-                            entry.visibility          = visibility;
-                            entry.sampler.type        = WGPUSamplerBindingType_Filtering;
+                            entry.binding      = binding.binding;
+                            entry.visibility   = visibility;
+                            entry.sampler.type = WGPUSamplerBindingType_Filtering;
                             entries.push_back(entry);
                             break;
                         }
-                        case DescriptorType::eCombinedImageSampler:
-                        {
+                        case DescriptorType::eCombinedImageSampler: {
                             WGPUBindGroupLayoutEntry textureEntry {};
                             textureEntry.binding               = binding.binding;
                             textureEntry.visibility            = visibility;
@@ -335,13 +320,12 @@ namespace vultra
                             entries.push_back(samplerEntry);
                             break;
                         }
-                        case DescriptorType::eStorageImage:
-                        {
+                        case DescriptorType::eStorageImage: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding                     = binding.binding;
-                            entry.visibility                  = visibility;
-                            entry.storageTexture.access       = WGPUStorageTextureAccess_WriteOnly;
-                            entry.storageTexture.format       = WGPUTextureFormat_RGBA8Unorm;
+                            entry.binding                      = binding.binding;
+                            entry.visibility                   = visibility;
+                            entry.storageTexture.access        = WGPUStorageTextureAccess_WriteOnly;
+                            entry.storageTexture.format        = WGPUTextureFormat_RGBA8Unorm;
                             entry.storageTexture.viewDimension = WGPUTextureViewDimension_2D;
                             entries.push_back(entry);
                             break;
@@ -356,7 +340,7 @@ namespace vultra
                 WGPUBindGroupLayoutDescriptor descriptor {};
                 descriptor.entryCount = entries.size();
                 descriptor.entries    = entries.data();
-                const auto layout     = wgpuDeviceCreateBindGroupLayout(backend.m_Device, &descriptor);
+                auto* const layout    = wgpuDeviceCreateBindGroupLayout(backend.m_Device, &descriptor);
                 if (layout == nullptr)
                 {
                     return {};
@@ -384,8 +368,7 @@ namespace vultra
                 case RenderBackendApi::eVulkan:
                     m_Backend = std::make_unique<VulkanRenderDevice>();
                     break;
-                case RenderBackendApi::eWebGPU:
-                {
+                case RenderBackendApi::eWebGPU: {
                     m_Backend = createWebGPUBackend(appName);
                     return;
                 }
@@ -461,7 +444,8 @@ namespace vultra
 #if _DEBUG
                 if (vkBackend(m_Backend).m_DebugMessenger)
                 {
-                    vkBackend(m_Backend).m_Instance.destroyDebugUtilsMessengerEXT(vkBackend(m_Backend).m_DebugMessenger);
+                    vkBackend(m_Backend).m_Instance.destroyDebugUtilsMessengerEXT(
+                        vkBackend(m_Backend).m_DebugMessenger);
                 }
 #endif
                 vkBackend(m_Backend).m_Instance.destroy();
@@ -514,7 +498,7 @@ namespace vultra
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
-                auto& backend      = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
+                auto& backend       = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
                 auto  stagingBuffer = makeWebGPUBuffer(backend, size, BufferUsage::eTransferSrc);
 
                 if (data != nullptr && size > 0)
@@ -556,7 +540,8 @@ namespace vultra
 
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             BufferUsage usage = BufferUsage::eVertexBuffer | BufferUsage::eTransferDst;
-            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 usage |= BufferUsage::eShaderDeviceAddress;
             }
@@ -574,13 +559,13 @@ namespace vultra
             };
         }
 
-        IndexBuffer RenderDevice::createIndexBuffer(const IndexType        indexType,
-                                                    const uint64_t         indexCount,
-                                                    const AllocationHints  allocationHint) const
+        IndexBuffer RenderDevice::createIndexBuffer(const IndexType       indexType,
+                                                    const uint64_t        indexCount,
+                                                    const AllocationHints allocationHint) const
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
-                auto& backend         = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
+                auto&      backend     = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
                 const auto indexStride = indexType == IndexType::eUInt16 ? 2u : 4u;
                 return IndexBuffer {makeWebGPUBuffer(backend,
                                                      indexStride * indexCount,
@@ -590,7 +575,8 @@ namespace vultra
 
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             BufferUsage usage = BufferUsage::eIndexBuffer | BufferUsage::eTransferDst;
-            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 usage |= BufferUsage::eShaderDeviceAddress;
             }
@@ -614,9 +600,8 @@ namespace vultra
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
                 auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                return UniformBuffer {Buffer {makeWebGPUBuffer(backend,
-                                                               size,
-                                                               BufferUsage::eUniformBuffer | BufferUsage::eTransferDst)}};
+                return UniformBuffer {
+                    Buffer {makeWebGPUBuffer(backend, size, BufferUsage::eUniformBuffer | BufferUsage::eTransferDst)}};
             }
 
             assert(vkBackend(m_Backend).m_MemoryAllocator);
@@ -634,14 +619,14 @@ namespace vultra
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
                 auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                return StorageBuffer {Buffer {makeWebGPUBuffer(backend,
-                                                               size,
-                                                               BufferUsage::eStorageBuffer | BufferUsage::eTransferDst)}};
+                return StorageBuffer {
+                    Buffer {makeWebGPUBuffer(backend, size, BufferUsage::eStorageBuffer | BufferUsage::eTransferDst)}};
             }
 
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst;
-            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 usage |= BufferUsage::eShaderDeviceAddress;
             }
@@ -658,22 +643,21 @@ namespace vultra
             }};
         }
 
-        StorageBuffer RenderDevice::createStorageBufferWithUsage(const uint64_t      size,
-                                                                 const BufferUsage   extraUsage,
+        StorageBuffer RenderDevice::createStorageBufferWithUsage(const uint64_t        size,
+                                                                 const BufferUsage     extraUsage,
                                                                  const AllocationHints allocationHint) const
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
                 auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                return StorageBuffer {Buffer {makeWebGPUBuffer(backend,
-                                                               size,
-                                                               BufferUsage::eStorageBuffer | BufferUsage::eTransferDst |
-                                                                   extraUsage)}};
+                return StorageBuffer {Buffer {makeWebGPUBuffer(
+                    backend, size, BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | extraUsage)}};
             }
 
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | extraUsage;
-            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 usage |= BufferUsage::eShaderDeviceAddress;
             }
@@ -690,15 +674,15 @@ namespace vultra
             }};
         }
 
-        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferByCount(const uint32_t       commandCount,
+        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferByCount(const uint32_t         commandCount,
                                                                          const DrawIndirectType type,
-                                                                         const AllocationHints allocationHint) const
+                                                                         const AllocationHints  allocationHint) const
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
-                auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                const auto stride = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
-                                                                         sizeof(vk::DrawIndirectCommand);
+                auto&      backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
+                const auto stride  = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
+                                                                          sizeof(vk::DrawIndirectCommand);
                 return DrawIndirectBuffer {makeWebGPUBuffer(backend,
                                                             commandCount * stride,
                                                             BufferUsage::eIndirectBuffer | BufferUsage::eStorageBuffer |
@@ -709,18 +693,18 @@ namespace vultra
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             const auto stride = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
                                                                      sizeof(vk::DrawIndirectCommand);
-            return DrawIndirectBuffer {makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                                        commandCount * stride,
-                                                        BufferUsage::eStorageBuffer | BufferUsage::eTransferDst |
-                                                            BufferUsage::eIndirectBuffer,
-                                                        makeAllocationFlags(allocationHint),
-                                                        vma::MemoryUsage::eCpuToGpu),
-                                       type};
+            return DrawIndirectBuffer {
+                makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                 commandCount * stride,
+                                 BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer,
+                                 makeAllocationFlags(allocationHint),
+                                 vma::MemoryUsage::eCpuToGpu),
+                type};
         }
 
-        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferBySize(const uint64_t        size,
+        DrawIndirectBuffer RenderDevice::createDrawIndirectBufferBySize(const uint64_t         size,
                                                                         const DrawIndirectType type,
-                                                                        const AllocationHints allocationHint) const
+                                                                        const AllocationHints  allocationHint) const
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
@@ -733,13 +717,13 @@ namespace vultra
             }
 
             assert(vkBackend(m_Backend).m_MemoryAllocator);
-            return DrawIndirectBuffer {makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
-                                                        size,
-                                                        BufferUsage::eStorageBuffer | BufferUsage::eTransferDst |
-                                                            BufferUsage::eIndirectBuffer,
-                                                        makeAllocationFlags(allocationHint),
-                                                        vma::MemoryUsage::eCpuToGpu),
-                                       type};
+            return DrawIndirectBuffer {
+                makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                 size,
+                                 BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer,
+                                 makeAllocationFlags(allocationHint),
+                                 vma::MemoryUsage::eCpuToGpu),
+                type};
         }
 
         Texture RenderDevice::createTexture2D(const Extent2D    extent,
@@ -758,7 +742,7 @@ namespace vultra
                 (void)usageFlags;
                 return {};
 #else
-                auto& backend = webgpuBackend(m_Backend);
+                const auto& backend = webgpuBackend(m_Backend);
                 if (backend.m_Device == nullptr || extent.width == 0 || extent.height == 0)
                 {
                     return {};
@@ -772,36 +756,38 @@ namespace vultra
                 }
 
                 WGPUTextureDescriptor descriptor {};
-                descriptor.usage             = webgpu::toWgpuTextureUsage(usageFlags);
-                descriptor.dimension         = WGPUTextureDimension_2D;
-                descriptor.size.width        = extent.width;
-                descriptor.size.height       = extent.height;
+                descriptor.usage                   = webgpu::toWgpuTextureUsage(usageFlags);
+                descriptor.dimension               = WGPUTextureDimension_2D;
+                descriptor.size.width              = extent.width;
+                descriptor.size.height             = extent.height;
                 descriptor.size.depthOrArrayLayers = std::max(1u, numLayers);
-                descriptor.format            = wgpuFormat;
-                descriptor.mipLevelCount     = numMipLevels > 0 ? numMipLevels : calcMipLevels(extent);
-                descriptor.sampleCount       = 1u;
+                descriptor.format                  = wgpuFormat;
+                descriptor.mipLevelCount           = numMipLevels > 0 ? numMipLevels : calcMipLevels(extent);
+                descriptor.sampleCount             = 1u;
 
-                const auto textureHandle = wgpuDeviceCreateTexture(backend.m_Device, &descriptor);
+                auto* const textureHandle = wgpuDeviceCreateTexture(backend.m_Device, &descriptor);
                 if (textureHandle == nullptr)
                 {
                     return {};
                 }
                 if (numLayers > 1u)
                 {
-                    return TextureAccess::fromOwnedImage(RenderBackendApi::eWebGPU,
-                                                   TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(backend.m_Device)},
-                                                   TextureImageHandle {reinterpret_cast<std::uintptr_t>(textureHandle)},
-                                                   extent,
-                                                   format,
-                                                   0u,
-                                                   numLayers);
+                    return TextureAccess::fromOwnedImage(
+                        RenderBackendApi::eWebGPU,
+                        TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(backend.m_Device)},
+                        TextureImageHandle {reinterpret_cast<std::uintptr_t>(textureHandle)},
+                        extent,
+                        format,
+                        0u,
+                        numLayers);
                 }
-                return TextureAccess::fromOwnedImage(RenderBackendApi::eWebGPU,
-                                               TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(backend.m_Device)},
-                                               TextureImageHandle {reinterpret_cast<std::uintptr_t>(textureHandle)},
-                                               extent,
-                                               format,
-                                               0u);
+                return TextureAccess::fromOwnedImage(
+                    RenderBackendApi::eWebGPU,
+                    TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(backend.m_Device)},
+                    TextureImageHandle {reinterpret_cast<std::uintptr_t>(textureHandle)},
+                    extent,
+                    format,
+                    0u);
 #endif
             }
             assert(vkBackend(m_Backend).m_MemoryAllocator);
@@ -925,8 +911,8 @@ namespace vultra
 
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
-                auto& backend = webgpuBackend(m_Backend);
-                auto  it      = backend.m_Samplers.find(hash);
+                const auto& backend = webgpuBackend(m_Backend);
+                auto        it      = backend.m_Samplers.find(hash);
                 if (it == backend.m_Samplers.cend())
                 {
                     it = backend.m_Samplers.emplace(hash, createSampler(sampler.info())).first;
@@ -947,7 +933,7 @@ namespace vultra
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
-                auto& backend = webgpuBackend(m_Backend);
+                const auto& backend = webgpuBackend(m_Backend);
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
                 (void)samplerInfo;
                 return SamplerHandle {backend.m_NextSamplerHandle++};
@@ -958,23 +944,24 @@ namespace vultra
                 }
 
                 WGPUSamplerDescriptor descriptor {};
-                descriptor.magFilter    = webgpu::toWgpuFilter(samplerInfo.magFilter);
-                descriptor.minFilter    = webgpu::toWgpuFilter(samplerInfo.minFilter);
-                descriptor.mipmapFilter = webgpu::toWgpuMipmapFilter(samplerInfo.mipmapMode);
-                descriptor.addressModeU = webgpu::toWgpuAddressMode(samplerInfo.addressModeS);
-                descriptor.addressModeV = webgpu::toWgpuAddressMode(samplerInfo.addressModeT);
-                descriptor.addressModeW = webgpu::toWgpuAddressMode(samplerInfo.addressModeR);
-                descriptor.lodMinClamp  = samplerInfo.minLod;
-                descriptor.lodMaxClamp  = samplerInfo.maxLod;
+                descriptor.magFilter       = webgpu::toWgpuFilter(samplerInfo.magFilter);
+                descriptor.minFilter       = webgpu::toWgpuFilter(samplerInfo.minFilter);
+                descriptor.mipmapFilter    = webgpu::toWgpuMipmapFilter(samplerInfo.mipmapMode);
+                descriptor.addressModeU    = webgpu::toWgpuAddressMode(samplerInfo.addressModeS);
+                descriptor.addressModeV    = webgpu::toWgpuAddressMode(samplerInfo.addressModeT);
+                descriptor.addressModeW    = webgpu::toWgpuAddressMode(samplerInfo.addressModeR);
+                descriptor.lodMinClamp     = samplerInfo.minLod;
+                descriptor.lodMaxClamp     = samplerInfo.maxLod;
                 const bool allLinearFilter = descriptor.magFilter == WGPUFilterMode_Linear &&
                                              descriptor.minFilter == WGPUFilterMode_Linear &&
                                              descriptor.mipmapFilter == WGPUMipmapFilterMode_Linear;
-                descriptor.maxAnisotropy = (allLinearFilter && samplerInfo.maxAnisotropy.has_value()) ?
-                                               static_cast<uint16_t>(glm::clamp(*samplerInfo.maxAnisotropy, 1.0f, 16.0f)) :
-                                               1u;
+                descriptor.maxAnisotropy =
+                    (allLinearFilter && samplerInfo.maxAnisotropy.has_value()) ?
+                        static_cast<uint16_t>(glm::clamp(*samplerInfo.maxAnisotropy, 1.0f, 16.0f)) :
+                        1u;
                 descriptor.compare = WGPUCompareFunction_Undefined;
 
-                const auto sampler = wgpuDeviceCreateSampler(backend.m_Device, &descriptor);
+                auto* const sampler = wgpuDeviceCreateSampler(backend.m_Device, &descriptor);
                 if (sampler == nullptr)
                 {
                     return {};
@@ -983,7 +970,7 @@ namespace vultra
 #endif
             }
 
-            auto& backend = vkBackend(m_Backend);
+            const auto&           backend = vkBackend(m_Backend);
             vk::SamplerCreateInfo samplerCreateInfo {};
             samplerCreateInfo.magFilter               = toVk(samplerInfo.magFilter);
             samplerCreateInfo.minFilter               = toVk(samplerInfo.minFilter);
@@ -1000,18 +987,18 @@ namespace vultra
             samplerCreateInfo.compareOp               = toVk(samplerInfo.compareOp.value_or(CompareOp::eLess));
             samplerCreateInfo.anisotropyEnable        = samplerInfo.maxAnisotropy.has_value();
             samplerCreateInfo.maxAnisotropy =
-                samplerInfo.maxAnisotropy ?
-                    glm::clamp(*samplerInfo.maxAnisotropy, 1.0f, getMaxSamplerAnisotropy()) :
-                    0.0f;
+                samplerInfo.maxAnisotropy ? glm::clamp(*samplerInfo.maxAnisotropy, 1.0f, getMaxSamplerAnisotropy()) :
+                                            0.0f;
 
             vk::Sampler sampler {nullptr};
-            VK_CHECK(backend.m_Device.createSampler(&samplerCreateInfo, nullptr, &sampler), "RenderDevice", "Failed to create sampler");
+            VK_CHECK(backend.m_Device.createSampler(&samplerCreateInfo, nullptr, &sampler),
+                     "RenderDevice",
+                     "Failed to create sampler");
             return SamplerHandle {toBackendHandle(static_cast<VkSampler>(sampler))};
         }
 
-        Swapchain RenderDevice::createSwapchain(os::Window&           window,
-                                                const SwapchainFormat format,
-                                                const VerticalSync    vsync) const
+        Swapchain
+        RenderDevice::createSwapchain(os::Window& window, const SwapchainFormat format, const VerticalSync vsync) const
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
@@ -1043,8 +1030,8 @@ namespace vultra
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
-                auto& backend = webgpuBackend(m_Backend);
-                const auto handle = backend.m_NextSyncHandle++;
+                const auto& backend              = webgpuBackend(m_Backend);
+                const auto  handle               = backend.m_NextSyncHandle++;
                 backend.m_EmulatedFences[handle] = signaled;
                 return FenceHandle {handle};
             }
@@ -1053,7 +1040,9 @@ namespace vultra
             vk::FenceCreateInfo createInfo {};
             createInfo.flags = signaled ? vk::FenceCreateFlagBits::eSignaled : vk::FenceCreateFlags(0u);
             vk::Fence fence {nullptr};
-            VK_CHECK(vkBackend(m_Backend).m_Device.createFence(&createInfo, nullptr, &fence), "RenderDevice", "Failed to create fence");
+            VK_CHECK(vkBackend(m_Backend).m_Device.createFence(&createInfo, nullptr, &fence),
+                     "RenderDevice",
+                     "Failed to create fence");
             return FenceHandle {toBackendHandle(static_cast<VkFence>(fence))};
         }
 
@@ -1061,8 +1050,8 @@ namespace vultra
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
-                auto& backend = webgpuBackend(m_Backend);
-                const auto handle = backend.m_NextSyncHandle++;
+                auto&      backend = webgpuBackend(m_Backend);
+                const auto handle  = backend.m_NextSyncHandle++;
                 backend.m_EmulatedSemaphores.insert(handle);
                 return SemaphoreHandle {handle};
             }
@@ -1086,7 +1075,7 @@ namespace vultra
             {
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
                 (void)wait;
-                const auto surface = reinterpret_cast<WGPUSurface>(swapchain.getHandle());
+                auto* const surface = reinterpret_cast<WGPUSurface>(swapchain.getHandle());
                 if (surface != nullptr)
                 {
                     (void)wgpuSurfacePresent(surface);
@@ -1096,7 +1085,7 @@ namespace vultra
             }
 
             assert(vkBackend(m_Backend).m_GenericQueue);
-            vk::PresentInfoKHR presentInfo {};
+            vk::PresentInfoKHR  presentInfo {};
             const vk::Semaphore waitSemaphore {asVkHandle<VkSemaphore>(wait.value)};
             presentInfo.waitSemaphoreCount = static_cast<bool>(wait) ? 1u : 0u;
             presentInfo.pWaitSemaphores    = static_cast<bool>(wait) ? &waitSemaphore : nullptr;
@@ -1138,9 +1127,10 @@ namespace vultra
 
             assert(vkBackend(m_Backend).m_Device);
             const vk::Fence vkFence {asVkHandle<VkFence>(fence.value)};
-            VK_CHECK(vkBackend(m_Backend).m_Device.waitForFences(1, &vkFence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
-                     "RenderDevice",
-                     "Failed to wait for fence");
+            VK_CHECK(
+                vkBackend(m_Backend).m_Device.waitForFences(1, &vkFence, VK_TRUE, std::numeric_limits<uint64_t>::max()),
+                "RenderDevice",
+                "Failed to wait for fence");
             return reset(fence);
         }
 
@@ -1227,19 +1217,18 @@ namespace vultra
                 return CommandBuffer {std::make_unique<WebGPUCommandBuffer>(backend)};
             }
 
-            const auto fenceHandle = createFence();
+            const auto      fenceHandle = createFence();
             const vk::Fence fence {asVkHandle<VkFence>(fenceHandle.value)};
-            return CommandBuffer {
-                std::make_unique<VulkanCommandBuffer>(
-                    vkBackend(m_Backend).m_Device,
-                    vkBackend(m_Backend).m_CommandPool,
-                    vk::CommandBuffer {asVkHandle<VkCommandBuffer>(allocateCommandBuffer())},
-                    vkBackend(m_Backend).m_TracyContext,
-                    fence,
-                    this,
-                    vkBackend(m_Backend).m_UseKhrDynamicRendering,
-                    vkBackend(m_Backend).m_UseKhrSynchronization2,
-                    isRaytracingOrRayQueryEnabled(vkBackend(m_Backend).m_FeatureFlag))};
+            return CommandBuffer {std::make_unique<VulkanCommandBuffer>(
+                vkBackend(m_Backend).m_Device,
+                vkBackend(m_Backend).m_CommandPool,
+                vk::CommandBuffer {asVkHandle<VkCommandBuffer>(allocateCommandBuffer())},
+                vkBackend(m_Backend).m_TracyContext,
+                fence,
+                this,
+                vkBackend(m_Backend).m_UseKhrDynamicRendering,
+                vkBackend(m_Backend).m_UseKhrSynchronization2,
+                isRaytracingOrRayQueryEnabled(vkBackend(m_Backend).m_FeatureFlag))};
         }
 
         RenderDevice& RenderDevice::execute(const std::function<void(CommandBuffer&)>& f, const bool oneTime)
@@ -1279,7 +1268,8 @@ namespace vultra
             return *this;
         }
 
-        RenderDevice& RenderDevice::uploadS(Buffer& buffer, const uint64_t offset, const uint64_t size, const void* data)
+        RenderDevice&
+        RenderDevice::uploadS(Buffer& buffer, const uint64_t offset, const uint64_t size, const void* data)
         {
             assert(buffer && data);
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
@@ -1297,7 +1287,7 @@ namespace vultra
         Ref<rhi::Texture> RenderDevice::createDefaultWhite1x1Texture2D()
         {
             uint32_t whitePixel = 0xFFFFFFFF;
-            auto texture = Texture::Builder {}
+            auto     texture    = Texture::Builder {}
                                .setExtent({1, 1})
                                .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
                                .setUsageFlags(ImageUsage::eSampled | ImageUsage::eTransferDst)
@@ -1360,11 +1350,8 @@ namespace vultra
             vkBindings.reserve(bindings.size());
             for (const auto& b : bindings)
             {
-                vkBindings.push_back(vk::DescriptorSetLayoutBinding {
-                    b.binding,
-                    toVk(b.type),
-                    b.count,
-                    toVk(b.stageFlags)});
+                vkBindings.push_back(
+                    vk::DescriptorSetLayoutBinding {b.binding, toVk(b.type), b.count, toVk(b.stageFlags)});
             }
 
             std::vector<vk::DescriptorBindingFlags> vkFlags;
@@ -1387,9 +1374,10 @@ namespace vultra
 #endif
 
             vk::DescriptorSetLayout descriptorSetLayout {nullptr};
-            VK_CHECK(vkBackend(m_Backend).m_Device.createDescriptorSetLayout(&createInfo, nullptr, &descriptorSetLayout),
-                     "RenderDevice",
-                     "Failed to create descriptor set layout");
+            VK_CHECK(
+                vkBackend(m_Backend).m_Device.createDescriptorSetLayout(&createInfo, nullptr, &descriptorSetLayout),
+                "RenderDevice",
+                "Failed to create descriptor set layout");
 
             vkBackend(m_Backend).m_DescriptorSetLayouts.emplace(hash, descriptorSetLayout);
             return DescriptorSetLayoutKey {hash};
@@ -1444,11 +1432,11 @@ namespace vultra
         }
 
         ShaderModule
-        RenderDevice::createShaderModule(const ShaderType                                                   shaderType,
-                                         const std::string_view                                             code,
-                                         const std::string_view                                             entryPointName,
+        RenderDevice::createShaderModule(const ShaderType       shaderType,
+                                         const std::string_view code,
+                                         const std::string_view entryPointName,
                                          const std::unordered_map<std::string, std::optional<std::string>>& defines,
-                                         ShaderReflection*                                                  reflection) const
+                                         ShaderReflection* reflection) const
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
@@ -1498,14 +1486,16 @@ namespace vultra
             }
             assert(*pipelineLayout);
 
-            const auto shaderModuleHandle = createVulkanShaderModule(vkBackend(m_Backend).m_Device, shaderModule.getSpirv());
+            const auto shaderModuleHandle =
+                createVulkanShaderModule(vkBackend(m_Backend).m_Device, shaderModule.getSpirv());
 
             vk::ComputePipelineCreateInfo createInfo {};
-            createInfo.stage  = vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eCompute, shaderModuleHandle, "main"};
+            createInfo.stage =
+                vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eCompute, shaderModuleHandle, "main"};
             createInfo.layout = vk::PipelineLayout {asVkHandle<VkPipelineLayout>(pipelineLayout->getHandle())};
 
-            auto [result, computePipeline] =
-                vkBackend(m_Backend).m_Device.createComputePipeline(vkBackend(m_Backend).m_PipelineCache, createInfo, nullptr);
+            auto [result, computePipeline] = vkBackend(m_Backend).m_Device.createComputePipeline(
+                vkBackend(m_Backend).m_PipelineCache, createInfo, nullptr);
             vkBackend(m_Backend).m_Device.destroyShaderModule(shaderModuleHandle);
             if (result != vk::Result::eSuccess)
             {
@@ -1536,7 +1526,8 @@ namespace vultra
 
             auto reflection = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
 
-            const auto shaderModule = createShaderModule(spv, reflection ? std::addressof(reflection.value()) : nullptr);
+            const auto shaderModule =
+                createShaderModule(spv, reflection ? std::addressof(reflection.value()) : nullptr);
             if (!shaderModule)
             {
                 return {};
@@ -1549,13 +1540,14 @@ namespace vultra
             assert(*pipelineLayout);
 
             vk::ComputePipelineCreateInfo createInfo {};
-            const auto shaderModuleHandle = createVulkanShaderModule(vkBackend(m_Backend).m_Device, shaderModule.getSpirv());
-            createInfo.stage              = vk::PipelineShaderStageCreateInfo {
-                             {}, vk::ShaderStageFlagBits::eCompute, shaderModuleHandle, "main"};
+            const auto                    shaderModuleHandle =
+                createVulkanShaderModule(vkBackend(m_Backend).m_Device, shaderModule.getSpirv());
+            createInfo.stage =
+                vk::PipelineShaderStageCreateInfo {{}, vk::ShaderStageFlagBits::eCompute, shaderModuleHandle, "main"};
             createInfo.layout = vk::PipelineLayout {asVkHandle<VkPipelineLayout>(pipelineLayout->getHandle())};
 
-            auto [result, computePipeline] =
-                vkBackend(m_Backend).m_Device.createComputePipeline(vkBackend(m_Backend).m_PipelineCache, createInfo, nullptr);
+            auto [result, computePipeline] = vkBackend(m_Backend).m_Device.createComputePipeline(
+                vkBackend(m_Backend).m_PipelineCache, createInfo, nullptr);
             vkBackend(m_Backend).m_Device.destroyShaderModule(shaderModuleHandle);
             if (result != vk::Result::eSuccess)
             {
@@ -1586,15 +1578,15 @@ namespace vultra
 
                 if (!layoutInfo.pushConstantRanges.empty())
                 {
-                    VULTRA_CORE_WARN(
-                        "[RenderDevice] WebGPU does not natively support push constants, current path ignores push constant ranges");
+                    VULTRA_CORE_WARN("[RenderDevice] WebGPU does not natively support push constants, current path "
+                                     "ignores push constant ranges");
                 }
 
-                std::size_t hash {0};
-                std::vector<DescriptorSetLayoutKey> descriptorSetLayoutKeys(kMinNumDescriptorSets);
+                std::size_t                                            hash {0};
+                std::vector<DescriptorSetLayoutKey>                    descriptorSetLayoutKeys(kMinNumDescriptorSets);
                 std::array<WGPUBindGroupLayout, kMinNumDescriptorSets> setLayouts {};
-                std::size_t maxSetWithBindings = 0;
-                bool hasAnyDescriptorSet = false;
+                std::size_t                                            maxSetWithBindings  = 0;
+                bool                                                   hasAnyDescriptorSet = false;
 
                 for (const auto& [set, bindings] : vultra::enumerate(layoutInfo.descriptorSets))
                 {
@@ -1602,9 +1594,9 @@ namespace vultra
                     {
                         continue;
                     }
-                    hasAnyDescriptorSet = true;
-                    maxSetWithBindings  = std::max(maxSetWithBindings, static_cast<std::size_t>(set));
-                    const auto key = createWebGPUDescriptorSetLayout(backend, bindings);
+                    hasAnyDescriptorSet          = true;
+                    maxSetWithBindings           = std::max(maxSetWithBindings, static_cast<std::size_t>(set));
+                    const auto key               = createWebGPUDescriptorSetLayout(backend, bindings);
                     descriptorSetLayoutKeys[set] = key;
                     hashCombine(hash, set, key.value, 1u);
                     if (const auto it = backend.m_DescriptorSetLayouts.find(key.value);
@@ -1634,10 +1626,10 @@ namespace vultra
                             }
                             descriptorSetLayoutKeys[set] = DescriptorSetLayoutKey {emptyKey};
                             backend.m_DescriptorSetLayouts.try_emplace(emptyKey, backend.m_EmptyDescriptorSetLayout);
-                            backend.m_DescriptorSetLayoutBindings.try_emplace(emptyKey,
-                                                                              std::vector<DescriptorSetLayoutBindingEx> {});
+                            backend.m_DescriptorSetLayoutBindings.try_emplace(
+                                emptyKey, std::vector<DescriptorSetLayoutBindingEx> {});
                         }
-                        const auto layout = setLayouts[set] ? setLayouts[set] : backend.m_EmptyDescriptorSetLayout;
+                        auto* const layout = setLayouts[set] ? setLayouts[set] : backend.m_EmptyDescriptorSetLayout;
                         bindGroupLayouts.push_back(layout);
                         hashCombine(hash, set, descriptorSetLayoutKeys[set].value, setLayouts[set] ? 1u : 0u);
                     }
@@ -1650,22 +1642,20 @@ namespace vultra
                 if (const auto it = backend.m_PipelineLayouts.find(hash); it != backend.m_PipelineLayouts.cend())
                 {
                     return PipelineLayout {std::make_unique<WebGPUPipelineLayout>(
-                        reinterpret_cast<std::uintptr_t>(it->second),
-                        std::move(descriptorSetLayoutKeys))};
+                        reinterpret_cast<std::uintptr_t>(it->second), std::move(descriptorSetLayoutKeys))};
                 }
 
                 WGPUPipelineLayoutDescriptor descriptor {};
                 descriptor.bindGroupLayoutCount = bindGroupLayouts.size();
                 descriptor.bindGroupLayouts     = bindGroupLayouts.empty() ? nullptr : bindGroupLayouts.data();
-                const auto layout = wgpuDeviceCreatePipelineLayout(backend.m_Device, &descriptor);
+                auto* const layout              = wgpuDeviceCreatePipelineLayout(backend.m_Device, &descriptor);
                 if (layout == nullptr)
                 {
                     return {};
                 }
                 backend.m_PipelineLayouts.emplace(hash, layout);
-                return PipelineLayout {std::make_unique<WebGPUPipelineLayout>(
-                    reinterpret_cast<std::uintptr_t>(layout),
-                    std::move(descriptorSetLayoutKeys))};
+                return PipelineLayout {std::make_unique<WebGPUPipelineLayout>(reinterpret_cast<std::uintptr_t>(layout),
+                                                                              std::move(descriptorSetLayoutKeys))};
 #else
                 (void)layoutInfo;
                 return {};
@@ -1684,10 +1674,11 @@ namespace vultra
             {
                 for (const auto& binding : bindings)
                 {
-                    hashCombine(hash, set, binding.binding, binding.type, binding.count, binding.stageFlags, binding.flags);
+                    hashCombine(
+                        hash, set, binding.binding, binding.type, binding.count, binding.stageFlags, binding.flags);
                 }
                 descriptorSetLayoutKeys[set] = createDescriptorSetLayout(bindings);
-                descriptorSetLayouts[set] = vk::DescriptorSetLayout {
+                descriptorSetLayouts[set]    = vk::DescriptorSetLayout {
                     asVkHandle<VkDescriptorSetLayout>(getDescriptorSetLayoutHandle(descriptorSetLayoutKeys[set]))};
             }
             for (const auto& range : layoutInfo.pushConstantRanges)
@@ -1700,11 +1691,11 @@ namespace vultra
                 vkPushConstantRanges.push_back(vkRange);
             }
 
-            if (const auto it = vkBackend(m_Backend).m_PipelineLayouts.find(hash); it != vkBackend(m_Backend).m_PipelineLayouts.cend())
+            if (const auto it = vkBackend(m_Backend).m_PipelineLayouts.find(hash);
+                it != vkBackend(m_Backend).m_PipelineLayouts.cend())
             {
                 return PipelineLayout {std::make_unique<VulkanPipelineLayout>(
-                    toBackendHandle(static_cast<VkPipelineLayout>(it->second)),
-                    std::move(descriptorSetLayoutKeys))};
+                    toBackendHandle(static_cast<VkPipelineLayout>(it->second)), std::move(descriptorSetLayoutKeys))};
             }
 
             vk::PipelineLayoutCreateInfo createInfo {};
@@ -1720,8 +1711,7 @@ namespace vultra
 
             const auto& [inserted, _] = vkBackend(m_Backend).m_PipelineLayouts.emplace(hash, handle);
             return PipelineLayout {std::make_unique<VulkanPipelineLayout>(
-                toBackendHandle(static_cast<VkPipelineLayout>(inserted->second)),
-                std::move(descriptorSetLayoutKeys))};
+                toBackendHandle(static_cast<VkPipelineLayout>(inserted->second)), std::move(descriptorSetLayoutKeys))};
         }
     } // namespace rhi
 } // namespace vultra

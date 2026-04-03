@@ -1,7 +1,7 @@
 #pragma once
 
-#include "vultra/core/rhi/structs/image_aspect.hpp"
 #include "vultra/core/rhi/sampler.hpp"
+#include "vultra/core/rhi/structs/image_aspect.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -20,7 +20,7 @@ namespace vultra
         {
             struct SeparateSampler
             {
-                Sampler handle {};
+                Sampler handle;
             };
             struct CombinedImageSampler
             {

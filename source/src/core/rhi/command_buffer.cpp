@@ -20,13 +20,13 @@ namespace vultra
             {
                 dst.dstStage  = PipelineStages::eColorAttachmentOutput;
                 dst.dstAccess = Access::eColorAttachmentRead | Access::eColorAttachmentWrite;
-                newLayout      = ImageLayout::eAttachment;
+                newLayout     = ImageLayout::eAttachment;
             }
             else
             {
                 dst.dstStage  = PipelineStages::eFragmentTests;
                 dst.dstAccess = readOnly ? Access::eDepthStencilAttachmentRead : Access::eDepthStencilAttachmentWrite;
-                newLayout      = readOnly ? ImageLayout::eReadOnly : ImageLayout::eAttachment;
+                newLayout     = readOnly ? ImageLayout::eReadOnly : ImageLayout::eAttachment;
             }
 
             cb.getBarrierBuilder().imageBarrier(

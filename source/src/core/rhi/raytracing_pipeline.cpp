@@ -39,7 +39,7 @@ namespace vultra
 
         RayTracingPipeline::Builder& RayTracingPipeline::Builder::addRaygenGroup(uint32_t shaderIndex)
         {
-            const uint32_t groupIndex = static_cast<uint32_t>(m_Groups.size());
+            const uint32_t        groupIndex = static_cast<uint32_t>(m_Groups.size());
             RaytracingShaderGroup group {};
             group.type          = RaytracingShaderGroup::Type::eGeneral;
             group.generalShader = shaderIndex;
@@ -50,7 +50,7 @@ namespace vultra
 
         RayTracingPipeline::Builder& RayTracingPipeline::Builder::addMissGroup(uint32_t shaderIndex)
         {
-            const uint32_t groupIndex = static_cast<uint32_t>(m_Groups.size());
+            const uint32_t        groupIndex = static_cast<uint32_t>(m_Groups.size());
             RaytracingShaderGroup group {};
             group.type          = RaytracingShaderGroup::Type::eGeneral;
             group.generalShader = shaderIndex;
@@ -64,7 +64,7 @@ namespace vultra
                                                  std::optional<uint32_t> anyHitShader,
                                                  std::optional<uint32_t> intersectionShader)
         {
-            const uint32_t groupIndex = static_cast<uint32_t>(m_Groups.size());
+            const uint32_t        groupIndex = static_cast<uint32_t>(m_Groups.size());
             RaytracingShaderGroup group {};
             group.type               = RaytracingShaderGroup::Type::eTrianglesHitGroup;
             group.generalShader      = UINT32_MAX;
@@ -78,7 +78,7 @@ namespace vultra
 
         RayTracingPipeline::Builder& RayTracingPipeline::Builder::addCallableGroup(uint32_t shaderIndex)
         {
-            const uint32_t groupIndex = static_cast<uint32_t>(m_Groups.size());
+            const uint32_t        groupIndex = static_cast<uint32_t>(m_Groups.size());
             RaytracingShaderGroup group {};
             group.type          = RaytracingShaderGroup::Type::eGeneral;
             group.generalShader = shaderIndex;
@@ -87,14 +87,14 @@ namespace vultra
             return *this;
         }
 
-        RayTracingPipeline::RayTracingPipeline(PipelineLayout&&                             pipelineLayout,
-                                               const std::uintptr_t                         handle,
-                                               std::unique_ptr<IPipeline> destroyBackend,
-                                               std::vector<RaytracingShaderGroup>&&        groups,
-                                               std::vector<uint32_t>&&                      raygenGroupIndices,
-                                               std::vector<uint32_t>&&                      missGroupIndices,
-                                               std::vector<uint32_t>&&                      hitGroupIndices,
-                                               std::vector<uint32_t>&&                      callableGroupIndices,
+        RayTracingPipeline::RayTracingPipeline(PipelineLayout&&                     pipelineLayout,
+                                               const std::uintptr_t                 handle,
+                                               std::unique_ptr<IPipeline>           destroyBackend,
+                                               std::vector<RaytracingShaderGroup>&& groups,
+                                               std::vector<uint32_t>&&              raygenGroupIndices,
+                                               std::vector<uint32_t>&&              missGroupIndices,
+                                               std::vector<uint32_t>&&              hitGroupIndices,
+                                               std::vector<uint32_t>&&              callableGroupIndices,
                                                std::unique_ptr<IRayTracingPipeline> backend) :
             BasePipeline {std::move(pipelineLayout), handle, std::move(destroyBackend)}, m_Groups(std::move(groups)),
             m_RaygenGroupIndices(std::move(raygenGroupIndices)), m_MissGroupIndices(std::move(missGroupIndices)),

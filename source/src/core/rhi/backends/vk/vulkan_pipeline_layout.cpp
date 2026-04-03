@@ -6,9 +6,8 @@ namespace vultra
 {
     namespace rhi
     {
-        VulkanPipelineLayout::VulkanPipelineLayout(
-            const std::uintptr_t handle,
-            std::vector<DescriptorSetLayoutKey>&& descriptorSetLayouts) :
+        VulkanPipelineLayout::VulkanPipelineLayout(const std::uintptr_t                  handle,
+                                                   std::vector<DescriptorSetLayoutKey>&& descriptorSetLayouts) :
             m_Handle(handle), m_DescriptorSetLayouts(std::move(descriptorSetLayouts))
         {}
 

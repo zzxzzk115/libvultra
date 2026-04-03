@@ -9,13 +9,13 @@ namespace vultra
 {
     namespace rhi
     {
-        std::shared_ptr<ISwapchain> createSwapchain(const std::uintptr_t instance,
-                                                                  const std::uintptr_t physicalDevice,
-                                                                  const std::uintptr_t device,
-                                                                  const RenderBackendApi backendApi,
-                                                                  os::Window*          window,
-                                                                  const SwapchainFormat format,
-                                                                  const VerticalSync   vsync)
+        std::shared_ptr<ISwapchain> createSwapchain(const std::uintptr_t   instance,
+                                                    const std::uintptr_t   physicalDevice,
+                                                    const std::uintptr_t   device,
+                                                    const RenderBackendApi backendApi,
+                                                    os::Window*            window,
+                                                    const SwapchainFormat  format,
+                                                    const VerticalSync     vsync)
         {
             switch (backendApi)
             {

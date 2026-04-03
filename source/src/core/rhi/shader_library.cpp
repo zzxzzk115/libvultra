@@ -5,7 +5,7 @@
 
 namespace
 {
-    template <typename ShaderBinaryLike>
+    template<typename ShaderBinaryLike>
     std::string extractWgsl(ShaderBinaryLike& shaderBinary)
     {
         if constexpr (requires { shaderBinary.wgsl; })

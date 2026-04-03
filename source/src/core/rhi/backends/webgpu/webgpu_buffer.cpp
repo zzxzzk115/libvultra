@@ -10,13 +10,8 @@ namespace vultra
 {
     namespace rhi
     {
-        WebGPUBuffer::WebGPUBuffer(const uint64_t       size,
-                                   const std::uintptr_t handle,
-                                   const std::uintptr_t queueHandle) :
-            m_Data(static_cast<size_t>(size)),
-            m_Size(size),
-            m_Handle(handle),
-            m_QueueHandle(queueHandle),
+        WebGPUBuffer::WebGPUBuffer(const uint64_t size, const std::uintptr_t handle, const std::uintptr_t queueHandle) :
+            m_Data(static_cast<size_t>(size)), m_Size(size), m_Handle(handle), m_QueueHandle(queueHandle),
             m_Valid(handle != 0)
         {}
 

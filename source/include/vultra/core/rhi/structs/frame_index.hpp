@@ -13,7 +13,7 @@ namespace vultra
             explicit FrameIndex(ValueType numFramesInFlight = 0);
 
             void operator++();
-            operator ValueType() const;
+                 operator ValueType() const;
 
             [[nodiscard]] ValueType getCurrentIndex() const;
             [[nodiscard]] ValueType getPreviousIndex() const;

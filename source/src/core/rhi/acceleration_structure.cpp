@@ -4,10 +4,7 @@ namespace vultra
 {
     namespace rhi
     {
-        AccelerationStructure::operator bool() const
-        {
-            return m_Backend && m_Backend->isValid();
-        }
+        AccelerationStructure::operator bool() const { return m_Backend && m_Backend->isValid(); }
 
         std::uintptr_t AccelerationStructure::getHandle() const
         {

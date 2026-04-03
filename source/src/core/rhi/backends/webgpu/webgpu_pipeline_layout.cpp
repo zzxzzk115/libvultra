@@ -6,9 +6,8 @@ namespace vultra
 {
     namespace rhi
     {
-        WebGPUPipelineLayout::WebGPUPipelineLayout(
-            const std::uintptr_t handle,
-            std::vector<DescriptorSetLayoutKey>&& descriptorSetLayouts) :
+        WebGPUPipelineLayout::WebGPUPipelineLayout(const std::uintptr_t                  handle,
+                                                   std::vector<DescriptorSetLayoutKey>&& descriptorSetLayouts) :
             m_Handle(handle), m_DescriptorSetLayouts(std::move(descriptorSetLayouts))
         {}
 

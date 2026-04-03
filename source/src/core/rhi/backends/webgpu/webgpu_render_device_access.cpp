@@ -54,7 +54,8 @@ namespace vultra
             return 0;
         }
 
-        bool WebGPURenderDeviceAccess::submitCommandBuffer(const RenderDevice& rd, const std::uintptr_t commandBufferHandle)
+        bool WebGPURenderDeviceAccess::submitCommandBuffer(const RenderDevice&  rd,
+                                                           const std::uintptr_t commandBufferHandle)
         {
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             if (commandBufferHandle == 0)
@@ -65,7 +66,7 @@ namespace vultra
             {
                 if (backend->m_Queue != nullptr)
                 {
-                    const auto commandBuffer = reinterpret_cast<WGPUCommandBuffer>(commandBufferHandle);
+                    auto* const commandBuffer = reinterpret_cast<WGPUCommandBuffer>(commandBufferHandle);
                     wgpuQueueSubmit(backend->m_Queue, 1, &commandBuffer);
                     return true;
                 }

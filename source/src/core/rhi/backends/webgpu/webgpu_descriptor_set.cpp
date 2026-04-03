@@ -58,7 +58,8 @@ namespace vultra
                 return hash;
             }
 
-            [[nodiscard]] SamplerHandle getOrCreateSamplerHandle(const WebGPURenderDevice& backend, const Sampler& sampler)
+            [[nodiscard]] SamplerHandle getOrCreateSamplerHandle(const WebGPURenderDevice& backend,
+                                                                 const Sampler&            sampler)
             {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
                 (void)backend;
@@ -78,38 +79,40 @@ namespace vultra
                 }
 
                 WGPUSamplerDescriptor descriptor {};
-                descriptor.magFilter    = webgpu::toWgpuFilter(sampler.info().magFilter);
-                descriptor.minFilter    = webgpu::toWgpuFilter(sampler.info().minFilter);
-                descriptor.mipmapFilter = webgpu::toWgpuMipmapFilter(sampler.info().mipmapMode);
-                descriptor.addressModeU = webgpu::toWgpuAddressMode(sampler.info().addressModeS);
-                descriptor.addressModeV = webgpu::toWgpuAddressMode(sampler.info().addressModeT);
-                descriptor.addressModeW = webgpu::toWgpuAddressMode(sampler.info().addressModeR);
-                descriptor.lodMinClamp  = sampler.info().minLod;
-                descriptor.lodMaxClamp  = sampler.info().maxLod;
+                descriptor.magFilter       = webgpu::toWgpuFilter(sampler.info().magFilter);
+                descriptor.minFilter       = webgpu::toWgpuFilter(sampler.info().minFilter);
+                descriptor.mipmapFilter    = webgpu::toWgpuMipmapFilter(sampler.info().mipmapMode);
+                descriptor.addressModeU    = webgpu::toWgpuAddressMode(sampler.info().addressModeS);
+                descriptor.addressModeV    = webgpu::toWgpuAddressMode(sampler.info().addressModeT);
+                descriptor.addressModeW    = webgpu::toWgpuAddressMode(sampler.info().addressModeR);
+                descriptor.lodMinClamp     = sampler.info().minLod;
+                descriptor.lodMaxClamp     = sampler.info().maxLod;
                 const bool allLinearFilter = descriptor.magFilter == WGPUFilterMode_Linear &&
                                              descriptor.minFilter == WGPUFilterMode_Linear &&
                                              descriptor.mipmapFilter == WGPUMipmapFilterMode_Linear;
-                descriptor.maxAnisotropy = (allLinearFilter && sampler.info().maxAnisotropy.has_value()) ?
-                                               static_cast<uint16_t>(std::clamp(*sampler.info().maxAnisotropy, 1.0f, 16.0f)) :
-                                               1u;
+                descriptor.maxAnisotropy =
+                    (allLinearFilter && sampler.info().maxAnisotropy.has_value()) ?
+                        static_cast<uint16_t>(std::clamp(*sampler.info().maxAnisotropy, 1.0f, 16.0f)) :
+                        1u;
                 descriptor.compare = WGPUCompareFunction_Undefined;
 
-                const auto wgpuSampler = wgpuDeviceCreateSampler(mutableBackend.m_Device, &descriptor);
+                auto* const wgpuSampler = wgpuDeviceCreateSampler(mutableBackend.m_Device, &descriptor);
                 if (wgpuSampler == nullptr)
                 {
                     return {};
                 }
 
-                const auto inserted = mutableBackend.m_Samplers.emplace(hash,
-                                                                         SamplerHandle {
-                                                                             reinterpret_cast<std::uintptr_t>(wgpuSampler),
-                                                                         });
+                const auto inserted =
+                    mutableBackend.m_Samplers.emplace(hash,
+                                                      SamplerHandle {
+                                                          reinterpret_cast<std::uintptr_t>(wgpuSampler),
+                                                      });
                 return inserted.first->second;
 #endif
             }
         } // namespace
 
-        WebGPUDescriptorSet::WebGPUDescriptorSet(const DescriptorSetLayoutKey layoutKey,
+        WebGPUDescriptorSet::WebGPUDescriptorSet(const DescriptorSetLayoutKey                      layoutKey,
                                                  std::unordered_map<BindingIndex, ResourceBinding> bindings) :
             m_LayoutKey(layoutKey), m_Bindings(std::move(bindings))
         {}
@@ -128,7 +131,7 @@ namespace vultra
             m_BindGroups.clear();
         }
 
-        WGPUBindGroup WebGPUDescriptorSet::getOrCreateBindGroup(const WebGPURenderDevice& backend,
+        WGPUBindGroup WebGPUDescriptorSet::getOrCreateBindGroup(const WebGPURenderDevice&    backend,
                                                                 const DescriptorSetLayoutKey expectedLayoutKey)
         {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
@@ -172,8 +175,7 @@ namespace vultra
 
                 switch (layoutBinding.type)
                 {
-                    case DescriptorType::eUniformBuffer:
-                    {
+                    case DescriptorType::eUniformBuffer: {
                         const auto* value = std::get_if<bindings::UniformBuffer>(&resourceBinding);
                         if (value == nullptr || value->buffer == nullptr || value->buffer->getHandle() == 0)
                         {
@@ -193,8 +195,7 @@ namespace vultra
                         break;
                     }
                     case DescriptorType::eStorageBuffer:
-                    case DescriptorType::eStorageBufferDynamic:
-                    {
+                    case DescriptorType::eStorageBufferDynamic: {
                         const auto* value = std::get_if<bindings::StorageBuffer>(&resourceBinding);
                         if (value == nullptr || value->buffer == nullptr || value->buffer->getHandle() == 0)
                         {
@@ -213,8 +214,7 @@ namespace vultra
                         entries.push_back(entry);
                         break;
                     }
-                    case DescriptorType::eCombinedImageSampler:
-                    {
+                    case DescriptorType::eCombinedImageSampler: {
                         const auto* value = std::get_if<bindings::CombinedImageSampler>(&resourceBinding);
                         if (value == nullptr || value->texture == nullptr)
                         {
@@ -245,8 +245,7 @@ namespace vultra
                         entries.push_back(samplerEntry);
                         break;
                     }
-                    case DescriptorType::eSampledImage:
-                    {
+                    case DescriptorType::eSampledImage: {
                         const auto* value = std::get_if<bindings::SampledImage>(&resourceBinding);
                         if (value == nullptr || value->texture == nullptr)
                         {
@@ -264,8 +263,7 @@ namespace vultra
                         entries.push_back(entry);
                         break;
                     }
-                    case DescriptorType::eSampler:
-                    {
+                    case DescriptorType::eSampler: {
                         const auto* value = std::get_if<bindings::SeparateSampler>(&resourceBinding);
                         if (value == nullptr)
                         {
@@ -282,8 +280,7 @@ namespace vultra
                         entries.push_back(entry);
                         break;
                     }
-                    case DescriptorType::eStorageImage:
-                    {
+                    case DescriptorType::eStorageImage: {
                         const auto* value = std::get_if<bindings::StorageImage>(&resourceBinding);
                         if (value == nullptr || value->texture == nullptr)
                         {
@@ -316,7 +313,7 @@ namespace vultra
             descriptor.layout     = bindGroupLayoutIt->second;
             descriptor.entryCount = entries.size();
             descriptor.entries    = entries.data();
-            const auto bindGroup  = wgpuDeviceCreateBindGroup(backend.m_Device, &descriptor);
+            auto* const bindGroup = wgpuDeviceCreateBindGroup(backend.m_Device, &descriptor);
             if (bindGroup == nullptr)
             {
                 return nullptr;

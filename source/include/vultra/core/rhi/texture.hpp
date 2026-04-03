@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/rhi/sampler.hpp"
 #include "vultra/core/rhi/structs/barrier_scope.hpp"
 #include "vultra/core/rhi/structs/cube_face.hpp"
 #include "vultra/core/rhi/structs/extent2d.hpp"
@@ -8,19 +9,16 @@
 #include "vultra/core/rhi/structs/image_usage.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
-#include "vultra/core/rhi/sampler.hpp"
-#include "vultra/core/rhi/texture_view.hpp"
 #include "vultra/core/rhi/structs/texture_type.hpp"
+#include "vultra/core/rhi/texture_view.hpp"
 
 #include <glm/ext/vector_uint3.hpp>
 
-#include <compare>
 #include <optional>
 #include <span>
 #include <unordered_map>
 #include <variant>
 #include <vector>
-
 namespace vultra
 {
     namespace openxr
@@ -100,11 +98,11 @@ namespace vultra
             [[nodiscard]] PixelFormat getPixelFormat() const;
             [[nodiscard]] ImageUsage  getUsageFlags() const;
 
-            [[nodiscard]] ImageLayout getImageLayout() const;
-            [[nodiscard]] uint32_t    getBaseArrayLayer() const;
-            [[nodiscard]] uint32_t    getLayerFaceCount() const;
+            [[nodiscard]] ImageLayout  getImageLayout() const;
+            [[nodiscard]] uint32_t     getBaseArrayLayer() const;
+            [[nodiscard]] uint32_t     getLayerFaceCount() const;
             [[nodiscard]] BarrierScope getLastBarrierScope() const;
-            void                      setBarrierState(BarrierScope, ImageLayout);
+            void                       setBarrierState(BarrierScope, ImageLayout);
 
             // @return Used memory (in bytes).
             [[nodiscard]] uint64_t getSize() const;
@@ -112,12 +110,10 @@ namespace vultra
             [[nodiscard]] TextureView getImageView(ImageAspectFlags = ImageAspectFlags::eNone) const;
 
             [[nodiscard]] TextureView getMipLevel(uint32_t, ImageAspectFlags = ImageAspectFlags::eNone) const;
-            [[nodiscard]] std::span<const TextureView>
-                getMipLevels(ImageAspectFlags = ImageAspectFlags::eNone) const;
+            [[nodiscard]] std::span<const TextureView> getMipLevels(ImageAspectFlags = ImageAspectFlags::eNone) const;
             [[nodiscard]] TextureView
             getLayer(uint32_t, std::optional<CubeFace>, ImageAspectFlags = ImageAspectFlags::eNone) const;
-            [[nodiscard]] std::span<const TextureView>
-                getLayers(ImageAspectFlags = ImageAspectFlags::eNone) const;
+            [[nodiscard]] std::span<const TextureView> getLayers(ImageAspectFlags = ImageAspectFlags::eNone) const;
 
             [[nodiscard]] Sampler getSampler() const;
 
@@ -169,84 +165,86 @@ namespace vultra
             };
             Texture(TextureAllocatorHandle allocatorHandle, CreateInfo&&);
             // "Import" image (from a Swapchain).
-            Texture(TextureDeviceHandle device, TextureImageHandle image, Extent2D, PixelFormat, uint32_t baseLayer = 0u);
             Texture(TextureDeviceHandle device,
-                    TextureImageHandle image,
-                    Extent2D,
-                    PixelFormat,
-                    uint32_t baseLayer,
-                    uint32_t numLayers);
-            Texture(RenderBackendApi api,
-                    bool             ownsImage,
+                    TextureImageHandle  image,
+                    Extent2D            extent,
+                    PixelFormat         pixelFormat,
+                    uint32_t            baseLayer = 0u);
+            Texture(TextureDeviceHandle device,
+                    TextureImageHandle  image,
+                    Extent2D            extent,
+                    PixelFormat         pixelFormat,
+                    uint32_t            baseLayer,
+                    uint32_t            numLayers);
+            Texture(RenderBackendApi    api,
+                    bool                ownsImage,
                     TextureDeviceHandle device,
                     TextureImageHandle  image,
-                    Extent2D,
-                    PixelFormat,
-                    uint32_t         baseLayer = 0u);
-            Texture(RenderBackendApi api,
-                    bool             ownsImage,
+                    Extent2D            extent,
+                    PixelFormat         pixelFormat,
+                    uint32_t            baseLayer = 0u);
+            Texture(RenderBackendApi    api,
+                    bool                ownsImage,
                     TextureDeviceHandle device,
                     TextureImageHandle  image,
-                    Extent2D,
-                    PixelFormat,
-                    uint32_t         baseLayer,
-                    uint32_t         numLayers);
+                    Extent2D            extent,
+                    PixelFormat         pixelFormat,
+                    uint32_t            baseLayer,
+                    uint32_t            numLayers);
 
             void destroy() noexcept;
 
             [[nodiscard]] std::uintptr_t getImageHandle() const;
-            TextureDeviceHandle getDeviceHandle() const;
+            TextureDeviceHandle          getDeviceHandle() const;
             // Wrap an externally created image into RHI Texture.
-            [[nodiscard]] static Texture
-            fromExternalImage(TextureDeviceHandle device,
-                              TextureImageHandle  image,
-                              Extent2D,
-                              PixelFormat,
-                              uint32_t baseLayer = 0u);
             [[nodiscard]] static Texture fromExternalImage(TextureDeviceHandle device,
                                                            TextureImageHandle  image,
-                                                           Extent2D,
-                                                           PixelFormat,
-                                                           uint32_t baseLayer,
-                                                           uint32_t numLayers);
-            [[nodiscard]] static Texture fromExternalImage(RenderBackendApi api,
+                                                           Extent2D            extent,
+                                                           PixelFormat         pixelFormat,
+                                                           uint32_t            baseLayer = 0u);
+            [[nodiscard]] static Texture fromExternalImage(TextureDeviceHandle device,
+                                                           TextureImageHandle  image,
+                                                           Extent2D            extent,
+                                                           PixelFormat         pixelFormat,
+                                                           uint32_t            baseLayer,
+                                                           uint32_t            numLayers);
+            [[nodiscard]] static Texture fromExternalImage(RenderBackendApi    api,
                                                            TextureDeviceHandle device,
                                                            TextureImageHandle  image,
-                                                           Extent2D,
-                                                           PixelFormat,
-                                                           uint32_t baseLayer = 0u);
-            [[nodiscard]] static Texture fromExternalImage(RenderBackendApi api,
+                                                           Extent2D            extent,
+                                                           PixelFormat         pixelFormat,
+                                                           uint32_t            baseLayer = 0u);
+            [[nodiscard]] static Texture fromExternalImage(RenderBackendApi    api,
                                                            TextureDeviceHandle device,
                                                            TextureImageHandle  image,
-                                                           Extent2D,
-                                                           PixelFormat,
-                                                           uint32_t baseLayer,
-                                                           uint32_t numLayers);
-            [[nodiscard]] static Texture
-            fromOwnedImage(RenderBackendApi api,
-                           TextureDeviceHandle device,
-                           TextureImageHandle  image,
-                           Extent2D,
-                           PixelFormat,
-                           uint32_t baseLayer = 0u);
-            [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi api,
+                                                           Extent2D            extent,
+                                                           PixelFormat         pixelFormat,
+                                                           uint32_t            baseLayer,
+                                                           uint32_t            numLayers);
+            [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi    api,
                                                         TextureDeviceHandle device,
                                                         TextureImageHandle  image,
-                                                        Extent2D,
-                                                        PixelFormat,
-                                                        uint32_t baseLayer,
-                                                        uint32_t numLayers);
+                                                        Extent2D            extent,
+                                                        PixelFormat         pixelFormat,
+                                                        uint32_t            baseLayer = 0u);
+            [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi    api,
+                                                        TextureDeviceHandle device,
+                                                        TextureImageHandle  image,
+                                                        Extent2D            extent,
+                                                        PixelFormat         pixelFormat,
+                                                        uint32_t            baseLayer,
+                                                        uint32_t            numLayers);
 
             struct AspectData
             {
-                TextureView              imageView {};
+                TextureView              imageView;
                 std::vector<TextureView> mipLevels;
                 std::vector<TextureView> layers;
             };
-            void              createAspect(TextureDeviceHandle, TextureImageHandle, uint32_t, ImageAspectFlags, AspectData&);
-            void              initImportedNativeAspects(TextureImageHandle, PixelFormat);
-            void              createAspectNative(TextureImageHandle, uint32_t, ImageAspectFlags, AspectData&);
-            void              destroyNativeResources() noexcept;
+            void createAspect(TextureDeviceHandle, TextureImageHandle, uint32_t, ImageAspectFlags, AspectData&);
+            void initImportedNativeAspects(TextureImageHandle, PixelFormat);
+            void createAspectNative(TextureImageHandle, uint32_t, ImageAspectFlags, AspectData&);
+            void destroyNativeResources() noexcept;
             const AspectData* getAspect(ImageAspectFlags) const;
 
         private:
@@ -256,13 +254,13 @@ namespace vultra
             struct AllocatedImage
             {
                 TextureAllocationHandle allocationHandle {};
-                std::uintptr_t handle {0};
-                uint64_t       allocationSize {0};
+                std::uintptr_t          handle {0};
+                uint64_t                allocationSize {0};
 
                 bool operator==(const AllocatedImage&) const = default;
             };
             using ImageVariant = std::variant<std::monostate, std::uintptr_t, AllocatedImage>;
-            ImageVariant m_Image;
+            ImageVariant     m_Image;
             RenderBackendApi m_BackendApi {RenderBackendApi::eVulkan};
             bool             m_OwnsImage {false};
 
@@ -273,7 +271,7 @@ namespace vultra
 
             std::unordered_map<uint32_t, AspectData> m_Aspects;
 
-            Sampler m_Sampler {}; // Non-owning.
+            Sampler m_Sampler; // Non-owning.
 
             Extent2D    m_Extent {0u};
             uint32_t    m_Depth {0u};
@@ -285,8 +283,8 @@ namespace vultra
             ImageUsage  m_UsageFlags {ImageUsage::eSampled};
         };
 
-        [[nodiscard]] bool                 isFormatSupported(const RenderDevice&, PixelFormat, ImageUsage);
-        [[nodiscard]] ImageAspectFlags     getAspectMask(const Texture&);
+        [[nodiscard]] bool             isFormatSupported(const RenderDevice&, PixelFormat, ImageUsage);
+        [[nodiscard]] ImageAspectFlags getAspectMask(const Texture&);
 
         [[nodiscard]] uint32_t   calcMipLevels(Extent2D);
         [[nodiscard]] uint32_t   calcMipLevels(uint32_t size);

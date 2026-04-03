@@ -13,10 +13,10 @@ namespace vultra
         class Texture;
 
         void upload(RenderDevice&,
-                    const Buffer&                       srcStagingBuffer,
-                    std::span<const BufferImageCopy>    copyRegions,
-                    Texture&                            dst,
-                    const bool                          generateMipmaps = false);
+                    const Buffer&                    srcStagingBuffer,
+                    std::span<const BufferImageCopy> copyRegions,
+                    Texture&                         dst,
+                    const bool                       generateMipmaps = false);
 
         uint32_t alignedSize(const uint32_t size, const uint32_t alignment);
     } // namespace rhi

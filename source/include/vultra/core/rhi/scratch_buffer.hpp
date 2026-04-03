@@ -18,7 +18,7 @@ namespace vultra
             friend class RenderDevice;
             ScratchBuffer(Buffer&& buffer, DeviceAddress deviceAddress);
 
-            DeviceAddress m_DeviceAddress {};
+            DeviceAddress m_DeviceAddress;
         };
     } // namespace rhi
 } // namespace vultra

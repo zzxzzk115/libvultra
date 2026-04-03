@@ -10,7 +10,7 @@ namespace vultra
     {
         struct RenderTargetView
         {
-            FrameIndex     frameIndex {};
+            FrameIndex     frameIndex;
             std::uintptr_t handle {0};
         };
     } // namespace rhi

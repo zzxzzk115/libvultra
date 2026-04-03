@@ -18,5 +18,5 @@ namespace vultra
         private:
             explicit StorageBuffer(Buffer&&);
         };
-    }
+    } // namespace rhi
 } // namespace vultra

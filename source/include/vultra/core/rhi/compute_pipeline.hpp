@@ -33,12 +33,12 @@ namespace vultra
             ComputePipeline(PipelineLayout&&,
                             const glm::uvec3 localSize,
                             std::uintptr_t,
-                            std::unique_ptr<IPipeline> destroyBackend,
+                            std::unique_ptr<IPipeline>        destroyBackend,
                             std::unique_ptr<IComputePipeline> backend);
 
         private:
             std::unique_ptr<IComputePipeline> m_Backend;
-            glm::uvec3 m_LocalSize {};
+            glm::uvec3                        m_LocalSize {};
         };
 
         [[nodiscard]] glm::uvec2  calcNumWorkGroups(const glm::uvec2 extent, const glm::uvec2 localSize);

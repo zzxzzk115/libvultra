@@ -28,18 +28,18 @@ namespace vultra
 
         enum class ShaderStages : uint64_t
         {
-            eNone      = 0,
-            eVertex    = BIT(0),
-            eGeometry  = BIT(1),
-            eFragment  = BIT(2),
-            eCompute   = BIT(3),
-            eRayGen    = BIT(4),
-            eMiss      = BIT(5),
+            eNone       = 0,
+            eVertex     = BIT(0),
+            eGeometry   = BIT(1),
+            eFragment   = BIT(2),
+            eCompute    = BIT(3),
+            eRayGen     = BIT(4),
+            eMiss       = BIT(5),
             eClosestHit = BIT(6),
-            eAnyHit    = BIT(7),
-            eIntersect = BIT(8),
-            eMesh      = BIT(9),
-            eTask      = BIT(10),
+            eAnyHit     = BIT(7),
+            eIntersect  = BIT(8),
+            eMesh       = BIT(9),
+            eTask       = BIT(10),
         };
 
         using SPIRV = std::vector<uint32_t>;

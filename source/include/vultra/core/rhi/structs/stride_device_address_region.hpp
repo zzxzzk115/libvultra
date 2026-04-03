@@ -10,9 +10,9 @@ namespace vultra
     {
         struct StrideDeviceAddressRegion
         {
-            DeviceAddress deviceAddress {};
-            uint64_t stride {0};
-            uint64_t size {0};
+            DeviceAddress deviceAddress;
+            uint64_t      stride {0};
+            uint64_t      size {0};
         };
     } // namespace rhi
 } // namespace vultra

@@ -1,6 +1,6 @@
+#include "vultra/core/rhi/backends/webgpu/webgpu_render_device.hpp"
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/base/common_context.hpp"
-#include "vultra/core/rhi/backends/webgpu/webgpu_render_device.hpp"
 
 #include <format>
 #include <stdexcept>
@@ -80,7 +80,7 @@ namespace vultra
             };
 
             void onRequestAdapter(const WGPURequestAdapterStatus status,
-                                  const WGPUAdapter              adapter,
+                                  WGPUAdapter                    adapter,
                                   const WGPUStringView           message,
                                   void*                          userdata1,
                                   void*)
@@ -93,7 +93,7 @@ namespace vultra
             }
 
             void onRequestDevice(const WGPURequestDeviceStatus status,
-                                 const WGPUDevice              device,
+                                 WGPUDevice                    device,
                                  const WGPUStringView          message,
                                  void*                         userdata1,
                                  void*)
@@ -116,11 +116,8 @@ namespace vultra
                                   toStdString(message));
             }
 
-            void onUncapturedError(const WGPUDevice*,
-                                   const WGPUErrorType type,
-                                   const WGPUStringView message,
-                                   void*,
-                                   void*)
+            void
+            onUncapturedError(const WGPUDevice*, const WGPUErrorType type, const WGPUStringView message, void*, void*)
             {
                 VULTRA_CORE_ERROR("[RenderDevice] WebGPU uncaptured error (type={}): {}",
                                   static_cast<int>(type),
@@ -128,19 +125,19 @@ namespace vultra
             }
 
             template<typename Predicate>
-            void waitForFuture(const WGPUInstance instance, const WGPUFuture future, Predicate&& done)
+            void waitForFuture(WGPUInstance instance, const WGPUFuture future, Predicate&& done)
             {
                 WGPUFutureWaitInfo waitInfo {};
                 waitInfo.future = future;
 
                 while (!done())
                 {
-                    waitInfo.completed = false;
+                    waitInfo.completed    = false;
                     const auto waitStatus = wgpuInstanceWaitAny(instance, 1, &waitInfo, 0);
                     if (waitStatus != WGPUWaitStatus_Success && waitStatus != WGPUWaitStatus_TimedOut)
                     {
-                        throw std::runtime_error(std::format("wgpuInstanceWaitAny failed with status {}",
-                                                             static_cast<int>(waitStatus)));
+                        throw std::runtime_error(
+                            std::format("wgpuInstanceWaitAny failed with status {}", static_cast<int>(waitStatus)));
                     }
 
                     if (waitStatus == WGPUWaitStatus_TimedOut)
@@ -176,7 +173,7 @@ namespace vultra
             adapterOptions.backendType          = WGPUBackendType_Undefined;
             adapterOptions.compatibleSurface    = nullptr;
 
-            AdapterRequestResult adapterResult {};
+            AdapterRequestResult           adapterResult {};
             WGPURequestAdapterCallbackInfo adapterCallbackInfo {};
             adapterCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
             adapterCallbackInfo.callback  = onRequestAdapter;
@@ -201,13 +198,13 @@ namespace vultra
             }
 
             WGPUDeviceDescriptor deviceDesc {};
-            deviceDesc.label.data                = m_AppName.c_str();
-            deviceDesc.label.length              = WGPU_STRLEN;
-            deviceDesc.requiredFeatureCount      = static_cast<size_t>(requiredFeatures.size());
-            deviceDesc.requiredFeatures          = requiredFeatures.empty() ? nullptr : requiredFeatures.data();
-            deviceDesc.requiredLimits            = nullptr;
-            deviceDesc.defaultQueue.label.data   = m_AppName.c_str();
-            deviceDesc.defaultQueue.label.length = WGPU_STRLEN;
+            deviceDesc.label.data                       = m_AppName.c_str();
+            deviceDesc.label.length                     = WGPU_STRLEN;
+            deviceDesc.requiredFeatureCount             = static_cast<size_t>(requiredFeatures.size());
+            deviceDesc.requiredFeatures                 = requiredFeatures.empty() ? nullptr : requiredFeatures.data();
+            deviceDesc.requiredLimits                   = nullptr;
+            deviceDesc.defaultQueue.label.data          = m_AppName.c_str();
+            deviceDesc.defaultQueue.label.length        = WGPU_STRLEN;
             deviceDesc.deviceLostCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
             deviceDesc.deviceLostCallbackInfo.callback  = onDeviceLost;
             deviceDesc.deviceLostCallbackInfo.userdata1 = nullptr;
@@ -216,7 +213,7 @@ namespace vultra
             deviceDesc.uncapturedErrorCallbackInfo.userdata1 = nullptr;
             deviceDesc.uncapturedErrorCallbackInfo.userdata2 = nullptr;
 
-            DeviceRequestResult deviceResult {};
+            DeviceRequestResult           deviceResult {};
             WGPURequestDeviceCallbackInfo deviceCallbackInfo {};
             deviceCallbackInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
             deviceCallbackInfo.callback  = onRequestDevice;

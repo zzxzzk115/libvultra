@@ -5,7 +5,7 @@
 
 #include "vultra/core/rhi/interfaces/iradix_sorter.hpp"
 #include "vultra/core/rhi/structs/radix_sorter_types.hpp"
- 
+
 namespace vultra
 {
     namespace rhi
@@ -34,31 +34,31 @@ namespace vultra
             [[nodiscard]] RadixSorterStorageRequirements getKeyValueStorageRequirements() const;
 
             void sortKeys(CommandBuffer&,
-                          uint32_t       elementCount,
-                          const Buffer&  keys,
-                          uint64_t       keysOffset,
-                          const Buffer&  storage,
-                          uint64_t       storageOffset) const;
+                          uint32_t      elementCount,
+                          const Buffer& keys,
+                          uint64_t      keysOffset,
+                          const Buffer& storage,
+                          uint64_t      storageOffset) const;
 
             void sortKeyValues(CommandBuffer&,
-                               uint32_t       elementCount,
-                               const Buffer&  keys,
-                               uint64_t       keysOffset,
-                               const Buffer&  values,
-                               uint64_t       valuesOffset,
-                               const Buffer&  storage,
-                               uint64_t       storageOffset) const;
+                               uint32_t      elementCount,
+                               const Buffer& keys,
+                               uint64_t      keysOffset,
+                               const Buffer& values,
+                               uint64_t      valuesOffset,
+                               const Buffer& storage,
+                               uint64_t      storageOffset) const;
 
             void sortKeyValuesIndirect(CommandBuffer&,
-                                       uint32_t       maxElementCount,
-                                       const Buffer&  indirect,
-                                       uint64_t       indirectOffset,
-                                       const Buffer&  keys,
-                                       uint64_t       keysOffset,
-                                       const Buffer&  values,
-                                       uint64_t       valuesOffset,
-                                       const Buffer&  storage,
-                                       uint64_t       storageOffset) const;
+                                       uint32_t      maxElementCount,
+                                       const Buffer& indirect,
+                                       uint64_t      indirectOffset,
+                                       const Buffer& keys,
+                                       uint64_t      keysOffset,
+                                       const Buffer& values,
+                                       uint64_t      valuesOffset,
+                                       const Buffer& storage,
+                                       uint64_t      storageOffset) const;
 
         private:
             explicit RadixSorter(std::unique_ptr<IRadixSorter>&&);

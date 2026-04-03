@@ -12,8 +12,8 @@
 #include "vultra/platform/android/android_native_window.hpp"
 #include "vultra/platform/sdl/sdl_window.hpp"
 
-#include <imgui.h>
 #include <algorithm>
+#include <imgui.h>
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
 #include <imgui_impl_wgpu.h>
@@ -33,11 +33,11 @@ namespace vultra::rhi
 
     WebGPUImGui::~WebGPUImGui() { shutdown({}, nullptr); }
 
-    void WebGPUImGui::init(const os::Window&      window,
-                                  const RenderDevice&    renderDevice,
-                                  const Swapchain&       swapchain,
-                                  const bool             enableMultiviewport,
-                                  const bool             enableDocking)
+    void WebGPUImGui::init(const os::Window&   window,
+                           const RenderDevice& renderDevice,
+                           const Swapchain&    swapchain,
+                           const bool          enableMultiviewport,
+                           const bool          enableDocking)
     {
         m_Initialized = true;
 
@@ -52,8 +52,8 @@ namespace vultra::rhi
             ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
             if (!m_WarnedViewportUnsupported)
             {
-                VULTRA_CORE_WARN(
-                    "[WebGPUImGui] Multi-viewport is requested but not supported by imgui_impl_wgpu. Falling back to single viewport.");
+                VULTRA_CORE_WARN("[WebGPUImGui] Multi-viewport is requested but not supported by imgui_impl_wgpu. "
+                                 "Falling back to single viewport.");
                 m_WarnedViewportUnsupported = true;
             }
         }
@@ -71,7 +71,7 @@ namespace vultra::rhi
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
         ImGui_ImplWGPU_InitInfo initInfo {};
-        initInfo.Device             = reinterpret_cast<WGPUDevice>(WebGPURenderDeviceAccess::getDeviceHandle(renderDevice));
+        initInfo.Device = reinterpret_cast<WGPUDevice>(WebGPURenderDeviceAccess::getDeviceHandle(renderDevice));
         initInfo.NumFramesInFlight  = static_cast<int>(std::max<std::size_t>(swapchain.getNumBuffers(), 2));
         initInfo.RenderTargetFormat = webgpu::toWgpuTextureFormat(swapchain.getPixelFormat());
         ImGui_ImplWGPU_Init(&initInfo);
@@ -111,7 +111,7 @@ namespace vultra::rhi
     {
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
         ImGui::Render();
-        const auto renderPass = WebGPUCommandBufferAccess::getCurrentRenderPassEncoder(cb);
+        auto* const renderPass = WebGPUCommandBufferAccess::getCurrentRenderPassEncoder(cb);
         if (renderPass != nullptr)
         {
             ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPass);

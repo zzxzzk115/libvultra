@@ -11,15 +11,11 @@ namespace vultra
     {
         namespace
         {
-            [[nodiscard]] vk::DescriptorPool createDescriptorPool(const vk::Device device,
-                                                                  const bool       raytracing,
-                                                                  const uint32_t   setsPerPool)
+            [[nodiscard]] vk::DescriptorPool
+            createDescriptorPool(const vk::Device device, const bool raytracing, const uint32_t setsPerPool)
             {
 #define POOL_SIZE(Type, Multiplier) \
-    vk::DescriptorPoolSize \
-    { \
-        vk::DescriptorType::Type, static_cast<uint32_t>(setsPerPool * Multiplier) \
-    }
+    vk::DescriptorPoolSize { vk::DescriptorType::Type, static_cast<uint32_t>(setsPerPool * Multiplier) }
                 auto poolSizes = std::vector<vk::DescriptorPoolSize> {
                     POOL_SIZE(eSampler, 0.26f),
                     POOL_SIZE(eCombinedImageSampler, 10.24f),
@@ -72,10 +68,10 @@ namespace vultra
             m_Device.destroyDescriptorPool(vk::DescriptorPool {asVkHandle<VkDescriptorPool>(poolHandle)});
         }
 
-        DescriptorSetHandle VulkanDescriptorSetAllocator::allocateDescriptorSet(
-            const std::uintptr_t poolHandle,
-            const std::uintptr_t descriptorSetLayoutHandle,
-            const uint32_t       variableDescriptorCount)
+        DescriptorSetHandle
+        VulkanDescriptorSetAllocator::allocateDescriptorSet(const std::uintptr_t poolHandle,
+                                                            const std::uintptr_t descriptorSetLayoutHandle,
+                                                            const uint32_t       variableDescriptorCount)
         {
             vk::DescriptorSetVariableDescriptorCountAllocateInfo countInfo {};
             countInfo.descriptorSetCount = 1;
@@ -84,9 +80,9 @@ namespace vultra
             vk::DescriptorSetAllocateInfo allocateInfo {};
             allocateInfo.descriptorPool     = vk::DescriptorPool {asVkHandle<VkDescriptorPool>(poolHandle)};
             allocateInfo.descriptorSetCount = 1;
-            const auto layout               = vk::DescriptorSetLayout {asVkHandle<VkDescriptorSetLayout>(descriptorSetLayoutHandle)};
-            allocateInfo.pSetLayouts        = &layout;
-            allocateInfo.pNext              = variableDescriptorCount > 0 ? &countInfo : nullptr;
+            const auto layout = vk::DescriptorSetLayout {asVkHandle<VkDescriptorSetLayout>(descriptorSetLayoutHandle)};
+            allocateInfo.pSetLayouts = &layout;
+            allocateInfo.pNext       = variableDescriptorCount > 0 ? &countInfo : nullptr;
 
             vk::DescriptorSet descriptorSet {};
             const auto        result = m_Device.allocateDescriptorSets(&allocateInfo, &descriptorSet);

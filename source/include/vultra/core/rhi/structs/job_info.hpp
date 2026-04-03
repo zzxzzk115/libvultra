@@ -9,9 +9,9 @@ namespace vultra
     {
         struct JobInfo
         {
-            SemaphoreHandle wait {};
+            SemaphoreHandle wait;
             PipelineStages  waitStage {PipelineStages::eAllCommands};
-            SemaphoreHandle signal {};
+            SemaphoreHandle signal;
         };
     } // namespace rhi
 } // namespace vultra

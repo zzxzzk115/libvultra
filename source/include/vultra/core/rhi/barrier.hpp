@@ -1,7 +1,7 @@
 #pragma once
 
-#include "vultra/core/rhi/structs/barrier_scope.hpp"
 #include "vultra/core/rhi/buffer.hpp"
+#include "vultra/core/rhi/structs/barrier_scope.hpp"
 #include "vultra/core/rhi/structs/image_aspect.hpp"
 #include "vultra/core/rhi/structs/image_layout.hpp"
 #include "vultra/core/rhi/structs/texture_type.hpp"
@@ -36,8 +36,8 @@ namespace vultra
             const Buffer* buffer {nullptr};
             uint64_t      offset {0};
             uint64_t      size {UINT64_MAX};
-            BarrierScope   src;
-            BarrierScope   dst;
+            BarrierScope  src;
+            BarrierScope  dst;
         };
 
         struct BarrierImage
@@ -55,7 +55,7 @@ namespace vultra
             friend class CommandBuffer;
 
         public:
-            [[nodiscard]] bool isEffective() const;
+            [[nodiscard]] bool                              isEffective() const;
             [[nodiscard]] const std::vector<BarrierMemory>& getMemoryBarriers() const;
             [[nodiscard]] const std::vector<BarrierBuffer>& getBufferBarriers() const;
             [[nodiscard]] const std::vector<BarrierImage>&  getImageBarriers() const;
@@ -78,9 +78,9 @@ namespace vultra
 
                 struct BufferInfo
                 {
-                    Buffer&       buffer;
-                    uint64_t      offset {0};
-                    uint64_t      size {UINT64_MAX};
+                    Buffer&  buffer;
+                    uint64_t offset {0};
+                    uint64_t size {UINT64_MAX};
                 };
                 Builder& bufferBarrier(const BufferInfo& info, const BarrierScope& dst);
 

@@ -7,65 +7,65 @@ namespace vultra
 {
     namespace rhi
     {
-namespace
-{
-    constexpr uint32_t kRuntimeSizedDescriptorUpperBound = 1024u;
-
-    [[nodiscard]] vultra::rhi::ShaderStages toStages(const vshadersystem::ShaderStageFlags flags)
-    {
-        using vultra::rhi::ShaderStages;
-        ShaderStages out {ShaderStages::eNone};
-
-        using namespace vshadersystem;
-        if (flags & ShaderStageFlagBits::eStageVert)
-            out |= ShaderStages::eVertex;
-        if (flags & ShaderStageFlagBits::eStageFrag)
-            out |= ShaderStages::eFragment;
-        if (flags & ShaderStageFlagBits::eStageComp)
-            out |= ShaderStages::eCompute;
-        if (flags & ShaderStageFlagBits::eStageTask)
-            out |= ShaderStages::eTask;
-        if (flags & ShaderStageFlagBits::eStageMesh)
-            out |= ShaderStages::eMesh;
-
-        if (flags & ShaderStageFlagBits::eStageRgen)
-            out |= ShaderStages::eRayGen;
-        if (flags & ShaderStageFlagBits::eStageRmiss)
-            out |= ShaderStages::eMiss;
-        if (flags & ShaderStageFlagBits::eStageRchit)
-            out |= ShaderStages::eClosestHit;
-        if (flags & ShaderStageFlagBits::eStageRahit)
-            out |= ShaderStages::eAnyHit;
-        if (flags & ShaderStageFlagBits::eStageRint)
-            out |= ShaderStages::eIntersect;
-
-        return out;
-    }
-
-    [[nodiscard]] vultra::rhi::DescriptorType toDescriptorType(const vshadersystem::DescriptorKind k)
-    {
-        using DK = vshadersystem::DescriptorKind;
-        switch (k)
+        namespace
         {
-            case DK::eUniformBuffer:
-                return vultra::rhi::DescriptorType::eUniformBuffer;
-            case DK::eStorageBuffer:
-                return vultra::rhi::DescriptorType::eStorageBuffer;
-            case DK::eSampledImage:
-                return vultra::rhi::DescriptorType::eSampledImage;
-            case DK::eStorageImage:
-                return vultra::rhi::DescriptorType::eStorageImage;
-            case DK::eSampler:
-                return vultra::rhi::DescriptorType::eSampler;
-            case DK::eCombinedImageSampler:
-                return vultra::rhi::DescriptorType::eCombinedImageSampler;
-            case DK::eAccelerationStructure:
-                return vultra::rhi::DescriptorType::eAccelerationStructure;
-            default:
-                return vultra::rhi::DescriptorType::eSampler;
-        }
-    }
-} // namespace
+            constexpr uint32_t kRuntimeSizedDescriptorUpperBound = 1024u;
+
+            [[nodiscard]] vultra::rhi::ShaderStages toStages(const vshadersystem::ShaderStageFlags flags)
+            {
+                using vultra::rhi::ShaderStages;
+                ShaderStages out {ShaderStages::eNone};
+
+                using namespace vshadersystem;
+                if (flags & ShaderStageFlagBits::eStageVert)
+                    out |= ShaderStages::eVertex;
+                if (flags & ShaderStageFlagBits::eStageFrag)
+                    out |= ShaderStages::eFragment;
+                if (flags & ShaderStageFlagBits::eStageComp)
+                    out |= ShaderStages::eCompute;
+                if (flags & ShaderStageFlagBits::eStageTask)
+                    out |= ShaderStages::eTask;
+                if (flags & ShaderStageFlagBits::eStageMesh)
+                    out |= ShaderStages::eMesh;
+
+                if (flags & ShaderStageFlagBits::eStageRgen)
+                    out |= ShaderStages::eRayGen;
+                if (flags & ShaderStageFlagBits::eStageRmiss)
+                    out |= ShaderStages::eMiss;
+                if (flags & ShaderStageFlagBits::eStageRchit)
+                    out |= ShaderStages::eClosestHit;
+                if (flags & ShaderStageFlagBits::eStageRahit)
+                    out |= ShaderStages::eAnyHit;
+                if (flags & ShaderStageFlagBits::eStageRint)
+                    out |= ShaderStages::eIntersect;
+
+                return out;
+            }
+
+            [[nodiscard]] vultra::rhi::DescriptorType toDescriptorType(const vshadersystem::DescriptorKind k)
+            {
+                using DK = vshadersystem::DescriptorKind;
+                switch (k)
+                {
+                    case DK::eUniformBuffer:
+                        return vultra::rhi::DescriptorType::eUniformBuffer;
+                    case DK::eStorageBuffer:
+                        return vultra::rhi::DescriptorType::eStorageBuffer;
+                    case DK::eSampledImage:
+                        return vultra::rhi::DescriptorType::eSampledImage;
+                    case DK::eStorageImage:
+                        return vultra::rhi::DescriptorType::eStorageImage;
+                    case DK::eSampler:
+                        return vultra::rhi::DescriptorType::eSampler;
+                    case DK::eCombinedImageSampler:
+                        return vultra::rhi::DescriptorType::eCombinedImageSampler;
+                    case DK::eAccelerationStructure:
+                        return vultra::rhi::DescriptorType::eAccelerationStructure;
+                    default:
+                        return vultra::rhi::DescriptorType::eSampler;
+                }
+            }
+        } // namespace
 
         void ShaderReflection::accumulate(const vshadersystem::ShaderReflection& r)
         {

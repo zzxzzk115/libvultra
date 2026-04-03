@@ -27,7 +27,7 @@ namespace vultra
 
             [[nodiscard]] explicit operator bool() const;
 
-            [[nodiscard]] std::uintptr_t getHandle() const;
+            [[nodiscard]] std::uintptr_t         getHandle() const;
             [[nodiscard]] DescriptorSetLayoutKey getDescriptorSet(const DescriptorSetIndex) const;
 
             class Builder
@@ -47,14 +47,17 @@ namespace vultra
                                    uint32_t count,
                                    ShaderStages,
                                    const uint32_t = {});
-                Builder& addSampledImage(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
+                Builder&
+                addSampledImage(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
                 Builder& addSampledImages(const DescriptorSetIndex,
                                           const BindingIndex,
                                           uint32_t count,
                                           ShaderStages,
                                           const uint32_t = {});
-                Builder& addUniformBuffer(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
-                Builder& addStorageBuffer(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
+                Builder&
+                addUniformBuffer(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
+                Builder&
+                addStorageBuffer(const DescriptorSetIndex, const BindingIndex, ShaderStages, const uint32_t = {});
 
                 Builder& addAccelerationStructure(const DescriptorSetIndex,
                                                   const BindingIndex,

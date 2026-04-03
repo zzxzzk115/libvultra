@@ -1,10 +1,10 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
-#include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/acceleration_structure.hpp"
 #include "vultra/core/rhi/storage_buffer.hpp"
 #include "vultra/core/rhi/structs/device_address.hpp"
+#include "vultra/core/rhi/structs/index_type.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -17,14 +17,14 @@ namespace vultra
 
         struct RenderSubMesh
         {
-            DeviceAddress vertexBufferAddress {};
-            DeviceAddress indexBufferAddress {};
-            DeviceAddress transformBufferAddress {};
+            DeviceAddress vertexBufferAddress;
+            DeviceAddress indexBufferAddress;
+            DeviceAddress transformBufferAddress;
 
-            DeviceAddress meshletBufferAddress {};
-            DeviceAddress meshletVertexBufferAddress {};
-            DeviceAddress meshletTriangleBufferAddress {};
-            uint32_t meshletCount {0};
+            DeviceAddress meshletBufferAddress;
+            DeviceAddress meshletVertexBufferAddress;
+            DeviceAddress meshletTriangleBufferAddress;
+            uint32_t      meshletCount {0};
 
             uint32_t vertexStride {0};
             uint32_t vertexCount {0};

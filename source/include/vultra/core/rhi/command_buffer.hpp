@@ -3,11 +3,11 @@
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/profiling/tracky.hpp"
 #include "vultra/core/profiling/tracy_wrapper.hpp"
-#include "vultra/core/rhi/interfaces/icommand_buffer.hpp"
-#include "vultra/core/rhi/descriptorset_builder.hpp"
 #include "vultra/core/rhi/debug_marker.hpp"
-#include "vultra/core/rhi/structs/handles.hpp"
+#include "vultra/core/rhi/descriptorset_builder.hpp"
+#include "vultra/core/rhi/interfaces/icommand_buffer.hpp"
 #include "vultra/core/rhi/structs/buffer_image_copy.hpp"
+#include "vultra/core/rhi/structs/handles.hpp"
 
 #include <vbase/core/scoped_enum_flags.hpp>
 
@@ -42,12 +42,12 @@ namespace vultra
             friend class WebGPUCommandBufferAccess;
 
         public:
-            CommandBuffer() = default;
-            CommandBuffer(const CommandBuffer&) = delete;
+            CommandBuffer()                         = default;
+            CommandBuffer(const CommandBuffer&)     = delete;
             CommandBuffer(CommandBuffer&&) noexcept = default;
             ~CommandBuffer()                        = default;
 
-            CommandBuffer& operator=(const CommandBuffer&) = delete;
+            CommandBuffer& operator=(const CommandBuffer&)     = delete;
             CommandBuffer& operator=(CommandBuffer&&) noexcept = default;
 
             [[nodiscard]] std::uintptr_t getHandle() const
@@ -212,7 +212,8 @@ namespace vultra
                 m_Impl->drawIndirect(dii);
                 return *this;
             }
-            CommandBuffer& drawIndirectCount(const DrawIndirectInfo& dii, const Buffer& countBuffer, uint32_t countOffset)
+            CommandBuffer&
+            drawIndirectCount(const DrawIndirectInfo& dii, const Buffer& countBuffer, uint32_t countOffset)
             {
                 assert(m_Impl);
                 m_Impl->drawIndirectCount(dii, countBuffer, countOffset);
@@ -274,7 +275,11 @@ namespace vultra
                 return *this;
             }
 
-            CommandBuffer& blit(Texture& src, Texture& dst, const TexelFilter filter, uint32_t srcMipLevel = 0, uint32_t dstMipLevel = 0)
+            CommandBuffer& blit(Texture&          src,
+                                Texture&          dst,
+                                const TexelFilter filter,
+                                uint32_t          srcMipLevel = 0,
+                                uint32_t          dstMipLevel = 0)
             {
                 assert(m_Impl);
                 m_Impl->blit(src, dst, filter, srcMipLevel, dstMipLevel);

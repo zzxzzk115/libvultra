@@ -27,4 +27,3 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
-

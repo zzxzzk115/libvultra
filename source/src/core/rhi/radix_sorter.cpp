@@ -1,7 +1,7 @@
 #include "vultra/core/rhi/radix_sorter.hpp"
 
-#include "vultra/core/rhi/interfaces/iradix_sorter.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/interfaces/iradix_sorter.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 
 #include <cassert>
@@ -24,14 +24,11 @@ namespace vultra
             return rd.createRadixSorter(maxElementCount);
         }
 
-        RadixSorter::RadixSorter(RadixSorter&&) noexcept = default;
-        RadixSorter::~RadixSorter()                      = default;
+        RadixSorter::RadixSorter(RadixSorter&&) noexcept            = default;
+        RadixSorter::~RadixSorter()                                 = default;
         RadixSorter& RadixSorter::operator=(RadixSorter&&) noexcept = default;
 
-        RadixSorter::operator bool() const
-        {
-            return m_Backend && static_cast<bool>(*m_Backend);
-        }
+        RadixSorter::operator bool() const { return m_Backend && static_cast<bool>(*m_Backend); }
 
         uint32_t RadixSorter::getMaxElementCount() const
         {
@@ -87,8 +84,16 @@ namespace vultra
                                                 const uint64_t storageOffset) const
         {
             assert(*this);
-            m_Backend->sortKeyValuesIndirect(
-                cb, maxElementCount, indirect, indirectOffset, keys, keysOffset, values, valuesOffset, storage, storageOffset);
+            m_Backend->sortKeyValuesIndirect(cb,
+                                             maxElementCount,
+                                             indirect,
+                                             indirectOffset,
+                                             keys,
+                                             keysOffset,
+                                             values,
+                                             valuesOffset,
+                                             storage,
+                                             storageOffset);
         }
     } // namespace rhi
 } // namespace vultra

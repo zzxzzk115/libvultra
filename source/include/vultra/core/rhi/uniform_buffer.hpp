@@ -18,5 +18,5 @@ namespace vultra
         private:
             explicit UniformBuffer(Buffer&&);
         };
-    }
+    } // namespace rhi
 } // namespace vultra

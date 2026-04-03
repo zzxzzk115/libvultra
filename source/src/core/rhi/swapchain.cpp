@@ -47,13 +47,13 @@ namespace vultra
             return m_Backend->acquireNextImage(imageAcquired);
         }
 
-        Swapchain::Swapchain(const std::uintptr_t instance,
-                             const std::uintptr_t physicalDevice,
-                             const std::uintptr_t device,
+        Swapchain::Swapchain(const std::uintptr_t   instance,
+                             const std::uintptr_t   physicalDevice,
+                             const std::uintptr_t   device,
                              const RenderBackendApi backendApi,
-                             os::Window*          window,
-                             const SwapchainFormat format,
-                             const VerticalSync   vsync)
+                             os::Window*            window,
+                             const SwapchainFormat  format,
+                             const VerticalSync     vsync)
         {
             m_Backend = createSwapchain(instance, physicalDevice, device, backendApi, window, format, vsync);
         }

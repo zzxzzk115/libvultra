@@ -1,10 +1,10 @@
 #include "vultra/core/rhi/backends/vk/vulkan_imgui.hpp"
 
 #include "vultra/core/event/window_events.hpp"
-#include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
+#include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/swapchain.hpp"
@@ -30,11 +30,11 @@ namespace vultra::rhi
 
     VulkanImGui::~VulkanImGui() { shutdown({}, nullptr); }
 
-    void VulkanImGui::init(const os::Window&      window,
-                                  const RenderDevice&    renderDevice,
-                                  const Swapchain&       swapchain,
-                                  const bool             enableMultiviewport,
-                                  const bool             enableDocking)
+    void VulkanImGui::init(const os::Window&   window,
+                           const RenderDevice& renderDevice,
+                           const Swapchain&    swapchain,
+                           const bool /*enableMultiviewport*/,
+                           const bool /*enableDocking*/)
     {
         m_Initialized = true;
 
@@ -46,18 +46,20 @@ namespace vultra::rhi
         ImGui_ImplSDL3_InitForVulkan(sdlWindow.getHandle());
 #endif
 
-        static vk::Format colorFormat = toVk(swapchain.getPixelFormat());
+        static vk::Format               colorFormat = toVk(swapchain.getPixelFormat());
         vk::PipelineRenderingCreateInfo renderingCreateInfo {};
         renderingCreateInfo.setColorAttachmentFormats(colorFormat);
 
         ImGui_ImplVulkan_InitInfo initInfo {};
         initInfo.Instance = asVkHandle<VkInstance>(VulkanRenderDeviceAccess::getInstanceHandle(renderDevice));
-        initInfo.PhysicalDevice = asVkHandle<VkPhysicalDevice>(VulkanRenderDeviceAccess::getPhysicalDeviceHandle(renderDevice));
-        initInfo.Device         = asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(renderDevice));
-        initInfo.QueueFamily    = VulkanRenderDeviceAccess::getQueueFamilyIndex(renderDevice);
-        initInfo.Queue          = asVkHandle<VkQueue>(VulkanRenderDeviceAccess::getQueueHandle(renderDevice));
-        initInfo.PipelineCache               = VK_NULL_HANDLE;
-        initInfo.DescriptorPool = asVkHandle<VkDescriptorPool>(VulkanRenderDeviceAccess::getDescriptorPoolHandle(renderDevice));
+        initInfo.PhysicalDevice =
+            asVkHandle<VkPhysicalDevice>(VulkanRenderDeviceAccess::getPhysicalDeviceHandle(renderDevice));
+        initInfo.Device        = asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(renderDevice));
+        initInfo.QueueFamily   = VulkanRenderDeviceAccess::getQueueFamilyIndex(renderDevice);
+        initInfo.Queue         = asVkHandle<VkQueue>(VulkanRenderDeviceAccess::getQueueHandle(renderDevice));
+        initInfo.PipelineCache = VK_NULL_HANDLE;
+        initInfo.DescriptorPool =
+            asVkHandle<VkDescriptorPool>(VulkanRenderDeviceAccess::getDescriptorPoolHandle(renderDevice));
         initInfo.Subpass                     = 0;
         initInfo.MinImageCount               = static_cast<uint32_t>(swapchain.getNumBuffers());
         initInfo.ImageCount                  = static_cast<uint32_t>(swapchain.getNumBuffers());
@@ -130,9 +132,10 @@ namespace vultra::rhi
 
     std::uintptr_t VulkanImGui::addTexture(const Texture& texture)
     {
-        const auto descriptorSet = ImGui_ImplVulkan_AddTexture(asVkHandle<VkSampler>(m_RenderDevice.getSamplerHandle(texture.getSampler()).value),
-                                                               asVkHandle<VkImageView>(texture.getImageView().getHandle()),
-                                                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        auto* const descriptorSet = ImGui_ImplVulkan_AddTexture(
+            asVkHandle<VkSampler>(m_RenderDevice.getSamplerHandle(texture.getSampler()).value),
+            asVkHandle<VkImageView>(texture.getImageView().getHandle()),
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         return toBackendHandle(descriptorSet);
     }
 

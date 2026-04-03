@@ -23,16 +23,15 @@ namespace vultra
             }
         } // namespace
 
-        void upload(RenderDevice&                     rd,
-                    const Buffer&                     srcStagingBuffer,
-                    std::span<const BufferImageCopy>  copyRegions,
-                    Texture&                          dst,
-                    const bool                        generateMipmaps)
+        void upload(RenderDevice&                    rd,
+                    const Buffer&                    srcStagingBuffer,
+                    std::span<const BufferImageCopy> copyRegions,
+                    Texture&                         dst,
+                    const bool                       generateMipmaps)
         {
             rd.execute([&](CommandBuffer& cb) {
-                cb.copyBuffer(srcStagingBuffer,
-                              dst,
-                              copyRegions.empty() ? std::array {getDefaultRegion(dst)} : copyRegions);
+                cb.copyBuffer(
+                    srcStagingBuffer, dst, copyRegions.empty() ? std::array {getDefaultRegion(dst)} : copyRegions);
                 // WebGPU path does not have runtime mipmap generation wired yet.
                 if (generateMipmaps && rd.getBackendApi() != RenderBackendApi::eWebGPU)
                     cb.generateMipmaps(dst);

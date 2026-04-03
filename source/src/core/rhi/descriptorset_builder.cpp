@@ -19,23 +19,24 @@ namespace vultra
             return *this;
         }
 
-        DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex index, const bindings::SeparateSampler& info)
+        DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex               index,
+                                                         const bindings::SeparateSampler& info)
         {
             assert(m_Impl);
             m_Impl->bind(index, info);
             return *this;
         }
 
-        DescriptorSetBuilder&
-        DescriptorSetBuilder::bind(const BindingIndex index, const bindings::CombinedImageSampler& info)
+        DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex                    index,
+                                                         const bindings::CombinedImageSampler& info)
         {
             assert(m_Impl);
             m_Impl->bind(index, info);
             return *this;
         }
 
-        DescriptorSetBuilder&
-        DescriptorSetBuilder::bind(const BindingIndex index, const bindings::CombinedImageSamplerArray& info)
+        DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex                         index,
+                                                         const bindings::CombinedImageSamplerArray& info)
         {
             assert(m_Impl);
             m_Impl->bind(index, info);
@@ -70,8 +71,8 @@ namespace vultra
             return *this;
         }
 
-        DescriptorSetBuilder&
-        DescriptorSetBuilder::bind(const BindingIndex index, const bindings::AccelerationStructureKHR& info)
+        DescriptorSetBuilder& DescriptorSetBuilder::bind(const BindingIndex                        index,
+                                                         const bindings::AccelerationStructureKHR& info)
         {
             assert(m_Impl);
             m_Impl->bind(index, info);

@@ -48,9 +48,9 @@ namespace vultra
 
             struct PerFrameData
             {
-                CommandBuffer commandBuffer;
-                SemaphoreHandle imageAcquired {};
-                SemaphoreHandle renderCompleted {};
+                CommandBuffer   commandBuffer;
+                SemaphoreHandle imageAcquired;
+                SemaphoreHandle renderCompleted;
             };
             std::vector<PerFrameData> m_Frames;
             FrameIndex                m_FrameIndex;

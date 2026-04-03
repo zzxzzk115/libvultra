@@ -66,56 +66,56 @@ namespace vultra
             return m_Impl->getDescriptorSet(index);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addImage(const DescriptorSetIndex         setIndex,
-                                                                   const BindingIndex               bindingIndex,
-                                                                   const ShaderStages               stages,
-                                                                   const uint32_t                   flags)
+        PipelineLayout::Builder& PipelineLayout::Builder::addImage(const DescriptorSetIndex setIndex,
+                                                                   const BindingIndex       bindingIndex,
+                                                                   const ShaderStages       stages,
+                                                                   const uint32_t           flags)
         {
             return addImages(setIndex, bindingIndex, 1, stages, flags);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addImages(const DescriptorSetIndex         setIndex,
-                                                                    const BindingIndex               bindingIndex,
-                                                                    const uint32_t                   count,
-                                                                    const ShaderStages               stages,
-                                                                    const uint32_t                   flags)
+        PipelineLayout::Builder& PipelineLayout::Builder::addImages(const DescriptorSetIndex setIndex,
+                                                                    const BindingIndex       bindingIndex,
+                                                                    const uint32_t           count,
+                                                                    const ShaderStages       stages,
+                                                                    const uint32_t           flags)
         {
             DescriptorSetLayoutBindingEx desc {};
-            desc.binding   = bindingIndex;
-            desc.type      = DescriptorType::eStorageImage;
-            desc.count     = count;
+            desc.binding    = bindingIndex;
+            desc.type       = DescriptorType::eStorageImage;
+            desc.count      = count;
             desc.stageFlags = stages;
-            desc.flags = flags;
+            desc.flags      = flags;
             return addResource(setIndex, desc);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addSampledImage(const DescriptorSetIndex         setIndex,
-                                                                          const BindingIndex               bindingIndex,
-                                                                          const ShaderStages               stages,
-                                                                          const uint32_t                   flags)
+        PipelineLayout::Builder& PipelineLayout::Builder::addSampledImage(const DescriptorSetIndex setIndex,
+                                                                          const BindingIndex       bindingIndex,
+                                                                          const ShaderStages       stages,
+                                                                          const uint32_t           flags)
         {
             return addSampledImages(setIndex, bindingIndex, 1, stages, flags);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addSampledImages(const DescriptorSetIndex   setIndex,
-                                                                           const BindingIndex         bindingIndex,
-                                                                           const uint32_t             count,
-                                                                           const ShaderStages         stages,
-                                                                           const uint32_t             flags)
+        PipelineLayout::Builder& PipelineLayout::Builder::addSampledImages(const DescriptorSetIndex setIndex,
+                                                                           const BindingIndex       bindingIndex,
+                                                                           const uint32_t           count,
+                                                                           const ShaderStages       stages,
+                                                                           const uint32_t           flags)
         {
             DescriptorSetLayoutBindingEx desc {};
             desc.binding    = bindingIndex;
             desc.type       = DescriptorType::eCombinedImageSampler;
             desc.count      = count;
             desc.stageFlags = stages;
-            desc.flags = flags;
+            desc.flags      = flags;
             return addResource(setIndex, desc);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addUniformBuffer(const DescriptorSetIndex   setIndex,
-                                                                           const BindingIndex         bindingIndex,
-                                                                           const ShaderStages         stages,
-                                                                           const uint32_t             flags)
+        PipelineLayout::Builder& PipelineLayout::Builder::addUniformBuffer(const DescriptorSetIndex setIndex,
+                                                                           const BindingIndex       bindingIndex,
+                                                                           const ShaderStages       stages,
+                                                                           const uint32_t           flags)
         {
             DescriptorSetLayoutBindingEx desc {};
             desc.binding    = bindingIndex;
@@ -126,10 +126,10 @@ namespace vultra
             return addResource(setIndex, desc);
         }
 
-        PipelineLayout::Builder& PipelineLayout::Builder::addStorageBuffer(const DescriptorSetIndex   setIndex,
-                                                                           const BindingIndex         bindingIndex,
-                                                                           const ShaderStages         stages,
-                                                                           const uint32_t             flags)
+        PipelineLayout::Builder& PipelineLayout::Builder::addStorageBuffer(const DescriptorSetIndex setIndex,
+                                                                           const BindingIndex       bindingIndex,
+                                                                           const ShaderStages       stages,
+                                                                           const uint32_t           flags)
         {
             DescriptorSetLayoutBindingEx desc {};
             desc.binding    = bindingIndex;
@@ -140,11 +140,10 @@ namespace vultra
             return addResource(setIndex, desc);
         }
 
-        PipelineLayout::Builder&
-        PipelineLayout::Builder::addAccelerationStructure(const DescriptorSetIndex         setIndex,
-                                                          const BindingIndex               bindingIndex,
-                                                          const ShaderStages               stages,
-                                                          const uint32_t                   flags)
+        PipelineLayout::Builder& PipelineLayout::Builder::addAccelerationStructure(const DescriptorSetIndex setIndex,
+                                                                                   const BindingIndex bindingIndex,
+                                                                                   const ShaderStages stages,
+                                                                                   const uint32_t     flags)
         {
             DescriptorSetLayoutBindingEx desc {};
             desc.binding    = bindingIndex;
@@ -190,7 +189,7 @@ namespace vultra
                     desc.type       = resource.type;
                     desc.count      = resource.count;
                     desc.stageFlags = resource.stageFlags;
-                    desc.flags = resource.flags;
+                    desc.flags      = resource.flags;
                     builder.addResource(static_cast<DescriptorSetIndex>(set), desc);
                 }
             }

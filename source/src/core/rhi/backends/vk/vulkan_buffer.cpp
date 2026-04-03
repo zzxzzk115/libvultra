@@ -40,8 +40,7 @@ namespace vultra::rhi
                                const uint64_t                   size,
                                const BufferUsage                bufferUsage,
                                const vma::AllocationCreateFlags allocationFlags,
-                               const vma::MemoryUsage           memoryUsage) :
-        m_MemoryAllocator(memoryAllocator)
+                               const vma::MemoryUsage           memoryUsage) : m_MemoryAllocator(memoryAllocator)
     {
         vk::BufferCreateInfo bufferCreateInfo {};
         bufferCreateInfo.size        = size;
@@ -65,10 +64,7 @@ namespace vultra::rhi
 
     bool VulkanBuffer::isValid() const { return m_Handle != nullptr; }
 
-    std::uintptr_t VulkanBuffer::getHandle() const
-    {
-        return toBackendHandle(static_cast<VkBuffer>(m_Handle));
-    }
+    std::uintptr_t VulkanBuffer::getHandle() const { return toBackendHandle(static_cast<VkBuffer>(m_Handle)); }
 
     uint64_t VulkanBuffer::getSize() const { return m_Size; }
 
@@ -82,7 +78,8 @@ namespace vultra::rhi
 
         if (!m_MappedMemory)
         {
-            VK_CHECK(m_MemoryAllocator.mapMemory(m_Allocation, &m_MappedMemory), "VulkanBuffer", "Failed to map memory");
+            VK_CHECK(
+                m_MemoryAllocator.mapMemory(m_Allocation, &m_MappedMemory), "VulkanBuffer", "Failed to map memory");
         }
 
         return m_MappedMemory;
@@ -102,7 +99,9 @@ namespace vultra::rhi
     void VulkanBuffer::flush(const uint64_t offset, const uint64_t size)
     {
         assert(m_Handle && m_MappedMemory);
-        VK_CHECK(m_MemoryAllocator.flushAllocation(m_Allocation, offset, size), "[VulkanBuffer]", "Failed to flush allocation");
+        VK_CHECK(m_MemoryAllocator.flushAllocation(m_Allocation, offset, size),
+                 "[VulkanBuffer]",
+                 "Failed to flush allocation");
     }
 
     void VulkanBuffer::destroy() noexcept

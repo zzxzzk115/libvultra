@@ -10,7 +10,7 @@ namespace vultra
         const uint32_t DescriptorPool::s_kSetsPerPool = 100u;
 
         DescriptorSetAllocator::DescriptorSetAllocator(DescriptorSetAllocator&& other) noexcept :
-            m_Backend(std::move(other.m_Backend)), m_DescriptorPools(other.m_DescriptorPools),
+            m_Backend(std::move(other.m_Backend)), m_DescriptorPools(std::move(other.m_DescriptorPools)),
             m_LastPoolIndex(other.m_LastPoolIndex), m_EnableRaytracing(other.m_EnableRaytracing)
         {
             other.m_DescriptorPools.clear();
@@ -64,7 +64,7 @@ namespace vultra
         }
 
         DescriptorSetAllocator::DescriptorSetAllocator(std::unique_ptr<IDescriptorSetAllocator> backend,
-                                                       const bool                                       raytracing) :
+                                                       const bool                               raytracing) :
             m_Backend(std::move(backend)), m_EnableRaytracing(raytracing)
         {
             assert(m_Backend);
@@ -106,12 +106,12 @@ namespace vultra
             return createPool();
         }
 
-        DescriptorSetHandle DescriptorSetAllocator::allocate(DescriptorPool&          descriptorPool,
-                                                             const std::uintptr_t      descriptorSetLayout,
-                                                             const uint32_t            variableDescriptorCount) const
+        DescriptorSetHandle DescriptorSetAllocator::allocate(DescriptorPool&      descriptorPool,
+                                                             const std::uintptr_t descriptorSetLayout,
+                                                             const uint32_t       variableDescriptorCount) const
         {
-            const auto descriptorSet = m_Backend->allocateDescriptorSet(
-                descriptorPool.handle, descriptorSetLayout, variableDescriptorCount);
+            const auto descriptorSet =
+                m_Backend->allocateDescriptorSet(descriptorPool.handle, descriptorSetLayout, variableDescriptorCount);
             if (descriptorSet.value != 0)
             {
                 descriptorPool.numAllocatedSets++;

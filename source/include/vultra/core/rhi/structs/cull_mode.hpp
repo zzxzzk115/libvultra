@@ -8,9 +8,9 @@ namespace vultra
     {
         enum class CullMode
         {
-            eNone = 0,
+            eNone  = ZERO_BIT,
             eFront = BIT(0),
-            eBack = BIT(1),
+            eBack  = BIT(1),
         };
 
         [[nodiscard]] std::string_view toString(const CullMode);

@@ -11,11 +11,11 @@ namespace vultra
     {
         struct RayTracingInstance
         {
-            AccelerationStructure*    blas {nullptr};
-            glm::mat4                 transform {1.0f};
-            uint32_t                  instanceID {0};
-            uint32_t                  mask {0xFF};
-            uint32_t                  sbtRecordOffset {0};
+            AccelerationStructure*  blas {nullptr};
+            glm::mat4               transform {1.0f};
+            uint32_t                instanceID {0};
+            uint32_t                mask {0xFF};
+            uint32_t                sbtRecordOffset {0};
             RayTracingInstanceFlags flags {RayTracingInstanceFlags::eTriangleFacingCullDisable};
         };
     } // namespace rhi

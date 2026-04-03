@@ -3,12 +3,12 @@
 #include <cstdint>
 #include <memory>
 
+#include "vultra/core/rhi/interfaces/iswapchain.hpp"
 #include "vultra/core/rhi/structs/rect2d.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/core/rhi/structs/swapchain_format.hpp"
 #include "vultra/core/rhi/structs/vertical_sync.hpp"
 #include "vultra/core/rhi/texture.hpp"
-#include "vultra/core/rhi/interfaces/iswapchain.hpp"
 
 namespace vultra
 {
@@ -35,10 +35,10 @@ namespace vultra
             [[nodiscard]] explicit operator bool() const;
 
             [[nodiscard]] SwapchainFormat getFormat() const;
-            [[nodiscard]] PixelFormat getPixelFormat() const;
-            [[nodiscard]] Extent2D    getExtent() const;
+            [[nodiscard]] PixelFormat     getPixelFormat() const;
+            [[nodiscard]] Extent2D        getExtent() const;
 
-            [[nodiscard]] std::size_t   getNumBuffers() const;
+            [[nodiscard]] std::size_t    getNumBuffers() const;
             [[nodiscard]] std::uintptr_t getHandle() const;
 
             [[nodiscard]] const std::vector<Texture>& getBuffers() const;

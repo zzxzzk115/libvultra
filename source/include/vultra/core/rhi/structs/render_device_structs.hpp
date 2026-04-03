@@ -1,10 +1,10 @@
 #pragma once
 
+#include "vultra/core/base/base.hpp"
+
 #include <cstdint>
 #include <format>
 #include <string>
-
-#include "vultra/core/rhi/structs/render_backend_api.hpp"
 
 namespace vultra
 {

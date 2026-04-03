@@ -4,8 +4,7 @@ namespace vultra
 {
     namespace rhi
     {
-        VulkanComputePipeline::VulkanComputePipeline(const std::uintptr_t handle,
-                                                                   const glm::uvec3     localSize) :
+        VulkanComputePipeline::VulkanComputePipeline(const std::uintptr_t handle, const glm::uvec3 localSize) :
             m_Handle(handle), m_LocalSize(localSize)
         {}
 

@@ -12,8 +12,8 @@ namespace vultra
     {
         struct GeometryNode
         {
-            DeviceAddress vertexBufferDeviceAddress {};
-            DeviceAddress indexBufferDeviceAddress {};
+            DeviceAddress vertexBufferDeviceAddress;
+            DeviceAddress indexBufferDeviceAddress;
 
             // Name -> Material ID
             std::unordered_map<std::string, uint32_t> materials;

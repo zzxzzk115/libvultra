@@ -36,8 +36,8 @@ namespace vultra
                         }
 
                         it->second.stageFlags |= desc.stageFlags;
-                        it->second.flags      |= desc.flags;
-                        it->second.count       = std::max(it->second.count, desc.count);
+                        it->second.flags |= desc.flags;
+                        it->second.count = std::max(it->second.count, desc.count);
                     }
                 }
 
@@ -68,8 +68,7 @@ namespace vultra
             (void)rd;
             return std::nullopt;
 #else
-            [[maybe_unused]] static auto createWgpuShaderModule = [](const WGPUDevice       device,
-                                                                      const std::string_view wgsl) {
+            [[maybe_unused]] static auto createWgpuShaderModule = [](WGPUDevice device, const std::string_view wgsl) {
                 WGPUShaderSourceWGSL source {};
                 source.chain.sType = WGPUSType_ShaderSourceWGSL;
                 source.code        = WGPUStringView {.data = wgsl.data(), .length = WGPU_STRLEN};
@@ -79,7 +78,7 @@ namespace vultra
                 return wgpuDeviceCreateShaderModule(device, &descriptor);
             };
 
-            const auto device = reinterpret_cast<WGPUDevice>(WebGPURenderDeviceAccess::getDeviceHandle(rd));
+            auto* const device = reinterpret_cast<WGPUDevice>(WebGPURenderDeviceAccess::getDeviceHandle(rd));
             if (device == nullptr)
             {
                 return std::nullopt;
@@ -93,7 +92,7 @@ namespace vultra
                 return std::nullopt;
             }
 
-            auto vertexModule = rd.createShaderModule(ShaderType::eVertex,
+            auto vertexModule   = rd.createShaderModule(ShaderType::eVertex,
                                                       vertexIt->second.code,
                                                       vertexIt->second.entryPointName,
                                                       vertexIt->second.defines,
@@ -116,8 +115,8 @@ namespace vultra
                 fragmentModule.getReflection() = *fragIt->second.reflection;
             }
 
-            const auto wgpuVertexModule   = createWgpuShaderModule(device, vertexModule.getWgsl());
-            const auto wgpuFragmentModule = createWgpuShaderModule(device, fragmentModule.getWgsl());
+            auto* const wgpuVertexModule   = createWgpuShaderModule(device, vertexModule.getWgsl());
+            auto* const wgpuFragmentModule = createWgpuShaderModule(device, fragmentModule.getWgsl());
             if (wgpuVertexModule == nullptr || wgpuFragmentModule == nullptr)
             {
                 if (wgpuVertexModule)
@@ -153,22 +152,23 @@ namespace vultra
 
             WGPUVertexState vertexState {};
             vertexState.module     = wgpuVertexModule;
-            vertexState.entryPoint =
-                WGPUStringView {.data = vertexIt->second.entryPointName.data(), .length = vertexIt->second.entryPointName.size()};
+            vertexState.entryPoint = WGPUStringView {.data   = vertexIt->second.entryPointName.data(),
+                                                     .length = vertexIt->second.entryPointName.size()};
             if (!wgpuVertexAttributes.empty())
             {
                 vertexState.bufferCount = 1;
                 vertexState.buffers     = &vertexBufferLayout;
             }
 
-            const auto colorFormat = !m_ColorAttachmentFormats.empty() ? webgpu::toWgpuTextureFormat(m_ColorAttachmentFormats.front()) :
-                                                                     WGPUTextureFormat_BGRA8UnormSrgb;
+            const auto           colorFormat = !m_ColorAttachmentFormats.empty() ?
+                                                   webgpu::toWgpuTextureFormat(m_ColorAttachmentFormats.front()) :
+                                                   WGPUTextureFormat_BGRA8UnormSrgb;
             WGPUColorTargetState colorTarget {};
             colorTarget.format    = colorFormat;
             colorTarget.writeMask = WGPUColorWriteMask_All;
 
             WGPUBlendState blendState {};
-            const bool hasBlendState = !m_BlendStates.empty() && m_BlendStates.front().enabled;
+            const bool     hasBlendState = !m_BlendStates.empty() && m_BlendStates.front().enabled;
             if (hasBlendState)
             {
                 // Keep WebGPU blend policy minimal for now: standard alpha blend.
@@ -183,8 +183,8 @@ namespace vultra
 
             WGPUFragmentState fragmentState {};
             fragmentState.module      = wgpuFragmentModule;
-            fragmentState.entryPoint =
-                WGPUStringView {.data = fragIt->second.entryPointName.data(), .length = fragIt->second.entryPointName.size()};
+            fragmentState.entryPoint  = WGPUStringView {.data   = fragIt->second.entryPointName.data(),
+                                                        .length = fragIt->second.entryPointName.size()};
             fragmentState.targetCount = 1;
             fragmentState.targets     = &colorTarget;
 
@@ -195,8 +195,9 @@ namespace vultra
             }
             else
             {
-                const auto mergedReflection = mergeReflections(vertexModule.getReflection(), fragmentModule.getReflection());
-                m_PipelineLayout            = reflectPipelineLayout(rd, mergedReflection);
+                const auto mergedReflection =
+                    mergeReflections(vertexModule.getReflection(), fragmentModule.getReflection());
+                m_PipelineLayout = reflectPipelineLayout(rd, mergedReflection);
                 if (m_PipelineLayout)
                 {
                     wgpuLayout = reinterpret_cast<WGPUPipelineLayout>(m_PipelineLayout.getHandle());
@@ -204,15 +205,15 @@ namespace vultra
             }
 
             WGPURenderPipelineDescriptor descriptor {};
-            descriptor.layout                              = wgpuLayout;
-            descriptor.vertex                              = vertexState;
-            descriptor.primitive.topology                  = webgpu::toWgpuPrimitiveTopology(m_PrimitiveTopology);
-            descriptor.primitive.frontFace                 = WGPUFrontFace_CCW;
-            descriptor.primitive.cullMode                  = webgpu::toWgpuCullMode(m_RasterizerState.cullMode);
-            descriptor.multisample.count                   = 1;
-            descriptor.multisample.mask                    = ~0u;
-            descriptor.multisample.alphaToCoverageEnabled  = false;
-            descriptor.fragment                            = &fragmentState;
+            descriptor.layout                             = wgpuLayout;
+            descriptor.vertex                             = vertexState;
+            descriptor.primitive.topology                 = webgpu::toWgpuPrimitiveTopology(m_PrimitiveTopology);
+            descriptor.primitive.frontFace                = WGPUFrontFace_CCW;
+            descriptor.primitive.cullMode                 = webgpu::toWgpuCullMode(m_RasterizerState.cullMode);
+            descriptor.multisample.count                  = 1;
+            descriptor.multisample.mask                   = ~0u;
+            descriptor.multisample.alphaToCoverageEnabled = false;
+            descriptor.fragment                           = &fragmentState;
 
             WGPUDepthStencilState depthStencilState {};
             if (m_DepthFormat != PixelFormat::eUndefined)
@@ -226,8 +227,8 @@ namespace vultra
                     return std::nullopt;
                 }
 
-                depthStencilState.format              = depthFormat;
-                depthStencilState.depthWriteEnabled   =
+                depthStencilState.format = depthFormat;
+                depthStencilState.depthWriteEnabled =
                     m_DepthStencilState.depthWrite ? WGPUOptionalBool_True : WGPUOptionalBool_False;
                 depthStencilState.depthCompare        = m_DepthStencilState.depthTest ?
                                                             webgpu::toWgpuCompareFunction(m_DepthStencilState.depthCompareOp) :
@@ -238,7 +239,7 @@ namespace vultra
                 descriptor.depthStencil               = &depthStencilState;
             }
 
-            const auto pipeline = wgpuDeviceCreateRenderPipeline(device, &descriptor);
+            auto* const pipeline = wgpuDeviceCreateRenderPipeline(device, &descriptor);
             wgpuShaderModuleRelease(wgpuVertexModule);
             wgpuShaderModuleRelease(wgpuFragmentModule);
 

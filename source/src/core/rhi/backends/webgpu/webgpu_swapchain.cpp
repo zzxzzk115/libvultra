@@ -30,16 +30,15 @@ namespace vultra
             class WebGPUSwapchain final : public ISwapchain
             {
             public:
-                WebGPUSwapchain(const std::uintptr_t instance,
-                                const std::uintptr_t physicalDevice,
-                                const std::uintptr_t device,
-                                os::Window*          window,
+                WebGPUSwapchain(const std::uintptr_t  instance,
+                                const std::uintptr_t  physicalDevice,
+                                const std::uintptr_t  device,
+                                os::Window*           window,
                                 const SwapchainFormat format,
-                                const VerticalSync   vsync) :
+                                const VerticalSync    vsync) :
                     m_Instance(reinterpret_cast<WGPUInstance>(instance)),
                     m_Adapter(reinterpret_cast<WGPUAdapter>(physicalDevice)),
-                    m_Device(reinterpret_cast<WGPUDevice>(device)),
-                    m_Window(window), m_Format(format), m_Vsync(vsync)
+                    m_Device(reinterpret_cast<WGPUDevice>(device)), m_Window(window), m_Format(format), m_Vsync(vsync)
                 {
                     if (m_Instance == nullptr || m_Adapter == nullptr || m_Device == nullptr || m_Window == nullptr)
                     {
@@ -128,7 +127,8 @@ namespace vultra
                     }
 
                     const Extent2D desiredExtent {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)};
-                    if (!m_Configured || desiredExtent.width != m_Extent.width || desiredExtent.height != m_Extent.height)
+                    if (!m_Configured || desiredExtent.width != m_Extent.width ||
+                        desiredExtent.height != m_Extent.height)
                     {
                         configureSurface();
                     }
@@ -146,7 +146,8 @@ namespace vultra
                                 m_Buffers[0] = TextureAccess::fromExternalImage(
                                     RenderBackendApi::eWebGPU,
                                     TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(m_Device)},
-                                    TextureImageHandle {reinterpret_cast<std::uintptr_t>(m_CurrentSurfaceTexture.texture)},
+                                    TextureImageHandle {
+                                        reinterpret_cast<std::uintptr_t>(m_CurrentSurfaceTexture.texture)},
                                     m_Extent,
                                     m_PixelFormat);
                             }
@@ -170,7 +171,8 @@ namespace vultra
                                     m_Buffers[0] = TextureAccess::fromExternalImage(
                                         RenderBackendApi::eWebGPU,
                                         TextureDeviceHandle {reinterpret_cast<std::uintptr_t>(m_Device)},
-                                        TextureImageHandle {reinterpret_cast<std::uintptr_t>(m_CurrentSurfaceTexture.texture)},
+                                        TextureImageHandle {
+                                            reinterpret_cast<std::uintptr_t>(m_CurrentSurfaceTexture.texture)},
                                         m_Extent,
                                         m_PixelFormat);
                                 }
@@ -202,7 +204,7 @@ namespace vultra
                     }
 
                     const auto preferredFormat = webgpu::preferredSwapchainFormat(m_Format);
-                    m_SurfaceFormat            = capabilities.formatCount > 0 ? capabilities.formats[0] : preferredFormat;
+                    m_SurfaceFormat = capabilities.formatCount > 0 ? capabilities.formats[0] : preferredFormat;
                     for (size_t i = 0; i < capabilities.formatCount; ++i)
                     {
                         if (capabilities.formats[i] == preferredFormat)
@@ -217,7 +219,8 @@ namespace vultra
                     }
 
                     const auto preferredPresentMode = webgpu::toWgpuPresentMode(m_Vsync);
-                    m_PresentMode = capabilities.presentModeCount > 0 ? capabilities.presentModes[0] : WGPUPresentMode_Fifo;
+                    m_PresentMode =
+                        capabilities.presentModeCount > 0 ? capabilities.presentModes[0] : WGPUPresentMode_Fifo;
                     for (size_t i = 0; i < capabilities.presentModeCount; ++i)
                     {
                         if (capabilities.presentModes[i] == preferredPresentMode)
@@ -227,7 +230,8 @@ namespace vultra
                         }
                     }
 
-                    m_AlphaMode = capabilities.alphaModeCount > 0 ? capabilities.alphaModes[0] : WGPUCompositeAlphaMode_Auto;
+                    m_AlphaMode =
+                        capabilities.alphaModeCount > 0 ? capabilities.alphaModes[0] : WGPUCompositeAlphaMode_Auto;
                     m_PixelFormat = webgpu::toPixelFormat(m_SurfaceFormat);
                     wgpuSurfaceCapabilitiesFreeMembers(capabilities);
                 }
@@ -279,7 +283,7 @@ namespace vultra
                         wgpuTextureRelease(m_CurrentSurfaceTexture.texture);
                         m_CurrentSurfaceTexture.texture = nullptr;
                     }
-                    m_CurrentSurfaceTexture.status = WGPUSurfaceGetCurrentTextureStatus_Error;
+                    m_CurrentSurfaceTexture.status  = WGPUSurfaceGetCurrentTextureStatus_Error;
                     g_CurrentWebGPUSwapchainTexture = nullptr;
                 }
 
@@ -299,33 +303,33 @@ namespace vultra
                 }
 
             private:
-                WGPUInstance       m_Instance {nullptr};
-                WGPUAdapter        m_Adapter {nullptr};
-                WGPUDevice         m_Device {nullptr};
-                os::Window*        m_Window {nullptr};
-                WGPUSurface        m_Surface {nullptr};
-                SwapchainFormat    m_Format {SwapchainFormat::eLinear};
-                VerticalSync       m_Vsync {VerticalSync::eDisabled};
-                PixelFormat        m_PixelFormat {PixelFormat::eUndefined};
-                Extent2D           m_Extent {};
-                WGPUTextureFormat  m_SurfaceFormat {WGPUTextureFormat_Undefined};
-                WGPUPresentMode    m_PresentMode {WGPUPresentMode_Fifo};
+                WGPUInstance           m_Instance {nullptr};
+                WGPUAdapter            m_Adapter {nullptr};
+                WGPUDevice             m_Device {nullptr};
+                os::Window*            m_Window {nullptr};
+                WGPUSurface            m_Surface {nullptr};
+                SwapchainFormat        m_Format {SwapchainFormat::eLinear};
+                VerticalSync           m_Vsync {VerticalSync::eDisabled};
+                PixelFormat            m_PixelFormat {PixelFormat::eUndefined};
+                Extent2D               m_Extent {};
+                WGPUTextureFormat      m_SurfaceFormat {WGPUTextureFormat_Undefined};
+                WGPUPresentMode        m_PresentMode {WGPUPresentMode_Fifo};
                 WGPUCompositeAlphaMode m_AlphaMode {WGPUCompositeAlphaMode_Auto};
-                WGPUSurfaceTexture m_CurrentSurfaceTexture {};
-                bool               m_Configured {false};
-                std::vector<Texture> m_DummyBuffers;
-                Texture              m_DummyTexture;
-                std::vector<Texture> m_Buffers;
+                WGPUSurfaceTexture     m_CurrentSurfaceTexture {};
+                bool                   m_Configured {false};
+                std::vector<Texture>   m_DummyBuffers;
+                Texture                m_DummyTexture;
+                std::vector<Texture>   m_Buffers;
             };
         } // namespace
 #endif
 
-        std::shared_ptr<ISwapchain> createWebGPUSwapchain(const std::uintptr_t instance,
-                                                                  const std::uintptr_t physicalDevice,
-                                                                  const std::uintptr_t device,
-                                                                  os::Window*          window,
-                                                                  const SwapchainFormat format,
-                                                                  const VerticalSync   vsync)
+        std::shared_ptr<ISwapchain> createWebGPUSwapchain(const std::uintptr_t  instance,
+                                                          const std::uintptr_t  physicalDevice,
+                                                          const std::uintptr_t  device,
+                                                          os::Window*           window,
+                                                          const SwapchainFormat format,
+                                                          const VerticalSync    vsync)
         {
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             return std::make_shared<WebGPUSwapchain>(instance, physicalDevice, device, window, format, vsync);

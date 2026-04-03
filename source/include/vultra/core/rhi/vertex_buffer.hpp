@@ -13,8 +13,8 @@ namespace vultra
         public:
             VertexBuffer() = default;
 
-            [[nodiscard]] Stride         getStride() const;
-            [[nodiscard]] uint64_t       getCapacity() const;
+            [[nodiscard]] Stride   getStride() const;
+            [[nodiscard]] uint64_t getCapacity() const;
 
         private:
             VertexBuffer(Buffer&&, Stride);

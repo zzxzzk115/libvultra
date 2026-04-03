@@ -24,7 +24,7 @@ namespace vultra::rhi
         }
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
-        [[nodiscard]] TextureView createWgpuImageView(const WGPUTexture              texture,
+        [[nodiscard]] TextureView createWgpuImageView(WGPUTexture                    texture,
                                                       const WGPUTextureViewDimension dimension,
                                                       const WGPUTextureFormat        format,
                                                       const WGPUTextureAspect        aspect,
@@ -41,7 +41,7 @@ namespace vultra::rhi
             viewDesc.mipLevelCount   = mipLevelCount;
             viewDesc.baseArrayLayer  = baseArrayLayer;
             viewDesc.arrayLayerCount = arrayLayerCount;
-            const auto view          = wgpuTextureCreateView(texture, &viewDesc);
+            auto* const view         = wgpuTextureCreateView(texture, &viewDesc);
             return TextureView {reinterpret_cast<std::uintptr_t>(view)};
         }
 #endif
@@ -82,9 +82,9 @@ namespace vultra::rhi
     }
 
     void Texture::createAspectNative(const TextureImageHandle imageHandle,
-                                     const uint32_t       viewType,
-                                     const ImageAspectFlags aspectMask,
-                                     AspectData&          data)
+                                     const uint32_t           viewType,
+                                     const ImageAspectFlags   aspectMask,
+                                     AspectData&              data)
     {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
         (void)imageHandle;
@@ -92,17 +92,19 @@ namespace vultra::rhi
         (void)aspectMask;
         (void)data;
 #else
-        const auto texture      = reinterpret_cast<WGPUTexture>(imageHandle.value);
-        const auto format       = webgpu::toWgpuTextureFormat(m_Format);
-        const auto wgpuViewType = static_cast<WGPUTextureViewDimension>(viewType);
-        const auto wgpuAspect   = webgpu::toWgpuTextureAspect(aspectMask);
+        auto* const texture      = reinterpret_cast<WGPUTexture>(imageHandle.value);
+        const auto  format       = webgpu::toWgpuTextureFormat(m_Format);
+        const auto  wgpuViewType = static_cast<WGPUTextureViewDimension>(viewType);
+        const auto  wgpuAspect   = webgpu::toWgpuTextureAspect(aspectMask);
 
-        data.imageView = createWgpuImageView(texture, wgpuViewType, format, wgpuAspect, 0u, m_NumMipLevels, 0u, m_LayerFaces);
+        data.imageView =
+            createWgpuImageView(texture, wgpuViewType, format, wgpuAspect, 0u, m_NumMipLevels, 0u, m_LayerFaces);
 
         data.mipLevels.reserve(m_NumMipLevels);
         for (auto i = 0u; i < m_NumMipLevels; ++i)
         {
-            data.mipLevels.emplace_back(createWgpuImageView(texture, wgpuViewType, format, wgpuAspect, i, 1u, 0u, m_LayerFaces));
+            data.mipLevels.emplace_back(
+                createWgpuImageView(texture, wgpuViewType, format, wgpuAspect, i, 1u, 0u, m_LayerFaces));
         }
 
         if (isLayeredTextureType(m_Type))
