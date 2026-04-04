@@ -36,28 +36,33 @@ rule("copy_resources")
     end)
 rule_end()
 
-includes("window")
-includes("rhi/triangle")
-if not is_plat("android") then
-    includes("rhi/triangle_webgpu")
-end
-includes("imgui")
-if not is_plat("android") then
-    includes("imgui_webgpu")
-end
-includes("framegraph/triangle")
-includes("openxr/triangle")
--- includes("openxr/sponza")
-includes("openxr/gaussian_splatting")
--- includes("gltf_viewer")
--- includes("sponza")
--- includes("raytracing/triangle")
--- includes("raytracing/cornell_box")
--- includes("rayquery")
--- includes("meshshading/triangle")
--- includes("debug_draw")
-includes("gaussian_splatting")
-includes("demo_app")
-if is_plat("android") then
-    includes("android_app")
+if is_plat("wasm") then
+    includes("rhi/triangle_webgpu_sdk")
+else
+    includes("window")
+    includes("rhi/triangle")
+    if not is_plat("android") then
+        includes("rhi/triangle_webgpu")
+        includes("rhi/triangle_webgpu_sdk")
+    end
+    includes("imgui")
+    if not is_plat("android") then
+        includes("imgui_webgpu")
+    end
+    includes("framegraph/triangle")
+    includes("openxr/triangle")
+    -- includes("openxr/sponza")
+    includes("openxr/gaussian_splatting")
+    -- includes("gltf_viewer")
+    -- includes("sponza")
+    -- includes("raytracing/triangle")
+    -- includes("raytracing/cornell_box")
+    -- includes("rayquery")
+    -- includes("meshshading/triangle")
+    -- includes("debug_draw")
+    includes("gaussian_splatting")
+    includes("demo_app")
+    if is_plat("android") then
+        includes("android_app")
+    end
 end

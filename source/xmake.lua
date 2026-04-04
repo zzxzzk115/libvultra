@@ -87,19 +87,26 @@ end
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "cereal", "vulkan-headers 1.4.335+0", "vulkan-memory-allocator-hpp", "sol2")
-if not is_plat("android") then
-    add_requires("wgpu-native v27.0.4+0")
+add_requires("spdlog", "magic_enum", "entt", "cereal", "sol2")
+if not is_plat("wasm") then
+    add_requires("vulkan-headers 1.4.335+0", "vulkan-memory-allocator-hpp")
 end
-add_requireconfs("vulkan-memory-allocator-hpp", {configs = {use_vulkanheaders = true}})
-add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"}) -- unfortunately, some dependencies (e.g. vulkan-memory-allocator-hpp) still rely on older Vulkan-Headers, we need to override it to avoid version conflicts
+if not is_plat("android") then
+    add_requires("webgpu-sdk v0.1.0")
+end
+if not is_plat("wasm") then
+    add_requireconfs("vulkan-memory-allocator-hpp", {configs = {use_vulkanheaders = true}})
+    add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"}) -- unfortunately, some dependencies (e.g. vulkan-memory-allocator-hpp) still rely on older Vulkan-Headers, we need to override it to avoid version conflicts
+end
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
-if not is_plat("android") then
+if not is_plat("android") and not is_plat("wasm") then
     add_requireconfs("imgui.libsdl3", {system = false}) -- we don't use system's SDL3 to avoid version conflicts
 end
-add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
+if not is_plat("wasm") then
+    add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
+end
 add_requires("vrendergraph", {configs = { debug = is_mode("debug") }})
 
 -- target defination, name: vultra
@@ -138,21 +145,31 @@ target("vultra")
     end
 
     -- add deps
-    add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vrdx", "vultra_builtin_assets")
-    if not is_plat("android") then
+    add_deps("vasset", "renderdoc", "IconFontCppHeaders", "imgui-ext", "debug_draw", "vultra_builtin_assets")
+    if not is_plat("wasm") then
+        add_deps("vrdx")
+    end
+    if not is_plat("android") and not is_plat("wasm") then
         add_deps("vasset-import")
         add_defines("VULTRA_HAS_VASSET_IMPORT", { public = true })
     end
 
     -- add rules
-    add_rules("vulkansdk")
+    if not is_plat("wasm") then
+        add_rules("vulkansdk")
+    end
 
     -- add packages
-    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vulkan-headers", "vulkan-memory-allocator-hpp", "vrendergraph", "sol2", { public = true })
-    if not is_plat("android") then
-        add_packages("wgpu-native", { public = true })
+    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vrendergraph", "sol2", { public = true })
+    if not is_plat("wasm") then
+        add_packages("vulkan-headers", "vulkan-memory-allocator-hpp", { public = true })
     end
-    add_packages("openxr", { public = true })
+    if not is_plat("android") then
+        add_packages("webgpu-sdk", { public = true })
+    end
+    if not is_plat("wasm") then
+        add_packages("openxr", { public = true })
+    end
     if not is_plat("android") then
         add_packages("libsdl3", { public = true })
     end
@@ -161,9 +178,11 @@ target("vultra")
     end
 
     -- vulkan dynamic loader
-    add_defines("VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1", { public = true })
-    if is_plat("android") then
-        add_defines("VULKAN_HPP_NO_SPACESHIP_OPERATOR=1", { public = true })
+    if not is_plat("wasm") then
+        add_defines("VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1", { public = true })
+        if is_plat("android") then
+            add_defines("VULKAN_HPP_NO_SPACESHIP_OPERATOR=1", { public = true })
+        end
     end
 
     -- tracy & tracky required defines
@@ -173,7 +192,9 @@ target("vultra")
     if has_config("tracky") then
         add_defines("TRACKY_ENABLE=1", { public = true })
     end
-    add_defines("TRACKY_VULKAN", { public = true })
+    if not is_plat("wasm") then
+        add_defines("TRACKY_VULKAN", { public = true })
+    end
 
     -- fmt fix
     add_defines("FMT_UNICODE=0", { public = true })

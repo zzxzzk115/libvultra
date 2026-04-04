@@ -1,7 +1,9 @@
 if is_plat("android") then
-    add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, android = true, wchar32 = true}})
+    add_requires("imgui v1.92.5-docking", {configs = { vulkan = true, android = true, wchar32 = true}})
+elseif is_plat("wasm") then
+    add_requires("imgui v1.92.5-docking", {configs = { wgpu = true, wgpu_backend = "webgpu-sdk", wchar32 = true}})
 else
-    add_requires("imgui v1.92.0-docking", {configs = { vulkan = true, wgpu = true, sdl3 = true, wchar32 = true}})
+    add_requires("imgui v1.92.5-docking", {configs = { vulkan = true, sdl3 = true, wchar32 = true}})
 end
 
 add_requires("zlib")
@@ -43,12 +45,14 @@ target("debug_draw")
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
 
-target("vrdx")
-    set_kind("static")
-    add_headerfiles("vrdx/**.h")
-    add_includedirs("vrdx/include", {public = true}) -- public: let other targets to auto include
-    add_includedirs("vrdx/src/generated/", {public = true}) -- public: let other targets to auto include
-    add_files("vrdx/**.cc")
-    add_packages("vulkan-headers", {public = true})
+if not is_plat("wasm") then
+    target("vrdx")
+        set_kind("static")
+        add_headerfiles("vrdx/**.h")
+        add_includedirs("vrdx/include", {public = true}) -- public: let other targets to auto include
+        add_includedirs("vrdx/src/generated/", {public = true}) -- public: let other targets to auto include
+        add_files("vrdx/**.cc")
+        add_packages("vulkan-headers", {public = true})
+end
 
 includes("vasset")

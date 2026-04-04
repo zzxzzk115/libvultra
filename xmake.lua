@@ -27,13 +27,13 @@ set_config("project_dir", os.scriptdir())
 
 -- global options
 option("libvultra_build_examples") -- build examples?
-    set_default(not is_plat("android"))
+    set_default(not is_plat("android") and not is_plat("wasm"))
     set_showmenu(true)
     set_description("Enable libvultra examples")
 option_end()
 
 option("libvultra_build_tests") -- build tests?
-    set_default(not is_plat("android"))
+    set_default(not is_plat("android") and not is_plat("wasm"))
     set_showmenu(true)
     set_description("Enable libvultra tests")
 option_end()
@@ -115,7 +115,9 @@ includes("external")
 includes("builtin")
 
 -- include source
-includes("source")
+if not is_plat("wasm") then
+    includes("source")
+end
 
 -- include tests
 if has_config("libvultra_build_tests") then
