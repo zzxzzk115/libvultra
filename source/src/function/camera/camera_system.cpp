@@ -12,6 +12,7 @@
 #include <glm/trigonometric.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace vultra
 {
@@ -138,6 +139,13 @@ namespace vultra
     {
         m_FPSController        = controller;
         m_FPSManualCameraIndex = manualCameraIndex;
+        if (m_FPSController)
+        {
+            const auto forward = makeForward(m_FPSController->yawDegrees, m_FPSController->pitchDegrees);
+            m_FPSController->orbitDistance = std::max(m_FPSController->orbitDistance, 0.1f);
+            // Keep initial pose stable: derive orbit pivot from current pose instead of forcing a fixed pivot.
+            m_FPSController->orbitPivot = m_FPSController->position + forward * m_FPSController->orbitDistance;
+        }
     }
 
     void CameraSystem::disableFPSCameraController()
@@ -158,17 +166,41 @@ namespace vultra
         return m_FPSController ? &(*m_FPSController) : nullptr;
     }
 
+    std::optional<CameraControlOverlayInfo> CameraSystem::cameraControlOverlayInfo() const
+    {
+        if (!m_FPSController)
+            return std::nullopt;
+        return CameraControlOverlayInfo {
+            .enabled = m_FPSController->enabled,
+            .mode    = m_ActiveControlMode,
+        };
+    }
+
+    void CameraSystem::setCameraControlInputSuppressed(const bool suppressed) { m_InputSuppressed = suppressed; }
+
     void CameraSystem::applyFPSCamera(fsec dt)
     {
         if (!m_FPSController)
             return;
 
         auto& input = ctx().services.require<IInputService>();
-        if (input.getMouseButtonDown(MouseCode::eRight))
-            m_FPSController->enabled = !m_FPSController->enabled;
+        auto& controller = *m_FPSController;
 
-        if (!m_FPSController->enabled)
+        if (m_InputSuppressed)
         {
+            m_ActiveControlMode = CameraControlMode::eOrbit;
+            if (m_MouseCaptureApplied)
+            {
+                auto& window = ctx().services.require<IWindowService>().window();
+                window.setMouseRelativeMode(false).setCursorVisibility(true);
+                m_MouseCaptureApplied = false;
+            }
+            return;
+        }
+
+        if (!controller.enabled)
+        {
+            m_ActiveControlMode = CameraControlMode::eDisabled;
             if (m_MouseCaptureApplied)
             {
                 auto& window = ctx().services.require<IWindowService>().window();
@@ -181,12 +213,13 @@ namespace vultra
         if (m_Manual.empty() || m_FPSManualCameraIndex >= m_Manual.size())
             return;
 
-        auto& controller = *m_FPSController;
         auto& camera     = m_Manual[m_FPSManualCameraIndex];
 
         auto& window = ctx().services.require<IWindowService>().window();
+        const bool flyActive = input.getMouseButton(MouseCode::eRight);
+        m_ActiveControlMode  = flyActive ? CameraControlMode::eFly : CameraControlMode::eOrbit;
 
-        if (controller.captureMouse)
+        if (controller.captureMouse && flyActive)
         {
             if (!m_MouseCaptureApplied)
             {
@@ -201,33 +234,70 @@ namespace vultra
         }
 
         const glm::vec2 mouseDelta = input.getMousePositionDelta();
-        controller.yawDegrees += mouseDelta.x * controller.mouseSensitivity;
-        controller.pitchDegrees -= mouseDelta.y * controller.mouseSensitivity;
+        const bool shiftHeld = input.getKey(KeyCode::eLShift) || input.getKey(KeyCode::eRShift);
+        if (flyActive)
+        {
+            controller.yawDegrees += mouseDelta.x * controller.mouseSensitivity;
+            controller.pitchDegrees -= mouseDelta.y * controller.mouseSensitivity;
+        }
+        else if (input.getMouseButton(MouseCode::eLeft) && !shiftHeld)
+        {
+            controller.yawDegrees += mouseDelta.x * controller.orbitRotateSensitivity;
+            controller.pitchDegrees -= mouseDelta.y * controller.orbitRotateSensitivity;
+        }
         controller.pitchDegrees = std::clamp(controller.pitchDegrees, -89.0f, 89.0f);
 
-        const glm::vec3 forward = makeForward(controller.yawDegrees, controller.pitchDegrees);
-        const glm::vec3 right   = glm::normalize(glm::cross(forward, kWorldUp));
+        glm::vec3 forward = makeForward(controller.yawDegrees, controller.pitchDegrees);
+        glm::vec3 right   = glm::normalize(glm::cross(forward, kWorldUp));
+        glm::vec3 up      = glm::normalize(glm::cross(right, forward));
 
-        glm::vec3 moveDir {0.0f};
-        if (input.getKey(KeyCode::eW))
-            moveDir += forward;
-        if (input.getKey(KeyCode::eS))
-            moveDir -= forward;
-        if (input.getKey(KeyCode::eD))
-            moveDir += right;
-        if (input.getKey(KeyCode::eA))
-            moveDir -= right;
-        if (input.getKey(KeyCode::eE))
-            moveDir += kWorldUp;
-        if (input.getKey(KeyCode::eQ))
-            moveDir -= kWorldUp;
+        if (flyActive)
+        {
+            glm::vec3 moveDir {0.0f};
+            if (input.getKey(KeyCode::eW))
+                moveDir += forward;
+            if (input.getKey(KeyCode::eS))
+                moveDir -= forward;
+            if (input.getKey(KeyCode::eD))
+                moveDir += right;
+            if (input.getKey(KeyCode::eA))
+                moveDir -= right;
+            if (input.getKey(KeyCode::eE))
+                moveDir += kWorldUp;
+            if (input.getKey(KeyCode::eQ))
+                moveDir -= kWorldUp;
 
-        float speed = controller.moveSpeed;
-        if (input.getKey(KeyCode::eLShift) || input.getKey(KeyCode::eRShift))
-            speed *= controller.sprintMultiplier;
+            float speed = controller.moveSpeed;
+            if (input.getKey(KeyCode::eLShift) || input.getKey(KeyCode::eRShift))
+                speed *= controller.sprintMultiplier;
+            if (input.getKey(KeyCode::eLCtrl) || input.getKey(KeyCode::eRCtrl))
+                speed *= 0.35f;
 
-        if (glm::dot(moveDir, moveDir) > 0.0f)
-            controller.position += glm::normalize(moveDir) * speed * dt.count();
+            if (glm::dot(moveDir, moveDir) > 0.0f)
+                controller.position += glm::normalize(moveDir) * speed * dt.count();
+            controller.orbitPivot = controller.position + forward * std::max(controller.orbitDistance, 0.1f);
+        }
+        else
+        {
+            const bool panActive = input.getMouseButton(MouseCode::eMiddle) ||
+                                   (input.getMouseButton(MouseCode::eLeft) && shiftHeld);
+            if (panActive)
+            {
+                const float panScale = controller.orbitPanSensitivity * std::max(controller.orbitDistance, 0.1f);
+                controller.orbitPivot -= right * (mouseDelta.x * panScale);
+                controller.orbitPivot += up * (mouseDelta.y * panScale);
+            }
+
+            const float scrollY = input.getMouseScrollDelta().y;
+            if (std::abs(scrollY) > 0.0f)
+            {
+                const float zoomFactor = std::exp(-scrollY * controller.orbitZoomSpeed);
+                controller.orbitDistance =
+                    std::clamp(controller.orbitDistance * zoomFactor, 0.1f, std::max(controller.zFar * 0.9f, 10.0f));
+            }
+
+            controller.position = controller.orbitPivot - forward * std::max(controller.orbitDistance, 0.1f);
+        }
 
         const auto  extent = window.platformType() == os::Window::PlatformType::eAndroidNativeWindow ?
                                  os::Window::Extent {static_cast<int>(window.getContentArea().extent.width),
@@ -237,6 +307,7 @@ namespace vultra
         const float height = static_cast<float>(std::max(extent.y, 1));
         const float aspect = width / height;
 
+        forward = makeForward(controller.yawDegrees, controller.pitchDegrees);
         camera.view = glm::lookAt(controller.position, controller.position + forward, kWorldUp);
         camera.projection =
             glm::perspectiveRH_ZO(glm::radians(controller.fovYDegrees), aspect, controller.zNear, controller.zFar);

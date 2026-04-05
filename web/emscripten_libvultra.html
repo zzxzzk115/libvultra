@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>libvultra Web Runtime</title>
+  <style>
+    :root {
+      --bg-0: #070707;
+      --bg-1: #071108;
+      --panel: #101010;
+      --line: #17451d;
+      --line-soft: #0f2a13;
+      --text-0: #d7ffd8;
+      --text-1: #86c88e;
+      --accent: #2dff64;
+      --accent-2: #8dffad;
+      --warn: #ffb347;
+      --err: #ff4f5e;
+      --ok: #2dff64;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background:
+        radial-gradient(1200px 760px at 14% -20%, #0f3814 0%, transparent 62%),
+        radial-gradient(900px 560px at 95% 110%, #09280f 0%, transparent 60%),
+        linear-gradient(180deg, var(--bg-1), var(--bg-0));
+      color: var(--text-0);
+      font-family: "JetBrains Mono", "Fira Code", "Cascadia Mono", "Menlo", monospace;
+      overflow: hidden;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 10px;
+      height: 100%;
+      padding: 10px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 46px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(10, 32, 13, 0.92), rgba(8, 20, 9, 0.94));
+      box-shadow: inset 0 1px 0 rgba(120, 255, 120, 0.08), 0 8px 26px rgba(0, 0, 0, 0.4);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      letter-spacing: 0.2px;
+      font-weight: 700;
+    }
+
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--accent-2), var(--accent));
+      box-shadow: 0 0 12px rgba(255, 47, 47, 0.9);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-1);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 55vw;
+    }
+
+    .spinner {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--ok);
+      box-shadow: 0 0 10px rgba(113, 255, 168, 0.8);
+    }
+
+    .progress-wrap {
+      width: min(34vw, 320px);
+      height: 5px;
+      border-radius: 999px;
+      background: #0a1c0d;
+      border: 1px solid var(--line-soft);
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #0f7a2b 0%, #2dff64 55%, #a9ffc0 100%);
+      transition: width 120ms ease;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(12, 36, 16, 0.94), rgba(8, 18, 9, 0.98));
+      color: var(--text-0);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: transform 100ms ease, border-color 100ms ease;
+    }
+
+    .btn:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+    }
+
+    .canvas-shell {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background:
+        linear-gradient(90deg, rgba(80, 255, 120, 0.03) 1px, transparent 1px) 0 0 / 24px 24px,
+        linear-gradient(180deg, rgba(80, 255, 120, 0.03) 1px, transparent 1px) 0 0 / 24px 24px,
+        linear-gradient(180deg, #081108 0%, #050805 100%);
+      box-shadow: inset 0 0 0 1px rgba(90, 255, 120, 0.08), 0 10px 28px rgba(0, 0, 0, 0.45);
+    }
+
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      outline: none;
+      background: #000;
+    }
+
+    .console {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(11, 24, 12, 0.97), rgba(7, 14, 8, 0.98));
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: min(34vh, 300px);
+      transition: height 140ms ease;
+    }
+
+    .console.collapsed {
+      height: 34px;
+    }
+
+    .console-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 10px;
+      font-size: 12px;
+      color: var(--text-1);
+    }
+
+    .console-title {
+      min-width: 180px;
+      color: var(--accent-2);
+      letter-spacing: 0.15px;
+    }
+
+    .console-preview {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #a8efb2;
+      opacity: 0.95;
+    }
+
+    .console-toggle {
+      width: 66px;
+      text-align: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0d1b0e;
+      color: #b4ffbf;
+      cursor: pointer;
+      padding: 3px 6px;
+      font-size: 11px;
+      user-select: none;
+    }
+
+    #console-log {
+      margin: 0;
+      padding: 10px 10px 12px;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #c5ffd0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    .console.collapsed #console-log {
+      display: none;
+    }
+
+    .log-line {
+      margin-bottom: 2px;
+    }
+    .log-line.stdout { color: #c9ffd3; }
+    .log-line.stderr { color: var(--err); }
+    .log-line.warn { color: var(--warn); }
+    .log-line.ok { color: var(--ok); }
+
+    .log-time {
+      color: #5fa36b;
+      margin-right: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span>libvultra / web runtime</span>
+      </div>
+      <div class="status">
+        <span class="spinner" id="status-dot"></span>
+        <span id="status-text">Bootstrapping...</span>
+        <span class="progress-wrap" aria-hidden="true">
+          <span class="progress-bar" id="status-progress"></span>
+        </span>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btn-fullscreen" type="button">Fullscreen</button>
+        <button class="btn" id="btn-clear-log" type="button">Clear Log</button>
+      </div>
+    </header>
+
+    <section class="canvas-shell">
+      <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+    </section>
+
+    <section class="console collapsed" id="console-panel">
+      <div class="console-header">
+        <span class="console-title">Console</span>
+        <span class="console-preview" id="console-preview">[standby] console is collapsed</span>
+        <span class="console-toggle" id="btn-toggle-console">Expand</span>
+      </div>
+      <pre id="console-log"></pre>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const statusText = document.getElementById("status-text");
+      const statusDot = document.getElementById("status-dot");
+      const statusProgress = document.getElementById("status-progress");
+      const consoleLog = document.getElementById("console-log");
+      const consolePanel = document.getElementById("console-panel");
+      const consolePreview = document.getElementById("console-preview");
+      const canvas = document.getElementById("canvas");
+      const btnClear = document.getElementById("btn-clear-log");
+      const btnFullscreen = document.getElementById("btn-fullscreen");
+      const btnToggleConsole = document.getElementById("btn-toggle-console");
+
+      const MAX_LOG_LINES = 1200;
+      let logLineCount = 0;
+
+      function now() {
+        const d = new Date();
+        return d.toLocaleTimeString("en-GB", { hour12: false });
+      }
+
+      function appendLog(text, kind) {
+        if (text == null) return;
+        const message = String(text);
+        consolePreview.textContent = message.replace(/\s+/g, " ").trim() || "[empty]";
+        const line = document.createElement("div");
+        line.className = "log-line " + (kind || "stdout");
+        const ts = document.createElement("span");
+        ts.className = "log-time";
+        ts.textContent = "[" + now() + "]";
+        line.appendChild(ts);
+        line.appendChild(document.createTextNode(message));
+        consoleLog.appendChild(line);
+        logLineCount += 1;
+        while (logLineCount > MAX_LOG_LINES && consoleLog.firstChild) {
+          consoleLog.removeChild(consoleLog.firstChild);
+          logLineCount -= 1;
+        }
+        consoleLog.scrollTop = consoleLog.scrollHeight;
+      }
+
+      function setStatus(text, progressValue) {
+        statusText.textContent = text || "Running";
+        if (typeof progressValue === "number") {
+          const p = Math.max(0, Math.min(100, progressValue));
+          statusProgress.style.width = p.toFixed(1) + "%";
+        }
+      }
+
+      btnClear.addEventListener("click", function () {
+        consoleLog.textContent = "";
+        logLineCount = 0;
+        consolePreview.textContent = "[cleared]";
+      });
+
+      btnFullscreen.addEventListener("click", function () {
+        if (canvas.requestFullscreen) {
+          canvas.requestFullscreen().catch(function () {});
+        }
+      });
+
+      btnToggleConsole.addEventListener("click", function () {
+        const collapsed = consolePanel.classList.toggle("collapsed");
+        btnToggleConsole.textContent = collapsed ? "Expand" : "Collapse";
+      });
+
+      var Module = window.Module || {};
+      Module.canvas = Module.canvas || canvas;
+      Module.print = Module.print || function (text) { appendLog(text, "stdout"); };
+      Module.printErr = Module.printErr || function (text) { appendLog(text, "stderr"); };
+      Module.setStatus = function (text) { setStatus(text); };
+      Module.monitorRunDependencies = function (left) {
+        if (!Module.totalDependencies) Module.totalDependencies = 0;
+        Module.totalDependencies = Math.max(Module.totalDependencies, left);
+        const total = Module.totalDependencies || 1;
+        const done = total - left;
+        const pct = total > 0 ? (done / total) * 100 : 100;
+        if (left > 0) {
+          setStatus("Loading dependencies: " + done + "/" + total, pct);
+          statusDot.style.background = "#ffd166";
+          statusDot.style.boxShadow = "0 0 10px rgba(255, 209, 102, 0.8)";
+        } else {
+          setStatus("Runtime ready", 100);
+          statusDot.style.background = "var(--ok)";
+          statusDot.style.boxShadow = "0 0 10px rgba(113, 255, 168, 0.8)";
+          appendLog("Runtime ready.", "ok");
+        }
+      };
+      Module.onAbort = function (what) {
+        setStatus("Runtime aborted");
+        statusDot.style.background = "var(--err)";
+        statusDot.style.boxShadow = "0 0 10px rgba(255, 111, 125, 0.8)";
+        appendLog("ABORT: " + what, "stderr");
+      };
+
+      appendLog("libvultra shell loaded.", "ok");
+      window.Module = Module;
+    })();
+  </script>
+
+  {{{ SCRIPT }}}
+</body>
+</html>

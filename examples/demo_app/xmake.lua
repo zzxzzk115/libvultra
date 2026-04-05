@@ -3,6 +3,7 @@ if not is_plat("android") then
         set_kind("binary")
         add_files("main.cpp")
         add_deps("vultra")
+
         if is_plat("wasm") then
             add_rules("resources.vpk_pack", "wasm.link")
 
@@ -18,6 +19,9 @@ if not is_plat("android") then
             set_values("vpk.enable_pack", true)
             set_values("wasm.vpk_path", output_vpk)
             set_values("wasm.vpk_mount", "/resources.vpk")
+            set_values("wasm.shell_file", path.join(project_dir, "web", "emscripten_libvultra.html"))
+            set_values("wasm.imgui_ini", path.join(os.scriptdir(), "imgui.ini"))
+            set_values("wasm.imgui_ini_mount", "/imgui.ini")
             set_values("wasm.extra_ldflags",
                        {
                            "-sALLOW_MEMORY_GROWTH=1",
@@ -32,6 +36,9 @@ if not is_plat("android") then
             -- set_values("wasm.vpk_mount", "/resources.vpk")
             -- set_values("wasm.extra_ldflags", {"-sALLOW_MEMORY_GROWTH=1", ...})
         end
+
+        add_files("imgui.ini")
+
         set_rundir("$(projectdir)")
         set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/example-demo-app")
 end

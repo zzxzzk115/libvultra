@@ -9,6 +9,7 @@
 #include <glfw3webgpu.h>
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace vultra::platform::glfw
@@ -20,6 +21,19 @@ namespace vultra::platform::glfw
         {
             throw std::runtime_error("Failed to initialize GLFW");
         }
+
+#if defined(__EMSCRIPTEN__)
+        // On wasm, create the GLFW window using the actual canvas CSS size so
+        // rendering starts with the correct surface extent from frame 0.
+        double canvasCssWidth  = 0.0;
+        double canvasCssHeight = 0.0;
+        if (emscripten_get_element_css_size("#canvas", &canvasCssWidth, &canvasCssHeight) == EMSCRIPTEN_RESULT_SUCCESS)
+        {
+            const int cssWidth  = std::max(1, static_cast<int>(std::lround(canvasCssWidth)));
+            const int cssHeight = std::max(1, static_cast<int>(std::lround(canvasCssHeight)));
+            m_Extent = {cssWidth, cssHeight};
+        }
+#endif
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, m_Resizable ? GLFW_TRUE : GLFW_FALSE);
@@ -182,8 +196,54 @@ namespace vultra::platform::glfw
         glfwPollEvents();
         if (m_WindowHandle)
         {
-            glfwGetFramebufferSize(m_WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
+            const auto prevExtent           = m_Extent;
+            const auto prevFrameBufferExtent = m_FrameBufferExtent;
+
+#if defined(__EMSCRIPTEN__)
+            // Keep GLFW window logical size in sync with the real canvas CSS size.
+            // Emscripten callback bridging may vary across environments, so we query
+            // and update proactively every frame.
+            double canvasCssWidth  = 0.0;
+            double canvasCssHeight = 0.0;
+            if (emscripten_get_element_css_size("#canvas", &canvasCssWidth, &canvasCssHeight) == EMSCRIPTEN_RESULT_SUCCESS)
+            {
+                const int cssWidth  = std::max(1, static_cast<int>(std::lround(canvasCssWidth)));
+                const int cssHeight = std::max(1, static_cast<int>(std::lround(canvasCssHeight)));
+                m_Extent = {cssWidth, cssHeight};
+
+                // Sync canvas backing store size to CSS size * devicePixelRatio.
+                // Without this, fullscreen may only change CSS size while framebuffer
+                // remains at old pixel dimensions.
+                const double dpr       = std::max(emscripten_get_device_pixel_ratio(), 1.0);
+                const int    pixelW    = std::max(1, static_cast<int>(std::lround(canvasCssWidth * dpr)));
+                const int    pixelH    = std::max(1, static_cast<int>(std::lround(canvasCssHeight * dpr)));
+                emscripten_set_canvas_element_size("#canvas", pixelW, pixelH);
+
+                int canvasPixelW = 0;
+                int canvasPixelH = 0;
+                if (emscripten_get_canvas_element_size("#canvas", &canvasPixelW, &canvasPixelH) == EMSCRIPTEN_RESULT_SUCCESS)
+                {
+                    m_FrameBufferExtent = {std::max(1, canvasPixelW), std::max(1, canvasPixelH)};
+                }
+                else
+                {
+                    glfwGetFramebufferSize(m_WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
+                }
+            }
+            else
+#endif
+            {
+                glfwGetWindowSize(m_WindowHandle, &m_Extent.x, &m_Extent.y);
+                glfwGetFramebufferSize(m_WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
+            }
             m_ShouldClose = glfwWindowShouldClose(m_WindowHandle) != 0;
+
+            if (m_Extent != prevExtent || m_FrameBufferExtent != prevFrameBufferExtent)
+            {
+                os::GeneralWindowEvent generalEvent {};
+                generalEvent.type = event::WindowEventType::eResized;
+                emitEvent(generalEvent);
+            }
         }
     }
 
@@ -383,9 +443,6 @@ namespace vultra::platform::glfw
             return;
         }
         self->m_Extent = {width, height};
-        os::GeneralWindowEvent generalEvent {};
-        generalEvent.type = event::WindowEventType::eResized;
-        self->emitEvent(generalEvent);
     }
 
     void GLFWWindow::onWindowPos(GLFWwindow* windowHandle, int x, int y)

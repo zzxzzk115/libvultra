@@ -4,6 +4,8 @@
 
 #include <vbase/service/service_registry.hpp>
 
+#include <cstdint>
+
 namespace vultra
 {
     class Renderer;
@@ -19,5 +21,8 @@ namespace vultra
 
         // Render one frame for all cooked cameras (CameraSystem output).
         virtual void renderFrame() = 0;
+
+        // Notify render service that output size changed.
+        virtual void onResize(uint32_t width, uint32_t height) = 0;
     };
 } // namespace vultra

@@ -44,6 +44,7 @@ namespace vultra
         // IRenderService
         void registerRenderer(Ref<Renderer> renderer) override;
         void renderFrame() override;
+        void onResize(uint32_t width, uint32_t height) override;
 
         // Optional: set default renderer key used if camera.rendererKey not found
         void setDefaultRendererKey(std::string key) { m_DefaultRendererKey = std::move(key); }
@@ -56,8 +57,6 @@ namespace vultra
 
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
-
-        void onResize(uint32_t width, uint32_t height);
 
     private:
         bool m_SkipRender {false};

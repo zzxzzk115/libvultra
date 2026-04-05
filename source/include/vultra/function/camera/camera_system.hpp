@@ -18,6 +18,12 @@ namespace vultra
         bool enabled {true};
         bool captureMouse {true};
 
+        float orbitDistance {3.0f};
+        float orbitRotateSensitivity {0.08f}; // degrees per pixel
+        float orbitPanSensitivity {0.002f};   // world units per pixel (scaled by distance)
+        float orbitZoomSpeed {0.03f};         // exponential zoom factor
+        glm::vec3 orbitPivot {0.0f, 0.0f, 0.0f};
+
         float moveSpeed {4.0f};
         float sprintMultiplier {2.5f};
         float mouseSensitivity {0.08f}; // degrees per pixel
@@ -47,6 +53,8 @@ namespace vultra
 
         // ICameraService
         std::span<const RenderCamera> cameras() override;
+        std::optional<CameraControlOverlayInfo> cameraControlOverlayInfo() const override;
+        void setCameraControlInputSuppressed(bool suppressed) override;
 
         // Incremental helper (until ECS cooking is wired):
         // App can push cameras manually.
@@ -72,5 +80,7 @@ namespace vultra
         std::optional<FPSCameraController> m_FPSController;
         std::size_t                        m_FPSManualCameraIndex {0};
         bool                               m_MouseCaptureApplied {false};
+        CameraControlMode                  m_ActiveControlMode {CameraControlMode::eDisabled};
+        bool                               m_InputSuppressed {false};
     };
 } // namespace vultra

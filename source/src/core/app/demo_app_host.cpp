@@ -18,6 +18,7 @@
 #include "vultra/function/scene/scene_system.hpp"
 #include "vultra/function/scripting/script_system.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
+#include "vultra/function/services/render_service.hpp"
 #include "vultra/function/world/world_system.hpp"
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -135,8 +136,13 @@ namespace vultra
     FPSCameraController DemoAppHost::makeFPSCameraController() const
     {
         FPSCameraController controller {};
-        controller.enabled          = false;
+        controller.enabled          = true;
         controller.captureMouse     = true;
+        controller.orbitDistance    = 3.0f;
+        controller.orbitRotateSensitivity = 0.08f;
+        controller.orbitPanSensitivity    = 0.002f;
+        controller.orbitZoomSpeed         = 0.03f;
+        controller.orbitPivot      = {0.0f, 1.0f, 0.0f};
         controller.moveSpeed        = 4.0f;
         controller.sprintMultiplier = 2.5f;
         controller.mouseSensitivity = 0.08f;
@@ -187,6 +193,8 @@ namespace vultra
         engine.ctx().config.asset.assetRoot   = "/";
         engine.ctx().config.asset.vpkFile     = "resources.vpk";
         engine.ctx().config.asset.loadFromVPK = true;
+        // Keep ImGui ini path deterministic in wasm FS.
+        engine.ctx().config.writableRoot      = "/";
 #endif
 
 #if defined(__ANDROID__)
@@ -291,6 +299,38 @@ namespace vultra
     {
         engineCtx().services.require<IInputService>().handleEvent(e);
         engineCtx().services.require<IImGuiService>().processEvent(e);
+
+        if (e.type == event::WindowEventType::eResized)
+        {
+            auto* backendService = engineCtx().services.tryGet<IRenderBackendService>();
+            auto* windowService  = engineCtx().services.tryGet<IWindowService>();
+            if (backendService == nullptr || windowService == nullptr)
+            {
+                return;
+            }
+
+            const auto framebufferExtent = windowService->window().getFrameBufferExtent();
+            const uint32_t framebufferWidth  = static_cast<uint32_t>(std::max(framebufferExtent.x, 0));
+            const uint32_t framebufferHeight = static_cast<uint32_t>(std::max(framebufferExtent.y, 0));
+            if (framebufferWidth == 0u || framebufferHeight == 0u)
+            {
+                return;
+            }
+
+            const auto swapchainExtent = backendService->swapchain().getExtent();
+            if (swapchainExtent.width == framebufferWidth && swapchainExtent.height == framebufferHeight)
+            {
+                return;
+            }
+
+            backendService->renderDevice().waitIdle();
+            backendService->frameController().recreate();
+
+            if (auto* renderService = engineCtx().services.tryGet<IRenderService>(); renderService != nullptr)
+            {
+                renderService->onResize(framebufferWidth, framebufferHeight);
+            }
+        }
     }
 
     void DemoAppHost::onPollEvents()

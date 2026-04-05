@@ -131,6 +131,11 @@ rule("wasm.link")
             target:add("ldflags", table.unpack(extra_ldflags), {force = true})
         end
 
+        local shell_file = _wasm_setting(target, "wasm.shell_file", "wasm.shell_template")
+        if shell_file ~= nil and shell_file ~= "" then
+            target:add("ldflags", "--shell-file=" .. shell_file, {force = true})
+        end
+
         local vpk_path = _wasm_setting(target, "wasm.vpk_path", nil)
         if vpk_path == nil then
             vpk_path = _vpk_setting(target, "vpk.output_vpk", "wasm_vpk.output_vpk")
@@ -141,7 +146,40 @@ rule("wasm.link")
             if mount_path == nil then
                 mount_path = _vpk_setting(target, "vpk.mount_path", "wasm_vpk.mount_path") or "/resources.vpk"
             end
-            target:add("ldflags", "--preload-file", vpk_path .. "@" .. mount_path, {force = true})
+            target:add("ldflags", "--preload-file=" .. vpk_path .. "@" .. mount_path, {force = true})
+        end
+
+        local function _add_preload(src, dst)
+            if src == nil then
+                return
+            end
+            local mount = dst
+            if mount == nil or mount == "" then
+                mount = "/" .. path.filename(src)
+            end
+            target:add("ldflags", "--preload-file=" .. src .. "@" .. mount, {force = true})
+        end
+
+        local preload_files = _wasm_setting(target, "wasm.preload_files", "wasm.preload")
+        if preload_files ~= nil then
+            for _, entry in ipairs(preload_files) do
+                if type(entry) == "string" then
+                    local at = entry:find("@", 1, true)
+                    if at ~= nil then
+                        _add_preload(entry:sub(1, at - 1), entry:sub(at + 1))
+                    else
+                        _add_preload(entry, nil)
+                    end
+                elseif type(entry) == "table" then
+                    _add_preload(entry.src or entry[1], entry.dst or entry[2])
+                end
+            end
+        end
+
+        local imgui_ini_src = _wasm_setting(target, "wasm.imgui_ini", "wasm.imgui_ini_path")
+        if imgui_ini_src ~= nil then
+            local imgui_ini_mount = _wasm_setting(target, "wasm.imgui_ini_mount", nil) or "/imgui.ini"
+            _add_preload(imgui_ini_src, imgui_ini_mount)
         end
     end)
 rule_end()

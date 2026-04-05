@@ -122,8 +122,26 @@ namespace vultra
 
     void ImGuiSystem::begin()
     {
+        auto& window = ctx().services.require<IWindowService>().window();
         auto& renderBackendService = ctx().services.require<IRenderBackendService>();
-        renderBackendService.imguiBackend().beginFrame(ctx().services.require<IWindowService>().window());
+        renderBackendService.imguiBackend().beginFrame(window);
+
+        // Force-sync ImGui display metrics from our window abstraction every frame.
+        // This keeps wasm canvas resizing and HiDPI scale changes reflected even if
+        // backend-level callbacks lag behind or differ across platforms.
+        {
+            ImGuiIO& io       = ImGui::GetIO();
+            const auto extent = window.getExtent();
+            const float width  = static_cast<float>(std::max(extent.x, 1));
+            const float height = static_cast<float>(std::max(extent.y, 1));
+            io.DisplaySize = ImVec2(width, height);
+
+            const auto fbExtent = window.getFrameBufferExtent();
+            const float fbWidth  = static_cast<float>(std::max(fbExtent.x, 1));
+            const float fbHeight = static_cast<float>(std::max(fbExtent.y, 1));
+            io.DisplayFramebufferScale = ImVec2(fbWidth / width, fbHeight / height);
+        }
+
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
 
@@ -162,7 +180,6 @@ namespace vultra
             else
             {
                 // Default DockSpace
-                auto&   window       = ctx().services.require<IWindowService>().window();
                 float   displayScale = window.getDisplayScale();
                 ImGuiID dockSpaceId  = ImGui::GetID("DockSpace");
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(displayScale * 320.0f, displayScale * 240.0f));

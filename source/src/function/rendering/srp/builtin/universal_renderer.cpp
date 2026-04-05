@@ -5,6 +5,7 @@
 #include "vultra/function/rendering/srp/builtin/features/gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/test_feature.hpp"
+#include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #ifdef VULTRA_ENABLE_RENDERDOC
@@ -64,6 +65,50 @@ namespace vultra
 
                 ImGui::Text("FPS: %.1f", fps);
                 ImGui::Text("Frame: %.2f ms", ms);
+            }
+            ImGui::End();
+        }
+
+        void drawCameraHintOverlay(const std::optional<CameraControlOverlayInfo>& infoOpt)
+        {
+            if (!infoOpt.has_value())
+                return;
+            const auto info = *infoOpt;
+            if (!info.enabled)
+                return;
+
+            const ImGuiViewport* viewport = ImGui::GetMainViewport();
+            if (!viewport)
+                return;
+
+            constexpr float kPadding = 10.0f;
+            ImGui::SetNextWindowPos(
+                ImVec2(viewport->WorkPos.x + kPadding, viewport->WorkPos.y + kPadding), ImGuiCond_Always);
+            ImGui::SetNextWindowBgAlpha(0.35f);
+            constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                                                ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
+                                                ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+
+            if (ImGui::Begin("##CameraControlHintsOverlay", nullptr, kFlags))
+            {
+                if (info.mode == CameraControlMode::eFly)
+                {
+                    ImGui::Text("Camera: Fly");
+                    ImGui::Separator();
+                    ImGui::Text("Hold RMB: Look");
+                    ImGui::Text("W/A/S/D + Q/E: Move");
+                    ImGui::Text("Shift: Faster, Ctrl: Slower");
+                    ImGui::Text("Release RMB: Back to Orbit");
+                }
+                else
+                {
+                    ImGui::Text("Camera: Orbit");
+                    ImGui::Separator();
+                    ImGui::Text("LMB Drag: Rotate");
+                    ImGui::Text("MMB Drag or Shift+LMB: Pan");
+                    ImGui::Text("Wheel: Zoom");
+                    ImGui::Text("Hold RMB: Temporary Fly");
+                }
             }
             ImGui::End();
         }
@@ -205,8 +250,15 @@ namespace vultra
 
         auto* services       = getServices();
         auto& backendService = services->require<IRenderBackendService>();
+        auto& cameraService  = services->require<ICameraService>();
         auto& imguiService   = services->require<IImGuiService>();
         auto& gpuResourceSvc = services->require<IGpuResourceService>();
+
+        const bool suppressCameraInput = ImGui::GetIO().WantCaptureMouse || ImGui::IsAnyItemHovered() ||
+                                         ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+        cameraService.setCameraControlInputSuppressed(suppressCameraInput);
+
+        drawCameraHintOverlay(cameraService.cameraControlOverlayInfo());
 
         ImGui::Begin("Universal Renderer");
 
