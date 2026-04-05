@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,7 +35,7 @@ jobs:
           version: latest
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake git clang ninja-build pkg-config rsync
+        run: brew install ninja pkg-config
 
       - name: Configure WASM Build
         run: xmake f -p wasm --policies=build.ccache:y --libvultra_build_examples=y --libvultra_build_tests=n -y
