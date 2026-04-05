@@ -7,6 +7,10 @@
 #include <thread>
 #include <vector>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#endif
+
 namespace vultra
 {
     namespace rhi
@@ -29,6 +33,19 @@ namespace vultra
 
             [[nodiscard]] const char* toRequestAdapterStatusString(const WGPURequestAdapterStatus status)
             {
+#if defined(__EMSCRIPTEN__)
+                switch (status)
+                {
+                    case WGPURequestAdapterStatus_Success:
+                        return "Success";
+                    case WGPURequestAdapterStatus_Unavailable:
+                        return "Unavailable";
+                    case WGPURequestAdapterStatus_Error:
+                        return "Error";
+                    default:
+                        return "Invalid";
+                }
+#else
                 switch (status)
                 {
                     case WGPURequestAdapterStatus_Success:
@@ -44,10 +61,22 @@ namespace vultra
                     default:
                         return "Invalid";
                 }
+#endif
             }
 
             [[nodiscard]] const char* toRequestDeviceStatusString(const WGPURequestDeviceStatus status)
             {
+#if defined(__EMSCRIPTEN__)
+                switch (status)
+                {
+                    case WGPURequestDeviceStatus_Success:
+                        return "Success";
+                    case WGPURequestDeviceStatus_Error:
+                        return "Error";
+                    default:
+                        return "Invalid";
+                }
+#else
                 switch (status)
                 {
                     case WGPURequestDeviceStatus_Success:
@@ -61,12 +90,13 @@ namespace vultra
                     default:
                         return "Invalid";
                 }
+#endif
             }
 
             struct AdapterRequestResult
             {
                 bool                     completed {false};
-                WGPURequestAdapterStatus status {WGPURequestAdapterStatus_Unknown};
+                WGPURequestAdapterStatus status {WGPURequestAdapterStatus_Error};
                 WGPUAdapter              adapter {nullptr};
                 std::string              message;
             };
@@ -74,7 +104,7 @@ namespace vultra
             struct DeviceRequestResult
             {
                 bool                    completed {false};
-                WGPURequestDeviceStatus status {WGPURequestDeviceStatus_Unknown};
+                WGPURequestDeviceStatus status {WGPURequestDeviceStatus_Error};
                 WGPUDevice              device {nullptr};
                 std::string             message;
             };
@@ -143,7 +173,13 @@ namespace vultra
                     if (waitStatus == WGPUWaitStatus_TimedOut)
                     {
                         wgpuInstanceProcessEvents(instance);
+#if defined(__EMSCRIPTEN__)
+                        // On web, callbacks are serviced by the browser event loop.
+                        // Yield cooperatively so requestAdapter/requestDevice can complete.
+                        emscripten_sleep(0);
+#else
                         std::this_thread::yield();
+#endif
                     }
                 }
             }
@@ -255,6 +291,39 @@ namespace vultra
             m_FeatureReport.apiMinor = 0;
             m_FeatureReport.apiPatch = 0;
 #endif
+        }
+
+        uint64_t WebGPURenderDevice::getFormatFeatureFlagsOptimal(const PixelFormat pixelFormat) const
+        {
+            constexpr uint64_t kSampledImage   = 0x00000001ull;
+            constexpr uint64_t kStorageImage   = 0x00000002ull;
+            constexpr uint64_t kColorAttachment = 0x00000080ull;
+            constexpr uint64_t kSampledLinear  = 0x00001000ull;
+            constexpr uint64_t kTransferSrc    = 0x00004000ull;
+            constexpr uint64_t kTransferDst    = 0x00008000ull;
+
+            switch (pixelFormat)
+            {
+                case PixelFormat::eBC1_UNorm:
+                case PixelFormat::eBC2_UNorm:
+                case PixelFormat::eBC3_UNorm:
+                case PixelFormat::eBC4_UNorm:
+                case PixelFormat::eBC5_UNorm:
+                case PixelFormat::eBC6H_RGB16F:
+                case PixelFormat::eBC7_RGBA8_UNorm:
+                    return m_SupportsTextureCompressionBC ? (kTransferDst | kSampledImage | kSampledLinear) : 0u;
+                case PixelFormat::eRGBA8_UNorm:
+                case PixelFormat::eRGBA8_sRGB:
+                case PixelFormat::eBGRA8_UNorm:
+                case PixelFormat::eBGRA8_sRGB:
+                    return kTransferSrc | kTransferDst | kSampledImage | kSampledLinear | kStorageImage |
+                           kColorAttachment;
+                case PixelFormat::eRGBA16F:
+                case PixelFormat::eRGBA32F:
+                    return kTransferSrc | kTransferDst | kSampledImage | kStorageImage | kColorAttachment;
+                default:
+                    return kTransferSrc | kTransferDst | kSampledImage;
+            }
         }
 
         WebGPURenderDevice::~WebGPURenderDevice()

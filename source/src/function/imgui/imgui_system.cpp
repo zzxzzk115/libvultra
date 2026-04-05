@@ -4,8 +4,9 @@
 #include "vultra/function/services/render_backend_service.hpp"
 #if defined(__ANDROID__)
 #include "vultra/platform/android/android_native_window.hpp"
-#else
+#elif !defined(__EMSCRIPTEN__)
 #include "vultra/platform/sdl/sdl_window.hpp"
+#else
 #endif
 
 #include <font_headers/materialdesignicons_webfont.ttf.binfont.h>
@@ -19,16 +20,13 @@
 #include <ImGuiAl/fonts/RobotoBold.inl>
 #include <ImGuiAl/fonts/RobotoRegular.inl>
 #include <ImGuizmo/ImGuizmo.h>
-#if !defined(__ANDROID__)
-#include <SDL3/SDL_video.h>
-#endif
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <implot/implot.h>
 
 namespace
 {
-    template <typename T>
+    template<typename T>
     T toImGuiTextureId(std::uintptr_t textureId)
     {
         if constexpr (std::is_pointer_v<T>)
@@ -41,7 +39,7 @@ namespace
         }
     }
 
-    template <typename T>
+    template<typename T>
     std::uintptr_t fromImGuiTextureId(T textureId)
     {
         if constexpr (std::is_pointer_v<T>)
@@ -59,6 +57,14 @@ namespace
         if (imguiIniFile == nullptr || imguiIniFile[0] == '\0')
             return {};
 
+#if defined(__EMSCRIPTEN__)
+        // Browser runtime has no stable executable path (/proc/self/exe is unavailable),
+        // so we only use an explicit writable root if provided.
+        if (writableRoot.empty())
+        {
+            return {};
+        }
+#endif
         const std::filesystem::path root =
             !writableRoot.empty() ? std::filesystem::path(writableRoot) : vbase::executable_dir();
         return (root / imguiIniFile).generic_string();
@@ -71,36 +77,46 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[ImGuiSystem] Initializing...");
 
-        auto& renderBackendService = ctx().services.require<IRenderBackendService>();
-        auto& windowService        = ctx().services.require<IWindowService>();
+        try
+        {
+            auto& renderBackendService = ctx().services.require<IRenderBackendService>();
+            auto& windowService        = ctx().services.require<IWindowService>();
 
-        const auto& config = ctx().config.imgui;
-        initImGui(renderBackendService.renderDevice(),
-                  renderBackendService.swapchain(),
-                  windowService.window(),
-                  config.enableMultiview,
-                  config.enableDocking,
-                  ctx().config.writableRoot,
-                  config.imguiIniFile.c_str());
-        renderBackendService
-            .imguiBackend()
-            .init(windowService.window(),
-                  renderBackendService.renderDevice(),
-                  renderBackendService.swapchain(),
-                  config.enableMultiview,
-                  config.enableDocking);
+            const auto& config = ctx().config.imgui;
+            initImGui(renderBackendService.renderDevice(),
+                      renderBackendService.swapchain(),
+                      windowService.window(),
+                      config.enableMultiview,
+                      config.enableDocking,
+                      ctx().config.writableRoot,
+                      config.imguiIniFile.c_str());
+            renderBackendService.imguiBackend().init(windowService.window(),
+                                                     renderBackendService.renderDevice(),
+                                                     renderBackendService.swapchain(),
+                                                     config.enableMultiview,
+                                                     config.enableDocking);
 
-        VULTRA_CORE_TRACE("[ImGuiSystem] Providing IImGuiService");
-        ctx().services.provide<IImGuiService>(this);
-
-        return true;
+            VULTRA_CORE_TRACE("[ImGuiSystem] Providing IImGuiService");
+            ctx().services.provide<IImGuiService>(this);
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            VULTRA_CORE_ERROR("[ImGuiSystem] Initialization failed: {}", e.what());
+            return false;
+        }
+        catch (...)
+        {
+            VULTRA_CORE_ERROR("[ImGuiSystem] Initialization failed: unknown exception");
+            return false;
+        }
     }
 
     void ImGuiSystem::onShutdown()
     {
         VULTRA_CORE_INFO("[ImGuiSystem] Shutting down");
-        ctx().services.require<IRenderBackendService>().imguiBackend().shutdown(ctx().config.writableRoot,
-                                                                                 ctx().config.imgui.imguiIniFile.c_str());
+        ctx().services.require<IRenderBackendService>().imguiBackend().shutdown(
+            ctx().config.writableRoot, ctx().config.imgui.imguiIniFile.c_str());
         shutdownImGui(ctx().config.writableRoot, ctx().config.imgui.imguiIniFile.c_str());
     }
 
@@ -161,7 +177,17 @@ namespace vultra
     {
         RHI_GPU_ZONE(cb, "ImGuiRenderer::render");
 
-        rhi::FramebufferInfo fbInfoCopy = framebufferInfo;
+        auto&                renderBackendService = ctx().services.require<IRenderBackendService>();
+        rhi::FramebufferInfo fbInfoCopy           = framebufferInfo;
+
+        if (!fbInfoCopy.colorAttachments.empty() &&
+            renderBackendService.renderDevice().getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+        {
+            // Keep WebGPU ImGui overlay deterministic: always render to the currently presented backbuffer.
+            // Some renderer paths may pass intermediate targets, which makes ImGui invisible on final present.
+            fbInfoCopy.colorAttachments[0].target = &renderBackendService.backbuffer();
+        }
+
         // Clear value is handled by the RenderSystem, we don't want ImGui to clear again.
         if (fbInfoCopy.colorAttachments[0].clearValue.has_value())
         {
@@ -174,7 +200,6 @@ namespace vultra
 
         cb.beginRendering(fbInfoCopy);
 
-        auto& renderBackendService = ctx().services.require<IRenderBackendService>();
         renderBackendService.imguiBackend().render(cb);
 
         cb.endRendering();
@@ -191,10 +216,7 @@ namespace vultra
 #endif
     }
 
-    void ImGuiSystem::postRender()
-    {
-        ctx().services.require<IRenderBackendService>().imguiBackend().postRender();
-    }
+    void ImGuiSystem::postRender() { ctx().services.require<IRenderBackendService>().imguiBackend().postRender(); }
 
     IImGuiService::TextureID ImGuiSystem::addTexture(const rhi::Texture& texture)
     {
@@ -208,7 +230,7 @@ namespace vultra
             return;
 
         auto& renderBackendService = ctx().services.require<IRenderBackendService>();
-        auto backendTextureId = fromImGuiTextureId(textureID);
+        auto  backendTextureId     = fromImGuiTextureId(textureID);
         renderBackendService.imguiBackend().removeTexture(backendTextureId);
         textureID = 0;
     }
@@ -220,8 +242,8 @@ namespace vultra
 
     std::function<void(ImGuiDockNodeFlags)> ImGuiSystem::s_SetDockSpace;
 
-    void ImGuiSystem::initImGui(const rhi::RenderDevice&                rd,
-                                const rhi::Swapchain&                   swapchain,
+    void ImGuiSystem::initImGui(const rhi::RenderDevice& /*rd*/,
+                                const rhi::Swapchain& /*swapchain*/,
                                 const os::Window&                       window,
                                 const bool                              enableMultiviewport,
                                 const bool                              enableDocking,
@@ -312,16 +334,17 @@ namespace vultra
 
         setImGuiStyle();
 
-        // High-DPI support
-#if defined(__ANDROID__)
+        // Keep window/display scale semantic intact in window backends.
+        // For ImGui style sizing, only apply density scaling on Android.
         float displayScale = window.getDisplayScale();
-#else
-        float displayScale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+        if (displayScale <= 0.0f)
+            displayScale = 1.0f;
+#if !defined(__ANDROID__)
+        displayScale = 1.0f;
 #endif
         auto& style = ImGui::GetStyle();
         style.ScaleAllSizes(displayScale);
         style.FontScaleDpi = displayScale;
-
     }
 
     void ImGuiSystem::shutdownImGui(const std::string& writableRoot, const char* imguiIniFile)

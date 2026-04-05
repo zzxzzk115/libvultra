@@ -3,6 +3,7 @@
 #include <vultra/core/base/api.hpp>
 #include <vultra/core/engine/engine.hpp>
 
+#include <chrono>
 #include <span>
 #include <string>
 #include <vector>
@@ -42,8 +43,29 @@ namespace vultra
         const EngineContext& engineCtx() const { return m_Engine.ctx(); }
         std::span<const std::string> commandLineArgs() const { return m_CommandLineArgs; }
 
+    private:
+        bool bootstrap();
+        bool initCoreIfNeeded();
+        bool stepFrame();
+        void shutdownIfNeeded();
+
+#if defined(__EMSCRIPTEN__)
+        static void emscriptenFrameThunk(void* userdata);
+        void        emscriptenFrameStep();
+#endif
+
     protected:
         Engine m_Engine;
         std::vector<std::string> m_CommandLineArgs;
+
+    private:
+        bool                                   m_Configured {false};
+        bool                                   m_CoreInitialized {false};
+        bool                                   m_Shutdown {false};
+        int                                    m_ExitCode {0};
+        std::chrono::steady_clock::time_point  m_LastTick {};
+#if defined(__EMSCRIPTEN__)
+        bool m_EmscriptenShutdown {false};
+#endif
     };
 } // namespace vultra

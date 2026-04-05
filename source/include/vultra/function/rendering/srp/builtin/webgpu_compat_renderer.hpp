@@ -1,19 +1,12 @@
 #pragma once
 
-#include "vultra/function/rendering/srp/renderer.hpp"
+#include "vultra/function/rendering/srp/builtin/legacy_renderer.hpp"
 
 namespace vultra
 {
-    class WebGPUCompatRenderer final : public FeatureRenderer
+    class WebGPUCompatRenderer final : public LegacyRenderer
     {
     public:
-        std::string_view name() const override { return "webgpu_compat"; }
-
-        void init() override;
-        void render(ImmediateRenderContext& ctx) override;
-        void onImGui() override;
-
-    private:
-        bool m_FeaturesInitialized {false};
+        WebGPUCompatRenderer();
     };
 } // namespace vultra

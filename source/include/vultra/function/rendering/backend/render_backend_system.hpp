@@ -2,7 +2,6 @@
 
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/core/rhi/interfaces/iimgui.hpp"
-#include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
 #include <memory>
@@ -10,10 +9,19 @@
 
 namespace vultra
 {
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+    namespace openxr
+    {
+        class XRHeadset;
+    }
+#endif
+
     class RenderBackendSystem final : public EngineSubsystem, public IRenderBackendService
     {
     public:
         ENGINE_SUBSYSTEM(RenderBackendSystem)
+        RenderBackendSystem();
+        ~RenderBackendSystem() override;
 
         bool onInit() override;
         void onShutdown() override;
@@ -40,7 +48,9 @@ namespace vultra
         std::unique_ptr<rhi::RenderDevice> m_RenderDevice;
         std::unique_ptr<rhi::FrameController> m_FrameController;
         std::unique_ptr<rhi::IImGui>   m_ImGuiBackend;
-        std::unique_ptr<openxr::XRHeadset>    m_XRBackend;
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+        std::unique_ptr<openxr::XRHeadset> m_XRBackend;
+#endif
 
         rhi::Swapchain m_Swapchain;
 

@@ -3,6 +3,7 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/base/hash.hpp"
 #include "vultra/core/base/ranges.hpp"
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
@@ -13,6 +14,7 @@
 #include "vultra/core/rhi/backends/vk/vulkan_pipeline_layout.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_shader_module.hpp"
+#endif
 #include "vultra/core/rhi/backends/webgpu/conversions.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_buffer.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer.hpp"
@@ -23,9 +25,12 @@
 #include "vultra/core/rhi/interfaces/texture_access.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
 #include "vultra/core/rhi/util.hpp"
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
 #include "vultra/function/openxr/xr_device.hpp"
+#endif
 
 #include <bit>
+#include <cstdint>
 #include <cstring>
 #include <glm/glm.hpp>
 #include <limits>
@@ -62,6 +67,7 @@ namespace vultra
                 return h;
             }
 
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             [[nodiscard]] VulkanRenderDevice& vkBackend(std::unique_ptr<IRenderDevice>& backend)
             {
                 assert(backend);
@@ -77,6 +83,7 @@ namespace vultra
                 assert(result && "RenderDevice backend is not Vulkan");
                 return *result;
             }
+#endif
 
             [[nodiscard]] WebGPURenderDevice& webgpuBackend(std::unique_ptr<IRenderDevice>& backend)
             {
@@ -103,13 +110,12 @@ namespace vultra
             [[nodiscard]] uint64_t webgpuFormatFeatureFlags(const WebGPURenderDevice& backend,
                                                             const PixelFormat         pixelFormat)
             {
-                constexpr uint64_t kTransferSrc  = static_cast<uint64_t>(VK_FORMAT_FEATURE_TRANSFER_SRC_BIT);
-                constexpr uint64_t kTransferDst  = static_cast<uint64_t>(VK_FORMAT_FEATURE_TRANSFER_DST_BIT);
-                constexpr uint64_t kSampledImage = static_cast<uint64_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
-                constexpr uint64_t kSampledLinear =
-                    static_cast<uint64_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT);
-                constexpr uint64_t kStorageImage    = static_cast<uint64_t>(VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT);
-                constexpr uint64_t kColorAttachment = static_cast<uint64_t>(VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT);
+                constexpr uint64_t kTransferSrc      = 0x00004000ull;
+                constexpr uint64_t kTransferDst      = 0x00008000ull;
+                constexpr uint64_t kSampledImage     = 0x00000004ull;
+                constexpr uint64_t kSampledLinear    = 0x00001000ull;
+                constexpr uint64_t kStorageImage     = 0x00000008ull;
+                constexpr uint64_t kColorAttachment  = 0x00000080ull;
 
                 switch (pixelFormat)
                 {
@@ -137,6 +143,7 @@ namespace vultra
                 }
             }
 
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             [[nodiscard]] constexpr auto makeAllocationFlags(const AllocationHints hints)
             {
                 vma::AllocationCreateFlags flags {0};
@@ -176,6 +183,7 @@ namespace vultra
                          "Failed to create shader module");
                 return handle;
             }
+#endif
 
             [[nodiscard]] Buffer
             makeWebGPUBuffer(WebGPURenderDevice& backend, const uint64_t size, const BufferUsage usage)
@@ -357,6 +365,54 @@ namespace vultra
             return std::make_unique<WebGPURenderDevice>(appName);
         }
 
+        RenderDeviceFeatureFlagBits RenderDevice::getFeatureFlag() const
+        {
+            assert(m_Backend);
+            return m_Backend->getFeatureFlag();
+        }
+
+        RenderDeviceFeatureReport RenderDevice::getFeatureReport() const
+        {
+            assert(m_Backend);
+            return m_Backend->getFeatureReport();
+        }
+
+        RenderDeviceSyncCapabilities RenderDevice::getSyncCapabilities() const
+        {
+            assert(m_Backend);
+            return m_Backend->getSyncCapabilities();
+        }
+
+        RenderBackendApi RenderDevice::getBackendApi() const
+        {
+            assert(m_Backend);
+            return m_Backend->getBackendApi();
+        }
+
+        bool RenderDevice::supportsSwapchain() const
+        {
+            assert(m_Backend);
+            return m_Backend->supportsSwapchain();
+        }
+
+        openxr::XRDevice* RenderDevice::getXRDevice() const
+        {
+            assert(m_Backend);
+            return m_Backend->getXRDevice();
+        }
+
+        std::string RenderDevice::getName() const
+        {
+            assert(m_Backend);
+            return m_Backend->getName();
+        }
+
+        PhysicalDeviceInfo RenderDevice::getPhysicalDeviceInfo() const
+        {
+            assert(m_Backend);
+            return m_Backend->getPhysicalDeviceInfo();
+        }
+
         RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits  featureFlag,
                                    const std::string_view             appName,
                                    const std::span<const char* const> requiredInstanceExtensions,
@@ -366,7 +422,12 @@ namespace vultra
             {
                 case RenderBackendApi::eAuto:
                 case RenderBackendApi::eVulkan:
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
                     m_Backend = std::make_unique<VulkanRenderDevice>();
+#else
+                    m_Backend = createWebGPUBackend(appName);
+                    return;
+#endif
                     break;
                 case RenderBackendApi::eWebGPU: {
                     m_Backend = createWebGPUBackend(appName);
@@ -374,6 +435,7 @@ namespace vultra
                 }
             }
 
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             vkBackend(m_Backend).m_FeatureFlag = featureFlag;
             vkBackend(m_Backend).m_AppName     = appName;
             vkBackend(m_Backend).m_RequiredInstanceExtensions.assign(requiredInstanceExtensions.begin(),
@@ -381,7 +443,9 @@ namespace vultra
 
             if (HasFlagValues(featureFlag, RenderDeviceFeatureFlagBits::eXR))
             {
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
                 createXRDevice();
+#endif
             }
 
             createInstance();
@@ -394,10 +458,17 @@ namespace vultra
             createDefaultDescriptorPool();
             createTracyContext();
             createTracky();
+#else
+            (void)featureFlag;
+            (void)requiredInstanceExtensions;
+#endif
         }
 
         RenderDevice::~RenderDevice()
         {
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return;
+#else
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
                 return;
@@ -451,47 +522,32 @@ namespace vultra
                 vkBackend(m_Backend).m_Instance.destroy();
             }
 
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
             if (vkBackend(m_Backend).m_XRDevice)
             {
                 delete vkBackend(m_Backend).m_XRDevice;
                 vkBackend(m_Backend).m_XRDevice = nullptr;
             }
+#endif
+#endif
         }
 
         std::array<float, 2> RenderDevice::getLineWidthRange() const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                return {1.0f, 1.0f};
-            }
-
-            assert(vkBackend(m_Backend).m_PhysicalDevice);
-            const auto& limits = vkBackend(m_Backend).m_PhysicalDevice.getProperties().limits;
-            return {limits.lineWidthRange[0], limits.lineWidthRange[1]};
+            assert(m_Backend);
+            return m_Backend->getLineWidthRange();
         }
 
         float RenderDevice::getMaxSamplerAnisotropy() const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                return 1.0f;
-            }
-
-            assert(vkBackend(m_Backend).m_PhysicalDevice);
-            return vkBackend(m_Backend).m_PhysicalDevice.getProperties().limits.maxSamplerAnisotropy;
+            assert(m_Backend);
+            return m_Backend->getMaxSamplerAnisotropy();
         }
 
         uint64_t RenderDevice::getFormatFeatureFlagsOptimal(const PixelFormat pixelFormat) const
         {
-            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
-            {
-                return webgpuFormatFeatureFlags(webgpuBackend(m_Backend), pixelFormat);
-            }
-
-            assert(vkBackend(m_Backend).m_PhysicalDevice);
-            vk::FormatProperties props {};
-            vkBackend(m_Backend).m_PhysicalDevice.getFormatProperties(toVk(pixelFormat), &props);
-            return static_cast<uint64_t>(static_cast<VkFormatFeatureFlags>(props.optimalTilingFeatures));
+            assert(m_Backend);
+            return m_Backend->getFormatFeatureFlagsOptimal(pixelFormat);
         }
 
         Buffer RenderDevice::createStagingBuffer(const uint64_t size, const void* data) const
@@ -509,7 +565,9 @@ namespace vultra
                 }
                 return stagingBuffer;
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             Buffer stagingBuffer = makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
                                                     size,
@@ -523,6 +581,7 @@ namespace vultra
                 stagingBuffer.unmap();
             }
             return stagingBuffer;
+#endif
         }
 
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
@@ -537,7 +596,9 @@ namespace vultra
                                                       BufferUsage::eVertexBuffer | BufferUsage::eTransferDst),
                                      stride};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             BufferUsage usage = BufferUsage::eVertexBuffer | BufferUsage::eTransferDst;
             if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
@@ -553,10 +614,11 @@ namespace vultra
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
                                  stride * vertexCount,
                                  usage,
-                                 makeAllocationFlags(allocationHint),
+                makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eAutoPreferDevice),
                 stride,
             };
+#endif
         }
 
         IndexBuffer RenderDevice::createIndexBuffer(const IndexType       indexType,
@@ -572,7 +634,9 @@ namespace vultra
                                                      BufferUsage::eIndexBuffer | BufferUsage::eTransferDst),
                                     indexType};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             BufferUsage usage = BufferUsage::eIndexBuffer | BufferUsage::eTransferDst;
             if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
@@ -589,10 +653,11 @@ namespace vultra
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
                                  indexStride * indexCount,
                                  usage,
-                                 makeAllocationFlags(allocationHint),
+                makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eAutoPreferDevice),
                 indexType,
             };
+#endif
         }
 
         UniformBuffer RenderDevice::createUniformBuffer(const uint64_t size, const AllocationHints allocationHint) const
@@ -603,7 +668,9 @@ namespace vultra
                 return UniformBuffer {
                     Buffer {makeWebGPUBuffer(backend, size, BufferUsage::eUniformBuffer | BufferUsage::eTransferDst)}};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             return UniformBuffer {Buffer {
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
@@ -612,6 +679,7 @@ namespace vultra
                                  makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eAutoPreferDevice),
             }};
+#endif
         }
 
         StorageBuffer RenderDevice::createStorageBuffer(const uint64_t size, const AllocationHints allocationHint) const
@@ -622,7 +690,9 @@ namespace vultra
                 return StorageBuffer {
                     Buffer {makeWebGPUBuffer(backend, size, BufferUsage::eStorageBuffer | BufferUsage::eTransferDst)}};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst;
             if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
@@ -638,9 +708,10 @@ namespace vultra
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
                                  size,
                                  usage,
-                                 makeAllocationFlags(allocationHint),
+                makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eAutoPreferDevice),
             }};
+#endif
         }
 
         StorageBuffer RenderDevice::createStorageBufferWithUsage(const uint64_t        size,
@@ -653,7 +724,9 @@ namespace vultra
                 return StorageBuffer {Buffer {makeWebGPUBuffer(
                     backend, size, BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | extraUsage)}};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | extraUsage;
             if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
@@ -669,9 +742,10 @@ namespace vultra
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
                                  size,
                                  usage,
-                                 makeAllocationFlags(allocationHint),
+                makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eAutoPreferDevice),
             }};
+#endif
         }
 
         DrawIndirectBuffer RenderDevice::createDrawIndirectBufferByCount(const uint32_t         commandCount,
@@ -681,15 +755,19 @@ namespace vultra
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
                 auto&      backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
-                const auto stride  = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
-                                                                          sizeof(vk::DrawIndirectCommand);
+                constexpr std::size_t kDrawIndirectCommandSize        = sizeof(uint32_t) * 4;
+                constexpr std::size_t kDrawIndexedIndirectCommandSize = sizeof(uint32_t) * 5;
+                const auto            stride = type == DrawIndirectType::eIndexed ? kDrawIndexedIndirectCommandSize :
+                                                                                     kDrawIndirectCommandSize;
                 return DrawIndirectBuffer {makeWebGPUBuffer(backend,
                                                             commandCount * stride,
                                                             BufferUsage::eIndirectBuffer | BufferUsage::eStorageBuffer |
                                                                 BufferUsage::eTransferDst),
                                            type};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             const auto stride = type == DrawIndirectType::eIndexed ? sizeof(vk::DrawIndexedIndirectCommand) :
                                                                      sizeof(vk::DrawIndirectCommand);
@@ -700,6 +778,7 @@ namespace vultra
                                  makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eCpuToGpu),
                 type};
+#endif
         }
 
         DrawIndirectBuffer RenderDevice::createDrawIndirectBufferBySize(const uint64_t         size,
@@ -715,7 +794,9 @@ namespace vultra
                                                                 BufferUsage::eTransferDst),
                                            type};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             return DrawIndirectBuffer {
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
@@ -724,6 +805,7 @@ namespace vultra
                                  makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eCpuToGpu),
                 type};
+#endif
         }
 
         Texture RenderDevice::createTexture2D(const Extent2D    extent,
@@ -790,6 +872,9 @@ namespace vultra
                     0u);
 #endif
             }
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             const auto allocatorHandle =
                 reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(vkBackend(m_Backend).m_MemoryAllocator));
@@ -805,6 +890,7 @@ namespace vultra
                     .usageFlags   = usageFlags,
                 },
             };
+#endif
         }
 
         Texture RenderDevice::createTexture3D(const Extent2D    extent,
@@ -817,6 +903,9 @@ namespace vultra
             {
                 return {};
             }
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             const auto allocatorHandle =
                 reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(vkBackend(m_Backend).m_MemoryAllocator));
@@ -832,6 +921,7 @@ namespace vultra
                     .usageFlags   = usageFlags,
                 },
             };
+#endif
         }
 
         Texture RenderDevice::createCubemap(const uint32_t    size,
@@ -844,6 +934,9 @@ namespace vultra
             {
                 return {};
             }
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             const auto allocatorHandle =
                 reinterpret_cast<std::uintptr_t>(static_cast<VmaAllocator>(vkBackend(m_Backend).m_MemoryAllocator));
@@ -859,6 +952,7 @@ namespace vultra
                     .usageFlags   = usageFlags,
                 },
             };
+#endif
         }
 
         RenderDevice& RenderDevice::setupSampler(Texture& texture, SamplerInfo samplerInfo)
@@ -867,7 +961,7 @@ namespace vultra
 
             if (m_Backend->getBackendApi() != RenderBackendApi::eWebGPU &&
                 (getFormatFeatureFlagsOptimal(texture.getPixelFormat()) &
-                 static_cast<uint64_t>(VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) == 0)
+                 0x00001000ull) == 0)
             {
                 samplerInfo.minFilter  = TexelFilter::eNearest;
                 samplerInfo.magFilter  = TexelFilter::eNearest;
@@ -893,7 +987,9 @@ namespace vultra
                 }
                 return Sampler {samplerInfo};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return Sampler {samplerInfo};
+#else
             auto it = vkBackend(m_Backend).m_Samplers.find(hash);
             if (it == vkBackend(m_Backend).m_Samplers.cend())
             {
@@ -902,6 +998,7 @@ namespace vultra
             }
 
             return Sampler {samplerInfo};
+#endif
         }
 
         SamplerHandle RenderDevice::getSamplerHandle(const Sampler& sampler) const
@@ -919,7 +1016,9 @@ namespace vultra
                 }
                 return it->second;
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             auto it = vkBackend(m_Backend).m_Samplers.find(hash);
             if (it == vkBackend(m_Backend).m_Samplers.cend())
             {
@@ -927,6 +1026,7 @@ namespace vultra
             }
 
             return it->second;
+#endif
         }
 
         SamplerHandle RenderDevice::createSampler(const SamplerInfo& samplerInfo) const
@@ -969,7 +1069,9 @@ namespace vultra
                 return SamplerHandle {reinterpret_cast<std::uintptr_t>(sampler)};
 #endif
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             const auto&           backend = vkBackend(m_Backend);
             vk::SamplerCreateInfo samplerCreateInfo {};
             samplerCreateInfo.magFilter               = toVk(samplerInfo.magFilter);
@@ -995,6 +1097,7 @@ namespace vultra
                      "RenderDevice",
                      "Failed to create sampler");
             return SamplerHandle {toBackendHandle(static_cast<VkSampler>(sampler))};
+#endif
         }
 
         Swapchain
@@ -1013,7 +1116,9 @@ namespace vultra
                     vsync,
                 };
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_Device);
             return Swapchain {
                 toBackendHandle(static_cast<VkInstance>(vkBackend(m_Backend).m_Instance)),
@@ -1024,6 +1129,7 @@ namespace vultra
                 format,
                 vsync,
             };
+#endif
         }
 
         FenceHandle RenderDevice::createFence(const bool signaled) const
@@ -1035,7 +1141,10 @@ namespace vultra
                 backend.m_EmulatedFences[handle] = signaled;
                 return FenceHandle {handle};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)signaled;
+            return {};
+#else
             assert(vkBackend(m_Backend).m_Device);
             vk::FenceCreateInfo createInfo {};
             createInfo.flags = signaled ? vk::FenceCreateFlagBits::eSignaled : vk::FenceCreateFlags(0u);
@@ -1044,6 +1153,7 @@ namespace vultra
                      "RenderDevice",
                      "Failed to create fence");
             return FenceHandle {toBackendHandle(static_cast<VkFence>(fence))};
+#endif
         }
 
         SemaphoreHandle RenderDevice::createSemaphore()
@@ -1055,7 +1165,9 @@ namespace vultra
                 backend.m_EmulatedSemaphores.insert(handle);
                 return SemaphoreHandle {handle};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             assert(vkBackend(m_Backend).m_Device);
             vk::SemaphoreCreateInfo createInfo {};
             createInfo.flags = vk::SemaphoreCreateFlags(0);
@@ -1064,6 +1176,7 @@ namespace vultra
                      "RenderDevice",
                      "Failed to create semaphore");
             return SemaphoreHandle {toBackendHandle(static_cast<VkSemaphore>(semaphore))};
+#endif
         }
 
         RenderDevice& RenderDevice::present(Swapchain& swapchain, const SemaphoreHandle wait)
@@ -1076,14 +1189,22 @@ namespace vultra
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
                 (void)wait;
                 auto* const surface = reinterpret_cast<WGPUSurface>(swapchain.getHandle());
+#if !defined(__EMSCRIPTEN__)
                 if (surface != nullptr)
                 {
                     (void)wgpuSurfacePresent(surface);
                 }
+#else
+                (void)surface;
+#endif
 #endif
                 return *this;
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)swapchain;
+            (void)wait;
+            return *this;
+#else
             assert(vkBackend(m_Backend).m_GenericQueue);
             vk::PresentInfoKHR  presentInfo {};
             const vk::Semaphore waitSemaphore {asVkHandle<VkSemaphore>(wait.value)};
@@ -1109,6 +1230,7 @@ namespace vultra
             }
 
             return *this;
+#endif
         }
 
         RenderDevice& RenderDevice::wait(const FenceHandle fence)
@@ -1124,7 +1246,9 @@ namespace vultra
                 }
                 return *this;
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return *this;
+#else
             assert(vkBackend(m_Backend).m_Device);
             const vk::Fence vkFence {asVkHandle<VkFence>(fence.value)};
             VK_CHECK(
@@ -1132,6 +1256,7 @@ namespace vultra
                 "RenderDevice",
                 "Failed to wait for fence");
             return reset(fence);
+#endif
         }
 
         RenderDevice& RenderDevice::reset(const FenceHandle fence)
@@ -1147,11 +1272,14 @@ namespace vultra
                 }
                 return *this;
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return *this;
+#else
             assert(vkBackend(m_Backend).m_Device);
             const vk::Fence vkFence {asVkHandle<VkFence>(fence.value)};
             VK_CHECK(vkBackend(m_Backend).m_Device.resetFences(1, &vkFence), "RenderDevice", "Failed to reset fence");
             return *this;
+#endif
         }
 
         RenderDevice& RenderDevice::waitIdle()
@@ -1167,10 +1295,13 @@ namespace vultra
 #endif
                 return *this;
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return *this;
+#else
             assert(vkBackend(m_Backend).m_Device);
             vkBackend(m_Backend).m_Device.waitIdle();
             return *this;
+#endif
         }
 
         RenderDevice& RenderDevice::destroy(FenceHandle& fence)
@@ -1184,11 +1315,15 @@ namespace vultra
                 fence = {};
                 return *this;
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            fence = {};
+            return *this;
+#else
             assert(vkBackend(m_Backend).m_Device);
             vkBackend(m_Backend).m_Device.destroyFence(vk::Fence {asVkHandle<VkFence>(fence.value)});
             fence = {};
             return *this;
+#endif
         }
 
         RenderDevice& RenderDevice::destroy(SemaphoreHandle& semaphore)
@@ -1202,11 +1337,15 @@ namespace vultra
                 semaphore = {};
                 return *this;
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            semaphore = {};
+            return *this;
+#else
             assert(vkBackend(m_Backend).m_Device);
             vkBackend(m_Backend).m_Device.destroySemaphore(vk::Semaphore {asVkHandle<VkSemaphore>(semaphore.value)});
             semaphore = {};
             return *this;
+#endif
         }
 
         CommandBuffer RenderDevice::createCommandBuffer() const
@@ -1216,7 +1355,9 @@ namespace vultra
                 const auto& backend = webgpuBackend(m_Backend);
                 return CommandBuffer {std::make_unique<WebGPUCommandBuffer>(backend)};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             const auto      fenceHandle = createFence();
             const vk::Fence fence {asVkHandle<VkFence>(fenceHandle.value)};
             return CommandBuffer {std::make_unique<VulkanCommandBuffer>(
@@ -1229,6 +1370,7 @@ namespace vultra
                 vkBackend(m_Backend).m_UseKhrDynamicRendering,
                 vkBackend(m_Backend).m_UseKhrSynchronization2,
                 isRaytracingOrRayQueryEnabled(vkBackend(m_Backend).m_FeatureFlag))};
+#endif
         }
 
         RenderDevice& RenderDevice::execute(const std::function<void(CommandBuffer&)>& f, const bool oneTime)
@@ -1245,10 +1387,12 @@ namespace vultra
         RenderDevice& RenderDevice::execute(CommandBuffer& cb, const JobInfo& jobInfo, const bool oneTime)
         {
             cb.flushBarriers();
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             if (m_Backend->getBackendApi() == RenderBackendApi::eVulkan)
             {
                 TracyGpuCollect(vkBackend(m_Backend).m_TracyContext, asVkHandle<VkCommandBuffer>(cb.getHandle()));
             }
+#endif
             cb.end();
             cb.submit(jobInfo, oneTime);
             return *this;
@@ -1257,10 +1401,12 @@ namespace vultra
         RenderDevice& RenderDevice::upload(Buffer& buffer, const uint64_t offset, const uint64_t size, const void* data)
         {
             assert(buffer && data);
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             if (m_Backend->getBackendApi() == RenderBackendApi::eVulkan)
             {
                 assert(vkBackend(m_Backend).m_Device);
             }
+#endif
 
             auto* mappedMemory = std::bit_cast<std::byte*>(buffer.map());
             std::memcpy(mappedMemory + offset, data, size);
@@ -1276,7 +1422,9 @@ namespace vultra
             {
                 return upload(buffer, offset, size, data);
             }
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             assert(vkBackend(m_Backend).m_Device);
+#endif
 
             auto stagingBuffer = createStagingBuffer(size, data);
             return execute(
@@ -1299,6 +1447,28 @@ namespace vultra
             return createRef<rhi::Texture>(std::move(texture));
         }
 
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+        RadixSorter RenderDevice::createRadixSorter(const uint32_t maxElementCount)
+        {
+            (void)maxElementCount;
+            return {};
+        }
+
+        RenderDevice& RenderDevice::uploadDrawIndirect(DrawIndirectBuffer&                     buffer,
+                                                       const std::vector<DrawIndirectCommand>& commands)
+        {
+            (void)buffer;
+            (void)commands;
+            return *this;
+        }
+
+        DeviceAddress RenderDevice::getBufferDeviceAddress(const Buffer& buffer) const
+        {
+            (void)buffer;
+            return {};
+        }
+#endif
+
         ShaderCompiler::Result
         RenderDevice::compile(const ShaderType                                                   shaderType,
                               const std::string_view                                             code,
@@ -1313,7 +1483,15 @@ namespace vultra
                 (void)defines;
                 return std::unexpected("WebGPU path does not emit SPIR-V from ShaderCompiler");
             }
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)shaderType;
+            (void)code;
+            (void)entryPointName;
+            (void)defines;
+            return std::unexpected("Vulkan backend is disabled for this build");
+#else
             return vkBackend(m_Backend).m_ShaderCompiler.compile(shaderType, code, entryPointName, defines);
+#endif
         }
 
         DescriptorSetLayoutKey
@@ -1329,12 +1507,17 @@ namespace vultra
                 return {};
 #endif
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)bindings;
+            return {};
+#else
             assert(vkBackend(m_Backend).m_Device);
 
             // DescriptorSetLayoutKey uses 0 as "invalid", so the hash seed must be non-zero
             // even for empty layouts (set with no bindings).
-            std::size_t hash {1469598103934665603ull};
+            std::size_t hash = (sizeof(std::size_t) >= sizeof(std::uint64_t)) ?
+                                   static_cast<std::size_t>(1469598103934665603ull) :
+                                   static_cast<std::size_t>(2166136261u);
             for (const auto& b : bindings)
             {
                 hashCombine(hash, b.binding, b.type, b.count, b.stageFlags, b.flags);
@@ -1381,6 +1564,7 @@ namespace vultra
 
             vkBackend(m_Backend).m_DescriptorSetLayouts.emplace(hash, descriptorSetLayout);
             return DescriptorSetLayoutKey {hash};
+#endif
         }
 
         std::uintptr_t RenderDevice::getDescriptorSetLayoutHandle(const DescriptorSetLayoutKey layoutKey) const
@@ -1397,13 +1581,16 @@ namespace vultra
 #endif
                 return 0;
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return 0;
+#else
             if (const auto it = vkBackend(m_Backend).m_DescriptorSetLayouts.find(layoutKey.value);
                 it != vkBackend(m_Backend).m_DescriptorSetLayouts.end())
             {
                 return toBackendHandle(static_cast<VkDescriptorSetLayout>(it->second));
             }
             return 0;
+#endif
         }
 
         ShaderModule RenderDevice::createShaderModule(SPIRV spv, ShaderReflection* reflection) const
@@ -1414,7 +1601,11 @@ namespace vultra
                 (void)reflection;
                 return {};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)spv;
+            (void)reflection;
+            return {};
+#else
             assert(vkBackend(m_Backend).m_Device != nullptr);
             if (reflection)
             {
@@ -1429,6 +1620,7 @@ namespace vultra
                 }
             }
             return ShaderModule {std::make_unique<VulkanShaderModule>(std::move(spv))};
+#endif
         }
 
         ShaderModule
@@ -1467,7 +1659,11 @@ namespace vultra
                 VULTRA_CORE_WARN("[RenderDevice] WebGPU compute pipeline is not implemented yet");
                 return {};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)shaderStageInfo;
+            (void)pipelineLayout;
+            return {};
+#else
             auto reflection = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
 
             const auto shaderModule = createShaderModule(ShaderType::eCompute,
@@ -1511,6 +1707,7 @@ namespace vultra
                 std::make_unique<VulkanComputePipeline>(toBackendHandle(static_cast<VkPipeline>(computePipeline)),
                                                         reflection ? reflection->localSize.value() : glm::uvec3 {}),
             };
+#endif
         }
 
         ComputePipeline RenderDevice::createComputePipelineBuiltin(const SPIRV&                  spv,
@@ -1523,7 +1720,11 @@ namespace vultra
                 VULTRA_CORE_WARN("[RenderDevice] WebGPU compute pipeline is not implemented yet");
                 return {};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)spv;
+            (void)pipelineLayout;
+            return {};
+#else
             auto reflection = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
 
             const auto shaderModule =
@@ -1563,6 +1764,7 @@ namespace vultra
                 std::make_unique<VulkanComputePipeline>(toBackendHandle(static_cast<VkPipeline>(computePipeline)),
                                                         reflection ? reflection->localSize.value() : glm::uvec3 {}),
             };
+#endif
         }
 
         PipelineLayout RenderDevice::createPipelineLayout(const PipelineLayoutInfo& layoutInfo)
@@ -1661,7 +1863,10 @@ namespace vultra
                 return {};
 #endif
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)layoutInfo;
+            return {};
+#else
             assert(vkBackend(m_Backend).m_Device);
 
             std::size_t                          hash {0};
@@ -1712,6 +1917,7 @@ namespace vultra
             const auto& [inserted, _] = vkBackend(m_Backend).m_PipelineLayouts.emplace(hash, handle);
             return PipelineLayout {std::make_unique<VulkanPipelineLayout>(
                 toBackendHandle(static_cast<VkPipelineLayout>(inserted->second)), std::move(descriptorSetLayoutKeys))};
+#endif
         }
     } // namespace rhi
 } // namespace vultra

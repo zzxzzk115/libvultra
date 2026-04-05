@@ -197,6 +197,18 @@ namespace vultra
             private:
                 void selectSurfaceConfig()
                 {
+#if defined(__EMSCRIPTEN__)
+                    // Emscripten path may not expose a native adapter handle in our backend bridge.
+                    // Use stable defaults instead of querying capabilities with a null adapter.
+                    if (m_Adapter == nullptr)
+                    {
+                        m_SurfaceFormat = webgpu::preferredSwapchainFormat(m_Format);
+                        m_PresentMode   = webgpu::toWgpuPresentMode(m_Vsync);
+                        m_AlphaMode     = WGPUCompositeAlphaMode_Auto;
+                        m_PixelFormat   = webgpu::toPixelFormat(m_SurfaceFormat);
+                        return;
+                    }
+#endif
                     WGPUSurfaceCapabilities capabilities {};
                     if (wgpuSurfaceGetCapabilities(m_Surface, m_Adapter, &capabilities) != WGPUStatus_Success)
                     {

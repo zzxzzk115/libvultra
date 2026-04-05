@@ -6,6 +6,14 @@
 
 namespace vultra
 {
+    namespace
+    {
+        [[nodiscard]] constexpr bool isSrgbColorFormat(const rhi::PixelFormat format)
+        {
+            return format == rhi::PixelFormat::eRGBA8_sRGB || format == rhi::PixelFormat::eBGRA8_sRGB;
+        }
+    } // namespace
+
     constexpr auto PASS_NAME = "FinalCompositionPass";
 
     FrameGraphResource FinalCompositionPass::compose(FrameGraphBuildContext& ctx, FrameGraphResource target)
@@ -78,8 +86,14 @@ namespace vultra
             return {};
         }
 
-        auto fragmentShaderVariantHash = getShaderLib().computeVariantHash(
-            "final_composition.frag", vshadersystem::ShaderStage::eFrag, {{"USE_MULTIVIEW", useMultiview ? 1u : 0u}});
+        const bool manualSrgbEncode = !isSrgbColorFormat(colorFormat);
+        auto       fragmentShaderVariantHash =
+            getShaderLib().computeVariantHash("final_composition.frag",
+                                              vshadersystem::ShaderStage::eFrag,
+                                              {
+                                                  {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
+                                                  {"MANUAL_SRGB_ENCODE", manualSrgbEncode ? 1u : 0u},
+                                              });
         auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {

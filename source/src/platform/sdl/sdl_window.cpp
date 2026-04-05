@@ -7,7 +7,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_mouse.h>
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
 #include <SDL3/SDL_vulkan.h>
+#endif
 #if defined(SDL_PLATFORM_MACOS)
 #include <SDL3/SDL_metal.h>
 #endif
@@ -34,11 +36,13 @@ namespace vultra::platform::sdl
             throw std::runtime_error("Failed to initialize SDL3");
         }
 
+        SDL_WindowFlags windowFlags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
         uint32_t    extensionCount = 0;
         const auto* extensions     = SDL_Vulkan_GetInstanceExtensions(&extensionCount);
         m_VulkanExtensions.assign(extensions, extensions + extensionCount);
-
-        SDL_WindowFlags windowFlags = SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_VULKAN;
+        windowFlags |= SDL_WINDOW_VULKAN;
+#endif
         if (m_Resizable)
         {
             windowFlags |= SDL_WINDOW_RESIZABLE;
@@ -48,11 +52,13 @@ namespace vultra::platform::sdl
             windowFlags |= SDL_WINDOW_FULLSCREEN;
         }
 
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
         if (!SDL_Vulkan_LoadLibrary(nullptr))
         {
             VULTRA_CORE_ERROR("[SDLWindow] Could not load Vulkan library! Error: {}", SDL_GetError());
             throw std::runtime_error("Could not load Vulkan library");
         }
+#endif
 
 #if __APPLE__
         float mainScale = 1.0f;
@@ -177,6 +183,7 @@ namespace vultra::platform::sdl
 
     float SDLWindow::getDisplayScale() const { return SDL_GetWindowDisplayScale(m_WindowHandle); }
 
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
     std::span<const char* const> SDLWindow::getRequiredVulkanInstanceExtensions() const
     {
         return {m_VulkanExtensions.data(), m_VulkanExtensions.size()};
@@ -193,6 +200,7 @@ namespace vultra::platform::sdl
 
         return vk::SurfaceKHR {surface};
     }
+#endif
 
     WGPUSurface SDLWindow::createWebGPUSurface(const WGPUInstance instance) const
     {

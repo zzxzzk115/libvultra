@@ -100,10 +100,64 @@ rule("imguiconfig")
     end)
 rule_end()
 
+rule("macos.package_rpath")
+    after_load(function (target)
+        if not is_plat("macosx") then
+            return
+        end
+
+        local kind = target:get("kind")
+        if kind ~= "binary" and kind ~= "shared" and kind ~= "module" then
+            return
+        end
+
+        local collected = {}
+        local visited = {}
+
+        local function collect_package_libdirs(t)
+            if not t then
+                return
+            end
+            local key = t:name()
+            if key and visited[key] then
+                return
+            end
+            if key then
+                visited[key] = true
+            end
+
+            local pkgs = t:orderpkgs()
+            if pkgs then
+                for _, pkg in ipairs(pkgs) do
+                    if pkg and pkg:installdir() then
+                        local libdir = path.join(pkg:installdir(), "lib")
+                        if os.isdir(libdir) then
+                            collected[libdir] = true
+                        end
+                    end
+                end
+            end
+
+            local deps = t:orderdeps()
+            if deps then
+                for _, dep in ipairs(deps) do
+                    collect_package_libdirs(dep)
+                end
+            end
+        end
+
+        collect_package_libdirs(target)
+        for libdir, _ in pairs(collected) do
+            target:add("rpathdirs", libdir)
+            target:add("ldflags", "-Wl,-rpath," .. libdir, {force = true})
+        end
+    end)
+rule_end()
+
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.vsxmake.autoupdate")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = ".vscode", lsp = "clangd"})
-add_rules("clangd.config", "linux.sdl.driver", "imguiconfig")
+add_rules("clangd.config", "linux.sdl.driver", "imguiconfig", "macos.package_rpath")
 
 -- add repositories
 add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git backup")
@@ -115,9 +169,7 @@ includes("external")
 includes("builtin")
 
 -- include source
-if not is_plat("wasm") then
-    includes("source")
-end
+includes("source")
 
 -- include tests
 if has_config("libvultra_build_tests") then

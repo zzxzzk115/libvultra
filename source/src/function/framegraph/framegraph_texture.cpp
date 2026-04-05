@@ -7,6 +7,7 @@
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
 
+#include <cstdint>
 #include <cmath>
 
 namespace vultra
@@ -85,7 +86,7 @@ namespace vultra
                 size *= std::max(desc.layers, 1u);
                 if (desc.cubemap)
                     size *= 6u;
-                return static_cast<VkDeviceSize>(size);
+                return static_cast<std::uint64_t>(size);
             }
 
         } // namespace

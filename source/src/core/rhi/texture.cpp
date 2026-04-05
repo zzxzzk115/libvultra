@@ -1,15 +1,21 @@
 #include "vultra/core/rhi/texture.hpp"
+#include "vultra/core/base/base.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/base/visitor_helper.hpp"
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
+#endif
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/util.hpp"
 
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
 #include <vk_mem_alloc.hpp>
+#endif
 
 namespace vultra
 {
@@ -67,6 +73,10 @@ namespace vultra
 
             [[nodiscard]] auto getImageViewType(const TextureType textureType)
             {
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+                (void)textureType;
+                return 0u;
+#else
                 switch (textureType)
                 {
                     using enum TextureType;
@@ -90,6 +100,7 @@ namespace vultra
                         assert(false);
                         return static_cast<vk::ImageViewType>(~0);
                 }
+#endif
             }
 
             [[nodiscard]] auto isLayered(const TextureType textureType)
@@ -108,6 +119,7 @@ namespace vultra
                 }
             }
 
+            #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             [[nodiscard]] auto createImageView(const vk::Device                 device,
                                                const vk::Image                  image,
                                                const vk::ImageViewType          viewType,
@@ -125,7 +137,9 @@ namespace vultra
                     device.createImageView(&createInfo, nullptr, &imageView), "Texture", "Failed to create image view");
                 return TextureView {toBackendHandle(static_cast<VkImageView>(imageView))};
             }
+            #endif
 
+            #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             [[nodiscard]] vk::ImageView toVk(const TextureView view)
             {
                 return vk::ImageView {asVkHandle<VkImageView>(view.getHandle())};
@@ -169,6 +183,7 @@ namespace vultra
             {
                 return vma::Allocation {reinterpret_cast<VmaAllocation>(allocationHandle.value)};
             }
+            #endif
         } // namespace
 
         Texture::Texture(Texture&& other) noexcept :
@@ -326,7 +341,11 @@ namespace vultra
                                            const PixelFormat         format,
                                            const uint32_t            baseLayer)
         {
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             return fromExternalImage(RenderBackendApi::eVulkan, device, image, extent, format, baseLayer);
+#else
+            return fromExternalImage(RenderBackendApi::eWebGPU, device, image, extent, format, baseLayer);
+#endif
         }
 
         Texture Texture::fromExternalImage(const TextureDeviceHandle device,
@@ -336,7 +355,11 @@ namespace vultra
                                            const uint32_t            baseLayer,
                                            const uint32_t            numLayers)
         {
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             return fromExternalImage(RenderBackendApi::eVulkan, device, image, extent, format, baseLayer, numLayers);
+#else
+            return fromExternalImage(RenderBackendApi::eWebGPU, device, image, extent, format, baseLayer, numLayers);
+#endif
         }
 
         Texture Texture::fromExternalImage(const RenderBackendApi    api,
@@ -471,6 +494,11 @@ namespace vultra
         Texture::Texture(const TextureAllocatorHandle allocatorHandle, CreateInfo&& ci) :
             m_DeviceOrAllocator(allocatorHandle), m_BackendApi(RenderBackendApi::eVulkan), m_OwnsImage(true)
         {
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)allocatorHandle;
+            (void)ci;
+            assert(false && "Texture allocator path requires Vulkan backend.");
+#else
             const auto memoryAllocator = toVmaAllocator(allocatorHandle);
             assert(ci.extent && (ci.numFaces != 6 || ci.extent.width == ci.extent.height));
 
@@ -567,6 +595,7 @@ namespace vultra
                              ImageAspectFlags::eStencil,
                              m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eStencil)]);
             }
+#endif
         }
 
         Texture::Texture(const TextureDeviceHandle device,
@@ -574,7 +603,18 @@ namespace vultra
                          Extent2D                  extent,
                          PixelFormat               pixelFormat,
                          uint32_t                  baseLayer) :
-            Texture {RenderBackendApi::eVulkan, false, device, image, extent, pixelFormat, baseLayer}
+            Texture {
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+                RenderBackendApi::eVulkan,
+#else
+                RenderBackendApi::eWebGPU,
+#endif
+                false,
+                device,
+                image,
+                extent,
+                pixelFormat,
+                baseLayer}
         {}
 
         Texture::Texture(const TextureDeviceHandle device,
@@ -583,7 +623,19 @@ namespace vultra
                          PixelFormat               pixelFormat,
                          uint32_t                  baseLayer,
                          uint32_t                  numLayers) :
-            Texture {RenderBackendApi::eVulkan, false, device, image, extent, pixelFormat, baseLayer, numLayers}
+            Texture {
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+                RenderBackendApi::eVulkan,
+#else
+                RenderBackendApi::eWebGPU,
+#endif
+                false,
+                device,
+                image,
+                extent,
+                pixelFormat,
+                baseLayer,
+                numLayers}
         {}
 
         Texture::Texture(const RenderBackendApi    api,
@@ -617,12 +669,22 @@ namespace vultra
             }
             else
             {
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
                 createAspect(
                     deviceHandle,
                     image,
                     static_cast<uint32_t>(numLayers > 1u ? vk::ImageViewType::e2DArray : vk::ImageViewType::e2D),
                     ImageAspectFlags::eColor,
                     m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eColor)]);
+#else
+                (void)deviceHandle;
+                createAspect(
+                    {},
+                    image,
+                    0u,
+                    ImageAspectFlags::eColor,
+                    m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eColor)]);
+#endif
             }
         }
 
@@ -658,6 +720,10 @@ namespace vultra
                 return;
             }
 
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            resetState();
+            return;
+#else
             const auto deviceHandle = getDeviceHandle();
             assert(deviceHandle.value != 0);
             const auto device = vk::Device {asVkHandle<VkDevice>(deviceHandle.value)};
@@ -691,6 +757,7 @@ namespace vultra
             }
 
             resetState();
+#endif
         }
 
         TextureDeviceHandle Texture::getDeviceHandle() const
@@ -699,11 +766,16 @@ namespace vultra
                                   [](const std::monostate) -> TextureDeviceHandle { return {}; },
                                   [](const TextureDeviceHandle device) { return device; },
                                   [](const TextureAllocatorHandle allocator) {
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+                                      (void)allocator;
+                                      return TextureDeviceHandle {};
+#else
                                       const auto         vmaAllocator = toVmaAllocator(allocator);
                                       vma::AllocatorInfo allocatorInfo;
                                       vmaAllocator.getAllocatorInfo(&allocatorInfo);
                                       return TextureDeviceHandle {
                                           toBackendHandle(static_cast<VkDevice>(allocatorInfo.device))};
+#endif
                                   },
                               },
                               m_DeviceOrAllocator);
@@ -722,6 +794,14 @@ namespace vultra
                 return;
             }
 
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)deviceHandle;
+            (void)imageHandle;
+            (void)viewType;
+            (void)aspectMask;
+            (void)data;
+            return;
+#else
             const auto device       = vk::Device {asVkHandle<VkDevice>(deviceHandle.value)};
             const auto image        = vk::Image {asVkHandle<VkImage>(imageHandle.value)};
             const auto vkViewType   = static_cast<vk::ImageViewType>(viewType);
@@ -771,9 +851,10 @@ namespace vultra
                                                                  1u,
                                                                  i,
                                                                  1u,
-                                                             }));
+                    }));
                 }
             }
+#endif
         }
 
         const Texture::AspectData* Texture::getAspect(const ImageAspectFlags aspectMask) const
@@ -785,6 +866,10 @@ namespace vultra
 
         bool isFormatSupported(const RenderDevice& rd, PixelFormat pixelFormat, ImageUsage usageFlags)
         {
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            (void)usageFlags;
+            return rd.getFormatFeatureFlagsOptimal(pixelFormat) != 0u;
+#else
             vk::FormatFeatureFlags requiredFeatureFlags {0};
             const auto             aspectMask       = getAspectMask(pixelFormat);
             const bool             isDepthOrStencil = HasFlagValues(aspectMask, ImageAspectFlags::eDepth) ||
@@ -834,6 +919,7 @@ namespace vultra
             const auto optimalFeatures = rd.getFormatFeatureFlagsOptimal(pixelFormat);
             return (optimalFeatures & static_cast<uint64_t>(static_cast<VkFormatFeatureFlags>(requiredFeatureFlags))) ==
                    static_cast<uint64_t>(static_cast<VkFormatFeatureFlags>(requiredFeatureFlags));
+#endif
         }
 
         ImageAspectFlags getAspectMask(const Texture& texture) { return getAspectMask(texture.getPixelFormat()); }

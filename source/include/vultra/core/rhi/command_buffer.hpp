@@ -343,6 +343,13 @@ namespace vultra
     ZoneTransientN(_tracy_zone, Label, true); \
     TracyGpuZoneTransient(CommandBuffer.getTracyContext(), _tracy_vk_zone, CommandBuffer.getHandle(), Label, true)
 
+#ifndef TRACKY_BIND_CMD_BUFFER
+#define TRACKY_BIND_CMD_BUFFER(cmdBuf) \
+    do \
+    { \
+    } while (0)
+#endif
+
 #define TRACKY_GPU_NEXT_FRAME(CommandBuffer) \
     TRACKY_BIND_CMD_BUFFER(CommandBuffer.getHandle()); \
     TRACKY_NEXT_FRAME();

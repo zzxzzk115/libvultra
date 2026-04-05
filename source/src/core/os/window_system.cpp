@@ -28,11 +28,15 @@ namespace vultra
         }
         m_Window->setTitle(cfg.window.title);
 #else
+        const auto platformType =
+            (cfg.render.backendApi == rhi::RenderBackendApi::eWebGPU) ? os::Window::PlatformType::eGLFW :
+                                                                         os::Window::PlatformType::eSDL3;
         m_Window = os::Window::Builder {}
                        .setTitle(cfg.window.title)
                        .setExtent({static_cast<int>(cfg.window.width), static_cast<int>(cfg.window.height)})
                        .setResizable(cfg.window.resizable)
                        .setFullscreen(cfg.window.fullscreen)
+                       .setPlatform(platformType)
                        .build();
 #endif
 

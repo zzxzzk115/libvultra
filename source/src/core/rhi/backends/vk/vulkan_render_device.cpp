@@ -241,44 +241,34 @@ namespace vultra
     {
         constexpr auto LOGTAG = "RenderDevice";
 
-        RenderDeviceFeatureFlagBits RenderDevice::getFeatureFlag() const
+        std::array<float, 2> VulkanRenderDevice::getLineWidthRange() const
         {
-            return m_Backend->getFeatureFlag();
+            if (!m_PhysicalDevice)
+            {
+                return {1.0f, 1.0f};
+            }
+            const auto& limits = m_PhysicalDevice.getProperties().limits;
+            return {limits.lineWidthRange[0], limits.lineWidthRange[1]};
         }
 
-        RenderDeviceFeatureReport RenderDevice::getFeatureReport() const
+        float VulkanRenderDevice::getMaxSamplerAnisotropy() const
         {
-            return m_Backend->getFeatureReport();
+            if (!m_PhysicalDevice)
+            {
+                return 1.0f;
+            }
+            return m_PhysicalDevice.getProperties().limits.maxSamplerAnisotropy;
         }
 
-        RenderDeviceSyncCapabilities RenderDevice::getSyncCapabilities() const
+        uint64_t VulkanRenderDevice::getFormatFeatureFlagsOptimal(const PixelFormat pixelFormat) const
         {
-            return m_Backend->getSyncCapabilities();
-        }
-
-        RenderBackendApi RenderDevice::getBackendApi() const
-        {
-            return m_Backend->getBackendApi();
-        }
-
-        bool RenderDevice::supportsSwapchain() const
-        {
-            return m_Backend->supportsSwapchain();
-        }
-
-        openxr::XRDevice* RenderDevice::getXRDevice() const
-        {
-            return m_Backend->getXRDevice();
-        }
-
-        std::string RenderDevice::getName() const
-        {
-            return m_Backend->getName();
-        }
-
-        PhysicalDeviceInfo RenderDevice::getPhysicalDeviceInfo() const
-        {
-            return m_Backend->getPhysicalDeviceInfo();
+            if (!m_PhysicalDevice)
+            {
+                return 0u;
+            }
+            vk::FormatProperties props {};
+            m_PhysicalDevice.getFormatProperties(toVk(pixelFormat), &props);
+            return static_cast<uint64_t>(static_cast<VkFormatFeatureFlags>(props.optimalTilingFeatures));
         }
 
         RadixSorter RenderDevice::createRadixSorter(const uint32_t maxElementCount)

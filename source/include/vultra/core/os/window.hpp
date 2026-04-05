@@ -5,7 +5,9 @@
 
 #include <glm/glm.hpp>
 #include <vbase/event/event_bus.hpp>
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
 #include <vulkan/vulkan.hpp>
+#endif
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
 #include <webgpu/webgpu.h>
@@ -42,6 +44,7 @@ namespace vultra
             enum class PlatformType
             {
                 eSDL3,
+                eGLFW,
                 eAndroidNativeWindow,
             };
 
@@ -73,6 +76,7 @@ namespace vultra
                 Builder& setCursorVisibility(bool cursorVisibility);
                 Builder& setResizable(bool resizable);
                 Builder& setFullscreen(bool fullscreen);
+                Builder& setPlatform(PlatformType platformType);
 
                 [[nodiscard]] std::shared_ptr<Window> build() const;
 
@@ -83,6 +87,7 @@ namespace vultra
                 bool        m_CursorVisibility {true};
                 bool        m_Resizable {true};
                 bool        m_Fullscreen {false};
+                PlatformType m_PlatformType {PlatformType::eSDL3};
             };
 
             Window()              = default;
@@ -120,8 +125,10 @@ namespace vultra
             [[nodiscard]] virtual bool             isMinimized() const          = 0;
             [[nodiscard]] virtual bool             isReady() const              = 0;
 
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             [[nodiscard]] virtual std::span<const char* const> getRequiredVulkanInstanceExtensions() const      = 0;
             [[nodiscard]] virtual vk::SurfaceKHR               createVulkanSurface(vk::Instance instance) const = 0;
+#endif
             [[nodiscard]] virtual WGPUSurface createWebGPUSurface(WGPUInstance instance) const = 0;
 
             virtual void pollEvents(int timeoutMillis = 0) = 0;

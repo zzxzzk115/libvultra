@@ -16,14 +16,6 @@ class ImGuiExampleRenderer final : public FeatureRenderer
 public:
     std::string_view name() const override { return "imgui_example"; }
 
-    void init() override
-    {
-        emplaceFeature<MeshletFeature>();
-        emplaceFeature<GaussianSplatFeature>();
-        emplaceFeature<TestFeature>();
-        emplaceFeature<FinalCompositionFeature>();
-    }
-
     void onImGui() override
     {
         ImGui::ShowDemoWindow();
@@ -47,10 +39,9 @@ class ImGuiExampleApp final : public DemoAppHost
 protected:
     std::string_view demoWindowTitle() const override { return "ImGui Example"; }
 
-    Ref<Renderer> makeRenderer() const override
-    {
-        return createRef<ImGuiExampleRenderer>();
-    }
+    bool demoEnableExperimentalWebGPUContent() const override { return true; }
+
+    Ref<Renderer> makeRenderer() const override { return createRef<ImGuiExampleRenderer>(); }
 };
 
 int main(int argc, char** argv)

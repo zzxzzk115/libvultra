@@ -9,22 +9,28 @@
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/rhi/texture.hpp"
 
+#if defined(__ANDROID__)
 #include "vultra/platform/android/android_native_window.hpp"
-#include "vultra/platform/sdl/sdl_window.hpp"
+#else
+#include "vultra/platform/glfw/glfw_window.hpp"
+#endif
 
 #include <algorithm>
 #include <imgui.h>
+#include <stdexcept>
 
-#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU && __has_include(<imgui_impl_wgpu.h>)
+#define VULTRA_HAS_IMGUI_IMPL_WGPU 1
 #include <imgui_impl_wgpu.h>
+#else
+#define VULTRA_HAS_IMGUI_IMPL_WGPU 0
 #endif
 
 #if defined(__ANDROID__)
 #include <android/input.h>
 #include <imgui_impl_android.h>
 #else
-#include <SDL3/SDL_video.h>
-#include <imgui_impl_sdl3.h>
+#include <imgui_impl_glfw.h>
 #endif
 
 namespace vultra::rhi
@@ -41,10 +47,7 @@ namespace vultra::rhi
     {
         m_Initialized = true;
 
-        if (enableDocking)
-        {
-            VULTRA_CORE_TRACE("[WebGPUImGui] Docking is enabled (managed by ImGuiSystem)");
-        }
+        (void)enableDocking;
 
 #ifdef IMGUI_HAS_VIEWPORT
         if (enableMultiviewport && (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable))
@@ -65,16 +68,33 @@ namespace vultra::rhi
         const auto& androidWindow = static_cast<const platform::android::AndroidNativeWindow&>(window);
         ImGui_ImplAndroid_Init(androidWindow.nativeWindow());
 #else
-        const auto& sdlWindow = static_cast<const platform::sdl::SDLWindow&>(window);
-        ImGui_ImplSDL3_InitForOther(sdlWindow.getHandle());
+        const auto& glfwWindow = static_cast<const platform::glfw::GLFWWindow&>(window);
+        const bool glfwOk = ImGui_ImplGlfw_InitForOther(glfwWindow.getHandle(), true);
+        if (!glfwOk)
+        {
+            throw std::runtime_error("ImGui_ImplGlfw_InitForOther failed");
+        }
 #endif
 
-#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+#if VULTRA_HAS_IMGUI_IMPL_WGPU
         ImGui_ImplWGPU_InitInfo initInfo {};
         initInfo.Device = reinterpret_cast<WGPUDevice>(WebGPURenderDeviceAccess::getDeviceHandle(renderDevice));
         initInfo.NumFramesInFlight  = static_cast<int>(std::max<std::size_t>(swapchain.getNumBuffers(), 2));
         initInfo.RenderTargetFormat = webgpu::toWgpuTextureFormat(swapchain.getPixelFormat());
-        ImGui_ImplWGPU_Init(&initInfo);
+        const bool wgpuOk = ImGui_ImplWGPU_Init(&initInfo);
+        if (!wgpuOk)
+        {
+            throw std::runtime_error("ImGui_ImplWGPU_Init failed");
+        }
+#else
+        (void)renderDevice;
+        (void)swapchain;
+        if (!m_WarnedTexturePath)
+        {
+            VULTRA_CORE_ERROR("[WebGPUImGui] imgui_impl_wgpu.h is unavailable for this build; "
+                              "WebGPU ImGui rendering is disabled.");
+            m_WarnedTexturePath = true;
+        }
 #endif
     }
 
@@ -83,38 +103,39 @@ namespace vultra::rhi
         if (!m_Initialized)
             return;
 
-#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+#if VULTRA_HAS_IMGUI_IMPL_WGPU
         ImGui_ImplWGPU_Shutdown();
 #endif
 #if defined(__ANDROID__)
         ImGui_ImplAndroid_Shutdown();
 #else
-        ImGui_ImplSDL3_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
 #endif
         m_Initialized = false;
     }
 
     void WebGPUImGui::beginFrame(const os::Window& window)
     {
-#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+#if VULTRA_HAS_IMGUI_IMPL_WGPU
         ImGui_ImplWGPU_NewFrame();
 #endif
 #if defined(__ANDROID__)
         ImGui_ImplAndroid_NewFrame();
 #else
         (void)window;
-        ImGui_ImplSDL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
 #endif
     }
 
     void WebGPUImGui::render(CommandBuffer& cb)
     {
-#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+#if VULTRA_HAS_IMGUI_IMPL_WGPU
         ImGui::Render();
+        ImDrawData* drawData = ImGui::GetDrawData();
         auto* const renderPass = WebGPUCommandBufferAccess::getCurrentRenderPassEncoder(cb);
         if (renderPass != nullptr)
         {
-            ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPass);
+            ImGui_ImplWGPU_RenderDrawData(drawData, renderPass);
         }
 #else
         (void)cb;
@@ -142,10 +163,7 @@ namespace vultra::rhi
             ImGui_ImplAndroid_HandleInputEvent(reinterpret_cast<AInputEvent*>(const_cast<void*>(event.nativeEvent)));
         }
 #else
-        if (event.nativeEventSource == vultra::event::NativeEventSource::eSDL3 && event.nativeEvent != nullptr)
-        {
-            ImGui_ImplSDL3_ProcessEvent(reinterpret_cast<SDL_Event*>(const_cast<void*>(event.nativeEvent)));
-        }
+        (void)event;
 #endif
     }
 

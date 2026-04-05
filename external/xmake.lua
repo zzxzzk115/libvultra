@@ -3,7 +3,8 @@ if is_plat("android") then
 elseif is_plat("wasm") then
     add_requires("imgui v1.92.5-docking", {configs = { wgpu = true, wgpu_backend = "webgpu-sdk", wchar32 = true}})
 else
-    add_requires("imgui v1.92.5-docking", {configs = { vulkan = true, sdl3 = true, wchar32 = true}})
+    add_requires("imgui v1.92.5-docking",
+                 {configs = { vulkan = true, sdl3 = true, glfw = true, wgpu = true, wgpu_backend = "webgpu-sdk", wchar32 = true}})
 end
 
 add_requires("zlib")

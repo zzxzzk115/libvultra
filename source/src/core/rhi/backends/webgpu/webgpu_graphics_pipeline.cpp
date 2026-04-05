@@ -74,7 +74,8 @@ namespace vultra
                 source.code        = WGPUStringView {.data = wgsl.data(), .length = WGPU_STRLEN};
 
                 WGPUShaderModuleDescriptor descriptor {};
-                descriptor.nextInChain = reinterpret_cast<const WGPUChainedStruct*>(&source);
+                descriptor.nextInChain = const_cast<WGPUChainedStruct*>(
+                    reinterpret_cast<const WGPUChainedStruct*>(&source));
                 return wgpuDeviceCreateShaderModule(device, &descriptor);
             };
 

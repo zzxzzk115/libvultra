@@ -77,19 +77,23 @@ namespace xrutils
     // Creates an OpenXR projection matrix
     inline glm::mat4 createProjectionMatrix(const XrFovf& fov, float nearClip, float farClip)
     {
-        const float l = glm::tan(fov.angleLeft);
-        const float r = glm::tan(fov.angleRight);
-        const float d = glm::tan(fov.angleDown);
-        const float u = glm::tan(fov.angleUp);
+        const float tanLeft  = glm::tan(fov.angleLeft);
+        const float tanRight = glm::tan(fov.angleRight);
+        const float tanDown  = glm::tan(fov.angleDown);
+        const float tanUp    = glm::tan(fov.angleUp);
 
-        const float w = r - l;
-        const float h = d - u;
+        const float tanWidth  = tanRight - tanLeft;
+        const float tanHeight = tanUp - tanDown;
+        const float depth     = farClip - nearClip;
 
-        glm::mat4 projectionMatrix;
-        projectionMatrix[0] = {2.0f / w, 0.0f, 0.0f, 0.0f};
-        projectionMatrix[1] = {0.0f, 2.0f / h, 0.0f, 0.0f};
-        projectionMatrix[2] = {(r + l) / w, (u + d) / h, -(farClip + nearClip) / (farClip - nearClip), -1.0f};
-        projectionMatrix[3] = {0.0f, 0.0f, -(farClip * (nearClip + nearClip)) / (farClip - nearClip), 0.0f};
+        glm::mat4 projectionMatrix(0.0f);
+        projectionMatrix[0][0] = 2.0f / tanWidth;
+        projectionMatrix[1][1] = 2.0f / tanHeight;
+        projectionMatrix[2][0] = (tanRight + tanLeft) / tanWidth;
+        projectionMatrix[2][1] = (tanUp + tanDown) / tanHeight;
+        projectionMatrix[2][2] = -(farClip + nearClip) / depth;
+        projectionMatrix[2][3] = -1.0f;
+        projectionMatrix[3][2] = -(2.0f * farClip * nearClip) / depth;
         return projectionMatrix;
     }
 

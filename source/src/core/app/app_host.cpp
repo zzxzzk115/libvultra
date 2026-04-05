@@ -4,17 +4,136 @@
 #include <algorithm>
 #include <chrono>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#endif
+
 namespace vultra
 {
+    bool AppHost::bootstrap()
+    {
+        if (m_Configured)
+        {
+            return true;
+        }
+
+        // Let derived app configure subsystems/features/plugins
+        onConfigure(m_Engine);
+        m_Configured = true;
+        return true;
+    }
+
+    bool AppHost::initCoreIfNeeded()
+    {
+        if (m_CoreInitialized)
+        {
+            return true;
+        }
+
+        if (!m_Engine.initCore())
+        {
+            m_ExitCode = 1;
+            return false;
+        }
+
+        onPostConfigure(m_Engine);
+        m_CoreInitialized = true;
+        m_LastTick        = std::chrono::steady_clock::now();
+        return true;
+    }
+
+    bool AppHost::stepFrame()
+    {
+        onPollEvents();
+        if (onShouldClose())
+        {
+            return false;
+        }
+
+        const fsec dt = onFrameDelta();
+        onBeforeEngineTick(dt);
+        m_Engine.tickFrame(dt);
+        onAfterEngineTick(dt);
+        return true;
+    }
+
+    void AppHost::shutdownIfNeeded()
+    {
+        if (m_Shutdown)
+        {
+            return;
+        }
+        if (m_CoreInitialized)
+        {
+            m_Engine.shutdownCore();
+        }
+        m_Shutdown = true;
+    }
+
+#if defined(__EMSCRIPTEN__)
+    void AppHost::emscriptenFrameThunk(void* userdata)
+    {
+        auto* app = static_cast<AppHost*>(userdata);
+        if (app != nullptr)
+        {
+            app->emscriptenFrameStep();
+        }
+    }
+
+    void AppHost::emscriptenFrameStep()
+    {
+        try
+        {
+            if (!initCoreIfNeeded())
+            {
+                shutdownIfNeeded();
+                m_EmscriptenShutdown = true;
+                emscripten_cancel_main_loop();
+                return;
+            }
+
+            if (!stepFrame())
+            {
+                if (!m_EmscriptenShutdown)
+                {
+                    shutdownIfNeeded();
+                    m_EmscriptenShutdown = true;
+                }
+                emscripten_cancel_main_loop();
+            }
+        }
+        catch (const std::exception& e)
+        {
+            VULTRA_CORE_ERROR("[AppHost] Unhandled exception in emscripten frame: {}", e.what());
+            m_ExitCode = 1;
+            shutdownIfNeeded();
+            m_EmscriptenShutdown = true;
+            emscripten_cancel_main_loop();
+        }
+        catch (...)
+        {
+            VULTRA_CORE_ERROR("[AppHost] Unknown unhandled exception in emscripten frame");
+            m_ExitCode = 1;
+            shutdownIfNeeded();
+            m_EmscriptenShutdown = true;
+            emscripten_cancel_main_loop();
+        }
+    }
+#endif
+
     fsec AppHost::onFrameDelta()
     {
         using Clock = std::chrono::steady_clock;
 
-        static auto s_LastTick = Clock::now();
-
         const auto now = Clock::now();
-        const auto dt  = std::chrono::duration_cast<fsec>(now - s_LastTick);
-        s_LastTick     = now;
+        if (m_LastTick.time_since_epoch().count() == 0)
+        {
+            m_LastTick = now;
+            return fsec {0.0f};
+        }
+
+        const auto dt = std::chrono::duration_cast<fsec>(now - m_LastTick);
+        m_LastTick    = now;
 
         return fsec {std::clamp(dt.count(), 0.0f, 0.25f)};
     }
@@ -26,6 +145,15 @@ namespace vultra
 
     int AppHost::run(const int argc, char** argv)
     {
+        m_Configured      = false;
+        m_CoreInitialized = false;
+        m_Shutdown        = false;
+        m_ExitCode        = 0;
+        m_LastTick        = {};
+#if defined(__EMSCRIPTEN__)
+        m_EmscriptenShutdown = false;
+#endif
+
         m_CommandLineArgs.clear();
         if (argc > 1 && argv != nullptr)
         {
@@ -41,36 +169,41 @@ namespace vultra
 
         try
         {
-            // Let derived app configure subsystems/features/plugins
-            onConfigure(m_Engine);
-
-            if (!m_Engine.initCore())
-                return 1;
-
-            onPostConfigure(m_Engine);
-
-            while (!onShouldClose())
+            if (!bootstrap())
             {
-                onPollEvents();
-
-                const fsec dt = onFrameDelta();
-
-                onBeforeEngineTick(dt);
-                m_Engine.tickFrame(dt);
-                onAfterEngineTick(dt);
+                m_ExitCode = 1;
+                return m_ExitCode;
             }
 
-            m_Engine.shutdownCore();
+#if defined(__EMSCRIPTEN__)
+            emscripten_set_main_loop_arg(&AppHost::emscriptenFrameThunk, this, 0, true);
             return 0;
+#else
+            if (!initCoreIfNeeded())
+            {
+                shutdownIfNeeded();
+                return m_ExitCode;
+            }
+
+            while (stepFrame())
+            {}
+
+            shutdownIfNeeded();
+            return m_ExitCode;
+#endif
         }
         catch (const std::exception& e)
         {
             VULTRA_CORE_ERROR("[AppHost] Unhandled exception: {}", e.what());
+            m_ExitCode = 1;
         }
         catch (...)
         {
             VULTRA_CORE_ERROR("[AppHost] Unknown unhandled exception");
+            m_ExitCode = 1;
         }
-        return 1;
+
+        shutdownIfNeeded();
+        return m_ExitCode;
     }
 } // namespace vultra

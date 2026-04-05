@@ -193,6 +193,13 @@ namespace vultra
         engine.ctx().config.render.backendApi              = backendApi;
         engine.ctx().config.render.renderDeviceFeatureFlag = demoRenderDeviceFeatureFlag();
 
+#if defined(__EMSCRIPTEN__)
+        // Wasm bundles resources.vpk via --preload-file and loads assets from VPK by default.
+        engine.ctx().config.asset.assetRoot   = "/";
+        engine.ctx().config.asset.vpkFile     = "resources.vpk";
+        engine.ctx().config.asset.loadFromVPK = true;
+#endif
+
 #if defined(__ANDROID__)
         if (m_AndroidRuntimeContext.has_value())
         {
@@ -251,7 +258,9 @@ namespace vultra
 
         engine.emplaceSubsystem<WorldSystem>();
 
+#if !defined(__EMSCRIPTEN__)
         engine.emplaceSubsystem<FrameDebuggerSystem>();
+#endif
         engine.emplaceSubsystem<ShaderSystem>();
         engine.emplaceSubsystem<RenderBackendSystem>();
         engine.emplaceSubsystem<ImGuiSystem>();

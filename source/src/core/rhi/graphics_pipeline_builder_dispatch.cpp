@@ -16,8 +16,11 @@ namespace vultra
                 }
                 return {};
             }
-
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
             return buildVulkan(rd);
+#endif
         }
     } // namespace rhi
 } // namespace vultra

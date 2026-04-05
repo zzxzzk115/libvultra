@@ -36,6 +36,31 @@
 
 namespace vultra
 {
+    namespace
+    {
+        void clearColorTarget(rhi::CommandBuffer&        cb,
+                              rhi::Texture&              target,
+                              const rhi::Rect2D&         area,
+                              const std::optional<rhi::ClearValue>& clearValue,
+                              const bool                 enableMultiview,
+                              const uint32_t             multiviewMask)
+        {
+            rhi::FramebufferInfo clearFbInfo {
+                .area             = area,
+                .layers           = enableMultiview ? 2u : 1u,
+                .viewMask         = enableMultiview ? multiviewMask : 0u,
+                .colorAttachments = {rhi::AttachmentInfo {
+                    .target     = &target,
+                    .clearValue = clearValue.has_value() ? clearValue : std::optional<rhi::ClearValue> {glm::vec4 {0, 0, 0, 1}},
+                }},
+            };
+
+            rhi::prepareForAttachment(cb, target, false);
+            cb.beginRendering(clearFbInfo);
+            cb.endRendering();
+        }
+    } // namespace
+
     void RenderWorldCooker::cook(World& world, IAssetService& assets, RenderWorld& out)
     {
         out.clear();
@@ -390,6 +415,7 @@ namespace vultra
             HasFlagValues(rd.getFeatureReport().flags, rhi::RenderDeviceFeatureReportFlagBits::eMultiview);
         const auto xrEyeViews               = backendService.xrEyeViews();
         bool       skipRemainingStereoViews = false;
+        bool       backbufferClearedThisFrame = false;
 
         // TODO: TimeSystem, for now use 0
         const fsec dt {0};
@@ -463,6 +489,20 @@ namespace vultra
                 .view            = view,
                 .framebufferInfo = fbInfo,
             };
+
+            // Fallback clear for backbuffer cameras.
+            // This guarantees a deterministic background even when renderer contributes no color pass
+            // (e.g. pure ImGui examples with no framegraph features).
+            if (isBackbufferTarget && !backbufferClearedThisFrame)
+            {
+                clearColorTarget(cb,
+                                 *target,
+                                 renderArea,
+                                 cam.clearValue,
+                                 canUseXrMultiview,
+                                 0x3u);
+                backbufferClearedThisFrame = true;
+            }
 
             {
                 ImmediateResourceUploader immediateUploader {m_FrameResources, rd};

@@ -32,7 +32,14 @@ namespace vultra
 
         virtual std::string_view                 demoWindowTitle() const { return "Vultra Demo App"; }
         virtual bool                             demoWindowResizable() const { return true; }
-        virtual rhi::RenderBackendApi            demoRenderBackendApi() const { return rhi::RenderBackendApi::eVulkan; }
+        virtual rhi::RenderBackendApi            demoRenderBackendApi() const
+        {
+#if defined(__EMSCRIPTEN__)
+            return rhi::RenderBackendApi::eWebGPU;
+#else
+            return rhi::RenderBackendApi::eVulkan;
+#endif
+        }
         virtual bool                             demoAllowCliBackendOverride() const { return true; }
         virtual rhi::RenderDeviceFeatureFlagBits demoRenderDeviceFeatureFlag() const
         {

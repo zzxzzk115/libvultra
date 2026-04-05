@@ -1,28 +1,19 @@
 #pragma once
 
-#if !defined(__ANDROID__)
-
 #include "vultra/core/os/window.hpp"
 
-#include <algorithm>
+struct GLFWwindow;
 
-struct SDL_Window;
-
-namespace vultra::platform::sdl
+namespace vultra::platform::glfw
 {
-    class SDLWindow final : public os::Window
+    class GLFWWindow final : public os::Window
     {
     public:
-        SDLWindow(std::string_view title,
-                  Extent           extent,
-                  Position         position,
-                  bool             cursorVisible,
-                  bool             resizable,
-                  bool             fullscreen);
-        ~SDLWindow() override;
+        GLFWWindow(std::string_view title, Extent extent, bool resizable, bool fullscreen);
+        ~GLFWWindow() override;
 
-        [[nodiscard]] PlatformType platformType() const override { return PlatformType::eSDL3; }
-        [[nodiscard]] DriverType   driverType() const override;
+        [[nodiscard]] PlatformType platformType() const override { return PlatformType::eGLFW; }
+        [[nodiscard]] DriverType   driverType() const override { return DriverType::eUnknown; }
 
         os::Window& setTitle(std::string_view title) override;
         os::Window& setExtent(Extent extent) override;
@@ -36,12 +27,7 @@ namespace vultra::platform::sdl
         [[nodiscard]] std::string_view getTitle() const override { return m_Title; }
         [[nodiscard]] Extent           getExtent() const override { return m_Extent; }
         [[nodiscard]] Extent           getFrameBufferExtent() const override { return m_FrameBufferExtent; }
-        [[nodiscard]] rhi::Rect2D      getContentArea() const override
-        {
-            return rhi::Rect2D {.offset = {0, 0},
-                                .extent = {static_cast<uint32_t>(std::max(m_FrameBufferExtent.x, 0)),
-                                           static_cast<uint32_t>(std::max(m_FrameBufferExtent.y, 0))}};
-        }
+        [[nodiscard]] rhi::Rect2D      getContentArea() const override;
         [[nodiscard]] Position         getPosition() const override { return m_Position; }
         [[nodiscard]] CursorType       getCursor() const override { return m_Cursor; }
         [[nodiscard]] bool             getCursorVisibility() const override { return m_CursorVisibility; }
@@ -50,28 +36,35 @@ namespace vultra::platform::sdl
         [[nodiscard]] bool             isFullscreen() const override { return m_Fullscreen; }
         [[nodiscard]] float            getDisplayScale() const override;
         [[nodiscard]] bool             shouldClose() const override { return m_ShouldClose; }
-        [[nodiscard]] bool             isMinimized() const override { return m_IsMinimized; }
-        [[nodiscard]] bool             isReady() const override { return true; }
+        [[nodiscard]] bool             isMinimized() const override { return false; }
+        [[nodiscard]] bool             isReady() const override { return m_WindowHandle != nullptr; }
+        [[nodiscard]] GLFWwindow*      getHandle() const { return m_WindowHandle; }
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
         [[nodiscard]] std::span<const char* const> getRequiredVulkanInstanceExtensions() const override;
         [[nodiscard]] vk::SurfaceKHR               createVulkanSurface(vk::Instance instance) const override;
 #endif
-        [[nodiscard]] WGPUSurface                  createWebGPUSurface(WGPUInstance instance) const override;
+        [[nodiscard]] WGPUSurface createWebGPUSurface(WGPUInstance instance) const override;
 
         void pollEvents(int timeoutMillis = 0) override;
         void close() override;
 
-        [[nodiscard]] SDL_Window* getHandle() const { return m_WindowHandle; }
-
         static void shutdown();
 
     private:
-        [[nodiscard]] static DriverType translateDriverType();
-        [[nodiscard]] static KeyCode    translateKeyCode(int scancode);
-        [[nodiscard]] static MouseCode  translateMouseCode(uint8_t button);
+        [[nodiscard]] static KeyCode   translateKeyCode(int key);
+        [[nodiscard]] static MouseCode translateMouseCode(int button);
 
-    private:
+        static GLFWWindow* fromHandle(GLFWwindow* windowHandle);
+        static void onWindowClose(GLFWwindow* windowHandle);
+        static void onWindowSize(GLFWwindow* windowHandle, int width, int height);
+        static void onWindowPos(GLFWwindow* windowHandle, int x, int y);
+        static void onFramebufferSize(GLFWwindow* windowHandle, int width, int height);
+        static void onKey(GLFWwindow* windowHandle, int key, int scancode, int action, int mods);
+        static void onMouseButton(GLFWwindow* windowHandle, int button, int action, int mods);
+        static void onCursorPos(GLFWwindow* windowHandle, double xpos, double ypos);
+        static void onScroll(GLFWwindow* windowHandle, double xoffset, double yoffset);
+
         std::string m_Title;
         Extent      m_Extent {};
         Extent      m_FrameBufferExtent {};
@@ -82,14 +75,12 @@ namespace vultra::platform::sdl
         bool        m_Resizable {true};
         bool        m_Fullscreen {false};
         bool        m_ShouldClose {false};
-        bool        m_IsMinimized {false};
+        glm::vec2   m_LastCursorPosition {};
+        bool        m_HasLastCursorPosition {false};
 
-        SDL_Window*              m_WindowHandle {nullptr};
-        mutable void* m_WebGpuMetalView {nullptr};
+        GLFWwindow* m_WindowHandle {nullptr};
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
         std::vector<const char*> m_VulkanExtensions;
 #endif
     };
-} // namespace vultra::platform::sdl
-
-#endif
+} // namespace vultra::platform::glfw

@@ -52,8 +52,10 @@ namespace vultra::platform::android
         [[nodiscard]] bool       isMinimized() const override { return false; }
         [[nodiscard]] bool       isReady() const override;
 
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
         [[nodiscard]] std::span<const char* const> getRequiredVulkanInstanceExtensions() const override;
         [[nodiscard]] vk::SurfaceKHR               createVulkanSurface(vk::Instance instance) const override;
+#endif
         [[nodiscard]] WGPUSurface                  createWebGPUSurface(WGPUInstance instance) const override;
 
         void pollEvents(int timeoutMillis) override;
@@ -81,8 +83,10 @@ namespace vultra::platform::android
         glm::vec2                    m_LastPointerPosition {};
         std::string                  m_Title;
         bool                         m_ShouldClose {false};
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
         static constexpr const char* s_k_VulkanExtensions[2] = {VK_KHR_SURFACE_EXTENSION_NAME,
                                                                 "VK_KHR_android_surface"};
+#endif
     };
 } // namespace vultra::platform::android
 

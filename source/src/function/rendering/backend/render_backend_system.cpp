@@ -2,11 +2,15 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
 #include "vultra/core/rhi/backends/vk/vulkan_imgui.hpp"
+#endif
 #include "vultra/core/rhi/backends/webgpu/webgpu_imgui.hpp"
 #include "vultra/core/services/window_service.hpp"
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
 #include "vultra/function/openxr/xr_headset.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
+#endif
 
 #include <vbase/core/scoped_enum_flags.hpp>
 
@@ -16,6 +20,7 @@ namespace vultra
 {
     namespace
     {
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         void ensureXrMirrorTargets(rhi::RenderDevice&                                      rd,
                                    std::vector<rhi::Texture>&                              mirrorTargets,
                                    const std::span<const IRenderBackendService::XREyeView> eyeViews)
@@ -54,10 +59,14 @@ namespace vultra
                                     .addressModeS = rhi::SamplerAddressMode::eClampToEdge,
                                     .addressModeT = rhi::SamplerAddressMode::eClampToEdge,
                                     .addressModeR = rhi::SamplerAddressMode::eClampToEdge,
-                                });
+                });
             }
         }
+#endif
     } // namespace
+
+    RenderBackendSystem::RenderBackendSystem() = default;
+    RenderBackendSystem::~RenderBackendSystem() = default;
 
     bool RenderBackendSystem::onInit()
     {
@@ -90,6 +99,7 @@ namespace vultra
 
         switch (requestedBackendApi)
         {
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             case rhi::RenderBackendApi::eAuto:
             case rhi::RenderBackendApi::eVulkan:
                 m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
@@ -98,6 +108,12 @@ namespace vultra
                                                                       rhi::RenderBackendApi::eVulkan);
                 m_ImGuiBackend = std::make_unique<rhi::VulkanImGui>(*m_RenderDevice);
                 break;
+#else
+            case rhi::RenderBackendApi::eAuto:
+            case rhi::RenderBackendApi::eVulkan:
+                VULTRA_CORE_WARN("[RenderBackendSystem] Vulkan backend is disabled in this build; using WebGPU.");
+                [[fallthrough]];
+#endif
 
             case rhi::RenderBackendApi::eWebGPU:
                 m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
@@ -115,8 +131,8 @@ namespace vultra
         }
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");
-        m_Swapchain =
-            m_RenderDevice->createSwapchain(window, rhi::SwapchainFormat::esRGB, ctx().config.render.vSyncConfig);
+        m_Swapchain = m_RenderDevice->createSwapchain(
+            window, ctx().config.render.swapchainFormat, ctx().config.render.vSyncConfig);
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating frame controller");
         m_FrameController =
@@ -124,6 +140,7 @@ namespace vultra
 
         if (HasFlagValues(ctx().config.render.renderDeviceFeatureFlag, rhi::RenderDeviceFeatureFlagBits::eXR))
         {
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
             VULTRA_CORE_TRACE("[RenderBackendSystem] Creating XR render backend");
             if (!m_RenderDevice->getXRDevice())
             {
@@ -134,6 +151,9 @@ namespace vultra
             {
                 m_XRBackend = std::make_unique<openxr::XRHeadset>(*m_RenderDevice);
             }
+#else
+            VULTRA_CORE_WARN("[RenderBackendSystem] XR is disabled in this build; ignoring XR feature flag.");
+#endif
         }
 
         bool xrMirrorEnabled = ctx().config.render.xr.mirror;
@@ -163,7 +183,9 @@ namespace vultra
         m_XRFrameActive  = false;
         m_XRShouldRender = false;
 
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         m_XRBackend.reset();
+#endif
         m_ImGuiBackend.reset();
         m_FrameController.reset();
         m_Swapchain = {};
@@ -185,6 +207,7 @@ namespace vultra
         m_XRShouldRender      = false;
         m_XREyeViews.clear();
 
+ #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         if (m_XRBackend)
         {
             switch (m_XRBackend->beginFrame(m_XRSwapchainImageIndex))
@@ -204,21 +227,12 @@ namespace vultra
                         auto& stereoTarget = m_XRBackend->getSwapchainStereoRenderTargetView(m_XRSwapchainImageIndex);
                         auto* eyeTarget    = (eyeIndex == 0u) ? &stereoTarget.left : &stereoTarget.right;
 
-                        const auto eyeFov = m_XRBackend->getEyeFOV(eyeIndex);
                         const auto extent = m_XRBackend->getEyeResolution(eyeIndex);
 
                         m_XREyeViews.push_back({
                             .eyeIndex   = eyeIndex,
                             .view       = m_XRBackend->getEyeViewMatrix(eyeIndex),
-                            .projection = xrutils::createProjectionMatrix(
-                                {
-                                    .angleLeft  = eyeFov.angleLeft,
-                                    .angleRight = eyeFov.angleRight,
-                                    .angleUp    = eyeFov.angleUp,
-                                    .angleDown  = eyeFov.angleDown,
-                                },
-                                0.1f,
-                                1000.0f),
+                            .projection = m_XRBackend->getEyeProjectionMatrix(eyeIndex),
                             .extent       = extent,
                             .target       = eyeTarget,
                             .stereoTarget = &stereoTarget.stereo,
@@ -250,15 +264,18 @@ namespace vultra
                     return false;
             }
         }
+ #endif
 
         if (!m_FrameController->acquireNextFrame())
         {
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
             if (m_XRBackend && m_XRFrameActive)
             {
                 m_XRBackend->endFrame();
                 m_XRFrameActive  = false;
                 m_XRShouldRender = false;
             }
+#endif
             return false;
         }
 
@@ -276,11 +293,25 @@ namespace vultra
 
     rhi::Texture& RenderBackendSystem::backbuffer() { return m_Swapchain.getCurrentBuffer(); }
 
-    bool RenderBackendSystem::isXREnabled() const { return static_cast<bool>(m_XRBackend); }
+    bool RenderBackendSystem::isXREnabled() const
+    {
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+        return static_cast<bool>(m_XRBackend);
+#else
+        return false;
+#endif
+    }
 
     bool RenderBackendSystem::isXRMirrorEnabled() const { return m_XRMirrorEnabled; }
 
-    bool RenderBackendSystem::isExitRequested() const { return m_XRBackend && m_XRBackend->isExitRequested(); }
+    bool RenderBackendSystem::isExitRequested() const
+    {
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+        return m_XRBackend && m_XRBackend->isExitRequested();
+#else
+        return false;
+#endif
+    }
 
     std::span<const IRenderBackendService::XREyeView> RenderBackendSystem::xrEyeViews() const { return m_XREyeViews; }
 
@@ -288,10 +319,12 @@ namespace vultra
     {
         m_FrameController->endFrame();
 
+ #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         if (m_XRBackend && m_XRFrameActive)
         {
             m_XRBackend->endFrame();
         }
+ #endif
 
         m_ActiveCommandBuffer = nullptr;
         m_XRFrameActive       = false;

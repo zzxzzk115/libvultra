@@ -1,5 +1,151 @@
 print(get_config("project_dir"))
 
+local function _vpk_setting(target, key, legacy_key)
+    local value = target:values(key)
+    if value == nil and legacy_key ~= nil then
+        value = target:values(legacy_key)
+    end
+    return value
+end
+
+local function _wasm_setting(target, key, legacy_key)
+    local value = target:values(key)
+    if value == nil and legacy_key ~= nil then
+        value = target:values(legacy_key)
+    end
+    return value
+end
+
+local function _resolve_vpk_paths(target)
+    local project_dir = _vpk_setting(target, "vpk.project_dir", "wasm_vpk.project_dir")
+                        or get_config("project_dir") or os.projectdir()
+    local resources_dir = _vpk_setting(target, "vpk.resources_dir", "wasm_vpk.resources_dir")
+                          or path.join(project_dir, "resources")
+    local generated_dir = _vpk_setting(target, "vpk.generated_dir", "wasm_vpk.generated_dir")
+                          or path.join(project_dir, "build", ".generated", "wasm_resources")
+    local output_vpk = _vpk_setting(target, "vpk.output_vpk", "wasm_vpk.output_vpk")
+                       or path.join(generated_dir, "resources.vpk")
+    local mount_path = _vpk_setting(target, "vpk.mount_path", "wasm_vpk.mount_path") or "/resources.vpk"
+    return project_dir, resources_dir, generated_dir, output_vpk, mount_path
+end
+
+rule("resources.vpk_pack")
+    on_load(function (target)
+        local project_dir, resources_dir, generated_dir, output_vpk = _resolve_vpk_paths(target)
+        target:data_set("vpk.project_dir", project_dir)
+        target:data_set("vpk.resources_dir", resources_dir)
+        target:data_set("vpk.generated_dir", generated_dir)
+        target:data_set("vpk.output_vpk", output_vpk)
+    end)
+
+    before_build(function (target)
+        local project_dir   = target:data("vpk.project_dir")
+        local resources_dir = target:data("vpk.resources_dir")
+        local generated_dir = target:data("vpk.generated_dir")
+        local output_vpk    = target:data("vpk.output_vpk")
+
+        local import_enabled = _vpk_setting(target, "vpk.enable_import", "wasm_vpk.enable_import")
+        if import_enabled == nil then
+            import_enabled = true
+        end
+        local pack_enabled = _vpk_setting(target, "vpk.enable_pack", "wasm_vpk.enable_pack")
+        if pack_enabled == nil then
+            pack_enabled = true
+        end
+        if not import_enabled and not pack_enabled then
+            return
+        end
+
+        os.mkdir(generated_dir)
+
+        if is_host("windows") then
+            if import_enabled then
+                os.execv("powershell.exe",
+                         {
+                            "-NoProfile",
+                            "-ExecutionPolicy",
+                            "Bypass",
+                            "-File",
+                            _vpk_setting(target, "vpk.import_script", "wasm_vpk.import_script")
+                                or path.join(project_dir, "scripts", "import.ps1"),
+                            project_dir,
+                            resources_dir
+                         })
+            end
+            if pack_enabled then
+                os.execv("powershell.exe",
+                         {
+                            "-NoProfile",
+                            "-ExecutionPolicy",
+                            "Bypass",
+                            "-File",
+                            _vpk_setting(target, "vpk.pack_script", "wasm_vpk.pack_script")
+                                or path.join(project_dir, "scripts", "pack.ps1"),
+                            project_dir,
+                            resources_dir,
+                            output_vpk
+                         })
+            end
+        else
+            if import_enabled then
+                os.execv("sh",
+                         {
+                            _vpk_setting(target, "vpk.import_script", "wasm_vpk.import_script")
+                                or path.join(project_dir, "scripts", "import.sh"),
+                            project_dir,
+                            resources_dir
+                         })
+            end
+            if pack_enabled then
+                os.execv("sh",
+                         {
+                            _vpk_setting(target, "vpk.pack_script", "wasm_vpk.pack_script")
+                                or path.join(project_dir, "scripts", "pack.sh"),
+                            project_dir,
+                            resources_dir,
+                            output_vpk
+                         })
+            end
+        end
+    end)
+rule_end()
+
+rule("wasm.link")
+    on_load(function (target)
+        if not is_plat("wasm") then
+            return
+        end
+
+        -- Always inject the baseline wasm link flags required by our runtime path.
+        target:add("ldflags", "--use-port=emdawnwebgpu", "-sUSE_GLFW=3", "-sASYNCIFY", {force = true})
+
+        -- Optional extra flags (append-only). This avoids accidentally dropping required defaults.
+        local extra_ldflags = _wasm_setting(target, "wasm.extra_ldflags", nil)
+        if extra_ldflags == nil then
+            extra_ldflags = _wasm_setting(target, "wasm.ldflags", "wasm_vpk.ldflags")
+        end
+        if extra_ldflags == nil then
+            extra_ldflags = _vpk_setting(target, "vpk.wasm_ldflags", "wasm_vpk.ldflags")
+        end
+        if extra_ldflags and #extra_ldflags > 0 then
+            target:add("ldflags", table.unpack(extra_ldflags), {force = true})
+        end
+
+        local vpk_path = _wasm_setting(target, "wasm.vpk_path", nil)
+        if vpk_path == nil then
+            vpk_path = _vpk_setting(target, "vpk.output_vpk", "wasm_vpk.output_vpk")
+        end
+
+        if vpk_path ~= nil then
+            local mount_path = _wasm_setting(target, "wasm.vpk_mount", nil)
+            if mount_path == nil then
+                mount_path = _vpk_setting(target, "vpk.mount_path", "wasm_vpk.mount_path") or "/resources.vpk"
+            end
+            target:add("ldflags", "--preload-file", vpk_path .. "@" .. mount_path, {force = true})
+        end
+    end)
+rule_end()
+
 rule("copy_resources")
 	after_build(function (target)
         local resource_files = target:values("resource_files")
@@ -37,18 +183,12 @@ rule("copy_resources")
 rule_end()
 
 if is_plat("wasm") then
-    includes("rhi/triangle_webgpu_sdk")
+    includes("demo_app")
+    includes("imgui")
 else
     includes("window")
     includes("rhi/triangle")
-    if not is_plat("android") then
-        includes("rhi/triangle_webgpu")
-        includes("rhi/triangle_webgpu_sdk")
-    end
     includes("imgui")
-    if not is_plat("android") then
-        includes("imgui_webgpu")
-    end
     includes("framegraph/triangle")
     includes("openxr/triangle")
     -- includes("openxr/sponza")

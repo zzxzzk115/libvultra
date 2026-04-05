@@ -3,6 +3,35 @@ if not is_plat("android") then
         set_kind("binary")
         add_files("main.cpp")
         add_deps("vultra")
+        if is_plat("wasm") then
+            add_rules("resources.vpk_pack", "wasm.link")
+
+            local project_dir = os.projectdir()
+            local generated_dir = path.join(project_dir, "build", ".generated", "wasm_resources")
+            local output_vpk = path.join(generated_dir, "resources.vpk")
+
+            set_values("vpk.project_dir", project_dir)
+            set_values("vpk.resources_dir", path.join(project_dir, "resources"))
+            set_values("vpk.generated_dir", generated_dir)
+            set_values("vpk.mount_path", "/resources.vpk")
+            set_values("vpk.enable_import", true)
+            set_values("vpk.enable_pack", true)
+            set_values("wasm.vpk_path", output_vpk)
+            set_values("wasm.vpk_mount", "/resources.vpk")
+            set_values("wasm.extra_ldflags",
+                       {
+                           "-sALLOW_MEMORY_GROWTH=1",
+                           "-sINITIAL_MEMORY=268435456",
+                           "-sMAXIMUM_MEMORY=2147483648",
+                       })
+            -- Optional overrides:
+            -- set_values("vpk.output_vpk", "<custom_output_vpk>")
+            -- set_values("vpk.import_script", "<custom_import_script>")
+            -- set_values("vpk.pack_script", "<custom_pack_script>")
+            -- set_values("wasm.vpk_path", "<prebuilt_vpk>")
+            -- set_values("wasm.vpk_mount", "/resources.vpk")
+            -- set_values("wasm.extra_ldflags", {"-sALLOW_MEMORY_GROWTH=1", ...})
+        end
         set_rundir("$(projectdir)")
         set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/example-demo-app")
 end

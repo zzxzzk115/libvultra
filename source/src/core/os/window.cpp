@@ -5,7 +5,10 @@
 
 #if defined(__ANDROID__)
 #include "vultra/platform/android/android_native_window.hpp"
+#elif defined(__EMSCRIPTEN__)
+#include "vultra/platform/glfw/glfw_window.hpp"
 #else
+#include "vultra/platform/glfw/glfw_window.hpp"
 #include "vultra/platform/sdl/sdl_window.hpp"
 #endif
 
@@ -49,13 +52,25 @@ namespace vultra
             return *this;
         }
 
+        Window::Builder& Window::Builder::setPlatform(const PlatformType platformType)
+        {
+            m_PlatformType = platformType;
+            return *this;
+        }
+
         std::shared_ptr<Window> Window::Builder::build() const
         {
 #if defined(__ANDROID__)
             VULTRA_CORE_ASSERT(false,
                                "[Window::Builder] Android windows must be created from the Android runtime context.");
             return {};
+#elif defined(__EMSCRIPTEN__)
+            return std::make_shared<platform::glfw::GLFWWindow>(m_Title, m_Extent, m_Resizable, m_Fullscreen);
 #else
+            if (m_PlatformType == PlatformType::eGLFW)
+            {
+                return std::make_shared<platform::glfw::GLFWWindow>(m_Title, m_Extent, m_Resizable, m_Fullscreen);
+            }
             return std::make_shared<platform::sdl::SDLWindow>(
                 m_Title, m_Extent, m_Position, m_CursorVisibility, m_Resizable, m_Fullscreen);
 #endif
@@ -65,7 +80,10 @@ namespace vultra
         {
 #if defined(__ANDROID__)
             platform::android::AndroidNativeWindow::shutdown();
+#elif defined(__EMSCRIPTEN__)
+            platform::glfw::GLFWWindow::shutdown();
 #else
+            platform::glfw::GLFWWindow::shutdown();
             platform::sdl::SDLWindow::shutdown();
 #endif
         }

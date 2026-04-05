@@ -63,6 +63,7 @@ namespace vultra
             [[nodiscard]] glm::quat     getEyeRotation(size_t eyeIndex) const;
             [[nodiscard]] rhi::Extent2D getEyeResolution(size_t eyeIndex) const;
             [[nodiscard]] glm::mat4     getEyeViewMatrix(size_t eyeIndex) const;
+            [[nodiscard]] glm::mat4     getEyeProjectionMatrix(size_t eyeIndex) const;
             [[nodiscard]] XrFovf        getEyeFOV(size_t eyeIndex) const;
 
             [[nodiscard]] float getIPD() const;
@@ -86,6 +87,7 @@ namespace vultra
 
             size_t                 m_EyeCount {0u};
             std::vector<glm::mat4> m_EyeViewMatrices;
+            std::vector<glm::mat4> m_EyeProjectionMatrices;
             std::vector<XrFovf>    m_EyeFOVs;
 
             XrSession      m_Session {XR_NULL_HANDLE};

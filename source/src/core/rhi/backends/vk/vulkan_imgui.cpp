@@ -60,13 +60,20 @@ namespace vultra::rhi
         initInfo.PipelineCache = VK_NULL_HANDLE;
         initInfo.DescriptorPool =
             asVkHandle<VkDescriptorPool>(VulkanRenderDeviceAccess::getDescriptorPoolHandle(renderDevice));
-        initInfo.Subpass                     = 0;
         initInfo.MinImageCount               = static_cast<uint32_t>(swapchain.getNumBuffers());
         initInfo.ImageCount                  = static_cast<uint32_t>(swapchain.getNumBuffers());
-        initInfo.MSAASamples                 = VK_SAMPLE_COUNT_1_BIT;
         initInfo.Allocator                   = nullptr;
         initInfo.UseDynamicRendering         = true;
+#if IMGUI_VERSION_NUM >= 19250
+        initInfo.PipelineInfoMain.Subpass         = 0;
+        initInfo.PipelineInfoMain.MSAASamples     = VK_SAMPLE_COUNT_1_BIT;
+        initInfo.PipelineInfoMain.PipelineRenderingCreateInfo =
+            static_cast<VkPipelineRenderingCreateInfo>(renderingCreateInfo);
+#else
+        initInfo.Subpass                     = 0;
+        initInfo.MSAASamples                 = VK_SAMPLE_COUNT_1_BIT;
         initInfo.PipelineRenderingCreateInfo = static_cast<VkPipelineRenderingCreateInfo>(renderingCreateInfo);
+#endif
         ImGui_ImplVulkan_Init(&initInfo);
     }
 

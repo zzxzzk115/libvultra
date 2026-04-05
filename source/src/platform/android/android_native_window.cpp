@@ -6,7 +6,9 @@
 #include <android/input.h>
 #include <android/looper.h>
 #include <game-activity/native_app_glue/android_native_app_glue.h>
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
 #include <vulkan/vulkan_android.h>
+#endif
 
 #include "vultra/core/base/common_context.hpp"
 
@@ -51,6 +53,7 @@ namespace vultra::platform::android
 
     bool AndroidNativeWindow::isReady() const { return m_NativeWindow != nullptr; }
 
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
     std::span<const char* const> AndroidNativeWindow::getRequiredVulkanInstanceExtensions() const
     {
         return {s_k_VulkanExtensions, 2};
@@ -80,6 +83,7 @@ namespace vultra::platform::android
 
         return vk::SurfaceKHR {surface};
     }
+#endif
 
     WGPUSurface AndroidNativeWindow::createWebGPUSurface(const WGPUInstance instance) const
     {

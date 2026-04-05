@@ -56,7 +56,11 @@ namespace vultra
             struct RenderConfig
             {
                 rhi::FrameIndex::ValueType       numFramesInFlight {2};
+#if defined(__EMSCRIPTEN__)
+                rhi::RenderBackendApi            backendApi {rhi::RenderBackendApi::eWebGPU};
+#else
                 rhi::RenderBackendApi            backendApi {rhi::RenderBackendApi::eVulkan};
+#endif
                 rhi::RenderDeviceFeatureFlagBits renderDeviceFeatureFlag {rhi::RenderDeviceFeatureFlagBits::eNormal};
                 rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eDisabled};
                 rhi::SwapchainFormat             swapchainFormat {rhi::SwapchainFormat::eLinear};

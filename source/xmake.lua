@@ -88,16 +88,17 @@ end
 -- add requirements
 add_requires("fmt", { system = false })
 add_requires("spdlog", "magic_enum", "entt", "cereal", "sol2")
+add_requires("vulkan-headers 1.4.335+0")
 if not is_plat("wasm") then
-    add_requires("vulkan-headers 1.4.335+0", "vulkan-memory-allocator-hpp")
+    add_requires("vulkan-memory-allocator-hpp")
 end
 if not is_plat("android") then
     add_requires("webgpu-sdk v0.1.0")
 end
 if not is_plat("wasm") then
     add_requireconfs("vulkan-memory-allocator-hpp", {configs = {use_vulkanheaders = true}})
-    add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"}) -- unfortunately, some dependencies (e.g. vulkan-memory-allocator-hpp) still rely on older Vulkan-Headers, we need to override it to avoid version conflicts
 end
+add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"}) -- unfortunately, some dependencies (e.g. vulkan-memory-allocator-hpp) still rely on older Vulkan-Headers, we need to override it to avoid version conflicts
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
@@ -140,8 +141,19 @@ target("vultra")
     add_files("src/**.cpp")
     if is_plat("android") then
         remove_files("src/platform/sdl/**.cpp")
+        remove_files("src/platform/glfw/**.cpp")
+    elseif is_plat("wasm") then
+        remove_files("src/platform/sdl/**.cpp")
+        remove_files("src/platform/android/**.cpp")
     else
         remove_files("src/platform/android/**.cpp")
+    end
+    if is_plat("wasm") then
+        remove_files("src/function/openxr/**.cpp")
+        remove_files("src/core/rhi/backends/vk/**.cpp")
+        remove_files("src/core/profiling/tracky.cpp")
+        remove_files("src/core/profiling/renderdoc_api.cpp")
+        remove_files("src/function/debugging/frame_debugger_system.cpp")
     end
 
     -- add deps
@@ -163,9 +175,29 @@ target("vultra")
     add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vrendergraph", "sol2", { public = true })
     if not is_plat("wasm") then
         add_packages("vulkan-headers", "vulkan-memory-allocator-hpp", { public = true })
+    else
+        add_packages("vulkan-headers", { public = true })
+        add_includedirs(path.join(os.projectdir(), "external", "vma"), {public = true})
     end
     if not is_plat("android") then
         add_packages("webgpu-sdk", { public = true })
+    end
+    if is_plat("wasm") then
+        local emsdk = os.getenv("EMSDK")
+        if emsdk then
+            local emdawnwebgpu_include = path.join(emsdk,
+                "upstream",
+                "emscripten",
+                "cache",
+                "ports",
+                "emdawnwebgpu",
+                "emdawnwebgpu_pkg",
+                "webgpu",
+                "include")
+            if os.isdir(emdawnwebgpu_include) then
+                add_includedirs(emdawnwebgpu_include, {public = true})
+            end
+        end
     end
     if not is_plat("wasm") then
         add_packages("openxr", { public = true })
@@ -183,6 +215,8 @@ target("vultra")
         if is_plat("android") then
             add_defines("VULKAN_HPP_NO_SPACESHIP_OPERATOR=1", { public = true })
         end
+    elseif is_plat("wasm") then
+        add_defines("VULKAN_HPP_NO_SPACESHIP_OPERATOR=1", { public = true })
     end
 
     -- tracy & tracky required defines
@@ -211,9 +245,17 @@ target("vultra")
     end
 
     if is_plat("android") then
+        add_defines("VULTRA_ENABLE_VULKAN=1", { public = true })
         add_defines("VULTRA_ENABLE_WEBGPU=0", { public = true })
-    else
+        add_defines("VULTRA_ENABLE_XR=1", { public = true })
+    elseif is_plat("wasm") then
+        add_defines("VULTRA_ENABLE_VULKAN=0", { public = true })
         add_defines("VULTRA_ENABLE_WEBGPU=1", { public = true })
+        add_defines("VULTRA_ENABLE_XR=0", { public = true })
+    else
+        add_defines("VULTRA_ENABLE_VULKAN=1", { public = true })
+        add_defines("VULTRA_ENABLE_WEBGPU=1", { public = true })
+        add_defines("VULTRA_ENABLE_XR=1", { public = true })
     end
 
     if is_plat("android") and get_config("android_allow_32bit_unsafe") then

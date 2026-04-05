@@ -70,6 +70,9 @@ namespace vultra
             }
 
             [[nodiscard]] openxr::XRDevice* getXRDevice() const override { return m_XRDevice; }
+            [[nodiscard]] std::array<float, 2> getLineWidthRange() const override;
+            [[nodiscard]] float                getMaxSamplerAnisotropy() const override;
+            [[nodiscard]] uint64_t             getFormatFeatureFlagsOptimal(PixelFormat) const override;
 
             std::set<std::string>       m_SupportedExtensions;
             RenderDeviceFeatureReport   m_FeatureReport {};

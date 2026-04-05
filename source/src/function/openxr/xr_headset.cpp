@@ -239,6 +239,7 @@ namespace vultra
             }
 
             m_EyeViewMatrices.resize(m_EyeCount);
+            m_EyeProjectionMatrices.resize(m_EyeCount);
             m_EyeFOVs.resize(m_EyeCount);
         }
 
@@ -401,6 +402,8 @@ namespace vultra
                 const XrPosef& pose            = eyeRenderInfo.pose;
                 m_EyeViewMatrices.at(eyeIndex) = glm::inverse(xrutils::poseToMatrix(pose));
                 m_EyeFOVs.at(eyeIndex)         = eyeRenderInfo.fov;
+                m_EyeProjectionMatrices.at(eyeIndex) =
+                    xrutils::createProjectionMatrix(eyeRenderInfo.fov, 0.1f, 1000.0f);
             }
 
             // Acquire the swapchain image
@@ -495,6 +498,11 @@ namespace vultra
         }
 
         glm::mat4 XRHeadset::getEyeViewMatrix(size_t eyeIndex) const { return m_EyeViewMatrices.at(eyeIndex); }
+
+        glm::mat4 XRHeadset::getEyeProjectionMatrix(size_t eyeIndex) const
+        {
+            return m_EyeProjectionMatrices.at(eyeIndex);
+        }
 
         XrFovf XRHeadset::getEyeFOV(size_t eyeIndex) const { return m_EyeFOVs.at(eyeIndex); }
 

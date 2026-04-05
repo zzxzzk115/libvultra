@@ -82,6 +82,9 @@ namespace vultra
             }
 
             [[nodiscard]] openxr::XRDevice* getXRDevice() const override { return nullptr; }
+            [[nodiscard]] std::array<float, 2> getLineWidthRange() const override { return {1.0f, 1.0f}; }
+            [[nodiscard]] float                getMaxSamplerAnisotropy() const override { return 1.0f; }
+            [[nodiscard]] uint64_t             getFormatFeatureFlagsOptimal(PixelFormat) const override;
 
             RenderDeviceFeatureReport   m_FeatureReport {};
             RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
