@@ -10,7 +10,7 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[ShaderSystem] Initializing...");
 
-        const auto backendApi = ctx().config.render.backendApi;
+        const auto backendApi      = ctx().config.render.backendApi;
         const bool useWebGpuLibrary = backendApi == rhi::RenderBackendApi::eWebGPU;
 
         const uint8_t* shaderLibData = nullptr;
@@ -18,20 +18,20 @@ namespace vultra
 
         if (useWebGpuLibrary)
         {
-            shaderLibData = builtin_shaders_web_vshweblib;
-            shaderLibSize = builtin_shaders_web_vshweblib_size;
+            shaderLibData = builtin_shaders_compatibility_web_vshweblib;
+            shaderLibSize = builtin_shaders_compatibility_web_vshweblib_size;
         }
 #if defined(__ANDROID__)
         else
         {
-            shaderLibData = builtin_shaders_android_vshlib;
-            shaderLibSize = builtin_shaders_android_vshlib_size;
+            shaderLibData = builtin_shaders_compatibility_vshlib;
+            shaderLibSize = builtin_shaders_compatibility_vshlib_size;
         }
 #else
         else
         {
-            shaderLibData = builtin_shaders_desktop_vshlib;
-            shaderLibSize = builtin_shaders_desktop_vshlib_size;
+            shaderLibData = builtin_shaders_highend_vshlib;
+            shaderLibSize = builtin_shaders_highend_vshlib_size;
         }
 #endif
 

@@ -63,12 +63,7 @@ namespace vultra
 
         // SRP binding (string key, resolved to a Renderer instance by RenderSystem)
         // Example: "universal", "hd"
-        std::string rendererKey
-#if defined(__ANDROID__)
-            {"android_compat"};
-#else
-            {"universal"};
-#endif
+        std::string rendererKey {"universal"};
     };
 
     // Cooked render instance extracted from World.

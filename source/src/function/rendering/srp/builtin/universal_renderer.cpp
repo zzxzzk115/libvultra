@@ -1,4 +1,6 @@
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
+#include "vultra/core/rhi/structs/render_backend_api.hpp"
+#include "vultra/function/rendering/srp/builtin/features/compatibility_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
@@ -98,6 +100,26 @@ namespace vultra
 
     void UniversalRenderer::init()
     {
+        auto* services = getServices();
+        if (!services)
+            return;
+
+        const auto backendApi = services->require<IRenderBackendService>().renderDevice().getBackendApi();
+#if defined(__ANDROID__)
+        constexpr bool kForceCompatibilityFeature = true;
+#else
+        constexpr bool kForceCompatibilityFeature = false;
+#endif
+        const bool useCompatibilityFeature = kForceCompatibilityFeature || backendApi == rhi::RenderBackendApi::eWebGPU;
+        if (useCompatibilityFeature)
+        {
+            m_GaussianSplatFeature = nullptr;
+            emplaceFeature<CompatibilityFeature>();
+            if (backendApi != rhi::RenderBackendApi::eWebGPU)
+                emplaceFeature<FinalCompositionFeature>();
+            return;
+        }
+
         // Add features in the desired order.
         emplaceFeature<MeshletFeature>();
         m_GaussianSplatFeature = &emplaceFeature<GaussianSplatFeature>();

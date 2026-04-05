@@ -13,9 +13,7 @@
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
 #include "vultra/function/rendering/render_system.hpp"
 #include "vultra/function/rendering/shader_system.hpp"
-#include "vultra/function/rendering/srp/builtin/android_compat_renderer.hpp"
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
-#include "vultra/function/rendering/srp/builtin/webgpu_compat_renderer.hpp"
 #include "vultra/function/resource/gpu_resource_system.hpp"
 #include "vultra/function/scene/scene_system.hpp"
 #include "vultra/function/scripting/script_system.hpp"
@@ -153,16 +151,7 @@ namespace vultra
 
     Ref<Renderer> DemoAppHost::makeRenderer() const
     {
-#if defined(__ANDROID__)
-        return createRef<AndroidCompatRenderer>();
-#else
-        if (engineCtx().config.render.backendApi == rhi::RenderBackendApi::eWebGPU)
-        {
-            // WebGPU currently reuses the feature-pass compatibility path.
-            return createRef<WebGPUCompatRenderer>();
-        }
         return createRef<UniversalRenderer>();
-#endif
     }
 
     void DemoAppHost::onConfigure(Engine& engine)

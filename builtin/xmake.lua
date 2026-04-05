@@ -112,22 +112,6 @@ task("shader_task")
 
         local shader_root_common =
             path.join(projectdir, "builtin/shaders")
-        local shader_root_vulkan_desktop =
-            path.join(projectdir, "builtin/shaders/vulkan/desktop")
-        local shader_root_vulkan_android =
-            path.join(projectdir, "builtin/shaders/vulkan/android")
-        local shader_root_webgpu =
-            path.join(projectdir, "builtin/shaders/webgpu")
-
-        if not os.exists(shader_root_vulkan_desktop) then
-            shader_root_vulkan_desktop = shader_root_common
-        end
-        if not os.exists(shader_root_vulkan_android) then
-            shader_root_vulkan_android = shader_root_common
-        end
-        if not os.exists(shader_root_webgpu) then
-            shader_root_webgpu = shader_root_common
-        end
 
         local lib_root =
             path.join(projectdir, "builtin/shader_lib")
@@ -137,51 +121,42 @@ task("shader_task")
 
         local keywords_common =
             path.join(shader_root_common, "builtin_keywords.vkw")
-        local keywords_vulkan_desktop =
-            path.join(shader_root_vulkan_desktop, "builtin_keywords.vkw")
-        local keywords_vulkan_android =
-            path.join(shader_root_vulkan_android, "builtin_keywords.vkw")
-        local keywords_webgpu =
-            path.join(shader_root_webgpu, "builtin_keywords.vkw")
 
-        if not os.exists(keywords_vulkan_desktop) then
-            keywords_vulkan_desktop = keywords_common
-        end
-        if not os.exists(keywords_vulkan_android) then
-            keywords_vulkan_android = keywords_common
-        end
-        if not os.exists(keywords_webgpu) then
-            keywords_webgpu = keywords_common
-        end
+        local vshlib_highend =
+            path.join(lib_root, "builtin_highend.vshlib")
 
-        local vshlib_desktop =
-            path.join(lib_root, "builtin_desktop.vshlib")
+        local vshlib_compatibility =
+            path.join(lib_root, "builtin_compatibility.vshlib")
 
-        local vshlib_android =
-            path.join(lib_root, "builtin_android.vshlib")
-
-        local vshweblib_web =
-            path.join(lib_root, "builtin_web.vshweblib")
+        local vshweblib_compatibility =
+            path.join(lib_root, "builtin_compatibility.vshweblib")
 
         local header =
             path.join(header_root, "builtin_shaders.hpp")
 
-        local enable_webgpu_shaderlib = not is_plat("android")
-
         os.mkdir(lib_root)
         os.mkdir(header_root)
+
+        local highend_shader_patterns = {"passes/highend/**.vshader", "passes/shared/**.vshader"}
+        local compatibility_shader_patterns = {"passes/compatibility/**.vshader", "passes/shared/**.vshader"}
+        local webgpu_compatibility_shader_patterns = {"passes/compatibility/**.vshader"}
 
         ------------------------------------------------
         -- check rebuild
         ------------------------------------------------
 
-        local function collect_input_files(shader_root, keywords_file)
+        local function collect_shader_files(shader_root, patterns)
             local files = {}
-            table.join2(files, os.files(path.join(shader_root, "**.vshader")))
-            table.join2(files, os.files(path.join(shader_root, "include/**.glsl")))
-            if shader_root ~= shader_root_common then
-                table.join2(files, os.files(path.join(shader_root_common, "include/**.glsl")))
+            for _, pattern in ipairs(patterns) do
+                table.join2(files, os.files(path.join(shader_root, pattern)))
             end
+            table.sort(files)
+            return files
+        end
+
+        local function collect_input_files(shader_root, shader_patterns, keywords_file)
+            local files = collect_shader_files(shader_root, shader_patterns)
+            table.join2(files, os.files(path.join(shader_root, "include/**.glsl")))
             if keywords_file and os.exists(keywords_file) then
                 table.insert(files, keywords_file)
             end
@@ -201,27 +176,29 @@ task("shader_task")
             return false
         end
 
-        local rebuild_desktop =
-            needs_rebuild(vshlib_desktop, collect_input_files(shader_root_vulkan_desktop, keywords_vulkan_desktop))
-        local rebuild_android =
-            needs_rebuild(vshlib_android, collect_input_files(shader_root_vulkan_android, keywords_vulkan_android))
-        local rebuild_webgpu =
-            needs_rebuild(vshweblib_web, collect_input_files(shader_root_webgpu, keywords_webgpu))
+        local rebuild_highend =
+            needs_rebuild(vshlib_highend,
+                          collect_input_files(shader_root_common, highend_shader_patterns, keywords_common))
+        local rebuild_compatibility =
+            needs_rebuild(vshlib_compatibility, collect_input_files(shader_root_common, compatibility_shader_patterns, keywords_common))
+        local rebuild_webgpu_compatibility =
+            needs_rebuild(vshweblib_compatibility, collect_input_files(shader_root_common, webgpu_compatibility_shader_patterns, keywords_common))
 
         ------------------------------------------------
         -- build
         ------------------------------------------------
 
-        local function build_vulkan_library(label, shader_root, keywords_file, output_file)
+        local function build_vulkan_library(label, shader_root, shader_patterns, keywords_file, output_file)
             cprint("${green}[BUILD]${clear} " .. label)
+            local shader_files = collect_shader_files(shader_root, shader_patterns)
             local argv = {
                 "build",
                 "--shader_root", shader_root,
                 "-I", shader_root,
             }
-            if shader_root ~= shader_root_common then
-                table.insert(argv, "-I")
-                table.insert(argv, shader_root_common)
+            for _, file in ipairs(shader_files) do
+                table.insert(argv, "--shader")
+                table.insert(argv, path.relative(file, shader_root))
             end
             if keywords_file and os.exists(keywords_file) then
                 table.insert(argv, "--keywords-file")
@@ -232,8 +209,9 @@ task("shader_task")
             os.execv(vshaderc, argv)
         end
 
-        local function build_webgpu_library(label, shader_root, keywords_file, output_file)
+        local function build_webgpu_library(label, shader_root, shader_patterns, keywords_file, output_file)
             cprint("${green}[BUILD]${clear} " .. label)
+            local shader_files = collect_shader_files(shader_root, shader_patterns)
             local argv = {
                 "build",
                 "--webgpu",
@@ -241,9 +219,9 @@ task("shader_task")
                 "--shader_root", shader_root,
                 "-I", shader_root,
             }
-            if shader_root ~= shader_root_common then
-                table.insert(argv, "-I")
-                table.insert(argv, shader_root_common)
+            for _, file in ipairs(shader_files) do
+                table.insert(argv, "--shader")
+                table.insert(argv, path.relative(file, shader_root))
             end
             if keywords_file and os.exists(keywords_file) then
                 table.insert(argv, "--keywords-file")
@@ -251,39 +229,63 @@ task("shader_task")
             end
             table.insert(argv, "-o")
             table.insert(argv, output_file)
-            os.execv(vshaderc, argv)
+            local ok = false
+            local err = nil
+            try
+            {
+                function ()
+                    os.execv(vshaderc, argv)
+                    ok = true
+                end,
+                catch
+                {
+                    function (errors)
+                        err = errors
+                    end
+                }
+            }
+            if not ok then
+                cprint("${yellow}[WARN]${clear} failed to build %s: %s", label, tostring(err))
+            end
+            return ok
         end
 
-        if rebuild_desktop then
-            build_vulkan_library("builtin_desktop.vshlib",
-                                 shader_root_vulkan_desktop,
-                                 keywords_vulkan_desktop,
-                                 vshlib_desktop)
+        if rebuild_highend then
+            build_vulkan_library("builtin_highend.vshlib",
+                                 shader_root_common,
+                                 highend_shader_patterns,
+                                 keywords_common,
+                                 vshlib_highend)
         else
-            cprint("${cyan}[OK]${clear} builtin_desktop.vshlib")
+            cprint("${cyan}[OK]${clear} builtin_highend.vshlib")
         end
 
-        if rebuild_android then
-            build_vulkan_library("builtin_android.vshlib",
-                                 shader_root_vulkan_android,
-                                 keywords_vulkan_android,
-                                 vshlib_android)
+        if rebuild_compatibility then
+            build_vulkan_library("builtin_compatibility.vshlib",
+                                 shader_root_common,
+                                 compatibility_shader_patterns,
+                                 keywords_common,
+                                 vshlib_compatibility)
         else
-            cprint("${cyan}[OK]${clear} builtin_android.vshlib")
+            cprint("${cyan}[OK]${clear} builtin_compatibility.vshlib")
         end
 
-        if rebuild_webgpu then
-            if enable_webgpu_shaderlib then
-                build_webgpu_library("builtin_web.vshweblib",
-                                     shader_root_webgpu,
-                                     keywords_webgpu,
-                                     vshweblib_web)
-            else
-                cprint("${yellow}[WARN]${clear} builtin_web.vshweblib disabled on Android, fallback to builtin_android.vshlib")
-                os.cp(vshlib_android, vshweblib_web)
+        if rebuild_webgpu_compatibility then
+            local ok = build_webgpu_library("builtin_compatibility.vshweblib",
+                                            shader_root_common,
+                                            webgpu_compatibility_shader_patterns,
+                                            keywords_common,
+                                            vshweblib_compatibility)
+            if not ok then
+                if os.exists(vshweblib_compatibility) then
+                    cprint("${yellow}[WARN]${clear} keep existing builtin_compatibility.vshweblib and continue")
+                else
+                    cprint("${yellow}[WARN]${clear} builtin_compatibility.vshweblib missing, fallback to builtin_compatibility.vshlib")
+                    os.cp(vshlib_compatibility, vshweblib_compatibility)
+                end
             end
         else
-            cprint("${cyan}[OK]${clear} builtin_web.vshweblib")
+            cprint("${cyan}[OK]${clear} builtin_compatibility.vshweblib")
         end
 
         ------------------------------------------------
@@ -292,7 +294,8 @@ task("shader_task")
 
         local rebuild_header = true
 
-        local newest_lib_mtime = math.max(os.mtime(vshlib_desktop), os.mtime(vshlib_android), os.mtime(vshweblib_web))
+        local newest_lib_mtime =
+            math.max(os.mtime(vshlib_highend), os.mtime(vshlib_compatibility), os.mtime(vshweblib_compatibility))
         if os.exists(header)
         and os.mtime(header) >= newest_lib_mtime
         then
@@ -302,12 +305,12 @@ task("shader_task")
         if rebuild_header then
             cprint("${green}[EMBED]${clear} builtin_shaders.hpp")
 
-            local data_vshlib_desktop =
-                io.readfile(vshlib_desktop, {encoding="binary"})
-            local data_vshlib_android =
-                io.readfile(vshlib_android, {encoding="binary"})
-            local data_vshweblib_web =
-                io.readfile(vshweblib_web, {encoding="binary"})
+            local data_vshlib_highend =
+                io.readfile(vshlib_highend, {encoding="binary"})
+            local data_vshlib_compatibility =
+                io.readfile(vshlib_compatibility, {encoding="binary"})
+            local data_vshweblib_compatibility =
+                io.readfile(vshweblib_compatibility, {encoding="binary"})
 
             local f =
                 io.open(header, "w")
@@ -337,9 +340,9 @@ task("shader_task")
                 f:write(string.format("inline constexpr size_t %s_size = %d;\n\n", symbol_name, #data))
             end
 
-            write_embedded_blob("builtin_shaders_desktop_vshlib", data_vshlib_desktop)
-            write_embedded_blob("builtin_shaders_android_vshlib", data_vshlib_android)
-            write_embedded_blob("builtin_shaders_web_vshweblib", data_vshweblib_web)
+            write_embedded_blob("builtin_shaders_highend_vshlib", data_vshlib_highend)
+            write_embedded_blob("builtin_shaders_compatibility_vshlib", data_vshlib_compatibility)
+            write_embedded_blob("builtin_shaders_compatibility_web_vshweblib", data_vshweblib_compatibility)
 
             f:close()
         else
