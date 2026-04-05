@@ -12,6 +12,10 @@
 #include "vultra/platform/sdl/sdl_window.hpp"
 #endif
 
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 namespace vultra
 {
     namespace os
@@ -86,6 +90,38 @@ namespace vultra
             platform::glfw::GLFWWindow::shutdown();
             platform::sdl::SDLWindow::shutdown();
 #endif
+        }
+
+        std::optional<Window::CursorImage>
+            Window::decodeCursorImage(const std::span<const uint8_t> encodedBytes, const int hotX, const int hotY)
+        {
+            if (encodedBytes.empty())
+            {
+                return std::nullopt;
+            }
+
+            int            width  = 0;
+            int            height = 0;
+            unsigned char* pixels = stbi_load_from_memory(
+                encodedBytes.data(), static_cast<int>(encodedBytes.size()), &width, &height, nullptr, STBI_rgb_alpha);
+            if (pixels == nullptr || width <= 0 || height <= 0)
+            {
+                return std::nullopt;
+            }
+
+            CursorImage cursorImage {};
+            cursorImage.width  = width;
+            cursorImage.height = height;
+            cursorImage.hotX   = hotX;
+            cursorImage.hotY   = hotY;
+            cursorImage.pixels.assign(pixels, pixels + static_cast<size_t>(width * height * 4));
+            stbi_image_free(pixels);
+
+            if (!cursorImage.valid())
+            {
+                return std::nullopt;
+            }
+            return cursorImage;
         }
     } // namespace os
 } // namespace vultra

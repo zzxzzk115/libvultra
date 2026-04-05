@@ -10,6 +10,15 @@
 #include "vultra/core/rhi/swapchain.hpp"
 #include "vultra/core/rhi/texture.hpp"
 
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/cursor_disabled.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/hand_open.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/pointer_a.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/pointer_i.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/resize_a_diagonal.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/resize_a_diagonal_mirror.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/resize_horizontal.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/resize_vertical.png.bintex.h>
+
 #include "vultra/platform/android/android_native_window.hpp"
 #include "vultra/platform/sdl/sdl_window.hpp"
 
@@ -26,6 +35,77 @@
 
 namespace vultra::rhi
 {
+    namespace
+    {
+        const os::Window::CursorImage* decodeImGuiCursor(std::span<const uint8_t> bytes, int hotX, int hotY)
+        {
+            static std::vector<std::optional<os::Window::CursorImage>> cache;
+            static std::vector<const void*> keys;
+
+            const void* key = bytes.data();
+            for (std::size_t i = 0; i < keys.size(); ++i)
+            {
+                if (keys[i] == key)
+                {
+                    return cache[i] ? &(*cache[i]) : nullptr;
+                }
+            }
+
+            keys.push_back(key);
+            cache.push_back(os::Window::decodeCursorImage(bytes, hotX, hotY));
+            return cache.back() ? &(*cache.back()) : nullptr;
+        }
+
+        os::Window::CursorType mapImGuiCursor(const ImGuiMouseCursor cursor)
+        {
+            switch (cursor)
+            {
+                case ImGuiMouseCursor_TextInput:
+                    return os::Window::CursorType::eTextInput;
+                case ImGuiMouseCursor_ResizeNS:
+                    return os::Window::CursorType::eResizeNS;
+                case ImGuiMouseCursor_ResizeEW:
+                    return os::Window::CursorType::eResizeEW;
+                case ImGuiMouseCursor_ResizeNESW:
+                    return os::Window::CursorType::eResizeNESW;
+                case ImGuiMouseCursor_ResizeNWSE:
+                    return os::Window::CursorType::eResizeNWSE;
+                case ImGuiMouseCursor_Hand:
+                    return os::Window::CursorType::eHand;
+                case ImGuiMouseCursor_NotAllowed:
+                    return os::Window::CursorType::eNotAllowed;
+                case ImGuiMouseCursor_None:
+                case ImGuiMouseCursor_Arrow:
+                default:
+                    return os::Window::CursorType::eArrow;
+            }
+        }
+
+        const os::Window::CursorImage* kennyImGuiCursor(const ImGuiMouseCursor cursor)
+        {
+            switch (cursor)
+            {
+                case ImGuiMouseCursor_TextInput:
+                    return decodeImGuiCursor(pointer_i_png_bintex, 8, 8);
+                case ImGuiMouseCursor_ResizeNS:
+                    return decodeImGuiCursor(resize_horizontal_png_bintex, 8, 8);
+                case ImGuiMouseCursor_ResizeEW:
+                    return decodeImGuiCursor(resize_vertical_png_bintex, 8, 8);
+                case ImGuiMouseCursor_ResizeNESW:
+                    return decodeImGuiCursor(resize_a_diagonal_png_bintex, 8, 8);
+                case ImGuiMouseCursor_ResizeNWSE:
+                    return decodeImGuiCursor(resize_a_diagonal_mirror_png_bintex, 8, 8);
+                case ImGuiMouseCursor_Hand:
+                    return decodeImGuiCursor(hand_open_png_bintex, 8, 8);
+                case ImGuiMouseCursor_NotAllowed:
+                    return decodeImGuiCursor(cursor_disabled_png_bintex, 8, 8);
+                case ImGuiMouseCursor_Arrow:
+                default:
+                    return decodeImGuiCursor(pointer_a_png_bintex, 8, 8);
+            }
+        }
+    } // namespace
+
     VulkanImGui::VulkanImGui(const RenderDevice& renderDevice) : m_RenderDevice(renderDevice) {}
 
     VulkanImGui::~VulkanImGui() { shutdown({}, nullptr); }
@@ -37,6 +117,9 @@ namespace vultra::rhi
                            const bool /*enableDocking*/)
     {
         m_Initialized = true;
+        m_Window      = &window;
+
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
 
 #if defined(__ANDROID__)
         const auto& androidWindow = static_cast<const platform::android::AndroidNativeWindow&>(window);
@@ -88,6 +171,8 @@ namespace vultra::rhi
 #else
         ImGui_ImplSDL3_Shutdown();
 #endif
+        m_HasAppliedImGuiCursorOverride = false;
+        m_Window      = nullptr;
         m_Initialized = false;
     }
 
@@ -110,6 +195,46 @@ namespace vultra::rhi
 
     void VulkanImGui::postRender()
     {
+        if (m_Window != nullptr)
+        {
+            ImGuiIO& io = ImGui::GetIO();
+            const bool uiOwnsCursor = io.WantCaptureMouse || ImGui::IsAnyItemHovered() ||
+                                      ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+            if (uiOwnsCursor)
+            {
+                auto& window = const_cast<os::Window&>(*m_Window);
+                if (ImGui::GetMouseCursor() == ImGuiMouseCursor_None || io.MouseDrawCursor)
+                {
+                    window.setCursorVisibility(false);
+                    if (m_HasAppliedImGuiCursorOverride)
+                    {
+                        window.clearCursorOverride();
+                        m_HasAppliedImGuiCursorOverride = false;
+                    }
+                }
+                else
+                {
+                    const ImGuiMouseCursor imguiCursor = ImGui::GetMouseCursor();
+                    window.setCursorVisibility(true).setCursor(mapImGuiCursor(imguiCursor));
+                    if (const auto* cursorImage = kennyImGuiCursor(imguiCursor); cursorImage != nullptr)
+                    {
+                        window.setCursorOverride(*cursorImage);
+                        m_HasAppliedImGuiCursorOverride = true;
+                    }
+                    else if (m_HasAppliedImGuiCursorOverride)
+                    {
+                        window.clearCursorOverride();
+                        m_HasAppliedImGuiCursorOverride = false;
+                    }
+                }
+            }
+            else if (m_HasAppliedImGuiCursorOverride)
+            {
+                auto& window = const_cast<os::Window&>(*m_Window);
+                window.clearCursorOverride();
+                m_HasAppliedImGuiCursorOverride = false;
+            }
+        }
 #ifdef IMGUI_HAS_VIEWPORT
         if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {

@@ -6,6 +6,13 @@
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/hand_closed.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/look_b.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/pointer_a.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/rotate_cw.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/zoom_in.png.bintex.h>
+#include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/zoom_out.png.bintex.h>
+
 #include <glm/common.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/geometric.hpp>
@@ -19,6 +26,63 @@ namespace vultra
     namespace
     {
         constexpr glm::vec3 kWorldUp {0.0f, 1.0f, 0.0f};
+
+        const os::Window::CursorImage* orbitCursorImage()
+        {
+            static const auto cursor = os::Window::decodeCursorImage(rotate_cw_png_bintex, 8, 8);
+            return cursor ? &(*cursor) : nullptr;
+        }
+
+        const os::Window::CursorImage* arrowCursorImage()
+        {
+            static const auto cursor = os::Window::decodeCursorImage(pointer_a_png_bintex, 8, 8);
+            return cursor ? &(*cursor) : nullptr;
+        }
+
+        const os::Window::CursorImage* grabCursorImage()
+        {
+            static const auto cursor = os::Window::decodeCursorImage(hand_closed_png_bintex, 8, 8);
+            return cursor ? &(*cursor) : nullptr;
+        }
+
+        const os::Window::CursorImage* lookCursorImage()
+        {
+            static const auto cursor = os::Window::decodeCursorImage(look_b_png_bintex, 8, 8);
+            return cursor ? &(*cursor) : nullptr;
+        }
+
+        const os::Window::CursorImage* zoomInCursorImage()
+        {
+            static const auto cursor = os::Window::decodeCursorImage(zoom_in_png_bintex, 8, 8);
+            return cursor ? &(*cursor) : nullptr;
+        }
+
+        const os::Window::CursorImage* zoomOutCursorImage()
+        {
+            static const auto cursor = os::Window::decodeCursorImage(zoom_out_png_bintex, 8, 8);
+            return cursor ? &(*cursor) : nullptr;
+        }
+
+        const os::Window::CursorImage* fpsCursorImage(const os::Window::CursorType cursorType)
+        {
+            switch (cursorType)
+            {
+                case os::Window::CursorType::eArrow:
+                    return arrowCursorImage();
+                case os::Window::CursorType::eOrbit:
+                    return orbitCursorImage();
+                case os::Window::CursorType::eGrab:
+                    return grabCursorImage();
+                case os::Window::CursorType::eLook:
+                    return lookCursorImage();
+                case os::Window::CursorType::eZoomIn:
+                    return zoomInCursorImage();
+                case os::Window::CursorType::eZoomOut:
+                    return zoomOutCursorImage();
+                default:
+                    return nullptr;
+            }
+        }
 
         void finalizeCamera(RenderCamera& cam)
         {
@@ -63,10 +127,11 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[CameraSystem] Shutting down");
 
+        resetFPSCursorOverride();
         if (m_MouseCaptureApplied)
         {
             auto& window = ctx().services.require<IWindowService>().window();
-            window.setMouseRelativeMode(false).setCursorVisibility(true);
+            window.setMouseRelativeMode(false).setCursorVisibility(true).setCursor(os::Window::CursorType::eArrow);
             m_MouseCaptureApplied = false;
         }
 
@@ -150,11 +215,12 @@ namespace vultra
 
     void CameraSystem::disableFPSCameraController()
     {
+        resetFPSCursorOverride();
         m_FPSController.reset();
         if (m_MouseCaptureApplied)
         {
             auto& window = ctx().services.require<IWindowService>().window();
-            window.setMouseRelativeMode(false).setCursorVisibility(true);
+            window.setMouseRelativeMode(false).setCursorVisibility(true).setCursor(os::Window::CursorType::eArrow);
             m_MouseCaptureApplied = false;
         }
     }
@@ -178,6 +244,46 @@ namespace vultra
 
     void CameraSystem::setCameraControlInputSuppressed(const bool suppressed) { m_InputSuppressed = suppressed; }
 
+    void CameraSystem::resetFPSCursorOverride()
+    {
+        auto* windowService = ctx().services.tryGet<IWindowService>();
+        if (windowService != nullptr)
+        {
+            windowService->window().clearCustomCursor();
+        }
+        m_AppliedFPSCursor    = os::Window::CursorType::eArrow;
+        m_TransientFPSCursor  = os::Window::CursorType::eArrow;
+        m_HasAppliedFPSCursor = false;
+        m_TransientFPSCursorSeconds = 0.0f;
+    }
+
+    void CameraSystem::applyFPSCursor(os::Window& window, const os::Window::CursorType cursorType)
+    {
+        const auto* cursorImage = fpsCursorImage(cursorType);
+        const bool wantsCustomCursor = cursorImage != nullptr;
+        const bool hasExpectedCursorState =
+            (!wantsCustomCursor && !window.hasCustomCursor()) || (wantsCustomCursor && window.hasCustomCursor());
+
+        if (m_HasAppliedFPSCursor && m_AppliedFPSCursor == cursorType && hasExpectedCursorState)
+        {
+            return;
+        }
+
+        window.setCursor(cursorType);
+
+        if (cursorImage != nullptr)
+        {
+            window.setCustomCursor(*cursorImage);
+        }
+        else
+        {
+            window.clearCustomCursor();
+        }
+
+        m_AppliedFPSCursor    = cursorType;
+        m_HasAppliedFPSCursor = true;
+    }
+
     void CameraSystem::applyFPSCamera(fsec dt)
     {
         if (!m_FPSController)
@@ -185,15 +291,22 @@ namespace vultra
 
         auto& input = ctx().services.require<IInputService>();
         auto& controller = *m_FPSController;
+        m_TransientFPSCursorSeconds = std::max(0.0f, m_TransientFPSCursorSeconds - static_cast<float>(dt.count()));
 
         if (m_InputSuppressed)
         {
             m_ActiveControlMode = CameraControlMode::eOrbit;
+            resetFPSCursorOverride();
             if (m_MouseCaptureApplied)
             {
                 auto& window = ctx().services.require<IWindowService>().window();
-                window.setMouseRelativeMode(false).setCursorVisibility(true);
+                window.setMouseRelativeMode(false).setCursorVisibility(true).setCursor(os::Window::CursorType::eArrow);
                 m_MouseCaptureApplied = false;
+            }
+            else
+            {
+                auto& window = ctx().services.require<IWindowService>().window();
+                window.setCursor(os::Window::CursorType::eArrow);
             }
             return;
         }
@@ -201,11 +314,17 @@ namespace vultra
         if (!controller.enabled)
         {
             m_ActiveControlMode = CameraControlMode::eDisabled;
+            resetFPSCursorOverride();
             if (m_MouseCaptureApplied)
             {
                 auto& window = ctx().services.require<IWindowService>().window();
-                window.setMouseRelativeMode(false).setCursorVisibility(true);
+                window.setMouseRelativeMode(false).setCursorVisibility(true).setCursor(os::Window::CursorType::eArrow);
                 m_MouseCaptureApplied = false;
+            }
+            else
+            {
+                auto& window = ctx().services.require<IWindowService>().window();
+                window.setCursor(os::Window::CursorType::eArrow);
             }
             return;
         }
@@ -217,7 +336,28 @@ namespace vultra
 
         auto& window = ctx().services.require<IWindowService>().window();
         const bool flyActive = input.getMouseButton(MouseCode::eRight);
+        const bool shiftHeld = input.getKey(KeyCode::eLShift) || input.getKey(KeyCode::eRShift);
+        const bool orbitActive = input.getMouseButton(MouseCode::eLeft) && !shiftHeld;
+        const bool panActive = input.getMouseButton(MouseCode::eMiddle) || (input.getMouseButton(MouseCode::eLeft) && shiftHeld);
+        const float scrollY = input.getMouseScrollDelta().y;
         m_ActiveControlMode  = flyActive ? CameraControlMode::eFly : CameraControlMode::eOrbit;
+
+        if (std::abs(scrollY) > 0.0f)
+        {
+            m_TransientFPSCursor = scrollY > 0.0f ? os::Window::CursorType::eZoomIn : os::Window::CursorType::eZoomOut;
+            m_TransientFPSCursorSeconds = 0.18f;
+        }
+
+        if (flyActive)
+            applyFPSCursor(window, os::Window::CursorType::eLook);
+        else if (panActive)
+            applyFPSCursor(window, os::Window::CursorType::eGrab);
+        else if (orbitActive)
+            applyFPSCursor(window, os::Window::CursorType::eOrbit);
+        else if (m_TransientFPSCursorSeconds > 0.0f)
+            applyFPSCursor(window, m_TransientFPSCursor);
+        else
+            applyFPSCursor(window, os::Window::CursorType::eArrow);
 
         if (controller.captureMouse && flyActive)
         {
@@ -234,7 +374,6 @@ namespace vultra
         }
 
         const glm::vec2 mouseDelta = input.getMousePositionDelta();
-        const bool shiftHeld = input.getKey(KeyCode::eLShift) || input.getKey(KeyCode::eRShift);
         if (flyActive)
         {
             controller.yawDegrees += mouseDelta.x * controller.mouseSensitivity;
@@ -288,7 +427,6 @@ namespace vultra
                 controller.orbitPivot += up * (mouseDelta.y * panScale);
             }
 
-            const float scrollY = input.getMouseScrollDelta().y;
             if (std::abs(scrollY) > 0.0f)
             {
                 const float zoomFactor = std::exp(-scrollY * controller.orbitZoomSpeed);

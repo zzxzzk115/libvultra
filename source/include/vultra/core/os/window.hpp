@@ -20,6 +20,7 @@ using WGPUSurface  = WGPUSurfaceImpl*;
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -35,10 +36,38 @@ namespace vultra
             using Extent   = glm::ivec2;
             using Position = glm::ivec2;
 
+            struct CursorImage
+            {
+                int                  width {0};
+                int                  height {0};
+                int                  hotX {0};
+                int                  hotY {0};
+                std::vector<uint8_t> pixels {};
+
+                [[nodiscard]] bool valid() const
+                {
+                    return width > 0 && height > 0 && hotX >= 0 && hotY >= 0 &&
+                           hotX < width && hotY < height &&
+                           pixels.size() == static_cast<size_t>(width * height * 4);
+                }
+            };
+
             enum class CursorType
             {
                 eArrow,
+                eOrbit,
                 eGrab,
+                eLook,
+                eZoomIn,
+                eZoomOut,
+                eTextInput,
+                eResizeNS,
+                eResizeEW,
+                eResizeNESW,
+                eResizeNWSE,
+                eHand,
+                eNotAllowed,
+                eCount,
             };
 
             enum class PlatformType
@@ -84,9 +113,9 @@ namespace vultra
                 std::string m_Title;
                 Position    m_Position {};
                 Extent      m_Extent {};
-                bool        m_CursorVisibility {true};
-                bool        m_Resizable {true};
-                bool        m_Fullscreen {false};
+                bool         m_CursorVisibility {true};
+                bool         m_Resizable {true};
+                bool         m_Fullscreen {false};
                 PlatformType m_PlatformType {PlatformType::eSDL3};
             };
 
@@ -105,6 +134,10 @@ namespace vultra
             virtual Window& setExtent(Extent extent)                     = 0;
             virtual Window& setPosition(Position position)               = 0;
             virtual Window& setCursor(CursorType cursor)                 = 0;
+            virtual Window& setCustomCursor(const CursorImage& cursorImage) = 0;
+            virtual Window& clearCustomCursor()                         = 0;
+            virtual Window& setCursorOverride(const CursorImage& cursorImage) = 0;
+            virtual Window& clearCursorOverride()                      = 0;
             virtual Window& setCursorVisibility(bool cursorVisibility)   = 0;
             virtual Window& setMouseRelativeMode(bool mouseRelativeMode) = 0;
             virtual Window& setResizable(bool resizable)                 = 0;
@@ -116,6 +149,8 @@ namespace vultra
             [[nodiscard]] virtual rhi::Rect2D      getContentArea() const       = 0;
             [[nodiscard]] virtual Position         getPosition() const          = 0;
             [[nodiscard]] virtual CursorType       getCursor() const            = 0;
+            [[nodiscard]] virtual bool             hasCustomCursor() const      = 0;
+            [[nodiscard]] virtual bool             hasCursorOverride() const    = 0;
             [[nodiscard]] virtual bool             getCursorVisibility() const  = 0;
             [[nodiscard]] virtual bool             getMouseRelativeMode() const = 0;
             [[nodiscard]] virtual bool             isResizable() const          = 0;
@@ -133,6 +168,9 @@ namespace vultra
 
             virtual void pollEvents(int timeoutMillis = 0) = 0;
             virtual void close()                           = 0;
+
+            [[nodiscard]] static std::optional<CursorImage>
+                decodeCursorImage(std::span<const uint8_t> encodedBytes, int hotX, int hotY);
 
             template<typename Event>
             void on(std::function<void(const Event&, Window&)> fn)

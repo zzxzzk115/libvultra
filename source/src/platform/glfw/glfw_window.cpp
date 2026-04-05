@@ -4,16 +4,137 @@
 
 #include <GLFW/glfw3.h>
 #if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
 #endif
 #include <glfw3webgpu.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
 
 namespace vultra::platform::glfw
 {
+#if defined(__EMSCRIPTEN__)
+    EM_JS(void, setDocumentAppTitle, (const char* title), {
+        const nextTitle = UTF8ToString(title || 0) || "libvultra";
+        if (typeof Module !== "undefined" && typeof Module.setAppName === "function")
+        {
+            Module.setAppName(nextTitle);
+            return;
+        }
+
+        document.title = nextTitle;
+        const appTitle = document.getElementById("app-title");
+        if (appTitle)
+        {
+            appTitle.textContent = nextTitle + " / web runtime";
+        }
+    });
+
+    EM_JS(void, setCanvasCursorStyle, (int cursorType, int visible), {
+        const canvas = document.getElementById("canvas");
+        if (!canvas)
+            return;
+        if (!visible)
+        {
+            canvas.style.cursor = "none";
+            return;
+        }
+        switch (cursorType)
+        {
+            case 1:
+                canvas.style.cursor = "url('https://cdn.jsdelivr.net/npm/@mdi/svg@7.4.47/svg/orbit.svg') 12 12, alias";
+                break;
+            case 2:
+                canvas.style.cursor =
+                    "url('https://cdn.jsdelivr.net/npm/@mdi/svg@7.4.47/svg/hand-back-right-outline.svg') 12 10, grabbing";
+                break;
+            case 3:
+                canvas.style.cursor =
+                    "url('https://cdn.jsdelivr.net/npm/@mdi/svg@7.4.47/svg/eye-outline.svg') 12 12, pointer";
+                break;
+            default:
+                canvas.style.cursor = "default";
+                break;
+        }
+    });
+
+    EM_JS(void,
+          setCanvasCustomCursor,
+          (const uint8_t* pixels, int width, int height, int hotX, int hotY, int visible),
+          {
+              const canvas = document.getElementById("canvas");
+              if (!canvas)
+                  return;
+              if (!visible)
+              {
+                  canvas.style.cursor = "none";
+                  return;
+              }
+
+              const size       = width * height * 4;
+              const bytes      = HEAPU8.slice(pixels, pixels + size);
+              const offscreen  = document.createElement("canvas");
+              offscreen.width  = width;
+              offscreen.height = height;
+              const ctx        = offscreen.getContext("2d");
+              if (!ctx)
+              {
+                  canvas.style.cursor = "default";
+                  return;
+              }
+
+              const imageData = new ImageData(new Uint8ClampedArray(bytes.buffer), width, height);
+              ctx.putImageData(imageData, 0, 0);
+              canvas.style.cursor = `url(${offscreen.toDataURL("image/png")}) ${hotX} ${hotY}, auto`;
+          });
+#endif
+
+    namespace
+    {
+        bool cursorImagesEqual(const os::Window::CursorImage& lhs, const os::Window::CursorImage& rhs)
+        {
+            return lhs.width == rhs.width && lhs.height == rhs.height && lhs.hotX == rhs.hotX && lhs.hotY == rhs.hotY &&
+                   lhs.pixels == rhs.pixels;
+        }
+
+        int toGLFWSystemCursor(const os::Window::CursorType cursor)
+        {
+            switch (cursor)
+            {
+                case os::Window::CursorType::eGrab:
+                    return GLFW_HAND_CURSOR;
+                case os::Window::CursorType::eLook:
+                    return GLFW_CROSSHAIR_CURSOR;
+                case os::Window::CursorType::eZoomIn:
+                case os::Window::CursorType::eZoomOut:
+                    return GLFW_ARROW_CURSOR;
+                case os::Window::CursorType::eOrbit:
+                    return GLFW_HRESIZE_CURSOR;
+                case os::Window::CursorType::eTextInput:
+                    return GLFW_IBEAM_CURSOR;
+                case os::Window::CursorType::eResizeNS:
+                    return GLFW_VRESIZE_CURSOR;
+                case os::Window::CursorType::eResizeEW:
+                    return GLFW_HRESIZE_CURSOR;
+                case os::Window::CursorType::eResizeNESW:
+                    return GLFW_CROSSHAIR_CURSOR;
+                case os::Window::CursorType::eResizeNWSE:
+                    return GLFW_CROSSHAIR_CURSOR;
+                case os::Window::CursorType::eHand:
+                    return GLFW_HAND_CURSOR;
+                case os::Window::CursorType::eNotAllowed:
+                    return GLFW_CROSSHAIR_CURSOR;
+                case os::Window::CursorType::eArrow:
+                case os::Window::CursorType::eCount:
+                default:
+                    return GLFW_ARROW_CURSOR;
+            }
+        }
+    } // namespace
+
     GLFWWindow::GLFWWindow(std::string_view title, Extent extent, bool resizable, bool fullscreen) :
         m_Title(title), m_Extent(extent), m_Resizable(resizable), m_Fullscreen(fullscreen)
     {
@@ -31,13 +152,14 @@ namespace vultra::platform::glfw
         {
             const int cssWidth  = std::max(1, static_cast<int>(std::lround(canvasCssWidth)));
             const int cssHeight = std::max(1, static_cast<int>(std::lround(canvasCssHeight)));
-            m_Extent = {cssWidth, cssHeight};
+            m_Extent            = {cssWidth, cssHeight};
         }
 #endif
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, m_Resizable ? GLFW_TRUE : GLFW_FALSE);
-        m_WindowHandle = glfwCreateWindow(std::max(1, m_Extent.x), std::max(1, m_Extent.y), m_Title.c_str(), nullptr, nullptr);
+        m_WindowHandle =
+            glfwCreateWindow(std::max(1, m_Extent.x), std::max(1, m_Extent.y), m_Title.c_str(), nullptr, nullptr);
         if (!m_WindowHandle)
         {
             throw std::runtime_error("Failed to create GLFW window");
@@ -55,9 +177,11 @@ namespace vultra::platform::glfw
         glfwSetMouseButtonCallback(m_WindowHandle, &GLFWWindow::onMouseButton);
         glfwSetCursorPosCallback(m_WindowHandle, &GLFWWindow::onCursorPos);
         glfwSetScrollCallback(m_WindowHandle, &GLFWWindow::onScroll);
+        applyCursorVisibility();
+        applyCursor();
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
-        uint32_t count = 0;
+        uint32_t    count      = 0;
         const auto* extensions = glfwGetRequiredInstanceExtensions(&count);
         if (extensions != nullptr && count > 0u)
         {
@@ -68,6 +192,24 @@ namespace vultra::platform::glfw
 
     GLFWWindow::~GLFWWindow()
     {
+        if (m_OverrideCursorHandle)
+        {
+            glfwDestroyCursor(m_OverrideCursorHandle);
+            m_OverrideCursorHandle = nullptr;
+        }
+        if (m_CustomCursorHandle)
+        {
+            glfwDestroyCursor(m_CustomCursorHandle);
+            m_CustomCursorHandle = nullptr;
+        }
+        for (auto*& cursor : m_CursorHandles)
+        {
+            if (cursor)
+            {
+                glfwDestroyCursor(cursor);
+                cursor = nullptr;
+            }
+        }
         if (m_WindowHandle)
         {
             glfwDestroyWindow(m_WindowHandle);
@@ -82,6 +224,9 @@ namespace vultra::platform::glfw
         {
             glfwSetWindowTitle(m_WindowHandle, m_Title.c_str());
         }
+#if defined(__EMSCRIPTEN__)
+        setDocumentAppTitle(m_Title.c_str());
+#endif
         return *this;
     }
 
@@ -107,45 +252,171 @@ namespace vultra::platform::glfw
 
     os::Window& GLFWWindow::setCursor(CursorType cursor)
     {
+        if (m_Cursor == cursor)
+        {
+            return *this;
+        }
         m_Cursor = cursor;
+        applyCursor();
+        return *this;
+    }
+
+    os::Window& GLFWWindow::setCustomCursor(const CursorImage& cursorImage)
+    {
+        if (!cursorImage.valid())
+        {
+            return clearCustomCursor();
+        }
+
+        if (m_HasCustomCursor && m_CustomCursorImage && cursorImagesEqual(*m_CustomCursorImage, cursorImage))
+        {
+            return *this;
+        }
+
+#if defined(__EMSCRIPTEN__)
+        m_CustomCursorImage = cursorImage;
+        m_HasCustomCursor   = true;
+#else
+        auto* customCursor = createColorCursor(cursorImage);
+        if (customCursor == nullptr)
+        {
+            return clearCustomCursor();
+        }
+
+        if (m_CustomCursorHandle)
+        {
+            glfwDestroyCursor(m_CustomCursorHandle);
+        }
+        m_CustomCursorHandle = customCursor;
+        m_CustomCursorImage  = cursorImage;
+        m_HasCustomCursor    = true;
+#endif
+        applyCursor();
+        return *this;
+    }
+
+    os::Window& GLFWWindow::clearCustomCursor()
+    {
+        if (!m_HasCustomCursor && !m_CustomCursorImage.has_value())
+        {
+            return *this;
+        }
+        m_HasCustomCursor = false;
+        m_CustomCursorImage.reset();
+#if !defined(__EMSCRIPTEN__)
+        if (m_CustomCursorHandle)
+        {
+            glfwDestroyCursor(m_CustomCursorHandle);
+            m_CustomCursorHandle = nullptr;
+        }
+#endif
+        applyCursor();
+        return *this;
+    }
+
+    os::Window& GLFWWindow::setCursorOverride(const CursorImage& cursorImage)
+    {
+        if (!cursorImage.valid())
+        {
+            return clearCursorOverride();
+        }
+
+        if (m_HasCursorOverride && m_OverrideCursorImage && cursorImagesEqual(*m_OverrideCursorImage, cursorImage))
+        {
+            return *this;
+        }
+
+#if defined(__EMSCRIPTEN__)
+        m_OverrideCursorImage = cursorImage;
+        m_HasCursorOverride   = true;
+#else
+        auto* overrideCursor = createColorCursor(cursorImage);
+        if (overrideCursor == nullptr)
+        {
+            return clearCursorOverride();
+        }
+
+        if (m_OverrideCursorHandle)
+        {
+            glfwDestroyCursor(m_OverrideCursorHandle);
+        }
+        m_OverrideCursorHandle = overrideCursor;
+        m_OverrideCursorImage  = cursorImage;
+        m_HasCursorOverride    = true;
+#endif
+        applyCursor();
+        return *this;
+    }
+
+    os::Window& GLFWWindow::clearCursorOverride()
+    {
+        if (!m_HasCursorOverride && !m_OverrideCursorImage.has_value())
+        {
+            return *this;
+        }
+
+        m_HasCursorOverride = false;
+        m_OverrideCursorImage.reset();
+#if !defined(__EMSCRIPTEN__)
+        if (m_OverrideCursorHandle)
+        {
+            glfwDestroyCursor(m_OverrideCursorHandle);
+            m_OverrideCursorHandle = nullptr;
+        }
+#endif
+        applyCursor();
         return *this;
     }
 
     os::Window& GLFWWindow::setCursorVisibility(bool cursorVisibility)
     {
-        m_CursorVisibility = cursorVisibility;
-        if (m_WindowHandle)
+        if (m_CursorVisibility == cursorVisibility)
         {
-            glfwSetInputMode(m_WindowHandle, GLFW_CURSOR, cursorVisibility ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+            return *this;
         }
+        m_CursorVisibility = cursorVisibility;
+        applyCursorVisibility();
+        applyCursor();
         return *this;
     }
 
     os::Window& GLFWWindow::setMouseRelativeMode(bool mouseRelativeMode)
     {
+        if (m_MouseRelativeMode == mouseRelativeMode)
+        {
+            return *this;
+        }
         m_MouseRelativeMode = mouseRelativeMode;
-        return setCursorVisibility(!mouseRelativeMode);
+        applyCursorVisibility();
+        applyCursor();
+        return *this;
     }
 
     os::Window& GLFWWindow::setResizable(bool resizable)
     {
+        if (m_Resizable == resizable)
+        {
+            return *this;
+        }
         m_Resizable = resizable;
         return *this;
     }
 
     os::Window& GLFWWindow::setFullscreen(bool fullscreen)
     {
+        if (m_Fullscreen == fullscreen)
+        {
+            return *this;
+        }
         m_Fullscreen = fullscreen;
         return *this;
     }
 
     rhi::Rect2D GLFWWindow::getContentArea() const
     {
-        return rhi::Rect2D {
-            .offset = {0, 0},
-            .extent = {static_cast<uint32_t>(std::max(m_FrameBufferExtent.x, 0)),
-                       static_cast<uint32_t>(std::max(m_FrameBufferExtent.y, 0))}
-        };
+        return rhi::Rect2D {.offset = {0, 0},
+                            .extent = {static_cast<uint32_t>(std::max(m_FrameBufferExtent.x, 0)),
+                                       static_cast<uint32_t>(std::max(m_FrameBufferExtent.y, 0))}};
     }
 
     float GLFWWindow::getDisplayScale() const
@@ -173,8 +444,8 @@ namespace vultra::platform::glfw
     vk::SurfaceKHR GLFWWindow::createVulkanSurface(vk::Instance instance) const
     {
         VkSurfaceKHR surface {VK_NULL_HANDLE};
-        if (!m_WindowHandle || !instance || glfwCreateWindowSurface(instance, m_WindowHandle, nullptr, &surface) !=
-                                                  VK_SUCCESS)
+        if (!m_WindowHandle || !instance ||
+            glfwCreateWindowSurface(instance, m_WindowHandle, nullptr, &surface) != VK_SUCCESS)
         {
             throw std::runtime_error("Failed to create GLFW Vulkan surface");
         }
@@ -182,7 +453,7 @@ namespace vultra::platform::glfw
     }
 #endif
 
-    WGPUSurface GLFWWindow::createWebGPUSurface(const WGPUInstance instance) const
+    WGPUSurface GLFWWindow::createWebGPUSurface(WGPUInstance instance) const
     {
         if (instance == nullptr || m_WindowHandle == nullptr)
         {
@@ -196,7 +467,7 @@ namespace vultra::platform::glfw
         glfwPollEvents();
         if (m_WindowHandle)
         {
-            const auto prevExtent           = m_Extent;
+            const auto prevExtent            = m_Extent;
             const auto prevFrameBufferExtent = m_FrameBufferExtent;
 
 #if defined(__EMSCRIPTEN__)
@@ -205,23 +476,25 @@ namespace vultra::platform::glfw
             // and update proactively every frame.
             double canvasCssWidth  = 0.0;
             double canvasCssHeight = 0.0;
-            if (emscripten_get_element_css_size("#canvas", &canvasCssWidth, &canvasCssHeight) == EMSCRIPTEN_RESULT_SUCCESS)
+            if (emscripten_get_element_css_size("#canvas", &canvasCssWidth, &canvasCssHeight) ==
+                EMSCRIPTEN_RESULT_SUCCESS)
             {
                 const int cssWidth  = std::max(1, static_cast<int>(std::lround(canvasCssWidth)));
                 const int cssHeight = std::max(1, static_cast<int>(std::lround(canvasCssHeight)));
-                m_Extent = {cssWidth, cssHeight};
+                m_Extent            = {cssWidth, cssHeight};
 
                 // Sync canvas backing store size to CSS size * devicePixelRatio.
                 // Without this, fullscreen may only change CSS size while framebuffer
                 // remains at old pixel dimensions.
-                const double dpr       = std::max(emscripten_get_device_pixel_ratio(), 1.0);
-                const int    pixelW    = std::max(1, static_cast<int>(std::lround(canvasCssWidth * dpr)));
-                const int    pixelH    = std::max(1, static_cast<int>(std::lround(canvasCssHeight * dpr)));
+                const double dpr    = std::max(emscripten_get_device_pixel_ratio(), 1.0);
+                const int    pixelW = std::max(1, static_cast<int>(std::lround(canvasCssWidth * dpr)));
+                const int    pixelH = std::max(1, static_cast<int>(std::lround(canvasCssHeight * dpr)));
                 emscripten_set_canvas_element_size("#canvas", pixelW, pixelH);
 
                 int canvasPixelW = 0;
                 int canvasPixelH = 0;
-                if (emscripten_get_canvas_element_size("#canvas", &canvasPixelW, &canvasPixelH) == EMSCRIPTEN_RESULT_SUCCESS)
+                if (emscripten_get_canvas_element_size("#canvas", &canvasPixelW, &canvasPixelH) ==
+                    EMSCRIPTEN_RESULT_SUCCESS)
                 {
                     m_FrameBufferExtent = {std::max(1, canvasPixelW), std::max(1, canvasPixelH)};
                 }
@@ -256,10 +529,106 @@ namespace vultra::platform::glfw
         }
     }
 
-    void GLFWWindow::shutdown()
+    void GLFWWindow::applyCursorVisibility()
     {
-        glfwTerminate();
+        if (!m_WindowHandle)
+            return;
+
+#if defined(__EMSCRIPTEN__)
+        applyCursor();
+#else
+        const int mode =
+            m_MouseRelativeMode ? GLFW_CURSOR_DISABLED : (m_CursorVisibility ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
+        if (m_LastAppliedCursorMode != mode)
+        {
+            glfwSetInputMode(m_WindowHandle, GLFW_CURSOR, mode);
+            m_LastAppliedCursorMode   = mode;
+            m_LastAppliedCursorHandle = nullptr;
+            m_HasAppliedCursorHandle  = false;
+        }
+#endif
     }
+
+    void GLFWWindow::applyCursor()
+    {
+        if (!m_WindowHandle)
+            return;
+
+#if defined(__EMSCRIPTEN__)
+        const int visible = (m_CursorVisibility && !m_MouseRelativeMode) ? 1 : 0;
+        if (m_HasCursorOverride && m_OverrideCursorImage && m_OverrideCursorImage->valid())
+        {
+            setCanvasCustomCursor(m_OverrideCursorImage->pixels.data(),
+                                  m_OverrideCursorImage->width,
+                                  m_OverrideCursorImage->height,
+                                  m_OverrideCursorImage->hotX,
+                                  m_OverrideCursorImage->hotY,
+                                  visible);
+        }
+        else if (m_HasCustomCursor && m_CustomCursorImage && m_CustomCursorImage->valid())
+        {
+            setCanvasCustomCursor(m_CustomCursorImage->pixels.data(),
+                                  m_CustomCursorImage->width,
+                                  m_CustomCursorImage->height,
+                                  m_CustomCursorImage->hotX,
+                                  m_CustomCursorImage->hotY,
+                                  visible);
+        }
+        else
+        {
+            setCanvasCursorStyle(static_cast<int>(m_Cursor), visible);
+        }
+#else
+        if (m_MouseRelativeMode || !m_CursorVisibility)
+        {
+            m_LastAppliedCursorHandle = nullptr;
+            m_HasAppliedCursorHandle  = false;
+            return;
+        }
+
+        auto* cursorHandle =
+            m_HasCursorOverride ?
+                m_OverrideCursorHandle :
+                (m_HasCustomCursor ? m_CustomCursorHandle :
+                                     (m_Cursor == CursorType::eArrow ? nullptr : ensureCursor(m_Cursor)));
+        if (m_HasAppliedCursorHandle && m_LastAppliedCursorHandle == cursorHandle)
+        {
+            return;
+        }
+
+        glfwSetCursor(m_WindowHandle, cursorHandle);
+        m_LastAppliedCursorHandle = cursorHandle;
+        m_HasAppliedCursorHandle  = true;
+#endif
+    }
+
+    GLFWcursor* GLFWWindow::ensureCursor(CursorType cursor)
+    {
+        const auto index = static_cast<size_t>(cursor);
+        if (index >= m_CursorHandles.size())
+            return nullptr;
+        if (m_CursorHandles[index])
+            return m_CursorHandles[index];
+
+        m_CursorHandles[index] = glfwCreateStandardCursor(toGLFWSystemCursor(cursor));
+        return m_CursorHandles[index];
+    }
+
+    GLFWcursor* GLFWWindow::createColorCursor(const CursorImage& cursorImage)
+    {
+        if (!cursorImage.valid())
+        {
+            return nullptr;
+        }
+
+        GLFWimage glfwImage {};
+        glfwImage.width  = cursorImage.width;
+        glfwImage.height = cursorImage.height;
+        glfwImage.pixels = const_cast<unsigned char*>(cursorImage.pixels.data());
+        return glfwCreateCursor(&glfwImage, cursorImage.hotX, cursorImage.hotY);
+    }
+
+    void GLFWWindow::shutdown() { glfwTerminate(); }
 
     KeyCode GLFWWindow::translateKeyCode(const int key)
     {
@@ -481,8 +850,8 @@ namespace vultra::platform::glfw
         {
             generalEvent.type = event::WindowEventType::eKeyDown;
             generalEvent.key  = event::KeyEvent {
-                .key    = translateKeyCode(key),
-                .repeat = action == GLFW_REPEAT,
+                 .key    = translateKeyCode(key),
+                 .repeat = action == GLFW_REPEAT,
             };
             self->emitEvent(generalEvent);
         }
@@ -490,8 +859,8 @@ namespace vultra::platform::glfw
         {
             generalEvent.type = event::WindowEventType::eKeyUp;
             generalEvent.key  = event::KeyEvent {
-                .key    = translateKeyCode(key),
-                .repeat = false,
+                 .key    = translateKeyCode(key),
+                 .repeat = false,
             };
             self->emitEvent(generalEvent);
         }
@@ -538,7 +907,7 @@ namespace vultra::platform::glfw
         self->m_HasLastCursorPosition = true;
 
         os::GeneralWindowEvent generalEvent {};
-        generalEvent.type = event::WindowEventType::eMouseMotion;
+        generalEvent.type        = event::WindowEventType::eMouseMotion;
         generalEvent.mouseMotion = event::MouseMotionEvent {
             .position = current,
             .delta    = delta,
@@ -555,7 +924,7 @@ namespace vultra::platform::glfw
         }
 
         os::GeneralWindowEvent generalEvent {};
-        generalEvent.type = event::WindowEventType::eMouseWheel;
+        generalEvent.type       = event::WindowEventType::eMouseWheel;
         generalEvent.mouseWheel = event::MouseWheelEvent {
             .delta = {static_cast<float>(xoffset), static_cast<float>(yoffset)},
         };

@@ -5,8 +5,11 @@
 #include "vultra/core/os/window.hpp"
 
 #include <algorithm>
+#include <array>
+#include <optional>
 
 struct SDL_Window;
+struct SDL_Cursor;
 
 namespace vultra::platform::sdl
 {
@@ -28,6 +31,10 @@ namespace vultra::platform::sdl
         os::Window& setExtent(Extent extent) override;
         os::Window& setPosition(Position position) override;
         os::Window& setCursor(CursorType cursor) override;
+        os::Window& setCustomCursor(const CursorImage& cursorImage) override;
+        os::Window& clearCustomCursor() override;
+        os::Window& setCursorOverride(const CursorImage& cursorImage) override;
+        os::Window& clearCursorOverride() override;
         os::Window& setCursorVisibility(bool cursorVisibility) override;
         os::Window& setMouseRelativeMode(bool mouseRelativeMode) override;
         os::Window& setResizable(bool resizable) override;
@@ -44,6 +51,8 @@ namespace vultra::platform::sdl
         }
         [[nodiscard]] Position         getPosition() const override { return m_Position; }
         [[nodiscard]] CursorType       getCursor() const override { return m_Cursor; }
+        [[nodiscard]] bool             hasCustomCursor() const override { return m_HasCustomCursor; }
+        [[nodiscard]] bool             hasCursorOverride() const override { return m_HasCursorOverride; }
         [[nodiscard]] bool             getCursorVisibility() const override { return m_CursorVisibility; }
         [[nodiscard]] bool             getMouseRelativeMode() const override { return m_MouseRelativeMode; }
         [[nodiscard]] bool             isResizable() const override { return m_Resizable; }
@@ -67,6 +76,11 @@ namespace vultra::platform::sdl
         static void shutdown();
 
     private:
+        void applyCursor();
+        void applyCursorVisibility();
+        SDL_Cursor* ensureCursor(CursorType cursor);
+        SDL_Cursor* createColorCursor(const CursorImage& cursorImage) const;
+
         [[nodiscard]] static DriverType translateDriverType();
         [[nodiscard]] static KeyCode    translateKeyCode(int scancode);
         [[nodiscard]] static MouseCode  translateMouseCode(uint8_t button);
@@ -85,6 +99,13 @@ namespace vultra::platform::sdl
         bool        m_IsMinimized {false};
 
         SDL_Window*              m_WindowHandle {nullptr};
+        std::array<SDL_Cursor*, static_cast<size_t>(CursorType::eCount)> m_CursorHandles {};
+        SDL_Cursor*              m_CustomCursorHandle {nullptr};
+        std::optional<CursorImage> m_CustomCursorImage;
+        SDL_Cursor*              m_OverrideCursorHandle {nullptr};
+        std::optional<CursorImage> m_OverrideCursorImage;
+        bool                     m_HasCustomCursor {false};
+        bool                     m_HasCursorOverride {false};
         mutable void* m_WebGpuMetalView {nullptr};
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
         std::vector<const char*> m_VulkanExtensions;

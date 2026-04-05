@@ -28,9 +28,11 @@ namespace vultra::rhi
         void           removeTexture(std::uintptr_t& textureId) override;
 
     private:
+        const os::Window*   m_Window {nullptr};
         const RenderDevice& m_RenderDevice;
         bool                m_Initialized {false};
         bool                m_WarnedTexturePath {false};
         bool                m_WarnedViewportUnsupported {false};
+        bool                m_HasAppliedImGuiCursorOverride {false};
     };
 } // namespace vultra::rhi

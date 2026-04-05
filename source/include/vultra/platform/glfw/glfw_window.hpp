@@ -2,7 +2,11 @@
 
 #include "vultra/core/os/window.hpp"
 
+#include <array>
+#include <optional>
+
 struct GLFWwindow;
+struct GLFWcursor;
 
 namespace vultra::platform::glfw
 {
@@ -19,6 +23,10 @@ namespace vultra::platform::glfw
         os::Window& setExtent(Extent extent) override;
         os::Window& setPosition(Position position) override;
         os::Window& setCursor(CursorType cursor) override;
+        os::Window& setCustomCursor(const CursorImage& cursorImage) override;
+        os::Window& clearCustomCursor() override;
+        os::Window& setCursorOverride(const CursorImage& cursorImage) override;
+        os::Window& clearCursorOverride() override;
         os::Window& setCursorVisibility(bool cursorVisibility) override;
         os::Window& setMouseRelativeMode(bool mouseRelativeMode) override;
         os::Window& setResizable(bool resizable) override;
@@ -30,6 +38,8 @@ namespace vultra::platform::glfw
         [[nodiscard]] rhi::Rect2D      getContentArea() const override;
         [[nodiscard]] Position         getPosition() const override { return m_Position; }
         [[nodiscard]] CursorType       getCursor() const override { return m_Cursor; }
+        [[nodiscard]] bool             hasCustomCursor() const override { return m_HasCustomCursor; }
+        [[nodiscard]] bool             hasCursorOverride() const override { return m_HasCursorOverride; }
         [[nodiscard]] bool             getCursorVisibility() const override { return m_CursorVisibility; }
         [[nodiscard]] bool             getMouseRelativeMode() const override { return m_MouseRelativeMode; }
         [[nodiscard]] bool             isResizable() const override { return m_Resizable; }
@@ -46,24 +56,29 @@ namespace vultra::platform::glfw
 #endif
         [[nodiscard]] WGPUSurface createWebGPUSurface(WGPUInstance instance) const override;
 
-        void pollEvents(int timeoutMillis = 0) override;
+        void pollEvents(int timeoutMillis) override;
         void close() override;
 
         static void shutdown();
 
     private:
+        void               applyCursor();
+        void               applyCursorVisibility();
+        GLFWcursor*        ensureCursor(CursorType cursor);
+        static GLFWcursor* createColorCursor(const CursorImage& cursorImage);
+
         [[nodiscard]] static KeyCode   translateKeyCode(int key);
         [[nodiscard]] static MouseCode translateMouseCode(int button);
 
         static GLFWWindow* fromHandle(GLFWwindow* windowHandle);
-        static void onWindowClose(GLFWwindow* windowHandle);
-        static void onWindowSize(GLFWwindow* windowHandle, int width, int height);
-        static void onWindowPos(GLFWwindow* windowHandle, int x, int y);
-        static void onFramebufferSize(GLFWwindow* windowHandle, int width, int height);
-        static void onKey(GLFWwindow* windowHandle, int key, int scancode, int action, int mods);
-        static void onMouseButton(GLFWwindow* windowHandle, int button, int action, int mods);
-        static void onCursorPos(GLFWwindow* windowHandle, double xpos, double ypos);
-        static void onScroll(GLFWwindow* windowHandle, double xoffset, double yoffset);
+        static void        onWindowClose(GLFWwindow* windowHandle);
+        static void        onWindowSize(GLFWwindow* windowHandle, int width, int height);
+        static void        onWindowPos(GLFWwindow* windowHandle, int x, int y);
+        static void        onFramebufferSize(GLFWwindow* windowHandle, int width, int height);
+        static void        onKey(GLFWwindow* windowHandle, int key, int scancode, int action, int mods);
+        static void        onMouseButton(GLFWwindow* windowHandle, int button, int action, int mods);
+        static void        onCursorPos(GLFWwindow* windowHandle, double xpos, double ypos);
+        static void        onScroll(GLFWwindow* windowHandle, double xoffset, double yoffset);
 
         std::string m_Title;
         Extent      m_Extent {};
@@ -78,7 +93,17 @@ namespace vultra::platform::glfw
         glm::vec2   m_LastCursorPosition {};
         bool        m_HasLastCursorPosition {false};
 
-        GLFWwindow* m_WindowHandle {nullptr};
+        GLFWwindow*                                                      m_WindowHandle {nullptr};
+        std::array<GLFWcursor*, static_cast<size_t>(CursorType::eCount)> m_CursorHandles {};
+        GLFWcursor*                                                      m_CustomCursorHandle {nullptr};
+        std::optional<CursorImage>                                       m_CustomCursorImage;
+        GLFWcursor*                                                      m_OverrideCursorHandle {nullptr};
+        std::optional<CursorImage>                                       m_OverrideCursorImage;
+        bool                                                             m_HasCustomCursor {false};
+        bool                                                             m_HasCursorOverride {false};
+        GLFWcursor*                                                      m_LastAppliedCursorHandle {nullptr};
+        int                                                              m_LastAppliedCursorMode {-1};
+        bool                                                             m_HasAppliedCursorHandle {false};
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
         std::vector<const char*> m_VulkanExtensions;
 #endif

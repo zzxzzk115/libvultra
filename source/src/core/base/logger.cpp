@@ -1,7 +1,12 @@
 #include "vultra/core/base/logger.hpp"
 
 #include <magic_enum/magic_enum.hpp>
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#include <spdlog/sinks/null_sink.h>
+#else
 #include <spdlog/sinks/stdout_color_sinks.h>
+#endif
 
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -15,6 +20,37 @@ namespace vultra
 {
     namespace
     {
+#if defined(__EMSCRIPTEN__)
+        EM_JS(void, emscriptenModuleLog, (int level, int region, const char* msg), {
+            const text = UTF8ToString(msg);
+            const module = globalThis.Module || {};
+            const isCore = region === 0;
+            const prefix = isCore ? "[core] " : "[client] ";
+            const line = prefix + text;
+
+            switch (level) {
+                case 0:
+                    if (typeof module.logTrace === "function") module.logTrace(line);
+                    break;
+                case 1:
+                    if (typeof module.logInfo === "function") module.logInfo(line);
+                    break;
+                case 2:
+                    if (typeof module.logWarn === "function") module.logWarn(line);
+                    break;
+                case 3:
+                    if (typeof module.logError === "function") module.logError(line);
+                    break;
+                case 4:
+                    if (typeof module.logCritical === "function") module.logCritical(line);
+                    break;
+                default:
+                    if (typeof module.logInfo === "function") module.logInfo(line);
+                    break;
+            }
+        });
+#endif
+
 #if defined(__ANDROID__)
         [[nodiscard]] int toAndroidPriority(const Logger::Level level)
         {
@@ -95,9 +131,12 @@ namespace vultra
 
         std::vector<spdlog::sink_ptr> logSinks;
 
+#if defined(__EMSCRIPTEN__)
+        logSinks.emplace_back(std::make_shared<spdlog::sinks::null_sink_mt>());
+#else
         logSinks.emplace_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
-
         logSinks[0]->set_pattern("%^[%Y-%m-%d %H:%M:%S:%f] %n: %v%$");
+#endif
 
 #if !defined(__ANDROID__)
         logSinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>("Vultra.log", true));
@@ -117,9 +156,13 @@ namespace vultra
 
     void Logger::triggerLogEvent(Region region, Level level, std::string_view msg)
     {
+        const std::string line(msg);
 #if defined(__ANDROID__)
-        __android_log_print(toAndroidPriority(level), toAndroidTag(region), "%s", msg.data());
+        __android_log_print(toAndroidPriority(level), toAndroidTag(region), "%s", line.c_str());
 #endif
-        publish<LogEvent>({region, level, msg.data()});
+#if defined(__EMSCRIPTEN__)
+        emscriptenModuleLog(static_cast<int>(level), static_cast<int>(region), line.c_str());
+#endif
+        publish<LogEvent>({region, level, line});
     }
 } // namespace vultra

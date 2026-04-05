@@ -27,6 +27,10 @@ namespace vultra::platform::android
         Window& setExtent(Extent extent) override;
         Window& setPosition(Position position) override;
         Window& setCursor(CursorType cursor) override;
+        Window& setCustomCursor(const CursorImage& cursorImage) override;
+        Window& clearCustomCursor() override;
+        Window& setCursorOverride(const CursorImage& cursorImage) override;
+        Window& clearCursorOverride() override;
         Window& setCursorVisibility(bool cursorVisibility) override;
         Window& setMouseRelativeMode(bool mouseRelativeMode) override;
         Window& setResizable(bool resizable) override;
@@ -43,6 +47,8 @@ namespace vultra::platform::android
         }
         [[nodiscard]] Position   getPosition() const override { return {}; }
         [[nodiscard]] CursorType getCursor() const override { return CursorType::eArrow; }
+        [[nodiscard]] bool       hasCustomCursor() const override { return false; }
+        [[nodiscard]] bool       hasCursorOverride() const override { return false; }
         [[nodiscard]] bool       getCursorVisibility() const override { return true; }
         [[nodiscard]] bool       getMouseRelativeMode() const override { return false; }
         [[nodiscard]] bool       isResizable() const override { return false; }

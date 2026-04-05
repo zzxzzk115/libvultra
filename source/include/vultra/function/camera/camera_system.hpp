@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/os/window.hpp"
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/services/camera_service.hpp"
@@ -70,6 +71,8 @@ namespace vultra
 
     private:
         void applyFPSCamera(fsec dt);
+        void resetFPSCursorOverride();
+        void applyFPSCursor(os::Window& window, os::Window::CursorType cursorType);
 
         // Cooked list for current frame
         std::vector<RenderCamera> m_Cooked;
@@ -82,5 +85,9 @@ namespace vultra
         bool                               m_MouseCaptureApplied {false};
         CameraControlMode                  m_ActiveControlMode {CameraControlMode::eDisabled};
         bool                               m_InputSuppressed {false};
+        os::Window::CursorType             m_AppliedFPSCursor {os::Window::CursorType::eArrow};
+        os::Window::CursorType             m_TransientFPSCursor {os::Window::CursorType::eArrow};
+        bool                               m_HasAppliedFPSCursor {false};
+        float                              m_TransientFPSCursorSeconds {0.0f};
     };
 } // namespace vultra

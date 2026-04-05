@@ -95,6 +95,21 @@ task("shader_task")
         import("core.project.config")
         import("core.project.project")
 
+        local function emit_summary(label, built, skipped, samples)
+            if built == 0 then
+                cprint("${cyan}[OK]${clear} %s up to date (%d items)", label, skipped)
+                return
+            end
+
+            cprint("${green}[BUILD]${clear} %s updated (%d changed, %d unchanged)", label, built, skipped)
+            for _, sample in ipairs(samples) do
+                cprint("  - %s", sample)
+            end
+            if built > #samples then
+                cprint("  - ... and %d more", built - #samples)
+            end
+        end
+
         local target = project.target("vultra_builtin_assets")
         if not target then
             return
@@ -184,12 +199,26 @@ task("shader_task")
         local rebuild_webgpu_compatibility =
             needs_rebuild(vshweblib_compatibility, collect_input_files(shader_root_common, webgpu_compatibility_shader_patterns, keywords_common))
 
+        local shader_built = 0
+        local shader_skipped = 0
+        local shader_samples = {}
+
+        local function mark_result(name, rebuilt)
+            if rebuilt then
+                shader_built = shader_built + 1
+                if #shader_samples < 4 then
+                    table.insert(shader_samples, name)
+                end
+            else
+                shader_skipped = shader_skipped + 1
+            end
+        end
+
         ------------------------------------------------
         -- build
         ------------------------------------------------
 
         local function build_vulkan_library(label, shader_root, shader_patterns, keywords_file, output_file)
-            cprint("${green}[BUILD]${clear} " .. label)
             local shader_files = collect_shader_files(shader_root, shader_patterns)
             local argv = {
                 "build",
@@ -210,7 +239,6 @@ task("shader_task")
         end
 
         local function build_webgpu_library(label, shader_root, shader_patterns, keywords_file, output_file)
-            cprint("${green}[BUILD]${clear} " .. label)
             local shader_files = collect_shader_files(shader_root, shader_patterns)
             local argv = {
                 "build",
@@ -256,9 +284,8 @@ task("shader_task")
                                  highend_shader_patterns,
                                  keywords_common,
                                  vshlib_highend)
-        else
-            cprint("${cyan}[OK]${clear} builtin_highend.vshlib")
         end
+        mark_result("builtin_highend.vshlib", rebuild_highend)
 
         if rebuild_compatibility then
             build_vulkan_library("builtin_compatibility.vshlib",
@@ -266,9 +293,8 @@ task("shader_task")
                                  compatibility_shader_patterns,
                                  keywords_common,
                                  vshlib_compatibility)
-        else
-            cprint("${cyan}[OK]${clear} builtin_compatibility.vshlib")
         end
+        mark_result("builtin_compatibility.vshlib", rebuild_compatibility)
 
         if rebuild_webgpu_compatibility then
             local ok = build_webgpu_library("builtin_compatibility.vshweblib",
@@ -284,9 +310,8 @@ task("shader_task")
                     os.cp(vshlib_compatibility, vshweblib_compatibility)
                 end
             end
-        else
-            cprint("${cyan}[OK]${clear} builtin_compatibility.vshweblib")
         end
+        mark_result("builtin_compatibility.vshweblib", rebuild_webgpu_compatibility)
 
         ------------------------------------------------
         -- embed header
@@ -303,8 +328,6 @@ task("shader_task")
         end
 
         if rebuild_header then
-            cprint("${green}[EMBED]${clear} builtin_shaders.hpp")
-
             local data_vshlib_highend =
                 io.readfile(vshlib_highend, {encoding="binary"})
             local data_vshlib_compatibility =
@@ -345,9 +368,9 @@ task("shader_task")
             write_embedded_blob("builtin_shaders_compatibility_web_vshweblib", data_vshweblib_compatibility)
 
             f:close()
-        else
-            cprint("${cyan}[OK]${clear} builtin_shaders.hpp")
         end
+        mark_result("builtin_shaders.hpp", rebuild_header)
+        emit_summary("builtin shaders", shader_built, shader_skipped, shader_samples)
     end)
 task_end()
 
@@ -357,6 +380,21 @@ task("texture_task")
         import("core.project.config")
         import("core.base.option")
 
+        local function emit_summary(label, converted, skipped, samples)
+            if converted == 0 then
+                cprint("${cyan}[OK]${clear} %s up to date (%d items)", label, skipped)
+                return
+            end
+
+            cprint("${green}[CONVERT]${clear} %s updated (%d changed, %d unchanged)", label, converted, skipped)
+            for _, sample in ipairs(samples) do
+                cprint("  - %s", sample)
+            end
+            if converted > #samples then
+                cprint("  - ... and %d more", converted - #samples)
+            end
+        end
+
         local projectdir = get_config("project_dir")
 
         local texture_root = path.join(projectdir, "builtin/textures")
@@ -364,7 +402,7 @@ task("texture_task")
         os.mkdir(texture_header_root)
 
         -- valid texture formats to convert
-        local exts = {"png", "jpg", "jpeg", "bmp", "tga", "psd", "gif", "hdr", "pic", "exr", "ktx", "ktx2", "dds"}
+        local exts = {"png", "jpg", "jpeg", "bmp", "tga", "psd", "gif", "hdr", "pic", "exr", "ktx", "ktx2", "dds", "svg"}
 
         local files = {}
         for _, ext in ipairs(exts) do
@@ -372,18 +410,22 @@ task("texture_task")
             table.join2(files, os.files(pattern))
         end
 
-        for _, f in ipairs(files) do
-            print(f)
+        local converted = 0
+        local skipped = 0
+        local samples = {}
 
+        for _, f in ipairs(files) do
             local rel = path.relative(f, texture_root)
             -- read texture binary and write to header file
-            local tex_data = io.readfile(f, {encoding = "binary"})
-
             local header_path = path.join(texture_header_root, rel .. ".bintex.h")
             if os.exists(header_path) and os.mtime(header_path) >= os.mtime(f) then
-                cprint("${cyan}[OK]${clear}   %s", rel)
+                skipped = skipped + 1
             else
-                cprint("${green}[CONVERT]${clear} %s", rel)
+                converted = converted + 1
+                if #samples < 6 then
+                    table.insert(samples, rel)
+                end
+                local tex_data = io.readfile(f, {encoding = "binary"})
                 os.mkdir(path.directory(header_path))
                 -- base name + extension -> unique symbol
                 local base = path.basename(rel):gsub("%.", "_")
@@ -409,6 +451,7 @@ task("texture_task")
                 header_file:close()
             end
 		end
+        emit_summary("builtin textures", converted, skipped, samples)
 	end)
 task_end()
 
@@ -417,6 +460,21 @@ task("font_task")
     on_run(function ()
         import("core.project.config")
         import("core.base.option")
+
+        local function emit_summary(label, converted, skipped, samples)
+            if converted == 0 then
+                cprint("${cyan}[OK]${clear} %s up to date (%d items)", label, skipped)
+                return
+            end
+
+            cprint("${green}[CONVERT]${clear} %s updated (%d changed, %d unchanged)", label, converted, skipped)
+            for _, sample in ipairs(samples) do
+                cprint("  - %s", sample)
+            end
+            if converted > #samples then
+                cprint("  - ... and %d more", converted - #samples)
+            end
+        end
 
         local projectdir = get_config("project_dir")
 
@@ -433,15 +491,22 @@ task("font_task")
             table.join2(files, os.files(pattern))
         end
 
+        local converted = 0
+        local skipped = 0
+        local samples = {}
+
         for _, f in ipairs(files) do
             local rel = path.relative(f, font_root)
             local header_path = path.join(font_header_root, rel .. ".binfont.h")
 
             -- check timestamp
             if os.exists(header_path) and os.mtime(header_path) >= os.mtime(f) then
-                cprint("${cyan}[OK]${clear}   %s", rel)
+                skipped = skipped + 1
             else
-                cprint("${green}[CONVERT]${clear} %s", rel)
+                converted = converted + 1
+                if #samples < 4 then
+                    table.insert(samples, rel)
+                end
                 os.mkdir(path.directory(header_path))
 
                 local font_data = io.readfile(f, {encoding = "binary"})
@@ -470,6 +535,7 @@ task("font_task")
                 header_file:close()
             end
         end
+        emit_summary("builtin fonts", converted, skipped, samples)
     end)
 task_end()
 

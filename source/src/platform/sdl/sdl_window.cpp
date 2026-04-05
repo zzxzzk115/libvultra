@@ -14,11 +14,53 @@
 #include <SDL3/SDL_metal.h>
 #endif
 
+#include <cstring>
+
 namespace vultra::platform::sdl
 {
     namespace
     {
         constexpr auto kSDLInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMEPAD;
+
+        bool cursorImagesEqual(const os::Window::CursorImage& lhs, const os::Window::CursorImage& rhs)
+        {
+            return lhs.width == rhs.width && lhs.height == rhs.height && lhs.hotX == rhs.hotX && lhs.hotY == rhs.hotY &&
+                   lhs.pixels == rhs.pixels;
+        }
+
+        SDL_SystemCursor toSDLSystemCursor(const os::Window::CursorType cursor)
+        {
+            switch (cursor)
+            {
+                case os::Window::CursorType::eGrab:
+                    return SDL_SYSTEM_CURSOR_POINTER;
+                case os::Window::CursorType::eLook:
+                    return SDL_SYSTEM_CURSOR_CROSSHAIR;
+                case os::Window::CursorType::eZoomIn:
+                case os::Window::CursorType::eZoomOut:
+                    return SDL_SYSTEM_CURSOR_DEFAULT;
+                case os::Window::CursorType::eOrbit:
+                    return SDL_SYSTEM_CURSOR_DEFAULT;
+                case os::Window::CursorType::eTextInput:
+                    return SDL_SYSTEM_CURSOR_TEXT;
+                case os::Window::CursorType::eResizeNS:
+                    return SDL_SYSTEM_CURSOR_NS_RESIZE;
+                case os::Window::CursorType::eResizeEW:
+                    return SDL_SYSTEM_CURSOR_EW_RESIZE;
+                case os::Window::CursorType::eResizeNESW:
+                    return SDL_SYSTEM_CURSOR_NESW_RESIZE;
+                case os::Window::CursorType::eResizeNWSE:
+                    return SDL_SYSTEM_CURSOR_NWSE_RESIZE;
+                case os::Window::CursorType::eHand:
+                    return SDL_SYSTEM_CURSOR_POINTER;
+                case os::Window::CursorType::eNotAllowed:
+                    return SDL_SYSTEM_CURSOR_NOT_ALLOWED;
+                case os::Window::CursorType::eArrow:
+                case os::Window::CursorType::eCount:
+                default:
+                    return SDL_SYSTEM_CURSOR_DEFAULT;
+            }
+        }
     }
 
     SDLWindow::SDLWindow(std::string_view title,
@@ -81,7 +123,8 @@ namespace vultra::platform::sdl
         {
             setPosition(m_Position);
         }
-        setCursorVisibility(m_CursorVisibility);
+        applyCursorVisibility();
+        applyCursor();
         SDL_GetWindowSizeInPixels(m_WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
 
         VULTRA_CORE_INFO(
@@ -90,6 +133,24 @@ namespace vultra::platform::sdl
 
     SDLWindow::~SDLWindow()
     {
+        if (m_OverrideCursorHandle)
+        {
+            SDL_DestroyCursor(m_OverrideCursorHandle);
+            m_OverrideCursorHandle = nullptr;
+        }
+        if (m_CustomCursorHandle)
+        {
+            SDL_DestroyCursor(m_CustomCursorHandle);
+            m_CustomCursorHandle = nullptr;
+        }
+        for (auto*& cursor : m_CursorHandles)
+        {
+            if (cursor)
+            {
+                SDL_DestroyCursor(cursor);
+                cursor = nullptr;
+            }
+        }
         if (m_WebGpuMetalView)
         {
 #if defined(SDL_PLATFORM_MACOS)
@@ -130,45 +191,140 @@ namespace vultra::platform::sdl
 
     os::Window& SDLWindow::setCursor(CursorType cursor)
     {
-        m_Cursor = cursor;
-        switch (cursor)
+        if (m_Cursor == cursor)
         {
-            case CursorType::eArrow:
-                SDL_SetCursor(SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT));
-                break;
-            case CursorType::eGrab:
-                SDL_SetCursor(SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_MOVE));
-                break;
+            return *this;
         }
+        m_Cursor = cursor;
+        applyCursor();
+        return *this;
+    }
+
+    os::Window& SDLWindow::setCustomCursor(const CursorImage& cursorImage)
+    {
+        if (!cursorImage.valid())
+        {
+            return clearCustomCursor();
+        }
+
+        if (m_HasCustomCursor && m_CustomCursorImage && cursorImagesEqual(*m_CustomCursorImage, cursorImage))
+        {
+            return *this;
+        }
+
+        auto* customCursor = createColorCursor(cursorImage);
+        if (customCursor == nullptr)
+        {
+            return clearCustomCursor();
+        }
+
+        if (m_CustomCursorHandle)
+        {
+            SDL_DestroyCursor(m_CustomCursorHandle);
+        }
+        m_CustomCursorHandle = customCursor;
+        m_CustomCursorImage  = cursorImage;
+        m_HasCustomCursor    = true;
+        applyCursor();
+        return *this;
+    }
+
+    os::Window& SDLWindow::clearCustomCursor()
+    {
+        if (!m_HasCustomCursor && !m_CustomCursorImage.has_value())
+        {
+            return *this;
+        }
+        m_HasCustomCursor = false;
+        m_CustomCursorImage.reset();
+        if (m_CustomCursorHandle)
+        {
+            SDL_DestroyCursor(m_CustomCursorHandle);
+            m_CustomCursorHandle = nullptr;
+        }
+        applyCursor();
+        return *this;
+    }
+
+    os::Window& SDLWindow::setCursorOverride(const CursorImage& cursorImage)
+    {
+        if (!cursorImage.valid())
+        {
+            return clearCursorOverride();
+        }
+
+        if (m_HasCursorOverride && m_OverrideCursorImage && cursorImagesEqual(*m_OverrideCursorImage, cursorImage))
+        {
+            return *this;
+        }
+
+        auto* overrideCursor = createColorCursor(cursorImage);
+        if (overrideCursor == nullptr)
+        {
+            return clearCursorOverride();
+        }
+
+        if (m_OverrideCursorHandle)
+        {
+            SDL_DestroyCursor(m_OverrideCursorHandle);
+        }
+        m_OverrideCursorHandle = overrideCursor;
+        m_OverrideCursorImage  = cursorImage;
+        m_HasCursorOverride    = true;
+        applyCursor();
+        return *this;
+    }
+
+    os::Window& SDLWindow::clearCursorOverride()
+    {
+        if (!m_HasCursorOverride && !m_OverrideCursorImage.has_value())
+        {
+            return *this;
+        }
+
+        m_HasCursorOverride = false;
+        m_OverrideCursorImage.reset();
+        if (m_OverrideCursorHandle)
+        {
+            SDL_DestroyCursor(m_OverrideCursorHandle);
+            m_OverrideCursorHandle = nullptr;
+        }
+        applyCursor();
         return *this;
     }
 
     os::Window& SDLWindow::setCursorVisibility(bool cursorVisibility)
     {
         if (m_CursorVisibility == cursorVisibility)
+        {
             return *this;
+        }
 
         m_CursorVisibility = cursorVisibility;
-        if (cursorVisibility)
-        {
-            SDL_ShowCursor();
-        }
-        else
-        {
-            SDL_HideCursor();
-        }
+        applyCursorVisibility();
+        applyCursor();
         return *this;
     }
 
     os::Window& SDLWindow::setMouseRelativeMode(bool mouseRelativeMode)
     {
+        if (m_MouseRelativeMode == mouseRelativeMode)
+        {
+            return *this;
+        }
         m_MouseRelativeMode = mouseRelativeMode;
         SDL_SetWindowRelativeMouseMode(m_WindowHandle, mouseRelativeMode);
+        applyCursorVisibility();
+        applyCursor();
         return *this;
     }
 
     os::Window& SDLWindow::setResizable(bool resizable)
     {
+        if (m_Resizable == resizable)
+        {
+            return *this;
+        }
         m_Resizable = resizable;
         SDL_SetWindowResizable(m_WindowHandle, resizable);
         return *this;
@@ -176,12 +332,67 @@ namespace vultra::platform::sdl
 
     os::Window& SDLWindow::setFullscreen(bool fullscreen)
     {
+        if (m_Fullscreen == fullscreen)
+        {
+            return *this;
+        }
         m_Fullscreen = fullscreen;
         SDL_SetWindowFullscreen(m_WindowHandle, fullscreen);
         return *this;
     }
 
     float SDLWindow::getDisplayScale() const { return SDL_GetWindowDisplayScale(m_WindowHandle); }
+
+    void SDLWindow::applyCursorVisibility()
+    {
+        if (m_CursorVisibility && !m_MouseRelativeMode)
+            SDL_ShowCursor();
+        else
+            SDL_HideCursor();
+    }
+
+    void SDLWindow::applyCursor()
+    {
+        if (!m_WindowHandle || !m_CursorVisibility || m_MouseRelativeMode)
+            return;
+        SDL_SetCursor(m_HasCursorOverride ? m_OverrideCursorHandle :
+                      (m_HasCustomCursor ? m_CustomCursorHandle : ensureCursor(m_Cursor)));
+    }
+
+    SDL_Cursor* SDLWindow::ensureCursor(CursorType cursor)
+    {
+        const auto index = static_cast<size_t>(cursor);
+        if (index >= m_CursorHandles.size())
+            return nullptr;
+        if (m_CursorHandles[index])
+            return m_CursorHandles[index];
+
+        m_CursorHandles[index] = SDL_CreateSystemCursor(toSDLSystemCursor(cursor));
+        if (!m_CursorHandles[index])
+        {
+            m_CursorHandles[index] = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+        }
+        return m_CursorHandles[index];
+    }
+
+    SDL_Cursor* SDLWindow::createColorCursor(const CursorImage& cursorImage) const
+    {
+        if (!cursorImage.valid())
+        {
+            return nullptr;
+        }
+
+        SDL_Surface* surface = SDL_CreateSurface(cursorImage.width, cursorImage.height, SDL_PIXELFORMAT_RGBA32);
+        if (!surface)
+        {
+            return nullptr;
+        }
+
+        std::memcpy(surface->pixels, cursorImage.pixels.data(), cursorImage.pixels.size());
+        auto* colorCursor = SDL_CreateColorCursor(surface, cursorImage.hotX, cursorImage.hotY);
+        SDL_DestroySurface(surface);
+        return colorCursor;
+    }
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
     std::span<const char* const> SDLWindow::getRequiredVulkanInstanceExtensions() const

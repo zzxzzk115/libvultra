@@ -43,6 +43,14 @@ namespace vultra::platform::android
 
     os::Window& AndroidNativeWindow::setCursor(CursorType) { return *this; }
 
+    os::Window& AndroidNativeWindow::setCustomCursor(const CursorImage&) { return *this; }
+
+    os::Window& AndroidNativeWindow::clearCustomCursor() { return *this; }
+
+    os::Window& AndroidNativeWindow::setCursorOverride(const CursorImage&) { return *this; }
+
+    os::Window& AndroidNativeWindow::clearCursorOverride() { return *this; }
+
     os::Window& AndroidNativeWindow::setCursorVisibility(bool) { return *this; }
 
     os::Window& AndroidNativeWindow::setMouseRelativeMode(bool) { return *this; }

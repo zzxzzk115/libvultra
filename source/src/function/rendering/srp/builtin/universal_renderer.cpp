@@ -12,6 +12,7 @@
 #include "vultra/function/services/frame_debugger_service.hpp"
 #endif
 
+#include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -20,6 +21,13 @@ namespace vultra
 {
     namespace
     {
+        void drawHintRow(const char* icon, const char* text)
+        {
+            ImGui::TextUnformatted(icon);
+            ImGui::SameLine();
+            ImGui::TextUnformatted(text);
+        }
+
         void syncImGuiTextureRegistration(IImGuiService&            imguiService,
                                           const rhi::Texture*       texture,
                                           const rhi::Texture*&      registeredTexture,
@@ -93,21 +101,20 @@ namespace vultra
             {
                 if (info.mode == CameraControlMode::eFly)
                 {
-                    ImGui::Text("Camera: Fly");
-                    ImGui::Separator();
-                    ImGui::Text("Hold RMB: Look");
-                    ImGui::Text("W/A/S/D + Q/E: Move");
-                    ImGui::Text("Shift: Faster, Ctrl: Slower");
-                    ImGui::Text("Release RMB: Back to Orbit");
+                    drawHintRow(ICON_MDI_MOUSE_RIGHT_CLICK " " ICON_MDI_EYE_OUTLINE, "Look");
+                    drawHintRow(ICON_MDI_ALPHA_W_BOX " " ICON_MDI_ALPHA_A_BOX " " ICON_MDI_ALPHA_S_BOX " " ICON_MDI_ALPHA_D_BOX,
+                                "Move");
+                    drawHintRow(ICON_MDI_ALPHA_Q_BOX " " ICON_MDI_CHEVRON_DOWN_BOX "   " ICON_MDI_ALPHA_E_BOX " " ICON_MDI_CHEVRON_UP_BOX,
+                                "Down / Up");
+                    drawHintRow(ICON_MDI_APPLE_KEYBOARD_SHIFT " " ICON_MDI_RUN_FAST, "Faster");
+                    drawHintRow(ICON_MDI_APPLE_KEYBOARD_CONTROL " " ICON_MDI_TURTLE, "Slower");
                 }
                 else
                 {
-                    ImGui::Text("Camera: Orbit");
-                    ImGui::Separator();
-                    ImGui::Text("LMB Drag: Rotate");
-                    ImGui::Text("MMB Drag or Shift+LMB: Pan");
-                    ImGui::Text("Wheel: Zoom");
-                    ImGui::Text("Hold RMB: Temporary Fly");
+                    drawHintRow(ICON_MDI_MOUSE_LEFT_CLICK " " ICON_MDI_ROTATE_ORBIT, "Rotate");
+                    drawHintRow(ICON_MDI_MOUSE_SCROLL_WHEEL " " ICON_MDI_PAN, "Pan");
+                    drawHintRow(ICON_MDI_MOUSE_SCROLL_WHEEL " " ICON_MDI_MAGNIFY, "Zoom");
+                    drawHintRow(ICON_MDI_MOUSE_RIGHT_CLICK " " ICON_MDI_EYE_OUTLINE, "Fly");
                 }
             }
             ImGui::End();

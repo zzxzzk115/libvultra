@@ -3,15 +3,14 @@
 #include "vultra/core/app/app_host.hpp"
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/os/window.hpp"
-#include "vultra/core/rhi/render_device.hpp"
 #include "vultra/function/camera/camera_system.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
 
-#include <optional>
 #include <string_view>
 
 #if defined(__ANDROID__)
 #include "vultra/platform/android/android_app_runtime_context.hpp"
+#include <optional>
 #endif
 
 namespace vultra
@@ -30,9 +29,9 @@ namespace vultra
         void onPollEvents() override;
         bool onShouldClose() const override;
 
-        virtual std::string_view                 demoWindowTitle() const { return "Vultra Demo App"; }
-        virtual bool                             demoWindowResizable() const { return true; }
-        virtual rhi::RenderBackendApi            demoRenderBackendApi() const
+        virtual std::string_view      demoWindowTitle() const { return "libvultra Demo App"; }
+        virtual bool                  demoWindowResizable() const { return true; }
+        virtual rhi::RenderBackendApi demoRenderBackendApi() const
         {
 #if defined(__EMSCRIPTEN__)
             return rhi::RenderBackendApi::eWebGPU;
