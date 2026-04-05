@@ -59,6 +59,26 @@ jobs:
         with:
           path: site
 
+      - name: Collect failure logs
+        if: failure()
+        run: |
+          mkdir -p ci-logs
+          LOG_FILE="ci-logs/install_logs.txt"
+          touch "$LOG_FILE"
+          while IFS= read -r f; do
+            echo "==== $f ====" >> "$LOG_FILE"
+            cat "$f" >> "$LOG_FILE"
+            echo "" >> "$LOG_FILE"
+          done < <(find "$HOME/.xmake/cache" -name install.txt 2>/dev/null)
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-pages-build-${{ github.run_id }}
+          path: ci-logs
+          if-no-files-found: ignore
+
   deploy:
     environment:
       name: github-pages

@@ -43,7 +43,22 @@ jobs:
       - name: Build
         run: xmake repo -u && xmake -vD -y
 
-      - name: Show install error log
+      - name: Collect failure logs
         if: failure()
         run: |
-          find /home/runner/.xmake/cache -name install.txt -exec echo "==== {} ====" \; -exec cat {} \;
+          mkdir -p ci-logs
+          LOG_FILE="ci-logs/install_logs.txt"
+          touch "$LOG_FILE"
+          while IFS= read -r f; do
+            echo "==== $f ====" >> "$LOG_FILE"
+            cat "$f" >> "$LOG_FILE"
+            echo "" >> "$LOG_FILE"
+          done < <(find "$HOME/.xmake/cache" -name install.txt 2>/dev/null)
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-android-${{ github.run_id }}
+          path: ci-logs
+          if-no-files-found: ignore

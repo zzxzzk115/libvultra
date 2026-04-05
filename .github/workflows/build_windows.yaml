@@ -33,3 +33,27 @@ jobs:
       - name: Build
         shell: pwsh
         run: xmake repo -u && xmake -vD -y
+
+      - name: Collect failure logs
+        if: failure()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ci-logs | Out-Null
+          $logFile = "ci-logs/install_logs.txt"
+          New-Item -ItemType File -Force -Path $logFile | Out-Null
+          $cachePath = Join-Path $env:USERPROFILE ".xmake\\cache"
+          if (Test-Path $cachePath) {
+            Get-ChildItem -Path $cachePath -Recurse -Filter install.txt | ForEach-Object {
+              Add-Content -Path $logFile -Value ("==== " + $_.FullName + " ====")
+              Get-Content -Path $_.FullName | Add-Content -Path $logFile
+              Add-Content -Path $logFile -Value ""
+            }
+          }
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-windows-${{ github.run_id }}
+          path: ci-logs
+          if-no-files-found: ignore
