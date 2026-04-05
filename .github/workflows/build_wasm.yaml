@@ -12,7 +12,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: "true"
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Sync submodules
+        run: git submodule update --init --recursive
 
       - uses: xmake-io/github-action-setup-xmake@v1
         with:
