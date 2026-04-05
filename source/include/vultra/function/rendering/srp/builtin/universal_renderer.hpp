@@ -4,6 +4,7 @@
 #include "vultra/function/services/imgui_service.hpp"
 
 #include <array>
+#include <vector>
 
 namespace vultra
 {
@@ -22,5 +23,9 @@ namespace vultra
         GaussianSplatFeature*                   m_GaussianSplatFeature {nullptr};
         std::array<IImGuiService::TextureID, 2> m_XRMirrorTextureIds {0, 0};
         std::array<const rhi::Texture*, 2>      m_XRMirrorTextures {nullptr, nullptr};
+
+        std::vector<IImGuiService::TextureID> m_TextureViewerTextureIds;
+        std::vector<const rhi::Texture*>      m_TextureViewerRegisteredTextures;
+        int                                   m_TextureViewerColumns {4};
     };
 } // namespace vultra

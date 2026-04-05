@@ -42,6 +42,14 @@ namespace vultra
                                                         PixelFormat      format,
                                                         uint32_t         baseLayer,
                                                         uint32_t         numLayers);
+            [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi api,
+                                                        TextureDeviceHandle device,
+                                                        TextureImageHandle  image,
+                                                        Extent2D         extent,
+                                                        PixelFormat      format,
+                                                        uint32_t         baseLayer,
+                                                        uint32_t         numLayers,
+                                                        uint32_t         numMipLevels);
         };
     } // namespace rhi
 } // namespace vultra

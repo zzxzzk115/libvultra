@@ -404,6 +404,18 @@ namespace vultra
             return Texture {api, true, device, image, extent, format, baseLayer, numLayers};
         }
 
+        Texture Texture::fromOwnedImage(const RenderBackendApi    api,
+                                        const TextureDeviceHandle device,
+                                        const TextureImageHandle  image,
+                                        const Extent2D            extent,
+                                        const PixelFormat         format,
+                                        const uint32_t            baseLayer,
+                                        const uint32_t            numLayers,
+                                        const uint32_t            numMipLevels)
+        {
+            return Texture {api, true, device, image, extent, format, baseLayer, numLayers, numMipLevels};
+        }
+
         Texture::Builder& Texture::Builder::setExtent(const Extent2D extent, const uint32_t depth)
         {
             m_Extent = extent;
@@ -656,9 +668,22 @@ namespace vultra
                          PixelFormat               pixelFormat,
                          uint32_t                  baseLayer,
                          uint32_t                  numLayers) :
+            Texture {api, ownsImage, device, image, extent, pixelFormat, baseLayer, numLayers, 1u}
+        {}
+
+        Texture::Texture(const RenderBackendApi    api,
+                         const bool                ownsImage,
+                         const TextureDeviceHandle device,
+                         const TextureImageHandle  image,
+                         Extent2D                  extent,
+                         PixelFormat               pixelFormat,
+                         uint32_t                  baseLayer,
+                         uint32_t                  numLayers,
+                         uint32_t                  numMipLevels) :
             m_DeviceOrAllocator(device), m_Image(image.value), m_BackendApi(api), m_OwnsImage(ownsImage),
             m_Type(numLayers > 1u ? TextureType::eTexture2DArray : TextureType::eTexture2D), m_Extent(extent),
-            m_Format(pixelFormat), m_NumLayers(numLayers), m_LayerFaces(std::max(numLayers, 1u)),
+            m_Format(pixelFormat), m_NumMipLevels(std::max(numMipLevels, 1u)), m_NumLayers(numLayers),
+            m_LayerFaces(std::max(numLayers, 1u)),
             m_BaseArrayLayer(baseLayer), m_UsageFlags(kSwapchainDefaultUsageFlags)
         {
             const auto deviceHandle = getDeviceHandle();

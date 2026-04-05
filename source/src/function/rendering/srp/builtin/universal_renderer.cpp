@@ -5,6 +5,7 @@
 #include "vultra/function/rendering/srp/builtin/features/gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/test_feature.hpp"
+#include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #ifdef VULTRA_ENABLE_RENDERDOC
 #include "vultra/function/services/frame_debugger_service.hpp"
@@ -96,6 +97,77 @@ namespace vultra
             if (singleEye)
                 ImGui::SliderInt("Eye", &eyeIndex, 0, std::max(0, maxEyeIndex));
         }
+
+        void syncTextureViewerRegistration(IImGuiService&                       imguiService,
+                                           const resource::GpuResourcePool&     pool,
+                                           std::vector<const rhi::Texture*>&    registeredTextures,
+                                           std::vector<IImGuiService::TextureID>& textureIds)
+        {
+            uint32_t maxBindlessIndex = 0u;
+            for (const auto& gpuTexture : pool.textures)
+                maxBindlessIndex = std::max(maxBindlessIndex, gpuTexture.bindlessIndex);
+
+            const size_t requiredSize = static_cast<size_t>(maxBindlessIndex) + 1u;
+            if (registeredTextures.size() < requiredSize)
+                registeredTextures.resize(requiredSize, nullptr);
+            if (textureIds.size() < requiredSize)
+                textureIds.resize(requiredSize, 0);
+
+            std::vector<bool> alive(requiredSize, false);
+            for (const auto& gpuTexture : pool.textures)
+            {
+                const auto index = static_cast<size_t>(gpuTexture.bindlessIndex);
+                alive[index]     = true;
+                syncImGuiTextureRegistration(
+                    imguiService, gpuTexture.texture.get(), registeredTextures[index], textureIds[index]);
+            }
+
+            for (size_t i = 0; i < registeredTextures.size(); ++i)
+            {
+                const bool isAlive = i < alive.size() ? alive[i] : false;
+                if (!isAlive && textureIds[i])
+                {
+                    imguiService.removeTexture(textureIds[i]);
+                    registeredTextures[i] = nullptr;
+                }
+            }
+        }
+
+        void drawTextureViewer(const resource::GpuResourcePool&            pool,
+                               std::vector<const rhi::Texture*>&           registeredTextures,
+                               std::vector<IImGuiService::TextureID>&      textureIds,
+                               int&                                         columns)
+        {
+            if (!ImGui::CollapsingHeader("Texture Viewer", ImGuiTreeNodeFlags_DefaultOpen))
+                return;
+
+            ImGui::Text("Loaded GPU textures: %zu", pool.textures.size());
+            ImGui::SliderInt("Columns", &columns, 1, 8);
+
+            if (!ImGui::BeginTable("##TextureViewerTable", columns, ImGuiTableFlags_SizingStretchSame))
+                return;
+
+            for (size_t bindless = 0; bindless < registeredTextures.size(); ++bindless)
+            {
+                const auto* texture = registeredTextures[bindless];
+                const auto  texId   = bindless < textureIds.size() ? textureIds[bindless] : 0;
+                if (!texture || !texId)
+                    continue;
+
+                ImGui::TableNextColumn();
+                ImGui::BeginGroup();
+                ImGui::Image(texId, ImVec2(96.0f, 96.0f), ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
+                const auto extent = texture->getExtent();
+                const auto format = rhi::toString(texture->getPixelFormat());
+                ImGui::Text("Slot: %zu", bindless);
+                ImGui::Text("Size: %ux%u", extent.width, extent.height);
+                ImGui::Text("Mips: %u", texture->getNumMipLevels());
+                ImGui::Text("Fmt : %.*s", static_cast<int>(format.size()), format.data());
+                ImGui::EndGroup();
+            }
+
+            ImGui::EndTable();
+        }
     } // namespace
 
     void UniversalRenderer::init()
@@ -134,6 +206,7 @@ namespace vultra
         auto* services       = getServices();
         auto& backendService = services->require<IRenderBackendService>();
         auto& imguiService   = services->require<IImGuiService>();
+        auto& gpuResourceSvc = services->require<IGpuResourceService>();
 
         ImGui::Begin("Universal Renderer");
 
@@ -231,6 +304,11 @@ namespace vultra
             }
             m_XRMirrorTextures.fill(nullptr);
         }
+
+        syncTextureViewerRegistration(
+            imguiService, gpuResourceSvc.pool(), m_TextureViewerRegisteredTextures, m_TextureViewerTextureIds);
+        drawTextureViewer(
+            gpuResourceSvc.pool(), m_TextureViewerRegisteredTextures, m_TextureViewerTextureIds, m_TextureViewerColumns);
 
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");

@@ -844,7 +844,8 @@ namespace vultra
                 descriptor.size.height             = extent.height;
                 descriptor.size.depthOrArrayLayers = std::max(1u, numLayers);
                 descriptor.format                  = wgpuFormat;
-                descriptor.mipLevelCount           = numMipLevels > 0 ? numMipLevels : calcMipLevels(extent);
+                const uint32_t resolvedMipLevels   = numMipLevels > 0 ? numMipLevels : calcMipLevels(extent);
+                descriptor.mipLevelCount           = resolvedMipLevels;
                 descriptor.sampleCount             = 1u;
 
                 auto* const textureHandle = wgpuDeviceCreateTexture(backend.m_Device, &descriptor);
@@ -861,7 +862,8 @@ namespace vultra
                         extent,
                         format,
                         0u,
-                        numLayers);
+                        numLayers,
+                        resolvedMipLevels);
                 }
                 return TextureAccess::fromOwnedImage(
                     RenderBackendApi::eWebGPU,
@@ -869,7 +871,9 @@ namespace vultra
                     TextureImageHandle {reinterpret_cast<std::uintptr_t>(textureHandle)},
                     extent,
                     format,
-                    0u);
+                    0u,
+                    1u,
+                    resolvedMipLevels);
 #endif
             }
 #if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN

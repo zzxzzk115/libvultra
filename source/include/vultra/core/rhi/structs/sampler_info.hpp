@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/structs/compare_op.hpp"
 #include "vultra/core/rhi/structs/texel_filter.hpp"
 
+#include <limits>
 #include <optional>
 
 namespace vultra
@@ -42,7 +43,7 @@ namespace vultra
             std::optional<float>     maxAnisotropy;
             std::optional<CompareOp> compareOp;
             float                    minLod {0.0f};
-            float                    maxLod {0.0f};
+            float                    maxLod {std::numeric_limits<float>::max()};
             BorderColor              borderColor {BorderColor::eFloatOpaqueBlack};
         };
     } // namespace rhi

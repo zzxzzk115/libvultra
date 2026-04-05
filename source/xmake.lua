@@ -177,7 +177,6 @@ target("vultra")
         add_packages("vulkan-headers", "vulkan-memory-allocator-hpp", { public = true })
     else
         add_packages("vulkan-headers", { public = true })
-        add_includedirs(path.join(os.projectdir(), "external", "vma"), {public = true})
     end
     if not is_plat("android") then
         add_packages("webgpu-sdk", { public = true })

@@ -167,14 +167,22 @@ namespace vultra::rhi
 #endif
     }
 
-    std::uintptr_t WebGPUImGui::addTexture(const Texture&)
+    std::uintptr_t WebGPUImGui::addTexture(const Texture& texture)
     {
+        if (!m_Initialized)
+            return 0;
+
+#if VULTRA_HAS_IMGUI_IMPL_WGPU
+        return texture.getImageView().getHandle();
+#else
         if (!m_WarnedTexturePath)
         {
-            VULTRA_CORE_WARN("[WebGPUImGui] addTexture is not implemented yet for generic RHI textures");
+            VULTRA_CORE_WARN("[WebGPUImGui] imgui_impl_wgpu.h is unavailable; addTexture returns empty id.");
             m_WarnedTexturePath = true;
         }
+        (void)texture;
         return 0;
+#endif
     }
 
     void WebGPUImGui::removeTexture(std::uintptr_t& textureId) { textureId = 0; }

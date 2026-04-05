@@ -191,6 +191,15 @@ namespace vultra
                     PixelFormat         pixelFormat,
                     uint32_t            baseLayer,
                     uint32_t            numLayers);
+            Texture(RenderBackendApi    api,
+                    bool                ownsImage,
+                    TextureDeviceHandle device,
+                    TextureImageHandle  image,
+                    Extent2D            extent,
+                    PixelFormat         pixelFormat,
+                    uint32_t            baseLayer,
+                    uint32_t            numLayers,
+                    uint32_t            numMipLevels);
 
             void destroy() noexcept;
 
@@ -234,6 +243,14 @@ namespace vultra
                                                         PixelFormat         pixelFormat,
                                                         uint32_t            baseLayer,
                                                         uint32_t            numLayers);
+            [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi    api,
+                                                        TextureDeviceHandle device,
+                                                        TextureImageHandle  image,
+                                                        Extent2D            extent,
+                                                        PixelFormat         pixelFormat,
+                                                        uint32_t            baseLayer,
+                                                        uint32_t            numLayers,
+                                                        uint32_t            numMipLevels);
 
             struct AspectData
             {
