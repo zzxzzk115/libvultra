@@ -17,6 +17,8 @@
 namespace vultra::platform::glfw
 {
 #if defined(__EMSCRIPTEN__)
+    // clang-format off
+    // NOLINTBEGIN
     EM_JS(void, setDocumentAppTitle, (const char* title), {
         const nextTitle = UTF8ToString(title || 0) || "libvultra";
         if (typeof Module !== "undefined" && typeof Module.setAppName === "function")
@@ -90,6 +92,8 @@ namespace vultra::platform::glfw
               ctx.putImageData(imageData, 0, 0);
               canvas.style.cursor = `url(${offscreen.toDataURL("image/png")}) ${hotX} ${hotY}, auto`;
           });
+    // NOLINTEND
+    // clang-format on
 #endif
 
     namespace
@@ -177,6 +181,9 @@ namespace vultra::platform::glfw
         glfwSetMouseButtonCallback(m_WindowHandle, &GLFWWindow::onMouseButton);
         glfwSetCursorPosCallback(m_WindowHandle, &GLFWWindow::onCursorPos);
         glfwSetScrollCallback(m_WindowHandle, &GLFWWindow::onScroll);
+#if defined(__EMSCRIPTEN__)
+        setDocumentAppTitle(m_Title.c_str());
+#endif
         applyCursorVisibility();
         applyCursor();
 

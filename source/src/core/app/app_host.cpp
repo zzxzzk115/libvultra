@@ -138,10 +138,7 @@ namespace vultra
         return fsec {std::clamp(dt.count(), 0.0f, 0.25f)};
     }
 
-    int AppHost::run()
-    {
-        return run(0, nullptr);
-    }
+    int AppHost::run() { return run(0, nullptr); }
 
     int AppHost::run(const int argc, char** argv)
     {
@@ -186,7 +183,8 @@ namespace vultra
             }
 
             while (stepFrame())
-            {}
+            {
+            }
 
             shutdownIfNeeded();
             return m_ExitCode;

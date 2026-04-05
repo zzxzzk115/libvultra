@@ -71,7 +71,7 @@ namespace vultra
             std::optional<rhi::RenderBackendApi> parsed;
             for (size_t i = 0; i < args.size(); ++i)
             {
-                const std::string_view arg = args[i];
+                const std::string_view     arg = args[i];
                 constexpr std::string_view kBackendEqPrefix {"--backend="};
                 constexpr std::string_view kRenderBackendEqPrefix {"--render-backend="};
 
@@ -136,46 +136,44 @@ namespace vultra
     FPSCameraController DemoAppHost::makeFPSCameraController() const
     {
         FPSCameraController controller {};
-        controller.enabled          = true;
-        controller.captureMouse     = true;
-        controller.orbitDistance    = 3.0f;
+        controller.enabled                = true;
+        controller.captureMouse           = true;
+        controller.orbitDistance          = 3.0f;
         controller.orbitRotateSensitivity = 0.08f;
         controller.orbitPanSensitivity    = 0.002f;
         controller.orbitZoomSpeed         = 0.03f;
-        controller.orbitPivot      = {0.0f, 1.0f, 0.0f};
-        controller.moveSpeed        = 4.0f;
-        controller.sprintMultiplier = 2.5f;
-        controller.mouseSensitivity = 0.08f;
-        controller.position         = {0.0f, 1.0f, 1.5f};
-        controller.yawDegrees       = -90.0f;
-        controller.pitchDegrees     = -20.0f;
-        controller.fovYDegrees      = 60.0f;
-        controller.zNear            = 0.1f;
-        controller.zFar             = 1000.0f;
+        controller.orbitPivot             = {0.0f, 1.0f, 0.0f};
+        controller.moveSpeed              = 4.0f;
+        controller.sprintMultiplier       = 2.5f;
+        controller.mouseSensitivity       = 0.08f;
+        controller.position               = {0.0f, 1.0f, 1.5f};
+        controller.yawDegrees             = -90.0f;
+        controller.pitchDegrees           = -20.0f;
+        controller.fovYDegrees            = 60.0f;
+        controller.zNear                  = 0.1f;
+        controller.zFar                   = 1000.0f;
         return controller;
     }
 
-    Ref<Renderer> DemoAppHost::makeRenderer() const
-    {
-        return createRef<UniversalRenderer>();
-    }
+    Ref<Renderer> DemoAppHost::makeRenderer() const { return createRef<UniversalRenderer>(); }
 
     void DemoAppHost::onConfigure(Engine& engine)
     {
         auto backendApi = demoRenderBackendApi();
         if (demoAllowCliBackendOverride())
         {
-            bool sawBackendArg      = false;
+            bool sawBackendArg       = false;
             bool invalidBackendValue = false;
-            if (auto parsed = parseCliBackend(commandLineArgs(), sawBackendArg, invalidBackendValue); parsed.has_value())
+            if (auto parsed = parseCliBackend(commandLineArgs(), sawBackendArg, invalidBackendValue);
+                parsed.has_value())
             {
                 backendApi = *parsed;
             }
 
             if (invalidBackendValue)
             {
-                VULTRA_CORE_WARN(
-                    "[DemoAppHost] Invalid backend CLI value. Use --backend=(auto|vulkan|webgpu) or --render-backend=(...)");
+                VULTRA_CORE_WARN("[DemoAppHost] Invalid backend CLI value. Use --backend=(auto|vulkan|webgpu) or "
+                                 "--render-backend=(...)");
             }
             if (sawBackendArg)
             {
@@ -194,7 +192,7 @@ namespace vultra
         engine.ctx().config.asset.vpkFile     = "resources.vpk";
         engine.ctx().config.asset.loadFromVPK = true;
         // Keep ImGui ini path deterministic in wasm FS.
-        engine.ctx().config.writableRoot      = "/";
+        engine.ctx().config.writableRoot = "/";
 #endif
 
 #if defined(__ANDROID__)
@@ -241,12 +239,9 @@ namespace vultra
         const float aspect = width / height;
 
         const glm::vec3 forward = makeForward(fpsController.yawDegrees, fpsController.pitchDegrees);
-        camera.view = glm::lookAt(fpsController.position, fpsController.position + forward, glm::vec3(0, 1, 0));
-        camera.projection =
-            glm::perspectiveRH_ZO(glm::radians(fpsController.fovYDegrees),
-                                  aspect,
-                                  fpsController.zNear,
-                                  fpsController.zFar);
+        camera.view       = glm::lookAt(fpsController.position, fpsController.position + forward, glm::vec3(0, 1, 0));
+        camera.projection = glm::perspectiveRH_ZO(
+            glm::radians(fpsController.fovYDegrees), aspect, fpsController.zNear, fpsController.zFar);
         camera.fovY  = glm::radians(fpsController.fovYDegrees);
         camera.zNear = fpsController.zNear;
         camera.zFar  = fpsController.zFar;
@@ -262,11 +257,12 @@ namespace vultra
         engine.emplaceSubsystem<RenderBackendSystem>();
         engine.emplaceSubsystem<ImGuiSystem>();
 
-        const bool webgpuSafeMode = (backendApi == rhi::RenderBackendApi::eWebGPU) && !demoEnableExperimentalWebGPUContent();
+        const bool webgpuSafeMode =
+            (backendApi == rhi::RenderBackendApi::eWebGPU) && !demoEnableExperimentalWebGPUContent();
         if (webgpuSafeMode)
         {
-            VULTRA_CORE_WARN(
-                "[DemoAppHost] WebGPU safe mode is enabled: skipping render/asset/scene/script systems to avoid unstable paths");
+            VULTRA_CORE_WARN("[DemoAppHost] WebGPU safe mode is enabled: skipping render/asset/scene/script systems to "
+                             "avoid unstable paths");
         }
         else
         {
@@ -287,8 +283,8 @@ namespace vultra
         auto& window = engine.ctx().services.require<IWindowService>().window();
         window.on<os::GeneralWindowEvent>([this](const os::GeneralWindowEvent& e, os::Window&) { onWindowEvent(e); });
 
-        const bool webgpuSafeMode =
-            (engine.ctx().config.render.backendApi == rhi::RenderBackendApi::eWebGPU) && !demoEnableExperimentalWebGPUContent();
+        const bool webgpuSafeMode = (engine.ctx().config.render.backendApi == rhi::RenderBackendApi::eWebGPU) &&
+                                    !demoEnableExperimentalWebGPUContent();
         if (!webgpuSafeMode)
         {
             onPostConfigureDemo(engine);
@@ -309,7 +305,7 @@ namespace vultra
                 return;
             }
 
-            const auto framebufferExtent = windowService->window().getFrameBufferExtent();
+            const auto     framebufferExtent = windowService->window().getFrameBufferExtent();
             const uint32_t framebufferWidth  = static_cast<uint32_t>(std::max(framebufferExtent.x, 0));
             const uint32_t framebufferHeight = static_cast<uint32_t>(std::max(framebufferExtent.y, 0));
             if (framebufferWidth == 0u || framebufferHeight == 0u)

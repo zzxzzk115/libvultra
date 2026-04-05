@@ -21,6 +21,8 @@ namespace vultra
     namespace
     {
 #if defined(__EMSCRIPTEN__)
+        // clang-format off
+        // NOLINTBEGIN
         EM_JS(void, emscriptenModuleLog, (int level, int region, const char* msg), {
             const text = UTF8ToString(msg);
             const module = globalThis.Module || {};
@@ -49,6 +51,8 @@ namespace vultra
                     break;
             }
         });
+        // NOLINTEND
+        // clang-format on
 #endif
 
 #if defined(__ANDROID__)
