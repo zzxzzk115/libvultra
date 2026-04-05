@@ -1,129 +1,112 @@
 # libvultra
 
 <h4 align="center">
-  libvultra is the core library of <a href="https://github.com/zzxzzk115/Vultra" target="_blank" rel="noopener noreferrer">Vultra</a>, which can be used for rapidly creating graphics or game prototypes without the VultraEditor.
+  libvultra is the core runtime library of <a href="https://github.com/zzxzzk115/Vultra" target="_blank" rel="noopener noreferrer">Vultra</a>, focused on rapid graphics and game prototyping without requiring VultraEditor.
 </h4>
 
 <p align="center">
-    <a href="https://github.com/zzxzzk115/libvultra/actions" alt="Build-Windows">
-        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_windows.yaml?branch=master&label=Build-Windows&logo=github" /></a>
-    <a href="https://github.com/zzxzzk115/libvultra/actions" alt="Build-Linux">
-        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_linux.yaml?branch=master&label=Build-Linux&logo=github" /></a>
-    <a href="https://github.com/zzxzzk115/libvultra/actions" alt="Build-macOS">
-        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_macos.yaml?branch=master&label=Build-macOS&logo=github" /></a>
-    <a href="https://github.com/zzxzzk115/libvultra/actions" alt="Build-Android">
-        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_android.yaml?branch=master&label=Build-Android&logo=github" /></a>
-    <a href="https://github.com/zzxzzk115/libvultra/issues" alt="GitHub Issues">
-        <img src="https://img.shields.io/github/issues/zzxzzk115/libvultra"></a>
-    <a href="https://www.codefactor.io/repository/github/zzxzzk115/libvultra"><img src="https://www.codefactor.io/repository/github/zzxzzk115/libvultra/badge" alt="CodeFactor" /></a>
-    <a href="https://github.com/zzxzzk115/libvultra/blob/master/LICENSE" alt="GitHub">
-        <img src="https://img.shields.io/github/license/zzxzzk115/libvultra"></a>
+  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_windows.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_windows.yaml?branch=master&label=Build-Windows&logo=github" alt="Build-Windows" />
+  </a>
+  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_linux.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_linux.yaml?branch=master&label=Build-Linux&logo=github" alt="Build-Linux" />
+  </a>
+  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_macos.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_macos.yaml?branch=master&label=Build-macOS&logo=github" alt="Build-macOS" />
+  </a>
+  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_android.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_android.yaml?branch=master&label=Build-Android&logo=github" alt="Build-Android" />
+  </a>
+  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_wasm.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_wasm.yaml?branch=master&label=Build-WASM&logo=github" alt="Build-WASM" />
+  </a>
+  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/deploy_pages.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/deploy_pages.yaml?branch=master&label=Deploy-Pages&logo=github" alt="Deploy-Pages" />
+  </a>
+  <a href="https://www.codefactor.io/repository/github/zzxzzk115/libvultra">
+    <img src="https://www.codefactor.io/repository/github/zzxzzk115/libvultra/badge" alt="CodeFactor" />
+  </a>
+  <a href="https://github.com/zzxzzk115/libvultra/issues">
+    <img src="https://img.shields.io/github/issues/zzxzzk115/libvultra" alt="Issues" />
+  </a>
+  <a href="https://github.com/zzxzzk115/libvultra/blob/master/LICENSE">
+    <img src="https://img.shields.io/github/license/zzxzzk115/libvultra" alt="License" />
+  </a>
 </p>
 
-(This project is under early development and WIP.)
+## Highlights
+- New asset pipeline based on `vasset v0.3`.
+- Runtime/editor-friendly asset baking and `VPK` packaging workflow.
+- New shader pipeline based on `vshadersystem` with rich variants and keyword workflow.
+- Write GLSL once and target Vulkan + WebGPU.
+- WebGPU rendering now supports both native and Web (WASM / Emscripten).
+- Built-in Gaussian Splatting renderer.
+- Future direction: GPU-Driven rendering pipeline.
 
-## Features
-- Modern Vulkan using Vulkan-Hpp, Vulkan-Memory-Allocator-Hpp and more
-- FrameGraph (RenderGraph) based rendering system
-- OpenXR support (now focusing on VR only, not AR)
-- Modern SDL using SDL3
-- ImGui docking + multiview
+## Rendering / Platform Matrix
+- Vulkan: desktop high-end path.
+- WebGPU (native): compatibility path.
+- WebGPU (WASM / Emscripten): web runtime path.
+- Android: compatibility-focused path.
 
 ## Showcase
-[Example: GLTF Viewer](./examples/gltf_viewer/main.cpp)
+- [GLTF Viewer](./examples/gltf_viewer/main.cpp)
+- [Demo App](./examples/demo_app/main.cpp)
+- [ImGui (Desktop + WASM)](./examples/imgui/main.cpp)
+- [Gaussian Splatting](./examples/gaussian_splatting/main.cpp)
 
 ![Example: GLTF Viewer](./media/images/example-gltf-viewer.png)
+![Example: Sponza](./media/images/example-sponza.png)
 
-[[Example: Sponza with Meshlet Debug View]](./examples/sponza/main.cpp)
+## Build
 
-![[Example: Sponza]](./media/images/example-sponza.png)
-
-## Build Instructions
-
-Prerequisites:
+### Prerequisites
 - Git
 - XMake
-- Vulkan SDK
-- Android SDK + NDK if Android
-- Visual Studio with MSVC if Windows
-- GCC or Clang if Linux/Unix
-- XCode with GCC or Apple Clang if macOS
+- Vulkan SDK (for Vulkan targets)
+- Android SDK + NDK (for Android)
+- Emscripten SDK (for WASM)
+- Visual Studio (Windows) / Clang or GCC (Linux/macOS)
 
-Step-by-Step:
+### Desktop (default)
+```bash
+git clone --recursive https://github.com/zzxzzk115/libvultra.git
+cd libvultra
+git submodule update --init --recursive
+xmake f -y
+xmake build -y
+```
 
-- Install XMake by following [this](https://xmake.io/guide/quick-start.html#installation). 
+### WASM (Emscripten)
+```bash
+xmake f -p wasm --libvultra_build_examples=y --libvultra_build_tests=n -y
+xmake build -y example-demo-app
+```
 
-- Clone the project:
-  ```bash
-  git clone --recursive https://github.com/zzxzzk115/libvultra.git
-  ```
+Output is generated under:
+- `build/wasm/wasm32/release/example-demo-app/`
 
-- Build the project:
-  ```bash
-  cd libvultra
-  git submodule update --init --recursive
-  xmake -vD
-  ```
+### Android
+```bash
+xmake f -p android --ndk=/path/to/Android/Sdk/ndk/30.0.14904198 --libvultra_build_examples=n --libvultra_build_tests=n -y
+xmake build -y
+```
 
-- Build for Android:
-  ```bash
-  xmake f -p android --ndk=/path/to/Android/Sdk/ndk/30.0.14904198 --libvultra_build_examples=n --libvultra_build_tests=n
-  xmake -vD
-  ```
+## Run
+Run one target:
+```bash
+xmake run example-demo-app
+xmake run example-imgui
+xmake run example-gaussian-splatting
+```
 
-- Run the examples:
-  ```bash
-  xmake run # Run all examples
-  xmake examples # A task to run all standard examples (without modern features such as ray-tracing and mesh shaders).
-  ```
-  or run a specific program:
-  ```bash
-  xmake run example-window
-  xmake run example-rhi-triangle
-  xmake run example-imgui
-  xmake run example-framegraph-triangle
-  xmake run example-openxr-triangle
-  xmake run example-openxr-sponza
-  xmake run example-raytracing-triangle
-  xmake run example-raytracing-cornell-box
-  xmake run example-rayquery
-  xmake run example-meshshading-triangle
-  xmake run example-gltf-viewer
-  xmake run example-sponza
-  xmake run example-gaussian-splatting
-  ```
+## Starter Template
+Create your own project with:
+- [libvultra-starter-template](https://github.com/zzxzzk115/libvultra-starter-template)
 
-  > **Tips:**
-  > For OpenXR programs, you may need to set the XR_RUNTIME_JSON environment variable.
-  > For debugging OpenXR programs without headsets, you may need Meta XR Simulator on Windows and macOS. On Linux, you can use Monado as the simulator.
-
-## TODO List
-- [x] Wayland support
-- [x] More powerful texture loader that supports KTX, KTX2, DDS and more
-  - [x] KTX
-  - [x] KTX2
-  - [x] DDS
-  - [x] EXR
-- [x] ECS-based scene management with EnTT
-- [x] Raytracing Pipeline
-- [x] Mesh Shading Pipeline
-- [ ] 3D Gaussian Splatting Rendering
-  - [x] .spz loader
-  - [ ] .ply loader
-  - [x] CPU sorting
-  - [ ] CPU culling
-  - [ ] GPU sorting
-  - [ ] GPU culling
-- [ ] Resource Pipeline
-- [ ] Lua or C# Scripting System
-- [ ] (Maybe?) AR support
-
-## Create your own graphics or game project
-You can simply create a project by using this [template](https://github.com/zzxzzk115/libvultra-starter-template).
-
-For Android host integration groundwork, see [template/android](./template/android/) and the in-repo sample [examples/android_app](./examples/android_app/).
-
-Have fun!
+For Android host integration reference:
+- [`template/android`](./template/android/)
+- [`examples/android_app`](./examples/android_app/)
 
 ## License
 This project is under the [MIT](LICENSE) license.
