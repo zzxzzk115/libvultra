@@ -11,6 +11,8 @@
 
 namespace vultra
 {
+    GaussianSplatRenderPass::GaussianSplatRenderPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         constexpr auto PASS_NAME = "GaussianSplatRenderPass";
@@ -202,7 +204,7 @@ namespace vultra
                 {
                     setShaderLib(*rc.ext.builtinShaderLib);
 
-                    auto       variantHash = getShaderLib().computeVariantHash("gaussian_splat.vert",
+                    auto       variantHash = computeHighendVariantHash("gaussian_splat.vert",
                                                                          vshadersystem::ShaderStage::eVert,
                                                                                {{"USE_MULTIVIEW", useMultiview ? 1u : 0u}});
                     const bool useFragmentInterlock =
@@ -294,7 +296,7 @@ namespace vultra
                                                                   bool     useSceneDepth,
                                                                   bool     useMultiview) const
     {
-        auto vertexShader = getShaderLib().load(variantHash, vshadersystem::ShaderStage::eVert);
+        auto vertexShader = loadHighendShaderVariant(variantHash, vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
             VULTRA_CORE_ERROR("[GaussianSplatRenderPass] Failed to load vertex shader variant");
@@ -302,12 +304,12 @@ namespace vultra
         }
 
         auto fragmentShaderVariantHash =
-            getShaderLib().computeVariantHash("gaussian_splat.frag",
+            computeHighendVariantHash("gaussian_splat.frag",
                                               vshadersystem::ShaderStage::eFrag,
                                               {{"NEED_SURFACE_INFO", needsSurfaceInfo ? 1u : 0u},
                                                {"USE_DEPTH_TRANSMITTANCE", useDepthTransmittance ? 1u : 0u},
                                                {"USE_FRAGMENT_INTERLOCK", useFragmentInterlock ? 1u : 0u}});
-        auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader = loadHighendShaderVariant(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[GaussianSplatRenderPass] Failed to load fragment shader variant");

@@ -12,6 +12,7 @@ namespace vultra
         friend class BasePass;
 
     public:
+        FinalCompositionPass();
         FrameGraphResource compose(FrameGraphBuildContext& ctx, FrameGraphResource target);
 
     private:

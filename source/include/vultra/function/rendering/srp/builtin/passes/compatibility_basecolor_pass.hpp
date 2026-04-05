@@ -12,6 +12,7 @@ namespace vultra
         friend class BasePass;
 
     public:
+        CompatibilityBaseColorPass();
         FrameGraphResource addPass(FrameGraphBuildContext& ctx, FrameGraphResource target = {});
 
     private:

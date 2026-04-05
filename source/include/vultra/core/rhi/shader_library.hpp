@@ -32,6 +32,8 @@ namespace vultra
         class ShaderLibraryRuntime final
         {
         public:
+            using KeywordValues = std::unordered_map<std::string, uint32_t>;
+
             struct LoadedShader
             {
                 rhi::SPIRV                         spirv;
@@ -63,7 +65,7 @@ namespace vultra
             [[nodiscard]] static uint64_t
             computeVariantHash(std::string_view                                 shaderId,
                                vshadersystem::ShaderStage                       stage,
-                               const std::unordered_map<std::string, uint32_t>& keywordValues);
+                               const KeywordValues&                             keywordValues);
 
         private:
             vshadersystem::ShaderLibrary                     m_Lib;

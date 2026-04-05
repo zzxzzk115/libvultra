@@ -10,6 +10,8 @@
 
 namespace vultra
 {
+    CoarseInstanceCullPass::CoarseInstanceCullPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         constexpr auto PASS_NAME = "CoarseInstanceCullPass";
@@ -194,7 +196,7 @@ namespace vultra
                 if (!gpuSceneDatabase)
                     return;
 
-                auto variantHash = getShaderLib().computeVariantHash(
+                auto variantHash = computeHighendVariantHash(
                     "coarse_instance_cull.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
@@ -218,7 +220,7 @@ namespace vultra
 
     rhi::ComputePipeline CoarseInstanceCullPass::createPipeline(uint64_t variantHash) const
     {
-        auto shader = getShaderLib().load(variantHash, vshadersystem::ShaderStage::eComp);
+        auto shader = loadHighendShaderVariant(variantHash, vshadersystem::ShaderStage::eComp);
         if (!shader)
         {
             VULTRA_CORE_ERROR("[CoarseInstanceCullPass] Failed to load compute shader variant");

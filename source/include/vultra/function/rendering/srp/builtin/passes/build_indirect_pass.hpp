@@ -12,6 +12,7 @@ namespace vultra
         friend class BasePass;
 
     public:
+        BuildIndirectPass();
         void addPass(FrameGraphBuildContext& ctx);
 
     private:

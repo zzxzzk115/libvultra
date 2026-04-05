@@ -15,6 +15,8 @@
 
 namespace vultra
 {
+    CompatibilityBaseColorPass::CompatibilityBaseColorPass() { setShaderProfile(rhi::ShaderProfile::eCompatibility); }
+
     namespace
     {
         constexpr auto     PASS_NAME                     = "CompatibilityBaseColorPass";
@@ -559,22 +561,15 @@ namespace vultra
         constexpr const char* kVertexShaderId   = "basecolor_cpu.vert";
         constexpr const char* kFragmentShaderId = "basecolor_cpu.frag";
 
-        auto vertexShaderVariantHash =
-            getShaderLib().computeVariantHash(kVertexShaderId, vshadersystem::ShaderStage::eVert, {});
-        auto vertexShader = getShaderLib().load(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
+        auto vertexShader = loadCompatibilityShader(kVertexShaderId, vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
-            VULTRA_CORE_ERROR("[CompatibilityBaseColorPass] Failed to load vertex shader variant: {}", kVertexShaderId);
             return {};
         }
 
-        auto fragmentShaderVariantHash =
-            getShaderLib().computeVariantHash(kFragmentShaderId, vshadersystem::ShaderStage::eFrag, {});
-        auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader = loadCompatibilityShader(kFragmentShaderId, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
-            VULTRA_CORE_ERROR("[CompatibilityBaseColorPass] Failed to load fragment shader variant: {}",
-                              kFragmentShaderId);
             return {};
         }
 

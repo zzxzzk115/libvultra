@@ -11,6 +11,8 @@
 
 namespace vultra
 {
+    MeshletCullPass::MeshletCullPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         constexpr auto PASS_NAME = "MeshletCullPass";
@@ -221,7 +223,7 @@ namespace vultra
                 pc.enableConeCull     = 0u;
 
                 auto variantHash =
-                    getShaderLib().computeVariantHash("meshlet_cull.comp", vshadersystem::ShaderStage::eComp, {});
+                    computeHighendVariantHash("meshlet_cull.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
                     return;
@@ -244,7 +246,7 @@ namespace vultra
 
     rhi::ComputePipeline MeshletCullPass::createPipeline(uint64_t variantHash) const
     {
-        auto shader = getShaderLib().load(variantHash, vshadersystem::ShaderStage::eComp);
+        auto shader = loadHighendShaderVariant(variantHash, vshadersystem::ShaderStage::eComp);
         if (!shader)
         {
             VULTRA_CORE_ERROR("[MeshletCullPass] Failed to load compute shader variant");

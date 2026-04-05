@@ -12,6 +12,7 @@ namespace vultra
         friend class BasePass;
 
     public:
+        GaussianSplatDepthConsolidatePass();
         FrameGraphResource addPass(FrameGraphBuildContext& ctx, FrameGraphResource depthTransmittance);
 
     private:

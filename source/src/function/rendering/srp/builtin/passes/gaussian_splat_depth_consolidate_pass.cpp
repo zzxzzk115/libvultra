@@ -9,6 +9,11 @@
 
 namespace vultra
 {
+    GaussianSplatDepthConsolidatePass::GaussianSplatDepthConsolidatePass()
+    {
+        setShaderProfile(rhi::ShaderProfile::eHighend);
+    }
+
     namespace
     {
         constexpr auto PASS_NAME = "GaussianSplatDepthConsolidatePass";
@@ -107,8 +112,8 @@ namespace vultra
     rhi::GraphicsPipeline GaussianSplatDepthConsolidatePass::createPipeline(bool useSceneDepth) const
     {
         auto vertexShaderVariantHash =
-            getShaderLib().computeVariantHash("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
-        auto vertexShader = getShaderLib().load(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
+            computeHighendVariantHash("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
+        auto vertexShader = loadHighendShaderVariant(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
             VULTRA_CORE_ERROR("[GaussianSplatDepthConsolidatePass] Failed to load vertex shader");
@@ -116,10 +121,10 @@ namespace vultra
         }
 
         auto fragmentShaderVariantHash =
-            getShaderLib().computeVariantHash("gaussian_splat_depth_consolidate.frag",
+            computeHighendVariantHash("gaussian_splat_depth_consolidate.frag",
                                               vshadersystem::ShaderStage::eFrag,
                                               {{"USE_SCENE_DEPTH", useSceneDepth ? 1u : 0u}});
-        auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader = loadHighendShaderVariant(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[GaussianSplatDepthConsolidatePass] Failed to load fragment shader");

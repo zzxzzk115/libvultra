@@ -10,6 +10,7 @@ namespace vultra
         friend class BasePass;
 
     public:
+        MeshletHiZCullPass();
         void addPass(FrameGraphBuildContext& ctx);
 
     private:

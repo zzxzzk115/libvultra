@@ -8,6 +8,8 @@
 
 namespace vultra
 {
+    SplatCompositePass::SplatCompositePass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         constexpr auto PASS_NAME = "SplatCompositePass";
@@ -146,17 +148,17 @@ namespace vultra
     rhi::GraphicsPipeline SplatCompositePass::createPipeline(rhi::PixelFormat colorFormat, bool useDepthAware) const
     {
         auto vertexShaderVariantHash =
-            getShaderLib().computeVariantHash("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
-        auto vertexShader = getShaderLib().load(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
+            computeHighendVariantHash("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
+        auto vertexShader = loadHighendShaderVariant(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
             VULTRA_CORE_ERROR("[SplatCompositePass] Failed to load vertex shader");
             return {};
         }
 
-        auto fragmentShaderVariantHash = getShaderLib().computeVariantHash(
+        auto fragmentShaderVariantHash = computeHighendVariantHash(
             "splat_composite.frag", vshadersystem::ShaderStage::eFrag, {{"USE_DEPTH_AWARE", useDepthAware ? 1u : 0u}});
-        auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader = loadHighendShaderVariant(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[SplatCompositePass] Failed to load fragment shader");

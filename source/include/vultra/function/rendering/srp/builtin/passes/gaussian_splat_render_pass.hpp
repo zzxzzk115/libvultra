@@ -13,6 +13,7 @@ namespace vultra
         friend class BasePass;
 
     public:
+        GaussianSplatRenderPass();
         FrameGraphResource addPass(FrameGraphBuildContext&              ctx,
                                    FrameGraphResource                   buildToken,
                                    const GaussianSplatRendererSettings& settings,

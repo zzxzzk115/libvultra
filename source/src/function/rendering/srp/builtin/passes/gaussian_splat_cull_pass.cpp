@@ -11,6 +11,8 @@
 
 namespace vultra
 {
+    GaussianSplatCullPass::GaussianSplatCullPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         constexpr auto PASS_NAME = "GaussianSplatCullPass";
@@ -161,7 +163,7 @@ namespace vultra
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->gaussianSplatMetaBuffer);
 
                 const uint32_t useSceneDepth   = pd.depth ? 1u : 0u;
-                auto           sortVariantHash = getShaderLib().computeVariantHash("gaussian_splat_sort_keys.comp",
+                auto           sortVariantHash = computeHighendVariantHash("gaussian_splat_sort_keys.comp",
                                                                          vshadersystem::ShaderStage::eComp,
                                                                                    {{"USE_SCENE_DEPTH", useSceneDepth}});
                 const auto*    sortPipeline    = getPipeline(sortVariantHash);
@@ -239,7 +241,7 @@ namespace vultra
                     rc.cb.insertComputeUavBarrier();
                 }
 
-                auto writeIndirectVariantHash = getShaderLib().computeVariantHash(
+                auto writeIndirectVariantHash = computeHighendVariantHash(
                     "gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
                 if (writeIndirectPipeline)
@@ -265,7 +267,7 @@ namespace vultra
 
     rhi::ComputePipeline GaussianSplatCullPass::createPipeline(uint64_t variantHash) const
     {
-        auto shader = getShaderLib().load(variantHash, vshadersystem::ShaderStage::eComp);
+        auto shader = loadHighendShaderVariant(variantHash, vshadersystem::ShaderStage::eComp);
         if (!shader)
         {
             VULTRA_CORE_ERROR("[GaussianSplatCullPass] Failed to load compute shader variant");

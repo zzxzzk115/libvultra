@@ -13,6 +13,8 @@
 
 namespace vultra
 {
+    HzbGeneratePass::HzbGeneratePass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         constexpr auto PASS_NAME = "HZBGeneratePass";
@@ -94,7 +96,7 @@ namespace vultra
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 auto variantHash =
-                    getShaderLib().computeVariantHash("hzb_generate.comp", vshadersystem::ShaderStage::eComp, {});
+                    computeHighendVariantHash("hzb_generate.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
                     return;
@@ -115,7 +117,7 @@ namespace vultra
 
     rhi::ComputePipeline HzbGeneratePass::createPipeline(uint64_t variantHash) const
     {
-        auto shader = getShaderLib().load(variantHash, vshadersystem::ShaderStage::eComp);
+        auto shader = loadHighendShaderVariant(variantHash, vshadersystem::ShaderStage::eComp);
         if (!shader)
         {
             VULTRA_CORE_ERROR("[HZBGeneratePass] Failed to load compute shader variant");
@@ -124,4 +126,3 @@ namespace vultra
         return getRenderDevice().createComputePipelineBuiltin(shader->spirv);
     }
 } // namespace vultra
-

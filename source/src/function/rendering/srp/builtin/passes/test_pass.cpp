@@ -10,6 +10,8 @@
 
 namespace vultra
 {
+    TestPass::TestPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     constexpr auto PASS_NAME = "TestPass";
 
     FrameGraphResource TestPass::addPass(FrameGraphBuildContext& ctx)
@@ -305,7 +307,7 @@ namespace vultra
 
     rhi::GraphicsPipeline TestPass::createPipeline(const rhi::PixelFormat colorFormat) const
     {
-        auto vertexShaderVariantHash = getShaderLib().computeVariantHash("mesh.vert",
+        auto vertexShaderVariantHash = computeHighendVariantHash("mesh.vert",
                                                                          vshadersystem::ShaderStage::eVert,
                                                                          {
                                                                              {"VTX_HAS_NORMAL", 1},
@@ -314,7 +316,7 @@ namespace vultra
                                                                              {"VTX_HAS_UV1", 0},
                                                                              {"VTX_HAS_TANGENT", 1},
                                                                          });
-        auto vertexShader            = getShaderLib().load(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
+        auto vertexShader            = loadHighendShaderVariant(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
             VULTRA_CORE_ERROR("[TestPass] Failed to load vertex shader variant");
@@ -322,8 +324,8 @@ namespace vultra
         }
 
         auto fragmentShaderVariantHash =
-            getShaderLib().computeVariantHash("base.frag", vshadersystem::ShaderStage::eFrag, {{"VTX_HAS_UV0", 1}});
-        auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
+            computeHighendVariantHash("base.frag", vshadersystem::ShaderStage::eFrag, {{"VTX_HAS_UV0", 1}});
+        auto fragmentShader = loadHighendShaderVariant(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[TestPass] Failed to load fragment shader variant");

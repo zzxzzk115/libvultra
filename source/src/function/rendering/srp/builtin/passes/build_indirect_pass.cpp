@@ -11,6 +11,8 @@
 
 namespace vultra
 {
+    BuildIndirectPass::BuildIndirectPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         constexpr auto PASS_NAME = "BuildIndirectPass";
@@ -164,7 +166,7 @@ namespace vultra
                 }
 
                 auto variantHash =
-                    getShaderLib().computeVariantHash("build_indirect.comp", vshadersystem::ShaderStage::eComp, {});
+                    computeHighendVariantHash("build_indirect.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
                     return;
@@ -195,7 +197,7 @@ namespace vultra
 
     rhi::ComputePipeline BuildIndirectPass::createPipeline(uint64_t variantHash) const
     {
-        auto shader = getShaderLib().load(variantHash, vshadersystem::ShaderStage::eComp);
+        auto shader = loadHighendShaderVariant(variantHash, vshadersystem::ShaderStage::eComp);
         if (!shader)
         {
             VULTRA_CORE_ERROR("[BuildIndirectPass] Failed to load compute shader variant");

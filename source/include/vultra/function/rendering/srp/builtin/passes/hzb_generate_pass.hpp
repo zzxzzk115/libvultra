@@ -10,6 +10,7 @@ namespace vultra
         friend class BasePass;
 
     public:
+        HzbGeneratePass();
         void addPass(FrameGraphBuildContext& ctx, FrameGraphResource depth);
 
     private:

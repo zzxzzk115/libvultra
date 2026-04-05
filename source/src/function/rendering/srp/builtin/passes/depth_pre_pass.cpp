@@ -12,6 +12,8 @@
 
 namespace vultra
 {
+    DepthPrePass::DepthPrePass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         constexpr auto PASS_NAME = "DepthPrePass";
@@ -221,28 +223,24 @@ namespace vultra
 
     rhi::GraphicsPipeline DepthPrePass::createPipeline() const
     {
-        auto vertexShaderVariantHash = getShaderLib().computeVariantHash("mesh.vert",
-                                                                         vshadersystem::ShaderStage::eVert,
-                                                                         {
-                                                                             {"VTX_HAS_NORMAL", 1},
-                                                                             {"VTX_HAS_COLOR", 0},
-                                                                             {"VTX_HAS_UV0", 1},
-                                                                             {"VTX_HAS_UV1", 0},
-                                                                             {"VTX_HAS_TANGENT", 1},
-                                                                         });
-        auto vertexShader            = getShaderLib().load(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
+        auto vertexShader = loadHighendShader("mesh.vert",
+                                              vshadersystem::ShaderStage::eVert,
+                                              {
+                                                  {"VTX_HAS_NORMAL", 1},
+                                                  {"VTX_HAS_COLOR", 0},
+                                                  {"VTX_HAS_UV0", 1},
+                                                  {"VTX_HAS_UV1", 0},
+                                                  {"VTX_HAS_TANGENT", 1},
+                                              });
         if (!vertexShader)
         {
-            VULTRA_CORE_ERROR("[DepthPrePass] Failed to load vertex shader variant");
             return {};
         }
 
-        auto fragmentShaderVariantHash = getShaderLib().computeVariantHash(
-            "depth_pre.frag", vshadersystem::ShaderStage::eFrag, {{"VTX_HAS_UV0", 1}});
-        auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader =
+            loadHighendShader("depth_pre.frag", vshadersystem::ShaderStage::eFrag, {{"VTX_HAS_UV0", 1}});
         if (!fragmentShader)
         {
-            VULTRA_CORE_ERROR("[DepthPrePass] Failed to load fragment shader variant");
             return {};
         }
 
@@ -258,4 +256,3 @@ namespace vultra
             .build(getRenderDevice());
     }
 } // namespace vultra
-

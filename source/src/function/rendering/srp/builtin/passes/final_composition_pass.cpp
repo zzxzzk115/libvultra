@@ -6,6 +6,8 @@
 
 namespace vultra
 {
+    FinalCompositionPass::FinalCompositionPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         [[nodiscard]] constexpr bool isSrgbColorFormat(const rhi::PixelFormat format)
@@ -78,8 +80,8 @@ namespace vultra
                                                                const bool             useMultiview) const
     {
         auto vertexShaderVariantHash =
-            getShaderLib().computeVariantHash("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
-        auto vertexShader = getShaderLib().load(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
+            computeHighendVariantHash("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
+        auto vertexShader = loadHighendShaderVariant(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
             VULTRA_CORE_ERROR("[FinalCompositionPass] Failed to load vertex shader variant");
@@ -88,13 +90,13 @@ namespace vultra
 
         const bool manualSrgbEncode = !isSrgbColorFormat(colorFormat);
         auto       fragmentShaderVariantHash =
-            getShaderLib().computeVariantHash("final_composition.frag",
+            computeHighendVariantHash("final_composition.frag",
                                               vshadersystem::ShaderStage::eFrag,
                                               {
                                                   {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
                                                   {"MANUAL_SRGB_ENCODE", manualSrgbEncode ? 1u : 0u},
                                               });
-        auto fragmentShader = getShaderLib().load(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader = loadHighendShaderVariant(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[FinalCompositionPass] Failed to load fragment shader variant");

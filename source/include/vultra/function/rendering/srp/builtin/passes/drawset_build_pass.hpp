@@ -10,6 +10,7 @@ namespace vultra
         friend class BasePass;
 
     public:
+        DrawsetBuildPass();
         void addPass(FrameGraphBuildContext& ctx);
 
     private:

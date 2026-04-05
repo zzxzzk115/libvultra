@@ -10,6 +10,8 @@
 
 namespace vultra
 {
+    DrawsetBuildPass::DrawsetBuildPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+
     namespace
     {
         constexpr auto PASS_NAME = "DrawsetBuildPass";
@@ -116,7 +118,7 @@ namespace vultra
                 }
 
                 auto variantHash =
-                    getShaderLib().computeVariantHash("drawset_build.comp", vshadersystem::ShaderStage::eComp, {});
+                    computeHighendVariantHash("drawset_build.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
                     return;
@@ -144,7 +146,7 @@ namespace vultra
 
     rhi::ComputePipeline DrawsetBuildPass::createPipeline(uint64_t variantHash) const
     {
-        auto shader = getShaderLib().load(variantHash, vshadersystem::ShaderStage::eComp);
+        auto shader = loadHighendShaderVariant(variantHash, vshadersystem::ShaderStage::eComp);
         if (!shader)
         {
             VULTRA_CORE_ERROR("[DrawsetBuildPass] Failed to load compute shader variant");

@@ -14,6 +14,7 @@ namespace vultra
         friend class BasePass;
 
     public:
+        SplatCompositePass();
         FrameGraphResource addPass(FrameGraphBuildContext& ctx,
                                    FrameGraphResource      meshletColor,
                                    FrameGraphResource      splatColor,
