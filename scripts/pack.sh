@@ -4,6 +4,7 @@ set -eu
 repo_root="$1"
 asset_root="$2"
 out_vpk="$3"
+shift 3
 
 normalize_platform() {
     case "$(uname -s)" in
@@ -35,4 +36,4 @@ if [ ! -f "$vasset_cli" ]; then
     exit 1
 fi
 
-exec "$vasset_cli" pack "$asset_root" "$out_vpk" --zstd 6
+exec "$vasset_cli" pack "$asset_root" "$out_vpk" --zstd 6 "$@"

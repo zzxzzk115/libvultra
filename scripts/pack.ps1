@@ -6,7 +6,10 @@ param(
     [string]$AssetRoot,
 
     [Parameter(Mandatory = $true)]
-    [string]$OutVpk
+    [string]$OutVpk,
+
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$ExtraArgs
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,5 +42,5 @@ if (-not (Test-Path $vassetCli)) {
     throw "Missing prebuilt vasset-cli: $vassetCli"
 }
 
-& $vassetCli pack $AssetRoot $OutVpk --zstd 6
+& $vassetCli pack $AssetRoot $OutVpk --zstd 6 @ExtraArgs
 exit $LASTEXITCODE

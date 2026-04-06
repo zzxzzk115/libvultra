@@ -17,6 +17,13 @@ if not is_plat("android") then
             set_values("vpk.mount_path", "/resources.vpk")
             set_values("vpk.enable_import", true)
             set_values("vpk.enable_pack", true)
+            set_values("vpk.include_paths",
+                       {
+                           "scenes",
+                           "scripts",
+                           "models/DamagedHelmet",
+                           "models/Sponza",
+                       })
             set_values("wasm.vpk_path", output_vpk)
             set_values("wasm.vpk_mount", "/resources.vpk")
             set_values("wasm.shell_file", path.join(project_dir, "web", "emscripten_libvultra.html"))
@@ -32,6 +39,8 @@ if not is_plat("android") then
             -- set_values("vpk.output_vpk", "<custom_output_vpk>")
             -- set_values("vpk.import_script", "<custom_import_script>")
             -- set_values("vpk.pack_script", "<custom_pack_script>")
+            -- set_values("vpk.include_paths", {"scenes", "scripts", "models/DamagedHelmet", "models/Sponza", "textures"})
+            -- set_values("vpk.pack_args", {"--include", "splats/demo"})
             -- set_values("wasm.vpk_path", "<prebuilt_vpk>")
             -- set_values("wasm.vpk_mount", "/resources.vpk")
             -- set_values("wasm.extra_ldflags", {"-sALLOW_MEMORY_GROWTH=1", ...})

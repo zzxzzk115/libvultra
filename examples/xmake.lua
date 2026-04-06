@@ -29,6 +29,27 @@ local function _resolve_vpk_paths(target)
     return project_dir, resources_dir, generated_dir, output_vpk, mount_path
 end
 
+local function _collect_vpk_pack_args(target)
+    local args = {}
+
+    local include_paths = _vpk_setting(target, "vpk.include_paths", "wasm_vpk.include_paths")
+    if include_paths ~= nil then
+        for _, include_path in ipairs(include_paths) do
+            table.insert(args, "--include")
+            table.insert(args, include_path)
+        end
+    end
+
+    local extra_args = _vpk_setting(target, "vpk.pack_args", "wasm_vpk.pack_args")
+    if extra_args ~= nil then
+        for _, arg in ipairs(extra_args) do
+            table.insert(args, arg)
+        end
+    end
+
+    return args
+end
+
 rule("resources.vpk_pack")
     on_load(function (target)
         local project_dir, resources_dir, generated_dir, output_vpk = _resolve_vpk_paths(target)
@@ -43,6 +64,7 @@ rule("resources.vpk_pack")
         local resources_dir = target:data("vpk.resources_dir")
         local generated_dir = target:data("vpk.generated_dir")
         local output_vpk    = target:data("vpk.output_vpk")
+        local pack_args     = _collect_vpk_pack_args(target)
 
         local import_enabled = _vpk_setting(target, "vpk.enable_import", "wasm_vpk.enable_import")
         if import_enabled == nil then
@@ -83,7 +105,8 @@ rule("resources.vpk_pack")
                                 or path.join(project_dir, "scripts", "pack.ps1"),
                             project_dir,
                             resources_dir,
-                            output_vpk
+                            output_vpk,
+                            table.unpack(pack_args)
                          })
             end
         else
@@ -103,7 +126,8 @@ rule("resources.vpk_pack")
                                 or path.join(project_dir, "scripts", "pack.sh"),
                             project_dir,
                             resources_dir,
-                            output_vpk
+                            output_vpk,
+                            table.unpack(pack_args)
                          })
             end
         end

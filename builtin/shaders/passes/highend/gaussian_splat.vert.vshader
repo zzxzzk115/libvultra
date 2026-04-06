@@ -9,6 +9,7 @@ USE_MULTIVIEW : bool permute
 #if USE_MULTIVIEW
 #extension GL_EXT_multiview : require
 #endif
+#include "include/common/color.glsl"
 #define VULTRA_DECLARE_CAMERA
 #define VULTRA_DECLARE_DRAW_BUFFER_READONLY
 #define VULTRA_DECLARE_SPLAT_CENTER_BUFFER
@@ -176,7 +177,8 @@ void main()
 
     vec3 cameraWorldPosition = cam.inverseView[3].xyz;
     vec3 viewDir = normalize(worldCenter - cameraWorldPosition);
-    vec3 shaded = max(splatColor.rgb + evalShRest(sourcePointIndex, viewDir, min(splatMeta.shDegree, 3u)), vec3(0.0));
+    vec3 baseColorLinear = splatColor.rgb;
+    vec3 shaded = max(baseColorLinear + evalShRest(sourcePointIndex, viewDir, min(splatMeta.shDegree, 3u)), vec3(0.0));
 
     vec2 ndc0 = clipCenter.xy / clipCenter.w;
     vec2 corner = kCorners[gl_VertexIndex];
