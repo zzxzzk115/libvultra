@@ -19,6 +19,7 @@
 #include <stb_image_write.h>
 
 #include <exception>
+#include <limits>
 #include <set>
 
 #if UINTPTR_MAX < UINT64_MAX && !defined(VULTRA_ALLOW_UNSAFE_32BIT_VULKAN_HANDLES)
@@ -127,6 +128,31 @@ namespace
     {
         return HasFlagValues(featureFlag, vultra::rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline) ||
                HasFlagValues(featureFlag, vultra::rhi::RenderDeviceFeatureFlagBits::eRayQuery);
+    }
+
+    [[nodiscard]] vultra::rhi::RenderDeviceLimits toRenderDeviceLimits(const vk::PhysicalDeviceLimits& limits)
+    {
+        vultra::rhi::RenderDeviceLimits out {};
+        out.maxBindGroups                    = limits.maxBoundDescriptorSets;
+        out.maxUniformBuffersPerShaderStage  = limits.maxPerStageDescriptorUniformBuffers;
+        out.maxStorageBuffersPerShaderStage  = limits.maxPerStageDescriptorStorageBuffers;
+        out.maxSampledTexturesPerShaderStage = limits.maxPerStageDescriptorSampledImages;
+        out.maxSamplersPerShaderStage        = limits.maxPerStageDescriptorSamplers;
+        out.maxStorageTexturesPerShaderStage = limits.maxPerStageDescriptorStorageImages;
+        out.maxUniformBufferBindingSize      = limits.maxUniformBufferRange;
+        out.maxStorageBufferBindingSize      = limits.maxStorageBufferRange;
+        out.maxBufferSize                    = std::numeric_limits<uint64_t>::max();
+        out.maxVertexBuffers                 = limits.maxVertexInputBindings;
+        out.maxVertexAttributes              = limits.maxVertexInputAttributes;
+        out.maxInterStageShaderVariables     = limits.maxVertexOutputComponents;
+        out.maxColorAttachments              = limits.maxColorAttachments;
+        out.maxComputeWorkgroupStorageSize   = limits.maxComputeSharedMemorySize;
+        out.maxComputeInvocationsPerWorkgroup = limits.maxComputeWorkGroupInvocations;
+        out.maxComputeWorkgroupSizeX          = limits.maxComputeWorkGroupSize[0];
+        out.maxComputeWorkgroupSizeY          = limits.maxComputeWorkGroupSize[1];
+        out.maxComputeWorkgroupSizeZ          = limits.maxComputeWorkGroupSize[2];
+        out.maxComputeWorkgroupsPerDimension  = limits.maxComputeWorkGroupCount[0];
+        return out;
     }
 } // namespace
 
@@ -657,6 +683,8 @@ namespace vultra
             {
                 backendOf(m_Backend).m_RayTracingPipelineProperties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {};
             }
+
+            backendOf(m_Backend).m_Limits = toRenderDeviceLimits(backendOf(m_Backend).m_PhysicalDevice.getProperties().limits);
 
             // Query supported features
             vk::PhysicalDeviceFeatures2        features2 {};

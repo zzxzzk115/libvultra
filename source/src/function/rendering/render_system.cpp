@@ -29,8 +29,7 @@
 #include <fg/FrameGraph.hpp>
 
 #include <algorithm>
-#include <filesystem>
-#include <fstream>
+#include <limits>
 #include <numeric>
 #include <unordered_set>
 
@@ -38,6 +37,20 @@ namespace vultra
 {
     namespace
     {
+        [[nodiscard]] uint32_t computeGaussianSplatPointLimit(const rhi::RenderDeviceLimits& limits)
+        {
+            uint64_t maxPoints = std::numeric_limits<uint32_t>::max();
+
+            if (limits.maxStorageBufferBindingSize > 0u)
+                maxPoints = std::min(maxPoints, limits.maxStorageBufferBindingSize / sizeof(uint32_t));
+            if (limits.maxBufferSize > 0u)
+                maxPoints = std::min(maxPoints, limits.maxBufferSize / sizeof(uint32_t));
+            if (limits.maxComputeWorkgroupsPerDimension > 0u)
+                maxPoints = std::min(maxPoints, static_cast<uint64_t>(limits.maxComputeWorkgroupsPerDimension) * 64u);
+
+            return static_cast<uint32_t>(std::min<uint64_t>(maxPoints, std::numeric_limits<uint32_t>::max()));
+        }
+
         void clearColorTarget(rhi::CommandBuffer&        cb,
                               rhi::Texture&              target,
                               const rhi::Rect2D&         area,
@@ -351,6 +364,9 @@ namespace vultra
                 const uint32_t        maxSplatDraws    = static_cast<uint32_t>(m_RenderWorldBack.splatInstances.size());
                 uint32_t              totalSplatPoints = 0u;
                 std::vector<uint32_t> pointDrawIds;
+                const bool            compatibilityWebGpu = rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
+                const uint32_t        maxPointBudget      = compatibilityWebGpu ? computeGaussianSplatPointLimit(rd.getLimits()) : 0u;
+                bool                  pointBudgetClamped   = false;
 
                 m_GpuSceneViewBack.setGaussianSplatGpuDrivenCaps(maxSplatDraws);
                 m_GpuSceneViewBack.ensureGaussianSplatDrawBuffer(rd);
@@ -370,8 +386,32 @@ namespace vultra
                     dr.padding0           = 0;
                     const uint32_t drawId = m_GpuSceneViewBack.pushGaussianSplatDraw(std::move(dr));
 
-                    pointDrawIds.insert(pointDrawIds.end(), pool.gaussianSplats[inst.splatIndex].pointCount, drawId);
-                    totalSplatPoints += pool.gaussianSplats[inst.splatIndex].pointCount;
+                    const uint32_t pointCount = pool.gaussianSplats[inst.splatIndex].pointCount;
+                    uint32_t       emitCount  = pointCount;
+                    if (compatibilityWebGpu && totalSplatPoints >= maxPointBudget)
+                    {
+                        emitCount         = 0u;
+                        pointBudgetClamped = true;
+                    }
+                    else if (compatibilityWebGpu && pointCount > (maxPointBudget - totalSplatPoints))
+                    {
+                        emitCount         = maxPointBudget - totalSplatPoints;
+                        pointBudgetClamped = true;
+                    }
+
+                    if (emitCount > 0u)
+                    {
+                        pointDrawIds.insert(pointDrawIds.end(), emitCount, drawId);
+                        totalSplatPoints += emitCount;
+                    }
+                }
+
+                if (compatibilityWebGpu && pointBudgetClamped && !m_HasLoggedGaussianSplatPointClamp)
+                {
+                    VULTRA_CORE_WARN(
+                        "[RenderSystem] Clamping gaussian splat staged points to {} due to device memory/dispatch limits",
+                        maxPointBudget);
+                    m_HasLoggedGaussianSplatPointClamp = true;
                 }
 
                 m_GpuSceneViewBack.uploadGaussianSplatDraws(rd, cb);

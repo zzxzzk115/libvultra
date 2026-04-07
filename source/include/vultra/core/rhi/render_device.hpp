@@ -90,6 +90,7 @@ namespace vultra
 
             [[nodiscard]] RenderDeviceFeatureFlagBits  getFeatureFlag() const;
             [[nodiscard]] RenderDeviceFeatureReport    getFeatureReport() const;
+            [[nodiscard]] RenderDeviceLimits           getLimits() const;
             [[nodiscard]] RenderDeviceSyncCapabilities getSyncCapabilities() const;
             [[nodiscard]] RenderBackendApi             getBackendApi() const;
             [[nodiscard]] bool                         supportsSwapchain() const;

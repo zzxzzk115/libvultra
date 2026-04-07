@@ -6,6 +6,7 @@
 #include "vultra/core/rhi/render_device.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -395,6 +396,12 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
         WebGPUSorter::WebGPUSorter(RenderDevice& rd, const uint32_t maxElementCount) :
             m_RenderDevice(&rd), m_MaxElementCount(maxElementCount)
         {
+            const auto limits = rd.getLimits();
+            if (limits.maxComputeWorkgroupsPerDimension > 0u)
+            {
+                m_MaxComputeWorkgroupsPerDimension = limits.maxComputeWorkgroupsPerDimension;
+            }
+
             const uint64_t elementBytes = static_cast<uint64_t>(m_MaxElementCount) * sizeof(uint32_t);
             m_MaxPrefixScratchBytes     = computeMaxPrefixScratchBytes(std::max(m_MaxElementCount, 1u));
 
@@ -671,7 +678,28 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
                 return;
             }
 
-            const uint32_t clampedCount   = std::min(elementCount, m_MaxElementCount);
+            uint32_t clampedCount = std::min(elementCount, m_MaxElementCount);
+            if (m_MaxComputeWorkgroupsPerDimension > 0u)
+            {
+                const uint64_t maxCountByDispatch =
+                    static_cast<uint64_t>(m_MaxComputeWorkgroupsPerDimension) * static_cast<uint64_t>(kRadixThreads);
+                const uint32_t clampedLimit =
+                    static_cast<uint32_t>(std::min<uint64_t>(maxCountByDispatch, std::numeric_limits<uint32_t>::max()));
+                if (static_cast<uint64_t>(clampedCount) > maxCountByDispatch)
+                {
+                    if (!m_HasLoggedDispatchClamp)
+                    {
+                        VULTRA_CORE_WARN(
+                            "[WebGPUSorter] Clamping sort count {} -> {} due to compute workgroup limit {}",
+                            clampedCount,
+                            clampedLimit,
+                            m_MaxComputeWorkgroupsPerDimension);
+                        m_HasLoggedDispatchClamp = true;
+                    }
+                    clampedCount = clampedLimit;
+                }
+            }
+
             const uint32_t dispatchCount  = std::max(clampedCount, 1u);
             const uint32_t workgroupCount = std::max(ceilDiv(dispatchCount, kRadixThreads), 1u);
             const auto     levelCounts    = buildPrefixLevelCounts(dispatchCount);

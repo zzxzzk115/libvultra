@@ -84,6 +84,7 @@ namespace vultra
         Samplers m_Samplers;
 
         bool m_EnableGpuDrivenMeshletPipeline {true};
+        bool m_HasLoggedGaussianSplatPointClamp {false};
     };
 
     // Cook World into RenderWorld.

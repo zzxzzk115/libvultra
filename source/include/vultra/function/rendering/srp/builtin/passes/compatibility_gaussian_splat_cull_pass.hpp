@@ -27,5 +27,7 @@ namespace vultra
     private:
         std::optional<rhi::RadixSorter> m_RadixSorter;
         uint32_t                        m_RadixSorterMaxElementCount {0};
+        bool                            m_HasLoggedDispatchClamp {false};
+        bool                            m_HasLoggedMemoryClamp {false};
     };
 } // namespace vultra

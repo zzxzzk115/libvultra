@@ -51,6 +51,29 @@ namespace vultra
             uint32_t    apiPatch {0};
         };
 
+        struct RenderDeviceLimits
+        {
+            uint32_t maxBindGroups {0};
+            uint32_t maxUniformBuffersPerShaderStage {0};
+            uint32_t maxStorageBuffersPerShaderStage {0};
+            uint32_t maxSampledTexturesPerShaderStage {0};
+            uint32_t maxSamplersPerShaderStage {0};
+            uint32_t maxStorageTexturesPerShaderStage {0};
+            uint64_t maxUniformBufferBindingSize {0};
+            uint64_t maxStorageBufferBindingSize {0};
+            uint64_t maxBufferSize {0};
+            uint32_t maxVertexBuffers {0};
+            uint32_t maxVertexAttributes {0};
+            uint32_t maxInterStageShaderVariables {0};
+            uint32_t maxColorAttachments {0};
+            uint32_t maxComputeWorkgroupStorageSize {0};
+            uint32_t maxComputeInvocationsPerWorkgroup {0};
+            uint32_t maxComputeWorkgroupSizeX {0};
+            uint32_t maxComputeWorkgroupSizeY {0};
+            uint32_t maxComputeWorkgroupSizeZ {0};
+            uint32_t maxComputeWorkgroupsPerDimension {0};
+        };
+
         enum class SyncPrimitiveSupport : uint8_t
         {
             eUnsupported,

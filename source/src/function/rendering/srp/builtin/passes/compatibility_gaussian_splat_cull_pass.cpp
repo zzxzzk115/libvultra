@@ -5,10 +5,10 @@
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
-#include "vultra/function/framegraph/framegraph_texture.hpp"
-#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 #include <fg/FrameGraph.hpp>
+
+#include <algorithm>
 
 namespace vultra
 {
@@ -20,6 +20,7 @@ namespace vultra
     namespace
     {
         constexpr auto PASS_NAME = "CompatibilityGaussianSplatCullPass";
+        constexpr uint32_t kCullThreads = 64u;
 
         struct SortKeysPushConstants
         {
@@ -143,19 +144,81 @@ namespace vultra
                 if (totalPointCount == 0u)
                     return;
 
+                const auto limits = rc.rd.getLimits();
+                const uint32_t maxWorkgroups =
+                    limits.maxComputeWorkgroupsPerDimension > 0u ? limits.maxComputeWorkgroupsPerDimension : 65535u;
+                const uint64_t maxPointCountByDispatch = static_cast<uint64_t>(maxWorkgroups) * kCullThreads;
+                const uint64_t maxPointCountByPointIdBuffer = gpuSceneView->gaussianSplatPointDrawIdBuffer ?
+                                                                   static_cast<uint64_t>(
+                                                                       gpuSceneView->gaussianSplatPointDrawIdBuffer->getSize()) /
+                                                                       sizeof(uint32_t) :
+                                                                   0u;
+                uint32_t effectivePointCount                = static_cast<uint32_t>(std::min<uint64_t>(
+                    totalPointCount,
+                    std::min<uint64_t>(maxPointCountByDispatch, maxPointCountByPointIdBuffer)));
+                if (effectivePointCount == 0u)
+                    return;
+                if (effectivePointCount < totalPointCount && !m_HasLoggedDispatchClamp)
+                {
+                    VULTRA_CORE_WARN(
+                        "[CompatibilityGaussianSplatCullPass] Clamping total point count {} -> {} due to compute workgroup limit {}",
+                        totalPointCount,
+                        effectivePointCount,
+                        maxWorkgroups);
+                    m_HasLoggedDispatchClamp = true;
+                }
+
                 rc.cb.clear(*gpuSceneView->gaussianSplatVisibleCountBuffer, 0u);
 
                 // Initialize radix sorter if needed
-                if (!m_RadixSorter.has_value() || m_RadixSorterMaxElementCount < totalPointCount)
+                if (!m_RadixSorter.has_value() || m_RadixSorterMaxElementCount < effectivePointCount)
                 {
-                    m_RadixSorter                = rc.rd.createRadixSorter(totalPointCount);
-                    m_RadixSorterMaxElementCount = totalPointCount;
+                    m_RadixSorter                = rc.rd.createRadixSorter(effectivePointCount);
+                    m_RadixSorterMaxElementCount = effectivePointCount;
                 }
                 if (!m_RadixSorter.has_value() || !m_RadixSorter.value())
                     return;
 
+                const auto memoryLimits = rc.rd.getLimits();
+                const uint64_t maxStorageBytes =
+                    memoryLimits.maxStorageBufferBindingSize > 0u ? memoryLimits.maxStorageBufferBindingSize : UINT64_MAX;
+                const uint64_t maxBufferBytes = memoryLimits.maxBufferSize > 0u ? memoryLimits.maxBufferSize : UINT64_MAX;
+                const uint64_t maxBytes       = std::min(maxStorageBytes, maxBufferBytes);
+
+                if (maxBytes != UINT64_MAX)
+                {
+                    const auto storageReq = m_RadixSorter.value().getKeyValueStorageRequirements();
+                    if (storageReq.size > maxBytes)
+                    {
+                        if (!m_HasLoggedMemoryClamp)
+                        {
+                            VULTRA_CORE_WARN(
+                                "[CompatibilityGaussianSplatCullPass] Skipping sort buffer allocation because required bytes {} exceed device limit {}",
+                                storageReq.size,
+                                maxBytes);
+                            m_HasLoggedMemoryClamp = true;
+                        }
+                        return;
+                    }
+                }
+
                 // Ensure sort buffers are allocated before clearing
-                gpuSceneView->ensureGaussianSplatSortBuffers(rc.rd, m_RadixSorter.value(), totalPointCount);
+                gpuSceneView->ensureGaussianSplatSortBuffers(rc.rd, m_RadixSorter.value(), effectivePointCount);
+                const uint32_t sortCapacity = gpuSceneView->maxGaussianSplatSortElements;
+                if (sortCapacity == 0u)
+                    return;
+                if (effectivePointCount > sortCapacity)
+                {
+                    if (!m_HasLoggedMemoryClamp)
+                    {
+                        VULTRA_CORE_WARN(
+                            "[CompatibilityGaussianSplatCullPass] Clamping point count {} -> {} due to sort buffer memory limits",
+                            effectivePointCount,
+                            sortCapacity);
+                        m_HasLoggedMemoryClamp = true;
+                    }
+                    effectivePointCount = sortCapacity;
+                }
 
                 // Clear sort buffers to prevent stale data from previous frame
                 rc.cb.clear(*gpuSceneView->gaussianSplatSortKeysBuffer, 0u);
@@ -202,23 +265,23 @@ namespace vultra
                 };
 
                 SortKeysPushConstants pc = basePushConstants;
-                pc.totalPointCount       = totalPointCount;
-                pc.maxOutputCount        = totalPointCount;
+                pc.totalPointCount       = effectivePointCount;
+                pc.maxOutputCount        = effectivePointCount;
 
                 {
                     RHI_GPU_ZONE(rc.cb, "CompatibilityGaussianSplatCullPass::Dist");
                     rc.cb.bindPipeline(*sortPipeline);
                     rc.bindDescriptorSets(*sortPipeline);
                     rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
-                    rc.cb.dispatch({(totalPointCount + 63u) / 64u, 1u, 1u});
+                    rc.cb.dispatch({(effectivePointCount + kCullThreads - 1u) / kCullThreads, 1u, 1u});
                 }
                 rc.cb.insertComputeUavBarrier();
 
-                if (totalPointCount > 1u)
+                if (effectivePointCount > 1u)
                 {
                     RHI_GPU_ZONE(rc.cb, "CompatibilityGaussianSplatCullPass::Sort");
                     m_RadixSorter->sortKeyValuesIndirect(rc.cb,
-                                                         totalPointCount,
+                                                         effectivePointCount,
                                                          *gpuSceneView->gaussianSplatVisibleCountBuffer,
                                                          0,
                                                          *gpuSceneView->gaussianSplatSortKeysBuffer,

@@ -79,6 +79,8 @@ namespace vultra
         private:
             RenderDevice* m_RenderDevice {nullptr};
             uint32_t      m_MaxElementCount {0};
+            uint32_t      m_MaxComputeWorkgroupsPerDimension {65535u};
+            mutable bool  m_HasLoggedDispatchClamp {false};
 
             RadixSorterStorageRequirements m_StorageRequirements {};
             RadixSorterStorageRequirements m_KeyValueStorageRequirements {};

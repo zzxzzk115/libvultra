@@ -119,6 +119,31 @@ namespace vultra
                                   toStdString(message));
             }
 
+            [[nodiscard]] RenderDeviceLimits toRenderDeviceLimits(const WGPULimits& limits)
+            {
+                RenderDeviceLimits out {};
+                out.maxBindGroups                    = limits.maxBindGroups;
+                out.maxUniformBuffersPerShaderStage  = limits.maxUniformBuffersPerShaderStage;
+                out.maxStorageBuffersPerShaderStage  = limits.maxStorageBuffersPerShaderStage;
+                out.maxSampledTexturesPerShaderStage = limits.maxSampledTexturesPerShaderStage;
+                out.maxSamplersPerShaderStage        = limits.maxSamplersPerShaderStage;
+                out.maxStorageTexturesPerShaderStage = limits.maxStorageTexturesPerShaderStage;
+                out.maxUniformBufferBindingSize      = limits.maxUniformBufferBindingSize;
+                out.maxStorageBufferBindingSize      = limits.maxStorageBufferBindingSize;
+                out.maxBufferSize                    = limits.maxBufferSize;
+                out.maxVertexBuffers                 = limits.maxVertexBuffers;
+                out.maxVertexAttributes              = limits.maxVertexAttributes;
+                out.maxInterStageShaderVariables      = limits.maxInterStageShaderVariables;
+                out.maxColorAttachments              = limits.maxColorAttachments;
+                out.maxComputeWorkgroupStorageSize    = limits.maxComputeWorkgroupStorageSize;
+                out.maxComputeInvocationsPerWorkgroup = limits.maxComputeInvocationsPerWorkgroup;
+                out.maxComputeWorkgroupSizeX          = limits.maxComputeWorkgroupSizeX;
+                out.maxComputeWorkgroupSizeY          = limits.maxComputeWorkgroupSizeY;
+                out.maxComputeWorkgroupSizeZ          = limits.maxComputeWorkgroupSizeZ;
+                out.maxComputeWorkgroupsPerDimension  = limits.maxComputeWorkgroupsPerDimension;
+                return out;
+            }
+
             template<typename Predicate>
             void waitForFuture(WGPUInstance instance, const WGPUFuture future, Predicate&& done)
             {
@@ -245,6 +270,18 @@ namespace vultra
             if (!m_Queue)
             {
                 throw std::runtime_error("Failed to get WebGPU queue");
+            }
+
+            WGPULimits adapterLimits {};
+            if (wgpuAdapterGetLimits(m_Adapter, &adapterLimits) == WGPUStatus_Success)
+            {
+                m_Limits = toRenderDeviceLimits(adapterLimits);
+            }
+
+            WGPULimits deviceLimits {};
+            if (wgpuDeviceGetLimits(m_Device, &deviceLimits) == WGPUStatus_Success)
+            {
+                m_Limits = toRenderDeviceLimits(deviceLimits);
             }
 
             WGPUAdapterInfo adapterInfo {};

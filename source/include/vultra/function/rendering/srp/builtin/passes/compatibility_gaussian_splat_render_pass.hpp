@@ -8,8 +8,7 @@
 
 namespace vultra
 {
-    class CompatibilityGaussianSplatRenderPass final
-        : public rhi::RenderPass<CompatibilityGaussianSplatRenderPass>
+    class CompatibilityGaussianSplatRenderPass final : public rhi::RenderPass<CompatibilityGaussianSplatRenderPass>
     {
         friend class BasePass;
 
@@ -21,6 +20,6 @@ namespace vultra
                                    const GaussianSplatRendererSettings& settings);
 
     private:
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useSceneDepth) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useSortedIds) const;
     };
 } // namespace vultra

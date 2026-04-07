@@ -16,6 +16,44 @@ local function _wasm_setting(target, key, legacy_key)
     return value
 end
 
+local function _env_u32(name)
+    local value = os.getenv(name)
+    if value == nil or value == "" then
+        return nil
+    end
+    local num = tonumber(value)
+    if num == nil then
+        return nil
+    end
+    num = math.floor(num)
+    if num < 0 then
+        return nil
+    end
+    return num
+end
+
+local function _apply_wasm_memory_policy(target)
+    -- Browser-friendly defaults for desktop-class WebGPU runtimes.
+    -- Override via env vars (MB):
+    --   VULTRA_WASM_INITIAL_MEMORY_MB
+    --   VULTRA_WASM_MAXIMUM_MEMORY_MB
+    local initial_mb = _env_u32("VULTRA_WASM_INITIAL_MEMORY_MB") or 128
+    local maximum_mb = _env_u32("VULTRA_WASM_MAXIMUM_MEMORY_MB") or 2048
+
+    if maximum_mb < initial_mb then
+        maximum_mb = initial_mb
+    end
+
+    -- wasm32 practical ceiling in browsers.
+    if maximum_mb > 2048 then
+        maximum_mb = 2048
+    end
+
+    target:add("ldflags", "-sALLOW_MEMORY_GROWTH=1", {force = true})
+    target:add("ldflags", "-sINITIAL_MEMORY=" .. tostring(initial_mb * 1024 * 1024), {force = true})
+    target:add("ldflags", "-sMAXIMUM_MEMORY=" .. tostring(maximum_mb * 1024 * 1024), {force = true})
+end
+
 local function _resolve_vpk_paths(target)
     local project_dir = _vpk_setting(target, "vpk.project_dir", "wasm_vpk.project_dir")
                         or get_config("project_dir") or os.projectdir()
@@ -142,6 +180,7 @@ rule("wasm.link")
 
         -- Always inject the baseline wasm link flags required by our runtime path.
         target:add("ldflags", "--use-port=emdawnwebgpu", "-sUSE_GLFW=3", "-sASYNCIFY", {force = true})
+        _apply_wasm_memory_policy(target)
 
         -- Optional extra flags (append-only). This avoids accidentally dropping required defaults.
         local extra_ldflags = _wasm_setting(target, "wasm.extra_ldflags", nil)

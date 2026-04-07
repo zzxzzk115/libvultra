@@ -35,6 +35,8 @@ namespace vultra
 
             [[nodiscard]] RenderDeviceFeatureReport getFeatureReport() const override { return m_FeatureReport; }
 
+            [[nodiscard]] RenderDeviceLimits getLimits() const override { return m_Limits; }
+
             [[nodiscard]] RenderDeviceSyncCapabilities getSyncCapabilities() const override
             {
                 return RenderDeviceSyncCapabilities {
@@ -76,6 +78,7 @@ namespace vultra
 
             std::set<std::string>       m_SupportedExtensions;
             RenderDeviceFeatureReport   m_FeatureReport {};
+            RenderDeviceLimits          m_Limits {};
             RenderDeviceFeatureFlagBits m_FeatureFlag {RenderDeviceFeatureFlagBits::eNormal};
             std::string                 m_AppName;
             std::vector<const char*>    m_RequiredInstanceExtensions;

@@ -8,7 +8,6 @@
 #include <fg/Fwd.hpp>
 
 #include <optional>
-#include <vector>
 
 namespace vultra
 {

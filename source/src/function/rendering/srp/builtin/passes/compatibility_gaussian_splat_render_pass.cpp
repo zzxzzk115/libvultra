@@ -37,8 +37,8 @@ namespace vultra
             if (!gpuSceneDatabase.resources)
                 return 0u;
 
-            uint32_t totalPointCount = 0u;
-            const auto drawCount     = gpuSceneView.getDispatchableGaussianSplatDrawCount();
+            uint32_t   totalPointCount = 0u;
+            const auto drawCount       = gpuSceneView.getDispatchableGaussianSplatDrawCount();
             for (uint32_t drawId = 0; drawId < drawCount; ++drawId)
             {
                 if (drawId >= gpuSceneView.gaussianSplatDraws.size())
@@ -63,8 +63,8 @@ namespace vultra
             FrameGraphResource color;
         };
 
-        const auto             resolution        = ctx.view().extent;
-        const auto             cameraBlock       = ctx.bb.get<CameraData>().cameraBlock.fgResource;
+        const auto                resolution  = ctx.view().extent;
+        const auto                cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
         const RasterPushConstants pushConstants {
             .frustumDilation      = settings.frustumDilation,
             .alphaCullThreshold   = settings.alphaCullThreshold,
@@ -128,26 +128,25 @@ namespace vultra
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
-                auto* gpuSceneView     = rc.view().gpuSceneView;
-                auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
-                auto* cameraUbo        = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
-                auto* colorTexture     = resources.get<framegraph::FrameGraphTexture>(pd.color).texture;
+                auto*          gpuSceneView     = rc.view().gpuSceneView;
+                auto*          gpuSceneDatabase = rc.view().gpuSceneDatabase;
+                auto*          cameraUbo        = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
+                auto*          colorTexture     = resources.get<framegraph::FrameGraphTexture>(pd.color).texture;
                 const uint32_t totalPointCount =
                     (gpuSceneView && gpuSceneDatabase) ? countTotalPoints(*gpuSceneView, *gpuSceneDatabase) : 0u;
 
                 const bool canDraw = cameraUbo && colorTexture && gpuSceneView && gpuSceneDatabase &&
                                      gpuSceneDatabase->resources && gpuSceneView->gaussianSplatDrawBuffer &&
-                                     gpuSceneView->gaussianSplatPointDrawIdBuffer &&
-                                     totalPointCount > 0u;
+                                     gpuSceneView->gaussianSplatPointDrawIdBuffer && totalPointCount > 0u;
                 if (!canDraw)
                     return;
 
-                const bool webgpu = rc.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
+                const bool webgpu       = rc.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
                 const bool useSortedIds = gpuSceneView->gaussianSplatSortValuesBuffer &&
                                           gpuSceneView->gaussianSplatIndirectBuffer.has_value() &&
                                           gpuSceneView->maxGaussianSplatSortElements > 0u;
-                const bool useIndirectDraw = useSortedIds;
-                const auto* pipeline = getPipeline(colorTexture->getPixelFormat(), useSortedIds);
+                const bool  useIndirectDraw = useSortedIds;
+                const auto* pipeline        = getPipeline(colorTexture->getPixelFormat(), useSortedIds);
                 if (!pipeline)
                     return;
 
@@ -171,7 +170,7 @@ namespace vultra
                     rhi::prepareForReading(rc.cb, gpuSceneView->gaussianSplatIndirectBuffer.value());
 
                 assert(rc.framebufferInfo().has_value());
-                auto framebufferInfo = rc.framebufferInfo().value();
+                auto framebufferInfo              = rc.framebufferInfo().value();
                 framebufferInfo.depthAttachment   = std::nullopt;
                 framebufferInfo.stencilAttachment = std::nullopt;
                 framebufferInfo.depthReadOnly     = false;
@@ -187,8 +186,8 @@ namespace vultra
                     {15, rhi::bindings::StorageBuffer {.buffer = splatStorage.colorBuffer.get()}},
                     {16, rhi::bindings::StorageBuffer {.buffer = splatStorage.shBuffer.get()}},
                     {19,
-                     rhi::bindings::StorageBuffer {
-                         .buffer = gpuSceneDatabase->resources->gaussianSplatMetaBuffer.get()}},
+                     rhi::bindings::StorageBuffer {.buffer =
+                                                       gpuSceneDatabase->resources->gaussianSplatMetaBuffer.get()}},
                     {21, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatPointDrawIdBuffer.get()}},
                 };
                 if (useSortedIds)
@@ -217,11 +216,12 @@ namespace vultra
                 }
                 else
                 {
-                    rc.cb.draw(rhi::GeometryInfo {
-                                   .topology    = rhi::PrimitiveTopology::eTriangleStrip,
-                                   .numVertices = 4,
-                               },
-                               totalPointCount);
+                    rc.cb.draw(
+                        rhi::GeometryInfo {
+                            .topology    = rhi::PrimitiveTopology::eTriangleStrip,
+                            .numVertices = 4,
+                        },
+                        totalPointCount);
                 }
 
                 rc.cb.endRendering();
@@ -232,7 +232,7 @@ namespace vultra
     }
 
     rhi::GraphicsPipeline CompatibilityGaussianSplatRenderPass::createPipeline(const rhi::PixelFormat colorFormat,
-                                                                                const bool useSortedIds) const
+                                                                               const bool useSortedIds) const
     {
         auto vertexShader = loadCompatibilityShader("gaussian_splat_compat.vert",
                                                     vshadersystem::ShaderStage::eVert,
@@ -277,7 +277,8 @@ namespace vultra
         if (getRenderDevice().getBackendApi() == rhi::RenderBackendApi::eWebGPU)
         {
             return builder
-                .addShader(rhi::ShaderType::eVertex, {.code = vertexShader->wgsl, .reflection = vertexShader->reflection})
+                .addShader(rhi::ShaderType::eVertex,
+                           {.code = vertexShader->wgsl, .reflection = vertexShader->reflection})
                 .addShader(rhi::ShaderType::eFragment,
                            {.code = fragmentShader->wgsl, .reflection = fragmentShader->reflection})
                 .build(getRenderDevice());

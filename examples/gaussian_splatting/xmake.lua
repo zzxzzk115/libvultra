@@ -30,12 +30,6 @@ target("example-gaussian-splatting")
         set_values("wasm.shell_file", path.join(project_dir, "web", "emscripten_libvultra.html"))
         set_values("wasm.imgui_ini", path.join(os.scriptdir(), "imgui.ini"))
         set_values("wasm.imgui_ini_mount", "/imgui.ini")
-        set_values("wasm.extra_ldflags",
-                   {
-                       "-sALLOW_MEMORY_GROWTH=1",
-                       "-sINITIAL_MEMORY=268435456",
-                       "-sMAXIMUM_MEMORY=2147483648",
-                   })
         -- Optional overrides:
         -- set_values("vpk.output_vpk", "<custom_output_vpk>")
         -- set_values("vpk.import_script", "<custom_import_script>")

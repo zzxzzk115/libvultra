@@ -425,9 +425,13 @@ namespace vultra
             return *this;
 #endif
         }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::pushConstants(ShaderStages, uint32_t offset, uint32_t size, const void* data)
+        WebGPUCommandBuffer& WebGPUCommandBuffer::pushConstants(ShaderStages stages,
+                                     uint32_t     offset,
+                                     uint32_t     size,
+                                     const void*  data)
         {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
+            (void)stages;
             (void)offset;
             (void)size;
             (void)data;
@@ -437,6 +441,7 @@ namespace vultra
             {
                 return *this;
             }
+            (void)stages;
 
             const auto layoutKey = m_BoundPipelineObject->getDescriptorSetLayout(kWebGPUPushConstantsSet);
             if (!layoutKey)
@@ -490,7 +495,8 @@ namespace vultra
             {
                 return *this;
             }
-
+            // Performance-oriented emulation: WebGPU push constants are represented by a tiny
+            // uniform buffer updated via queue write (similar to Bevy's dynamic-uniform workflow).
             wgpuQueueWriteBuffer(m_Queue, m_PushConstantBuffer, offset, data, size);
 
             auto it = m_PushConstantBindGroups.find(layoutKey.value);
@@ -979,6 +985,15 @@ namespace vultra
             }
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            auto fallbackToQueueWrite = [&]() {
+                if (m_Queue != nullptr && dst.getHandle() != 0)
+                {
+                    wgpuQueueWriteBuffer(m_Queue, reinterpret_cast<WGPUBuffer>(dst.getHandle()), offset, data, size);
+                    return true;
+                }
+                return false;
+            };
+
             if (m_Device != nullptr && m_Encoder != nullptr && dst.getHandle() != 0 && (offset % 4u) == 0u &&
                 (size % 4u) == 0u)
             {
@@ -996,6 +1011,10 @@ namespace vultra
                 auto* const stagingBuffer    = wgpuDeviceCreateBuffer(m_Device, &stagingDesc);
                 if (stagingBuffer == nullptr)
                 {
+                    if (!fallbackToQueueWrite())
+                    {
+                        return *this;
+                    }
                     return *this;
                 }
 
@@ -1003,6 +1022,10 @@ namespace vultra
                 if (mapped == nullptr)
                 {
                     wgpuBufferRelease(stagingBuffer);
+                    if (!fallbackToQueueWrite())
+                    {
+                        return *this;
+                    }
                     return *this;
                 }
 
@@ -1019,9 +1042,8 @@ namespace vultra
                 return *this;
             }
 
-            if (m_Queue != nullptr && dst.getHandle() != 0)
+            if (fallbackToQueueWrite())
             {
-                wgpuQueueWriteBuffer(m_Queue, reinterpret_cast<WGPUBuffer>(dst.getHandle()), offset, data, size);
                 return *this;
             }
 #endif

@@ -400,6 +400,12 @@ namespace vultra
             return m_Backend->getFeatureReport();
         }
 
+        RenderDeviceLimits RenderDevice::getLimits() const
+        {
+            assert(m_Backend);
+            return m_Backend->getLimits();
+        }
+
         RenderDeviceSyncCapabilities RenderDevice::getSyncCapabilities() const
         {
             assert(m_Backend);
