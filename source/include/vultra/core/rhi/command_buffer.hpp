@@ -1,6 +1,5 @@
 #pragma once
 
-#include "vultra/core/base/base.hpp"
 #include "vultra/core/profiling/tracky.hpp"
 #include "vultra/core/profiling/tracy_wrapper.hpp"
 #include "vultra/core/rhi/debug_marker.hpp"
@@ -54,6 +53,16 @@ namespace vultra
             {
                 assert(m_Impl);
                 return m_Impl->getHandle();
+            }
+            [[nodiscard]] std::uintptr_t getCurrentRenderPassEncoderHandle() const
+            {
+                assert(m_Impl);
+                return m_Impl->getCurrentRenderPassEncoderHandle();
+            }
+            [[nodiscard]] std::uintptr_t getCurrentComputePassEncoderHandle() const
+            {
+                assert(m_Impl);
+                return m_Impl->getCurrentComputePassEncoderHandle();
             }
             [[nodiscard]] TracyGpuContext getTracyContext() const
             {
@@ -344,21 +353,54 @@ namespace vultra
     TracyGpuZoneTransient(CommandBuffer.getTracyContext(), _tracy_vk_zone, CommandBuffer.getHandle(), Label, true)
 
 #ifndef TRACKY_BIND_CMD_BUFFER
-#define TRACKY_BIND_CMD_BUFFER(cmdBuf) \
+#define TRACKY_BIND_CMD_BUFFER(cmdBuf, renderPass, computePass) \
     do \
     { \
     } while (0)
 #endif
 
+#ifndef RHI_TRACKY_JOIN_
+#define RHI_TRACKY_JOIN_(a, b) RHI_TRACKY_JOIN_INNER_(a, b)
+#define RHI_TRACKY_JOIN_INNER_(a, b) a##b
+#endif
+
 #define TRACKY_GPU_NEXT_FRAME(CommandBuffer) \
-    TRACKY_BIND_CMD_BUFFER(CommandBuffer.getHandle()); \
+    TRACKY_BIND_CMD_BUFFER(CommandBuffer.getHandle(), CommandBuffer.getCurrentRenderPassEncoderHandle(), \
+                           CommandBuffer.getCurrentComputePassEncoderHandle()); \
     TRACKY_NEXT_FRAME();
 
 #define TRACKY_GPU_SCOPE(CommandBuffer, Label, ...) \
-    TRACKY_BIND_CMD_BUFFER(CommandBuffer.getHandle()); \
+    TRACKY_BIND_CMD_BUFFER(CommandBuffer.getHandle(), CommandBuffer.getCurrentRenderPassEncoderHandle(), \
+                           CommandBuffer.getCurrentComputePassEncoderHandle()); \
     TRACKY_SCOPE(Label, __VA_ARGS__);
 
-#define TRACKY_GPU_ZONE(CommandBuffer, Label) TRACKY_GPU_SCOPE(CommandBuffer, Label, GPU)
+#if defined(TRACKY_ENABLE) && TRACKY_ENABLE
+#define TRACKY_GPU_ZONE(CmdBuf, Label) \
+    struct RHI_TRACKY_JOIN_(TrackyBoundScopeType_, __LINE__) \
+    { \
+        ::vultra::rhi::CommandBuffer& cb; \
+        const char* scopeLabel; \
+        explicit RHI_TRACKY_JOIN_(TrackyBoundScopeType_, __LINE__)(::vultra::rhi::CommandBuffer& inCb, const char* inLabel) : cb(inCb), scopeLabel(inLabel) \
+        { \
+            TRACKY_BIND_CMD_BUFFER(cb.getHandle(), cb.getCurrentRenderPassEncoderHandle(), \
+                                   cb.getCurrentComputePassEncoderHandle()); \
+            ::tracky::scope_enter(scopeLabel, ::tracky::ExtraFlags(::tracky::EFlags::GPU)); \
+        } \
+        ~RHI_TRACKY_JOIN_(TrackyBoundScopeType_, __LINE__)() \
+        { \
+            TRACKY_BIND_CMD_BUFFER(cb.getHandle(), cb.getCurrentRenderPassEncoderHandle(), \
+                                   cb.getCurrentComputePassEncoderHandle()); \
+            ::tracky::scope_leave(::tracky::ExtraFlags(::tracky::EFlags::GPU)); \
+        } \
+    } RHI_TRACKY_JOIN_(trackyBoundScopeVar_, __LINE__)(CmdBuf, Label)
+#else
+#define TRACKY_GPU_ZONE(CmdBuf, Label) \
+    do \
+    { \
+        (void)(CmdBuf); \
+        (void)(Label); \
+    } while (0)
+#endif
 
 #define RHI_GPU_ZONE(CommandBuffer, Label) \
     RHI_NAMED_DEBUG_MARKER(CommandBuffer, Label); \

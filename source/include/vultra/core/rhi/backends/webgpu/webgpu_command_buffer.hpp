@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/backends/webgpu/webgpu_render_device.hpp"
 #include "vultra/core/rhi/interfaces/icommand_buffer.hpp"
 
+#include <array>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -21,6 +22,8 @@ namespace vultra
 
             [[nodiscard]] std::uintptr_t getHandle() const override;
             [[nodiscard]] TracyGpuContext getTracyContext() const override;
+            [[nodiscard]] std::uintptr_t getCurrentRenderPassEncoderHandle() const override;
+            [[nodiscard]] std::uintptr_t getCurrentComputePassEncoderHandle() const override;
 
             [[nodiscard]] Barrier::Builder& getBarrierBuilder() override;
             [[nodiscard]] DescriptorSetBuilder createDescriptorSetBuilder() override;
@@ -78,6 +81,7 @@ namespace vultra
 
         public:
             [[nodiscard]] WGPURenderPassEncoder getCurrentRenderPassEncoder() const { return m_RenderPass; }
+            [[nodiscard]] WGPUComputePassEncoder getCurrentComputePassEncoder() const { return m_ComputePass; }
 
         private:
             WGPUInstance m_Instance {nullptr};
@@ -85,15 +89,22 @@ namespace vultra
             WGPUQueue    m_Queue {nullptr};
 
             WGPUCommandEncoder   m_Encoder {nullptr};
+            WGPUComputePassEncoder m_ComputePass {nullptr};
             WGPURenderPassEncoder m_RenderPass {nullptr};
             WGPUTextureView      m_RenderView {nullptr};
             WGPUTextureView      m_DepthView {nullptr};
+            std::vector<WGPUBuffer> m_TransientUploadBuffers;
             std::vector<std::unique_ptr<WebGPUDescriptorSet>> m_DescriptorSets;
 
             WGPURenderPipeline m_BoundPipeline {nullptr};
+            WGPUComputePipeline m_BoundComputePipeline {nullptr};
             const BasePipeline* m_BoundPipelineObject {nullptr};
             const WebGPURenderDevice* m_Backend {nullptr};
             std::unordered_map<std::size_t, WGPUBindGroup> m_EmptyBindGroups;
+            std::array<WGPUBindGroup, kMinNumDescriptorSets> m_PendingComputeBindGroups {};
+            std::unordered_map<std::size_t, WGPUBindGroup> m_PushConstantBindGroups;
+            WGPUBuffer m_PushConstantBuffer {nullptr};
+            uint64_t   m_PushConstantBufferSize {0};
             bool           m_Recording {false};
             bool           m_InsideRendering {false};
             bool           m_SkipCurrentRendering {false};

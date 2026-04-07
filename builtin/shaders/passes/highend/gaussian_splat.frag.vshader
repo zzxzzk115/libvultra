@@ -66,7 +66,8 @@ void main()
     if (alpha < kOpacityDiscardThreshold)
         discard;
 
-    vec3 color = (v_SplatColor.a > 0.0) ? v_SplatColor.rgb : sRGBToLinear(hashColor(v_SplatIndex));
+    vec3 color = (v_SplatColor.a > 0.0) ? v_SplatColor.rgb : hashColor(v_SplatIndex);
+    color = sRGBToLinear(color);
 
     FragColor = vec4(color * alpha, alpha);
 #if NEED_SURFACE_INFO && USE_DEPTH_TRANSMITTANCE

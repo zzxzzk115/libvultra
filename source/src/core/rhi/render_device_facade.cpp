@@ -18,6 +18,8 @@
 #include "vultra/core/rhi/backends/webgpu/conversions.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_buffer.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_compute_pipeline.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_compute_pipeline_destroy.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_pipeline_layout.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_render_device.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_shader_module.hpp"
@@ -242,7 +244,13 @@ namespace vultra
                 std::size_t hash {0};
                 for (const auto& binding : bindings)
                 {
-                    hashCombine(hash, binding.binding, binding.type, binding.count, binding.stageFlags, binding.flags);
+                    hashCombine(hash,
+                                binding.binding,
+                                binding.type,
+                                binding.access,
+                                binding.count,
+                                binding.stageFlags,
+                                binding.flags);
                 }
                 return hash;
             }
@@ -289,7 +297,9 @@ namespace vultra
                             WGPUBindGroupLayoutEntry entry {};
                             entry.binding               = binding.binding;
                             entry.visibility            = visibility;
-                            entry.buffer.type           = WGPUBufferBindingType_Storage;
+                            entry.buffer.type           = binding.access == vshadersystem::ResourceAccess::eReadOnly ?
+                                                              WGPUBufferBindingType_ReadOnlyStorage :
+                                                              WGPUBufferBindingType_Storage;
                             entry.buffer.minBindingSize = 0;
                             entries.push_back(entry);
                             break;
@@ -332,7 +342,20 @@ namespace vultra
                             WGPUBindGroupLayoutEntry entry {};
                             entry.binding                      = binding.binding;
                             entry.visibility                   = visibility;
-                            entry.storageTexture.access        = WGPUStorageTextureAccess_WriteOnly;
+                            switch (binding.access)
+                            {
+                                case vshadersystem::ResourceAccess::eReadOnly:
+                                    entry.storageTexture.access = WGPUStorageTextureAccess_ReadOnly;
+                                    break;
+                                case vshadersystem::ResourceAccess::eReadWrite:
+                                    entry.storageTexture.access = WGPUStorageTextureAccess_ReadWrite;
+                                    break;
+                                case vshadersystem::ResourceAccess::eWriteOnly:
+                                case vshadersystem::ResourceAccess::eUnknown:
+                                default:
+                                    entry.storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
+                                    break;
+                            }
                             entry.storageTexture.format        = WGPUTextureFormat_RGBA8Unorm;
                             entry.storageTexture.viewDimension = WGPUTextureViewDimension_2D;
                             entries.push_back(entry);
@@ -426,11 +449,27 @@ namespace vultra
                     m_Backend = std::make_unique<VulkanRenderDevice>();
 #else
                     m_Backend = createWebGPUBackend(appName);
+#ifdef TRACKY_ENABLE
+                    TRACKY_STARTUP_WEBGPU(reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Instance),
+                                          reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Device),
+                                          reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Queue),
+                                          4 * 1024,
+                                          webgpuBackend(m_Backend).m_SupportsTimestampQuery,
+                                          1.0f);
+#endif
                     return;
 #endif
                     break;
                 case RenderBackendApi::eWebGPU: {
                     m_Backend = createWebGPUBackend(appName);
+#ifdef TRACKY_ENABLE
+                    TRACKY_STARTUP_WEBGPU(reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Instance),
+                                          reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Device),
+                                          reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Queue),
+                                          4 * 1024,
+                                          webgpuBackend(m_Backend).m_SupportsTimestampQuery,
+                                          1.0f);
+#endif
                     return;
                 }
             }
@@ -471,6 +510,9 @@ namespace vultra
 #else
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
+#ifdef TRACKY_ENABLE
+                TRACKY_TEARDOWN();
+#endif
                 return;
             }
 
@@ -1524,7 +1566,7 @@ namespace vultra
                                    static_cast<std::size_t>(2166136261u);
             for (const auto& b : bindings)
             {
-                hashCombine(hash, b.binding, b.type, b.count, b.stageFlags, b.flags);
+                hashCombine(hash, b.binding, b.type, b.access, b.count, b.stageFlags, b.flags);
             }
 
             if (const auto it = vkBackend(m_Backend).m_DescriptorSetLayouts.find(hash);
@@ -1658,10 +1700,83 @@ namespace vultra
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
+#if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
                 (void)shaderStageInfo;
                 (void)pipelineLayout;
-                VULTRA_CORE_WARN("[RenderDevice] WebGPU compute pipeline is not implemented yet");
                 return {};
+#else
+                auto& backend = webgpuBackend(m_Backend);
+                if (backend.m_Device == nullptr)
+                {
+                    return {};
+                }
+
+                auto reflection = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
+                auto shaderModule = createShaderModule(ShaderType::eCompute,
+                                                       shaderStageInfo.code,
+                                                       shaderStageInfo.entryPointName,
+                                                       shaderStageInfo.defines,
+                                                       reflection ? std::addressof(reflection.value()) : nullptr);
+                if (!shaderModule)
+                {
+                    return {};
+                }
+
+                if (shaderStageInfo.reflection.has_value())
+                {
+                    shaderModule.getReflection() = *shaderStageInfo.reflection;
+                    if (reflection)
+                    {
+                        reflection = shaderStageInfo.reflection;
+                    }
+                }
+
+                if (reflection && !pipelineLayout)
+                {
+                    pipelineLayout = reflectPipelineLayout(*this, *reflection);
+                }
+                if (!pipelineLayout)
+                {
+                    return {};
+                }
+
+                WGPUShaderSourceWGSL source {};
+                source.chain.sType = WGPUSType_ShaderSourceWGSL;
+                source.code        = WGPUStringView {.data = shaderModule.getWgsl().data(), .length = WGPU_STRLEN};
+
+                WGPUShaderModuleDescriptor shaderDesc {};
+                shaderDesc.nextInChain = const_cast<WGPUChainedStruct*>(
+                    reinterpret_cast<const WGPUChainedStruct*>(&source));
+                auto* const shaderHandle = wgpuDeviceCreateShaderModule(backend.m_Device, &shaderDesc);
+                if (shaderHandle == nullptr)
+                {
+                    return {};
+                }
+
+                WGPUComputePipelineDescriptor descriptor {};
+                descriptor.layout  = reinterpret_cast<WGPUPipelineLayout>(pipelineLayout->getHandle());
+                descriptor.compute.module = shaderHandle;
+                descriptor.compute.entryPoint = WGPUStringView {.data   = shaderStageInfo.entryPointName.data(),
+                                                                .length = shaderStageInfo.entryPointName.size()};
+
+                auto* const pipeline = wgpuDeviceCreateComputePipeline(backend.m_Device, &descriptor);
+                wgpuShaderModuleRelease(shaderHandle);
+                if (pipeline == nullptr)
+                {
+                    return {};
+                }
+
+                const auto localSize =
+                    reflection && reflection->localSize.has_value() ? *reflection->localSize : glm::uvec3 {1u, 1u, 1u};
+
+                return ComputePipeline {
+                    std::move(*pipelineLayout),
+                    localSize,
+                    reinterpret_cast<std::uintptr_t>(pipeline),
+                    std::make_unique<WebGPUComputePipelineDestroy>(),
+                    std::make_unique<WebGPUComputePipeline>(reinterpret_cast<std::uintptr_t>(pipeline), localSize),
+                };
+#endif
             }
 #if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
             (void)shaderStageInfo;

@@ -5,6 +5,7 @@
 #include "vultra/core/rhi/backends/vk/vulkan_buffer.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_acceleration_structure.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_sorter.hpp"
 #include "vultra/core/rhi/raytracing_pipeline.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_radix_sorter.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
@@ -273,6 +274,10 @@ namespace vultra
 
         RadixSorter RenderDevice::createRadixSorter(const uint32_t maxElementCount)
         {
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                return RadixSorter::create(std::make_unique<WebGPUSorter>(*this, maxElementCount));
+            }
             return RadixSorter::create(std::make_unique<VulkanRadixSorter>(*this, maxElementCount));
         }
 

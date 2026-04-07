@@ -10,8 +10,6 @@
 #include "vultra/core/rhi/structs/geometry_info.hpp"
 #include "vultra/core/rhi/structs/buffer_image_copy.hpp"
 #include "vultra/core/rhi/structs/handles.hpp"
-#include "vultra/core/rhi/index_buffer.hpp"
-#include "vultra/core/rhi/pipeline_layout.hpp"
 #include "vultra/core/rhi/shader_binding_table.hpp"
 #include "vultra/core/rhi/structs/rect2d.hpp"
 #include "vultra/core/rhi/structs/shader_type.hpp"
@@ -37,6 +35,8 @@ namespace vultra
 
             [[nodiscard]] virtual std::uintptr_t     getHandle() const = 0;
             [[nodiscard]] virtual TracyGpuContext    getTracyContext() const = 0;
+            [[nodiscard]] virtual std::uintptr_t     getCurrentRenderPassEncoderHandle() const { return 0; }
+            [[nodiscard]] virtual std::uintptr_t     getCurrentComputePassEncoderHandle() const { return 0; }
 
             [[nodiscard]] virtual Barrier::Builder& getBarrierBuilder() = 0;
             [[nodiscard]] virtual DescriptorSetBuilder createDescriptorSetBuilder() = 0;

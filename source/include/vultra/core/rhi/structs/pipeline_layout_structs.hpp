@@ -4,6 +4,8 @@
 #include "vultra/core/rhi/structs/resource_indices.hpp"
 #include "vultra/core/rhi/structs/shader_type.hpp"
 
+#include <vshadersystem/types.hpp>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -26,11 +28,12 @@ namespace vultra
 
         struct DescriptorSetLayoutBindingEx
         {
-            BindingIndex   binding {0};
-            DescriptorType type {DescriptorType::eSampler};
-            uint32_t       count {1};
-            ShaderStages   stageFlags {ShaderStages::eNone};
-            uint32_t       flags {0};
+            BindingIndex                binding {0};
+            DescriptorType              type {DescriptorType::eSampler};
+            vshadersystem::ResourceAccess access {vshadersystem::ResourceAccess::eUnknown};
+            uint32_t                    count {1};
+            ShaderStages                stageFlags {ShaderStages::eNone};
+            uint32_t                    flags {0};
         };
 
         struct PushConstantRange

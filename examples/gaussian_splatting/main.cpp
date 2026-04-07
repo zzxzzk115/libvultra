@@ -14,6 +14,8 @@ class GaussianSplattingDemoApp final : public DemoAppHost
 protected:
     std::string_view demoWindowTitle() const override { return "Gaussian Splatting Demo"; }
 
+    bool demoEnableExperimentalWebGPUContent() const override { return true; }
+
     void onPostConfigureDemo(Engine& engine) override
     {
         auto& sceneService = engine.ctx().services.require<ISceneService>();

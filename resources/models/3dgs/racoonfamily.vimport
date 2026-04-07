@@ -4,7 +4,7 @@ importer="gaussian_splat"
 uid="88d5d7a86cd71cd3158ebe91e3f40f14"
 
 [source]
-file="models/racoonfamily.spz"
+file="models/3dgs/racoonfamily.spz"
 
 [output]
 file="imported/gaussian_splat/racoonfamily"

@@ -8,7 +8,11 @@ if not is_plat("android") then
             add_rules("resources.vpk_pack", "wasm.link")
 
             local project_dir = os.projectdir()
-            local generated_dir = path.join(project_dir, "build", ".generated", "wasm_resources")
+            local generated_dir = path.join(project_dir,
+                                            "build",
+                                            ".generated",
+                                            "wasm_resources",
+                                            "example-demo-app")
             local output_vpk = path.join(generated_dir, "resources.vpk")
 
             set_values("vpk.project_dir", project_dir)

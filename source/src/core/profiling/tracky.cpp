@@ -20,6 +20,10 @@
 #error "Undefined TRACKY GPU backend"
 #endif
 
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+#include <webgpu/webgpu.h>
+#endif
+
 
 // NOLINTBEGIN
 // clang-format off
@@ -119,6 +123,7 @@ namespace
 	{
 		Time_ early, late;
 		std::size_t number;
+		uint32_t queryCount;
 	};
 	struct RecordScope_
 	{
@@ -167,7 +172,16 @@ namespace
 #ifdef TRACKY_OPENGL
 			Tracky_();
 #elifdef TRACKY_VULKAN
+	        Tracky_();
 	        Tracky_(vk::Device aDevice, uint32_t aQueryCount, float aTimestampPeriodNs);
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+	        Tracky_(std::uintptr_t aInstanceHandle,
+	                std::uintptr_t aDeviceHandle,
+	                std::uintptr_t aQueueHandle,
+	                uint32_t       aQueryCount,
+	                bool           aSupportsTimestampQuery,
+	                float          aTimestampPeriodNs);
+#endif
 #endif
 
 	        ~Tracky_();
@@ -187,7 +201,10 @@ namespace
 			void set_frame_lag( std::size_t aLag = 5 );
 
 #ifdef TRACKY_VULKAN
-            void bind_cmd_buffer( vk::CommandBuffer aCmdBuffer );
+			void bind_cmd_buffer( std::uintptr_t aCmdBufferHandle,
+			                     std::uintptr_t aRenderPassHandle,
+			                     std::uintptr_t aComputePassHandle );
+			void resolve_webgpu_queries();
 #endif
 
 		private:
@@ -202,6 +219,9 @@ namespace
 			void collect_gl_results_( Record_*, std::size_t );
 #elifdef TRACKY_VULKAN
             void collect_vk_results_( Record_*, std::size_t );
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+	        void collect_webgpu_results_( Record_*, std::size_t );
+#endif
 #endif
 
 			void scribe_();
@@ -247,6 +267,27 @@ namespace
 	        uint32_t mMaxQueries = 0;
 	        bool mVkInitialized = false;
 	        float mTimestampPeriodNs = 1.0f;
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+	        struct WebGPUFrameSlot_
+	        {
+	            WGPUQuerySet querySet {nullptr};
+	            WGPUBuffer   queryResolveBuffer {nullptr};
+	            WGPUBuffer   queryReadbackBuffer {nullptr};
+	        };
+	        std::vector<WebGPUFrameSlot_> mWebGPUFrames;
+	        WGPUInstance                 mWebGPUInstance {nullptr};
+	        WGPUDevice                   mWebGPUDevice {nullptr};
+	        WGPUQueue                    mWebGPUQueue {nullptr};
+	        WGPUCommandEncoder           mWebGPUCommandEncoder {nullptr};
+	        WGPURenderPassEncoder        mWebGPURenderPassEncoder {nullptr};
+	        WGPUComputePassEncoder       mWebGPUComputePassEncoder {nullptr};
+	        uint32_t                     mWebGPUQueryIndex {0};
+	        uint32_t                     mWebGPUQueryCount {0};
+	        std::size_t                  mWebGPUFrameSlot {0};
+	        bool                         mWebGPUInitialized {false};
+	        bool                         mWebGPUSupportsTimestampQuery {false};
+	        float                        mWebGPUTimestampPeriodNs {1.0f};
+#endif
 #endif
 
 			// Internal statistics
@@ -325,11 +366,38 @@ namespace tracky
 
 		gTracky = std::make_unique<Tracky_>(aDevice, aQueryCount, aTimestampPeriodNs);
     }
-    void bind_cmd_buffer( vk::CommandBuffer aCmdBuffer )
+	void startup_webgpu(std::uintptr_t aInstanceHandle,
+	                    std::uintptr_t aDeviceHandle,
+	                    std::uintptr_t aQueueHandle,
+	                    uint32_t       aQueryCount,
+	                    bool           aSupportsTimestampQuery,
+	                    float          aTimestampPeriodNs)
+	{
+		if( gTracky )
+		{
+			std::fprintf( stderr, "WARNING: tracky: already set up\n" );
+			return;
+		}
+
+		gTracky = std::make_unique<Tracky_>(aInstanceHandle,
+		                                   aDeviceHandle,
+		                                   aQueueHandle,
+		                                   aQueryCount,
+		                                   aSupportsTimestampQuery,
+		                                   aTimestampPeriodNs);
+	}
+	void bind_cmd_buffer( std::uintptr_t aCmdBufferHandle,
+	                      std::uintptr_t aRenderPassHandle,
+	                      std::uintptr_t aComputePassHandle )
     {
         assert( gTracky );
-        gTracky->bind_cmd_buffer( aCmdBuffer );
+		gTracky->bind_cmd_buffer( aCmdBufferHandle, aRenderPassHandle, aComputePassHandle );
     }
+	void resolve_webgpu_queries()
+	{
+		assert( gTracky );
+		gTracky->resolve_webgpu_queries();
+	}
 #endif
 	void teardown()
 	{
@@ -344,6 +412,25 @@ namespace
 #ifdef TRACKY_OPENGL
     Tracky_::Tracky_()
 #elifdef TRACKY_VULKAN
+	Tracky_::Tracky_()
+		: mEpoch( Clock_::now() )
+	{
+		set_frame_lag();
+
+		for( std::size_t i = 0; i < mFrameLag+1; ++i )
+		{
+			auto* recs = mAvailable.emplace_back( new Records_ );
+			recs->reserve( kInitialRecordBuffer_ );
+		}
+
+		mScribe = JThread( [self=this] () {
+			self->scribe_();
+		} );
+
+		mVkInitialized = false;
+		mTimestampPeriodNs = 1.0f;
+	}
+
 	Tracky_::Tracky_(vk::Device aDevice, uint32_t aQueryCount, float aTimestampPeriodNs)
 #endif
 		: mEpoch( Clock_::now() )
@@ -382,6 +469,66 @@ namespace
 	    mQueryPool = aDevice.createQueryPool(qinfo);
 #endif
 	}
+
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+	Tracky_::Tracky_(std::uintptr_t aInstanceHandle,
+	                std::uintptr_t aDeviceHandle,
+	                std::uintptr_t aQueueHandle,
+	                uint32_t       aQueryCount,
+	                bool           aSupportsTimestampQuery,
+	                float          aTimestampPeriodNs)
+		: mEpoch( Clock_::now() )
+	{
+		set_frame_lag();
+
+		for( std::size_t i = 0; i < mFrameLag+1; ++i )
+		{
+			auto* recs = mAvailable.emplace_back( new Records_ );
+			recs->reserve( kInitialRecordBuffer_ );
+		}
+
+		mScribe = JThread( [self=this] () {
+			self->scribe_();
+		} );
+
+		mWebGPUInstance                 = reinterpret_cast<WGPUInstance>(aInstanceHandle);
+		mWebGPUDevice                   = reinterpret_cast<WGPUDevice>(aDeviceHandle);
+		mWebGPUQueue                    = reinterpret_cast<WGPUQueue>(aQueueHandle);
+		mWebGPUSupportsTimestampQuery    = aSupportsTimestampQuery;
+		mWebGPUTimestampPeriodNs         = aTimestampPeriodNs > 0.0f ? aTimestampPeriodNs : 1.0f;
+		mWebGPUQueryCount                = aQueryCount;
+		mWebGPUQueryIndex                = 0;
+		mWebGPUFrameSlot                 = 0;
+		mWebGPUInitialized               = mWebGPUDevice != nullptr && mWebGPUQueue != nullptr;
+		mWebGPUCommandEncoder            = nullptr;
+
+		if( !mWebGPUInitialized || !mWebGPUSupportsTimestampQuery || mWebGPUQueryCount == 0 )
+		{
+			return;
+		}
+
+		mWebGPUFrames.resize( mFrameLag + 1 );
+		for( auto& frame : mWebGPUFrames )
+		{
+			WGPUQuerySetDescriptor queryDesc {};
+			queryDesc.type  = WGPUQueryType_Timestamp;
+			queryDesc.count = mWebGPUQueryCount;
+			frame.querySet  = wgpuDeviceCreateQuerySet( mWebGPUDevice, &queryDesc );
+
+			WGPUBufferDescriptor resolveDesc {};
+			resolveDesc.usage            = WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc;
+			resolveDesc.size             = static_cast<uint64_t>(mWebGPUQueryCount) * sizeof(uint64_t);
+			resolveDesc.mappedAtCreation = false;
+			frame.queryResolveBuffer     = wgpuDeviceCreateBuffer( mWebGPUDevice, &resolveDesc );
+
+			WGPUBufferDescriptor readbackDesc {};
+			readbackDesc.usage            = WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst;
+			readbackDesc.size             = static_cast<uint64_t>(mWebGPUQueryCount) * sizeof(uint64_t);
+			readbackDesc.mappedAtCreation = false;
+			frame.queryReadbackBuffer     = wgpuDeviceCreateBuffer( mWebGPUDevice, &readbackDesc );
+		}
+	}
+#endif
 
 	Tracky_::~Tracky_()
 	{
@@ -425,7 +572,32 @@ namespace
 #elifdef TRACKY_VULKAN
 	    // Vulkan resources
         std::size_t queries = mMaxQueries;
-	    mDevice.destroyQueryPool(mQueryPool);
+	    if (mVkInitialized && mDevice && mQueryPool)
+	    {
+	        mDevice.destroyQueryPool(mQueryPool);
+	    }
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+	    // WebGPU resources
+	    queries = mWebGPUQueryCount;
+	    for( auto& frame : mWebGPUFrames )
+	    {
+	    	if( frame.querySet != nullptr )
+	    	{
+	    		wgpuQuerySetRelease( frame.querySet );
+	    		frame.querySet = nullptr;
+	    	}
+	    	if( frame.queryResolveBuffer != nullptr )
+	    	{
+	    		wgpuBufferRelease( frame.queryResolveBuffer );
+	    		frame.queryResolveBuffer = nullptr;
+	    	}
+	    	if( frame.queryReadbackBuffer != nullptr )
+	    	{
+	    		wgpuBufferRelease( frame.queryReadbackBuffer );
+	    		frame.queryReadbackBuffer = nullptr;
+	    	}
+	    }
+#endif
 #endif
 
 		// Final stats
@@ -468,16 +640,39 @@ namespace
 		// Do this relatively late.
 		if( !!(EFlags::GPU & aFlags) )
 		{
-			record.scope.gpu.query = pull_query_();
-
-#ifdef TRACKY_OPENGL
-			glQueryCounter( record.scope.gpu.query, GL_TIMESTAMP );
-#elifdef TRACKY_VULKAN
-		    if (mVkInitialized)
-		    {
-		        mCmdBuf.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, mQueryPool, record.scope.gpu.query);
-		    }
+			record.scope.gpu.query = 0u;
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+			if( mWebGPUInitialized && mWebGPUSupportsTimestampQuery )
+			{
+				if( mWebGPUCommandEncoder != nullptr && mWebGPUComputePassEncoder == nullptr && mWebGPURenderPassEncoder == nullptr )
+				{
+					record.scope.gpu.query = pull_query_();
+					if( mWebGPUQueryCount > 0 )
+					{
+						const auto& frame = mWebGPUFrames[mWebGPUFrameSlot];
+						if( frame.querySet != nullptr && record.scope.gpu.query < mWebGPUQueryCount )
+						{
+							wgpuCommandEncoderWriteTimestamp( mWebGPUCommandEncoder, frame.querySet, record.scope.gpu.query );
+						}
+					}
+				}
+			}
+			else
 #endif
+#ifdef TRACKY_VULKAN
+			if( mVkInitialized && mCmdBuf != nullptr )
+			{
+				record.scope.gpu.query = pull_query_();
+#ifdef TRACKY_OPENGL
+				glQueryCounter( record.scope.gpu.query, GL_TIMESTAMP );
+#elifdef TRACKY_VULKAN
+				mCmdBuf.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, mQueryPool, record.scope.gpu.query);
+#endif
+			}
+			else
+#endif
+			{
+			}
 		}
 		else
 			record.scope.gpu.query = 0;
@@ -511,15 +706,39 @@ namespace
 		// We would like to do this in the middle of the function...
 		if( !!(EFlags::GPU & aFlags) )
 		{
-			record.scope.gpu.query = pull_query_();
-#ifdef TRACKY_OPENGL
-		    glQueryCounter( record.scope.gpu.query, GL_TIMESTAMP );
-#elifdef TRACKY_VULKAN
-		    if (mVkInitialized)
-		    {
-		        mCmdBuf.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, mQueryPool, record.scope.gpu.query);
-		    }
+			record.scope.gpu.query = 0u;
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+			if( mWebGPUInitialized && mWebGPUSupportsTimestampQuery )
+			{
+				if( mWebGPUCommandEncoder != nullptr && mWebGPUComputePassEncoder == nullptr && mWebGPURenderPassEncoder == nullptr )
+				{
+					record.scope.gpu.query = pull_query_();
+					if( mWebGPUQueryCount > 0 )
+					{
+						const auto& frame = mWebGPUFrames[mWebGPUFrameSlot];
+						if( frame.querySet != nullptr && record.scope.gpu.query < mWebGPUQueryCount )
+						{
+							wgpuCommandEncoderWriteTimestamp( mWebGPUCommandEncoder, frame.querySet, record.scope.gpu.query );
+						}
+					}
+				}
+			}
+			else
 #endif
+#ifdef TRACKY_VULKAN
+			if( mVkInitialized && mCmdBuf != nullptr )
+			{
+				record.scope.gpu.query = pull_query_();
+#ifdef TRACKY_OPENGL
+				glQueryCounter( record.scope.gpu.query, GL_TIMESTAMP );
+#elifdef TRACKY_VULKAN
+				mCmdBuf.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, mQueryPool, record.scope.gpu.query);
+#endif
+			}
+			else
+#endif
+			{
+			}
 		}
 		else
 			record.scope.gpu.query = 0;
@@ -540,15 +759,40 @@ namespace
 		uint32_t query = 0;
 		if( !!(EFlags::GPU & aFlags) )
 		{
-			query = pull_query_();
-#ifdef TRACKY_OPENGL
-		    glQueryCounter( query, GL_TIMESTAMP );
-#elifdef TRACKY_VULKAN
-		    if (mVkInitialized)
-		    {
-		        mCmdBuf.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, mQueryPool, query);
-		    }
+			query = 0u;
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+			if( mWebGPUInitialized && mWebGPUSupportsTimestampQuery )
+			{
+				if( mWebGPUCommandEncoder != nullptr && mWebGPUComputePassEncoder == nullptr && mWebGPURenderPassEncoder == nullptr )
+				{
+					query = pull_query_();
+					if( mWebGPUQueryCount > 0 )
+					{
+						const auto& frame = mWebGPUFrames[mWebGPUFrameSlot];
+						if( frame.querySet != nullptr && query < mWebGPUQueryCount )
+						{
+							wgpuCommandEncoderWriteTimestamp( mWebGPUCommandEncoder, frame.querySet, query );
+						}
+					}
+				}
+			}
+			else
 #endif
+#ifdef TRACKY_VULKAN
+			if( mVkInitialized && mCmdBuf != nullptr )
+			{
+				query = pull_query_();
+#ifdef TRACKY_OPENGL
+				glQueryCounter( query, GL_TIMESTAMP );
+#elifdef TRACKY_VULKAN
+				mCmdBuf.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, mQueryPool, query);
+#endif
+			}
+			else
+#endif
+			{
+				query = 0u;
+			}
 		}
 
 		// Enter record
@@ -610,6 +854,18 @@ namespace
 			last.type = ERecord_::frameEnd;
 			last.frame.early = last.frame.late = early;
 			last.frame.number = mFrameNumber;
+			last.frame.queryCount = 0u;
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+			if( mWebGPUInitialized && mWebGPUSupportsTimestampQuery )
+			{
+				last.frame.queryCount = mWebGPUQueryIndex;
+			}
+#elifdef TRACKY_VULKAN
+			if( mVkInitialized )
+			{
+				last.frame.queryCount = mQueryIndex;
+			}
+#endif
 
 			// Set as pending
 			mPending.emplace_back( mActiveFrame );
@@ -634,6 +890,9 @@ namespace
                 mCmdBuf = nullptr;
             }
             collect_vk_results_( frame.data(), frame.size() );
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+			collect_webgpu_results_( frame.data(), frame.size() );
+#endif
 #endif
 
             // Send the records to the scribe
@@ -655,8 +914,22 @@ namespace
 		++mFrameNumber;
 
 #ifdef TRACKY_VULKAN
-        mCmdBuf.resetQueryPool(mQueryPool, 0, mMaxQueries);
+	if (mVkInitialized && mCmdBuf != nullptr)
+	{
+	    mCmdBuf.resetQueryPool(mQueryPool, 0, mMaxQueries);
+	}
         mQueryIndex = 0;
+#endif
+
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+		if( mWebGPUInitialized )
+		{
+			mWebGPUQueryIndex = 0;
+			if( !mWebGPUFrames.empty() )
+			{
+				mWebGPUFrameSlot = mFrameNumber % mWebGPUFrames.size();
+			}
+		}
 #endif
 
 		{
@@ -695,9 +968,23 @@ namespace
 	}
 
 #ifdef TRACKY_VULKAN
-    void Tracky_::bind_cmd_buffer(vk::CommandBuffer aCmdBuffer)
+	void Tracky_::bind_cmd_buffer(std::uintptr_t aCmdBufferHandle,
+	                              std::uintptr_t aRenderPassHandle,
+	                              std::uintptr_t aComputePassHandle)
     {
-        mCmdBuf = aCmdBuffer;
+		if (mVkInitialized)
+		{
+			mCmdBuf = vk::CommandBuffer {reinterpret_cast<VkCommandBuffer>(aCmdBufferHandle)};
+		}
+		else
+		{
+			mCmdBuf = nullptr;
+		}
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+		mWebGPUCommandEncoder = reinterpret_cast<WGPUCommandEncoder>(aCmdBufferHandle);
+		mWebGPURenderPassEncoder  = reinterpret_cast<WGPURenderPassEncoder>(aRenderPassHandle);
+		mWebGPUComputePassEncoder = reinterpret_cast<WGPUComputePassEncoder>(aComputePassHandle);
+#endif
     }
 #endif
 
@@ -713,10 +1000,193 @@ namespace
 		auto ret = gpu.mQueryBuffer.back();
 		gpu.mQueryBuffer.pop_back();
 #elifdef TRACKY_VULKAN
-        auto ret = mQueryIndex++;
+        auto ret = mVkInitialized ? mQueryIndex++ : 0u;
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+        if( mWebGPUInitialized && mWebGPUSupportsTimestampQuery )
+        {
+			if( mWebGPUQueryIndex < mWebGPUQueryCount )
+			{
+				ret = mWebGPUQueryIndex++;
+			}
+			else
+			{
+				ret = 0u;
+			}
+        }
+#endif
 #endif
 		return ret;
 	}
+
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+	void Tracky_::resolve_webgpu_queries()
+	{
+		if( !mWebGPUInitialized || !mWebGPUSupportsTimestampQuery || mWebGPUCommandEncoder == nullptr )
+		{
+			return;
+		}
+
+		if( mWebGPUFrames.empty() || mWebGPUQueryIndex == 0 )
+		{
+			return;
+		}
+
+		const auto& frame = mWebGPUFrames[mWebGPUFrameSlot];
+		if( frame.querySet == nullptr || frame.queryResolveBuffer == nullptr || frame.queryReadbackBuffer == nullptr )
+		{
+			return;
+		}
+
+		wgpuCommandEncoderResolveQuerySet( mWebGPUCommandEncoder,
+		                                   frame.querySet,
+		                                   0u,
+		                                   mWebGPUQueryIndex,
+		                                   frame.queryResolveBuffer,
+		                                   0u );
+		wgpuCommandEncoderCopyBufferToBuffer( mWebGPUCommandEncoder,
+		                                     frame.queryResolveBuffer,
+		                                     0u,
+		                                     frame.queryReadbackBuffer,
+		                                     0u,
+		                                     static_cast<uint64_t>(mWebGPUQueryIndex) * sizeof(uint64_t) );
+	}
+
+	void Tracky_::collect_webgpu_results_( Record_* aRecords, std::size_t aCount )
+	{
+		assert( aRecords );
+
+		if( !mWebGPUInitialized || !mWebGPUSupportsTimestampQuery || mWebGPUFrames.empty() )
+		{
+			for( std::size_t i = 0; i < aCount; ++i )
+			{
+				auto& rec = aRecords[i];
+				switch( rec.type )
+				{
+					case ERecord_::scopeEnter:
+					case ERecord_::scopeNext:
+					case ERecord_::scopeLeave:
+						rec.scope.gpu.result = 0;
+						break;
+					default:
+						break;
+				}
+			}
+			return;
+		}
+
+		const std::size_t slotIndex = aRecords[0].frame.number % mWebGPUFrames.size();
+		const auto&       frame     = mWebGPUFrames[slotIndex];
+		if( frame.querySet == nullptr || frame.queryResolveBuffer == nullptr || frame.queryReadbackBuffer == nullptr )
+		{
+			return;
+		}
+
+		const uint32_t queryCount = aRecords[aCount - 1].frame.queryCount;
+		const uint64_t resultSize = static_cast<uint64_t>(queryCount) * sizeof(uint64_t);
+		if( resultSize == 0u )
+		{
+			for( std::size_t i = 0; i < aCount; ++i )
+			{
+				auto& rec = aRecords[i];
+				if( rec.type == ERecord_::scopeEnter || rec.type == ERecord_::scopeNext || rec.type == ERecord_::scopeLeave )
+				{
+					rec.scope.gpu.result = 0;
+				}
+			}
+			return;
+		}
+
+		struct MapState_
+		{
+			bool completed {false};
+			WGPUMapAsyncStatus status {WGPUMapAsyncStatus_Error};
+		};
+
+		auto onMap = [](WGPUMapAsyncStatus status,
+		               WGPUStringView,
+		               void* userdata1,
+		               void*) {
+			auto* state   = static_cast<MapState_*>(userdata1);
+			state->status = status;
+			state->completed = true;
+		};
+
+		MapState_ state {};
+		WGPUBufferMapCallbackInfo mapInfo {};
+		mapInfo.mode      = WGPUCallbackMode_AllowProcessEvents;
+		mapInfo.callback  = onMap;
+		mapInfo.userdata1 = &state;
+		mapInfo.userdata2 = nullptr;
+
+		wgpuBufferMapAsync(frame.queryReadbackBuffer, WGPUMapMode_Read, 0u, resultSize, mapInfo);
+		while( !state.completed )
+		{
+			if( mWebGPUInstance != nullptr )
+			{
+				wgpuInstanceProcessEvents( mWebGPUInstance );
+			}
+			else
+			{
+				std::this_thread::yield();
+			}
+		}
+
+		if( state.status != WGPUMapAsyncStatus_Success )
+		{
+			std::fprintf( stderr, "Tracky WebGPU: buffer map failed: %d\n", static_cast<int>(state.status) );
+			for( std::size_t i = 0; i < aCount; ++i )
+			{
+				auto& rec = aRecords[i];
+				if( rec.type == ERecord_::scopeEnter || rec.type == ERecord_::scopeNext || rec.type == ERecord_::scopeLeave )
+				{
+					rec.scope.gpu.result = 0;
+				}
+			}
+			wgpuBufferUnmap( frame.queryReadbackBuffer );
+			return;
+		}
+
+		auto const* results = static_cast<uint64_t const*>(wgpuBufferGetConstMappedRange(frame.queryReadbackBuffer, 0u, resultSize));
+		if( results == nullptr )
+		{
+			std::fprintf( stderr, "Tracky WebGPU: mapped results are null\n" );
+			for( std::size_t i = 0; i < aCount; ++i )
+			{
+				auto& rec = aRecords[i];
+				if( rec.type == ERecord_::scopeEnter || rec.type == ERecord_::scopeNext || rec.type == ERecord_::scopeLeave )
+				{
+					rec.scope.gpu.result = 0;
+				}
+			}
+			wgpuBufferUnmap( frame.queryReadbackBuffer );
+			return;
+		}
+
+		for( std::size_t i = 0; i < aCount; ++i )
+		{
+			auto& rec = aRecords[i];
+			switch( rec.type )
+			{
+				case ERecord_::scopeEnter:
+				case ERecord_::scopeNext:
+				case ERecord_::scopeLeave:
+					if( rec.scope.gpu.query < queryCount )
+					{
+						rec.scope.gpu.result = results[rec.scope.gpu.query];
+					}
+					else
+					{
+						rec.scope.gpu.result = 0;
+					}
+					break;
+				default:
+					break;
+			}
+		}
+
+		wgpuBufferUnmap( frame.queryReadbackBuffer );
+	}
+#endif
 
 #ifdef TRACKY_OPENGL
 	void Tracky_::collect_gl_results_( Record_* aRecords, std::size_t aCount )
@@ -938,6 +1408,16 @@ namespace
 		totalOverhead += duration_(frameOverhead);
 
 		// Output events
+		auto const timestampPeriodNs = [&]() {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+			if( mWebGPUInitialized )
+			{
+				return static_cast<double>(mWebGPUTimestampPeriodNs);
+			}
+#endif
+			return static_cast<double>(mTimestampPeriodNs);
+		}();
+
 		for( std::size_t i = 0; i < aCount; ++i )
 		{
 			auto const& rec = aRecords[i];
@@ -957,8 +1437,12 @@ namespace
 					auto const scopeDuration = partner->scope.early - rec.scope.late;
 					auto const scopeOverhead = rec.scope.late - rec.scope.early;
 
-					auto const scopeTicks = static_cast<double>(partner->scope.gpu.result - rec.scope.gpu.result);
-					auto const scopeGpuUs = (scopeTicks * static_cast<double>(mTimestampPeriodNs)) / 1000.0;
+					double scopeGpuUs = 0.0;
+					if( partner->scope.gpu.result >= rec.scope.gpu.result && rec.scope.gpu.result != 0 && partner->scope.gpu.result != 0 )
+					{
+						auto const scopeTicks = static_cast<double>(partner->scope.gpu.result - rec.scope.gpu.result);
+						scopeGpuUs = (scopeTicks * timestampPeriodNs) / 1000.0;
+					}
 
 					std::fprintf( aFof, "\"%s\", %f, %f, %f, \"%s\"\n", rec.scope.name, timestamp_(rec.scope.late), duration_(scopeDuration), scopeGpuUs, parent );
 
@@ -1003,6 +1487,15 @@ namespace
 		// Accumulate events
 		// Unordered_map sadness.
 		std::unordered_map<std::string_view,double> aggregatesCPU, aggregatesGL;
+		auto const timestampPeriodNs = [&]() {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+			if( mWebGPUInitialized )
+			{
+				return static_cast<double>(mWebGPUTimestampPeriodNs);
+			}
+#endif
+			return static_cast<double>(mTimestampPeriodNs);
+		}();
 
 		for( std::size_t i = 0; i < aCount; ++i )
 		{
@@ -1019,8 +1512,12 @@ namespace
 					auto const scopeDuration = partner->scope.early - rec.scope.late;
 					auto const scopeOverhead = rec.scope.late - rec.scope.early;
 
-					auto const scopeTicks = static_cast<double>(partner->scope.gpu.result - rec.scope.gpu.result);
-					auto const scopeGpuUs = (scopeTicks * static_cast<double>(mTimestampPeriodNs)) / 1000.0;
+					double scopeGpuUs = 0.0;
+					if( partner->scope.gpu.result >= rec.scope.gpu.result && rec.scope.gpu.result != 0 && partner->scope.gpu.result != 0 )
+					{
+						auto const scopeTicks = static_cast<double>(partner->scope.gpu.result - rec.scope.gpu.result);
+						scopeGpuUs = (scopeTicks * timestampPeriodNs) / 1000.0;
+					}
 
 					aggregatesCPU[rec.scope.name] += duration_(scopeDuration);
 					aggregatesGL[rec.scope.name] += scopeGpuUs;

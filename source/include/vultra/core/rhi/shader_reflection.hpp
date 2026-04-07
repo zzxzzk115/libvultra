@@ -26,10 +26,11 @@ namespace vultra
             {
                 explicit Descriptor(DescriptorType type) : type {type} {}
 
-                DescriptorType type {DescriptorType::eSampler};
-                uint32_t       count {1};
-                ShaderStages   stageFlags {ShaderStages::eNone};
-                uint32_t       flags {0};
+                DescriptorType                type {DescriptorType::eSampler};
+                vshadersystem::ResourceAccess access {vshadersystem::ResourceAccess::eUnknown};
+                uint32_t                      count {1};
+                ShaderStages                  stageFlags {ShaderStages::eNone};
+                uint32_t                      flags {0};
             };
             // Key = binding
             // layout(binding = index)
@@ -45,4 +46,3 @@ namespace vultra
         };
     } // namespace rhi
 } // namespace vultra
-

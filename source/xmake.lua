@@ -222,7 +222,7 @@ target("vultra")
     if has_config("tracy") then
         add_defines("TRACY_ENABLE=1", { public = true })
     end
-    if has_config("tracky") then
+    if has_config("tracky") and not is_plat("wasm") then
         add_defines("TRACKY_ENABLE=1", { public = true })
     end
     if not is_plat("wasm") then

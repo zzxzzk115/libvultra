@@ -1,7 +1,8 @@
-#include "vultra/function/rendering/srp/builtin/passes/gaussian_splat_cull_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/compatibility_gaussian_splat_cull_pass.hpp"
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
@@ -11,11 +12,14 @@
 
 namespace vultra
 {
-    GaussianSplatCullPass::GaussianSplatCullPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+    CompatibilityGaussianSplatCullPass::CompatibilityGaussianSplatCullPass()
+    {
+        setShaderProfile(rhi::ShaderProfile::eCompatibility);
+    }
 
     namespace
     {
-        constexpr auto PASS_NAME = "GaussianSplatCullPass";
+        constexpr auto PASS_NAME = "CompatibilityGaussianSplatCullPass";
 
         struct SortKeysPushConstants
         {
@@ -29,19 +33,17 @@ namespace vultra
         };
     } // namespace
 
-    FrameGraphResource GaussianSplatCullPass::addPass(FrameGraphBuildContext&              ctx,
-                                                      FrameGraphResource                   buildToken,
-                                                      const GaussianSplatRendererSettings& settings)
+    FrameGraphResource CompatibilityGaussianSplatCullPass::addPass(FrameGraphBuildContext&              ctx,
+                                                                   FrameGraphResource                   buildToken,
+                                                                   const GaussianSplatRendererSettings& settings)
     {
         struct PassData
         {
             FrameGraphResource camera;
             FrameGraphResource token;
-            FrameGraphResource depth;
         };
 
         const auto                  cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
-        const auto                  depthPre    = ctx.data.tryGet(kResKey_DepthTexture);
         const SortKeysPushConstants basePushConstants {
             .totalPointCount      = 0u,
             .maxOutputCount       = 0u,
@@ -54,7 +56,7 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [cameraBlock, buildToken, depthPre](FrameGraph::Builder& builder, PassData& pd) {
+            [cameraBlock, buildToken](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.camera = builder.read(cameraBlock,
@@ -72,23 +74,8 @@ namespace vultra
                                  });
                 }
 
-                pd.depth = depthPre;
-                if (pd.depth)
-                {
-                    pd.depth = builder.read(pd.depth,
-                                            framegraph::TextureRead {
-                                                .binding =
-                                                    {
-                                                        .location      = {.set = 0, .binding = 27},
-                                                        .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                    },
-                                                .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
-                                                .imageAspect = rhi::ImageAspect::eDepth,
-                                            });
-                }
-
                 pd.token =
-                    builder.create<framegraph::FrameGraphBuffer>("GaussianSplatCullToken",
+                    builder.create<framegraph::FrameGraphBuffer>("CompatibilityGaussianSplatCullToken",
                                                                  {
                                                                      .type     = framegraph::BufferType::eStorageBuffer,
                                                                      .stride   = sizeof(uint32_t),
@@ -121,7 +108,9 @@ namespace vultra
                     !gpuSceneView->gaussianSplatVisibleCountBuffer ||
                     !gpuSceneView->gaussianSplatIndirectBuffer.has_value() ||
                     !gpuSceneView->gaussianSplatPointDrawIdBuffer)
+                {
                     return;
+                }
 
                 if (!gpuSceneDatabase || !gpuSceneDatabase->resources)
                     return;
@@ -129,7 +118,9 @@ namespace vultra
                 const auto& splatStorage = gpuSceneDatabase->resources->gaussianStorage;
                 if (!splatStorage.centersBuffer || !splatStorage.colorBuffer ||
                     !gpuSceneDatabase->resources->gaussianSplatMetaBuffer)
+                {
                     return;
+                }
 
                 auto* cameraUbo = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
                 if (!cameraUbo)
@@ -179,18 +170,18 @@ namespace vultra
                 rhi::prepareForComputing(rc.cb, *splatStorage.colorBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneDatabase->resources->gaussianSplatMetaBuffer);
 
-                const uint32_t useSceneDepth   = pd.depth ? 1u : 0u;
-                auto           sortVariantHash = computeHighendVariantHash("gaussian_splat_sort_keys.comp",
-                                                                         vshadersystem::ShaderStage::eComp,
-                                                                                   {{"USE_SCENE_DEPTH", useSceneDepth}});
-                const auto*    sortPipeline    = getPipeline(sortVariantHash);
+                auto sortVariantHash = computeCompatibilityVariantHash(
+                    "gaussian_splat_compat_sort_keys.comp", vshadersystem::ShaderStage::eComp, {});
+                const auto* sortPipeline = getPipeline(sortVariantHash);
                 if (!sortPipeline)
                     return;
 
                 // Sort buffers already ensured and cleared at beginning of pass
                 if (!gpuSceneView->gaussianSplatSortKeysBuffer || !gpuSceneView->gaussianSplatSortValuesBuffer ||
                     !gpuSceneView->gaussianSplatSortStorageBuffer)
+                {
                     return;
+                }
 
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatSortKeysBuffer);
                 rhi::prepareForComputing(rc.cb, *gpuSceneView->gaussianSplatSortValuesBuffer);
@@ -209,24 +200,13 @@ namespace vultra
                     {20, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatVisibleCountBuffer.get()}},
                     {21, rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatPointDrawIdBuffer.get()}},
                 };
-                if (pd.depth)
-                {
-                    if (auto* depthTexture = resources.get<framegraph::FrameGraphTexture>(pd.depth).texture;
-                        depthTexture)
-                    {
-                        rc.resourceSet[0][27] = rhi::bindings::CombinedImageSampler {
-                            .texture     = depthTexture,
-                            .imageAspect = rhi::ImageAspect::eDepth,
-                        };
-                    }
-                }
 
                 SortKeysPushConstants pc = basePushConstants;
                 pc.totalPointCount       = totalPointCount;
                 pc.maxOutputCount        = totalPointCount;
 
                 {
-                    RHI_GPU_ZONE(rc.cb, "GaussianSplatCullPass::Dist");
+                    RHI_GPU_ZONE(rc.cb, "CompatibilityGaussianSplatCullPass::Dist");
                     rc.cb.bindPipeline(*sortPipeline);
                     rc.bindDescriptorSets(*sortPipeline);
                     rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
@@ -236,7 +216,7 @@ namespace vultra
 
                 if (totalPointCount > 1u)
                 {
-                    RHI_GPU_ZONE(rc.cb, "GaussianSplatCullPass::RadixSortIndirect");
+                    RHI_GPU_ZONE(rc.cb, "CompatibilityGaussianSplatCullPass::Sort");
                     m_RadixSorter->sortKeyValuesIndirect(rc.cb,
                                                          totalPointCount,
                                                          *gpuSceneView->gaussianSplatVisibleCountBuffer,
@@ -250,8 +230,8 @@ namespace vultra
                     rc.cb.insertComputeUavBarrier();
                 }
 
-                auto writeIndirectVariantHash = computeHighendVariantHash(
-                    "gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
+                auto writeIndirectVariantHash = computeCompatibilityVariantHash(
+                    "gaussian_splat_compat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
                 if (writeIndirectPipeline)
                 {
@@ -262,26 +242,35 @@ namespace vultra
                          rhi::bindings::StorageBuffer {.buffer = gpuSceneView->gaussianSplatVisibleCountBuffer.get()}},
                     };
 
-                    RHI_GPU_ZONE(rc.cb, "GaussianSplatCullPass::WriteIndirect");
+                    RHI_GPU_ZONE(rc.cb, "CompatibilityGaussianSplatCullPass::WriteIndirect");
                     rc.cb.bindPipeline(*writeIndirectPipeline);
                     rc.bindDescriptorSets(*writeIndirectPipeline);
                     rc.cb.dispatch({1u, 1u, 1u});
                     rc.cb.insertComputeUavBarrier();
                 }
+
                 rc.clear();
             });
 
         return data.token;
     }
 
-    rhi::ComputePipeline GaussianSplatCullPass::createPipeline(uint64_t variantHash) const
+    rhi::ComputePipeline CompatibilityGaussianSplatCullPass::createPipeline(const uint64_t variantHash) const
     {
-        auto shader = loadHighendShaderVariant(variantHash, vshadersystem::ShaderStage::eComp);
+        auto shader = loadCompatibilityShaderVariant(variantHash, vshadersystem::ShaderStage::eComp);
         if (!shader)
         {
-            VULTRA_CORE_ERROR("[GaussianSplatCullPass] Failed to load compute shader variant");
+            VULTRA_CORE_ERROR("[CompatibilityGaussianSplatCullPass] Failed to load compute shader variant");
             return {};
         }
+
+        if (getRenderDevice().getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+        {
+            return getRenderDevice().createComputePipeline(
+                {.code = shader->wgsl, .reflection = shader->reflection},
+                {});
+        }
+
         return getRenderDevice().createComputePipelineBuiltin(shader->spirv);
     }
 } // namespace vultra

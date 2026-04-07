@@ -17,8 +17,8 @@ namespace vultra
         float maxAxisPixels {2048.0f};
         float depthIsoThreshold {0.7f};
         bool  enableExactDepthTransmittance {false};
-        bool  enableXrViewReuse {true};
-        bool  enableXrMultiview {true};
+        bool  enableXrViewReuse {false};
+        bool  enableXrMultiview {false};
     };
 
     class GaussianSplatFeature final : public RenderFeature

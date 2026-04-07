@@ -4,6 +4,7 @@
 #include "vultra/core/rhi/structs/image_usage.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/structs/primitive_topology.hpp"
+#include "vultra/core/rhi/structs/graphics_pipeline_states.hpp"
 #include "vultra/core/rhi/structs/compare_op.hpp"
 #include "vultra/core/rhi/structs/cull_mode.hpp"
 #include "vultra/core/rhi/structs/sampler_info.hpp"
@@ -73,6 +74,70 @@ namespace vultra::rhi::webgpu
             default:
                 return WGPUCullMode_None;
         }
+    }
+
+    [[nodiscard]] constexpr WGPUBlendOperation toWgpuBlendOperation(const BlendOp op)
+    {
+        switch (op)
+        {
+            case BlendOp::eAdd:
+                return WGPUBlendOperation_Add;
+            case BlendOp::eSubtract:
+                return WGPUBlendOperation_Subtract;
+            case BlendOp::eReverseSubtract:
+                return WGPUBlendOperation_ReverseSubtract;
+            case BlendOp::eMin:
+                return WGPUBlendOperation_Min;
+            case BlendOp::eMax:
+                return WGPUBlendOperation_Max;
+        }
+        return WGPUBlendOperation_Add;
+    }
+
+    [[nodiscard]] constexpr WGPUBlendFactor toWgpuBlendFactor(const BlendFactor factor)
+    {
+        switch (factor)
+        {
+            case BlendFactor::eZero:
+                return WGPUBlendFactor_Zero;
+            case BlendFactor::eOne:
+                return WGPUBlendFactor_One;
+            case BlendFactor::eSrcColor:
+                return WGPUBlendFactor_Src;
+            case BlendFactor::eOneMinusSrcColor:
+                return WGPUBlendFactor_OneMinusSrc;
+            case BlendFactor::eDstColor:
+                return WGPUBlendFactor_Dst;
+            case BlendFactor::eOneMinusDstColor:
+                return WGPUBlendFactor_OneMinusDst;
+            case BlendFactor::eSrcAlpha:
+                return WGPUBlendFactor_SrcAlpha;
+            case BlendFactor::eOneMinusSrcAlpha:
+                return WGPUBlendFactor_OneMinusSrcAlpha;
+            case BlendFactor::eDstAlpha:
+                return WGPUBlendFactor_DstAlpha;
+            case BlendFactor::eOneMinusDstAlpha:
+                return WGPUBlendFactor_OneMinusDstAlpha;
+            case BlendFactor::eConstantColor:
+                return WGPUBlendFactor_Constant;
+            case BlendFactor::eOneMinusConstantColor:
+                return WGPUBlendFactor_OneMinusConstant;
+            case BlendFactor::eConstantAlpha:
+                return WGPUBlendFactor_Constant;
+            case BlendFactor::eOneMinusConstantAlpha:
+                return WGPUBlendFactor_OneMinusConstant;
+            case BlendFactor::eSrcAlphaSaturate:
+                return WGPUBlendFactor_SrcAlphaSaturated;
+            case BlendFactor::eSrc1Color:
+                return WGPUBlendFactor_Src1;
+            case BlendFactor::eOneMinusSrc1Color:
+                return WGPUBlendFactor_OneMinusSrc1;
+            case BlendFactor::eSrc1Alpha:
+                return WGPUBlendFactor_Src1Alpha;
+            case BlendFactor::eOneMinusSrc1Alpha:
+                return WGPUBlendFactor_OneMinusSrc1Alpha;
+        }
+        return WGPUBlendFactor_One;
     }
 
     [[nodiscard]] constexpr WGPUTextureFormat toWgpuTextureFormat(const PixelFormat format)

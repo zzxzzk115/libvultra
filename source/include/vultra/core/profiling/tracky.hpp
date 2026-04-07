@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 // NOLINTBEGIN
 // clang-format off
 #ifdef TRACKY_VULKAN
@@ -164,7 +166,8 @@ namespace tracky
 #	define TRACKY_STARTUP(...) ::tracky::startup()
 #elifdef TRACKY_VULKAN
 #	define TRACKY_STARTUP(...) ::tracky::startup(__VA_ARGS__)
-#   define TRACKY_BIND_CMD_BUFFER(cmdBuf) ::tracky::bind_cmd_buffer(cmdBuf)
+#   define TRACKY_STARTUP_WEBGPU(...) ::tracky::startup_webgpu(__VA_ARGS__)
+#   define TRACKY_BIND_CMD_BUFFER(cmdBuf, renderPass, computePass) ::tracky::bind_cmd_buffer(cmdBuf, renderPass, computePass)
 #endif
 #	define TRACKY_TEARDOWN() ::tracky::teardown()
 
@@ -199,10 +202,14 @@ namespace tracky
 #	define TRACKY_STARTUP(...) do {} while(0)
 #elifdef TRACKY_VULKAN
 #	define TRACKY_STARTUP(...) do {} while(0)
-#   define TRACKY_BIND_CMD_BUFFER(cmdBuf) do {} while(0)
+#   define TRACKY_BIND_CMD_BUFFER(cmdBuf, renderPass, computePass) do {} while(0)
 #endif
 #	define TRACKY_TEARDOWN() do {} while(0)
 #endif // ~ TRACKY_ENABLE
+
+#ifndef TRACKY_BIND_CMD_BUFFER
+#	define TRACKY_BIND_CMD_BUFFER(...) do {} while(0)
+#endif
 
 // Main interface
 // TODO: should these be noxexcept?
@@ -247,7 +254,16 @@ namespace tracky
 	void startup(); //TODO: options for what output etc., where to store, ...
 #elifdef TRACKY_VULKAN
 	void startup(vk::Device aDevice, uint32_t aQueryCount, float aTimestampPeriodNs = 1.0f);
-    void bind_cmd_buffer(vk::CommandBuffer aCmdBuffer);
+	void startup_webgpu(std::uintptr_t aInstanceHandle,
+						std::uintptr_t aDeviceHandle,
+						std::uintptr_t aQueueHandle,
+						uint32_t       aQueryCount,
+						bool           aSupportsTimestampQuery,
+						float          aTimestampPeriodNs = 1.0f);
+	void bind_cmd_buffer(std::uintptr_t aCmdBufferHandle,
+						 std::uintptr_t aRenderPassHandle = 0,
+						 std::uintptr_t aComputePassHandle = 0);
+	void resolve_webgpu_queries();
 #endif
 	void teardown();
 

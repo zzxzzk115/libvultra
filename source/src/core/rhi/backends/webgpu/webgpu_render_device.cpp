@@ -1,5 +1,4 @@
 #include "vultra/core/rhi/backends/webgpu/webgpu_render_device.hpp"
-#include "vultra/core/base/base.hpp"
 #include "vultra/core/base/common_context.hpp"
 
 #include <format>
@@ -33,7 +32,6 @@ namespace vultra
 
             [[nodiscard]] const char* toRequestAdapterStatusString(const WGPURequestAdapterStatus status)
             {
-#if defined(__EMSCRIPTEN__)
                 switch (status)
                 {
                     case WGPURequestAdapterStatus_Success:
@@ -45,28 +43,10 @@ namespace vultra
                     default:
                         return "Invalid";
                 }
-#else
-                switch (status)
-                {
-                    case WGPURequestAdapterStatus_Success:
-                        return "Success";
-                    case WGPURequestAdapterStatus_InstanceDropped:
-                        return "InstanceDropped";
-                    case WGPURequestAdapterStatus_Unavailable:
-                        return "Unavailable";
-                    case WGPURequestAdapterStatus_Error:
-                        return "Error";
-                    case WGPURequestAdapterStatus_Unknown:
-                        return "Unknown";
-                    default:
-                        return "Invalid";
-                }
-#endif
             }
 
             [[nodiscard]] const char* toRequestDeviceStatusString(const WGPURequestDeviceStatus status)
             {
-#if defined(__EMSCRIPTEN__)
                 switch (status)
                 {
                     case WGPURequestDeviceStatus_Success:
@@ -76,21 +56,6 @@ namespace vultra
                     default:
                         return "Invalid";
                 }
-#else
-                switch (status)
-                {
-                    case WGPURequestDeviceStatus_Success:
-                        return "Success";
-                    case WGPURequestDeviceStatus_InstanceDropped:
-                        return "InstanceDropped";
-                    case WGPURequestDeviceStatus_Error:
-                        return "Error";
-                    case WGPURequestDeviceStatus_Unknown:
-                        return "Unknown";
-                    default:
-                        return "Invalid";
-                }
-#endif
             }
 
             struct AdapterRequestResult
@@ -227,12 +192,23 @@ namespace vultra
             m_Adapter = adapterResult.adapter;
 
             std::vector<WGPUFeatureName> requiredFeatures;
+            const bool supportsTimestampQuery = wgpuAdapterHasFeature(m_Adapter, WGPUFeatureName_TimestampQuery);
+
             m_SupportsTextureCompressionBC = wgpuAdapterHasFeature(m_Adapter, WGPUFeatureName_TextureCompressionBC);
             if (m_SupportsTextureCompressionBC)
             {
                 requiredFeatures.push_back(WGPUFeatureName_TextureCompressionBC);
             }
 
+            // We can request standard TimestampQuery via webgpu.h, but Tracky currently writes
+            // timestamps through command-encoder APIs that are native-extension behavior.
+            // Keep the feature request for device compatibility, but disable Tracky timestamp
+            // path on this webgpu.h-only route to avoid invalidating the encoder.
+            m_SupportsTimestampQuery = false;
+            if (supportsTimestampQuery)
+            {
+                requiredFeatures.push_back(WGPUFeatureName_TimestampQuery);
+            }
             WGPUDeviceDescriptor deviceDesc {};
             deviceDesc.label.data                       = m_AppName.c_str();
             deviceDesc.label.length                     = WGPU_STRLEN;
@@ -329,37 +305,15 @@ namespace vultra
         WebGPURenderDevice::~WebGPURenderDevice()
         {
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
-            for (auto [_, layout] : m_PipelineLayouts)
-            {
-                if (layout != nullptr)
-                {
-                    wgpuPipelineLayoutRelease(layout);
-                }
-            }
+            // Keep teardown conservative on native WebGPU backends.
+            // We observed shutdown-time panics inside wgpu-native when cached child objects
+            // (pipeline layouts / bind group layouts / samplers) are explicitly released after
+            // higher-level pipeline wrappers have started tearing down in an order we do not fully control.
+            // Let the device own and reap these cached objects during device destruction instead.
             m_PipelineLayouts.clear();
-
-            for (auto [_, layout] : m_DescriptorSetLayouts)
-            {
-                if (layout != nullptr)
-                {
-                    wgpuBindGroupLayoutRelease(layout);
-                }
-            }
             m_DescriptorSetLayouts.clear();
             m_DescriptorSetLayoutBindings.clear();
-            if (m_EmptyDescriptorSetLayout != nullptr)
-            {
-                wgpuBindGroupLayoutRelease(m_EmptyDescriptorSetLayout);
-                m_EmptyDescriptorSetLayout = nullptr;
-            }
-
-            for (auto [_, samplerHandle] : m_Samplers)
-            {
-                if (samplerHandle)
-                {
-                    wgpuSamplerRelease(reinterpret_cast<WGPUSampler>(samplerHandle.value));
-                }
-            }
+            m_EmptyDescriptorSetLayout = nullptr;
             m_Samplers.clear();
 
             if (m_Queue)

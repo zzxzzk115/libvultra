@@ -86,8 +86,10 @@ namespace vultra
 
                 if (emplaced)
                 {
-                    out.count = d.count;
+                    out.access = d.access;
+                    out.count  = d.count;
                 }
+                out.access = d.access;
                 out.stageFlags |= toStages(d.stageFlags);
 
                 if (d.runtimeSized)

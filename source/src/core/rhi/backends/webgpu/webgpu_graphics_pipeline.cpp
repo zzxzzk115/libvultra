@@ -172,13 +172,13 @@ namespace vultra
             const bool     hasBlendState = !m_BlendStates.empty() && m_BlendStates.front().enabled;
             if (hasBlendState)
             {
-                // Keep WebGPU blend policy minimal for now: standard alpha blend.
-                blendState.color.operation = WGPUBlendOperation_Add;
-                blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-                blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-                blendState.alpha.operation = WGPUBlendOperation_Add;
-                blendState.alpha.srcFactor = WGPUBlendFactor_One;
-                blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+                const auto& blend = m_BlendStates.front();
+                blendState.color.operation = webgpu::toWgpuBlendOperation(blend.colorOp);
+                blendState.color.srcFactor = webgpu::toWgpuBlendFactor(blend.srcColor);
+                blendState.color.dstFactor = webgpu::toWgpuBlendFactor(blend.dstColor);
+                blendState.alpha.operation = webgpu::toWgpuBlendOperation(blend.alphaOp);
+                blendState.alpha.srcFactor = webgpu::toWgpuBlendFactor(blend.srcAlpha);
+                blendState.alpha.dstFactor = webgpu::toWgpuBlendFactor(blend.dstAlpha);
                 colorTarget.blend          = &blendState;
             }
 

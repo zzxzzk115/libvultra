@@ -127,6 +127,8 @@ task("shader_task")
 
         local shader_root_common =
             path.join(projectdir, "builtin/shaders")
+        local build_script =
+            path.join(projectdir, "builtin/xmake.lua")
 
         local lib_root =
             path.join(projectdir, "builtin/shader_lib")
@@ -174,6 +176,9 @@ task("shader_task")
             table.join2(files, os.files(path.join(shader_root, "include/**.glsl")))
             if keywords_file and os.exists(keywords_file) then
                 table.insert(files, keywords_file)
+            end
+            if os.exists(build_script) then
+                table.insert(files, build_script)
             end
             return files
         end
@@ -239,17 +244,36 @@ task("shader_task")
         end
 
         local function build_webgpu_library(label, shader_root, shader_patterns, keywords_file, output_file)
+            local processed_root = path.join(os.tmpdir(), "libvultra_webgpu_shader_root")
+            os.rm(processed_root)
+            os.mkdir(processed_root)
+            os.cp(path.join(shader_root, "include"), path.join(processed_root, "include"))
+
             local shader_files = collect_shader_files(shader_root, shader_patterns)
+            local processed_shader_files = {}
+            for _, file in ipairs(shader_files) do
+                local rel = path.relative(file, shader_root)
+                local dst = path.join(processed_root, rel)
+                os.mkdir(path.directory(dst))
+
+                local content = io.readfile(file)
+                content = content:gsub(
+                    "layout%s*%(%s*push_constant%s*%)%s*uniform",
+                    "layout(set = 1, binding = 31, std140) uniform")
+                io.writefile(dst, content)
+                table.insert(processed_shader_files, dst)
+            end
+
             local argv = {
                 "build",
                 "--webgpu",
                 "--material-mode", "ubo",
-                "--shader_root", shader_root,
-                "-I", shader_root,
+                "--shader_root", processed_root,
+                "-I", processed_root,
             }
-            for _, file in ipairs(shader_files) do
+            for _, file in ipairs(processed_shader_files) do
                 table.insert(argv, "--shader")
-                table.insert(argv, path.relative(file, shader_root))
+                table.insert(argv, path.relative(file, processed_root))
             end
             if keywords_file and os.exists(keywords_file) then
                 table.insert(argv, "--keywords-file")
@@ -542,7 +566,7 @@ task_end()
 if is_plat("android") then
     add_requires("vshadersystem v0.6.2", { configs = { debug = is_mode("debug") }})
 else
-    add_requires("vshadersystem v0.7.2", { configs = { debug = is_mode("debug") }})
+    add_requires("vshadersystem v0.8.0", { configs = { debug = is_mode("debug") }})
 end
 
 target("vultra_builtin_assets")

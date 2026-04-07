@@ -12,7 +12,7 @@ namespace std
         auto operator()(const vultra::rhi::DescriptorSetLayoutBindingEx& v) const noexcept
         {
             size_t h {0};
-            hashCombine(h, v.binding, v.type, v.count, v.stageFlags, v.flags);
+            hashCombine(h, v.binding, v.type, v.access, v.count, v.stageFlags, v.flags);
             return h;
         }
     };
@@ -187,6 +187,7 @@ namespace vultra
                     DescriptorSetLayoutBindingEx desc {};
                     desc.binding    = index;
                     desc.type       = resource.type;
+                    desc.access     = resource.access;
                     desc.count      = resource.count;
                     desc.stageFlags = resource.stageFlags;
                     desc.flags      = resource.flags;

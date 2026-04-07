@@ -3,22 +3,46 @@ language = glsl
 version = 460
 
 [keywords]
-USE_MULTIVIEW : bool permute
+USE_SORTED_IDS : bool permute
 
 [vert]
-#if USE_MULTIVIEW
-#extension GL_EXT_multiview : require
-#endif
-#define VULTRA_DECLARE_CAMERA
-#define VULTRA_DECLARE_DRAW_BUFFER_READONLY
-#define VULTRA_DECLARE_SPLAT_CENTER_BUFFER
-#define VULTRA_DECLARE_SPLAT_COVARIANCE_BUFFER
-#define VULTRA_DECLARE_SPLAT_COLOR_BUFFER
-#define VULTRA_DECLARE_SPLAT_SH_BUFFER
-#define VULTRA_DECLARE_SPLAT_META_BUFFER
-#define VULTRA_DECLARE_SPLAT_POINT_DRAW_BUFFER
-#include "include/common/gpu_scene.glsl"
 #include "include/common/gaussian_splat.glsl"
+
+struct CameraData
+{
+    mat4 projection;
+    mat4 inverseProjection;
+    mat4 view;
+    mat4 inverseView;
+    mat4 viewProjection;
+    mat4 inverseViewProjection;
+    vec4 resolution;
+    float zNear;
+    float zFar;
+    float fovY;
+    float _padding;
+    vec4 frustumPlanes[6];
+};
+
+struct DrawRecord
+{
+    uint primitiveIndex;
+    uint materialIndex;
+    uint vertexStrideBytes;
+    uint flags;
+    uvec2 vertexAddress;
+    uint instanceIndex;
+    uint padding0;
+    mat4 model;
+};
+
+struct GaussianSplatMeta
+{
+    uint pointOffset;
+    uint pointCount;
+    uint shDegree;
+    uint shRestCoeffCount;
+};
 
 layout(push_constant) uniform GaussianSplatPushConstants
 {
@@ -30,17 +54,52 @@ layout(push_constant) uniform GaussianSplatPushConstants
     float depthIsoThreshold;
 } u_PC;
 
+layout(set = 0, binding = 0, std140) uniform CameraBlock
+{
+    CameraData camera;
+} u_Camera;
+
+layout(set = 0, binding = 1, std430) readonly buffer DrawBuffer
+{
+    DrawRecord draws[];
+} s_Draws;
+
+layout(set = 0, binding = 13, std430) readonly buffer SplatCenterBuffer
+{
+    vec4 centers[];
+} s_SplatCenters;
+
+layout(set = 0, binding = 14, std430) readonly buffer SplatCovarianceBuffer
+{
+    uvec4 covariances[];
+} s_SplatCovariances;
+
+layout(set = 0, binding = 15, std430) readonly buffer SplatColorBuffer
+{
+    uvec2 colors[];
+} s_SplatColors;
+
+layout(set = 0, binding = 16, std430) readonly buffer SplatSHBuffer
+{
+    uvec2 sh[];
+} s_SplatSH;
+
+#if USE_SORTED_IDS
 layout(set = 0, binding = 18, std430) readonly buffer SortedPointIds
 {
     uint ids[];
 } s_SortedPointIds;
-
-#if USE_MULTIVIEW
-layout(set = 0, binding = 31, std140) uniform StereoCameraBlock
-{
-    CameraData cameras[2];
-} u_StereoCamera;
 #endif
+
+layout(set = 0, binding = 19, std430) readonly buffer SplatMetaBuffer
+{
+    GaussianSplatMeta metas[];
+} s_SplatMeta;
+
+layout(set = 0, binding = 21, std430) readonly buffer SplatPointDrawBuffer
+{
+    uint drawIds[];
+} s_SplatPointDraws;
 
 layout(location = 0) out vec2 v_FragPos;
 layout(location = 1) flat out uint v_SplatIndex;
@@ -62,7 +121,8 @@ const float SH_C3[7] = float[7](
     0.3731763325901154,
     -0.4570457994644658,
     1.445305721320277,
-    -0.5900435899266435);
+    -0.5900435899266435
+);
 
 vec3 shCoeff(uint pointIndex, int coeffIndex)
 {
@@ -115,14 +175,10 @@ vec3 evalShRest(uint pointIndex, vec3 dir, uint shDegree)
 
 void main()
 {
-#if USE_MULTIVIEW
-    CameraData cam = u_StereoCamera.cameras[gl_ViewIndex];
-#else
-    CameraData cam = u_Camera;
+    uint globalPointIndex = uint(gl_InstanceIndex);
+#if USE_SORTED_IDS
+    globalPointIndex = s_SortedPointIds.ids[globalPointIndex];
 #endif
-
-    uint sortIndex = uint(gl_InstanceIndex);
-    uint globalPointIndex = s_SortedPointIds.ids[sortIndex];
     uint drawId = s_SplatPointDraws.drawIds[globalPointIndex];
     DrawRecord d = s_Draws.draws[drawId];
     GaussianSplatMeta splatMeta = s_SplatMeta.metas[d.primitiveIndex];
@@ -131,9 +187,9 @@ void main()
 
     vec3 centerObj = s_SplatCenters.centers[sourcePointIndex].xyz;
     vec3 worldCenter = (d.model * vec4(centerObj, 1.0)).xyz;
-    mat4 modelView = cam.view * d.model;
+    mat4 modelView = u_Camera.camera.view * d.model;
     vec4 viewCenter4 = modelView * vec4(centerObj, 1.0);
-    vec4 clipCenter = cam.projection * viewCenter4;
+    vec4 clipCenter = u_Camera.camera.projection * viewCenter4;
 
     uvec2 packedColor = s_SplatColors.colors[sourcePointIndex];
     vec2 rg = unpackHalf2x16(packedColor.x);
@@ -154,11 +210,13 @@ void main()
     vec2 v1 = unpackHalf2x16(cv.y);
     vec2 v2 = unpackHalf2x16(cv.z);
 
-    mat3 sigmaObj = mat3(v0.x, v0.y, v1.x,
-                         v0.y, v1.y, v2.x,
-                         v1.x, v2.x, v2.y);
-    vec2 focal = vec2(0.5 * cam.resolution.x * cam.projection[0][0],
-                      0.5 * cam.resolution.y * cam.projection[1][1]);
+    mat3 sigmaObj = mat3(
+        v0.x, v0.y, v1.x,
+        v0.y, v1.y, v2.x,
+        v1.x, v2.x, v2.y
+    );
+    vec2 focal = vec2(0.5 * u_Camera.camera.resolution.x * u_Camera.camera.projection[0][0],
+                      0.5 * u_Camera.camera.resolution.y * u_Camera.camera.projection[1][1]);
     vec3 cov2Dv = gaussianSplatCovarianceProjection(sigmaObj, viewCenter4, focal, modelView);
 
     float alphaAdj = splatColor.a;
@@ -174,15 +232,14 @@ void main()
         return;
     }
 
-    vec3 cameraWorldPosition = cam.inverseView[3].xyz;
+    vec3 cameraWorldPosition = u_Camera.camera.inverseView[3].xyz;
     vec3 viewDir = normalize(worldCenter - cameraWorldPosition);
-    vec3 baseColorLinear = splatColor.rgb;
-    vec3 shaded = max(baseColorLinear + evalShRest(sourcePointIndex, viewDir, min(splatMeta.shDegree, 3u)), vec3(0.0));
+    vec3 shaded = max(splatColor.rgb + evalShRest(sourcePointIndex, viewDir, min(splatMeta.shDegree, 3u)), vec3(0.0));
 
     vec2 ndc0 = clipCenter.xy / clipCenter.w;
     vec2 corner = kCorners[gl_VertexIndex];
     vec2 offsetPx = basis1Px * corner.x + basis2Px * corner.y;
-    vec2 offsetNdc = offsetPx * (2.0 * cam.resolution.zw);
+    vec2 offsetNdc = offsetPx * (2.0 * u_Camera.camera.resolution.zw);
 
     float clipZ = min(clipCenter.z, clipCenter.w * 0.999999);
     gl_Position = vec4((ndc0 + offsetNdc) * clipCenter.w, clipZ, clipCenter.w);

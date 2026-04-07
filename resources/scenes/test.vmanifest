@@ -5,7 +5,7 @@ root = 1
 [assets]
 mesh.Sponza = "res://models/Sponza/Sponza.gltf"
 mesh.DamagedHelmet = "res://models/DamagedHelmet/DamagedHelmet.gltf"
-gaussian_splat.Lizard = "res://models/hornedlizard.spz"
+gaussian_splat.Lizard = "res://models/3dgs/hornedlizard.spz"
 script.test_move = "res://scripts/test_move.lua"
 
 [node id=1 name="Root" parent=0]

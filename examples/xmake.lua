@@ -247,6 +247,7 @@ rule_end()
 if is_plat("wasm") then
     includes("demo_app")
     includes("imgui")
+    includes("gaussian_splatting")
 else
     includes("window")
     includes("rhi/triangle")
