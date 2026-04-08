@@ -3,10 +3,7 @@
 
 #extension GL_ARB_shader_draw_parameters : require
 #extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #extension GL_EXT_nonuniform_qualifier : require
-
-#include "bda_vertex.glsl"
 
 // ============================================================================
 // gpu_scene.glsl
@@ -34,92 +31,12 @@
 #define VULTRA_CAMERA_BINDING 0
 #endif
 
-#ifndef VULTRA_DRAW_BINDING
-#define VULTRA_DRAW_BINDING 1
-#endif
-
-#ifndef VULTRA_INSTANCE_BINDING
-#define VULTRA_INSTANCE_BINDING 2
-#endif
-
-#ifndef VULTRA_MESH_TABLE_BINDING
-#define VULTRA_MESH_TABLE_BINDING 3
-#endif
-
-#ifndef VULTRA_MESHLET_BINDING
-#define VULTRA_MESHLET_BINDING 4
-#endif
-
-#ifndef VULTRA_MODEL_BINDING
-#define VULTRA_MODEL_BINDING 5
-#endif
-
-#ifndef VULTRA_VISIBLE_MESHLET_BINDING
-#define VULTRA_VISIBLE_MESHLET_BINDING 6
-#endif
-
-#ifndef VULTRA_VISIBLE_COUNT_BINDING
-#define VULTRA_VISIBLE_COUNT_BINDING 7
-#endif
-
 #ifndef VULTRA_MATERIAL_TABLE_BINDING
 #define VULTRA_MATERIAL_TABLE_BINDING 8
 #endif
 
 #ifndef VULTRA_MATERIAL_PARAMS_BINDING
 #define VULTRA_MATERIAL_PARAMS_BINDING 9
-#endif
-
-#ifndef VULTRA_MESHLET_VERTEX_BINDING
-#define VULTRA_MESHLET_VERTEX_BINDING 10
-#endif
-
-#ifndef VULTRA_MESHLET_TRIANGLE_BINDING
-#define VULTRA_MESHLET_TRIANGLE_BINDING 11
-#endif
-
-#ifndef VULTRA_INDIRECT_BINDING
-#define VULTRA_INDIRECT_BINDING 12
-#endif
-
-#ifndef VULTRA_SPLAT_CENTER_BINDING
-#define VULTRA_SPLAT_CENTER_BINDING 13
-#endif
-
-#ifndef VULTRA_SPLAT_COVARIANCE_BINDING
-#define VULTRA_SPLAT_COVARIANCE_BINDING 14
-#endif
-
-#ifndef VULTRA_SPLAT_SCALE_BINDING
-#define VULTRA_SPLAT_SCALE_BINDING 23
-#endif
-
-#ifndef VULTRA_SPLAT_COLOR_BINDING
-#define VULTRA_SPLAT_COLOR_BINDING 15
-#endif
-
-#ifndef VULTRA_SPLAT_SH_BINDING
-#define VULTRA_SPLAT_SH_BINDING 16
-#endif
-
-#ifndef VULTRA_SPLAT_META_BINDING
-#define VULTRA_SPLAT_META_BINDING 19
-#endif
-
-#ifndef VULTRA_SPLAT_POINT_DRAW_BINDING
-#define VULTRA_SPLAT_POINT_DRAW_BINDING 21
-#endif
-
-#ifndef VULTRA_VISIBLE_INSTANCE_BINDING
-#define VULTRA_VISIBLE_INSTANCE_BINDING 24
-#endif
-
-#ifndef VULTRA_VISIBLE_INSTANCE_COUNT_BINDING
-#define VULTRA_VISIBLE_INSTANCE_COUNT_BINDING 25
-#endif
-
-#ifndef VULTRA_DISPATCH_ARGS_BINDING
-#define VULTRA_DISPATCH_ARGS_BINDING 26
 #endif
 
 #ifndef VULTRA_DEPTH_TEXTURE_BINDING
@@ -132,10 +49,6 @@
 
 #ifndef VULTRA_HZB_STORAGE_BINDING
 #define VULTRA_HZB_STORAGE_BINDING 29
-#endif
-
-#ifndef VULTRA_DRAW_SET_BINDING
-#define VULTRA_DRAW_SET_BINDING 30
 #endif
 
 #ifndef VULTRA_TEXTURE_SET
@@ -164,100 +77,32 @@ struct CameraData
     vec4 frustumPlanes[6];
 };
 
-// --------------------------------------------------------------------------
-// Draw record
-// --------------------------------------------------------------------------
+#if defined(VULTRA_DECLARE_DRAW_BUFFER_READONLY) || defined(VULTRA_DECLARE_DRAW_BUFFER_READWRITE) || \
+    defined(VULTRA_DECLARE_INSTANCE_BUFFER) || defined(VULTRA_DECLARE_MESH_TABLE_BUFFER) || \
+    defined(VULTRA_DECLARE_MESHLET_BUFFER) || defined(VULTRA_DECLARE_MODEL_BUFFER) || \
+    defined(VULTRA_DECLARE_VISIBLE_MESHLET_BUFFER) || defined(VULTRA_DECLARE_VISIBLE_COUNT_BUFFER) || \
+    defined(VULTRA_DECLARE_VISIBLE_INSTANCE_BUFFER) || defined(VULTRA_DECLARE_VISIBLE_INSTANCE_COUNT_BUFFER) || \
+    defined(VULTRA_DECLARE_DISPATCH_ARGS_BUFFER) || defined(VULTRA_DECLARE_MESHLET_VERTEX_BUFFER) || \
+    defined(VULTRA_DECLARE_MESHLET_TRIANGLE_BUFFER) || defined(VULTRA_DECLARE_INDIRECT_BUFFER) || \
+    defined(VULTRA_DECLARE_DRAW_SET_BUFFER)
+#include "mesh_scene.glsl"
+#endif
 
-// IMPORTANT: std430 alignment rules + scalar_block_layout.
-// Keep host-side struct layout identical.
-struct DrawRecord
-{
-    // Primitive payload index (meshlet index, splat index, ...)
-    uint primitiveIndex;
-    uint materialIndex;
-    uint vertexStrideBytes;
-    uint flags;
-    uint64_t vertexAddress;
-    // Scene instance payload index (or transform index for legacy path)
-    uint instanceIndex;
-    uint padding0;
-    mat4 model;
-};
-
-struct Meshlet
-{
-    uint vertexOffset;
-    uint vertexCount;
-    uint triangleOffset;
-    uint triangleCount;
-    uint materialIndex;
-    uint paddingU0;
-    uint paddingU1;
-    uint paddingU2;
-    vec3 center;
-    float radius;
-    vec3 coneAxis;
-    float coneCutoff;
-    vec3 coneApex;
-    float paddingF0;
-};
-
-// --------------------------------------------------------------------------
-// GPU scene database / culling structs
-// --------------------------------------------------------------------------
-
-struct GpuInstance
-{
-    uint meshIndex;
-    uint materialIndex;
-    uint transformIndex;
-    uint flags;
-};
-
-struct GpuMeshEntry
-{
-    uint meshletOffset;
-    uint meshletCount;
-    uint materialOffset;
-    uint materialCount;
-
-    uint vertexStrideBytes;
-    uint vertexByteOffset;
-    uint indexBase;
-    uint flags;
-
-    vec3 boundsCenter;
-    float boundsRadius;
-};
-
-struct GpuVisibleMeshlet
-{
-    uint meshletIndex;
-    uint instanceIndex;
-    uint materialIndex;
-    uint flags;
-};
-
-// Generic non-indexed indirect command (matches Vulkan VkDrawIndirectCommand).
-// Used by both meshlet and gaussian-splat pipelines.
-struct DrawIndirectCommand
-{
-    uint count;         // vertexCount
-    uint instanceCount; // instanceCount
-    uint first;         // firstVertex
-    uint firstInstance; // firstInstance (used as drawId in current shaders)
-};
-
-// Generic indexed indirect command (matches Vulkan VkDrawIndexedIndirectCommand).
-// Included for completeness when indexed pipelines are added to shader-side builders.
-struct DrawIndexedIndirectCommand
-{
-    uint count;         // indexCount
-    uint instanceCount; // instanceCount
-    uint first;         // firstIndex
-    int  vertexOffset;  // vertexOffset
-    uint firstInstance; // firstInstance
-};
+#if defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_DRAW_BUFFER) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_PACKED_SOURCE_BUFFER) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_SPLAT_BUFFER_READONLY) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_SPLAT_BUFFER_READWRITE) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_KEY_BUFFER_READONLY) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_KEY_BUFFER_READWRITE) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_INDEX_BUFFER_READONLY) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_INDEX_BUFFER_READWRITE) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_COUNT_BUFFER) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_DISPATCH_ARGS_BUFFER) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_INDIRECT_BUFFER) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_STORAGE_BUFFER) || \
+    defined(VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SH_BUFFER)
+#include "gaussian_splat_scene.glsl"
+#endif
 
 // --------------------------------------------------------------------------
 // Optional resource declarations
@@ -271,86 +116,6 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_CAMERA_BINDING) uniform Camera
 #define u_Camera u_CameraBlock.data
 #endif
 
-#ifdef VULTRA_DECLARE_DRAW_BUFFER_READONLY
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_DRAW_BINDING, std430) readonly buffer DrawBuffer
-{
-    DrawRecord draws[];
-} s_Draws;
-#endif
-
-#ifdef VULTRA_DECLARE_DRAW_BUFFER_READWRITE
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_DRAW_BINDING, std430) buffer DrawBuffer
-{
-    DrawRecord draws[];
-} s_Draws;
-#endif
-
-#ifdef VULTRA_DECLARE_INSTANCE_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_INSTANCE_BINDING, std430) readonly buffer InstanceBuffer
-{
-    GpuInstance instances[];
-} s_Instances;
-#endif
-
-#ifdef VULTRA_DECLARE_MESH_TABLE_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_MESH_TABLE_BINDING, std430) readonly buffer MeshTableBuffer
-{
-    GpuMeshEntry meshes[];
-} s_MeshTable;
-#endif
-
-#ifdef VULTRA_DECLARE_MESHLET_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_MESHLET_BINDING, std430) readonly buffer MeshletBuffer
-{
-    Meshlet meshlets[];
-} s_Meshlets;
-#endif
-
-#ifdef VULTRA_DECLARE_MODEL_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_MODEL_BINDING, std430) readonly buffer ModelBuffer
-{
-    mat4 models[];
-} s_Models;
-#endif
-
-#ifdef VULTRA_DECLARE_VISIBLE_MESHLET_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_VISIBLE_MESHLET_BINDING, std430) buffer VisibleMeshletBuffer
-{
-    GpuVisibleMeshlet visibleMeshlets[];
-} s_VisibleMeshlets;
-#endif
-
-#ifdef VULTRA_DECLARE_VISIBLE_COUNT_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_VISIBLE_COUNT_BINDING, std430) buffer VisibleMeshletCountBuffer
-{
-    uint visibleCount;
-} s_VisibleCount;
-#endif
-
-#ifdef VULTRA_DECLARE_VISIBLE_INSTANCE_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_VISIBLE_INSTANCE_BINDING, std430) buffer VisibleInstanceBuffer
-{
-    uint instanceIndices[];
-} s_VisibleInstances;
-#endif
-
-#ifdef VULTRA_DECLARE_VISIBLE_INSTANCE_COUNT_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_VISIBLE_INSTANCE_COUNT_BINDING, std430)
-buffer VisibleInstanceCountBuffer
-{
-    uint visibleInstanceCount;
-} s_VisibleInstanceCount;
-#endif
-
-#ifdef VULTRA_DECLARE_DISPATCH_ARGS_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_DISPATCH_ARGS_BINDING, std430) buffer DispatchArgsBuffer
-{
-    uint groupCountX;
-    uint groupCountY;
-    uint groupCountZ;
-} s_DispatchArgs;
-#endif
-
 #ifdef VULTRA_DECLARE_DEPTH_TEXTURE
 layout(set = VULTRA_SCENE_SET, binding = VULTRA_DEPTH_TEXTURE_BINDING) uniform sampler2D u_DepthTexture;
 #endif
@@ -361,84 +126,6 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_HZB_TEXTURE_BINDING) uniform sam
 
 #ifdef VULTRA_DECLARE_HZB_STORAGE
 layout(set = VULTRA_SCENE_SET, binding = VULTRA_HZB_STORAGE_BINDING, r32f) uniform writeonly image2D u_HzbStorage;
-#endif
-
-#ifdef VULTRA_DECLARE_MESHLET_VERTEX_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_MESHLET_VERTEX_BINDING, std430) readonly buffer MeshletVertexBuffer
-{
-    uint meshletVertices[];
-} s_MeshletVertices;
-#endif
-
-#ifdef VULTRA_DECLARE_MESHLET_TRIANGLE_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_MESHLET_TRIANGLE_BINDING, std430) readonly buffer MeshletTriangleBuffer
-{
-    uint meshletTriangles[];
-} s_MeshletTriangles;
-#endif
-
-#ifdef VULTRA_DECLARE_INDIRECT_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_INDIRECT_BINDING, std430) buffer IndirectBuffer
-{
-    DrawIndirectCommand commands[];
-} s_Indirect;
-#endif
-
-#ifdef VULTRA_DECLARE_SPLAT_CENTER_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_CENTER_BINDING, std430) readonly buffer SplatCenterBuffer
-{
-    vec4 centers[];
-} s_SplatCenters;
-#endif
-
-#ifdef VULTRA_DECLARE_SPLAT_COVARIANCE_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_COVARIANCE_BINDING, std430) readonly buffer SplatCovarianceBuffer
-{
-    uvec4 covariances[];
-} s_SplatCovariances;
-#endif
-
-#ifdef VULTRA_DECLARE_SPLAT_SCALE_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_SCALE_BINDING, std430) readonly buffer SplatScaleBuffer
-{
-    vec4 scales[];
-} s_SplatScales;
-#endif
-
-#ifdef VULTRA_DECLARE_SPLAT_COLOR_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_COLOR_BINDING, std430) readonly buffer SplatColorBuffer
-{
-    uvec2 colors[];
-} s_SplatColors;
-#endif
-
-#ifdef VULTRA_DECLARE_SPLAT_SH_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_SH_BINDING, std430) readonly buffer SplatSHBuffer
-{
-    uvec2 sh[];
-} s_SplatSH;
-#endif
-
-struct GaussianSplatMeta
-{
-    uint pointOffset;
-    uint pointCount;
-    uint shDegree;
-    uint shRestCoeffCount;
-};
-
-#ifdef VULTRA_DECLARE_SPLAT_META_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_META_BINDING, std430) readonly buffer SplatMetaBuffer
-{
-    GaussianSplatMeta metas[];
-} s_SplatMeta;
-#endif
-
-#ifdef VULTRA_DECLARE_SPLAT_POINT_DRAW_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_SPLAT_POINT_DRAW_BINDING, std430) readonly buffer SplatPointDrawBuffer
-{
-    uint drawIds[];
-} s_SplatPointDraws;
 #endif
 
 #define VULTRA_MAT_INVALID 0u
@@ -470,17 +157,6 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_MATERIAL_TABLE_BINDING, std430) 
 } s_Materials;
 #endif
 
-#ifdef VULTRA_DECLARE_DRAW_SET_BUFFER
-layout(set = VULTRA_SCENE_SET, binding = VULTRA_DRAW_SET_BINDING, std430) buffer DrawSetBuffer
-{
-    // Per-queue draw counts exported by build-indirect.
-    // Indirect commands are emitted into queue windows:
-    // commandIndex = queueId * maxDraws + localQueueSlot.
-    // TODO(vk-queue): switch from fixed queue windows to compacted offsets/ranges.
-    uint drawSetCounts[8];
-} s_DrawSets;
-#endif
-
 #ifdef VULTRA_DECLARE_MATERIAL_PARAMS
 layout(set = VULTRA_SCENE_SET, binding = VULTRA_MATERIAL_PARAMS_BINDING, std430) readonly buffer MaterialParams
 {
@@ -492,13 +168,6 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_MATERIAL_PARAMS_BINDING, std430)
 // Bindless texture array
 layout(set = VULTRA_TEXTURE_SET, binding = VULTRA_BINDLESS_TEXTURES_BINDING) uniform sampler2D bindlessTextures[];
 #define getBindlessTexture(idx) bindlessTextures[nonuniformEXT(idx)]
-#endif
-
-#ifdef VULTRA_DECLARE_MESHLET_TRIANGLE_BUFFER
-uint load_meshlet_triangle_index(uint triIndex)
-{
-    return s_MeshletTriangles.meshletTriangles[triIndex];
-}
 #endif
 
 #ifdef VULTRA_DECLARE_CAMERA
@@ -544,11 +213,6 @@ float extract_max_scale(mat4 model)
     vec3 sy = vec3(model[1][0], model[1][1], model[1][2]);
     vec3 sz = vec3(model[2][0], model[2][1], model[2][2]);
     return max(length(sx), max(length(sy), length(sz)));
-}
-
-uint64_t make_u64(uint lo, uint hi)
-{
-    return (uint64_t(hi) << 32ul) | uint64_t(lo);
 }
 
 #ifdef VULTRA_DECLARE_MATERIAL_PARAMS

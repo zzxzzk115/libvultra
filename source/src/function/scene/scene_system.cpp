@@ -177,6 +177,8 @@ namespace vultra
         {
             std::vector<float> v;
             if (parse_vec(t, v) && v.size() == 4)
+                // Scene/user-facing quaternion text stays xyzw even though glm::quat
+                // is constructed as wxyz internally.
                 return entt::meta_any {glm::quat {v[3], v[0], v[1], v[2]}};
         }
 
@@ -238,6 +240,7 @@ namespace vultra
         {
             auto               q = v.cast<glm::quat>();
             std::ostringstream oss;
+            // Persist quaternions in user-facing xyzw order.
             oss << "(" << q.x << ", " << q.y << ", " << q.z << ", " << q.w << ")";
             return oss.str();
         }

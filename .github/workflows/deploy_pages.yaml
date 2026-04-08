@@ -1,4 +1,4 @@
-name: Deploy Demo App Pages
+name: Deploy Examples Pages
 
 on:
   push:
@@ -44,16 +44,30 @@ jobs:
       - name: Configure WASM Build
         run: xmake f -p wasm --policies=build.ccache:y --libvultra_build_examples=y --libvultra_build_tests=n -y
 
-      - name: Build demo app
-        run: xmake repo -u && xmake build -y example-demo-app
+      - name: Build WASM examples
+        run: xmake repo -u && xmake build -y example-demo-app example-gaussian-splatting
 
       - name: Prepare pages site
         run: |
           mkdir -p site
-          rsync -av --delete build/wasm/wasm32/release/example-demo-app/ site/
-          if [ -f site/example-demo-app.html ] && [ ! -f site/index.html ]; then
-            cp site/example-demo-app.html site/index.html
-          fi
+          cp web/index.html site/index.html
+
+          prepare_example() {
+            local source_dir="$1"
+            local page_title="$2"
+            local slug="$3"
+            local html_name="$4"
+
+            mkdir -p "site/${slug}"
+            rsync -av --delete "${source_dir}/" "site/${slug}/"
+            if [ -f "site/${slug}/${html_name}" ]; then
+              mv "site/${slug}/${html_name}" "site/${slug}/index.html"
+              perl -0pi -e 's|<title>libvultra</title>|<title>'"${page_title}"' | libvultra</title>|g' "site/${slug}/index.html"
+            fi
+          }
+
+          prepare_example "build/wasm/wasm32/release/example-demo-app" "Demo App" "demo-app" "example-demo-app.html"
+          prepare_example "build/wasm/wasm32/release/example-gaussian-splatting" "Gaussian Splatting" "gaussian-splatting" "example-gaussian-splatting.html"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

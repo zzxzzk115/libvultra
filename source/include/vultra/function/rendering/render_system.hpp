@@ -86,11 +86,9 @@ namespace vultra
 
         Samplers m_Samplers;
 
-        bool m_EnableGpuDrivenMeshletPipeline {true};
-        bool m_HasLoggedGaussianSplatPointClamp {false};
-        std::vector<uint32_t>                m_GpuSceneGaussianSplatPointDrawIdScratch;
-        GpuSceneDirtyTracker                m_GpuSceneDirtyTracker;
-        RuntimeProfiler                     m_RuntimeProfiler;
+        bool                 m_EnableGpuDrivenMeshletPipeline {true};
+        GpuSceneDirtyTracker m_GpuSceneDirtyTracker;
+        RuntimeProfiler      m_RuntimeProfiler;
     };
 
     // Cook World into RenderWorld.

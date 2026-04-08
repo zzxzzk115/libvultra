@@ -154,9 +154,22 @@ task("shader_task")
         os.mkdir(lib_root)
         os.mkdir(header_root)
 
-        local highend_shader_patterns = {"passes/highend/**.vshader", "passes/shared/**.vshader"}
-        local compatibility_shader_patterns = {"passes/compatibility/**.vshader", "passes/shared/**.vshader"}
-        local webgpu_compatibility_shader_patterns = {"passes/compatibility/**.vshader"}
+        local highend_shader_patterns = {
+            "passes/highend/**.vshader",
+            "passes/general/**.vshader",
+            "passes/common/**.vshader",
+            "passes/shared/**.vshader",
+        }
+        local compatibility_shader_patterns = {
+            "passes/compatibility/**.vshader",
+            "passes/general/**.vshader",
+            "passes/common/**.vshader",
+            "passes/shared/**.vshader",
+        }
+        local webgpu_compatibility_shader_patterns = {
+            "passes/compatibility/**.vshader",
+            "passes/general/**.vshader",
+        }
 
         ------------------------------------------------
         -- check rebuild

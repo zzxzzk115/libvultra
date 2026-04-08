@@ -8,12 +8,10 @@
 
 namespace vultra
 {
-    class GaussianSplatFeature;
-
     class UniversalRenderer final : public FeatureRenderer
     {
     public:
-        enum class RenderPath : uint8_t
+        enum class RenderProfile : uint8_t
         {
             eDefault = 0,
             eCompatibility,
@@ -21,16 +19,15 @@ namespace vultra
 
         std::string_view name() const override { return "universal"; }
 
-        void setRenderPath(RenderPath renderPath) { m_RenderPath = renderPath; }
-        [[nodiscard]] RenderPath getRenderPath() const { return m_RenderPath; }
+        void setRenderProfile(RenderProfile renderProfile) { m_RenderProfile = renderProfile; }
+        [[nodiscard]] RenderProfile getRenderProfile() const { return m_RenderProfile; }
 
         void init() override;
 
         virtual void onImGui() override;
 
     private:
-        RenderPath                               m_RenderPath {RenderPath::eDefault};
-        GaussianSplatFeature*                   m_GaussianSplatFeature {nullptr};
+        RenderProfile                            m_RenderProfile {RenderProfile::eDefault};
         std::array<IImGuiService::TextureID, 2> m_XRMirrorTextureIds {0, 0};
         std::array<const rhi::Texture*, 2>      m_XRMirrorTextures {nullptr, nullptr};
 

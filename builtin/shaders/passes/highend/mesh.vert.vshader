@@ -16,6 +16,7 @@ VTX_HAS_TANGENT : bool permute
 #define VULTRA_DECLARE_MESHLET_VERTEX_BUFFER
 #define VULTRA_DECLARE_MESHLET_TRIANGLE_BUFFER
 #include "include/common/gpu_scene.glsl"
+#include "include/common/bda_vertex.glsl"
 
 // ============================================================================
 // mesh.vert.vshader

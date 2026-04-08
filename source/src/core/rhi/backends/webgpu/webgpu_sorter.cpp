@@ -722,13 +722,19 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
                 storageOffset + (hasValues ? m_KeyValueLocalPrefixOffset : m_KeyOnlyLocalPrefixOffset);
             const uint64_t prefixScratchOffset =
                 storageOffset + (hasValues ? m_KeyValuePrefixScratchOffset : m_KeyOnlyPrefixScratchOffset);
-            const uint64_t localPrefixBytes = static_cast<uint64_t>(dispatchCount) * sizeof(uint32_t);
+            const uint64_t dispatchBytes    = static_cast<uint64_t>(dispatchCount) * sizeof(uint32_t);
+            const uint64_t localPrefixBytes = dispatchBytes;
 
             auto buildBlockSumSet = [&](const Buffer& inputKeys, const uint64_t inputKeysOffset) {
                 auto builder = cb.createDescriptorSetBuilder();
                 builder.bind(0, bindings::UniformBuffer {.buffer = &m_ParamsBuffer});
                 builder.bind(1, bindings::StorageBuffer {.buffer = &indirect, .offset = indirectOffset});
-                builder.bind(2, bindings::StorageBuffer {.buffer = &inputKeys, .offset = inputKeysOffset});
+                builder.bind(2,
+                             bindings::StorageBuffer {
+                                 .buffer = &inputKeys,
+                                 .offset = inputKeysOffset,
+                                 .range  = dispatchBytes,
+                             });
                 builder.bind(3,
                              bindings::StorageBuffer {
                                  .buffer = &storage,
@@ -751,8 +757,18 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
                 auto builder = cb.createDescriptorSetBuilder();
                 builder.bind(0, bindings::UniformBuffer {.buffer = &m_ParamsBuffer});
                 builder.bind(1, bindings::StorageBuffer {.buffer = &indirect, .offset = indirectOffset});
-                builder.bind(2, bindings::StorageBuffer {.buffer = &inputKeys, .offset = inputKeysOffset});
-                builder.bind(3, bindings::StorageBuffer {.buffer = &outputKeys, .offset = outputKeysOffset});
+                builder.bind(2,
+                             bindings::StorageBuffer {
+                                 .buffer = &inputKeys,
+                                 .offset = inputKeysOffset,
+                                 .range  = dispatchBytes,
+                             });
+                builder.bind(3,
+                             bindings::StorageBuffer {
+                                 .buffer = &outputKeys,
+                                 .offset = outputKeysOffset,
+                                 .range  = dispatchBytes,
+                             });
                 builder.bind(4,
                              bindings::StorageBuffer {
                                  .buffer = &storage,
@@ -779,8 +795,18 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
                 auto builder = cb.createDescriptorSetBuilder();
                 builder.bind(0, bindings::UniformBuffer {.buffer = &m_ParamsBuffer});
                 builder.bind(1, bindings::StorageBuffer {.buffer = &indirect, .offset = indirectOffset});
-                builder.bind(2, bindings::StorageBuffer {.buffer = &inputKeys, .offset = inputKeysOffset});
-                builder.bind(3, bindings::StorageBuffer {.buffer = &outputKeys, .offset = outputKeysOffset});
+                builder.bind(2,
+                             bindings::StorageBuffer {
+                                 .buffer = &inputKeys,
+                                 .offset = inputKeysOffset,
+                                 .range  = dispatchBytes,
+                             });
+                builder.bind(3,
+                             bindings::StorageBuffer {
+                                 .buffer = &outputKeys,
+                                 .offset = outputKeysOffset,
+                                 .range  = dispatchBytes,
+                             });
                 builder.bind(4,
                              bindings::StorageBuffer {
                                  .buffer = &storage,
@@ -793,8 +819,18 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
                                  .offset = prefixScratchOffset + levelOffsets[0],
                                  .range  = static_cast<uint64_t>(levelCounts[0]) * sizeof(uint32_t),
                              });
-                builder.bind(6, bindings::StorageBuffer {.buffer = &inputValues, .offset = inputValuesOffset});
-                builder.bind(7, bindings::StorageBuffer {.buffer = &outputValues, .offset = outputValuesOffset});
+                builder.bind(6,
+                             bindings::StorageBuffer {
+                                 .buffer = &inputValues,
+                                 .offset = inputValuesOffset,
+                                 .range  = dispatchBytes,
+                             });
+                builder.bind(7,
+                             bindings::StorageBuffer {
+                                 .buffer = &outputValues,
+                                 .offset = outputValuesOffset,
+                                 .range  = dispatchBytes,
+                             });
                 return builder.build(m_ReorderKeyValuesPipeline.getDescriptorSetLayout(0));
             };
 

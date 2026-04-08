@@ -24,12 +24,15 @@
 #include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/world.hpp"
 
+#include <glm/gtc/packing.hpp>
+
 #include <vbase/core/exe_path.hpp>
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <limits>
 #include <numeric>
@@ -40,20 +43,6 @@ namespace vultra
     namespace
     {
         thread_local rhi::BuiltinProfilerGpuScopeContext g_CurrentBuiltinProfilerGpuScopeContext {};
-
-        [[nodiscard]] uint32_t computeGaussianSplatPointLimit(const rhi::RenderDeviceLimits& limits)
-        {
-            uint64_t maxPoints = std::numeric_limits<uint32_t>::max();
-
-            if (limits.maxStorageBufferBindingSize > 0u)
-                maxPoints = std::min(maxPoints, limits.maxStorageBufferBindingSize / sizeof(uint32_t));
-            if (limits.maxBufferSize > 0u)
-                maxPoints = std::min(maxPoints, limits.maxBufferSize / sizeof(uint32_t));
-            if (limits.maxComputeWorkgroupsPerDimension > 0u)
-                maxPoints = std::min(maxPoints, static_cast<uint64_t>(limits.maxComputeWorkgroupsPerDimension) * 64u);
-
-            return static_cast<uint32_t>(std::min<uint64_t>(maxPoints, std::numeric_limits<uint32_t>::max()));
-        }
 
         void clearColorTarget(rhi::CommandBuffer&        cb,
                               rhi::Texture&              target,
@@ -104,22 +93,22 @@ namespace vultra
         }
 
         auto splatView = reg.view<IDComponent, TransformComponent, GaussianSplatComponent>();
-        out.splatInstances.reserve(splatView.size_hint());
+        out.gaussianSplats.reserve(splatView.size_hint());
         for (auto e : splatView)
         {
-            const auto& id     = splatView.get<IDComponent>(e);
-            const auto& tr     = splatView.get<TransformComponent>(e);
-            const auto& gsplat = splatView.get<GaussianSplatComponent>(e);
+            const auto& id    = splatView.get<IDComponent>(e);
+            const auto& tr    = splatView.get<TransformComponent>(e);
+            const auto& splat = splatView.get<GaussianSplatComponent>(e);
 
-            auto h = assets.loadGaussianSplatSync(gsplat.gaussianSplat);
+            auto h = assets.loadGaussianSplatSync(splat.gaussianSplat);
             if (!h.ready())
                 continue;
 
-            RenderSplatInstance inst {};
+            RenderGaussianSplatInstance inst {};
             inst.entity      = id.uuid;
             inst.splatIndex  = h.gpuIndex();
             inst.worldMatrix = tr.worldMatrix;
-            out.splatInstances.push_back(inst);
+            out.gaussianSplats.push_back(inst);
         }
     }
 
@@ -293,6 +282,31 @@ namespace vultra
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::rebuild"};
             const auto& pool = gpuResourceService.pool();
+            auto        packGaussianCovariance = [](const glm::uvec4 packed) {
+                const glm::vec2 p0 = glm::unpackHalf2x16(packed.x);
+                const glm::vec2 p1 = glm::unpackHalf2x16(packed.y);
+                const glm::vec2 p2 = glm::unpackHalf2x16(packed.z);
+
+                glm::mat3 sigma(0.0f);
+                sigma[0][0] = p0.x;
+                sigma[1][0] = p0.y;
+                sigma[0][1] = p0.y;
+                sigma[2][0] = p1.x;
+                sigma[0][2] = p1.x;
+                sigma[1][1] = p1.y;
+                sigma[2][1] = p2.x;
+                sigma[1][2] = p2.x;
+                sigma[2][2] = p2.y;
+                return sigma;
+            };
+            auto repackGaussianCovariance = [](const glm::mat3& sigma) {
+                return glm::uvec4 {
+                    glm::packHalf2x16(glm::vec2(sigma[0][0], sigma[1][0])),
+                    glm::packHalf2x16(glm::vec2(sigma[2][0], sigma[1][1])),
+                    glm::packHalf2x16(glm::vec2(sigma[2][1], sigma[2][2])),
+                    0u,
+                };
+            };
 
             m_GpuSceneDatabaseBack.beginFrame(pool);
             m_GpuSceneDatabaseBack.instances.reserve(m_RenderWorldBack.instances.size());
@@ -321,6 +335,14 @@ namespace vultra
                 if (inst.meshIndex >= pool.meshes.size())
                     continue;
                 maxMeshletDraws += pool.meshes[inst.meshIndex].meshletCount;
+            }
+
+            uint32_t maxGeneralGaussianSplatPoints = 0;
+            for (const auto& splatInst : m_RenderWorldBack.gaussianSplats)
+            {
+                if (splatInst.splatIndex >= pool.gaussianSplats.size())
+                    continue;
+                maxGeneralGaussianSplatPoints += pool.gaussianSplats[splatInst.splatIndex].pointCount;
             }
 
             if (m_EnableGpuDrivenMeshletPipeline)
@@ -383,74 +405,124 @@ namespace vultra
                 m_GpuSceneViewBack.uploadIndirect(rd);
             }
 
-            // Stage gaussian splat draws (GPU-driven: cull shader writes the indirect buffer).
+            m_GpuSceneViewBack.generalGaussianSplatDraws.clear();
+            m_GpuSceneViewBack.generalGaussianSplatPackedSources.clear();
+            m_GpuSceneViewBack.generalGaussianSplatDraws.reserve(m_RenderWorldBack.gaussianSplats.size());
+            m_GpuSceneViewBack.generalGaussianSplatPackedSources.reserve(maxGeneralGaussianSplatPoints);
+
+            for (const auto& splatInst : m_RenderWorldBack.gaussianSplats)
             {
-                const uint32_t        maxSplatDraws    = static_cast<uint32_t>(m_RenderWorldBack.splatInstances.size());
-                uint32_t              totalSplatPoints = 0u;
-                const bool            compatibilityWebGpu = rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
-                const uint32_t        maxPointBudget      = compatibilityWebGpu ? computeGaussianSplatPointLimit(rd.getLimits()) : 0u;
-                bool                  pointBudgetClamped   = false;
+                if (splatInst.splatIndex >= pool.gaussianSplats.size())
+                    continue;
 
-                m_GpuSceneViewBack.setGaussianSplatGpuDrivenCaps(maxSplatDraws);
-                m_GpuSceneViewBack.ensureGaussianSplatDrawBuffer(rd);
-                m_GpuSceneViewBack.gaussianSplatDraws.reserve(maxSplatDraws);
-                m_GpuSceneGaussianSplatPointDrawIdScratch.clear();
-                if (compatibilityWebGpu && maxPointBudget > 0u)
-                    m_GpuSceneGaussianSplatPointDrawIdScratch.reserve(maxPointBudget);
+                const auto& gpuSplat = pool.gaussianSplats[splatInst.splatIndex];
+                if (gpuSplat.pointCount == 0u)
+                    continue;
 
-                for (const auto& inst : m_RenderWorldBack.splatInstances)
+                resource::GpuGeneralGaussianSplatDrawRecord drawRecord {};
+                drawRecord.splatIndex = splatInst.splatIndex;
+                drawRecord.pointOffset =
+                    static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size());
+                drawRecord.pointCount = gpuSplat.pointCount;
+                drawRecord.shDegree   = static_cast<uint32_t>(std::max(gpuSplat.shDegree, 0));
+                drawRecord.params0    = glm::vec4 {0.3f, 1.0f, 1.0f, 0.0f};
+                drawRecord.model      = splatInst.worldMatrix;
+                const uint32_t  pointBase   = gpuSplat.pointOffset;
+                const uint32_t  shBaseStride = std::max(gpuSplat.shRestCoeffCount, 1u);
+                const uint32_t  drawIndex   = static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatDraws.size());
+
+                for (uint32_t localPoint = 0; localPoint < gpuSplat.pointCount; ++localPoint)
                 {
-                    if (inst.splatIndex >= pool.gaussianSplats.size())
-                        continue;
-
-                    resource::GpuDrawRecord dr;
-                    dr.primitiveIndex     = inst.splatIndex;
-                    dr.materialIndex      = 0;
-                    dr.vertexStrideBytes  = 0;
-                    dr.flags              = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eGaussianSplat);
-                    dr.instanceIndex      = totalSplatPoints;
-                    dr.model              = inst.worldMatrix;
-                    dr.padding0           = 0;
-                    const uint32_t drawId = m_GpuSceneViewBack.pushGaussianSplatDraw(std::move(dr));
-
-                    const uint32_t pointCount = pool.gaussianSplats[inst.splatIndex].pointCount;
-                    uint32_t       emitCount  = pointCount;
-                    if (compatibilityWebGpu && totalSplatPoints >= maxPointBudget)
+                    const uint32_t globalPoint = pointBase + localPoint;
+                    if (globalPoint >= pool.gaussianStorage.cpuCenters.size() ||
+                        globalPoint >= pool.gaussianStorage.cpuCovariances.size() ||
+                        globalPoint >= pool.gaussianStorage.cpuColors.size())
                     {
-                        emitCount         = 0u;
-                        pointBudgetClamped = true;
-                    }
-                    else if (compatibilityWebGpu && pointCount > (maxPointBudget - totalSplatPoints))
-                    {
-                        emitCount         = maxPointBudget - totalSplatPoints;
-                        pointBudgetClamped = true;
+                        break;
                     }
 
-                    if (emitCount > 0u)
-                    {
-                        m_GpuSceneGaussianSplatPointDrawIdScratch.insert(
-                            m_GpuSceneGaussianSplatPointDrawIdScratch.end(), emitCount, drawId);
-                        totalSplatPoints += emitCount;
-                    }
+                    const glm::vec4 localCenter = pool.gaussianStorage.cpuCenters[globalPoint];
+
+                    const uint32_t shOffset = globalPoint * shBaseStride;
+                    const glm::uvec2 sh0 =
+                        shOffset < pool.gaussianStorage.cpuSh.size() ? pool.gaussianStorage.cpuSh[shOffset] : glm::uvec2 {0u};
+
+                    resource::GpuGeneralGaussianSplatPackedSource packed {};
+                    packed.posOpacity = glm::uvec4 {
+                        std::bit_cast<uint32_t>(localCenter.x),
+                        std::bit_cast<uint32_t>(localCenter.y),
+                        std::bit_cast<uint32_t>(localCenter.z),
+                        pool.gaussianStorage.cpuColors[globalPoint].y,
+                    };
+                    packed.covariance0 = pool.gaussianStorage.cpuCovariances[globalPoint];
+                    packed.colorSh0    = glm::uvec4 {
+                        pool.gaussianStorage.cpuColors[globalPoint].x,
+                        pool.gaussianStorage.cpuColors[globalPoint].y,
+                        sh0.x,
+                        sh0.y,
+                    };
+                    packed.aux0 = glm::uvec4 {globalPoint, drawIndex, shOffset, 0u};
+
+                    m_GpuSceneViewBack.pushGeneralGaussianSplatSource(packed);
                 }
 
-                if (compatibilityWebGpu && pointBudgetClamped && !m_HasLoggedGaussianSplatPointClamp)
-                {
-                    VULTRA_CORE_WARN(
-                        "[RenderSystem] Clamping gaussian splat staged points to {} due to device memory/dispatch limits",
-                        maxPointBudget);
-                    m_HasLoggedGaussianSplatPointClamp = true;
-                }
+                drawRecord.pointCount =
+                    static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size()) - drawRecord.pointOffset;
+                if (drawRecord.pointCount > 0u)
+                    m_GpuSceneViewBack.pushGeneralGaussianSplatDraw(drawRecord);
+            }
 
-                m_GpuSceneViewBack.uploadGaussianSplatDraws(rd, cb);
-                m_GpuSceneViewBack.ensureGaussianSplatPointDrawIdBuffer(rd, totalSplatPoints);
-                if (totalSplatPoints > 0u && m_GpuSceneViewBack.gaussianSplatPointDrawIdBuffer)
-                {
-                    cb.update(*m_GpuSceneViewBack.gaussianSplatPointDrawIdBuffer,
-                              0,
-                              static_cast<uint64_t>(m_GpuSceneGaussianSplatPointDrawIdScratch.size()) * sizeof(uint32_t),
-                              m_GpuSceneGaussianSplatPointDrawIdScratch.data());
-                }
+            m_GpuSceneViewBack.setGeneralGaussianSplatCaps(
+                static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatDraws.size()),
+                static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size()),
+                static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size()));
+            m_GpuSceneViewBack.generalGaussianSplatShBuffer = pool.gaussianStorage.shBuffer;
+            m_GpuSceneViewBack.ensureGeneralGaussianSplatBuffers(rd);
+
+            if (!m_GpuSceneViewBack.generalGaussianSplatDraws.empty() && m_GpuSceneViewBack.generalGaussianSplatDrawBuffer)
+            {
+                cb.update(*m_GpuSceneViewBack.generalGaussianSplatDrawBuffer,
+                          0,
+                          static_cast<uint64_t>(m_GpuSceneViewBack.generalGaussianSplatDraws.size()) *
+                              sizeof(resource::GpuGeneralGaussianSplatDrawRecord),
+                          m_GpuSceneViewBack.generalGaussianSplatDraws.data());
+            }
+
+            if (!m_GpuSceneViewBack.generalGaussianSplatPackedSources.empty() &&
+                m_GpuSceneViewBack.generalGaussianSplatPackedSourceBuffer)
+            {
+                cb.update(*m_GpuSceneViewBack.generalGaussianSplatPackedSourceBuffer,
+                          0,
+                          static_cast<uint64_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size()) *
+                              sizeof(resource::GpuGeneralGaussianSplatPackedSource),
+                          m_GpuSceneViewBack.generalGaussianSplatPackedSources.data());
+            }
+
+            if (m_GpuSceneViewBack.generalGaussianSplatVisibleCountBuffer)
+            {
+                const uint32_t zero = 0u;
+                cb.update(*m_GpuSceneViewBack.generalGaussianSplatVisibleCountBuffer, 0, sizeof(uint32_t), &zero);
+            }
+
+            if (m_GpuSceneViewBack.generalGaussianSplatDispatchArgsBuffer)
+            {
+                const uint32_t zeroArgs[4] = {0u, 1u, 1u, 0u};
+                cb.update(*m_GpuSceneViewBack.generalGaussianSplatDispatchArgsBuffer,
+                          0,
+                          sizeof(zeroArgs),
+                          zeroArgs);
+            }
+
+            if (m_GpuSceneViewBack.generalGaussianSplatIndirectBuffer.has_value())
+            {
+                std::vector<rhi::DrawIndirectCommand> indirect(1u);
+                indirect[0].type          = rhi::DrawIndirectType::eNonIndexed;
+                indirect[0].count         = 3u;
+                indirect[0].instanceCount = 0u;
+                indirect[0].first         = 0u;
+                indirect[0].vertexOffset  = 0;
+                indirect[0].firstInstance = 0u;
+                rd.uploadDrawIndirect(m_GpuSceneViewBack.generalGaussianSplatIndirectBuffer.value(), indirect);
             }
 
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;

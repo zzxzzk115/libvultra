@@ -265,7 +265,10 @@ namespace vultra
             return glm::packHalf2x16(glm::vec2(std::clamp(a, 0.0f, 1.0f), std::clamp(b, 0.0f, 1.0f)));
         }
 
-        glm::quat sanitizeAndNormalizeQuat(const glm::vec4& xyzw)
+        // External asset/user-facing quaternion vectors stay in xyzw order.
+        // GLM's quat constructor expects wxyz, so this is the only place where
+        // we intentionally bridge between the two conventions for 3DGS assets.
+        glm::quat sanitizeAndNormalizeQuatFromExternalXyzw(const glm::vec4& xyzw)
         {
             if (!std::isfinite(xyzw.x) || !std::isfinite(xyzw.y) || !std::isfinite(xyzw.z) || !std::isfinite(xyzw.w))
                 return glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
@@ -924,7 +927,7 @@ namespace vultra
 
             const glm::vec3 scaleLin = decodeScaleLin(p);
             packedScales.push_back(glm::vec4(scaleLin, 0.0f));
-            const glm::quat q = sanitizeAndNormalizeQuat(p.rotation);
+            const glm::quat q = sanitizeAndNormalizeQuatFromExternalXyzw(p.rotation);
             const glm::mat3 R = glm::mat3_cast(q);
 
             glm::mat3 D(0.0f);

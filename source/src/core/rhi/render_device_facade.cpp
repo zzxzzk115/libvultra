@@ -23,6 +23,9 @@
 #include "vultra/core/rhi/backends/webgpu/webgpu_pipeline_layout.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_render_device.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_shader_module.hpp"
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+#include "vultra/core/rhi/backends/webgpu/webgpu_sorter.hpp"
+#endif
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/interfaces/texture_access.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
@@ -1584,6 +1587,12 @@ namespace vultra
 #if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
         RadixSorter RenderDevice::createRadixSorter(const uint32_t maxElementCount)
         {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_Backend && m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                return RadixSorter::create(std::make_unique<WebGPUSorter>(*this, maxElementCount));
+            }
+#endif
             (void)maxElementCount;
             return {};
         }

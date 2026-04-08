@@ -1,6 +1,5 @@
 #include "vultra/function/rendering/srp/builtin/features/test_feature.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
-#include "vultra/function/rendering/srp/builtin/passes/splat_composite_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/test_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
@@ -8,15 +7,10 @@ namespace vultra
 {
     TestFeature::TestFeature()
     {
-        m_TestPass           = new TestPass();
-        m_SplatCompositePass = new SplatCompositePass();
+        m_TestPass = new TestPass();
     }
 
-    TestFeature::~TestFeature()
-    {
-        delete m_TestPass;
-        delete m_SplatCompositePass;
-    }
+    TestFeature::~TestFeature() { delete m_TestPass; }
 
     void TestFeature::addPasses(FrameGraphBuildContext& ctx)
     {
@@ -27,35 +21,12 @@ namespace vultra
 
         if (!hasMeshletDraws)
         {
-            if (ctx.data.contains(kResKey_GaussianSplatRenderDone))
-            {
-                ctx.data.set(kResKey_FinalCompositionSource, ctx.data.get(kResKey_GaussianSplatRenderDone));
-            }
-            else
-            {
-                auto fallbackColor = m_TestPass->addPass(ctx);
-                ctx.data.set(kResKey_FinalCompositionSource, fallbackColor);
-            }
+            auto fallbackColor = m_TestPass->addPass(ctx);
+            ctx.data.set(kResKey_FinalCompositionSource, fallbackColor);
             return;
         }
 
         auto meshletColor = m_TestPass->addPass(ctx);
-
-        // If GaussianSplatFeature ran before us, blend its output on top.
-        if (ctx.data.contains(kResKey_GaussianSplatRenderDone))
-        {
-            auto splatColor      = ctx.data.get(kResKey_GaussianSplatRenderDone);
-            auto splatDepthAccum = ctx.data.tryGet(kResKey_GaussianSplatResolvedDepth);
-            if (!splatDepthAccum)
-                splatDepthAccum = ctx.data.tryGet(kResKey_GaussianSplatDepthAccum);
-            auto sceneDepth = ctx.data.tryGet(kResKey_DepthTexture);
-            auto compositeColor =
-                m_SplatCompositePass->addPass(ctx, meshletColor, splatColor, splatDepthAccum, sceneDepth);
-            ctx.data.set(kResKey_FinalCompositionSource, compositeColor);
-        }
-        else
-        {
-            ctx.data.set(kResKey_FinalCompositionSource, meshletColor);
-        }
+        ctx.data.set(kResKey_FinalCompositionSource, meshletColor);
     }
 } // namespace vultra

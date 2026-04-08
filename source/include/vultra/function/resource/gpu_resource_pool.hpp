@@ -506,12 +506,7 @@ namespace vultra::resource
             if (textures.empty())
             {
                 GpuTexture fallback;
-                // WebGPU texture upload path is still being brought up.
-                // Keep slot0 reserved to prevent crashes in bindless indexing.
-                if (rd.getBackendApi() != rhi::RenderBackendApi::eWebGPU)
-                {
-                    fallback.texture = rd.createDefaultWhite1x1Texture2D();
-                }
+                fallback.texture = rd.createDefaultWhite1x1Texture2D();
                 fallback.bindlessIndex = 0;
                 textures.push_back(fallback);
                 markContentDirty();

@@ -13,6 +13,7 @@
 #include "vultra/function/resource/gpu_visible_meshlet.hpp"
 
 #include <cstdint>
+#include <algorithm>
 #include <optional>
 #include <vector>
 
@@ -32,7 +33,7 @@ namespace vultra::resource
     // Per-view / per-frame GPU scene state.
     //
     // Responsibilities:
-    // - CPU-driven fallback staging (meshlet and gaussian-splat draws)
+    // - CPU-driven fallback staging for meshlet draws
     // - GPU-driven transient buffers (meshlet cull/output + per-primitive draw/indirect targets)
     // - Reference to a GpuSceneDatabase that owns scene-level tables/resources
     struct GpuSceneView
@@ -45,8 +46,9 @@ namespace vultra::resource
         std::vector<GpuDrawRecord>            draws;
         std::vector<rhi::DrawIndirectCommand> indirectCommands;
 
-        // Gaussian-splat path (kept separate from meshlet path)
-        std::vector<GpuDrawRecord> gaussianSplatDraws;
+        // Unified eGeneral gaussian splat path
+        std::vector<GpuGeneralGaussianSplatDrawRecord>  generalGaussianSplatDraws;
+        std::vector<GpuGeneralGaussianSplatPackedSource> generalGaussianSplatPackedSources;
 
         // Optional CPU mirror for GPU-driven intermediate visibility.
         std::vector<GpuVisibleMeshlet> visibleMeshlets;
@@ -62,20 +64,25 @@ namespace vultra::resource
         Ref<rhi::DrawIndirectBuffer>           drawSetBuffer {nullptr};
         std::optional<rhi::DrawIndirectBuffer> indirectBuffer;
 
-        // Gaussian-splat path
-        Ref<rhi::StorageBuffer>                gaussianSplatDrawBuffer {nullptr};
-        Ref<rhi::StorageBuffer>                gaussianSplatSortKeysBuffer {nullptr};
-        Ref<rhi::StorageBuffer>                gaussianSplatSortValuesBuffer {nullptr};
-        Ref<rhi::StorageBuffer>                gaussianSplatSortStorageBuffer {nullptr};
-        Ref<rhi::StorageBuffer>                gaussianSplatPointDrawIdBuffer {nullptr};
-        Ref<rhi::DrawIndirectBuffer>           gaussianSplatVisibleCountBuffer {nullptr};
-        std::optional<rhi::DrawIndirectBuffer> gaussianSplatIndirectBuffer;
+        // General gaussian splat path
+        Ref<rhi::StorageBuffer>                generalGaussianSplatDrawBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                generalGaussianSplatPackedSourceBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                generalGaussianSplatVisibleSplatBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                generalGaussianSplatSortKeyBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                generalGaussianSplatSortIndexBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                generalGaussianSplatVisibleCountBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                generalGaussianSplatDispatchArgsBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                generalGaussianSplatSortStorageBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                generalGaussianSplatShBuffer {nullptr};
+        std::optional<rhi::DrawIndirectBuffer> generalGaussianSplatIndirectBuffer;
+        std::optional<rhi::RadixSorter>        generalGaussianSplatSorter;
 
         uint32_t maxVisibleInstances {0};
         uint32_t maxVisibleMeshlets {0};
         uint32_t maxDraws {0};
-        uint32_t maxGaussianSplatDraws {0};
-        uint32_t maxGaussianSplatSortElements {0};
+        uint32_t maxGeneralGaussianSplatDraws {0};
+        uint32_t maxGeneralGaussianSplatPoints {0};
+        uint32_t maxGeneralGaussianSplatVisibleSplats {0};
 
         void clear()
         {
@@ -83,7 +90,8 @@ namespace vultra::resource
             mode     = GpuSceneBuildMode::eCpuDriven;
             draws.clear();
             indirectCommands.clear();
-            gaussianSplatDraws.clear();
+            generalGaussianSplatDraws.clear();
+            generalGaussianSplatPackedSources.clear();
             visibleMeshlets.clear();
             visibleInstanceBuffer         = nullptr;
             visibleInstanceCountBuffer    = nullptr;
@@ -93,18 +101,23 @@ namespace vultra::resource
             drawBuffer                    = nullptr;
             drawSetBuffer                 = nullptr;
             indirectBuffer.reset();
-            gaussianSplatDrawBuffer         = nullptr;
-            gaussianSplatSortKeysBuffer     = nullptr;
-            gaussianSplatSortValuesBuffer   = nullptr;
-            gaussianSplatSortStorageBuffer  = nullptr;
-            gaussianSplatPointDrawIdBuffer  = nullptr;
-            gaussianSplatVisibleCountBuffer = nullptr;
-            gaussianSplatIndirectBuffer.reset();
+            generalGaussianSplatDrawBuffer        = nullptr;
+            generalGaussianSplatPackedSourceBuffer = nullptr;
+            generalGaussianSplatVisibleSplatBuffer = nullptr;
+            generalGaussianSplatSortKeyBuffer      = nullptr;
+            generalGaussianSplatSortIndexBuffer    = nullptr;
+            generalGaussianSplatVisibleCountBuffer = nullptr;
+            generalGaussianSplatDispatchArgsBuffer = nullptr;
+            generalGaussianSplatSortStorageBuffer  = nullptr;
+            generalGaussianSplatShBuffer           = nullptr;
+            generalGaussianSplatIndirectBuffer.reset();
+            generalGaussianSplatSorter.reset();
             maxVisibleInstances          = 0;
             maxVisibleMeshlets           = 0;
             maxDraws                     = 0;
-            maxGaussianSplatDraws        = 0;
-            maxGaussianSplatSortElements = 0;
+            maxGeneralGaussianSplatDraws         = 0;
+            maxGeneralGaussianSplatPoints        = 0;
+            maxGeneralGaussianSplatVisibleSplats = 0;
         }
 
         void beginFrame(const GpuSceneDatabase& db, GpuSceneBuildMode buildMode = GpuSceneBuildMode::eCpuDriven)
@@ -113,13 +126,15 @@ namespace vultra::resource
             mode     = buildMode;
             draws.clear();
             indirectCommands.clear();
-            gaussianSplatDraws.clear();
+            generalGaussianSplatDraws.clear();
+            generalGaussianSplatPackedSources.clear();
             visibleMeshlets.clear();
             maxVisibleInstances          = 0;
             maxVisibleMeshlets           = 0;
             maxDraws                     = 0;
-            maxGaussianSplatDraws        = 0;
-            maxGaussianSplatSortElements = 0;
+            maxGeneralGaussianSplatDraws         = 0;
+            maxGeneralGaussianSplatPoints        = 0;
+            maxGeneralGaussianSplatVisibleSplats = 0;
         }
 
         [[nodiscard]] bool isCpuDriven() const { return mode == GpuSceneBuildMode::eCpuDriven; }
@@ -159,10 +174,13 @@ namespace vultra::resource
         }
 
         [[nodiscard]] uint32_t countMeshletDraws() const { return static_cast<uint32_t>(draws.size()); }
-
-        [[nodiscard]] uint32_t countGaussianSplatDraws() const
+        [[nodiscard]] uint32_t countGeneralGaussianSplatDraws() const
         {
-            return static_cast<uint32_t>(gaussianSplatDraws.size());
+            return static_cast<uint32_t>(generalGaussianSplatDraws.size());
+        }
+        [[nodiscard]] bool hasGeneralGaussianSplats() const
+        {
+            return !generalGaussianSplatDraws.empty() || maxGeneralGaussianSplatDraws > 0u;
         }
 
         uint32_t pushDraw(const GpuDrawRecord& dr)
@@ -185,11 +203,17 @@ namespace vultra::resource
             return pushDraw(std::move(dr));
         }
 
-        uint32_t pushGaussianSplatDraw(GpuDrawRecord dr)
+        uint32_t pushGeneralGaussianSplatDraw(const GpuGeneralGaussianSplatDrawRecord& dr)
         {
-            dr.flags |= gpuDrawFlagsToMask(GpuDrawFlags::eGaussianSplat);
-            const uint32_t index = static_cast<uint32_t>(gaussianSplatDraws.size());
-            gaussianSplatDraws.push_back(std::move(dr));
+            const uint32_t index = static_cast<uint32_t>(generalGaussianSplatDraws.size());
+            generalGaussianSplatDraws.push_back(dr);
+            return index;
+        }
+
+        uint32_t pushGeneralGaussianSplatSource(const GpuGeneralGaussianSplatPackedSource& src)
+        {
+            const uint32_t index = static_cast<uint32_t>(generalGaussianSplatPackedSources.size());
+            generalGaussianSplatPackedSources.push_back(src);
             return index;
         }
 
@@ -311,104 +335,102 @@ namespace vultra::resource
             ensureIndirectBuffer(rd);
         }
 
-        [[nodiscard]] uint32_t getDispatchableGaussianSplatDrawCount() const { return maxGaussianSplatDraws; }
-
-        void setGaussianSplatGpuDrivenCaps(uint32_t maxDrawCount) { maxGaussianSplatDraws = maxDrawCount; }
-
-        void ensureGaussianSplatDrawBuffer(rhi::RenderDevice& rd)
+        void setGeneralGaussianSplatCaps(uint32_t maxDrawCount, uint32_t maxPointCount, uint32_t maxVisibleSplatCount)
         {
-            const uint32_t count =
-                isGpuDriven() ? maxGaussianSplatDraws : static_cast<uint32_t>(gaussianSplatDraws.size());
-            const uint64_t bytes = static_cast<uint64_t>(count) * sizeof(GpuDrawRecord);
-            if (bytes == 0)
+            maxGeneralGaussianSplatDraws         = maxDrawCount;
+            maxGeneralGaussianSplatPoints        = maxPointCount;
+            maxGeneralGaussianSplatVisibleSplats = maxVisibleSplatCount;
+        }
+
+        void ensureGeneralGaussianSplatBuffers(rhi::RenderDevice& rd)
+        {
+            if (maxGeneralGaussianSplatDraws > 0u)
+            {
+                const uint64_t drawBytes =
+                    static_cast<uint64_t>(maxGeneralGaussianSplatDraws) * sizeof(GpuGeneralGaussianSplatDrawRecord);
+                if (!generalGaussianSplatDrawBuffer ||
+                    static_cast<uint64_t>(generalGaussianSplatDrawBuffer->getSize()) < drawBytes)
+                {
+                    generalGaussianSplatDrawBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(drawBytes));
+                }
+            }
+
+            if (maxGeneralGaussianSplatPoints > 0u)
+            {
+                const uint64_t packedBytes =
+                    static_cast<uint64_t>(maxGeneralGaussianSplatPoints) * sizeof(GpuGeneralGaussianSplatPackedSource);
+                if (!generalGaussianSplatPackedSourceBuffer ||
+                    static_cast<uint64_t>(generalGaussianSplatPackedSourceBuffer->getSize()) < packedBytes)
+                {
+                    generalGaussianSplatPackedSourceBuffer =
+                        createRef<rhi::StorageBuffer>(rd.createStorageBuffer(packedBytes));
+                }
+            }
+
+            if (maxGeneralGaussianSplatVisibleSplats == 0u)
                 return;
 
-            if (!gaussianSplatDrawBuffer || static_cast<uint64_t>(gaussianSplatDrawBuffer->getSize()) < bytes)
-                gaussianSplatDrawBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
-        }
+            const uint64_t visibleBytes = static_cast<uint64_t>(maxGeneralGaussianSplatVisibleSplats) *
+                                          sizeof(GpuGeneralGaussianSplatVisibleSplat);
+            const uint64_t sortBytes =
+                static_cast<uint64_t>(maxGeneralGaussianSplatVisibleSplats) * sizeof(uint32_t);
 
-        void uploadGaussianSplatDraws(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
-        {
-            ensureGaussianSplatDrawBuffer(rd);
-
-            const size_t drawBytes = gaussianSplatDraws.size() * sizeof(GpuDrawRecord);
-            if (drawBytes > 0)
-                cb.update(*gaussianSplatDrawBuffer, 0, static_cast<uint64_t>(drawBytes), gaussianSplatDraws.data());
-        }
-
-        void prepareGaussianSplatGpuDrivenBuffers(rhi::RenderDevice& rd, uint32_t maxDrawCount)
-        {
-            mode = GpuSceneBuildMode::eGpuDriven;
-            setGaussianSplatGpuDrivenCaps(maxDrawCount);
-            ensureGaussianSplatDrawBuffer(rd);
-            ensureGaussianSplatVisibleCountBuffer(rd);
-            ensureGaussianSplatIndirectBuffer(rd);
-        }
-
-        void ensureGaussianSplatVisibleCountBuffer(rhi::RenderDevice& rd)
-        {
-            if (!gaussianSplatVisibleCountBuffer || gaussianSplatVisibleCountBuffer->getSize() < sizeof(uint32_t))
-                gaussianSplatVisibleCountBuffer = createRef<rhi::DrawIndirectBuffer>(
-                    rd.createDrawIndirectBufferBySize(sizeof(uint32_t), rhi::DrawIndirectType::eNonIndexed));
-        }
-
-        void ensureGaussianSplatIndirectBuffer(rhi::RenderDevice& rd)
-        {
-            if (!gaussianSplatIndirectBuffer.has_value() ||
-                gaussianSplatIndirectBuffer->getDrawIndirectType() != rhi::DrawIndirectType::eNonIndexed ||
-                gaussianSplatIndirectBuffer->getCapacity() < 1u)
+            if (!generalGaussianSplatVisibleSplatBuffer ||
+                static_cast<uint64_t>(generalGaussianSplatVisibleSplatBuffer->getSize()) < visibleBytes)
             {
-                gaussianSplatIndirectBuffer =
+                generalGaussianSplatVisibleSplatBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(visibleBytes));
+            }
+
+            if (!generalGaussianSplatSortKeyBuffer ||
+                static_cast<uint64_t>(generalGaussianSplatSortKeyBuffer->getSize()) < sortBytes)
+            {
+                generalGaussianSplatSortKeyBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(sortBytes));
+            }
+
+            if (!generalGaussianSplatSortIndexBuffer ||
+                static_cast<uint64_t>(generalGaussianSplatSortIndexBuffer->getSize()) < sortBytes)
+            {
+                generalGaussianSplatSortIndexBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(sortBytes));
+            }
+
+            if (!generalGaussianSplatVisibleCountBuffer ||
+                static_cast<uint64_t>(generalGaussianSplatVisibleCountBuffer->getSize()) < sizeof(uint32_t))
+            {
+                generalGaussianSplatVisibleCountBuffer =
+                    createRef<rhi::StorageBuffer>(rd.createStorageBuffer(sizeof(uint32_t)));
+            }
+
+            constexpr uint64_t kDispatchArgsBytes = sizeof(uint32_t) * 4ull;
+            if (!generalGaussianSplatDispatchArgsBuffer ||
+                static_cast<uint64_t>(generalGaussianSplatDispatchArgsBuffer->getSize()) < kDispatchArgsBytes)
+            {
+                generalGaussianSplatDispatchArgsBuffer = createRef<rhi::StorageBuffer>(
+                    rd.createStorageBufferWithUsage(kDispatchArgsBytes, rhi::BufferUsage::eIndirectBuffer));
+            }
+
+            if (!generalGaussianSplatIndirectBuffer.has_value() || generalGaussianSplatIndirectBuffer->getCapacity() < 1u)
+            {
+                generalGaussianSplatIndirectBuffer =
                     rd.createDrawIndirectBufferByCount(1u, rhi::DrawIndirectType::eNonIndexed);
             }
-        }
 
-        void ensureGaussianSplatPointDrawIdBuffer(rhi::RenderDevice& rd, uint32_t pointCount)
-        {
-            if (pointCount == 0u)
-                return;
-
-            const uint64_t bytes = static_cast<uint64_t>(pointCount) * sizeof(uint32_t);
-            if (!gaussianSplatPointDrawIdBuffer ||
-                static_cast<uint64_t>(gaussianSplatPointDrawIdBuffer->getSize()) < bytes)
+            if (!generalGaussianSplatSorter.has_value() || !static_cast<bool>(*generalGaussianSplatSorter) ||
+                generalGaussianSplatSorter->getMaxElementCount() < maxGeneralGaussianSplatVisibleSplats)
             {
-                gaussianSplatPointDrawIdBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
-            }
-        }
-
-        void ensureGaussianSplatSortBuffers(rhi::RenderDevice&      rd,
-                                            const rhi::RadixSorter& sorter,
-                                            const uint32_t          maxElementCount)
-        {
-            if (!sorter || maxElementCount == 0u)
-                return;
-
-            const uint64_t keyValueBytes = static_cast<uint64_t>(maxElementCount) * sizeof(uint32_t);
-
-            if (!gaussianSplatSortKeysBuffer ||
-                static_cast<uint64_t>(gaussianSplatSortKeysBuffer->getSize()) < keyValueBytes)
-            {
-                gaussianSplatSortKeysBuffer = createRef<rhi::StorageBuffer>(
-                    rd.createStorageBufferWithUsage(keyValueBytes, sorter.getKeyValueStorageRequirements().usage));
+                generalGaussianSplatSorter = rd.createRadixSorter(maxGeneralGaussianSplatVisibleSplats);
             }
 
-            if (!gaussianSplatSortValuesBuffer ||
-                static_cast<uint64_t>(gaussianSplatSortValuesBuffer->getSize()) < keyValueBytes)
+            if (generalGaussianSplatSorter.has_value() && static_cast<bool>(*generalGaussianSplatSorter))
             {
-                gaussianSplatSortValuesBuffer = createRef<rhi::StorageBuffer>(
-                    rd.createStorageBufferWithUsage(keyValueBytes, sorter.getKeyValueStorageRequirements().usage));
+                const auto req = generalGaussianSplatSorter->getKeyValueStorageRequirements();
+                if (req.size > 0u &&
+                    (!generalGaussianSplatSortStorageBuffer ||
+                     static_cast<uint64_t>(generalGaussianSplatSortStorageBuffer->getSize()) < req.size))
+                {
+                    generalGaussianSplatSortStorageBuffer = createRef<rhi::StorageBuffer>(
+                        rd.createStorageBufferWithUsage(req.size, req.usage));
+                }
             }
-
-            const auto storageReq = sorter.getKeyValueStorageRequirements();
-            if (!gaussianSplatSortStorageBuffer ||
-                static_cast<uint64_t>(gaussianSplatSortStorageBuffer->getSize()) < storageReq.size)
-            {
-                gaussianSplatSortStorageBuffer =
-                    createRef<rhi::StorageBuffer>(rd.createStorageBufferWithUsage(storageReq.size, storageReq.usage));
-            }
-
-            maxGaussianSplatSortElements = maxElementCount;
         }
     };
 } // namespace vultra::resource
-

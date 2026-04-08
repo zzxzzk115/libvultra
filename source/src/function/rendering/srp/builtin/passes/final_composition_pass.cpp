@@ -91,11 +91,11 @@ namespace vultra
         const bool manualSrgbEncode = !isSrgbColorFormat(colorFormat);
         auto       fragmentShaderVariantHash =
             computeHighendVariantHash("final_composition.frag",
-                                              vshadersystem::ShaderStage::eFrag,
-                                              {
-                                                  {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
-                                                  {"MANUAL_SRGB_ENCODE", manualSrgbEncode ? 1u : 0u},
-                                              });
+                                      vshadersystem::ShaderStage::eFrag,
+                                      {
+                                          {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
+                                          {"MANUAL_SRGB_ENCODE", manualSrgbEncode ? 1u : 0u},
+                                      });
         auto fragmentShader = loadHighendShaderVariant(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {

@@ -65,15 +65,15 @@ namespace vultra
             return std::nullopt;
         }
 
-        [[nodiscard]] std::optional<UniversalRenderer::RenderPath> parseRenderProfileToken(const std::string_view token)
+        [[nodiscard]] std::optional<UniversalRenderer::RenderProfile> parseRenderProfileToken(const std::string_view token)
         {
             if (token == "default" || token == "universal")
             {
-                return UniversalRenderer::RenderPath::eDefault;
+                return UniversalRenderer::RenderProfile::eDefault;
             }
             if (token == "compat" || token == "compatibility")
             {
-                return UniversalRenderer::RenderPath::eCompatibility;
+                return UniversalRenderer::RenderProfile::eCompatibility;
             }
             return std::nullopt;
         }
@@ -138,10 +138,10 @@ namespace vultra
             return parsed;
         }
 
-        [[nodiscard]] std::optional<UniversalRenderer::RenderPath>
+        [[nodiscard]] std::optional<UniversalRenderer::RenderProfile>
         parseCliRenderProfile(std::span<const std::string> args, bool& sawRenderProfileArg, bool& invalidRenderProfileValue)
         {
-            std::optional<UniversalRenderer::RenderPath> parsed;
+            std::optional<UniversalRenderer::RenderProfile> parsed;
             for (size_t i = 0; i < args.size(); ++i)
             {
                 const std::string_view arg = args[i];
@@ -238,14 +238,14 @@ namespace vultra
             }
         }
 
-        UniversalRenderer::RenderPath universalRenderPath = UniversalRenderer::RenderPath::eDefault;
+        UniversalRenderer::RenderProfile universalRenderProfile = UniversalRenderer::RenderProfile::eDefault;
         {
             bool sawRenderProfileArg       = false;
             bool invalidRenderProfileValue = false;
             if (auto parsed = parseCliRenderProfile(commandLineArgs(), sawRenderProfileArg, invalidRenderProfileValue);
                 parsed.has_value())
             {
-                universalRenderPath = *parsed;
+                universalRenderProfile = *parsed;
             }
 
             if (invalidRenderProfileValue)
@@ -260,7 +260,7 @@ namespace vultra
         engine.ctx().config.render.backendApi              = backendApi;
         engine.ctx().config.render.renderDeviceFeatureFlag = demoRenderDeviceFeatureFlag();
         engine.ctx().config.render.builtinShaderLibrary =
-            universalRenderPath == UniversalRenderer::RenderPath::eCompatibility ?
+            universalRenderProfile == UniversalRenderer::RenderProfile::eCompatibility ?
                 EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eCompatibility :
                 EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eAuto;
 
@@ -309,7 +309,7 @@ namespace vultra
         }
         if (auto universalRenderer = std::dynamic_pointer_cast<UniversalRenderer>(renderer))
         {
-            universalRenderer->setRenderPath(universalRenderPath);
+            universalRenderer->setRenderProfile(universalRenderProfile);
         }
 
         auto& cameraSystem  = engine.emplaceSubsystem<CameraSystem>();

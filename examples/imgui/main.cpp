@@ -1,10 +1,4 @@
 #include <vultra/core/app/demo_app_host.hpp>
-#include <vultra/core/base/common_context.hpp>
-#include <vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/gaussian_splat_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/test_feature.hpp>
-#include <vultra/function/rendering/srp/renderer.hpp>
 #include <vultra/function/services/frame_debugger_service.hpp>
 
 #include <imgui.h>

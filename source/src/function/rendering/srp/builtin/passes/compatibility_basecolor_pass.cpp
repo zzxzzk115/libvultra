@@ -21,20 +21,7 @@ namespace vultra
     {
         constexpr auto     PASS_NAME                     = "CompatibilityBaseColorPass";
         constexpr uint32_t kVertexLocationPosition       = 0u;
-        constexpr uint32_t kVertexLocationNormal         = 1u;
-        constexpr uint32_t kVertexLocationColor          = 2u;
         constexpr uint32_t kVertexLocationTexCoord0      = 3u;
-        constexpr uint32_t kVertexLocationTexCoord1      = 4u;
-        constexpr uint32_t kVertexLocationTangent        = 5u;
-        constexpr uint32_t kVertexLocationJointIndices   = 6u;
-        constexpr uint32_t kVertexLocationJointWeights   = 7u;
-        constexpr uint32_t kVertexLayoutHasNormal        = 1u << 0u;
-        constexpr uint32_t kVertexLayoutHasColor         = 1u << 1u;
-        constexpr uint32_t kVertexLayoutHasUv0           = 1u << 2u;
-        constexpr uint32_t kVertexLayoutHasUv1           = 1u << 3u;
-        constexpr uint32_t kVertexLayoutHasTangent       = 1u << 4u;
-        constexpr uint32_t kVertexLayoutHasJointIndices  = 1u << 5u;
-        constexpr uint32_t kVertexLayoutHasJointWeights  = 1u << 6u;
         constexpr uint64_t kWebGPUUniformOffsetAlignment = 256u;
 
         struct alignas(16) CompatDrawParams
@@ -127,64 +114,8 @@ namespace vultra
             }
         }
 
-        [[nodiscard]] uint32_t buildVertexLayoutMask(const rhi::VertexAttributes& vertexAttributes)
-        {
-            uint32_t mask = 0u;
-            if (vertexAttributes.contains(kVertexLocationNormal))
-                mask |= kVertexLayoutHasNormal;
-            if (vertexAttributes.contains(kVertexLocationColor))
-                mask |= kVertexLayoutHasColor;
-            if (vertexAttributes.contains(kVertexLocationTexCoord0))
-                mask |= kVertexLayoutHasUv0;
-            if (vertexAttributes.contains(kVertexLocationTexCoord1))
-                mask |= kVertexLayoutHasUv1;
-            if (vertexAttributes.contains(kVertexLocationTangent))
-                mask |= kVertexLayoutHasTangent;
-            if (vertexAttributes.contains(kVertexLocationJointIndices))
-                mask |= kVertexLayoutHasJointIndices;
-            if (vertexAttributes.contains(kVertexLocationJointWeights))
-                mask |= kVertexLayoutHasJointWeights;
-            return mask;
-        }
-
-        [[nodiscard]] rhi::VertexAttributes buildVulkanPipelineVertexAttributes(const uint32_t vertexLayoutMask)
-        {
-            rhi::VertexAttributes pipelineVertexAttributes;
-            uint32_t              offset = 0u;
-
-            const auto addAttribute =
-                [&](const uint32_t location, const rhi::VertexAttribute::Type type, const bool usedByShader) {
-                    pipelineVertexAttributes[location] =
-                        rhi::VertexAttribute {location, type, usedByShader ? offset : rhi::kIgnoreVertexAttribute};
-                    offset += rhi::getSize(type);
-                };
-
-            addAttribute(kVertexLocationPosition, rhi::VertexAttribute::Type::eFloat3, true);
-            if ((vertexLayoutMask & kVertexLayoutHasNormal) != 0u)
-                addAttribute(kVertexLocationNormal, rhi::VertexAttribute::Type::eFloat3, false);
-            if ((vertexLayoutMask & kVertexLayoutHasColor) != 0u)
-                addAttribute(kVertexLocationColor, rhi::VertexAttribute::Type::eFloat3, false);
-            if ((vertexLayoutMask & kVertexLayoutHasUv0) != 0u)
-                addAttribute(kVertexLocationTexCoord0, rhi::VertexAttribute::Type::eFloat2, true);
-            if ((vertexLayoutMask & kVertexLayoutHasUv1) != 0u)
-                addAttribute(kVertexLocationTexCoord1, rhi::VertexAttribute::Type::eFloat2, false);
-            if ((vertexLayoutMask & kVertexLayoutHasTangent) != 0u)
-                addAttribute(kVertexLocationTangent, rhi::VertexAttribute::Type::eFloat4, false);
-            if ((vertexLayoutMask & kVertexLayoutHasJointIndices) != 0u)
-                addAttribute(kVertexLocationJointIndices, rhi::VertexAttribute::Type::eFloat4, false);
-            if ((vertexLayoutMask & kVertexLayoutHasJointWeights) != 0u)
-                addAttribute(kVertexLocationJointWeights, rhi::VertexAttribute::Type::eFloat4, false);
-
-            for (auto& [location, attribute] : pipelineVertexAttributes)
-            {
-                if (location != kVertexLocationPosition && location != kVertexLocationTexCoord0)
-                    attribute.offset = rhi::kIgnoreVertexAttribute;
-            }
-            return pipelineVertexAttributes;
-        }
-
-        [[nodiscard]] rhi::VertexAttributes buildWebGPUPipelineVertexAttributes(const uint32_t positionOffset,
-                                                                                const uint32_t texCoord0Offset)
+        [[nodiscard]] rhi::VertexAttributes buildPipelineVertexAttributes(const uint32_t positionOffset,
+                                                                          const uint32_t texCoord0Offset)
         {
             rhi::VertexAttributes attrs;
             attrs[kVertexLocationPosition] = rhi::VertexAttribute {
@@ -218,35 +149,8 @@ namespace vultra
 
     FrameGraphResource CompatibilityBaseColorPass::addPass(FrameGraphBuildContext& ctx, const FrameGraphResource target)
     {
-        const bool webgpu = ctx.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
+        const bool webgpu       = ctx.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
         const bool directTarget = static_cast<bool>(target);
-
-        FrameGraphResource materialTableBuffer;
-        FrameGraphResource materialParamsBuffer;
-        if (!webgpu)
-        {
-            if (const auto* gpuSceneDatabase = ctx.view().gpuSceneDatabase;
-                gpuSceneDatabase && gpuSceneDatabase->resources)
-            {
-                if (gpuSceneDatabase->resources->materialTableBuffer &&
-                    *gpuSceneDatabase->resources->materialTableBuffer)
-                {
-                    materialTableBuffer =
-                        framegraph::importBuffer(ctx.fg,
-                                                 "ImportedCompatMaterialTableBuffer",
-                                                 gpuSceneDatabase->resources->materialTableBuffer.get(),
-                                                 framegraph::BufferType::eStorageBuffer);
-                }
-                if (gpuSceneDatabase->resources->materialParams.gpu && *gpuSceneDatabase->resources->materialParams.gpu)
-                {
-                    materialParamsBuffer =
-                        framegraph::importBuffer(ctx.fg,
-                                                 "ImportedCompatMaterialParamsBuffer",
-                                                 gpuSceneDatabase->resources->materialParams.gpu.get(),
-                                                 framegraph::BufferType::eStorageBuffer);
-                }
-            }
-        }
 
         struct PassData
         {
@@ -254,8 +158,6 @@ namespace vultra
             FrameGraphResource target;
             FrameGraphResource color;
             FrameGraphResource depth;
-            FrameGraphResource materialTableBuffer;
-            FrameGraphResource materialParamsBuffer;
         };
 
         auto data = ctx.fg.addCallbackPass<PassData>(
@@ -264,9 +166,8 @@ namespace vultra
              directTarget,
              target,
              resolution  = ctx.view().extent,
-             cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource,
-             materialTableBuffer,
-             materialParamsBuffer](FrameGraph::Builder& builder, PassData& data) {
+             cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource](FrameGraph::Builder& builder,
+                                                                            PassData&            data) {
                 PASS_SETUP_ZONE;
 
                 data.camera = builder.read(cameraBlock,
@@ -274,29 +175,6 @@ namespace vultra
                                                .location      = {.set = 0, .binding = 0},
                                                .pipelineStage = framegraph::PipelineStage::eVertexShader,
                                            });
-
-                if (!webgpu)
-                {
-                    if (materialTableBuffer)
-                    {
-                        data.materialTableBuffer =
-                            builder.read(materialTableBuffer,
-                                         framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 8},
-                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
-                                         });
-                    }
-                    if (materialParamsBuffer)
-                    {
-                        data.materialParamsBuffer =
-                            builder.read(materialParamsBuffer,
-                                         framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 9},
-                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
-                                         });
-                    }
-
-                }
 
                 if (!directTarget)
                 {
@@ -308,11 +186,11 @@ namespace vultra
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                         });
                     data.color  = builder.write(data.color,
-                                                framegraph::Attachment {
+                                               framegraph::Attachment {
                                                     .index       = 0,
                                                     .imageAspect = rhi::ImageAspect::eColor,
                                                     .clearValue  = framegraph::ClearValue::eOpaqueBlack,
-                                                });
+                                               });
                     data.target = data.color;
                 }
                 else
@@ -355,11 +233,6 @@ namespace vultra
                 const auto framebufferInfo = rc.framebufferInfo().value();
                 const auto colorFormat     = rhi::getColorFormat(framebufferInfo, 0);
 
-                if (gpuSceneDatabase->resources->materialTableBuffer)
-                    rhi::prepareForReading(rc.cb, *gpuSceneDatabase->resources->materialTableBuffer);
-                if (gpuSceneDatabase->resources->materialParams.gpu)
-                    rhi::prepareForReading(rc.cb, *gpuSceneDatabase->resources->materialParams.gpu);
-
                 const auto          materialTextures = gpuSceneDatabase->resources->getBindlessTextureHandles();
                 const rhi::Texture* fallbackTexture  = findFirstValidTexture(materialTextures);
 
@@ -392,96 +265,19 @@ namespace vultra
                     rhi::prepareForReading(rc.cb, mesh.vertexBuffer);
                     rhi::prepareForReading(rc.cb, mesh.indexBuffer);
 
-                    if (webgpu)
-                    {
-                        const auto drawSubMesh = [&](const resource::GpuSubMesh& subMesh) {
-                            const auto posIt = mesh.vertexAttributes.find(kVertexLocationPosition);
-                            if (posIt == mesh.vertexAttributes.end())
-                                return;
-
-                            const uint64_t   drawParamOffset = drawParamIndex * drawParamStride;
-                            CompatDrawParams drawParams {};
-                            drawParams.model         = instance.worldMatrix;
-                            drawParams.materialIndex = subMesh.materialIndex;
-                            rc.rd.uploadS(drawParamsBuffer, drawParamOffset, sizeof(CompatDrawParams), &drawParams);
-
-                            const auto     uvIt            = mesh.vertexAttributes.find(kVertexLocationTexCoord0);
-                            const bool     hasUv0          = uvIt != mesh.vertexAttributes.end();
-                            const uint32_t positionOffset  = posIt->second.offset;
-                            const uint32_t texCoord0Offset = hasUv0 ? uvIt->second.offset : 0u;
-                            const uint32_t textureIndex =
-                                resolveMaterialTextureIndex(*gpuSceneDatabase->resources, subMesh.materialIndex);
-
-                            const auto* boundTexture =
-                                textureIndex < materialTextures.size() && materialTextures[textureIndex] ?
-                                    materialTextures[textureIndex] :
-                                    fallbackTexture;
-                            const bool textured = boundTexture != nullptr && hasUv0;
-                            if (!textured)
-                                return;
-                            const auto* pipeline = getPipeline(
-                                colorFormat, true, 0u, texCoord0Offset, positionOffset, mesh.vertexStrideBytes);
-                            if (!pipeline)
-                                return;
-                            rc.cb.bindPipeline(*pipeline);
-
-                            rc.resourceSet[3] = {
-                                {4,
-                                 rhi::bindings::CombinedImageSampler {
-                                     .texture     = boundTexture,
-                                     .imageAspect = rhi::ImageAspect::eColor,
-                                 }},
-                            };
-                            rc.resourceSet[1] = {
-                                {0,
-                                 rhi::bindings::UniformBuffer {
-                                     .buffer = &drawParamsBuffer,
-                                     .offset = drawParamOffset,
-                                     .range  = sizeof(CompatDrawParams),
-                                 }},
-                            };
-                            rc.bindDescriptorSets(*pipeline);
-
-                            if (subMesh.indexCount == 0u && subMesh.vertexCount == 0u)
-                                return;
-
-                            rc.cb.draw(rhi::GeometryInfo {
-                                .topology     = rhi::PrimitiveTopology::eTriangleList,
-                                .vertexBuffer = &mesh.vertexBuffer,
-                                .vertexOffset = subMesh.vertexOffset,
-                                .numVertices  = subMesh.vertexCount,
-                                .indexBuffer  = &mesh.indexBuffer,
-                                .indexOffset  = subMesh.indexOffset,
-                                .numIndices   = subMesh.indexCount,
-                            });
-                            ++drawParamIndex;
-                        };
-
-                        if (!mesh.subMeshes.empty())
-                        {
-                            for (const auto& subMesh : mesh.subMeshes)
-                                drawSubMesh(subMesh);
-                        }
-                        else
-                        {
-                            drawSubMesh(resource::GpuSubMesh {
-                                .vertexOffset  = 0u,
-                                .vertexCount   = mesh.vertexCount,
-                                .indexOffset   = 0u,
-                                .indexCount    = mesh.indexCount,
-                                .materialIndex = 0u,
-                            });
-                        }
+                    const auto posIt = mesh.vertexAttributes.find(kVertexLocationPosition);
+                    if (posIt == mesh.vertexAttributes.end())
                         continue;
-                    }
+                    const auto uvIt = mesh.vertexAttributes.find(kVertexLocationTexCoord0);
+                    if (uvIt == mesh.vertexAttributes.end())
+                        continue;
 
-                    const uint32_t vertexLayoutMask = buildVertexLayoutMask(mesh.vertexAttributes);
-                    const auto*    pipeline =
-                        getPipeline(colorFormat, false, vertexLayoutMask, 0u, 0u, mesh.vertexStrideBytes);
+                    const uint32_t positionOffset  = posIt->second.offset;
+                    const uint32_t texCoord0Offset = uvIt->second.offset;
+                    const auto* pipeline =
+                        getPipeline(colorFormat, webgpu, texCoord0Offset, positionOffset, mesh.vertexStrideBytes);
                     if (!pipeline)
                         continue;
-
-                    rc.cb.bindPipeline(*pipeline);
 
                     const auto drawSubMesh = [&](const resource::GpuSubMesh& subMesh) {
                         const uint64_t   drawParamOffset = drawParamIndex * drawParamStride;
@@ -496,20 +292,18 @@ namespace vultra
                             textureIndex < materialTextures.size() && materialTextures[textureIndex] ?
                                 materialTextures[textureIndex] :
                                 fallbackTexture;
-                        if (boundTexture)
-                        {
-                            rc.resourceSet[3] = {
-                                {4,
-                                 rhi::bindings::CombinedImageSampler {
-                                     .texture     = boundTexture,
-                                     .imageAspect = rhi::ImageAspect::eColor,
-                                 }},
-                            };
-                        }
-                        else
-                        {
-                            rc.resourceSet.erase(3);
-                        }
+                        if (!boundTexture)
+                            return;
+
+                        rc.cb.bindPipeline(*pipeline);
+
+                        rc.resourceSet[3] = {
+                            {4,
+                             rhi::bindings::CombinedImageSampler {
+                                 .texture     = boundTexture,
+                                 .imageAspect = rhi::ImageAspect::eColor,
+                             }},
+                        };
 
                         rc.resourceSet[1] = {
                             {0,
@@ -559,7 +353,6 @@ namespace vultra
 
     rhi::GraphicsPipeline CompatibilityBaseColorPass::createPipeline(const rhi::PixelFormat colorFormat,
                                                                      const bool             webgpu,
-                                                                     const uint32_t         vertexLayoutMask,
                                                                      const uint32_t         texCoord0Offset,
                                                                      const uint32_t         positionOffset,
                                                                      const uint32_t         vertexStride) const
@@ -584,7 +377,7 @@ namespace vultra
             return rhi::GraphicsPipeline::Builder {}
                 .setColorFormats({colorFormat})
                 .setDepthFormat(rhi::PixelFormat::eDepth32F)
-                .setInputAssembly(buildWebGPUPipelineVertexAttributes(positionOffset, texCoord0Offset))
+                .setInputAssembly(buildPipelineVertexAttributes(positionOffset, texCoord0Offset))
                 .setVertexStride(vertexStride)
                 .addShader(rhi::ShaderType::eVertex,
                            {.code = vertexShader->wgsl, .reflection = vertexShader->reflection})
@@ -606,7 +399,8 @@ namespace vultra
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({colorFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
-            .setInputAssembly(buildVulkanPipelineVertexAttributes(vertexLayoutMask))
+            .setInputAssembly(buildPipelineVertexAttributes(positionOffset, texCoord0Offset))
+            .setVertexStride(vertexStride)
             .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
             .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
             .setDepthStencil({

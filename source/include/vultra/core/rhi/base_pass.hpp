@@ -17,6 +17,7 @@ namespace vultra
         enum class ShaderProfile : uint8_t
         {
             eUnspecified,
+            eGeneral,
             eHighend,
             eCompatibility
         };
@@ -72,6 +73,8 @@ namespace vultra
             {
                 switch (m_ShaderProfile)
                 {
+                    case ShaderProfile::eGeneral:
+                        return "general";
                     case ShaderProfile::eHighend:
                         return "highend";
                     case ShaderProfile::eCompatibility:
@@ -94,6 +97,20 @@ namespace vultra
             {
                 ensureShaderProfileSpecified();
                 return getShaderLib().computeVariantHash(shaderId, stage, keywordValues);
+            }
+
+            [[nodiscard]] uint64_t
+            computeGeneralVariantHash(std::string_view                          shaderId,
+                                      const vshadersystem::ShaderStage          stage,
+                                      const ShaderLibraryRuntime::KeywordValues keywordValues = {}) const
+            {
+                if (m_ShaderProfile != ShaderProfile::eGeneral)
+                {
+                    VULTRA_CORE_WARN("[{}] Computing general variant while pass profile is '{}'",
+                                     typeid(TargetPass).name(),
+                                     getShaderProfileName());
+                }
+                return computeShaderVariantHash(shaderId, stage, keywordValues);
             }
 
             [[nodiscard]] uint64_t
@@ -155,6 +172,32 @@ namespace vultra
                                       getShaderProfileName());
                 }
                 return shader;
+            }
+
+            [[nodiscard]] std::optional<ShaderLibraryRuntime::LoadedShader>
+            loadGeneralShader(std::string_view                          shaderId,
+                              const vshadersystem::ShaderStage          stage,
+                              const ShaderLibraryRuntime::KeywordValues keywordValues = {}) const
+            {
+                if (m_ShaderProfile != ShaderProfile::eGeneral)
+                {
+                    VULTRA_CORE_WARN("[{}] Loading general shader while pass profile is '{}'",
+                                     typeid(TargetPass).name(),
+                                     getShaderProfileName());
+                }
+                return loadShader(shaderId, stage, keywordValues);
+            }
+
+            [[nodiscard]] std::optional<ShaderLibraryRuntime::LoadedShader>
+            loadGeneralShaderVariant(const uint64_t variantHash, const vshadersystem::ShaderStage stage) const
+            {
+                if (m_ShaderProfile != ShaderProfile::eGeneral)
+                {
+                    VULTRA_CORE_WARN("[{}] Loading general shader variant while pass profile is '{}'",
+                                     typeid(TargetPass).name(),
+                                     getShaderProfileName());
+                }
+                return loadShaderVariant(variantHash, stage);
             }
 
             [[nodiscard]] std::optional<ShaderLibraryRuntime::LoadedShader>

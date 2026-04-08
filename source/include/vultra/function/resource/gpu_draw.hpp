@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+#include <glm/vec4.hpp>
 #include <glm/mat4x4.hpp>
 
 namespace vultra::resource
@@ -12,7 +13,6 @@ namespace vultra::resource
     {
         eNone = 0,
         eMeshlet = 1u << 0,
-        eGaussianSplat = 1u << 1,
     };
 
     inline constexpr uint32_t gpuDrawFlagsToMask(GpuDrawFlags f)
@@ -51,4 +51,41 @@ namespace vultra::resource
     };
 
     static_assert(sizeof(GpuDrawRecord) % 16 == 0, "GpuDrawRecord must be 16-byte aligned");
+
+    // Unified eGeneral 3DGS draw contract. This is intentionally backend-agnostic
+    // and sized in 16-byte chunks so Vulkan/WebGPU can share one source layout.
+    struct GpuGeneralGaussianSplatDrawRecord
+    {
+        uint32_t splatIndex {0};
+        uint32_t pointOffset {0};
+        uint32_t pointCount {0};
+        uint32_t shDegree {0};
+        glm::vec4 params0 {0.3f, 1.0f, 1.0f, 0.0f}; // x=kernelSize, y=cutoffScale, z=opacityScale, w=reserved
+        glm::mat4 model {1.0f};
+    };
+    static_assert(sizeof(GpuGeneralGaussianSplatDrawRecord) == 96,
+                  "GpuGeneralGaussianSplatDrawRecord must remain tightly packed");
+
+    // Visionary-style packed source record. The exact bit packing will tighten
+    // later, but the contract is already a compact u32 payload instead of the
+    // legacy split center/cov/color/meta indirections.
+    struct GpuGeneralGaussianSplatPackedSource
+    {
+        glm::uvec4 posOpacity {0u};
+        glm::uvec4 covariance0 {0u};
+        glm::uvec4 colorSh0 {0u};
+        glm::uvec4 aux0 {0u}; // x=sourcePointIndex, y=drawIndex, z=shCoeffOffset, w=flags
+    };
+    static_assert(sizeof(GpuGeneralGaussianSplatPackedSource) == 64,
+                  "GpuGeneralGaussianSplatPackedSource must remain 64 bytes");
+
+    // Screen-space payload mirrors Visionary's compact Splat2D contract:
+    // packed axes, packed NDC center, high-precision depth, packed RGBA.
+    struct GpuGeneralGaussianSplatVisibleSplat
+    {
+        glm::uvec4 packed0 {0u}; // x=basis0.xy, y=basis1.xy, z=centerNdc.xy, w=floatBits(depth)
+        glm::uvec4 packed1 {0u}; // x=color.rg, y=color.ba, z=packedSourceIndex, w=drawIndex
+    };
+    static_assert(sizeof(GpuGeneralGaussianSplatVisibleSplat) == 32,
+                  "GpuGeneralGaussianSplatVisibleSplat must remain tightly packed");
 } // namespace vultra::resource

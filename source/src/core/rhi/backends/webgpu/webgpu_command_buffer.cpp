@@ -359,7 +359,11 @@ namespace vultra
                 if (m_ComputePass == nullptr)
                 {
                     WGPUComputePassDescriptor descriptor {};
+#if defined(__EMSCRIPTEN__)
                     WGPUPassTimestampWrites timestampWrites {};
+#else
+                    WGPUComputePassTimestampWrites timestampWrites {};
+#endif
                     if (m_Backend)
                     {
                         WGPUQuerySet querySet {nullptr};
@@ -684,7 +688,11 @@ namespace vultra
             passDesc.colorAttachments       = &colorDesc;
             passDesc.depthStencilAttachment = m_DepthView != nullptr ? &depthDesc : nullptr;
 
+#if defined(__EMSCRIPTEN__)
             WGPUPassTimestampWrites timestampWrites {};
+#else
+            WGPURenderPassTimestampWrites timestampWrites {};
+#endif
             if (m_Backend)
             {
                 WGPUQuerySet querySet {nullptr};

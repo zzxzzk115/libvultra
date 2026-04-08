@@ -1,11 +1,11 @@
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
-#include "vultra/function/rendering/srp/builtin/features/compatibility_feature.hpp"
+#include "vultra/function/rendering/runtime_profiler.hpp"
+#include "vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
-#include "vultra/function/rendering/srp/builtin/features/gaussian_splat_feature.hpp"
+#include "vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/test_feature.hpp"
-#include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
@@ -143,10 +143,10 @@ namespace vultra
 
             ImGui::SeparatorText("Scope Trees");
 
-            auto drawScopeTreeTable = [&](const char*                                      title,
-                                          const char*                                      tableId,
-                                          const std::vector<RuntimeProfiler::ScopeNode>&   nodes,
-                                          const bool                                       gpuTree) {
+            auto drawScopeTreeTable = [&](const char*                                    title,
+                                          const char*                                    tableId,
+                                          const std::vector<RuntimeProfiler::ScopeNode>& nodes,
+                                          const bool                                     gpuTree) {
                 ImGui::TextUnformatted(title);
                 if (nodes.empty())
                 {
@@ -162,8 +162,10 @@ namespace vultra
                     return;
 
                 ImGui::TableSetupColumn("Scope");
-                ImGui::TableSetupColumn(gpuTree ? "GPU Total (ms)" : "CPU Total (ms)", ImGuiTableColumnFlags_WidthFixed, 130.0f);
-                ImGui::TableSetupColumn(gpuTree ? "GPU Self (ms)" : "CPU Self (ms)", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+                ImGui::TableSetupColumn(
+                    gpuTree ? "GPU Total (ms)" : "CPU Total (ms)", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+                ImGui::TableSetupColumn(
+                    gpuTree ? "GPU Self (ms)" : "CPU Self (ms)", ImGuiTableColumnFlags_WidthFixed, 130.0f);
                 ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_WidthFixed, 70.0f);
                 ImGui::TableHeadersRow();
 
@@ -203,12 +205,11 @@ namespace vultra
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
 
-                    const bool isLeaf = childList.empty();
-                    ImGuiTreeNodeFlags flags = isLeaf ? (ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen) : 0;
-                    const bool opened = ImGui::TreeNodeEx(reinterpret_cast<void*>(static_cast<intptr_t>(idx)),
-                                                          flags,
-                                                          "%s",
-                                                          node.name.c_str());
+                    const bool         isLeaf = childList.empty();
+                    ImGuiTreeNodeFlags flags =
+                        isLeaf ? (ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen) : 0;
+                    const bool opened = ImGui::TreeNodeEx(
+                        reinterpret_cast<void*>(static_cast<intptr_t>(idx)), flags, "%s", node.name.c_str());
 
                     ImGui::TableSetColumnIndex(1);
                     if (gpuTree)
@@ -324,8 +325,8 @@ namespace vultra
                 return;
 
             constexpr float kPadding = 10.0f;
-            ImGui::SetNextWindowPos(
-                ImVec2(viewport->WorkPos.x + kPadding, viewport->WorkPos.y + kPadding), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + kPadding, viewport->WorkPos.y + kPadding),
+                                    ImGuiCond_Always);
             ImGui::SetNextWindowBgAlpha(0.35f);
             constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
@@ -336,9 +337,11 @@ namespace vultra
                 if (info.mode == CameraControlMode::eFly)
                 {
                     drawHintRow(ICON_MDI_MOUSE_RIGHT_CLICK " " ICON_MDI_EYE_OUTLINE, "Look");
-                    drawHintRow(ICON_MDI_ALPHA_W_BOX " " ICON_MDI_ALPHA_A_BOX " " ICON_MDI_ALPHA_S_BOX " " ICON_MDI_ALPHA_D_BOX,
+                    drawHintRow(ICON_MDI_ALPHA_W_BOX " " ICON_MDI_ALPHA_A_BOX " " ICON_MDI_ALPHA_S_BOX
+                                                     " " ICON_MDI_ALPHA_D_BOX,
                                 "Move");
-                    drawHintRow(ICON_MDI_ALPHA_Q_BOX " " ICON_MDI_CHEVRON_DOWN_BOX "   " ICON_MDI_ALPHA_E_BOX " " ICON_MDI_CHEVRON_UP_BOX,
+                    drawHintRow(ICON_MDI_ALPHA_Q_BOX " " ICON_MDI_CHEVRON_DOWN_BOX "   " ICON_MDI_ALPHA_E_BOX
+                                                     " " ICON_MDI_CHEVRON_UP_BOX,
                                 "Down / Up");
                     drawHintRow(ICON_MDI_APPLE_KEYBOARD_SHIFT " " ICON_MDI_RUN_FAST, "Faster");
                     drawHintRow(ICON_MDI_APPLE_KEYBOARD_CONTROL " " ICON_MDI_TURTLE, "Slower");
@@ -384,9 +387,9 @@ namespace vultra
                 ImGui::SliderInt("Eye", &eyeIndex, 0, std::max(0, maxEyeIndex));
         }
 
-        void syncTextureViewerRegistration(IImGuiService&                       imguiService,
-                                           const resource::GpuResourcePool&     pool,
-                                           std::vector<const rhi::Texture*>&    registeredTextures,
+        void syncTextureViewerRegistration(IImGuiService&                         imguiService,
+                                           const resource::GpuResourcePool&       pool,
+                                           std::vector<const rhi::Texture*>&      registeredTextures,
                                            std::vector<IImGuiService::TextureID>& textureIds)
         {
             uint32_t maxBindlessIndex = 0u;
@@ -405,10 +408,7 @@ namespace vultra
                 const auto index = static_cast<size_t>(gpuTexture.bindlessIndex);
                 alive[index]     = true;
                 syncImGuiTextureRegistration(
-                    imguiService,
-                    gpuTexture.texture.get(),
-                    registeredTextures[index],
-                    textureIds[index]);
+                    imguiService, gpuTexture.texture.get(), registeredTextures[index], textureIds[index]);
             }
 
             for (size_t i = 0; i < registeredTextures.size(); ++i)
@@ -422,10 +422,10 @@ namespace vultra
             }
         }
 
-        void drawTextureViewer(const resource::GpuResourcePool&            pool,
-                               std::vector<const rhi::Texture*>&           registeredTextures,
-                               std::vector<IImGuiService::TextureID>&      textureIds,
-                               int&                                         columns)
+        void drawTextureViewer(const resource::GpuResourcePool&       pool,
+                               std::vector<const rhi::Texture*>&      registeredTextures,
+                               std::vector<IImGuiService::TextureID>& textureIds,
+                               int&                                   columns)
         {
             if (!ImGui::CollapsingHeader("Texture Viewer", ImGuiTreeNodeFlags_DefaultOpen))
                 return;
@@ -471,20 +471,20 @@ namespace vultra
 #else
         constexpr bool kForceCompatibilityFeature = false;
 #endif
-        const bool forceCompatibilityByCli = m_RenderPath == RenderPath::eCompatibility;
+        const bool forceCompatibilityByCli = m_RenderProfile == RenderProfile::eCompatibility;
         const bool useCompatibilityFeature =
             kForceCompatibilityFeature || forceCompatibilityByCli || backendApi == rhi::RenderBackendApi::eWebGPU;
         if (useCompatibilityFeature)
         {
-            m_GaussianSplatFeature = nullptr;
-            emplaceFeature<CompatibilityFeature>();
+            emplaceFeature<CompatibilityBaseColorFeature>();
+            emplaceFeature<GeneralGaussianSplatFeature>();
             return;
         }
 
         // Add features in the desired order.
         emplaceFeature<MeshletFeature>();
-        m_GaussianSplatFeature = &emplaceFeature<GaussianSplatFeature>();
         emplaceFeature<TestFeature>();
+        emplaceFeature<GeneralGaussianSplatFeature>();
         emplaceFeature<FinalCompositionFeature>();
     }
 
@@ -506,24 +506,6 @@ namespace vultra
         drawCameraHintOverlay(cameraService.cameraControlOverlayInfo());
 
         ImGui::Begin("Universal Renderer");
-
-        if (m_GaussianSplatFeature && ImGui::CollapsingHeader("3DGS Renderer Settings", ImGuiTreeNodeFlags_DefaultOpen))
-        {
-            auto& settings = m_GaussianSplatFeature->settings();
-            const bool xrEnabled = backendService.isXREnabled();
-            ImGui::SliderFloat("Frustum Dilation", &settings.frustumDilation, 1.0f, 1.5f, "%.2f");
-            ImGui::SliderFloat("Alpha Cull Threshold", &settings.alphaCullThreshold, 0.0f, 0.02f, "%.5f");
-            ImGui::SliderFloat("Size Culling Min Pixels", &settings.sizeCullingMinPixels, 0.0f, 4.0f, "%.2f");
-            ImGui::SliderFloat("Splat Scale", &settings.splatScale, 0.25f, 2.5f, "%.2f");
-            ImGui::SliderFloat("Max Axis Pixels", &settings.maxAxisPixels, 64.0f, 1024.0f, "%.0f");
-            ImGui::SliderFloat("Depth Iso Threshold", &settings.depthIsoThreshold, 0.1f, 0.99f, "%.2f");
-            ImGui::Checkbox("Enable Exact Depth/Transmittance", &settings.enableExactDepthTransmittance);
-            if (xrEnabled)
-            {
-                ImGui::Checkbox("Reuse XR Left-Eye Cull/Sort", &settings.enableXrViewReuse);
-                ImGui::Checkbox("Enable XR Multiview", &settings.enableXrMultiview);
-            }
-        }
 
         if (backendService.isXREnabled() && backendService.isXRMirrorEnabled())
         {
@@ -608,8 +590,10 @@ namespace vultra
 
         syncTextureViewerRegistration(
             imguiService, gpuResourceSvc.pool(), m_TextureViewerRegisteredTextures, m_TextureViewerTextureIds);
-        drawTextureViewer(
-            gpuResourceSvc.pool(), m_TextureViewerRegisteredTextures, m_TextureViewerTextureIds, m_TextureViewerColumns);
+        drawTextureViewer(gpuResourceSvc.pool(),
+                          m_TextureViewerRegisteredTextures,
+                          m_TextureViewerTextureIds,
+                          m_TextureViewerColumns);
 
         drawRuntimeProfilerPanel(renderService);
 

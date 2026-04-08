@@ -12,6 +12,7 @@ VTX_HAS_UV0 : bool permute
 #define VULTRA_DECLARE_MESHLET_VERTEX_BUFFER
 #define VULTRA_DECLARE_MESHLET_TRIANGLE_BUFFER
 #include "include/common/gpu_scene.glsl"
+#include "include/common/bda_vertex.glsl"
 
 layout(location = 0) out vec2 v_TexCoord0;
 layout(location = 1) flat out uint v_DrawID;

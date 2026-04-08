@@ -16,14 +16,14 @@ namespace vultra
 
     FrameGraphResource TestPass::addPass(FrameGraphBuildContext& ctx)
     {
-        auto drawBuffer            = ctx.data.get(kResKey_DrawBuffer);
+        auto drawBuffer            = ctx.data.tryGet(kResKey_DrawBuffer);
         auto indirectBuffer        = ctx.data.tryGet(kResKey_IndirectBuffer);
         auto drawSetBuffer         = ctx.data.tryGet(kResKey_DrawSetBuffer);
-        auto meshletsBuffer        = ctx.data.get(kResKey_MeshletsBuffer);
-        auto materialTableBuffer   = ctx.data.get(kResKey_MaterialTableBuffer);
-        auto materialParamsBuffer  = ctx.data.get(kResKey_MaterialParametersBuffer);
-        auto meshletVertexBuffer   = ctx.data.get(kResKey_MeshletVertexBuffer);
-        auto meshletTriangleBuffer = ctx.data.get(kResKey_MeshletTriangleBuffer);
+        auto meshletsBuffer        = ctx.data.tryGet(kResKey_MeshletsBuffer);
+        auto materialTableBuffer   = ctx.data.tryGet(kResKey_MaterialTableBuffer);
+        auto materialParamsBuffer  = ctx.data.tryGet(kResKey_MaterialParametersBuffer);
+        auto meshletVertexBuffer   = ctx.data.tryGet(kResKey_MeshletVertexBuffer);
+        auto meshletTriangleBuffer = ctx.data.tryGet(kResKey_MeshletTriangleBuffer);
 
         const auto resolution  = ctx.view().extent;
         const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;

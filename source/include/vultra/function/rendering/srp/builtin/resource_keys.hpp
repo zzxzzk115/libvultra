@@ -33,6 +33,36 @@ namespace vultra
     constexpr FrameGraphResourceKey kResKey_MeshletTriangleBuffer {.id = vbase::hashLiteral("MeshletTriangleBuffer")};
     // set = 0, binding = 12
     constexpr FrameGraphResourceKey kResKey_IndirectBuffer {.id = vbase::hashLiteral("IndirectBuffer")};
+    // set = 0, binding = 13
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatDrawBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatDrawBuffer")};
+    // set = 0, binding = 14
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatPackedSourceBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatPackedSourceBuffer")};
+    // set = 0, binding = 15
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatVisibleSplatBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatVisibleSplatBuffer")};
+    // set = 0, binding = 16
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatSortKeyBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatSortKeyBuffer")};
+    // set = 0, binding = 17
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatSortIndexBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatSortIndexBuffer")};
+    // set = 0, binding = 18
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatVisibleCountBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatVisibleCountBuffer")};
+    // set = 0, binding = 19
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatDispatchArgsBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatDispatchArgsBuffer")};
+    // set = 0, binding = 20
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatIndirectBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatIndirectBuffer")};
+    // set = 0, binding = 21
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatSortStorageBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatSortStorageBuffer")};
+    // set = 0, binding = 22
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatShBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatShBuffer")};
     // set = 0, binding = 24
     constexpr FrameGraphResourceKey kResKey_VisibleInstanceBuffer {.id = vbase::hashLiteral("VisibleInstanceBuffer")};
     // set = 0, binding = 25
@@ -48,14 +78,4 @@ namespace vultra
     constexpr FrameGraphResourceKey kResKey_FinalCompositionSource {.id = vbase::hashLiteral("FinalCompositionSource")};
     constexpr FrameGraphResourceKey kResKey_DepthTexture {.id = vbase::hashLiteral("DepthTexture")};
     constexpr FrameGraphResourceKey kResKey_HzbTexture {.id = vbase::hashLiteral("HZBTexture")};
-
-    constexpr FrameGraphResourceKey kResKey_GaussianSplatCullDone {.id = vbase::hashLiteral("GaussianSplatCullDone")};
-    constexpr FrameGraphResourceKey kResKey_GaussianSplatRenderDone {.id =
-                                                                         vbase::hashLiteral("GaussianSplatRenderDone")};
-    constexpr FrameGraphResourceKey kResKey_GaussianSplatDepthAccum {.id =
-                                                                         vbase::hashLiteral("GaussianSplatDepthAccum")};
-    constexpr FrameGraphResourceKey kResKey_GaussianSplatDepthTransmittance {
-        .id = vbase::hashLiteral("GaussianSplatDepthTransmittance")};
-    constexpr FrameGraphResourceKey kResKey_GaussianSplatResolvedDepth {
-        .id = vbase::hashLiteral("GaussianSplatResolvedDepth")};
 } // namespace vultra

@@ -71,12 +71,12 @@ namespace vultra
                 hash = fnv1a64(&inst.worldMatrix, sizeof(inst.worldMatrix), hash);
             }
 
-            const auto splatCount = static_cast<uint64_t>(world.splatInstances.size());
+            const auto splatCount = static_cast<uint64_t>(world.gaussianSplats.size());
             hash                  = fnv1a64(&splatCount, sizeof(splatCount), hash);
-            for (const auto& inst : world.splatInstances)
+            for (const auto& splat : world.gaussianSplats)
             {
-                hash = fnv1a64(&inst.splatIndex, sizeof(inst.splatIndex), hash);
-                hash = fnv1a64(&inst.worldMatrix, sizeof(inst.worldMatrix), hash);
+                hash = fnv1a64(&splat.splatIndex, sizeof(splat.splatIndex), hash);
+                hash = fnv1a64(&splat.worldMatrix, sizeof(splat.worldMatrix), hash);
             }
 
             return hash;
