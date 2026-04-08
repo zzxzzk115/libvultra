@@ -65,6 +65,19 @@ namespace vultra
             return std::nullopt;
         }
 
+        [[nodiscard]] std::optional<UniversalRenderer::RenderPath> parseRenderProfileToken(const std::string_view token)
+        {
+            if (token == "default" || token == "universal")
+            {
+                return UniversalRenderer::RenderPath::eDefault;
+            }
+            if (token == "compat" || token == "compatibility")
+            {
+                return UniversalRenderer::RenderPath::eCompatibility;
+            }
+            return std::nullopt;
+        }
+
         [[nodiscard]] std::optional<rhi::RenderBackendApi>
         parseCliBackend(std::span<const std::string> args, bool& sawBackendArg, bool& invalidBackendValue)
         {
@@ -124,6 +137,54 @@ namespace vultra
             }
             return parsed;
         }
+
+        [[nodiscard]] std::optional<UniversalRenderer::RenderPath>
+        parseCliRenderProfile(std::span<const std::string> args, bool& sawRenderProfileArg, bool& invalidRenderProfileValue)
+        {
+            std::optional<UniversalRenderer::RenderPath> parsed;
+            for (size_t i = 0; i < args.size(); ++i)
+            {
+                const std::string_view arg = args[i];
+                constexpr std::string_view kRenderProfileEqPrefix {"--render-profile="};
+
+                if (arg.starts_with(kRenderProfileEqPrefix))
+                {
+                    sawRenderProfileArg = true;
+                    if (auto value = parseRenderProfileToken(arg.substr(kRenderProfileEqPrefix.size())); value.has_value())
+                    {
+                        parsed = value;
+                    }
+                    else
+                    {
+                        invalidRenderProfileValue = true;
+                    }
+                    continue;
+                }
+
+                if (arg == "--render-profile")
+                {
+                    sawRenderProfileArg = true;
+                    if ((i + 1) < args.size())
+                    {
+                        if (auto value = parseRenderProfileToken(args[i + 1]); value.has_value())
+                        {
+                            parsed = value;
+                        }
+                        else
+                        {
+                            invalidRenderProfileValue = true;
+                        }
+                        ++i;
+                    }
+                    else
+                    {
+                        invalidRenderProfileValue = true;
+                    }
+                    continue;
+                }
+            }
+            return parsed;
+        }
     } // namespace
 
 #if defined(__ANDROID__)
@@ -175,9 +236,22 @@ namespace vultra
                 VULTRA_CORE_WARN("[DemoAppHost] Invalid backend CLI value. Use --backend=(auto|vulkan|webgpu) or "
                                  "--render-backend=(...)");
             }
-            if (sawBackendArg)
+        }
+
+        UniversalRenderer::RenderPath universalRenderPath = UniversalRenderer::RenderPath::eDefault;
+        {
+            bool sawRenderProfileArg       = false;
+            bool invalidRenderProfileValue = false;
+            if (auto parsed = parseCliRenderProfile(commandLineArgs(), sawRenderProfileArg, invalidRenderProfileValue);
+                parsed.has_value())
             {
-                VULTRA_CORE_INFO("[DemoAppHost] Backend selected from CLI: {}", static_cast<int>(backendApi));
+                universalRenderPath = *parsed;
+            }
+
+            if (invalidRenderProfileValue)
+            {
+                VULTRA_CORE_WARN(
+                    "[DemoAppHost] Invalid render profile CLI value. Use --render-profile=(default|universal|compat|compatibility)");
             }
         }
 
@@ -185,6 +259,10 @@ namespace vultra
         engine.ctx().config.window.resizable               = demoWindowResizable();
         engine.ctx().config.render.backendApi              = backendApi;
         engine.ctx().config.render.renderDeviceFeatureFlag = demoRenderDeviceFeatureFlag();
+        engine.ctx().config.render.builtinShaderLibrary =
+            universalRenderPath == UniversalRenderer::RenderPath::eCompatibility ?
+                EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eCompatibility :
+                EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eAuto;
 
 #if defined(__EMSCRIPTEN__)
         // Wasm bundles resources.vpk via --preload-file and loads assets from VPK by default.
@@ -228,6 +306,10 @@ namespace vultra
         if (!renderer)
         {
             renderer = createRef<UniversalRenderer>();
+        }
+        if (auto universalRenderer = std::dynamic_pointer_cast<UniversalRenderer>(renderer))
+        {
+            universalRenderer->setRenderPath(universalRenderPath);
         }
 
         auto& cameraSystem  = engine.emplaceSubsystem<CameraSystem>();

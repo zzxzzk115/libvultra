@@ -66,6 +66,8 @@ namespace vultra
         const vasset::VAssetRegistry& registry() const override { return m_Registry; }
         const vasset::VUUIDResolver&  resolver() const override { return m_Resolver; }
 
+        AssetMemoryStats memoryStats() const override;
+
         std::string resolveUri(const std::string_view uri) const override;
 
         // Bindless texture index resolution.

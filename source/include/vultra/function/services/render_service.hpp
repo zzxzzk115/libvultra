@@ -9,6 +9,7 @@
 namespace vultra
 {
     class Renderer;
+    class RuntimeProfiler;
     class World;
     struct RenderCamera;
 
@@ -24,5 +25,8 @@ namespace vultra
 
         // Notify render service that output size changed.
         virtual void onResize(uint32_t width, uint32_t height) = 0;
+
+        // Built-in runtime profiler (default disabled).
+        virtual RuntimeProfiler* runtimeProfiler() = 0;
     };
 } // namespace vultra

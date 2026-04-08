@@ -159,7 +159,7 @@ namespace vultra
         } // namespace
 
         WebGPUCommandBuffer::WebGPUCommandBuffer(const WebGPURenderDevice& backend) :
-            m_Instance(backend.m_Instance), m_Device(backend.m_Device), m_Queue(backend.m_Queue), m_Backend(&backend)
+            m_Instance(backend.m_Instance), m_Device(backend.m_Device), m_Queue(backend.m_Queue), m_Backend(const_cast<WebGPURenderDevice*>(&backend))
         {}
 
         WebGPUCommandBuffer::~WebGPUCommandBuffer() { releaseTransientResources(); }
@@ -176,6 +176,24 @@ namespace vultra
         std::uintptr_t WebGPUCommandBuffer::getCurrentComputePassEncoderHandle() const
         {
             return reinterpret_cast<std::uintptr_t>(m_ComputePass);
+        }
+
+        void WebGPUCommandBuffer::closeActiveComputePassForProfilingBoundary()
+        {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_ComputePass == nullptr)
+            {
+                return;
+            }
+
+            wgpuComputePassEncoderEnd(m_ComputePass);
+            if (m_Backend != nullptr)
+            {
+                m_Backend->finalizePendingPassTimestampQueries(m_Encoder ? reinterpret_cast<std::uintptr_t>(m_Encoder) : 0u);
+            }
+            wgpuComputePassEncoderRelease(m_ComputePass);
+            m_ComputePass = nullptr;
+#endif
         }
 
         Barrier::Builder& WebGPUCommandBuffer::getBarrierBuilder() { return m_BarrierBuilder; }
@@ -228,9 +246,7 @@ namespace vultra
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             if (m_ComputePass != nullptr)
             {
-                wgpuComputePassEncoderEnd(m_ComputePass);
-                wgpuComputePassEncoderRelease(m_ComputePass);
-                m_ComputePass = nullptr;
+                closeActiveComputePassForProfilingBoundary();
             }
             TRACKY_BIND_CMD_BUFFER(getHandle(),
                                    getCurrentRenderPassEncoderHandle(),
@@ -343,6 +359,20 @@ namespace vultra
                 if (m_ComputePass == nullptr)
                 {
                     WGPUComputePassDescriptor descriptor {};
+                    WGPUPassTimestampWrites timestampWrites {};
+                    if (m_Backend)
+                    {
+                        WGPUQuerySet querySet {nullptr};
+                        uint32_t     beginIndex {0};
+                        uint32_t     endIndex {0};
+                        if (m_Backend->consumePassTimestampWriteRequest(querySet, beginIndex, endIndex))
+                        {
+                            timestampWrites.querySet                  = querySet;
+                            timestampWrites.beginningOfPassWriteIndex = beginIndex;
+                            timestampWrites.endOfPassWriteIndex       = endIndex;
+                            descriptor.timestampWrites                = &timestampWrites;
+                        }
+                    }
                     m_ComputePass = wgpuCommandEncoderBeginComputePass(m_Encoder, &descriptor);
                 if (m_ComputePass == nullptr)
                 {
@@ -559,9 +589,7 @@ namespace vultra
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             if (m_ComputePass != nullptr)
             {
-                wgpuComputePassEncoderEnd(m_ComputePass);
-                wgpuComputePassEncoderRelease(m_ComputePass);
-                m_ComputePass = nullptr;
+                closeActiveComputePassForProfilingBoundary();
             }
 #endif
 
@@ -656,6 +684,21 @@ namespace vultra
             passDesc.colorAttachments       = &colorDesc;
             passDesc.depthStencilAttachment = m_DepthView != nullptr ? &depthDesc : nullptr;
 
+            WGPUPassTimestampWrites timestampWrites {};
+            if (m_Backend)
+            {
+                WGPUQuerySet querySet {nullptr};
+                uint32_t     beginIndex {0};
+                uint32_t     endIndex {0};
+                if (m_Backend->consumePassTimestampWriteRequest(querySet, beginIndex, endIndex))
+                {
+                    timestampWrites.querySet                  = querySet;
+                    timestampWrites.beginningOfPassWriteIndex = beginIndex;
+                    timestampWrites.endOfPassWriteIndex       = endIndex;
+                    passDesc.timestampWrites                  = &timestampWrites;
+                }
+            }
+
             m_RenderPass = wgpuCommandEncoderBeginRenderPass(m_Encoder, &passDesc);
             if (m_RenderPass == nullptr)
             {
@@ -679,6 +722,10 @@ namespace vultra
             if (!m_SkipCurrentRendering && m_RenderPass != nullptr)
             {
                 wgpuRenderPassEncoderEnd(m_RenderPass);
+                if (m_Backend != nullptr)
+                {
+                    m_Backend->finalizePendingPassTimestampQueries(m_Encoder ? reinterpret_cast<std::uintptr_t>(m_Encoder) : 0u);
+                }
                 wgpuRenderPassEncoderRelease(m_RenderPass);
                 m_RenderPass = nullptr;
             }

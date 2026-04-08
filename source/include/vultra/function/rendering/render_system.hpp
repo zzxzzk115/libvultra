@@ -2,8 +2,10 @@
 
 #include "vultra/core/engine/engine_subsystem.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
+#include "vultra/function/rendering/gpu_scene_dirty_tracker.hpp"
 #include "vultra/function/rendering/framework/prepared_render_data.hpp"
 #include "vultra/function/rendering/framework/render_frame_resources.hpp"
+#include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
 #include "vultra/function/resource/gpu_scene_database.hpp"
@@ -54,6 +56,7 @@ namespace vultra
 
         // Cooked render world (read-only for renderer)
         const RenderWorld& renderWorld() const { return m_RenderWorldFront; }
+        RuntimeProfiler*   runtimeProfiler() override { return &m_RuntimeProfiler; }
 
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
@@ -85,6 +88,9 @@ namespace vultra
 
         bool m_EnableGpuDrivenMeshletPipeline {true};
         bool m_HasLoggedGaussianSplatPointClamp {false};
+        std::vector<uint32_t>                m_GpuSceneGaussianSplatPointDrawIdScratch;
+        GpuSceneDirtyTracker                m_GpuSceneDirtyTracker;
+        RuntimeProfiler                     m_RuntimeProfiler;
     };
 
     // Cook World into RenderWorld.

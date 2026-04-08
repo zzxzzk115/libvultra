@@ -3,6 +3,7 @@
 #include "vultra/core/rhi/interfaces/ibuffer.hpp"
 
 #include "vultra/core/rhi/structs/buffer_usage.hpp"
+#include "vultra/core/rhi/structs/render_device_structs.hpp"
 
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
@@ -13,6 +14,8 @@ namespace vultra
 {
     namespace rhi
     {
+        class IRenderDevice;
+
         class VulkanBuffer final : public IBuffer
         {
         public:
@@ -20,7 +23,8 @@ namespace vultra
                          uint64_t size,
                          BufferUsage,
                          vma::AllocationCreateFlags,
-                         vma::MemoryUsage);
+                         vma::MemoryUsage,
+                         IRenderDevice* renderDevice = nullptr);
             ~VulkanBuffer() override;
 
             VulkanBuffer(const VulkanBuffer&)            = delete;
@@ -43,6 +47,8 @@ namespace vultra
 
         private:
             vma::Allocator  m_MemoryAllocator {nullptr};
+            IRenderDevice*  m_RenderDevice {nullptr};
+            RenderMemoryKind m_MemoryKind {RenderMemoryKind::eGpuDeviceLocal};
             vma::Allocation m_Allocation {nullptr};
             vk::Buffer      m_Handle {nullptr};
             uint64_t        m_Size {0};

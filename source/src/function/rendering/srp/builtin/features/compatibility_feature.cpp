@@ -25,18 +25,12 @@ namespace vultra
 
     void CompatibilityFeature::addPasses(FrameGraphBuildContext& ctx)
     {
-        if (ctx.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
-        {
-            const auto backBuffer = framegraph::importTexture(ctx.fg, "Backbuffer", ctx.view().target);
-            m_CompatibilityBaseColorPass->addPass(ctx, backBuffer);
-            const auto buildToken = m_GaussianSplatCullPass->addPass(ctx, {}, m_GaussianSplatSettings);
-            m_GaussianSplatRenderPass->addPass(ctx, buildToken, backBuffer, m_GaussianSplatSettings);
-            return;
-        }
-
-        const auto color = m_CompatibilityBaseColorPass->addPass(ctx);
+        const bool hasMeshInstances =
+            ctx.view().renderWorld != nullptr && !ctx.view().renderWorld->instances.empty();
+        const auto target = framegraph::importTexture(ctx.fg, "Backbuffer", ctx.view().target);
+        if (hasMeshInstances)
+            m_CompatibilityBaseColorPass->addPass(ctx, target);
         const auto buildToken = m_GaussianSplatCullPass->addPass(ctx, {}, m_GaussianSplatSettings);
-        const auto composed   = m_GaussianSplatRenderPass->addPass(ctx, buildToken, color, m_GaussianSplatSettings);
-        ctx.data.set(kResKey_FinalCompositionSource, composed);
+        m_GaussianSplatRenderPass->addPass(ctx, buildToken, target, m_GaussianSplatSettings);
     }
 } // namespace vultra

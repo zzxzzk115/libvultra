@@ -166,12 +166,13 @@ namespace vultra
             }
 
             [[nodiscard]] Buffer makeVulkanBuffer(const vma::Allocator             allocator,
+                                                  IRenderDevice*                   renderDevice,
                                                   const uint64_t                   size,
                                                   const BufferUsage                usage,
                                                   const vma::AllocationCreateFlags flags,
                                                   const vma::MemoryUsage           memoryUsage)
             {
-                return Buffer {std::make_unique<VulkanBuffer>(allocator, size, usage, flags, memoryUsage)};
+                return Buffer {std::make_unique<VulkanBuffer>(allocator, size, usage, flags, memoryUsage, renderDevice)};
             }
 
             [[nodiscard]] vk::ShaderModule createVulkanShaderModule(const vk::Device device, const SPIRV& spv)
@@ -192,7 +193,7 @@ namespace vultra
             {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
                 const auto handle = backend.m_NextBufferHandle++;
-                return Buffer {std::make_unique<WebGPUBuffer>(size, handle, 0)};
+                return Buffer {std::make_unique<WebGPUBuffer>(&backend, size, handle, 0)};
 #else
                 if (backend.m_Device == nullptr || backend.m_Queue == nullptr)
                 {
@@ -234,7 +235,10 @@ namespace vultra
                     return {};
                 }
                 return Buffer {std::make_unique<WebGPUBuffer>(
-                    size, reinterpret_cast<std::uintptr_t>(handle), reinterpret_cast<std::uintptr_t>(backend.m_Queue))};
+                    &backend,
+                    size,
+                    reinterpret_cast<std::uintptr_t>(handle),
+                    reinterpret_cast<std::uintptr_t>(backend.m_Queue))};
 #endif
             }
 
@@ -442,6 +446,60 @@ namespace vultra
             return m_Backend->getPhysicalDeviceInfo();
         }
 
+        void RenderDevice::beginFrameGpuQuery(CommandBuffer& cb)
+        {
+            assert(m_Backend);
+            m_Backend->beginFrameGpuQuery(cb.getHandle());
+        }
+
+        void RenderDevice::endFrameGpuQuery(CommandBuffer& cb)
+        {
+            assert(m_Backend);
+            m_Backend->endFrameGpuQuery(cb.getHandle());
+        }
+
+        double RenderDevice::consumeGpuFrameMs()
+        {
+            assert(m_Backend);
+            return m_Backend->consumeGpuFrameMs();
+        }
+
+        uint64_t RenderDevice::beginScopeGpuQuery(CommandBuffer& cb)
+        {
+            assert(m_Backend);
+            return m_Backend->beginScopeGpuQuery(cb.getHandle());
+        }
+
+        uint64_t RenderDevice::beginScopeGpuQuery(const std::uintptr_t commandBufferHandle)
+        {
+            assert(m_Backend);
+            return m_Backend->beginScopeGpuQuery(commandBufferHandle);
+        }
+
+        void RenderDevice::endScopeGpuQuery(CommandBuffer& cb, const uint64_t scopeToken)
+        {
+            assert(m_Backend);
+            m_Backend->endScopeGpuQuery(cb.getHandle(), scopeToken);
+        }
+
+        void RenderDevice::endScopeGpuQuery(const std::uintptr_t commandBufferHandle, const uint64_t scopeToken)
+        {
+            assert(m_Backend);
+            m_Backend->endScopeGpuQuery(commandBufferHandle, scopeToken);
+        }
+
+        double RenderDevice::consumeScopeGpuMs(const uint64_t scopeToken)
+        {
+            assert(m_Backend);
+            return m_Backend->consumeScopeGpuMs(scopeToken);
+        }
+
+        RenderDeviceMemoryStats RenderDevice::getMemoryStats() const
+        {
+            assert(m_Backend);
+            return m_Backend->getMemoryStats();
+        }
+
         RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits  featureFlag,
                                    const std::string_view             appName,
                                    const std::span<const char* const> requiredInstanceExtensions,
@@ -460,7 +518,7 @@ namespace vultra
                                           reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Device),
                                           reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Queue),
                                           4 * 1024,
-                                          webgpuBackend(m_Backend).m_SupportsTimestampQuery,
+                                          false,
                                           1.0f);
 #endif
                     return;
@@ -473,7 +531,7 @@ namespace vultra
                                           reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Device),
                                           reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Queue),
                                           4 * 1024,
-                                          webgpuBackend(m_Backend).m_SupportsTimestampQuery,
+                                          false,
                                           1.0f);
 #endif
                     return;
@@ -544,6 +602,17 @@ namespace vultra
 
             TracyGpuDestroy(vkBackend(m_Backend).m_TracyContext);
             TRACKY_TEARDOWN();
+
+            if (vkBackend(m_Backend).m_FrameTimeQueryPool)
+            {
+                vkBackend(m_Backend).m_Device.destroyQueryPool(vkBackend(m_Backend).m_FrameTimeQueryPool);
+                vkBackend(m_Backend).m_FrameTimeQueryPool = nullptr;
+            }
+            if (vkBackend(m_Backend).m_ScopeTimeQueryPool)
+            {
+                vkBackend(m_Backend).m_Device.destroyQueryPool(vkBackend(m_Backend).m_ScopeTimeQueryPool);
+                vkBackend(m_Backend).m_ScopeTimeQueryPool = nullptr;
+            }
 
             if (vkBackend(m_Backend).m_MemoryAllocator)
             {
@@ -618,6 +687,7 @@ namespace vultra
 #else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             Buffer stagingBuffer = makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                                    m_Backend.get(),
                                                     size,
                                                     BufferUsage::eTransferSrc,
                                                     makeAllocationFlags(AllocationHints::eSequentialWrite),
@@ -660,6 +730,7 @@ namespace vultra
             }
             return VertexBuffer {
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                 m_Backend.get(),
                                  stride * vertexCount,
                                  usage,
                 makeAllocationFlags(allocationHint),
@@ -699,6 +770,7 @@ namespace vultra
             const auto indexStride = indexType == IndexType::eUInt16 ? 2 : 4;
             return IndexBuffer {
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                 m_Backend.get(),
                                  indexStride * indexCount,
                                  usage,
                 makeAllocationFlags(allocationHint),
@@ -722,6 +794,7 @@ namespace vultra
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             return UniformBuffer {Buffer {
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                 m_Backend.get(),
                                  size,
                                  BufferUsage::eUniformBuffer | BufferUsage::eTransferDst,
                                  makeAllocationFlags(allocationHint),
@@ -754,6 +827,7 @@ namespace vultra
             }
             return StorageBuffer {Buffer {
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                 m_Backend.get(),
                                  size,
                                  usage,
                 makeAllocationFlags(allocationHint),
@@ -788,6 +862,7 @@ namespace vultra
             }
             return StorageBuffer {Buffer {
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                 m_Backend.get(),
                                  size,
                                  usage,
                 makeAllocationFlags(allocationHint),
@@ -821,6 +896,7 @@ namespace vultra
                                                                      sizeof(vk::DrawIndirectCommand);
             return DrawIndirectBuffer {
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                 m_Backend.get(),
                                  commandCount * stride,
                                  BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer,
                                  makeAllocationFlags(allocationHint),
@@ -848,6 +924,7 @@ namespace vultra
             assert(vkBackend(m_Backend).m_MemoryAllocator);
             return DrawIndirectBuffer {
                 makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                 m_Backend.get(),
                                  size,
                                  BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | BufferUsage::eIndirectBuffer,
                                  makeAllocationFlags(allocationHint),
@@ -911,7 +988,8 @@ namespace vultra
                         format,
                         0u,
                         numLayers,
-                        resolvedMipLevels);
+                        resolvedMipLevels,
+                        m_Backend.get());
                 }
                 return TextureAccess::fromOwnedImage(
                     RenderBackendApi::eWebGPU,
@@ -921,7 +999,8 @@ namespace vultra
                     format,
                     0u,
                     1u,
-                    resolvedMipLevels);
+                    resolvedMipLevels,
+                    m_Backend.get());
 #endif
             }
 #if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
@@ -941,6 +1020,7 @@ namespace vultra
                     .numFaces     = 1,
                     .usageFlags   = usageFlags,
                 },
+                m_Backend.get(),
             };
 #endif
         }
@@ -972,6 +1052,7 @@ namespace vultra
                     .numFaces     = 1,
                     .usageFlags   = usageFlags,
                 },
+                m_Backend.get(),
             };
 #endif
         }
@@ -1003,6 +1084,7 @@ namespace vultra
                     .numFaces     = 6,
                     .usageFlags   = usageFlags,
                 },
+                m_Backend.get(),
             };
 #endif
         }

@@ -28,6 +28,8 @@ namespace vultra
 
     namespace rhi
     {
+        class IRenderDevice;
+
         struct TextureDeviceHandle
         {
             std::uintptr_t value {0};
@@ -163,34 +165,29 @@ namespace vultra
                 uint32_t    numFaces {1u};
                 ImageUsage  usageFlags {ImageUsage::eSampled};
             };
-            Texture(TextureAllocatorHandle allocatorHandle, CreateInfo&&);
+                Texture(TextureAllocatorHandle allocatorHandle, CreateInfo&&, IRenderDevice* renderDevice = nullptr);
             // "Import" image (from a Swapchain).
             Texture(TextureDeviceHandle device,
                     TextureImageHandle  image,
                     Extent2D            extent,
                     PixelFormat         pixelFormat,
-                    uint32_t            baseLayer = 0u);
+                    uint32_t            baseLayer = 0u,
+                    IRenderDevice*      renderDevice = nullptr);
             Texture(TextureDeviceHandle device,
                     TextureImageHandle  image,
                     Extent2D            extent,
                     PixelFormat         pixelFormat,
                     uint32_t            baseLayer,
-                    uint32_t            numLayers);
+                    uint32_t            numLayers,
+                    IRenderDevice*      renderDevice = nullptr);
             Texture(RenderBackendApi    api,
                     bool                ownsImage,
                     TextureDeviceHandle device,
                     TextureImageHandle  image,
                     Extent2D            extent,
                     PixelFormat         pixelFormat,
-                    uint32_t            baseLayer = 0u);
-            Texture(RenderBackendApi    api,
-                    bool                ownsImage,
-                    TextureDeviceHandle device,
-                    TextureImageHandle  image,
-                    Extent2D            extent,
-                    PixelFormat         pixelFormat,
-                    uint32_t            baseLayer,
-                    uint32_t            numLayers);
+                    uint32_t            baseLayer = 0u,
+                    IRenderDevice*      renderDevice = nullptr);
             Texture(RenderBackendApi    api,
                     bool                ownsImage,
                     TextureDeviceHandle device,
@@ -199,7 +196,17 @@ namespace vultra
                     PixelFormat         pixelFormat,
                     uint32_t            baseLayer,
                     uint32_t            numLayers,
-                    uint32_t            numMipLevels);
+                    IRenderDevice*      renderDevice = nullptr);
+            Texture(RenderBackendApi    api,
+                    bool                ownsImage,
+                    TextureDeviceHandle device,
+                    TextureImageHandle  image,
+                    Extent2D            extent,
+                    PixelFormat         pixelFormat,
+                    uint32_t            baseLayer,
+                    uint32_t            numLayers,
+                    uint32_t            numMipLevels,
+                    IRenderDevice*      renderDevice = nullptr);
 
             void destroy() noexcept;
 
@@ -235,14 +242,8 @@ namespace vultra
                                                         TextureImageHandle  image,
                                                         Extent2D            extent,
                                                         PixelFormat         pixelFormat,
-                                                        uint32_t            baseLayer = 0u);
-            [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi    api,
-                                                        TextureDeviceHandle device,
-                                                        TextureImageHandle  image,
-                                                        Extent2D            extent,
-                                                        PixelFormat         pixelFormat,
-                                                        uint32_t            baseLayer,
-                                                        uint32_t            numLayers);
+                                                        uint32_t            baseLayer = 0u,
+                                                        IRenderDevice*      renderDevice = nullptr);
             [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi    api,
                                                         TextureDeviceHandle device,
                                                         TextureImageHandle  image,
@@ -250,7 +251,16 @@ namespace vultra
                                                         PixelFormat         pixelFormat,
                                                         uint32_t            baseLayer,
                                                         uint32_t            numLayers,
-                                                        uint32_t            numMipLevels);
+                                                        IRenderDevice*      renderDevice = nullptr);
+            [[nodiscard]] static Texture fromOwnedImage(RenderBackendApi    api,
+                                                        TextureDeviceHandle device,
+                                                        TextureImageHandle  image,
+                                                        Extent2D            extent,
+                                                        PixelFormat         pixelFormat,
+                                                        uint32_t            baseLayer,
+                                                        uint32_t            numLayers,
+                                                        uint32_t            numMipLevels,
+                                                        IRenderDevice*      renderDevice = nullptr);
 
             struct AspectData
             {
@@ -278,6 +288,7 @@ namespace vultra
             };
             using ImageVariant = std::variant<std::monostate, std::uintptr_t, AllocatedImage>;
             ImageVariant     m_Image;
+            IRenderDevice*   m_RenderDevice {nullptr};
             RenderBackendApi m_BackendApi {RenderBackendApi::eVulkan};
             bool             m_OwnsImage {false};
 

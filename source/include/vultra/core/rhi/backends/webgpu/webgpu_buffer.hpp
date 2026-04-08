@@ -9,10 +9,12 @@ namespace vultra
 {
     namespace rhi
     {
+        class IRenderDevice;
+
         class WebGPUBuffer final : public IBuffer
         {
         public:
-            WebGPUBuffer(uint64_t size, std::uintptr_t handle, std::uintptr_t queueHandle);
+            WebGPUBuffer(IRenderDevice* renderDevice, uint64_t size, std::uintptr_t handle, std::uintptr_t queueHandle);
             ~WebGPUBuffer() override;
 
             [[nodiscard]] bool           isValid() const override { return m_Valid; }
@@ -26,6 +28,7 @@ namespace vultra
             void  flush(uint64_t offset, uint64_t size) override;
 
         private:
+            IRenderDevice*         m_RenderDevice {nullptr};
             std::vector<std::byte> m_Data;
             uint64_t               m_Size {0};
             std::uintptr_t         m_Handle {0};

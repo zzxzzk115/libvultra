@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <string_view>
 
 namespace vultra
 {
@@ -186,6 +187,71 @@ namespace vultra
 
         float sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
 
+        [[nodiscard]] uint64_t stringBytes(const std::string& value)
+        {
+            return static_cast<uint64_t>(value.capacity());
+        }
+
+        template<typename T>
+        [[nodiscard]] uint64_t vectorBytes(const std::vector<T>& value)
+        {
+            return static_cast<uint64_t>(value.capacity()) * sizeof(T);
+        }
+
+        [[nodiscard]] uint64_t estimateVMaterialPropertyBytes(const vasset::VMaterialProperty& property)
+        {
+            return sizeof(property) + stringBytes(property.key) + vectorBytes(property.data);
+        }
+
+        [[nodiscard]] uint64_t estimateVMaterialBytes(const vasset::VMaterial& material)
+        {
+            uint64_t bytes = sizeof(material) + stringBytes(material.name) + vectorBytes(material.textures);
+            for (const auto& property : material.properties)
+            {
+                bytes += estimateVMaterialPropertyBytes(property);
+            }
+            return bytes;
+        }
+
+        [[nodiscard]] uint64_t estimateVSubMeshBytes(const vasset::VSubMesh& subMesh)
+        {
+            return sizeof(subMesh) + stringBytes(subMesh.name) + vectorBytes(subMesh.meshletGroup.meshlets) +
+                   vectorBytes(subMesh.meshletGroup.meshletVertices) + vectorBytes(subMesh.meshletGroup.meshletTriangles);
+        }
+
+        [[nodiscard]] uint64_t estimateVMeshBytes(const vasset::VMesh& mesh)
+        {
+            uint64_t bytes = sizeof(mesh) + vectorBytes(mesh.positions) + vectorBytes(mesh.normals) +
+                             vectorBytes(mesh.colors) + vectorBytes(mesh.texCoords0) + vectorBytes(mesh.texCoords1) +
+                             vectorBytes(mesh.tangents) + vectorBytes(mesh.jointIndices) + vectorBytes(mesh.jointWeights) +
+                             vectorBytes(mesh.indices) + stringBytes(mesh.name) + stringBytes(mesh.sourceFileName);
+
+            bytes += vectorBytes(mesh.subMeshes);
+            for (const auto& subMesh : mesh.subMeshes)
+            {
+                bytes += estimateVSubMeshBytes(subMesh);
+            }
+
+            bytes += vectorBytes(mesh.materials);
+            for (const auto& material : mesh.materials)
+            {
+                bytes += estimateVMaterialBytes(material);
+            }
+
+            return bytes;
+        }
+
+        [[nodiscard]] uint64_t estimateVTextureBytes(const vasset::VTexture& texture)
+        {
+            return sizeof(texture) + vectorBytes(texture.data);
+        }
+
+        [[nodiscard]] uint64_t estimateVGaussianSplatBytes(const vasset::VGaussianSplat& splat)
+        {
+            return sizeof(splat) + vectorBytes(splat.splats) + vectorBytes(splat.sh) + stringBytes(splat.name) +
+                   stringBytes(splat.sourceFileName);
+        }
+
         float clampToF16(float x)
         {
             // IEEE half max finite value.
@@ -251,6 +317,43 @@ namespace vultra
         m_TexUUIDToBindlessIndex.clear();
         m_RenderDevice       = nullptr;
         m_GpuResourceService = nullptr;
+    }
+
+    AssetMemoryStats AssetSystem::memoryStats() const
+    {
+        AssetMemoryStats stats {};
+
+        auto addMesh = [&stats](const auto& record) {
+            if (record.cpu)
+            {
+                stats.cpuCacheBytes += sizeof(record);
+                stats.cpuCacheBytes += estimateVMeshBytes(*record.cpu);
+            }
+        };
+
+        m_MeshCache.forEachRecord(addMesh);
+
+        auto addTexture = [&stats](const auto& record) {
+            if (record.cpu)
+            {
+                stats.cpuCacheBytes += sizeof(record);
+                stats.cpuCacheBytes += estimateVTextureBytes(*record.cpu);
+            }
+        };
+
+        m_TextureCache.forEachRecord(addTexture);
+
+        auto addSplat = [&stats](const auto& record) {
+            if (record.cpu)
+            {
+                stats.cpuCacheBytes += sizeof(record);
+                stats.cpuCacheBytes += estimateVGaussianSplatBytes(*record.cpu);
+            }
+        };
+
+        m_GaussianSplatCache.forEachRecord(addSplat);
+
+        return stats;
     }
 
     void AssetSystem::configure(const AssetSystemDesc& desc)
@@ -635,6 +738,7 @@ namespace vultra
         gm.tableIndex       = static_cast<uint32_t>(pool.materials.size());
         pool.materials.push_back(gm);
         pool.materialTableDirty = true;
+        m_GpuResourceService->markContentDirty();
         return gm.tableIndex;
     }
 
@@ -744,6 +848,8 @@ namespace vultra
                                     0,
                                     pool.meshlets.cpuMeshletVertices.size() * sizeof(uint32_t),
                                     pool.meshlets.cpuMeshletVertices.data());
+
+        m_GpuResourceService->markContentDirty();
 
         return meshIndex;
     }
@@ -903,6 +1009,7 @@ namespace vultra
         const uint32_t index = static_cast<uint32_t>(pool.gaussianSplats.size());
         pool.gaussianSplats.push_back(std::move(out));
         pool.uploadGaussianSplatMeta(*m_RenderDevice);
+        m_GpuResourceService->markContentDirty();
         return index;
     }
 

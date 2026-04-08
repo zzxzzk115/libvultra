@@ -7,8 +7,6 @@
 #define DEBUG_DRAW_IMPLEMENTATION
 #include <debug_draw.hpp>
 
-#include <iostream>
-
 namespace vultra
 {
     void DebugDrawInterface::initialize(rhi::RenderDevice& renderDevice, rhi::PixelFormat colorFormat)
@@ -108,8 +106,9 @@ namespace vultra
 
     void DebugDrawInterface::drawPointList(const DrawVertex* points, int count, bool depthEnabled)
     {
-        std::cout << "DebugDrawInterface::drawPointList called with " << count
-                  << " points, depthEnabled = " << depthEnabled << std::endl;
+        (void)points;
+        (void)count;
+        (void)depthEnabled;
     }
 
     void DebugDrawInterface::drawLineList(const DrawVertex* lines, int count, bool depthEnabled)
@@ -135,6 +134,8 @@ namespace vultra
 
     void DebugDrawInterface::drawGlyphList(const DrawVertex* glyphs, int count, GlyphTextureHandle glyphTex)
     {
-        std::cout << "DebugDrawInterface::drawGlyphList called with " << count << " glyphs" << std::endl;
+        (void)glyphs;
+        (void)count;
+        (void)glyphTex;
     }
 } // namespace vultra

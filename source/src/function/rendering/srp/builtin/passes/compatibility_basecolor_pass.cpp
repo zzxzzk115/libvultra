@@ -219,6 +219,7 @@ namespace vultra
     FrameGraphResource CompatibilityBaseColorPass::addPass(FrameGraphBuildContext& ctx, const FrameGraphResource target)
     {
         const bool webgpu = ctx.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
+        const bool directTarget = static_cast<bool>(target);
 
         FrameGraphResource materialTableBuffer;
         FrameGraphResource materialParamsBuffer;
@@ -260,6 +261,7 @@ namespace vultra
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
             [webgpu,
+             directTarget,
              target,
              resolution  = ctx.view().extent,
              cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource,
@@ -294,6 +296,10 @@ namespace vultra
                                          });
                     }
 
+                }
+
+                if (!directTarget)
+                {
                     data.color = builder.create<framegraph::FrameGraphTexture>(
                         "Compatibility BaseColor Color",
                         {
@@ -302,11 +308,11 @@ namespace vultra
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                         });
                     data.color  = builder.write(data.color,
-                                               framegraph::Attachment {
+                                                framegraph::Attachment {
                                                     .index       = 0,
                                                     .imageAspect = rhi::ImageAspect::eColor,
                                                     .clearValue  = framegraph::ClearValue::eOpaqueBlack,
-                                               });
+                                                });
                     data.target = data.color;
                 }
                 else
@@ -548,7 +554,7 @@ namespace vultra
                 rc.clear();
             });
 
-        return webgpu ? target : data.color;
+        return directTarget ? target : data.color;
     }
 
     rhi::GraphicsPipeline CompatibilityBaseColorPass::createPipeline(const rhi::PixelFormat colorFormat,

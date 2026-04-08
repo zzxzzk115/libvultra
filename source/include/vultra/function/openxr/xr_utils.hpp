@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <cstring>
 #include <fstream>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -64,7 +63,6 @@ inline std::string ReadTextFile(const std::string& filepath)
     std::string   output;
     if (!stream.is_open())
     {
-        std::cerr << "Could not read file " << filepath << ". File does not exist." << std::endl;
         return "";
     }
     std::string line;
@@ -80,7 +78,6 @@ inline std::vector<char> ReadBinaryFile(const std::string& filepath)
     std::ifstream stream(filepath, std::ios::binary | std::ios::ate);
     if (!stream.is_open())
     {
-        std::cerr << "Could not read file " << filepath << ". File does not exist." << std::endl;
         return {};
     }
     std::streamoff    size = stream.tellg();

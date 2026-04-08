@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/base.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -85,6 +86,70 @@ namespace vultra
         {
             SyncPrimitiveSupport fence {SyncPrimitiveSupport::eUnsupported};
             SyncPrimitiveSupport semaphore {SyncPrimitiveSupport::eUnsupported};
+        };
+
+        enum class RenderMemoryKind : uint8_t
+        {
+            eCpuCache = 0,
+            eGpuDeviceLocal,
+            eGpuHostVisible,
+        };
+
+        struct RenderDeviceMemoryStats
+        {
+            uint64_t cpuCacheBytes {0};
+            uint64_t gpuDeviceLocalBytes {0};
+            uint64_t gpuHostVisibleBytes {0};
+        };
+
+        class RenderDeviceMemoryTracker
+        {
+        public:
+            void add(RenderMemoryKind kind, uint64_t bytes)
+            {
+                switch (kind)
+                {
+                    case RenderMemoryKind::eCpuCache:
+                        m_CpuCacheBytes.fetch_add(bytes, std::memory_order_relaxed);
+                        break;
+                    case RenderMemoryKind::eGpuDeviceLocal:
+                        m_GpuDeviceLocalBytes.fetch_add(bytes, std::memory_order_relaxed);
+                        break;
+                    case RenderMemoryKind::eGpuHostVisible:
+                        m_GpuHostVisibleBytes.fetch_add(bytes, std::memory_order_relaxed);
+                        break;
+                }
+            }
+
+            void remove(RenderMemoryKind kind, uint64_t bytes)
+            {
+                switch (kind)
+                {
+                    case RenderMemoryKind::eCpuCache:
+                        m_CpuCacheBytes.fetch_sub(bytes, std::memory_order_relaxed);
+                        break;
+                    case RenderMemoryKind::eGpuDeviceLocal:
+                        m_GpuDeviceLocalBytes.fetch_sub(bytes, std::memory_order_relaxed);
+                        break;
+                    case RenderMemoryKind::eGpuHostVisible:
+                        m_GpuHostVisibleBytes.fetch_sub(bytes, std::memory_order_relaxed);
+                        break;
+                }
+            }
+
+            [[nodiscard]] RenderDeviceMemoryStats snapshot() const
+            {
+                return RenderDeviceMemoryStats {
+                    .cpuCacheBytes       = m_CpuCacheBytes.load(std::memory_order_relaxed),
+                    .gpuDeviceLocalBytes = m_GpuDeviceLocalBytes.load(std::memory_order_relaxed),
+                    .gpuHostVisibleBytes = m_GpuHostVisibleBytes.load(std::memory_order_relaxed),
+                };
+            }
+
+        private:
+            std::atomic<uint64_t> m_CpuCacheBytes {0};
+            std::atomic<uint64_t> m_GpuDeviceLocalBytes {0};
+            std::atomic<uint64_t> m_GpuHostVisibleBytes {0};
         };
 
         struct PhysicalDeviceInfo

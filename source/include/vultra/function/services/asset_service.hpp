@@ -21,6 +21,11 @@ namespace vultra
 {
     struct AssetSystemDesc;
 
+    struct AssetMemoryStats
+    {
+        uint64_t cpuCacheBytes {0};
+    };
+
     // Asset service interface (engine-facing).
     // Pattern: WindowSystem/InputSystem/... -> provide<IService>(this)
     class IAssetService
@@ -52,6 +57,8 @@ namespace vultra
         // Optional: access registry/resolver for tooling.
         virtual const vasset::VAssetRegistry& registry() const = 0;
         virtual const vasset::VUUIDResolver&  resolver() const = 0;
+
+        [[nodiscard]] virtual AssetMemoryStats memoryStats() const = 0;
 
         virtual std::string resolveUri(const std::string_view uri) const = 0;
 

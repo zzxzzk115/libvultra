@@ -27,6 +27,15 @@ namespace vultra::resource
     // - Scene/view transient buffers (GpuSceneDatabase / GpuSceneView own those)
     struct GpuResourcePool
     {
+        uint64_t contentRevision {1};
+
+        void markContentDirty()
+        {
+            ++contentRevision;
+            if (contentRevision == 0)
+                contentRevision = 1;
+        }
+
         // ------------------------------------------------------------
         // Geometry buffer pool (GPU-driven baseline)
         // ------------------------------------------------------------
@@ -505,6 +514,7 @@ namespace vultra::resource
                 }
                 fallback.bindlessIndex = 0;
                 textures.push_back(fallback);
+                markContentDirty();
             }
         }
 
@@ -524,6 +534,7 @@ namespace vultra::resource
                 tex.bindlessIndex = index;
                 textures.push_back(std::move(tex));
             }
+            markContentDirty();
             return index;
         }
 
@@ -534,6 +545,7 @@ namespace vultra::resource
 
             textures[index].texture = nullptr;
             pendingTextureFrees.push_back(PendingTextureFree {index, retireFrame});
+            markContentDirty();
         }
 
         void processDeferredFrees(uint64_t frameIndex)
@@ -570,6 +582,7 @@ namespace vultra::resource
             materialParams.reset();
             freeTextureSlots.clear();
             pendingTextureFrees.clear();
+            contentRevision = 1;
         }
 
         void uploadGaussianSplatMeta(rhi::RenderDevice& rd)

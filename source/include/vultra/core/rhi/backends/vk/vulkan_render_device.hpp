@@ -10,6 +10,7 @@
 #include <vk_mem_alloc.hpp>
 
 #include <set>
+#include <deque>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -72,6 +73,17 @@ namespace vultra
             }
 
             [[nodiscard]] openxr::XRDevice* getXRDevice() const override { return m_XRDevice; }
+            void beginFrameGpuQuery(std::uintptr_t commandBufferHandle) override;
+            void endFrameGpuQuery(std::uintptr_t commandBufferHandle) override;
+            [[nodiscard]] double consumeGpuFrameMs() override;
+            [[nodiscard]] uint64_t beginScopeGpuQuery(std::uintptr_t commandBufferHandle) override;
+            void                   endScopeGpuQuery(std::uintptr_t commandBufferHandle, uint64_t scopeToken) override;
+            [[nodiscard]] double   consumeScopeGpuMs(uint64_t scopeToken) override;
+
+            void onMemoryAllocated(RenderMemoryKind kind, uint64_t bytes) override { m_MemoryTracker.add(kind, bytes); }
+            void onMemoryFreed(RenderMemoryKind kind, uint64_t bytes) override { m_MemoryTracker.remove(kind, bytes); }
+            [[nodiscard]] RenderDeviceMemoryStats getMemoryStats() const override { return m_MemoryTracker.snapshot(); }
+
             [[nodiscard]] std::array<float, 2> getLineWidthRange() const override;
             [[nodiscard]] float                getMaxSamplerAnisotropy() const override;
             [[nodiscard]] uint64_t             getFormatFeatureFlagsOptimal(PixelFormat) const override;
@@ -100,6 +112,30 @@ namespace vultra
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR m_AccelerationStructureFeatures;
 
             TracyGpuContext m_TracyContext {nullptr};
+
+            vk::QueryPool           m_FrameTimeQueryPool {nullptr};
+            uint32_t                m_FrameTimeSlotCount {0};
+            uint32_t                m_FrameTimeNextSlot {0};
+            int32_t                 m_ActiveFrameTimeSlot {-1};
+            std::deque<uint32_t>    m_PendingFrameTimeSlots;
+            double                  m_LastGpuFrameMs {-1.0};
+
+            struct ScopeTimeQuerySlot
+            {
+                uint64_t token {0};
+                bool     active {false};
+                bool     pending {false};
+                bool     resolved {false};
+                double   ms {-1.0};
+            };
+            vk::QueryPool                              m_ScopeTimeQueryPool {nullptr};
+            uint32_t                                   m_ScopeTimeSlotCount {0};
+            uint32_t                                   m_ScopeTimeNextSlot {0};
+            uint64_t                                   m_ScopeTimeNextToken {1};
+            std::vector<ScopeTimeQuerySlot>            m_ScopeTimeSlots;
+            std::unordered_map<uint64_t, uint32_t>     m_ScopeTimeTokenToSlot;
+            float                   m_TimestampPeriodNs {1.0f};
+            RenderDeviceMemoryTracker m_MemoryTracker;
 
             template<typename T>
             using Cache = std::unordered_map<size_t, T>;

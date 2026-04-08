@@ -188,7 +188,7 @@ namespace vultra
 
         Texture::Texture(Texture&& other) noexcept :
             m_DeviceOrAllocator(std::move(other.m_DeviceOrAllocator)), m_Image(std::move(other.m_Image)),
-            m_BackendApi(other.m_BackendApi), m_OwnsImage(other.m_OwnsImage), m_Type(other.m_Type),
+            m_RenderDevice(other.m_RenderDevice), m_BackendApi(other.m_BackendApi), m_OwnsImage(other.m_OwnsImage), m_Type(other.m_Type),
             m_Layout(other.m_Layout), m_LastScope(std::move(other.m_LastScope)), m_Aspects(std::move(other.m_Aspects)),
             m_Sampler(other.m_Sampler), m_Extent(other.m_Extent), m_Depth(other.m_Depth), m_Format(other.m_Format),
             m_NumMipLevels(other.m_NumMipLevels), m_NumLayers(other.m_NumLayers), m_LayerFaces(other.m_LayerFaces),
@@ -196,6 +196,7 @@ namespace vultra
         {
             other.m_DeviceOrAllocator = {};
             other.m_Image             = {};
+            other.m_RenderDevice      = nullptr;
 
             other.m_Type       = TextureType::eUndefined;
             other.m_Layout     = ImageLayout::eUndefined;
@@ -217,6 +218,7 @@ namespace vultra
 
                 std::swap(m_DeviceOrAllocator, rhs.m_DeviceOrAllocator);
                 std::swap(m_Image, rhs.m_Image);
+                std::swap(m_RenderDevice, rhs.m_RenderDevice);
                 std::swap(m_Type, rhs.m_Type);
                 std::swap(m_Layout, rhs.m_Layout);
                 std::swap(m_LastScope, rhs.m_LastScope);
@@ -293,8 +295,28 @@ namespace vultra
                 return allocatedImage->allocationSize;
             }
 
-            return static_cast<uint64_t>(m_Extent.width) * static_cast<uint64_t>(m_Extent.height) *
-                   static_cast<uint64_t>(getBytesPerPixel(m_Format));
+            const uint64_t bytesPerPixel = static_cast<uint64_t>(getBytesPerPixel(m_Format));
+            if (bytesPerPixel == 0u)
+            {
+                return 0u;
+            }
+
+            uint64_t totalBytes = 0u;
+            uint32_t width      = std::max(1u, m_Extent.width);
+            uint32_t height     = std::max(1u, m_Extent.height);
+            uint32_t depth      = std::max(1u, m_Depth);
+            const uint32_t layers = std::max(1u, m_LayerFaces);
+
+            for (uint32_t mip = 0u; mip < std::max(1u, m_NumMipLevels); ++mip)
+            {
+                const uint64_t mipBytes = static_cast<uint64_t>(std::max(1u, width >> mip)) *
+                                          static_cast<uint64_t>(std::max(1u, height >> mip)) *
+                                          static_cast<uint64_t>(std::max(1u, depth >> mip)) * bytesPerPixel *
+                                          static_cast<uint64_t>(layers);
+                totalBytes += mipBytes;
+            }
+
+            return totalBytes;
         }
 
         TextureView Texture::getImageView(const ImageAspectFlags aspectMask) const
@@ -388,20 +410,10 @@ namespace vultra
                                         const TextureImageHandle  image,
                                         const Extent2D            extent,
                                         const PixelFormat         format,
-                                        const uint32_t            baseLayer)
-        {
-            return Texture {api, true, device, image, extent, format, baseLayer};
-        }
-
-        Texture Texture::fromOwnedImage(const RenderBackendApi    api,
-                                        const TextureDeviceHandle device,
-                                        const TextureImageHandle  image,
-                                        const Extent2D            extent,
-                                        const PixelFormat         format,
                                         const uint32_t            baseLayer,
-                                        const uint32_t            numLayers)
+                                        IRenderDevice*            renderDevice)
         {
-            return Texture {api, true, device, image, extent, format, baseLayer, numLayers};
+            return Texture {api, true, device, image, extent, format, baseLayer, renderDevice};
         }
 
         Texture Texture::fromOwnedImage(const RenderBackendApi    api,
@@ -411,9 +423,22 @@ namespace vultra
                                         const PixelFormat         format,
                                         const uint32_t            baseLayer,
                                         const uint32_t            numLayers,
-                                        const uint32_t            numMipLevels)
+                                        IRenderDevice*            renderDevice)
         {
-            return Texture {api, true, device, image, extent, format, baseLayer, numLayers, numMipLevels};
+            return Texture {api, true, device, image, extent, format, baseLayer, numLayers, renderDevice};
+        }
+
+        Texture Texture::fromOwnedImage(const RenderBackendApi    api,
+                                        const TextureDeviceHandle device,
+                                        const TextureImageHandle  image,
+                                        const Extent2D            extent,
+                                        const PixelFormat         format,
+                                        const uint32_t            baseLayer,
+                                        const uint32_t            numLayers,
+                                        const uint32_t            numMipLevels,
+                                        IRenderDevice*            renderDevice)
+        {
+            return Texture {api, true, device, image, extent, format, baseLayer, numLayers, numMipLevels, renderDevice};
         }
 
         Texture::Builder& Texture::Builder::setExtent(const Extent2D extent, const uint32_t depth)
@@ -503,8 +528,9 @@ namespace vultra
             return texture;
         }
 
-        Texture::Texture(const TextureAllocatorHandle allocatorHandle, CreateInfo&& ci) :
-            m_DeviceOrAllocator(allocatorHandle), m_BackendApi(RenderBackendApi::eVulkan), m_OwnsImage(true)
+        Texture::Texture(const TextureAllocatorHandle allocatorHandle, CreateInfo&& ci, IRenderDevice* renderDevice) :
+            m_DeviceOrAllocator(allocatorHandle), m_RenderDevice(renderDevice), m_BackendApi(RenderBackendApi::eVulkan),
+            m_OwnsImage(true)
         {
 #if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
             (void)allocatorHandle;
@@ -607,6 +633,11 @@ namespace vultra
                              ImageAspectFlags::eStencil,
                              m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eStencil)]);
             }
+
+            if (m_RenderDevice)
+            {
+                m_RenderDevice->onMemoryAllocated(RenderMemoryKind::eGpuDeviceLocal, getSize());
+            }
 #endif
         }
 
@@ -614,27 +645,8 @@ namespace vultra
                          const TextureImageHandle  image,
                          Extent2D                  extent,
                          PixelFormat               pixelFormat,
-                         uint32_t                  baseLayer) :
-            Texture {
-#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
-                RenderBackendApi::eVulkan,
-#else
-                RenderBackendApi::eWebGPU,
-#endif
-                false,
-                device,
-                image,
-                extent,
-                pixelFormat,
-                baseLayer}
-        {}
-
-        Texture::Texture(const TextureDeviceHandle device,
-                         const TextureImageHandle  image,
-                         Extent2D                  extent,
-                         PixelFormat               pixelFormat,
                          uint32_t                  baseLayer,
-                         uint32_t                  numLayers) :
+                         IRenderDevice*            renderDevice) :
             Texture {
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
                 RenderBackendApi::eVulkan,
@@ -647,17 +659,30 @@ namespace vultra
                 extent,
                 pixelFormat,
                 baseLayer,
-                numLayers}
+                renderDevice}
         {}
 
-        Texture::Texture(const RenderBackendApi    api,
-                         const bool                ownsImage,
-                         const TextureDeviceHandle device,
+        Texture::Texture(const TextureDeviceHandle device,
                          const TextureImageHandle  image,
                          Extent2D                  extent,
                          PixelFormat               pixelFormat,
-                         uint32_t                  baseLayer) :
-            Texture {api, ownsImage, device, image, extent, pixelFormat, baseLayer, 1u}
+                         uint32_t                  baseLayer,
+                         uint32_t                  numLayers,
+                         IRenderDevice*            renderDevice) :
+            Texture {
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+                RenderBackendApi::eVulkan,
+#else
+                RenderBackendApi::eWebGPU,
+#endif
+                false,
+                device,
+                image,
+                extent,
+                pixelFormat,
+                baseLayer,
+                numLayers,
+                renderDevice}
         {}
 
         Texture::Texture(const RenderBackendApi    api,
@@ -667,8 +692,8 @@ namespace vultra
                          Extent2D                  extent,
                          PixelFormat               pixelFormat,
                          uint32_t                  baseLayer,
-                         uint32_t                  numLayers) :
-            Texture {api, ownsImage, device, image, extent, pixelFormat, baseLayer, numLayers, 1u}
+                         IRenderDevice*            renderDevice) :
+            Texture {api, ownsImage, device, image, extent, pixelFormat, baseLayer, 1u, renderDevice}
         {}
 
         Texture::Texture(const RenderBackendApi    api,
@@ -679,8 +704,21 @@ namespace vultra
                          PixelFormat               pixelFormat,
                          uint32_t                  baseLayer,
                          uint32_t                  numLayers,
-                         uint32_t                  numMipLevels) :
-            m_DeviceOrAllocator(device), m_Image(image.value), m_BackendApi(api), m_OwnsImage(ownsImage),
+                         IRenderDevice*            renderDevice) :
+            Texture {api, ownsImage, device, image, extent, pixelFormat, baseLayer, numLayers, 1u, renderDevice}
+        {}
+
+        Texture::Texture(const RenderBackendApi    api,
+                         const bool                ownsImage,
+                         const TextureDeviceHandle device,
+                         const TextureImageHandle  image,
+                         Extent2D                  extent,
+                         PixelFormat               pixelFormat,
+                         uint32_t                  baseLayer,
+                         uint32_t                  numLayers,
+                         uint32_t                  numMipLevels,
+                         IRenderDevice*            renderDevice) :
+            m_DeviceOrAllocator(device), m_RenderDevice(renderDevice), m_Image(image.value), m_BackendApi(api), m_OwnsImage(ownsImage),
             m_Type(numLayers > 1u ? TextureType::eTexture2DArray : TextureType::eTexture2D), m_Extent(extent),
             m_Format(pixelFormat), m_NumMipLevels(std::max(numMipLevels, 1u)), m_NumLayers(numLayers),
             m_LayerFaces(std::max(numLayers, 1u)),
@@ -711,6 +749,11 @@ namespace vultra
                     m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eColor)]);
 #endif
             }
+
+            if (m_OwnsImage && m_RenderDevice)
+            {
+                m_RenderDevice->onMemoryAllocated(RenderMemoryKind::eGpuDeviceLocal, getSize());
+            }
         }
 
         void Texture::destroy() noexcept
@@ -718,9 +761,15 @@ namespace vultra
             if (!static_cast<bool>(*this))
                 return;
 
+            if (m_OwnsImage && m_RenderDevice)
+            {
+                m_RenderDevice->onMemoryFreed(RenderMemoryKind::eGpuDeviceLocal, getSize());
+            }
+
             m_Sampler             = {};
             const auto resetState = [this]() {
                 m_DeviceOrAllocator = {};
+                m_RenderDevice      = nullptr;
                 m_Image             = {};
                 m_BackendApi        = RenderBackendApi::eVulkan;
                 m_OwnsImage         = false;

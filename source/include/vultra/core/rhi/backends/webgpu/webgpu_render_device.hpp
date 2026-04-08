@@ -43,6 +43,8 @@ using WGPUSampler = WGPUSamplerImpl*;
 
 #include <string>
 #include <string_view>
+#include <optional>
+#include <deque>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -88,9 +90,57 @@ namespace vultra
             }
 
             [[nodiscard]] openxr::XRDevice* getXRDevice() const override { return nullptr; }
+            void beginFrameGpuQuery(std::uintptr_t commandBufferHandle) override;
+            void endFrameGpuQuery(std::uintptr_t commandBufferHandle) override;
+            [[nodiscard]] double consumeGpuFrameMs() override;
+            [[nodiscard]] uint64_t beginScopeGpuQuery(std::uintptr_t commandBufferHandle) override;
+            void                   endScopeGpuQuery(std::uintptr_t commandBufferHandle, uint64_t scopeToken) override;
+            [[nodiscard]] double   consumeScopeGpuMs(uint64_t scopeToken) override;
+            [[nodiscard]] bool consumePassTimestampWriteRequest(WGPUQuerySet& querySet,
+                                                                uint32_t&     beginWriteIndex,
+                                                                uint32_t&     endWriteIndex);
+            void finalizePendingPassTimestampQueries(std::uintptr_t commandBufferHandle);
+
+            void onMemoryAllocated(RenderMemoryKind kind, uint64_t bytes) override { m_MemoryTracker.add(kind, bytes); }
+            void onMemoryFreed(RenderMemoryKind kind, uint64_t bytes) override { m_MemoryTracker.remove(kind, bytes); }
+            [[nodiscard]] RenderDeviceMemoryStats getMemoryStats() const override { return m_MemoryTracker.snapshot(); }
+
             [[nodiscard]] std::array<float, 2> getLineWidthRange() const override { return {1.0f, 1.0f}; }
             [[nodiscard]] float                getMaxSamplerAnisotropy() const override { return 1.0f; }
             [[nodiscard]] uint64_t             getFormatFeatureFlagsOptimal(PixelFormat) const override;
+
+            struct FrameTimeQuerySlot
+            {
+                WGPUQuerySet querySet {nullptr};
+                WGPUBuffer   resolveBuffer {nullptr};
+                WGPUBuffer   readbackBuffer {nullptr};
+                bool         mapPending {false};
+                bool         mapReady {false};
+            };
+
+            struct ScopeTimeQuerySlot
+            {
+                uint64_t     token {0};
+                WGPUQuerySet querySet {nullptr};
+                WGPUBuffer   resolveBuffer {nullptr};
+                WGPUBuffer   readbackBuffer {nullptr};
+                bool         active {false};
+                bool         passTimestampIssued {false};
+                bool         mapPending {false};
+                bool         mapReady {false};
+                bool         pendingResolve {false};
+                bool         resolveSubmitted {false};
+                bool         resolved {false};
+                double       ms {-1.0};
+            };
+
+        private:
+            [[nodiscard]] bool     initializeScopeTimeSlotResources(ScopeTimeQuerySlot& slot);
+            [[nodiscard]] uint32_t acquireScopeTimeSlot();
+            [[nodiscard]] bool     isScopeTimeSlotReusable(const ScopeTimeQuerySlot& slot) const;
+
+        public:
+            void disableGpuTiming();
 
             RenderDeviceFeatureReport   m_FeatureReport {};
             RenderDeviceLimits          m_Limits {};
@@ -103,6 +153,22 @@ namespace vultra
             WGPUQueue    m_Queue {nullptr};
             bool         m_SupportsTextureCompressionBC {false};
             bool         m_SupportsTimestampQuery {false};
+            bool         m_SupportsScopeTimestampQuery {false};
+            bool         m_SupportsTimestampQueryInsideEncoders {false};
+            std::vector<FrameTimeQuerySlot> m_FrameTimeSlots;
+            std::deque<uint32_t>            m_PendingFrameTimeSlots;
+            uint32_t                        m_FrameTimeNextSlot {0};
+            int32_t                         m_ActiveFrameTimeSlot {-1};
+            bool                            m_FrameTimePassTimestampPending {false};
+            double                          m_LastGpuFrameMs {-1.0};
+            uint64_t                        m_LastGpuFrameTimestamp {0};
+            bool                            m_HasGpuFrameTimestamp {false};
+            std::vector<ScopeTimeQuerySlot> m_ScopeTimeSlots;
+            uint32_t                        m_ScopeTimeNextSlot {0};
+            uint64_t                        m_ScopeTimeNextToken {1};
+            std::deque<uint64_t>            m_PendingScopePassTimestampTokens;
+            std::unordered_map<uint64_t, uint32_t> m_ScopeTimeTokenToSlot;
+            RenderDeviceMemoryTracker       m_MemoryTracker;
 
             mutable std::uintptr_t                     m_NextSyncHandle {1};
             mutable std::unordered_map<std::uintptr_t, bool> m_EmulatedFences;

@@ -82,6 +82,7 @@ namespace vultra
         public:
             [[nodiscard]] WGPURenderPassEncoder getCurrentRenderPassEncoder() const { return m_RenderPass; }
             [[nodiscard]] WGPUComputePassEncoder getCurrentComputePassEncoder() const { return m_ComputePass; }
+            void closeActiveComputePassForProfilingBoundary();
 
         private:
             WGPUInstance m_Instance {nullptr};
@@ -99,7 +100,7 @@ namespace vultra
             WGPURenderPipeline m_BoundPipeline {nullptr};
             WGPUComputePipeline m_BoundComputePipeline {nullptr};
             const BasePipeline* m_BoundPipelineObject {nullptr};
-            const WebGPURenderDevice* m_Backend {nullptr};
+            WebGPURenderDevice* m_Backend {nullptr};
             std::unordered_map<std::size_t, WGPUBindGroup> m_EmptyBindGroups;
             std::array<WGPUBindGroup, kMinNumDescriptorSets> m_PendingComputeBindGroups {};
             std::unordered_map<std::size_t, WGPUBindGroup> m_PushConstantBindGroups;

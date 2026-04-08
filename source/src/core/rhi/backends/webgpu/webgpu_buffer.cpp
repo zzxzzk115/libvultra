@@ -1,4 +1,5 @@
 #include "vultra/core/rhi/backends/webgpu/webgpu_buffer.hpp"
+#include "vultra/core/rhi/interfaces/irender_device.hpp"
 
 #include <cassert>
 
@@ -10,10 +11,19 @@ namespace vultra
 {
     namespace rhi
     {
-        WebGPUBuffer::WebGPUBuffer(const uint64_t size, const std::uintptr_t handle, const std::uintptr_t queueHandle) :
-            m_Data(static_cast<size_t>(size)), m_Size(size), m_Handle(handle), m_QueueHandle(queueHandle),
+        WebGPUBuffer::WebGPUBuffer(IRenderDevice*         renderDevice,
+                                   const uint64_t         size,
+                                   const std::uintptr_t   handle,
+                                   const std::uintptr_t   queueHandle) :
+            m_RenderDevice(renderDevice), m_Data(static_cast<size_t>(size)), m_Size(size), m_Handle(handle), m_QueueHandle(queueHandle),
             m_Valid(handle != 0)
-        {}
+        {
+            if (m_RenderDevice)
+            {
+                m_RenderDevice->onMemoryAllocated(RenderMemoryKind::eCpuCache, m_Size);
+                m_RenderDevice->onMemoryAllocated(RenderMemoryKind::eGpuHostVisible, m_Size);
+            }
+        }
 
         WebGPUBuffer::~WebGPUBuffer()
         {
@@ -24,6 +34,12 @@ namespace vultra
                 m_Handle = 0;
             }
 #endif
+            if (m_RenderDevice)
+            {
+                m_RenderDevice->onMemoryFreed(RenderMemoryKind::eCpuCache, m_Size);
+                m_RenderDevice->onMemoryFreed(RenderMemoryKind::eGpuHostVisible, m_Size);
+                m_RenderDevice = nullptr;
+            }
             m_Valid = false;
         }
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
-#include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/function/resource/gpu_resource_pool.hpp"
@@ -54,6 +53,11 @@ namespace vultra
 
         virtual resource::GpuResourcePool&       pool()       = 0;
         virtual const resource::GpuResourcePool& pool() const = 0;
+
+        // Monotonic content revision for runtime dirty checks.
+        // Increment when resource tables (meshes/materials/textures/splats) change structurally.
+        virtual uint64_t contentRevision() const = 0;
+        virtual void     markContentDirty()      = 0;
 
         virtual uint32_t createMesh(rhi::RenderDevice& rd, const GpuMeshCreateDesc& desc) = 0;
         virtual uint32_t createTexture(rhi::RenderDevice& rd, resource::GpuTexture tex)   = 0;

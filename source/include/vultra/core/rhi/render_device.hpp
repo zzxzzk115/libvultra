@@ -99,6 +99,16 @@ namespace vultra
 
             [[nodiscard]] PhysicalDeviceInfo getPhysicalDeviceInfo() const;
 
+            void   beginFrameGpuQuery(CommandBuffer& cb);
+            void   endFrameGpuQuery(CommandBuffer& cb);
+            [[nodiscard]] double consumeGpuFrameMs();
+            [[nodiscard]] uint64_t beginScopeGpuQuery(CommandBuffer& cb);
+            [[nodiscard]] uint64_t beginScopeGpuQuery(std::uintptr_t commandBufferHandle);
+            void                   endScopeGpuQuery(CommandBuffer& cb, uint64_t scopeToken);
+            void                   endScopeGpuQuery(std::uintptr_t commandBufferHandle, uint64_t scopeToken);
+            [[nodiscard]] double   consumeScopeGpuMs(uint64_t scopeToken);
+            [[nodiscard]] RenderDeviceMemoryStats getMemoryStats() const;
+
             [[nodiscard]] std::array<float, 2> getLineWidthRange() const;
             [[nodiscard]] float                getMaxSamplerAnisotropy() const;
             [[nodiscard]] uint64_t             getFormatFeatureFlagsOptimal(PixelFormat) const;

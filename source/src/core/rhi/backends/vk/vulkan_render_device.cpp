@@ -1,6 +1,5 @@
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/base/hash.hpp"
-#include "vultra/core/base/ranges.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_buffer.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_acceleration_structure.hpp"
@@ -171,7 +170,7 @@ namespace
     backendOf(const std::unique_ptr<vultra::rhi::IRenderDevice>& backend)
     {
         assert(backend);
-        auto* vkBackend = dynamic_cast<const vultra::rhi::VulkanRenderDevice*>(backend.get());
+        const auto* vkBackend = dynamic_cast<const vultra::rhi::VulkanRenderDevice*>(backend.get());
         assert(vkBackend && "RenderDevice backend is not Vulkan");
         return *vkBackend;
     }
@@ -296,6 +295,249 @@ namespace vultra
             vk::FormatProperties props {};
             m_PhysicalDevice.getFormatProperties(toVk(pixelFormat), &props);
             return static_cast<uint64_t>(static_cast<VkFormatFeatureFlags>(props.optimalTilingFeatures));
+        }
+
+        void VulkanRenderDevice::beginFrameGpuQuery(const std::uintptr_t commandBufferHandle)
+        {
+            if (!m_Device || commandBufferHandle == 0)
+            {
+                return;
+            }
+
+            (void)consumeGpuFrameMs();
+
+            if (!m_FrameTimeQueryPool)
+            {
+                m_TimestampPeriodNs = m_PhysicalDevice ? m_PhysicalDevice.getProperties().limits.timestampPeriod : 1.0f;
+                m_FrameTimeSlotCount = 64;
+
+                vk::QueryPoolCreateInfo queryInfo {};
+                queryInfo.queryType  = vk::QueryType::eTimestamp;
+                queryInfo.queryCount = m_FrameTimeSlotCount * 2u;
+                m_FrameTimeQueryPool = m_Device.createQueryPool(queryInfo);
+            }
+
+            if (!m_FrameTimeQueryPool || m_FrameTimeSlotCount == 0)
+            {
+                return;
+            }
+
+            const uint32_t slot       = m_FrameTimeNextSlot++ % m_FrameTimeSlotCount;
+            const uint32_t firstQuery = slot * 2u;
+            auto           cmd        = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
+            cmd.resetQueryPool(m_FrameTimeQueryPool, firstQuery, 2u);
+            cmd.writeTimestamp(vk::PipelineStageFlagBits::eTopOfPipe, m_FrameTimeQueryPool, firstQuery);
+            m_ActiveFrameTimeSlot = static_cast<int32_t>(slot);
+        }
+
+        void VulkanRenderDevice::endFrameGpuQuery(const std::uintptr_t commandBufferHandle)
+        {
+            if (!m_Device || commandBufferHandle == 0 || !m_FrameTimeQueryPool || m_ActiveFrameTimeSlot < 0)
+            {
+                return;
+            }
+
+            const uint32_t slot      = static_cast<uint32_t>(m_ActiveFrameTimeSlot);
+            const uint32_t endQuery  = slot * 2u + 1u;
+            auto           cmd       = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
+            cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, m_FrameTimeQueryPool, endQuery);
+            m_PendingFrameTimeSlots.push_back(slot);
+            m_ActiveFrameTimeSlot = -1;
+        }
+
+        double VulkanRenderDevice::consumeGpuFrameMs()
+        {
+            if (!m_Device || !m_FrameTimeQueryPool)
+            {
+                return m_LastGpuFrameMs;
+            }
+
+            while (!m_PendingFrameTimeSlots.empty())
+            {
+                const uint32_t slot       = m_PendingFrameTimeSlots.front();
+                const uint32_t firstQuery = slot * 2u;
+                std::array<uint64_t, 4> results {};
+
+                const auto res = m_Device.getQueryPoolResults(m_FrameTimeQueryPool,
+                                                               firstQuery,
+                                                               2u,
+                                                               sizeof(results),
+                                                               results.data(),
+                                                               sizeof(uint64_t) * 2u,
+                                                               vk::QueryResultFlagBits::e64 |
+                                                                   vk::QueryResultFlagBits::eWithAvailability);
+                if (res == vk::Result::eNotReady)
+                {
+                    break;
+                }
+
+                m_PendingFrameTimeSlots.pop_front();
+                if (res != vk::Result::eSuccess)
+                {
+                    continue;
+                }
+
+                if (results[1] == 0u || results[3] == 0u || results[2] < results[0])
+                {
+                    continue;
+                }
+
+                const uint64_t delta = results[2] - results[0];
+                m_LastGpuFrameMs = static_cast<double>(delta) * static_cast<double>(m_TimestampPeriodNs) * 1e-6;
+            }
+
+            return m_LastGpuFrameMs;
+        }
+
+        uint64_t VulkanRenderDevice::beginScopeGpuQuery(const std::uintptr_t commandBufferHandle)
+        {
+            if (!m_Device || commandBufferHandle == 0)
+            {
+                return 0;
+            }
+
+            if (!m_ScopeTimeQueryPool)
+            {
+                m_ScopeTimeSlotCount = 256;
+                m_ScopeTimeSlots.resize(m_ScopeTimeSlotCount);
+
+                vk::QueryPoolCreateInfo queryInfo {};
+                queryInfo.queryType  = vk::QueryType::eTimestamp;
+                queryInfo.queryCount = m_ScopeTimeSlotCount * 2u;
+                m_ScopeTimeQueryPool = m_Device.createQueryPool(queryInfo);
+            }
+
+            if (!m_ScopeTimeQueryPool || m_ScopeTimeSlotCount == 0)
+            {
+                return 0;
+            }
+
+            const uint32_t slotIndex = m_ScopeTimeNextSlot++ % m_ScopeTimeSlotCount;
+            auto&          slot      = m_ScopeTimeSlots[slotIndex];
+
+            if (slot.pending)
+            {
+                (void)consumeScopeGpuMs(slot.token);
+                if (slot.pending)
+                {
+                    return 0;
+                }
+            }
+
+            if (slot.active)
+            {
+                return 0;
+            }
+
+            if (slot.token != 0)
+            {
+                m_ScopeTimeTokenToSlot.erase(slot.token);
+            }
+
+            const uint32_t firstQuery = slotIndex * 2u;
+            m_Device.resetQueryPool(m_ScopeTimeQueryPool, firstQuery, 2u);
+
+            auto cmd = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
+            cmd.writeTimestamp(vk::PipelineStageFlagBits::eTopOfPipe, m_ScopeTimeQueryPool, firstQuery);
+
+            const uint64_t token = m_ScopeTimeNextToken++;
+            slot.token           = token;
+            slot.active          = true;
+            slot.pending         = false;
+            slot.resolved        = false;
+            slot.ms              = -1.0;
+            m_ScopeTimeTokenToSlot[token] = slotIndex;
+            return token;
+        }
+
+        void VulkanRenderDevice::endScopeGpuQuery(const std::uintptr_t commandBufferHandle, const uint64_t scopeToken)
+        {
+            if (!m_Device || commandBufferHandle == 0 || !m_ScopeTimeQueryPool || scopeToken == 0)
+            {
+                return;
+            }
+
+            const auto it = m_ScopeTimeTokenToSlot.find(scopeToken);
+            if (it == m_ScopeTimeTokenToSlot.end())
+            {
+                return;
+            }
+
+            auto& slot = m_ScopeTimeSlots[it->second];
+            if (!slot.active)
+            {
+                return;
+            }
+
+            auto cmd = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
+            cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, m_ScopeTimeQueryPool, it->second * 2u + 1u);
+            slot.active  = false;
+            slot.pending = true;
+        }
+
+        double VulkanRenderDevice::consumeScopeGpuMs(const uint64_t scopeToken)
+        {
+            if (!m_Device || !m_ScopeTimeQueryPool || scopeToken == 0)
+            {
+                return -1.0;
+            }
+
+            const auto it = m_ScopeTimeTokenToSlot.find(scopeToken);
+            if (it == m_ScopeTimeTokenToSlot.end())
+            {
+                return -1.0;
+            }
+
+            auto& slot = m_ScopeTimeSlots[it->second];
+            if (slot.resolved)
+            {
+                return slot.ms;
+            }
+            if (!slot.pending)
+            {
+                return -1.0;
+            }
+
+            std::array<uint64_t, 4> results {};
+            const uint32_t          firstQuery = it->second * 2u;
+            const auto res = m_Device.getQueryPoolResults(m_ScopeTimeQueryPool,
+                                                           firstQuery,
+                                                           2u,
+                                                           sizeof(results),
+                                                           results.data(),
+                                                           sizeof(uint64_t) * 2u,
+                                                           vk::QueryResultFlagBits::e64 |
+                                                               vk::QueryResultFlagBits::eWithAvailability);
+            if (res == vk::Result::eNotReady)
+            {
+                return -1.0;
+            }
+
+            if (res != vk::Result::eSuccess)
+            {
+                // Keep pending so we can retry in subsequent frames.
+                return -1.0;
+            }
+
+            if (results[1] == 0u || results[3] == 0u)
+            {
+                // Query data was returned but timestamps are not yet available.
+                return -1.0;
+            }
+
+            slot.pending  = false;
+            slot.resolved = true;
+            if (results[2] >= results[0])
+            {
+                const uint64_t delta = results[2] - results[0];
+                slot.ms              = static_cast<double>(delta) * static_cast<double>(m_TimestampPeriodNs) * 1e-6;
+            }
+            else
+            {
+                slot.ms = -1.0;
+            }
+
+            return slot.ms;
         }
 
         RadixSorter RenderDevice::createRadixSorter(const uint32_t maxElementCount)

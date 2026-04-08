@@ -12,6 +12,8 @@
 
 #include <glm/ext/vector_uint3.hpp>
 
+#include <atomic>
+#include <functional>
 #include <memory>
 
 namespace vultra
@@ -20,6 +22,67 @@ namespace vultra
 
     namespace rhi
     {
+        struct BuiltinProfilerGpuScopeContext
+        {
+            std::uintptr_t commandBufferHandle {0};
+            std::uintptr_t renderPassEncoderHandle {0};
+            std::uintptr_t computePassEncoderHandle {0};
+        };
+
+        struct BuiltinProfilerGpuScopeCallbacks
+        {
+            std::function<void(const BuiltinProfilerGpuScopeContext&)> bind;
+            std::function<void(const BuiltinProfilerGpuScopeContext&, const char*)> begin;
+            std::function<void(const BuiltinProfilerGpuScopeContext&)>               end;
+        };
+
+        BuiltinProfilerGpuScopeCallbacks& builtinProfilerGpuScopeCallbacks();
+
+        void setBuiltinProfilerGpuScopeCallbacks(
+            std::function<void(const BuiltinProfilerGpuScopeContext&)> bind,
+            std::function<void(const BuiltinProfilerGpuScopeContext&, const char*)> begin,
+            std::function<void(const BuiltinProfilerGpuScopeContext&)>               end);
+
+        inline void setBuiltinProfilerGpuScopeCallbacks(
+            std::function<void(const BuiltinProfilerGpuScopeContext&, const char*)> begin,
+            std::function<void(const BuiltinProfilerGpuScopeContext&)>               end)
+        {
+            setBuiltinProfilerGpuScopeCallbacks({}, std::move(begin), std::move(end));
+        }
+
+        class BuiltinProfilerGpuScope final
+        {
+        public:
+            BuiltinProfilerGpuScope(const BuiltinProfilerGpuScopeContext& context, const char* label) : m_Context(context)
+            {
+                auto& callbacks = builtinProfilerGpuScopeCallbacks();
+                if (callbacks.bind)
+                    callbacks.bind(m_Context);
+                if (callbacks.begin)
+                {
+                    callbacks.begin(m_Context, label);
+                    m_Active = true;
+                }
+            }
+
+            ~BuiltinProfilerGpuScope()
+            {
+                if (!m_Active)
+                    return;
+
+                auto& callbacks = builtinProfilerGpuScopeCallbacks();
+                if (callbacks.end)
+                    callbacks.end(m_Context);
+            }
+
+            BuiltinProfilerGpuScope(const BuiltinProfilerGpuScope&)            = delete;
+            BuiltinProfilerGpuScope& operator=(const BuiltinProfilerGpuScope&) = delete;
+
+        private:
+            BuiltinProfilerGpuScopeContext m_Context {};
+            bool m_Active {false};
+        };
+
         class WebGPUCommandBufferAccess;
 
         class RenderDevice;
@@ -41,6 +104,35 @@ namespace vultra
             friend class WebGPUCommandBufferAccess;
 
         public:
+            struct FrameStats
+            {
+                uint64_t drawCalls {0};
+                uint64_t dispatchCalls {0};
+                uint64_t traceRaysCalls {0};
+                uint64_t copyOps {0};
+                uint64_t updateOps {0};
+            };
+
+            static void resetFrameStats()
+            {
+                s_DrawCalls.store(0, std::memory_order_relaxed);
+                s_DispatchCalls.store(0, std::memory_order_relaxed);
+                s_TraceRaysCalls.store(0, std::memory_order_relaxed);
+                s_CopyOps.store(0, std::memory_order_relaxed);
+                s_UpdateOps.store(0, std::memory_order_relaxed);
+            }
+
+            [[nodiscard]] static FrameStats consumeFrameStats()
+            {
+                FrameStats out {};
+                out.drawCalls      = s_DrawCalls.exchange(0, std::memory_order_relaxed);
+                out.dispatchCalls  = s_DispatchCalls.exchange(0, std::memory_order_relaxed);
+                out.traceRaysCalls = s_TraceRaysCalls.exchange(0, std::memory_order_relaxed);
+                out.copyOps        = s_CopyOps.exchange(0, std::memory_order_relaxed);
+                out.updateOps      = s_UpdateOps.exchange(0, std::memory_order_relaxed);
+                return out;
+            }
+
             CommandBuffer()                         = default;
             CommandBuffer(const CommandBuffer&)     = delete;
             CommandBuffer(CommandBuffer&&) noexcept = default;
@@ -118,12 +210,14 @@ namespace vultra
             CommandBuffer& dispatch(const ComputePipeline& pipeline, const glm::uvec3& groupCount)
             {
                 assert(m_Impl);
+                s_DispatchCalls.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->dispatch(pipeline, groupCount);
                 return *this;
             }
             CommandBuffer& dispatch(const glm::uvec3& groupCount)
             {
                 assert(m_Impl);
+                s_DispatchCalls.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->dispatch(groupCount);
                 return *this;
             }
@@ -143,6 +237,7 @@ namespace vultra
             CommandBuffer& traceRays(const ShaderBindingTable& sbt, const glm::uvec3& extent)
             {
                 assert(m_Impl);
+                s_TraceRaysCalls.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->traceRays(sbt, extent);
                 return *this;
             }
@@ -200,24 +295,28 @@ namespace vultra
             CommandBuffer& draw(const GeometryInfo& gi, const uint32_t numInstances = 1)
             {
                 assert(m_Impl);
+                s_DrawCalls.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->draw(gi, numInstances);
                 return *this;
             }
             CommandBuffer& drawFullScreenTriangle()
             {
                 assert(m_Impl);
+                s_DrawCalls.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->drawFullScreenTriangle();
                 return *this;
             }
             CommandBuffer& drawCube()
             {
                 assert(m_Impl);
+                s_DrawCalls.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->drawCube();
                 return *this;
             }
             CommandBuffer& drawIndirect(const DrawIndirectInfo& dii)
             {
                 assert(m_Impl);
+                s_DrawCalls.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->drawIndirect(dii);
                 return *this;
             }
@@ -225,12 +324,14 @@ namespace vultra
             drawIndirectCount(const DrawIndirectInfo& dii, const Buffer& countBuffer, uint32_t countOffset)
             {
                 assert(m_Impl);
+                s_DrawCalls.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->drawIndirectCount(dii, countBuffer, countOffset);
                 return *this;
             }
             CommandBuffer& drawMeshTask(const glm::uvec3& numTaskGroups)
             {
                 assert(m_Impl);
+                s_DrawCalls.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->drawMeshTask(numTaskGroups);
                 return *this;
             }
@@ -254,12 +355,14 @@ namespace vultra
             CommandBuffer& copyBuffer(const Buffer& src, Buffer& dst, const rhi::BufferCopy& copyRegion)
             {
                 assert(m_Impl);
+                s_CopyOps.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->copyBuffer(src, dst, copyRegion);
                 return *this;
             }
             CommandBuffer& copyBuffer(const Buffer& src, Texture& dst)
             {
                 assert(m_Impl);
+                s_CopyOps.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->copyBuffer(src, dst);
                 return *this;
             }
@@ -267,12 +370,14 @@ namespace vultra
             CommandBuffer& copyBuffer(const Buffer& src, Texture& dst, std::span<const BufferImageCopy> copyRegions)
             {
                 assert(m_Impl);
+                s_CopyOps.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->copyBuffer(src, dst, copyRegions);
                 return *this;
             }
             CommandBuffer& copyImage(const Texture& src, const Buffer& dst, const rhi::ImageAspect aspectMask)
             {
                 assert(m_Impl);
+                s_CopyOps.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->copyImage(src, dst, aspectMask);
                 return *this;
             }
@@ -280,6 +385,7 @@ namespace vultra
             CommandBuffer& update(Buffer& buffer, const uint64_t offset, const uint64_t size, const void* data)
             {
                 assert(m_Impl);
+                s_UpdateOps.fetch_add(1, std::memory_order_relaxed);
                 m_Impl->update(buffer, offset, size, data);
                 return *this;
             }
@@ -312,6 +418,13 @@ namespace vultra
 
         private:
             explicit CommandBuffer(std::unique_ptr<ICommandBuffer> impl) : m_Impl(std::move(impl)) {}
+
+        private:
+            inline static std::atomic<uint64_t> s_DrawCalls {0};
+            inline static std::atomic<uint64_t> s_DispatchCalls {0};
+            inline static std::atomic<uint64_t> s_TraceRaysCalls {0};
+            inline static std::atomic<uint64_t> s_CopyOps {0};
+            inline static std::atomic<uint64_t> s_UpdateOps {0};
 
             void pushDebugGroup(const std::string_view label) const
             {
@@ -364,6 +477,15 @@ namespace vultra
 #define RHI_TRACKY_JOIN_INNER_(a, b) a##b
 #endif
 
+#define RHI_BUILTIN_PROFILER_GPU_ZONE(CommandBuffer, Label) \
+    ::vultra::rhi::BuiltinProfilerGpuScope RHI_TRACKY_JOIN_(builtinProfilerGpuScopeVar_, __LINE__)( \
+        ::vultra::rhi::BuiltinProfilerGpuScopeContext { \
+            .commandBufferHandle     = CommandBuffer.getHandle(), \
+            .renderPassEncoderHandle = CommandBuffer.getCurrentRenderPassEncoderHandle(), \
+            .computePassEncoderHandle = CommandBuffer.getCurrentComputePassEncoderHandle(), \
+        }, \
+        Label)
+
 #define TRACKY_GPU_NEXT_FRAME(CommandBuffer) \
     TRACKY_BIND_CMD_BUFFER(CommandBuffer.getHandle(), CommandBuffer.getCurrentRenderPassEncoderHandle(), \
                            CommandBuffer.getCurrentComputePassEncoderHandle()); \
@@ -404,8 +526,9 @@ namespace vultra
 
 #define RHI_GPU_ZONE(CommandBuffer, Label) \
     RHI_NAMED_DEBUG_MARKER(CommandBuffer, Label); \
-    TRACY_GPU_TRANSIENT_ZONE(CommandBuffer, Label) \
-    TRACKY_GPU_ZONE(CommandBuffer, Label)
+    TRACY_GPU_TRANSIENT_ZONE(CommandBuffer, Label); \
+    TRACKY_GPU_ZONE(CommandBuffer, Label); \
+    RHI_BUILTIN_PROFILER_GPU_ZONE(CommandBuffer, Label)
 
 #define FG_GPU_ZONE(CommandBuffer) \
     TRACY_GPU_ZONE(CommandBuffer, "FrameGraph::Execute"); \

@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer_access.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
@@ -29,6 +30,7 @@
 #include <fg/FrameGraph.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 #include <numeric>
 #include <unordered_set>
@@ -37,6 +39,8 @@ namespace vultra
 {
     namespace
     {
+        thread_local rhi::BuiltinProfilerGpuScopeContext g_CurrentBuiltinProfilerGpuScopeContext {};
+
         [[nodiscard]] uint32_t computeGaussianSplatPointLimit(const rhi::RenderDeviceLimits& limits)
         {
             uint64_t maxPoints = std::numeric_limits<uint32_t>::max();
@@ -81,6 +85,7 @@ namespace vultra
         auto& reg = world.registry();
 
         auto view = reg.view<IDComponent, TransformComponent, MeshComponent>();
+        out.instances.reserve(view.size_hint());
         for (auto e : view)
         {
             const auto& id   = view.get<IDComponent>(e);
@@ -99,6 +104,7 @@ namespace vultra
         }
 
         auto splatView = reg.view<IDComponent, TransformComponent, GaussianSplatComponent>();
+        out.splatInstances.reserve(splatView.size_hint());
         for (auto e : splatView)
         {
             const auto& id     = splatView.get<IDComponent>(e);
@@ -170,6 +176,7 @@ namespace vultra
         m_GpuSceneViewFront.clear();
         m_GpuSceneDatabaseBack.clear();
         m_GpuSceneDatabaseFront.clear();
+        m_GpuSceneDirtyTracker.reset();
 
         for (auto& [key, renderer] : m_Renderers)
             renderer = nullptr;
@@ -211,6 +218,8 @@ namespace vultra
 
     void RenderSystem::renderFrame()
     {
+        const auto renderFrameCpuStart = std::chrono::steady_clock::now();
+
         auto& backendService     = ctx().services.require<IRenderBackendService>();
         auto& worldService       = ctx().services.require<IWorldService>();
         auto& camService         = ctx().services.require<ICameraService>();
@@ -227,14 +236,21 @@ namespace vultra
 
         auto& rd = backendService.renderDevice();
 
+        m_RuntimeProfiler.beginFrame(m_FrameCounter);
+        m_RuntimeProfiler.setVsyncEnabled(ctx().config.render.vSyncConfig != rhi::VerticalSync::eDisabled);
+        rhi::CommandBuffer::resetFrameStats();
+
         // Begin frame first so downstream systems can consume per-frame backend state (e.g. XR eye views).
         if (!backendService.beginFrame())
         {
             m_SkipRender = true;
+            m_RuntimeProfiler.endFrame();
             return;
         }
 
         auto& cb = backendService.commandBuffer();
+        RuntimeProfiler::Scope scopeRenderFrame {m_RuntimeProfiler, "RenderSystem::renderFrame"};
+        rd.beginFrameGpuQuery(cb);
 
         // Default target for cameras without explicit RT
         auto& defaultTarget = backendService.backbuffer();
@@ -248,13 +264,21 @@ namespace vultra
         const auto cams  = camService.cameras();
 
         // Asset upload/update stage (main thread)
-        assetService.update(m_FrameCounter);
-
+        {
+            RuntimeProfiler::Scope scope {m_RuntimeProfiler, "AssetService::update"};
+            assetService.update(m_FrameCounter);
+        }
         // Cook render instances
         RenderWorldCooker cooker {};
-        cooker.cook(world, assetService, m_RenderWorldBack);
-
+        {
+            RuntimeProfiler::Scope scope {m_RuntimeProfiler, "RenderWorldCooker::cook"};
+            cooker.cook(world, assetService, m_RenderWorldBack);
+        }
         m_RenderWorldBack.frameIndex = m_FrameCounter;
+
+        const uint64_t resourceRevision     = gpuResourceService.contentRevision();
+        const bool     gpuSceneDirty        =
+            m_GpuSceneDirtyTracker.shouldRebuild(m_RenderWorldBack, resourceRevision, m_EnableGpuDrivenMeshletPipeline);
 
         // Build GPU scene database + per-view draw state.
         //
@@ -265,10 +289,14 @@ namespace vultra
         // View layer:
         // - draw table
         // - indirect commands
+        if (gpuSceneDirty)
         {
+            RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::rebuild"};
             const auto& pool = gpuResourceService.pool();
 
             m_GpuSceneDatabaseBack.beginFrame(pool);
+            m_GpuSceneDatabaseBack.instances.reserve(m_RenderWorldBack.instances.size());
+            m_GpuSceneDatabaseBack.transforms.reserve(m_RenderWorldBack.instances.size());
             m_GpuSceneDatabaseBack.rebuildMeshTableFromResources();
 
             // Keep CPU staging mirrors even though the current render path is still
@@ -307,8 +335,8 @@ namespace vultra
                 m_GpuSceneViewBack.setGpuDrivenCaps(
                     static_cast<uint32_t>(m_GpuSceneDatabaseBack.instances.size()), maxMeshletDraws, maxMeshletDraws);
                 m_GpuSceneViewBack.ensureVisibleMeshletBuffers(rd);
+                m_GpuSceneViewBack.draws.reserve(maxMeshletDraws);
 
-                std::vector<resource::GpuDrawRecord> stagedDraws;
                 for (uint32_t instanceIndex = 0;
                      instanceIndex < static_cast<uint32_t>(m_RenderWorldBack.instances.size());
                      ++instanceIndex)
@@ -319,7 +347,6 @@ namespace vultra
                     if (instanceIndex >= m_GpuSceneDatabaseBack.instances.size())
                         continue;
 
-                    const auto& gpuInst = m_GpuSceneDatabaseBack.instances[instanceIndex];
                     const auto& mesh    = pool.meshes[inst.meshIndex];
                     if (mesh.meshletCount == 0)
                         continue;
@@ -341,18 +368,15 @@ namespace vultra
                         dr.instanceIndex     = instanceIndex;
                         dr.padding0          = 0;
                         dr.model             = inst.worldMatrix;
-                        stagedDraws.push_back(dr);
+                        m_GpuSceneViewBack.pushMeshletDraw(std::move(dr));
                     }
                 }
 
-                std::stable_sort(stagedDraws.begin(), stagedDraws.end(), [](const auto& a, const auto& b) {
+                std::stable_sort(m_GpuSceneViewBack.draws.begin(), m_GpuSceneViewBack.draws.end(), [](const auto& a, const auto& b) {
                     if (a.materialIndex != b.materialIndex)
                         return a.materialIndex < b.materialIndex;
                     return a.primitiveIndex < b.primitiveIndex;
                 });
-
-                for (auto& dr : stagedDraws)
-                    m_GpuSceneViewBack.pushMeshletDraw(std::move(dr));
 
                 m_GpuSceneViewBack.uploadDraws(rd, cb);
                 m_GpuSceneViewBack.buildIndirectFromDraws(pool);
@@ -363,13 +387,16 @@ namespace vultra
             {
                 const uint32_t        maxSplatDraws    = static_cast<uint32_t>(m_RenderWorldBack.splatInstances.size());
                 uint32_t              totalSplatPoints = 0u;
-                std::vector<uint32_t> pointDrawIds;
                 const bool            compatibilityWebGpu = rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
                 const uint32_t        maxPointBudget      = compatibilityWebGpu ? computeGaussianSplatPointLimit(rd.getLimits()) : 0u;
                 bool                  pointBudgetClamped   = false;
 
                 m_GpuSceneViewBack.setGaussianSplatGpuDrivenCaps(maxSplatDraws);
                 m_GpuSceneViewBack.ensureGaussianSplatDrawBuffer(rd);
+                m_GpuSceneViewBack.gaussianSplatDraws.reserve(maxSplatDraws);
+                m_GpuSceneGaussianSplatPointDrawIdScratch.clear();
+                if (compatibilityWebGpu && maxPointBudget > 0u)
+                    m_GpuSceneGaussianSplatPointDrawIdScratch.reserve(maxPointBudget);
 
                 for (const auto& inst : m_RenderWorldBack.splatInstances)
                 {
@@ -401,7 +428,8 @@ namespace vultra
 
                     if (emitCount > 0u)
                     {
-                        pointDrawIds.insert(pointDrawIds.end(), emitCount, drawId);
+                        m_GpuSceneGaussianSplatPointDrawIdScratch.insert(
+                            m_GpuSceneGaussianSplatPointDrawIdScratch.end(), emitCount, drawId);
                         totalSplatPoints += emitCount;
                     }
                 }
@@ -420,18 +448,29 @@ namespace vultra
                 {
                     cb.update(*m_GpuSceneViewBack.gaussianSplatPointDrawIdBuffer,
                               0,
-                              static_cast<uint64_t>(pointDrawIds.size()) * sizeof(uint32_t),
-                              pointDrawIds.data());
+                              static_cast<uint64_t>(m_GpuSceneGaussianSplatPointDrawIdScratch.size()) * sizeof(uint32_t),
+                              m_GpuSceneGaussianSplatPointDrawIdScratch.data());
                 }
             }
 
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;
             m_RenderWorldBack.gpuSceneView     = &m_GpuSceneViewBack;
         }
+        else
+        {
+            // Reuse previous snapshot when neither cooked world nor resource pool changed.
+            m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseFront;
+            m_RenderWorldBack.gpuSceneView     = &m_GpuSceneViewFront;
+        }
+
+        m_GpuSceneDirtyTracker.markBuilt(m_RenderWorldBack, resourceRevision, m_EnableGpuDrivenMeshletPipeline);
 
         std::swap(m_RenderWorldFront, m_RenderWorldBack);
-        std::swap(m_GpuSceneDatabaseFront, m_GpuSceneDatabaseBack);
-        std::swap(m_GpuSceneViewFront, m_GpuSceneViewBack);
+        if (gpuSceneDirty)
+        {
+            std::swap(m_GpuSceneDatabaseFront, m_GpuSceneDatabaseBack);
+            std::swap(m_GpuSceneViewFront, m_GpuSceneViewBack);
+        }
         m_RenderWorldFront.gpuSceneDatabase = &m_GpuSceneDatabaseFront;
         m_RenderWorldFront.gpuSceneView     = &m_GpuSceneViewFront;
         m_RenderWorldBack.gpuSceneDatabase  = &m_GpuSceneDatabaseBack;
@@ -456,6 +495,63 @@ namespace vultra
         const auto xrEyeViews               = backendService.xrEyeViews();
         bool       skipRemainingStereoViews = false;
         bool       backbufferClearedThisFrame = false;
+        m_RuntimeProfiler.setGpuScopeCpuFallback(rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU);
+
+        m_RuntimeProfiler.setGpuScopeCallbacks(
+            [this, &rd, &cb]() {
+                if (g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle == 0)
+                    return uint64_t {0};
+
+                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                {
+                    return uint64_t {0};
+                }
+
+                // WebGPU compute encoders are kept open lazily. At a framegraph pass boundary the next
+                // top-level scope may still observe the previous compute pass as active, which would
+                // incorrectly suppress or mis-attribute the new pass timing.
+                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU &&
+                    g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle == 0 &&
+                    g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle != 0 &&
+                    m_RuntimeProfiler.gpuScopeDepth() <= 1)
+                {
+                    rhi::WebGPUCommandBufferAccess::closeActiveComputePassForProfilingBoundary(cb);
+                    g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle = cb.getCurrentRenderPassEncoderHandle();
+                    g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle =
+                        cb.getCurrentComputePassEncoderHandle();
+                }
+
+                // WebGPU fallback timestamps are pass-bound; ignore nested scopes inside an active pass.
+                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU &&
+                    (g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle != 0 ||
+                     g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle != 0))
+                {
+                    return uint64_t {0};
+                }
+                return rd.beginScopeGpuQuery(g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle);
+            },
+            [&rd](const uint64_t token) {
+                if (g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle == 0 || token == 0)
+                    return;
+                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                    return;
+                rd.endScopeGpuQuery(g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle, token);
+            },
+            [&rd](const uint64_t token) {
+                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                    return -1.0;
+                return rd.consumeScopeGpuMs(token);
+            });
+        rhi::setBuiltinProfilerGpuScopeCallbacks(
+            [](const rhi::BuiltinProfilerGpuScopeContext& ctx) { g_CurrentBuiltinProfilerGpuScopeContext = ctx; },
+            [this](const rhi::BuiltinProfilerGpuScopeContext& ctx, const char* label) {
+                g_CurrentBuiltinProfilerGpuScopeContext = ctx;
+                (void)m_RuntimeProfiler.beginGpuScope(label ? label : "GPU Scope");
+            },
+            [this](const rhi::BuiltinProfilerGpuScopeContext& ctx) {
+                g_CurrentBuiltinProfilerGpuScopeContext = ctx;
+                m_RuntimeProfiler.endGpuScope();
+            });
 
         // TODO: TimeSystem, for now use 0
         const fsec dt {0};
@@ -463,6 +559,7 @@ namespace vultra
 
         for (const size_t cameraIdx : cameraOrder)
         {
+            RuntimeProfiler::Scope scopeCamera {m_RuntimeProfiler, "RenderCamera::execute"};
             const auto& cam = cams[cameraIdx];
 
             if (skipRemainingStereoViews && cam.isXRView && !cam.isXRPrimaryView)
@@ -559,7 +656,6 @@ namespace vultra
 
             rhi::prepareForAttachment(cb, *target, false);
             renderer->render(immediateCtx);
-
             if (useFrameGraph)
             {
                 FrameGraphResourceUploader fgUploader {fg};
@@ -571,6 +667,7 @@ namespace vultra
 
             if (useFrameGraph)
             {
+                RuntimeProfiler::Scope scopeFrameGraphBuild {m_RuntimeProfiler, "FrameGraph::build"};
                 FrameGraphBuildContext buildCtx {
                     .fg       = fg,
                     .bb       = bb,
@@ -583,7 +680,6 @@ namespace vultra
                 // This sets up the frame graph using a feature renderer or a custom graph-aware renderer.
                 rhi::prepareForAttachment(cb, *target, false);
                 renderer->buildFrameGraph(buildCtx);
-
                 fg.compile();
 
 #ifndef NDEBUG
@@ -617,6 +713,7 @@ namespace vultra
                 };
 
                 {
+                    RuntimeProfiler::Scope scopeFrameGraphExec {m_RuntimeProfiler, "FrameGraph::execute"};
                     FG_GPU_ZONE(cb);
                     fg.execute(&frameGraphExecCtx, m_TransientResources.get());
                 }
@@ -681,8 +778,36 @@ namespace vultra
             imguiService->render(cb, imguiFbInfo);
         }
 
+        // Stop issuing begin/end scope queries after rendering submission building is done,
+        // but keep resolve callback alive so endFrame can harvest ready GPU samples.
+        m_RuntimeProfiler.setGpuScopeCallbacks(
+            []() { return uint64_t {0}; },
+            [](const uint64_t) {},
+            [&rd](const uint64_t token) { return rd.consumeScopeGpuMs(token); });
+
         m_TransientResources->update();
+        rd.endFrameGpuQuery(cb);
         backendService.endFrame();
+
+        const auto commandStats = rhi::CommandBuffer::consumeFrameStats();
+        m_RuntimeProfiler.setCommandStats(commandStats.drawCalls,
+                                          commandStats.dispatchCalls,
+                                          commandStats.traceRaysCalls,
+                                          commandStats.copyOps,
+                                          commandStats.updateOps);
+        const auto  assetMemoryStats = assetService.memoryStats();
+        const auto memoryStats = rd.getMemoryStats();
+        m_RuntimeProfiler.setMemoryStats(assetMemoryStats.cpuCacheBytes,
+                         memoryStats.cpuCacheBytes,
+                         memoryStats.gpuDeviceLocalBytes,
+                         memoryStats.gpuHostVisibleBytes);
+        m_RuntimeProfiler.setGpuFrameMs(rd.consumeGpuFrameMs());
+        const auto renderFrameCpuEnd = std::chrono::steady_clock::now();
+        m_RuntimeProfiler.setCpuRenderMs(
+            std::chrono::duration<double, std::milli>(renderFrameCpuEnd - renderFrameCpuStart).count());
+        m_RuntimeProfiler.endFrame();
+        rhi::setBuiltinProfilerGpuScopeCallbacks({}, {});
+        m_RuntimeProfiler.setGpuScopeCallbacks({}, {}, {});
 
         if (frameDebuggerService)
             frameDebuggerService->captureEnd();

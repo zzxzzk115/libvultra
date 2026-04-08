@@ -16,6 +16,8 @@ namespace vultra
 
         resource::GpuResourcePool&       pool() override { return m_Pool; }
         const resource::GpuResourcePool& pool() const override { return m_Pool; }
+        uint64_t                         contentRevision() const override { return m_Pool.contentRevision; }
+        void                             markContentDirty() override { m_Pool.markContentDirty(); }
 
         uint32_t createMesh(rhi::RenderDevice& rd, const GpuMeshCreateDesc& desc) override;
         uint32_t createTexture(rhi::RenderDevice& rd, resource::GpuTexture tex) override;

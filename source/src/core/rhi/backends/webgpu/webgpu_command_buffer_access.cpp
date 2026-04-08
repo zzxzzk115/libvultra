@@ -20,5 +20,13 @@ namespace vultra
             }
             return nullptr;
         }
+
+        void WebGPUCommandBufferAccess::closeActiveComputePassForProfilingBoundary(CommandBuffer& cb)
+        {
+            if (auto* webgpuCb = dynamic_cast<WebGPUCommandBuffer*>(cb.m_Impl.get()); webgpuCb)
+            {
+                webgpuCb->closeActiveComputePassForProfilingBoundary();
+            }
+        }
     } // namespace rhi
 } // namespace vultra

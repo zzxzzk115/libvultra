@@ -111,6 +111,7 @@ namespace vultra
 
         const uint32_t idx = static_cast<uint32_t>(m_Pool.meshes.size());
         m_Pool.meshes.push_back(std::move(mesh));
+        m_Pool.markContentDirty();
         return idx;
     }
 } // namespace vultra

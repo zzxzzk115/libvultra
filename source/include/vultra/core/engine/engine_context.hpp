@@ -55,6 +55,13 @@ namespace vultra
 
             struct RenderConfig
             {
+                enum class BuiltinShaderLibrary : uint8_t
+                {
+                    eAuto,
+                    eHighend,
+                    eCompatibility,
+                };
+
                 rhi::FrameIndex::ValueType       numFramesInFlight {2};
 #if defined(__EMSCRIPTEN__)
                 rhi::RenderBackendApi            backendApi {rhi::RenderBackendApi::eWebGPU};
@@ -62,6 +69,7 @@ namespace vultra
                 rhi::RenderBackendApi            backendApi {rhi::RenderBackendApi::eVulkan};
 #endif
                 rhi::RenderDeviceFeatureFlagBits renderDeviceFeatureFlag {rhi::RenderDeviceFeatureFlagBits::eNormal};
+                BuiltinShaderLibrary            builtinShaderLibrary {BuiltinShaderLibrary::eAuto};
                 rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eDisabled};
                 rhi::SwapchainFormat             swapchainFormat {rhi::SwapchainFormat::eLinear};
 

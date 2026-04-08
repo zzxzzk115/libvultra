@@ -34,6 +34,17 @@ namespace vultra
             [[nodiscard]] virtual PhysicalDeviceInfo           getPhysicalDeviceInfo() const = 0;
             [[nodiscard]] virtual openxr::XRDevice*            getXRDevice() const           = 0;
 
+            virtual void beginFrameGpuQuery(std::uintptr_t commandBufferHandle) = 0;
+            virtual void endFrameGpuQuery(std::uintptr_t commandBufferHandle)   = 0;
+            [[nodiscard]] virtual double consumeGpuFrameMs()                     = 0;
+            [[nodiscard]] virtual uint64_t beginScopeGpuQuery(std::uintptr_t commandBufferHandle) = 0;
+            virtual void                  endScopeGpuQuery(std::uintptr_t commandBufferHandle, uint64_t scopeToken) = 0;
+            [[nodiscard]] virtual double  consumeScopeGpuMs(uint64_t scopeToken) = 0;
+
+            virtual void onMemoryAllocated(RenderMemoryKind kind, uint64_t bytes) = 0;
+            virtual void onMemoryFreed(RenderMemoryKind kind, uint64_t bytes)     = 0;
+            [[nodiscard]] virtual RenderDeviceMemoryStats getMemoryStats() const  = 0;
+
             [[nodiscard]] virtual std::array<float, 2> getLineWidthRange() const { return {1.0f, 1.0f}; }
             [[nodiscard]] virtual float                getMaxSamplerAnisotropy() const { return 1.0f; }
             [[nodiscard]] virtual uint64_t             getFormatFeatureFlagsOptimal(PixelFormat) const { return 0u; }

@@ -96,7 +96,6 @@ namespace vultra
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
-
                 auto* gpuSceneView     = rc.view().gpuSceneView;
                 auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
                 if (gpuSceneView)
@@ -130,7 +129,6 @@ namespace vultra
                 const uint32_t drawCount = gpuSceneView->getDispatchableGaussianSplatDrawCount();
                 if (drawCount == 0u)
                     return;
-
                 uint32_t totalPointCount = 0u;
                 for (uint32_t drawId = 0; drawId < drawCount; ++drawId)
                 {

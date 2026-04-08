@@ -42,6 +42,17 @@ namespace vultra
             }
         }
 
+        template<class Fn>
+        void forEachRecord(Fn&& fn) const
+        {
+            for (const auto& shard : m_Shards)
+            {
+                std::scoped_lock lock(shard.mtx);
+                for (const auto& [_, rec] : shard.map)
+                    fn(*rec);
+            }
+        }
+
         void clear()
         {
             for (auto& shard : m_Shards)
@@ -54,7 +65,7 @@ namespace vultra
     private:
         struct Shard
         {
-            std::mutex                                            mtx;
+            mutable std::mutex                                     mtx;
             std::unordered_map<CoreUUID, std::unique_ptr<Record>> map;
         };
 

@@ -2,6 +2,7 @@
 
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
+#include "vultra/core/rhi/interfaces/irender_device.hpp"
 
 namespace vultra::rhi
 {
@@ -40,8 +41,12 @@ namespace vultra::rhi
                                const uint64_t                   size,
                                const BufferUsage                bufferUsage,
                                const vma::AllocationCreateFlags allocationFlags,
-                               const vma::MemoryUsage           memoryUsage) : m_MemoryAllocator(memoryAllocator)
+                               const vma::MemoryUsage           memoryUsage,
+                               IRenderDevice*                   renderDevice) :
+        m_MemoryAllocator(memoryAllocator), m_RenderDevice(renderDevice)
     {
+        m_MemoryKind = memoryUsage == vma::MemoryUsage::eGpuOnly ? RenderMemoryKind::eGpuDeviceLocal : RenderMemoryKind::eGpuHostVisible;
+
         vk::BufferCreateInfo bufferCreateInfo {};
         bufferCreateInfo.size        = size;
         bufferCreateInfo.usage       = toVk(bufferUsage);
@@ -58,6 +63,10 @@ namespace vultra::rhi
                  "Failed to create buffer");
 
         m_Size = allocationInfo.size;
+        if (m_RenderDevice)
+        {
+            m_RenderDevice->onMemoryAllocated(m_MemoryKind, m_Size);
+        }
     }
 
     VulkanBuffer::~VulkanBuffer() { destroy(); }
@@ -111,7 +120,12 @@ namespace vultra::rhi
             unmap();
 
             m_MemoryAllocator.destroyBuffer(m_Handle, m_Allocation);
+            if (m_RenderDevice)
+            {
+                m_RenderDevice->onMemoryFreed(m_MemoryKind, m_Size);
+            }
             m_MemoryAllocator = nullptr;
+            m_RenderDevice    = nullptr;
             m_Allocation      = nullptr;
             m_Handle          = nullptr;
             m_Size            = 0;

@@ -5,22 +5,256 @@
 #include "vultra/function/rendering/srp/builtin/features/gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/test_feature.hpp"
+#include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
+#include "vultra/function/services/render_service.hpp"
 #ifdef VULTRA_ENABLE_RENDERDOC
 #include "vultra/function/services/frame_debugger_service.hpp"
 #endif
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
+#include <implot/implot.h>
 
 #include <algorithm>
+#include <functional>
 
 namespace vultra
 {
     namespace
     {
+        [[nodiscard]] std::string formatBytes(const uint64_t bytes)
+        {
+            constexpr double kKB = 1024.0;
+            constexpr double kMB = 1024.0 * 1024.0;
+            constexpr double kGB = 1024.0 * 1024.0 * 1024.0;
+
+            const double v = static_cast<double>(bytes);
+            char         buf[64] {};
+            if (v >= kGB)
+            {
+                std::snprintf(buf, sizeof(buf), "%.2f GB", v / kGB);
+            }
+            else if (v >= kMB)
+            {
+                std::snprintf(buf, sizeof(buf), "%.2f MB", v / kMB);
+            }
+            else if (v >= kKB)
+            {
+                std::snprintf(buf, sizeof(buf), "%.2f KB", v / kKB);
+            }
+            else
+            {
+                std::snprintf(buf, sizeof(buf), "%llu B", static_cast<unsigned long long>(bytes));
+            }
+            return std::string(buf);
+        }
+
+        void drawRuntimeProfilerPanel(IRenderService& renderService)
+        {
+            auto* profiler = renderService.runtimeProfiler();
+            if (!profiler)
+                return;
+
+            if (!ImGui::CollapsingHeader("Built-in Profiler", ImGuiTreeNodeFlags_DefaultOpen))
+                return;
+
+            bool enabled = profiler->isEnabled();
+            if (ImGui::Checkbox("Enable Internal Profiler", &enabled))
+                profiler->setEnabled(enabled);
+
+            if (!enabled)
+                return;
+
+            bool paused = profiler->isPaused();
+            if (ImGui::Checkbox("Pause", &paused))
+                profiler->setPaused(paused);
+
+            const char* sortLabels[] = {"Total (ms)", "Self (ms)", "Calls", "Name"};
+            int         sortIndex    = static_cast<int>(profiler->getSortKey());
+            if (ImGui::Combo("Sort", &sortIndex, sortLabels, IM_ARRAYSIZE(sortLabels)))
+                profiler->setSortKey(static_cast<RuntimeProfiler::SortKey>(sortIndex));
+
+            if (paused && profiler->historySize() > 0)
+            {
+                int frozen = profiler->getFrozenHistoryIndex();
+                if (frozen < 0)
+                    frozen = static_cast<int>(profiler->historySize()) - 1;
+                if (ImGui::SliderInt("Frozen Frame", &frozen, 0, static_cast<int>(profiler->historySize()) - 1))
+                    profiler->setFrozenHistoryIndex(frozen);
+            }
+
+            const auto* selected = profiler->selectedFrame();
+            if (!selected)
+            {
+                ImGui::TextUnformatted("No profiler frames yet.");
+                return;
+            }
+
+            ImGui::SeparatorText("Frame Summary");
+            ImGui::Text("Frame: %llu", static_cast<unsigned long long>(selected->frameIndex));
+            ImGui::Text("CPU Frame: %.3f ms", selected->cpuFrameMs);
+            ImGui::Text("CPU Render: %.3f ms", selected->cpuRenderMs);
+            if (selected->gpuFrameMs >= 0.0)
+                ImGui::Text("GPU Frame: %.3f ms", selected->gpuFrameMs);
+            else
+                ImGui::TextUnformatted("GPU Frame: N/A");
+
+            ImGui::Text("Draw Calls: %llu", static_cast<unsigned long long>(selected->drawCalls));
+            ImGui::Text("Dispatch: %llu", static_cast<unsigned long long>(selected->dispatchCalls));
+            ImGui::Text("Trace Rays: %llu", static_cast<unsigned long long>(selected->traceRaysCalls));
+            ImGui::Text("Copy Ops: %llu", static_cast<unsigned long long>(selected->copyOps));
+            ImGui::Text("Update Ops: %llu", static_cast<unsigned long long>(selected->updateOps));
+            ImGui::Text("VSync: %s", selected->vsyncEnabled ? "On" : "Off");
+            ImGui::Text("Asset CPU Cache: %s", formatBytes(selected->assetCpuCacheBytes).c_str());
+            ImGui::Text("Render CPU Cache: %s", formatBytes(selected->renderCpuCacheBytes).c_str());
+            ImGui::Text("GPU Device Local: %s", formatBytes(selected->gpuDeviceLocalBytes).c_str());
+            ImGui::Text("GPU Host Visible: %s", formatBytes(selected->gpuHostVisibleBytes).c_str());
+            ImGui::Text("GPU Scope Begin/Token/Resolved: %u / %u / %u",
+                        selected->gpuScopeBeginCount,
+                        selected->gpuScopeTokenCount,
+                        selected->gpuScopeResolvedCount);
+
+            const auto& history = profiler->history();
+            if (!history.empty() && ImPlot::BeginPlot("Frame Times", ImVec2(-1, 180)))
+            {
+                static std::vector<double> x;
+                static std::vector<double> cpu;
+                static std::vector<double> gpu;
+                x.resize(history.size());
+                cpu.resize(history.size());
+                gpu.resize(history.size());
+
+                for (size_t i = 0; i < history.size(); ++i)
+                {
+                    x[i]   = static_cast<double>(i);
+                    cpu[i] = history[i].cpuFrameMs;
+                    gpu[i] = history[i].gpuFrameMs >= 0.0 ? history[i].gpuFrameMs : 0.0;
+                }
+
+                ImPlot::SetupAxes("Frame", "ms", ImPlotAxisFlags_NoTickLabels, ImPlotAxisFlags_AutoFit);
+                ImPlot::PlotLine("CPU", x.data(), cpu.data(), static_cast<int>(cpu.size()));
+                if (std::any_of(history.begin(), history.end(), [](const auto& f) { return f.gpuFrameMs >= 0.0; }))
+                    ImPlot::PlotLine("GPU", x.data(), gpu.data(), static_cast<int>(gpu.size()));
+                ImPlot::EndPlot();
+            }
+
+            ImGui::SeparatorText("Scope Trees");
+
+            auto drawScopeTreeTable = [&](const char*                                      title,
+                                          const char*                                      tableId,
+                                          const std::vector<RuntimeProfiler::ScopeNode>&   nodes,
+                                          const bool                                       gpuTree) {
+                ImGui::TextUnformatted(title);
+                if (nodes.empty())
+                {
+                    ImGui::TextUnformatted("No scope data.");
+                    return;
+                }
+
+                if (!ImGui::BeginTable(tableId,
+                                       4,
+                                       ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
+                                           ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY,
+                                       ImVec2(-1.0f, 180.0f)))
+                    return;
+
+                ImGui::TableSetupColumn("Scope");
+                ImGui::TableSetupColumn(gpuTree ? "GPU Total (ms)" : "CPU Total (ms)", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+                ImGui::TableSetupColumn(gpuTree ? "GPU Self (ms)" : "CPU Self (ms)", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+                ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+                ImGui::TableHeadersRow();
+
+                std::vector<std::vector<int>> children(nodes.size());
+                for (size_t i = 1; i < nodes.size(); ++i)
+                {
+                    const int parent = nodes[i].parent;
+                    if (parent >= 0 && static_cast<size_t>(parent) < children.size())
+                        children[static_cast<size_t>(parent)].push_back(static_cast<int>(i));
+                }
+
+                auto sortChildren = [&](std::vector<int>& list) {
+                    const auto sortKey = profiler->getSortKey();
+                    std::stable_sort(list.begin(), list.end(), [&](const int ia, const int ib) {
+                        const auto& a = nodes[static_cast<size_t>(ia)];
+                        const auto& b = nodes[static_cast<size_t>(ib)];
+                        switch (sortKey)
+                        {
+                            case RuntimeProfiler::SortKey::eTotalMs:
+                                return gpuTree ? a.gpuTotalMs > b.gpuTotalMs : a.totalMs > b.totalMs;
+                            case RuntimeProfiler::SortKey::eSelfMs:
+                                return gpuTree ? a.gpuSelfMs > b.gpuSelfMs : a.selfMs > b.selfMs;
+                            case RuntimeProfiler::SortKey::eCalls:
+                                return a.callCount > b.callCount;
+                            case RuntimeProfiler::SortKey::eName:
+                                return a.name < b.name;
+                        }
+                        return a.totalMs > b.totalMs;
+                    });
+                };
+
+                std::function<void(int)> drawNode = [&](const int idx) {
+                    const auto& node      = nodes[static_cast<size_t>(idx)];
+                    auto&       childList = children[static_cast<size_t>(idx)];
+                    sortChildren(childList);
+
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+
+                    const bool isLeaf = childList.empty();
+                    ImGuiTreeNodeFlags flags = isLeaf ? (ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen) : 0;
+                    const bool opened = ImGui::TreeNodeEx(reinterpret_cast<void*>(static_cast<intptr_t>(idx)),
+                                                          flags,
+                                                          "%s",
+                                                          node.name.c_str());
+
+                    ImGui::TableSetColumnIndex(1);
+                    if (gpuTree)
+                    {
+                        if (node.gpuTotalMs >= 0.0)
+                            ImGui::Text("%.3f", node.gpuTotalMs);
+                        else
+                            ImGui::TextUnformatted("N/A");
+                    }
+                    else
+                    {
+                        ImGui::Text("%.3f", node.totalMs);
+                    }
+
+                    ImGui::TableSetColumnIndex(2);
+                    if (gpuTree)
+                    {
+                        if (node.gpuSelfMs >= 0.0)
+                            ImGui::Text("%.3f", node.gpuSelfMs);
+                        else
+                            ImGui::TextUnformatted("N/A");
+                    }
+                    else
+                    {
+                        ImGui::Text("%.3f", node.selfMs);
+                    }
+
+                    ImGui::TableSetColumnIndex(3);
+                    ImGui::Text("%u", node.callCount);
+
+                    if (!isLeaf && opened)
+                    {
+                        for (const int child : childList)
+                            drawNode(child);
+                        ImGui::TreePop();
+                    }
+                };
+
+                drawNode(0);
+                ImGui::EndTable();
+            };
+
+            drawScopeTreeTable("CPU Tree", "##RuntimeProfilerCpuTree", selected->cpuScopeTree, false);
+            drawScopeTreeTable("GPU Tree", "##RuntimeProfilerGpuTree", selected->gpuScopeTree, true);
+        }
+
         void drawHintRow(const char* icon, const char* text)
         {
             ImGui::TextUnformatted(icon);
@@ -171,7 +405,10 @@ namespace vultra
                 const auto index = static_cast<size_t>(gpuTexture.bindlessIndex);
                 alive[index]     = true;
                 syncImGuiTextureRegistration(
-                    imguiService, gpuTexture.texture.get(), registeredTextures[index], textureIds[index]);
+                    imguiService,
+                    gpuTexture.texture.get(),
+                    registeredTextures[index],
+                    textureIds[index]);
             }
 
             for (size_t i = 0; i < registeredTextures.size(); ++i)
@@ -234,13 +471,13 @@ namespace vultra
 #else
         constexpr bool kForceCompatibilityFeature = false;
 #endif
-        const bool useCompatibilityFeature = kForceCompatibilityFeature || backendApi == rhi::RenderBackendApi::eWebGPU;
+        const bool forceCompatibilityByCli = m_RenderPath == RenderPath::eCompatibility;
+        const bool useCompatibilityFeature =
+            kForceCompatibilityFeature || forceCompatibilityByCli || backendApi == rhi::RenderBackendApi::eWebGPU;
         if (useCompatibilityFeature)
         {
             m_GaussianSplatFeature = nullptr;
             emplaceFeature<CompatibilityFeature>();
-            if (backendApi != rhi::RenderBackendApi::eWebGPU)
-                emplaceFeature<FinalCompositionFeature>();
             return;
         }
 
@@ -259,6 +496,7 @@ namespace vultra
         auto& backendService = services->require<IRenderBackendService>();
         auto& cameraService  = services->require<ICameraService>();
         auto& imguiService   = services->require<IImGuiService>();
+        auto& renderService  = services->require<IRenderService>();
         auto& gpuResourceSvc = services->require<IGpuResourceService>();
 
         const bool suppressCameraInput = ImGui::GetIO().WantCaptureMouse || ImGui::IsAnyItemHovered() ||
@@ -372,6 +610,8 @@ namespace vultra
             imguiService, gpuResourceSvc.pool(), m_TextureViewerRegisteredTextures, m_TextureViewerTextureIds);
         drawTextureViewer(
             gpuResourceSvc.pool(), m_TextureViewerRegisteredTextures, m_TextureViewerTextureIds, m_TextureViewerColumns);
+
+        drawRuntimeProfilerPanel(renderService);
 
 #ifdef VULTRA_ENABLE_RENDERDOC
         ImGui::Button("Capture One Frame");

@@ -127,7 +127,6 @@ namespace vultra
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
-
                 auto*          gpuSceneView     = rc.view().gpuSceneView;
                 auto*          gpuSceneDatabase = rc.view().gpuSceneDatabase;
                 auto*          cameraUbo        = resources.get<framegraph::FrameGraphBuffer>(pd.camera).buffer;
@@ -140,7 +139,6 @@ namespace vultra
                                      gpuSceneView->gaussianSplatPointDrawIdBuffer && totalPointCount > 0u;
                 if (!canDraw)
                     return;
-
                 const bool webgpu       = rc.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
                 const bool useSortedIds = gpuSceneView->gaussianSplatSortValuesBuffer &&
                                           gpuSceneView->gaussianSplatIndirectBuffer.has_value() &&
@@ -149,7 +147,6 @@ namespace vultra
                 const auto* pipeline        = getPipeline(colorTexture->getPixelFormat(), useSortedIds);
                 if (!pipeline)
                     return;
-
                 const auto& splatStorage = gpuSceneDatabase->resources->gaussianStorage;
                 if (!splatStorage.centersBuffer || !splatStorage.covarianceBuffer || !splatStorage.colorBuffer ||
                     !splatStorage.shBuffer || !gpuSceneDatabase->resources->gaussianSplatMetaBuffer)
@@ -223,7 +220,6 @@ namespace vultra
                         },
                         totalPointCount);
                 }
-
                 rc.cb.endRendering();
                 rc.clear();
             });
