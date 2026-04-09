@@ -55,19 +55,19 @@ jobs:
           prepare_example() {
             local source_dir="$1"
             local page_title="$2"
-            local slug="$3"
-            local html_name="$4"
+            local html_name="$3"
+            local slug="${html_name%.html}"
 
             mkdir -p "site/${slug}"
             rsync -av --delete "${source_dir}/" "site/${slug}/"
             if [ -f "site/${slug}/${html_name}" ]; then
               mv "site/${slug}/${html_name}" "site/${slug}/index.html"
-              perl -0pi -e 's|<title>libvultra</title>|<title>'"${page_title}"' | libvultra</title>|g' "site/${slug}/index.html"
+              PAGE_TITLE="${page_title}" perl -0pi -e 'my $title = $ENV{PAGE_TITLE}; s{<title>libvultra</title>}{<title>${title} | libvultra</title>}g' "site/${slug}/index.html"
             fi
           }
 
-          prepare_example "build/wasm/wasm32/release/example-demo-app" "Demo App" "demo-app" "example-demo-app.html"
-          prepare_example "build/wasm/wasm32/release/example-gaussian-splatting" "Gaussian Splatting" "gaussian-splatting" "example-gaussian-splatting.html"
+          prepare_example "build/wasm/wasm32/release/example-demo-app" "Demo App" "example-demo-app.html"
+          prepare_example "build/wasm/wasm32/release/example-gaussian-splatting" "Gaussian Splatting" "example-gaussian-splatting.html"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
