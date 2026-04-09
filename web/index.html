@@ -12,37 +12,99 @@
   <style>
     :root {
       color-scheme: dark;
+      --bg-0: #070707;
+      --bg-1: #071108;
+      --panel: rgba(10, 18, 11, 0.92);
+      --panel-strong: rgba(7, 14, 8, 0.96);
+      --line: #17451d;
+      --line-soft: rgba(45, 255, 100, 0.18);
+      --text-0: #f3fff4;
+      --text-1: #b7e7bc;
+      --text-2: #86c88e;
+      --accent: #2dff64;
+      --accent-2: #8dffad;
     }
 
     body {
       min-height: 100vh;
       background:
-        radial-gradient(circle at top left, rgba(40, 167, 69, 0.18), transparent 28rem),
-        radial-gradient(circle at bottom right, rgba(13, 110, 253, 0.16), transparent 30rem),
-        #0f1115;
+        radial-gradient(1200px 760px at 14% -20%, #0f3814 0%, transparent 62%),
+        radial-gradient(900px 560px at 95% 110%, #09280f 0%, transparent 60%),
+        linear-gradient(180deg, var(--bg-1), var(--bg-0));
+      color: var(--text-0);
+      font-family: "JetBrains Mono", "Fira Code", "Cascadia Mono", "Menlo", monospace;
+      position: relative;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(rgba(141, 255, 173, 0.035) 1px, transparent 1px) 0 0 / 100% 4px,
+        linear-gradient(90deg, rgba(141, 255, 173, 0.025) 1px, transparent 1px) 0 0 / 28px 28px;
+      opacity: 0.35;
     }
 
     .hero {
-      background: rgba(255, 255, 255, 0.04);
+      background: linear-gradient(180deg, rgba(11, 24, 12, 0.97), rgba(7, 14, 8, 0.98));
       backdrop-filter: blur(8px);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--line);
+      box-shadow: inset 0 1px 0 rgba(120, 255, 120, 0.08), 0 10px 28px rgba(0, 0, 0, 0.45);
     }
 
     .example-card {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+      background:
+        linear-gradient(180deg, rgba(80, 255, 120, 0.03) 1px, transparent 1px) 0 0 / 100% 28px,
+        linear-gradient(180deg, var(--panel), var(--panel-strong));
+      border: 1px solid var(--line);
+      box-shadow: inset 0 0 0 1px rgba(90, 255, 120, 0.06), 0 10px 26px rgba(0, 0, 0, 0.38);
+      transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
     }
 
     .example-card:hover {
       transform: translateY(-4px);
-      border-color: rgba(13, 110, 253, 0.45);
-      box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.22);
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px rgba(141, 255, 173, 0.14), 0 1rem 2rem rgba(0, 0, 0, 0.32), 0 0 24px rgba(45, 255, 100, 0.12);
     }
 
     .example-slug {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
       font-size: 0.875rem;
+      letter-spacing: 0.08em;
+      color: var(--accent-2);
+      text-transform: uppercase;
+    }
+
+    .section-kicker {
+      color: var(--accent);
+      letter-spacing: 0.14em;
+    }
+
+    .hero-title,
+    .card-title {
+      color: var(--text-0);
+      text-shadow: 0 0 12px rgba(141, 255, 173, 0.12);
+    }
+
+    .hero-copy,
+    .card-copy {
+      color: var(--text-1);
+    }
+
+    .launch-link {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(18, 48, 21, 0.95), rgba(10, 24, 11, 0.98));
+      color: var(--text-0);
+      box-shadow: inset 0 1px 0 rgba(141, 255, 173, 0.08);
+    }
+
+    .launch-link:hover,
+    .launch-link:focus {
+      border-color: var(--accent);
+      background: linear-gradient(180deg, rgba(26, 72, 31, 0.98), rgba(10, 28, 12, 0.98));
+      color: var(--text-0);
+      box-shadow: 0 0 18px rgba(45, 255, 100, 0.16);
     }
   </style>
 </head>
@@ -51,9 +113,8 @@
     <section class="hero rounded-4 p-4 p-lg-5 mb-4 mb-lg-5">
       <div class="row g-4 align-items-center">
         <div class="col-lg-8">
-          <p class="text-uppercase text-primary fw-semibold mb-2">GitHub Pages</p>
-          <h1 class="display-5 fw-bold mb-3">libvultra Examples</h1>
-          <p class="lead text-secondary mb-0">
+          <h1 class="hero-title display-5 fw-bold mb-3">libvultra Examples</h1>
+          <p class="hero-copy lead mb-0">
             Browse the current WebGPU/WebAssembly example builds published from this repository.
           </p>
         </div>
@@ -65,12 +126,12 @@
         <div class="col-md-6">
           <div class="example-card card h-100 rounded-4">
             <div class="card-body p-4">
-              <p class="example-slug text-info-emphasis mb-2">example-demo-app</p>
+              <p class="example-slug mb-2">example-demo-app</p>
               <h2 class="h4 card-title mb-3">Demo App</h2>
-              <p class="card-text text-secondary mb-4">
-                General engine sample with scene loading, camera controls, and the default demo content.
+              <p class="card-copy card-text mb-4">
+                General libvultra sample with scene loading, camera controls, and the default demo content.
               </p>
-              <a class="btn btn-primary" href="./example-demo-app/">Open Example</a>
+              <a class="launch-link btn" href="./example-demo-app/">Open Example</a>
             </div>
           </div>
         </div>
@@ -78,12 +139,12 @@
         <div class="col-md-6">
           <div class="example-card card h-100 rounded-4">
             <div class="card-body p-4">
-              <p class="example-slug text-info-emphasis mb-2">example-gaussian-splatting</p>
+              <p class="example-slug mb-2">example-gaussian-splatting</p>
               <h2 class="h4 card-title mb-3">Gaussian Splatting</h2>
-              <p class="card-text text-secondary mb-4">
-                3D Gaussian Splatting sample used for WebGPU, Vulkan, and WASM bring-up work.
+              <p class="card-copy card-text mb-4">
+                3D Gaussian Splatting sample.
               </p>
-              <a class="btn btn-primary" href="./example-gaussian-splatting/">Open Example</a>
+              <a class="launch-link btn" href="./example-gaussian-splatting/">Open Example</a>
             </div>
           </div>
         </div>
