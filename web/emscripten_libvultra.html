@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>libvultra</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css"
+    rel="stylesheet">
   <style>
     :root {
       --bg-0: #070707;
@@ -118,6 +121,9 @@
     }
 
     .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       border: 1px solid var(--line);
       background: linear-gradient(180deg, rgba(12, 36, 16, 0.94), rgba(8, 18, 9, 0.98));
       color: var(--text-0);
@@ -125,12 +131,25 @@
       padding: 6px 10px;
       font-size: 12px;
       cursor: pointer;
+      text-decoration: none;
       transition: transform 100ms ease, border-color 100ms ease;
     }
 
     .btn:hover {
       border-color: var(--accent);
       transform: translateY(-1px);
+    }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      flex-shrink: 0;
+    }
+
+    .icon-btn i {
+      font-size: 14px;
+      pointer-events: none;
     }
 
     .canvas-shell {
@@ -167,7 +186,7 @@
     }
 
     .console.collapsed {
-      height: 34px;
+      height: 48px;
     }
 
     .console-header {
@@ -181,9 +200,12 @@
     }
 
     .console-title {
-      min-width: 180px;
+      min-width: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       color: var(--accent-2);
-      letter-spacing: 0.15px;
+      font-size: 14px;
     }
 
     .console-preview {
@@ -195,17 +217,28 @@
       opacity: 0.95;
     }
 
+    .console-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
     .console-toggle {
-      width: 66px;
-      text-align: center;
       border: 1px solid var(--line);
       border-radius: 6px;
       background: #0d1b0e;
       color: #b4ffbf;
       cursor: pointer;
-      padding: 3px 6px;
-      font-size: 11px;
+      width: 34px;
+      height: 24px;
+      padding: 0;
+      font-size: 12px;
       user-select: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
     }
 
     #console-log {
@@ -218,6 +251,29 @@
       white-space: pre-wrap;
       word-break: break-word;
       border-top: 1px solid var(--line-soft);
+      scrollbar-width: thin;
+      scrollbar-color: #2dff64 #09130b;
+    }
+
+    #console-log::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    #console-log::-webkit-scrollbar-track {
+      background: linear-gradient(180deg, #09130b, #050805);
+      border-left: 1px solid rgba(45, 255, 100, 0.08);
+    }
+
+    #console-log::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #0f7a2b 0%, #2dff64 55%, #8dffad 100%);
+      border-radius: 999px;
+      border: 2px solid #09130b;
+      box-shadow: 0 0 10px rgba(45, 255, 100, 0.18);
+    }
+
+    #console-log::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, #18a53a 0%, #5dff87 55%, #b7ffcb 100%);
     }
 
     .console.collapsed #console-log {
@@ -288,6 +344,12 @@
         border-radius: 10px;
       }
 
+      .icon-btn {
+        width: 40px;
+        min-height: 40px;
+        padding: 0;
+      }
+
       .canvas-shell {
         min-height: 38vh;
         border-radius: 16px;
@@ -320,8 +382,12 @@
         </span>
       </div>
       <div class="actions">
-        <button class="btn" id="btn-fullscreen" type="button">Fullscreen</button>
-        <button class="btn" id="btn-clear-log" type="button">Clear Log</button>
+        <button class="btn icon-btn" id="btn-back" type="button" aria-label="Back" title="Back">
+          <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+        </button>
+        <button class="btn icon-btn" id="btn-fullscreen" type="button" aria-label="Fullscreen" title="Fullscreen">
+          <i class="fa-solid fa-expand" aria-hidden="true"></i>
+        </button>
       </div>
     </header>
 
@@ -331,9 +397,18 @@
 
     <section class="console collapsed" id="console-panel">
       <div class="console-header">
-        <span class="console-title">Console</span>
+        <span class="console-title" aria-label="Console" title="Console">
+          <i class="fa-solid fa-terminal" aria-hidden="true"></i>
+        </span>
         <span class="console-preview" id="console-preview">[standby] console is collapsed</span>
-        <span class="console-toggle" id="btn-toggle-console">Expand</span>
+        <div class="console-actions">
+          <button class="btn icon-btn" id="btn-clear-log" type="button" aria-label="Clear log" title="Clear log">
+            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+          </button>
+          <button class="console-toggle" id="btn-toggle-console" type="button" aria-label="Expand console" title="Expand console">
+            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
       <pre id="console-log"></pre>
     </section>
@@ -349,6 +424,7 @@
       const consolePanel = document.getElementById("console-panel");
       const consolePreview = document.getElementById("console-preview");
       const canvas = document.getElementById("canvas");
+      const btnBack = document.getElementById("btn-back");
       const btnClear = document.getElementById("btn-clear-log");
       const btnFullscreen = document.getElementById("btn-fullscreen");
       const btnToggleConsole = document.getElementById("btn-toggle-console");
@@ -397,6 +473,23 @@
         appTitle.textContent = nextName + " / web runtime";
       }
 
+      function updateConsoleToggle(collapsed) {
+        const iconClass = collapsed ? "fa-chevron-up" : "fa-chevron-down";
+        const label = collapsed ? "Expand console" : "Collapse console";
+        btnToggleConsole.innerHTML = '<i class="fa-solid ' + iconClass + '" aria-hidden="true"></i>';
+        btnToggleConsole.setAttribute("aria-label", label);
+        btnToggleConsole.setAttribute("title", label);
+      }
+
+      btnBack.addEventListener("click", function () {
+        const fallbackUrl = new URL("../", window.location.href).toString();
+        if (window.history.length > 1 && document.referrer) {
+          window.history.back();
+          return;
+        }
+        window.location.href = fallbackUrl;
+      });
+
       btnClear.addEventListener("click", function () {
         consoleLog.textContent = "";
         logLineCount = 0;
@@ -411,8 +504,10 @@
 
       btnToggleConsole.addEventListener("click", function () {
         const collapsed = consolePanel.classList.toggle("collapsed");
-        btnToggleConsole.textContent = collapsed ? "Expand" : "Collapse";
+        updateConsoleToggle(collapsed);
       });
+
+      updateConsoleToggle(consolePanel.classList.contains("collapsed"));
 
       var Module = window.Module || {};
       Module.canvas = Module.canvas || canvas;
