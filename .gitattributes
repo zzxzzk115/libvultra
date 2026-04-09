@@ -1,9 +1,9 @@
-* text=auto eol=lf
+* text=auto
 
-*.txt text eol=lf
 *.vreg text eol=lf
 *.vimport text eol=lf
 *.vscn text eol=lf
+*.vmanifest text eol=lf
 *.ini text eol=lf
 *.json text eol=lf
 *.xml text eol=lf
@@ -24,3 +24,5 @@
 *.vpk binary
 *.vshbin binary
 *.vshlib binary
+*.vshwebbin binary
+*.vshweblib binary
