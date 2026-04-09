@@ -5,6 +5,9 @@
 #include "vultra/core/rhi/debug_marker.hpp"
 #include "vultra/core/rhi/descriptorset_builder.hpp"
 #include "vultra/core/rhi/interfaces/icommand_buffer.hpp"
+#if defined(TRACY_ENABLE) && defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+#include "vultra/core/rhi/backends/vk/handle_utils.hpp"
+#endif
 #include "vultra/core/rhi/structs/buffer_image_copy.hpp"
 #include "vultra/core/rhi/structs/handles.hpp"
 
@@ -458,12 +461,22 @@ namespace vultra
     ZoneScopedN(Label); \
     TracyGpuZone(TracyContext, CommandBufferHandle, Label)
 
+#if defined(TRACY_ENABLE) && defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+#define TRACY_GPU_COMMAND_BUFFER_HANDLE(CommandBuffer) ::vultra::rhi::asVkHandle<VkCommandBuffer>((CommandBuffer).getHandle())
+#else
+#define TRACY_GPU_COMMAND_BUFFER_HANDLE(CommandBuffer) (CommandBuffer).getHandle()
+#endif
+
 #define TRACY_GPU_ZONE(CommandBuffer, Label) \
-    TRACY_GPU_ZONE_(CommandBuffer.getTracyContext(), CommandBuffer.getHandle(), Label)
+    TRACY_GPU_ZONE_(CommandBuffer.getTracyContext(), TRACY_GPU_COMMAND_BUFFER_HANDLE(CommandBuffer), Label)
 
 #define TRACY_GPU_TRANSIENT_ZONE(CommandBuffer, Label) \
     ZoneTransientN(_tracy_zone, Label, true); \
-    TracyGpuZoneTransient(CommandBuffer.getTracyContext(), _tracy_vk_zone, CommandBuffer.getHandle(), Label, true)
+    TracyGpuZoneTransient(CommandBuffer.getTracyContext(), \
+                          _tracy_vk_zone, \
+                          TRACY_GPU_COMMAND_BUFFER_HANDLE(CommandBuffer), \
+                          Label, \
+                          true)
 
 #ifndef TRACKY_BIND_CMD_BUFFER
 #define TRACKY_BIND_CMD_BUFFER(cmdBuf, renderPass, computePass) \
