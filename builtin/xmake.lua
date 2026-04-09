@@ -647,7 +647,7 @@ task_end()
 if is_plat("android") then
     add_requires("vshadersystem v0.6.2", { configs = { debug = is_mode("debug") }})
 else
-    add_requires("vshadersystem v0.8.0", { configs = { debug = is_mode("debug") }})
+    add_requires("vshadersystem v0.8.1", { configs = { debug = is_mode("debug") }})
 end
 
 target("vultra_builtin_assets")
