@@ -93,7 +93,7 @@ if not is_plat("wasm") then
     add_requires("vulkan-memory-allocator-hpp")
 end
 if not is_plat("android") then
-    add_requires("webgpu-sdk v0.1.0")
+    add_requires("webgpu-sdk v0.1.1")
 end
 if not is_plat("wasm") then
     add_requireconfs("vulkan-memory-allocator-hpp", {configs = {use_vulkanheaders = true}})
