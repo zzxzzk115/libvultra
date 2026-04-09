@@ -138,6 +138,12 @@ task("shader_task")
 
         local keywords_common =
             path.join(shader_root_common, "builtin_keywords.vkw")
+        local generated_keywords_root =
+            path.join(os.tmpdir(), "libvultra_shader_keywords")
+        local keywords_vulkan =
+            path.join(generated_keywords_root, "builtin_keywords_vulkan.vkw")
+        local keywords_webgpu =
+            path.join(generated_keywords_root, "builtin_keywords_webgpu.vkw")
 
         local vshlib_highend =
             path.join(lib_root, "builtin_highend.vshlib")
@@ -236,16 +242,95 @@ task("shader_task")
         -- build
         ------------------------------------------------
 
-        local function build_vulkan_library(label, shader_root, shader_patterns, keywords_file, output_file)
+        local function write_platform_keywords(base_keywords_file, platform_webgpu, output_file)
+            local content = io.readfile(base_keywords_file)
+            if not content then
+                raise("failed to read builtin keywords file: %s", base_keywords_file)
+            end
+
+            content = content:gsub("%s*$", "")
+            content = content .. "\nset PLATFORM_WEBGPU=" .. (platform_webgpu and "1" or "0") .. "\n"
+
+            os.mkdir(path.directory(output_file))
+            io.writefile(output_file, content)
+        end
+
+        write_platform_keywords(keywords_common, false, keywords_vulkan)
+        write_platform_keywords(keywords_common, true, keywords_webgpu)
+
+        local function inject_platform_define(content, platform_webgpu)
+            local define_line = "#define PLATFORM_WEBGPU " .. (platform_webgpu and "1" or "0") .. "\n"
+            local stage_sections = {
+                "vert",
+                "vertex",
+                "frag",
+                "fragment",
+                "comp",
+                "compute",
+                "mesh",
+                "task",
+                "rgen",
+                "raygen",
+                "rmiss",
+                "miss",
+                "raymiss",
+                "rchit",
+                "closesthit",
+                "raychit",
+                "rahit",
+                "anyhit",
+                "rayahit",
+                "rint",
+                "intersect",
+                "rayint",
+            }
+
+            for _, section in ipairs(stage_sections) do
+                content = content:gsub("(%[" .. section .. "%]%s*\n)", "%1" .. define_line)
+            end
+
+            return content
+        end
+
+        -- Build libraries from a processed shader root so backend-specific macros are baked into the sources.
+        local function prepare_shader_root(temp_dir_name, shader_root, shader_patterns, platform_webgpu, rewrite_push_constants)
+            local processed_root = path.join(os.tmpdir(), temp_dir_name)
+            os.rm(processed_root)
+            os.mkdir(processed_root)
+            os.cp(path.join(shader_root, "include"), path.join(processed_root, "include"))
+
             local shader_files = collect_shader_files(shader_root, shader_patterns)
+            for _, file in ipairs(shader_files) do
+                local rel = path.relative(file, shader_root)
+                local dst = path.join(processed_root, rel)
+                os.mkdir(path.directory(dst))
+
+                local content = io.readfile(file)
+                content = inject_platform_define(content, platform_webgpu)
+                if rewrite_push_constants then
+                    content = content:gsub(
+                        "layout%s*%(%s*push_constant%s*%)%s*uniform",
+                        "layout(set = 1, binding = 31, std140) uniform")
+                end
+
+                io.writefile(dst, content)
+            end
+
+            return processed_root, collect_shader_files(processed_root, shader_patterns)
+        end
+
+        local function build_vulkan_library(label, shader_root, shader_patterns, keywords_file, output_file)
+            local processed_root, processed_shader_files =
+                prepare_shader_root("libvultra_vulkan_shader_root", shader_root, shader_patterns, false, false)
+
             local argv = {
                 "build",
-                "--shader_root", shader_root,
-                "-I", shader_root,
+                "--shader_root", processed_root,
+                "-I", processed_root,
             }
-            for _, file in ipairs(shader_files) do
+            for _, file in ipairs(processed_shader_files) do
                 table.insert(argv, "--shader")
-                table.insert(argv, path.relative(file, shader_root))
+                table.insert(argv, path.relative(file, processed_root))
             end
             if keywords_file and os.exists(keywords_file) then
                 table.insert(argv, "--keywords-file")
@@ -257,25 +342,8 @@ task("shader_task")
         end
 
         local function build_webgpu_library(label, shader_root, shader_patterns, keywords_file, output_file)
-            local processed_root = path.join(os.tmpdir(), "libvultra_webgpu_shader_root")
-            os.rm(processed_root)
-            os.mkdir(processed_root)
-            os.cp(path.join(shader_root, "include"), path.join(processed_root, "include"))
-
-            local shader_files = collect_shader_files(shader_root, shader_patterns)
-            local processed_shader_files = {}
-            for _, file in ipairs(shader_files) do
-                local rel = path.relative(file, shader_root)
-                local dst = path.join(processed_root, rel)
-                os.mkdir(path.directory(dst))
-
-                local content = io.readfile(file)
-                content = content:gsub(
-                    "layout%s*%(%s*push_constant%s*%)%s*uniform",
-                    "layout(set = 1, binding = 31, std140) uniform")
-                io.writefile(dst, content)
-                table.insert(processed_shader_files, dst)
-            end
+            local processed_root, processed_shader_files =
+                prepare_shader_root("libvultra_webgpu_shader_root", shader_root, shader_patterns, true, true)
 
             local argv = {
                 "build",
@@ -319,7 +387,7 @@ task("shader_task")
             build_vulkan_library("builtin_highend.vshlib",
                                  shader_root_common,
                                  highend_shader_patterns,
-                                 keywords_common,
+                                 keywords_vulkan,
                                  vshlib_highend)
         end
         mark_result("builtin_highend.vshlib", rebuild_highend)
@@ -328,7 +396,7 @@ task("shader_task")
             build_vulkan_library("builtin_compatibility.vshlib",
                                  shader_root_common,
                                  compatibility_shader_patterns,
-                                 keywords_common,
+                                 keywords_vulkan,
                                  vshlib_compatibility)
         end
         mark_result("builtin_compatibility.vshlib", rebuild_compatibility)
@@ -337,7 +405,7 @@ task("shader_task")
             local ok = build_webgpu_library("builtin_compatibility.vshweblib",
                                             shader_root_common,
                                             webgpu_compatibility_shader_patterns,
-                                            keywords_common,
+                                            keywords_webgpu,
                                             vshweblib_compatibility)
             if not ok then
                 if os.exists(vshweblib_compatibility) then

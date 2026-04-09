@@ -253,6 +253,9 @@ namespace vultra
                 std::move(m_PipelineLayout),
                 reinterpret_cast<std::uintptr_t>(pipeline),
                 std::make_unique<WebGPUPipeline>(),
+                m_DepthFormat,
+                m_StencilFormat,
+                m_DepthStencilState,
             };
 #endif
         }

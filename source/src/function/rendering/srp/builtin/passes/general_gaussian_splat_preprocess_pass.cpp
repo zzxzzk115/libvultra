@@ -1,8 +1,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_preprocess_pass.hpp"
-#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
+#include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
@@ -13,6 +12,7 @@ namespace vultra
     namespace
     {
         constexpr auto PASS_NAME = "GeneralGaussianSplatPreprocessPass";
+        constexpr auto kStereoCameraBinding = 23u;
 
         struct GeneralGaussianSplatPreprocessPushConstants
         {
@@ -21,12 +21,9 @@ namespace vultra
             uint32_t padding0 {0};
             uint32_t padding1 {0};
         };
-    }
+    } // namespace
 
-    GeneralGaussianSplatPreprocessPass::GeneralGaussianSplatPreprocessPass()
-    {
-        setShaderProfile(rhi::ShaderProfile::eGeneral);
-    }
+    GeneralGaussianSplatPreprocessPass::GeneralGaussianSplatPreprocessPass() { setShaderProfile(rhi::ShaderProfile::eGeneral); }
 
     void GeneralGaussianSplatPreprocessPass::addPass(FrameGraphBuildContext& ctx)
     {
@@ -36,7 +33,10 @@ namespace vultra
         if (!gpuSceneView->hasGeneralGaussianSplats())
             return;
 
-        const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
+        const auto cameraBlock       = ctx.bb.get<CameraData>().cameraBlock.fgResource;
+        const auto stereoCameraBlock = ctx.bb.get<CameraData>().stereoCameraBlock.fgResource;
+        const bool useMultiview =
+            ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u && static_cast<bool>(stereoCameraBlock);
 
         if (gpuSceneView->generalGaussianSplatDrawBuffer)
         {
@@ -139,17 +139,17 @@ namespace vultra
         }
 
         auto packedSourceBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatPackedSourceBuffer);
-        auto drawBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatDrawBuffer);
+        auto drawBuffer         = ctx.data.tryGet(kResKey_GeneralGaussianSplatDrawBuffer);
         auto visibleSplatBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatVisibleSplatBuffer);
-        auto sortKeyBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortKeyBuffer);
-        auto sortIndexBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortIndexBuffer);
+        auto sortKeyBuffer      = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortKeyBuffer);
+        auto sortIndexBuffer    = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortIndexBuffer);
         auto visibleCountBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatVisibleCountBuffer);
         auto dispatchArgsBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatDispatchArgsBuffer);
-        auto indirectBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatIndirectBuffer);
-        auto sortStorageBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortStorageBuffer);
-        auto shBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatShBuffer);
-        if (!cameraBlock || !drawBuffer || !packedSourceBuffer || !visibleSplatBuffer || !sortKeyBuffer || !sortIndexBuffer ||
-            !visibleCountBuffer || !indirectBuffer || !sortStorageBuffer || !shBuffer)
+        auto indirectBuffer     = ctx.data.tryGet(kResKey_GeneralGaussianSplatIndirectBuffer);
+        auto sortStorageBuffer  = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortStorageBuffer);
+        auto shBuffer           = ctx.data.tryGet(kResKey_GeneralGaussianSplatShBuffer);
+        if (!cameraBlock || !drawBuffer || !packedSourceBuffer || !visibleSplatBuffer || !sortKeyBuffer ||
+            !sortIndexBuffer || !visibleCountBuffer || !indirectBuffer || !sortStorageBuffer || !shBuffer)
         {
             return;
         }
@@ -157,6 +157,7 @@ namespace vultra
         struct PassData
         {
             FrameGraphResource camera;
+            FrameGraphResource stereoCamera;
             FrameGraphResource drawBuffer;
             FrameGraphResource packedSourceBuffer;
             FrameGraphResource visibleSplatBuffer;
@@ -175,6 +176,8 @@ namespace vultra
         ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
             [cameraBlock,
+             stereoCameraBlock,
+             useMultiview,
              drawBuffer,
              packedSourceBuffer,
              visibleSplatBuffer,
@@ -187,15 +190,23 @@ namespace vultra
              shBuffer](FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
-                data.camera = builder.read(cameraBlock,
+                data.camera             = builder.read(cameraBlock,
                                            framegraph::BindingInfo {
-                                               .location      = {.set = 0, .binding = 0},
-                                               .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                           .location      = {.set = 0, .binding = 0},
+                                                           .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                            });
-                data.drawBuffer = builder.read(drawBuffer,
+                if (useMultiview)
+                {
+                    data.stereoCamera = builder.read(stereoCameraBlock,
+                                                     framegraph::BindingInfo {
+                                                         .location      = {.set = 0, .binding = kStereoCameraBinding},
+                                                         .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                     });
+                }
+                data.drawBuffer         = builder.read(drawBuffer,
                                                framegraph::BindingInfo {
-                                                   .location      = {.set = 0, .binding = 13},
-                                                   .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                           .location      = {.set = 0, .binding = 13},
+                                                           .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                });
                 data.packedSourceBuffer = builder.read(packedSourceBuffer,
                                                        framegraph::BindingInfo {
@@ -207,15 +218,15 @@ namespace vultra
                                                             .location      = {.set = 0, .binding = 15},
                                                             .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                         });
-                data.sortKeyBuffer = builder.write(sortKeyBuffer,
+                data.sortKeyBuffer      = builder.write(sortKeyBuffer,
                                                    framegraph::BindingInfo {
-                                                       .location      = {.set = 0, .binding = 16},
-                                                       .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                            .location      = {.set = 0, .binding = 16},
+                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                    });
-                data.sortIndexBuffer = builder.write(sortIndexBuffer,
+                data.sortIndexBuffer    = builder.write(sortIndexBuffer,
                                                      framegraph::BindingInfo {
-                                                         .location      = {.set = 0, .binding = 17},
-                                                         .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                            .location      = {.set = 0, .binding = 17},
+                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                      });
                 data.visibleCountBuffer = builder.write(visibleCountBuffer,
                                                         framegraph::BindingInfo {
@@ -224,33 +235,37 @@ namespace vultra
                                                         });
                 if (dispatchArgsBuffer)
                 {
-                    data.dispatchArgsBuffer = builder.write(dispatchArgsBuffer,
-                                                            framegraph::BindingInfo {
-                                                                .location      = {.set = 0, .binding = 19},
-                                                                .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                            });
+                    data.dispatchArgsBuffer =
+                        builder.write(dispatchArgsBuffer,
+                                      framegraph::BindingInfo {
+                                          .location      = {.set = 0, .binding = 19},
+                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                      });
                 }
-                data.indirectBuffer = builder.write(indirectBuffer,
+                data.indirectBuffer    = builder.write(indirectBuffer,
                                                     framegraph::BindingInfo {
-                                                        .location      = {.set = 0, .binding = 20},
-                                                        .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                           .location      = {.set = 0, .binding = 20},
+                                                           .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                     });
                 data.sortStorageBuffer = builder.write(sortStorageBuffer,
                                                        framegraph::BindingInfo {
                                                            .location      = {.set = 0, .binding = 21},
                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                        });
-                data.shBuffer = builder.read(shBuffer,
+                data.shBuffer          = builder.read(shBuffer,
                                              framegraph::BindingInfo {
-                                                 .location      = {.set = 0, .binding = 22},
-                                                 .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                                          .location      = {.set = 0, .binding = 22},
+                                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                              });
             },
-            [this, pointCount, maxVisible](const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+            [this, pointCount, maxVisible, useMultiview](
+                const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 auto bindSubset = [&rc](const rhi::BasePipeline& pipeline, std::initializer_list<uint32_t> bindings) {
@@ -277,15 +292,14 @@ namespace vultra
                 auto* gpuSceneView = rc.view().gpuSceneView;
                 if (!gpuSceneView || pointCount == 0u || maxVisible == 0u)
                 {
-                    rc.clear();
                     return;
                 }
 
-                auto* visibleCountBuf =
-                    resources.get<framegraph::FrameGraphBuffer>(data.visibleCountBuffer).buffer;
-                auto* dispatchArgsBuf = data.dispatchArgsBuffer ?
-                                            resources.get<framegraph::FrameGraphBuffer>(data.dispatchArgsBuffer).buffer :
-                                            nullptr;
+                auto* visibleCountBuf = resources.get<framegraph::FrameGraphBuffer>(data.visibleCountBuffer).buffer;
+                auto* dispatchArgsBuf =
+                    data.dispatchArgsBuffer ?
+                        resources.get<framegraph::FrameGraphBuffer>(data.dispatchArgsBuffer).buffer :
+                        nullptr;
                 if (visibleCountBuf)
                 {
                     const uint32_t zero = 0u;
@@ -297,58 +311,83 @@ namespace vultra
                     rc.cb.update(*dispatchArgsBuf, 0u, sizeof(zeroArgs), zeroArgs);
                 }
 
-                auto preprocessVariantHash =
-                    computeGeneralVariantHash("gaussian_splat_preprocess.comp", vshadersystem::ShaderStage::eComp, {});
-                const auto* preprocessPipeline = getPipeline(preprocessVariantHash);
+                const auto* preprocessPipeline = getPipeline(useMultiview);
                 if (!preprocessPipeline)
+                {
                     return;
+                }
 
                 GeneralGaussianSplatPreprocessPushConstants pc {};
                 pc.pointCount       = pointCount;
                 pc.maxVisibleSplats = maxVisible;
 
                 rc.cb.bindPipeline(*preprocessPipeline);
-                bindSubset(*preprocessPipeline, {0u, 13u, 14u, 15u, 16u, 17u, 18u, 19u, 22u});
+                if (useMultiview)
+                {
+                    bindSubset(*preprocessPipeline, {0u, kStereoCameraBinding, 13u, 14u, 15u, 16u, 17u, 18u, 19u, 22u});
+                }
+                else
+                {
+                    bindSubset(*preprocessPipeline, {0u, 13u, 14u, 15u, 16u, 17u, 18u, 19u, 22u});
+                }
                 rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
                 rc.cb.dispatch({(pointCount + 255u) / 256u, 1u, 1u});
 
-                auto* sortKeyBuf =
-                    resources.get<framegraph::FrameGraphBuffer>(data.sortKeyBuffer).buffer;
-                auto* sortIndexBuf =
-                    resources.get<framegraph::FrameGraphBuffer>(data.sortIndexBuffer).buffer;
-                auto* sortStorageBuf =
-                    resources.get<framegraph::FrameGraphBuffer>(data.sortStorageBuffer).buffer;
+                auto* sortKeyBuf     = resources.get<framegraph::FrameGraphBuffer>(data.sortKeyBuffer).buffer;
+                auto* sortIndexBuf   = resources.get<framegraph::FrameGraphBuffer>(data.sortIndexBuffer).buffer;
+                auto* sortStorageBuf = resources.get<framegraph::FrameGraphBuffer>(data.sortStorageBuffer).buffer;
 
                 if (gpuSceneView->generalGaussianSplatSorter.has_value() &&
                     static_cast<bool>(*gpuSceneView->generalGaussianSplatSorter) && visibleCountBuf && sortKeyBuf &&
                     sortIndexBuf && sortStorageBuf)
                 {
                     gpuSceneView->generalGaussianSplatSorter->sortKeyValuesIndirect(rc.cb,
-                                                                                     maxVisible,
-                                                                                     *visibleCountBuf,
-                                                                                     0u,
-                                                                                     *sortKeyBuf,
-                                                                                     0u,
-                                                                                     *sortIndexBuf,
-                                                                                     0u,
-                                                                                     *sortStorageBuf,
-                                                                                     0u);
+                                                                                    maxVisible,
+                                                                                    *visibleCountBuf,
+                                                                                    0u,
+                                                                                    *sortKeyBuf,
+                                                                                    0u,
+                                                                                    *sortIndexBuf,
+                                                                                    0u,
+                                                                                    *sortStorageBuf,
+                                                                                    0u);
                 }
 
-                auto writeIndirectVariantHash = computeGeneralVariantHash(
+                auto writeIndirectVariantHash = computeShaderVariantHash(
                     "gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
                 if (!writeIndirectPipeline)
+                {
                     return;
+                }
 
                 rc.cb.bindPipeline(*writeIndirectPipeline);
                 bindSubset(*writeIndirectPipeline, {18u, 20u});
                 rc.cb.dispatch({1u, 1u, 1u});
-                rc.clear();
             });
     }
 
-    rhi::ComputePipeline GeneralGaussianSplatPreprocessPass::createPipeline(uint64_t variantHash) const
+    rhi::ComputePipeline GeneralGaussianSplatPreprocessPass::createPipeline(const bool useMultiview) const
+    {
+        rhi::ShaderLibraryRuntime::KeywordValues keywords {
+            {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
+        };
+        auto shader = loadGeneralShader("gaussian_splat_preprocess.comp", vshadersystem::ShaderStage::eComp, keywords);
+        if (!shader)
+            return {};
+
+        if (getRenderDevice().getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+        {
+            return getRenderDevice().createComputePipeline(rhi::ShaderStageInfo {
+                .code       = shader->wgsl,
+                .reflection = shader->reflection,
+            });
+        }
+
+        return getRenderDevice().createComputePipelineBuiltin(shader->spirv);
+    }
+
+    rhi::ComputePipeline GeneralGaussianSplatPreprocessPass::createPipeline(const uint64_t variantHash) const
     {
         auto shader = loadGeneralShaderVariant(variantHash, vshadersystem::ShaderStage::eComp);
         if (!shader)
@@ -356,13 +395,10 @@ namespace vultra
 
         if (getRenderDevice().getBackendApi() == rhi::RenderBackendApi::eWebGPU)
         {
-            return getRenderDevice().createComputePipeline(
-                rhi::ShaderStageInfo {
-                    .code        = shader->wgsl,
-                    .entryPointName = "main",
-                    .defines     = {},
-                    .reflection  = shader->reflection,
-                });
+            return getRenderDevice().createComputePipeline(rhi::ShaderStageInfo {
+                .code       = shader->wgsl,
+                .reflection = shader->reflection,
+            });
         }
 
         return getRenderDevice().createComputePipelineBuiltin(shader->spirv);

@@ -478,6 +478,7 @@ namespace vultra
         {
             emplaceFeature<CompatibilityBaseColorFeature>();
             emplaceFeature<GeneralGaussianSplatFeature>();
+            emplaceFeature<FinalCompositionFeature>();
             return;
         }
 

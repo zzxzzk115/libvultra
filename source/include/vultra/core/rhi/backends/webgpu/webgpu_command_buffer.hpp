@@ -102,6 +102,7 @@ namespace vultra
             const BasePipeline* m_BoundPipelineObject {nullptr};
             WebGPURenderDevice* m_Backend {nullptr};
             std::unordered_map<std::size_t, WGPUBindGroup> m_EmptyBindGroups;
+            std::array<WGPUBindGroup, kMinNumDescriptorSets> m_PendingRenderBindGroups {};
             std::array<WGPUBindGroup, kMinNumDescriptorSets> m_PendingComputeBindGroups {};
             std::unordered_map<std::size_t, WGPUBindGroup> m_PushConstantBindGroups;
             WGPUBuffer m_PushConstantBuffer {nullptr};

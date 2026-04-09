@@ -86,11 +86,13 @@ namespace vultra
                                        });
             },
             [this, resolution, mipLevels](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
 
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
@@ -99,7 +101,9 @@ namespace vultra
                     computeHighendVariantHash("hzb_generate.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
+                {
                     return;
+                }
 
                 HzbPushConstants pc {};
                 pc.srcWidth  = resolution.width;
@@ -109,7 +113,6 @@ namespace vultra
                 rc.cb.bindPipeline(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
                 rc.cb.dispatch({(resolution.width + 7u) / 8u, (resolution.height + 7u) / 8u, 1u});
-                rc.clear();
             });
 
         ctx.data.set(kResKey_HzbTexture, data.hzb);

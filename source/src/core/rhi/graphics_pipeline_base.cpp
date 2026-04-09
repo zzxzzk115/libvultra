@@ -115,8 +115,12 @@ namespace vultra
 
         GraphicsPipeline::GraphicsPipeline(PipelineLayout&&           pipelineLayout,
                                            const std::uintptr_t       pipeline,
-                                           std::unique_ptr<IPipeline> destroyBackend) :
-            BasePipeline {std::move(pipelineLayout), pipeline, std::move(destroyBackend)}
+                                           std::unique_ptr<IPipeline> destroyBackend,
+                                           const PixelFormat          depthFormat,
+                                           const PixelFormat          stencilFormat,
+                                           const DepthStencilState    depthStencilState) :
+            BasePipeline {std::move(pipelineLayout), pipeline, std::move(destroyBackend)},
+            m_DepthFormat(depthFormat), m_StencilFormat(stencilFormat), m_DepthStencilState(depthStencilState)
         {}
     } // namespace rhi
 } // namespace vultra

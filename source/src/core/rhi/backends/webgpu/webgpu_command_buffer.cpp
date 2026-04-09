@@ -8,6 +8,7 @@
 #include "vultra/core/rhi/backends/webgpu/webgpu_swapchain.hpp"
 #include "vultra/core/rhi/descriptorset_builder.hpp"
 #include "vultra/core/rhi/draw_indirect_buffer.hpp"
+#include "vultra/core/rhi/graphics_pipeline.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/interfaces/idescriptor_set_builder.hpp"
 #include "vultra/core/rhi/interfaces/texture_access.hpp"
@@ -31,8 +32,8 @@ namespace vultra
     {
         namespace
         {
-            constexpr DescriptorSetIndex kWebGPUPushConstantsSet = 1u;
-            constexpr BindingIndex       kWebGPUPushConstantsBinding = 31u;
+            constexpr DescriptorSetIndex kWebGPUPushConstantsSet        = 1u;
+            constexpr BindingIndex       kWebGPUPushConstantsBinding    = 31u;
             constexpr uint64_t           kWebGPUPushConstantBufferBytes = 256u;
 
             class WebGPUDescriptorSetBuilder final : public IDescriptorSetBuilder
@@ -159,7 +160,8 @@ namespace vultra
         } // namespace
 
         WebGPUCommandBuffer::WebGPUCommandBuffer(const WebGPURenderDevice& backend) :
-            m_Instance(backend.m_Instance), m_Device(backend.m_Device), m_Queue(backend.m_Queue), m_Backend(const_cast<WebGPURenderDevice*>(&backend))
+            m_Instance(backend.m_Instance), m_Device(backend.m_Device), m_Queue(backend.m_Queue),
+            m_Backend(const_cast<WebGPURenderDevice*>(&backend))
         {}
 
         WebGPUCommandBuffer::~WebGPUCommandBuffer() { releaseTransientResources(); }
@@ -189,7 +191,8 @@ namespace vultra
             wgpuComputePassEncoderEnd(m_ComputePass);
             if (m_Backend != nullptr)
             {
-                m_Backend->finalizePendingPassTimestampQueries(m_Encoder ? reinterpret_cast<std::uintptr_t>(m_Encoder) : 0u);
+                m_Backend->finalizePendingPassTimestampQueries(m_Encoder ? reinterpret_cast<std::uintptr_t>(m_Encoder) :
+                                                                           0u);
             }
             wgpuComputePassEncoderRelease(m_ComputePass);
             m_ComputePass = nullptr;
@@ -228,6 +231,7 @@ namespace vultra
             m_InsideRendering            = false;
             m_PipelineBoundInCurrentPass = false;
             m_BoundComputePipeline       = nullptr;
+            m_PendingRenderBindGroups.fill(nullptr);
             m_PendingComputeBindGroups.fill(nullptr);
             TRACKY_BIND_CMD_BUFFER(getHandle(), 0, 0);
             return *this;
@@ -248,9 +252,8 @@ namespace vultra
             {
                 closeActiveComputePassForProfilingBoundary();
             }
-            TRACKY_BIND_CMD_BUFFER(getHandle(),
-                                   getCurrentRenderPassEncoderHandle(),
-                                   getCurrentComputePassEncoderHandle());
+            TRACKY_BIND_CMD_BUFFER(
+                getHandle(), getCurrentRenderPassEncoderHandle(), getCurrentComputePassEncoderHandle());
 #ifdef TRACKY_ENABLE
             tracky::resolve_webgpu_queries();
 #endif
@@ -272,6 +275,7 @@ namespace vultra
             m_OwnsRenderView             = false;
             m_OwnsDepthView              = false;
             m_PipelineBoundInCurrentPass = false;
+            m_PendingRenderBindGroups.fill(nullptr);
             m_PendingComputeBindGroups.fill(nullptr);
             TRACKY_BIND_CMD_BUFFER(0, 0, 0);
             return *this;
@@ -337,7 +341,8 @@ namespace vultra
             return *this;
         }
 
-        WebGPUCommandBuffer& WebGPUCommandBuffer::dispatch(const ComputePipeline& pipeline, const glm::uvec3& groupCount)
+        WebGPUCommandBuffer& WebGPUCommandBuffer::dispatch(const ComputePipeline& pipeline,
+                                                           const glm::uvec3&      groupCount)
         {
             bindPipeline(pipeline);
             return dispatch(groupCount);
@@ -356,28 +361,28 @@ namespace vultra
             {
                 throw std::runtime_error("WebGPUCommandBuffer dispatch failed: inside render pass");
             }
-                if (m_ComputePass == nullptr)
-                {
-                    WGPUComputePassDescriptor descriptor {};
+            if (m_ComputePass == nullptr)
+            {
+                WGPUComputePassDescriptor descriptor {};
 #if defined(__EMSCRIPTEN__)
-                    WGPUPassTimestampWrites timestampWrites {};
+                WGPUPassTimestampWrites timestampWrites {};
 #else
-                    WGPUComputePassTimestampWrites timestampWrites {};
+                WGPUComputePassTimestampWrites timestampWrites {};
 #endif
-                    if (m_Backend)
+                if (m_Backend)
+                {
+                    WGPUQuerySet querySet {nullptr};
+                    uint32_t     beginIndex {0};
+                    uint32_t     endIndex {0};
+                    if (m_Backend->consumePassTimestampWriteRequest(querySet, beginIndex, endIndex))
                     {
-                        WGPUQuerySet querySet {nullptr};
-                        uint32_t     beginIndex {0};
-                        uint32_t     endIndex {0};
-                        if (m_Backend->consumePassTimestampWriteRequest(querySet, beginIndex, endIndex))
-                        {
-                            timestampWrites.querySet                  = querySet;
-                            timestampWrites.beginningOfPassWriteIndex = beginIndex;
-                            timestampWrites.endOfPassWriteIndex       = endIndex;
-                            descriptor.timestampWrites                = &timestampWrites;
-                        }
+                        timestampWrites.querySet                  = querySet;
+                        timestampWrites.beginningOfPassWriteIndex = beginIndex;
+                        timestampWrites.endOfPassWriteIndex       = endIndex;
+                        descriptor.timestampWrites                = &timestampWrites;
                     }
-                    m_ComputePass = wgpuCommandEncoderBeginComputePass(m_Encoder, &descriptor);
+                }
+                m_ComputePass = wgpuCommandEncoderBeginComputePass(m_Encoder, &descriptor);
                 if (m_ComputePass == nullptr)
                 {
                     throw std::runtime_error("WebGPUCommandBuffer dispatch failed: cannot begin compute pass");
@@ -444,9 +449,13 @@ namespace vultra
             {
                 return *this;
             }
-            if (m_RenderPass != nullptr && m_BoundPipeline != nullptr)
+            if (m_BoundPipeline != nullptr)
             {
-                wgpuRenderPassEncoderSetBindGroup(m_RenderPass, index, bindGroup, 0, nullptr);
+                m_PendingRenderBindGroups[index] = bindGroup;
+                if (m_RenderPass != nullptr)
+                {
+                    wgpuRenderPassEncoderSetBindGroup(m_RenderPass, index, bindGroup, 0, nullptr);
+                }
             }
             else if (m_BoundComputePipeline != nullptr)
             {
@@ -459,10 +468,8 @@ namespace vultra
             return *this;
 #endif
         }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::pushConstants(ShaderStages stages,
-                                     uint32_t     offset,
-                                     uint32_t     size,
-                                     const void*  data)
+        WebGPUCommandBuffer&
+        WebGPUCommandBuffer::pushConstants(ShaderStages stages, uint32_t offset, uint32_t size, const void* data)
         {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
             (void)stages;
@@ -471,7 +478,8 @@ namespace vultra
             (void)data;
             return *this;
 #else
-            if (m_Device == nullptr || m_Queue == nullptr || m_BoundPipelineObject == nullptr || data == nullptr || size == 0)
+            if (m_Device == nullptr || m_Queue == nullptr || m_BoundPipelineObject == nullptr || data == nullptr ||
+                size == 0)
             {
                 return *this;
             }
@@ -520,9 +528,9 @@ namespace vultra
                 }
 
                 WGPUBufferDescriptor descriptor {};
-                descriptor.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform;
-                descriptor.size  = requiredSize;
-                m_PushConstantBuffer = wgpuDeviceCreateBuffer(m_Device, &descriptor);
+                descriptor.usage         = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform;
+                descriptor.size          = requiredSize;
+                m_PushConstantBuffer     = wgpuDeviceCreateBuffer(m_Device, &descriptor);
                 m_PushConstantBufferSize = requiredSize;
             }
             if (m_PushConstantBuffer == nullptr)
@@ -563,15 +571,13 @@ namespace vultra
 
             if (m_RenderPass != nullptr && m_BoundPipeline != nullptr)
             {
-                wgpuRenderPassEncoderSetBindGroup(
-                    m_RenderPass, kWebGPUPushConstantsSet, it->second, 0, nullptr);
+                wgpuRenderPassEncoderSetBindGroup(m_RenderPass, kWebGPUPushConstantsSet, it->second, 0, nullptr);
             }
             else if (m_BoundComputePipeline != nullptr)
             {
                 if (m_ComputePass != nullptr)
                 {
-                    wgpuComputePassEncoderSetBindGroup(
-                        m_ComputePass, kWebGPUPushConstantsSet, it->second, 0, nullptr);
+                    wgpuComputePassEncoderSetBindGroup(m_ComputePass, kWebGPUPushConstantsSet, it->second, 0, nullptr);
                 }
                 m_PendingComputeBindGroups[kWebGPUPushConstantsSet] = it->second;
             }
@@ -647,11 +653,24 @@ namespace vultra
             colorDesc.clearValue = clearColor;
 
             WGPURenderPassDepthStencilAttachment depthDesc {};
-            if (framebufferInfo.depthAttachment && framebufferInfo.depthAttachment->target != nullptr)
+            bool                                allowDepthStencilAttachment = true;
+            if (m_BoundPipelineObject != nullptr &&
+                m_BoundPipelineObject->getBindPoint() == PipelineBindPoint::eGraphics)
             {
-                const auto depthFormat    = framebufferInfo.depthAttachment->target->getPixelFormat();
-                const auto depthAspects   = getAspectMask(depthFormat);
-                const bool hasStencil     = HasFlagValues(depthAspects, ImageAspectFlags::eStencil);
+                const auto* graphicsPipeline = static_cast<const GraphicsPipeline*>(m_BoundPipelineObject);
+                const auto& depthStencil     = graphicsPipeline->getDepthStencilState();
+                allowDepthStencilAttachment =
+                    graphicsPipeline->getDepthFormat() != PixelFormat::eUndefined ||
+                    graphicsPipeline->getStencilFormat() != PixelFormat::eUndefined || depthStencil.depthTest ||
+                    depthStencil.depthWrite || depthStencil.stencilTestEnable;
+            }
+
+            if (allowDepthStencilAttachment && framebufferInfo.depthAttachment &&
+                framebufferInfo.depthAttachment->target != nullptr)
+            {
+                const auto depthFormat     = framebufferInfo.depthAttachment->target->getPixelFormat();
+                const auto depthAspects    = getAspectMask(depthFormat);
+                const bool hasStencil      = HasFlagValues(depthAspects, ImageAspectFlags::eStencil);
                 const bool stencilReadOnly = framebufferInfo.stencilReadOnly || !hasStencil;
 
                 const auto depthViewHandle =
@@ -674,9 +693,9 @@ namespace vultra
                     if (!stencilReadOnly && framebufferInfo.stencilAttachment &&
                         framebufferInfo.stencilAttachment->target != nullptr)
                     {
-                        depthDesc.stencilLoadOp = framebufferInfo.stencilAttachment->clearValue.has_value() ?
-                                                      WGPULoadOp_Clear :
-                                                      WGPULoadOp_Load;
+                        depthDesc.stencilLoadOp     = framebufferInfo.stencilAttachment->clearValue.has_value() ?
+                                                          WGPULoadOp_Clear :
+                                                          WGPULoadOp_Load;
                         depthDesc.stencilStoreOp    = WGPUStoreOp_Store;
                         depthDesc.stencilClearValue = toWgpuStencilClear(framebufferInfo.stencilAttachment->clearValue);
                     }
@@ -732,7 +751,8 @@ namespace vultra
                 wgpuRenderPassEncoderEnd(m_RenderPass);
                 if (m_Backend != nullptr)
                 {
-                    m_Backend->finalizePendingPassTimestampQueries(m_Encoder ? reinterpret_cast<std::uintptr_t>(m_Encoder) : 0u);
+                    m_Backend->finalizePendingPassTimestampQueries(
+                        m_Encoder ? reinterpret_cast<std::uintptr_t>(m_Encoder) : 0u);
                 }
                 wgpuRenderPassEncoderRelease(m_RenderPass);
                 m_RenderPass = nullptr;
@@ -759,6 +779,7 @@ namespace vultra
             m_InsideRendering            = false;
             m_SkipCurrentRendering       = false;
             m_PipelineBoundInCurrentPass = false;
+            m_PendingRenderBindGroups.fill(nullptr);
             return *this;
         }
 
@@ -782,12 +803,25 @@ namespace vultra
                 m_PipelineBoundInCurrentPass = true;
             }
 
+            for (DescriptorSetIndex set = 0; set < kMinNumDescriptorSets; ++set)
+            {
+                if (m_PendingRenderBindGroups[set] != nullptr)
+                {
+                    wgpuRenderPassEncoderSetBindGroup(
+                        m_RenderPass, set, m_PendingRenderBindGroups[set], 0, nullptr);
+                }
+            }
+
             if (m_BoundPipelineObject != nullptr && m_Backend != nullptr)
             {
                 for (DescriptorSetIndex set = 0; set < kMinNumDescriptorSets; ++set)
                 {
                     const auto key = m_BoundPipelineObject->getDescriptorSetLayout(set);
                     if (!key)
+                    {
+                        continue;
+                    }
+                    if (m_PendingRenderBindGroups[set] != nullptr)
                     {
                         continue;
                     }
@@ -876,10 +910,17 @@ namespace vultra
                 wgpuRenderPassEncoderSetPipeline(m_RenderPass, m_BoundPipeline);
                 m_PipelineBoundInCurrentPass = true;
             }
-            wgpuRenderPassEncoderDrawIndirect(
-                m_RenderPass,
-                reinterpret_cast<WGPUBuffer>(info.buffer->getHandle()),
-                static_cast<uint64_t>(info.firstCommand) * info.buffer->getStride());
+            for (DescriptorSetIndex set = 0; set < kMinNumDescriptorSets; ++set)
+            {
+                if (m_PendingRenderBindGroups[set] != nullptr)
+                {
+                    wgpuRenderPassEncoderSetBindGroup(
+                        m_RenderPass, set, m_PendingRenderBindGroups[set], 0, nullptr);
+                }
+            }
+            wgpuRenderPassEncoderDrawIndirect(m_RenderPass,
+                                              reinterpret_cast<WGPUBuffer>(info.buffer->getHandle()),
+                                              static_cast<uint64_t>(info.firstCommand) * info.buffer->getStride());
             return *this;
 #endif
         }
@@ -912,12 +953,15 @@ namespace vultra
             }
             if (value == 0u)
             {
-                wgpuCommandEncoderClearBuffer(m_Encoder, reinterpret_cast<WGPUBuffer>(buffer.getHandle()), 0, buffer.getSize());
+                wgpuCommandEncoderClearBuffer(
+                    m_Encoder, reinterpret_cast<WGPUBuffer>(buffer.getHandle()), 0, buffer.getSize());
                 return *this;
             }
 
-            std::vector<uint32_t> data(static_cast<size_t>((buffer.getSize() + sizeof(uint32_t) - 1u) / sizeof(uint32_t)), value);
-            wgpuQueueWriteBuffer(m_Queue, reinterpret_cast<WGPUBuffer>(buffer.getHandle()), 0, data.data(), buffer.getSize());
+            std::vector<uint32_t> data(
+                static_cast<size_t>((buffer.getSize() + sizeof(uint32_t) - 1u) / sizeof(uint32_t)), value);
+            wgpuQueueWriteBuffer(
+                m_Queue, reinterpret_cast<WGPUBuffer>(buffer.getHandle()), 0, data.data(), buffer.getSize());
             return *this;
 #endif
         }
@@ -1087,12 +1131,8 @@ namespace vultra
                 std::memcpy(mapped, data, static_cast<size_t>(size));
                 wgpuBufferUnmap(stagingBuffer);
 
-                wgpuCommandEncoderCopyBufferToBuffer(m_Encoder,
-                                                     stagingBuffer,
-                                                     0u,
-                                                     reinterpret_cast<WGPUBuffer>(dst.getHandle()),
-                                                     offset,
-                                                     size);
+                wgpuCommandEncoderCopyBufferToBuffer(
+                    m_Encoder, stagingBuffer, 0u, reinterpret_cast<WGPUBuffer>(dst.getHandle()), offset, size);
                 m_TransientUploadBuffers.push_back(stagingBuffer);
                 return *this;
             }

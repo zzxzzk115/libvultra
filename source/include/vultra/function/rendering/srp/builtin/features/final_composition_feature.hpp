@@ -14,7 +14,7 @@ namespace vultra
 
         DEFINE_RENDER_FEATURE(FinalCompositionFeature);
 
-        virtual void addPasses(FrameGraphBuildContext& ctx) override;
+        void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
         FinalCompositionPass* m_FinalCompositionPass {nullptr};

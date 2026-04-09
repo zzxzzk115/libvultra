@@ -183,10 +183,12 @@ namespace vultra
                 }
             },
             [this](const PassData& data, FrameGraphPassResources& resources, void* ctx) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctx);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctx);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
@@ -198,7 +200,9 @@ namespace vultra
                 assert(rc.framebufferInfo().has_value());
                 const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
                 if (!pipeline)
+                {
                     return;
+                }
 
                 auto* indirectBuf = data.indirectBuffer ?
                                         reinterpret_cast<rhi::DrawIndirectBuffer*>(
@@ -249,7 +253,6 @@ namespace vultra
                     if (queueStride == 0u)
                     {
                         rc.cb.endRendering();
-                        rc.clear();
                         return;
                     }
 
@@ -299,7 +302,6 @@ namespace vultra
                 }
 
                 rc.cb.endRendering();
-                rc.clear();
             });
 
         return data.color;

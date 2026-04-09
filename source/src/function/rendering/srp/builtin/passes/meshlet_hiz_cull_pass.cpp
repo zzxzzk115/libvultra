@@ -140,11 +140,13 @@ namespace vultra
                 }
             },
             [this](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
 
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
@@ -153,7 +155,6 @@ namespace vultra
                 auto* gpuSceneDb   = rc.view().gpuSceneDatabase;
                 if (!gpuSceneView || !gpuSceneDb || gpuSceneView->maxVisibleMeshlets == 0u)
                 {
-                    rc.clear();
                     return;
                 }
 
@@ -162,7 +163,6 @@ namespace vultra
 
                 if (!hasRequiredFgResources)
                 {
-                    rc.clear();
                     return;
                 }
 
@@ -170,7 +170,9 @@ namespace vultra
                     computeHighendVariantHash("meshlet_hiz_cull.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
+                {
                     return;
+                }
 
                 HiZCullPushConstants pc {};
                 pc.drawCount = gpuSceneView->maxVisibleMeshlets;
@@ -181,7 +183,6 @@ namespace vultra
                 }
                 if (pc.hzbMipCount == 0u)
                 {
-                    rc.clear();
                     return;
                 }
             // MoltenVK currently hits a GPU page fault in the HiZ sampling path.
@@ -205,7 +206,6 @@ namespace vultra
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
                 rc.cb.dispatch({(pc.drawCount + 63u) / 64u, 1u, 1u});
-                rc.clear();
             });
     }
 

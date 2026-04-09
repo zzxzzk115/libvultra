@@ -99,10 +99,12 @@ namespace vultra
                                                  });
             },
             [this](const PassData& /*pd*/, FrameGraphPassResources& /*resources*/, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
@@ -110,10 +112,11 @@ namespace vultra
                 auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
                 auto* gpuSceneView     = rc.view().gpuSceneView;
                 if (!gpuSceneDatabase || !gpuSceneView || !gpuSceneDatabase->resources)
+                {
                     return;
+                }
                 if (gpuSceneView->maxDraws == 0)
                 {
-                    rc.clear();
                     return;
                 }
 
@@ -121,7 +124,9 @@ namespace vultra
                     computeHighendVariantHash("drawset_build.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
+                {
                     return;
+                }
 
                 DrawsetBuildPushConstants pc {};
                 pc.maxDraws = gpuSceneView->maxDraws;
@@ -135,7 +140,6 @@ namespace vultra
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
                 rc.cb.dispatch({1u, 1u, 1u});
-                rc.clear();
             });
 
         ctx.data.set(kResKey_DrawBuffer, data.drawBuffer);

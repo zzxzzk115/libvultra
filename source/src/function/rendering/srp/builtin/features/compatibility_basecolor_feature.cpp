@@ -1,8 +1,8 @@
 #include "vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp"
 
 #include "vultra/function/framegraph/framegraph_context.hpp"
-#include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/compatibility_basecolor_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 namespace vultra
 {
@@ -19,7 +19,8 @@ namespace vultra
         if (!hasMeshInstances || !ctx.view().target)
             return;
 
-        const auto target = framegraph::importTexture(ctx.fg, "Backbuffer", ctx.view().target);
-        m_BaseColorPass->addPass(ctx, target);
+        auto color = m_BaseColorPass->addPass(ctx);
+        if (color)
+            ctx.data.set(kResKey_FinalCompositionSource, color);
     }
 } // namespace vultra

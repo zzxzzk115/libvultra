@@ -35,6 +35,9 @@ namespace vultra
             GraphicsPipeline& operator=(GraphicsPipeline&&) noexcept = default;
 
             constexpr PipelineBindPoint getBindPoint() const override { return PipelineBindPoint::eGraphics; }
+            [[nodiscard]] PixelFormat              getDepthFormat() const { return m_DepthFormat; }
+            [[nodiscard]] PixelFormat              getStencilFormat() const { return m_StencilFormat; }
+            [[nodiscard]] const DepthStencilState& getDepthStencilState() const { return m_DepthStencilState; }
 
             class Builder
             {
@@ -94,7 +97,17 @@ namespace vultra
             };
 
         private:
-            GraphicsPipeline(PipelineLayout&&, std::uintptr_t, std::unique_ptr<IPipeline>);
+            GraphicsPipeline(PipelineLayout&&,
+                             std::uintptr_t,
+                             std::unique_ptr<IPipeline>,
+                             PixelFormat,
+                             PixelFormat,
+                             DepthStencilState);
+
+        private:
+            PixelFormat       m_DepthFormat {PixelFormat::eUndefined};
+            PixelFormat       m_StencilFormat {PixelFormat::eUndefined};
+            DepthStencilState m_DepthStencilState {};
         };
     } // namespace rhi
 } // namespace vultra

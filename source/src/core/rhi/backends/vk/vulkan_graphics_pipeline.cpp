@@ -511,7 +511,10 @@ namespace vultra
 
             return GraphicsPipeline {std::move(m_PipelineLayout),
                                      toBackendHandle(static_cast<VkPipeline>(handle)),
-                                     std::make_unique<VulkanPipeline>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
+                                     std::make_unique<VulkanPipeline>(VulkanRenderDeviceAccess::getDeviceHandle(rd)),
+                                     m_DepthFormat,
+                                     m_StencilFormat,
+                                     m_DepthStencilState};
         }
 
     } // namespace rhi

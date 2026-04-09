@@ -6,7 +6,7 @@
 
 namespace vultra
 {
-    FinalCompositionPass::FinalCompositionPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+    FinalCompositionPass::FinalCompositionPass() { setShaderProfile(rhi::ShaderProfile::eGeneral); }
 
     namespace
     {
@@ -14,6 +14,7 @@ namespace vultra
         {
             return format == rhi::PixelFormat::eRGBA8_sRGB || format == rhi::PixelFormat::eBGRA8_sRGB;
         }
+
     } // namespace
 
     constexpr auto PASS_NAME = "FinalCompositionPass";
@@ -46,31 +47,34 @@ namespace vultra
                                            .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                        });
             },
-            [this, target, useMultiview](const auto&, FrameGraphPassResources&, void* ctx) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctx);
+            [this, target, useMultiview](const auto&, FrameGraphPassResources&, void* ctxPtr) {
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 assert(rc.framebufferInfo().has_value());
                 const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0), useMultiview);
-                if (pipeline)
+                if (!pipeline)
                 {
-                    rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["nearest"]);
-                    rc.cb.bindPipeline(*pipeline);
-                    rc.bindDescriptorSets(*pipeline);
-                    auto framebufferInfo = rc.framebufferInfo().value();
-                    if (useMultiview)
-                    {
-                        framebufferInfo.layers   = 2u;
-                        framebufferInfo.viewMask = 0x3u;
-                    }
-                    rc.cb.beginRendering(framebufferInfo).drawFullScreenTriangle().endRendering();
-                    rc.clear();
+                    return;
                 }
+
+                rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["nearest"]);
+                rc.cb.bindPipeline(*pipeline);
+                rc.bindDescriptorSets(*pipeline);
+                auto framebufferInfo = rc.framebufferInfo().value();
+                if (useMultiview)
+                {
+                    framebufferInfo.layers   = 2u;
+                    framebufferInfo.viewMask = 0x3u;
+                }
+                rc.cb.beginRendering(framebufferInfo).drawFullScreenTriangle().endRendering();
             });
 
         return target;
@@ -79,9 +83,7 @@ namespace vultra
     rhi::GraphicsPipeline FinalCompositionPass::createPipeline(const rhi::PixelFormat colorFormat,
                                                                const bool             useMultiview) const
     {
-        auto vertexShaderVariantHash =
-            computeHighendVariantHash("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
-        auto vertexShader = loadHighendShaderVariant(vertexShaderVariantHash, vshadersystem::ShaderStage::eVert);
+        auto vertexShader = loadGeneralShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
             VULTRA_CORE_ERROR("[FinalCompositionPass] Failed to load vertex shader variant");
@@ -89,26 +91,22 @@ namespace vultra
         }
 
         const bool manualSrgbEncode = !isSrgbColorFormat(colorFormat);
-        auto       fragmentShaderVariantHash =
-            computeHighendVariantHash("final_composition.frag",
-                                      vshadersystem::ShaderStage::eFrag,
-                                      {
-                                          {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
-                                          {"MANUAL_SRGB_ENCODE", manualSrgbEncode ? 1u : 0u},
-                                      });
-        auto fragmentShader = loadHighendShaderVariant(fragmentShaderVariantHash, vshadersystem::ShaderStage::eFrag);
+        rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
+            {"MANUAL_SRGB_ENCODE", manualSrgbEncode ? 1u : 0u},
+            {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
+        };
+
+        auto fragmentShader = loadGeneralShader("final_composition.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[FinalCompositionPass] Failed to load fragment shader variant");
             return {};
         }
 
-        return rhi::GraphicsPipeline::Builder {}
-            .setViewMask(useMultiview ? 0x3u : 0u)
+        auto builder = rhi::GraphicsPipeline::Builder {};
+        builder.setViewMask(useMultiview ? 0x3u : 0u)
             .setColorFormats({colorFormat})
             .setInputAssembly({})
-            .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
-            .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
             .setDepthStencil({
                 .depthTest  = false,
                 .depthWrite = false,
@@ -117,7 +115,33 @@ namespace vultra
                 .polygonMode = rhi::PolygonMode::eFill,
                 .cullMode    = rhi::CullMode::eNone,
             })
-            .setBlending(0, {.enabled = false})
-            .build(getRenderDevice());
+            .setBlending(0, {.enabled = false});
+
+        const bool webgpu = getRenderDevice().getBackendApi() == rhi::RenderBackendApi::eWebGPU;
+        if (webgpu)
+        {
+            builder
+                .addShader(rhi::ShaderType::eVertex,
+                           {
+                               .code           = vertexShader->wgsl,
+                               .entryPointName = "main",
+                               .defines        = {},
+                               .reflection     = vertexShader->reflection,
+                           })
+                .addShader(rhi::ShaderType::eFragment,
+                           {
+                               .code           = fragmentShader->wgsl,
+                               .entryPointName = "main",
+                               .defines        = {},
+                               .reflection     = fragmentShader->reflection,
+                           });
+        }
+        else
+        {
+            builder.addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
+                .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv);
+        }
+
+        return builder.build(getRenderDevice());
     }
 } // namespace vultra

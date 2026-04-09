@@ -13,7 +13,7 @@ namespace vultra
 
     public:
         CompatibilityBaseColorPass();
-        FrameGraphResource addPass(FrameGraphBuildContext& ctx, FrameGraphResource target = {});
+        FrameGraphResource addPass(FrameGraphBuildContext& ctx);
 
     private:
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat      colorFormat,

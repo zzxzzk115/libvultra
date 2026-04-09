@@ -65,8 +65,10 @@ struct GeneralGaussianSplatPackedSource
 
 struct GeneralGaussianSplatVisibleSplat
 {
-    uvec4 packed0; // x=basis0.xy, y=basis1.xy, z=centerNdc.xy, w=floatBits(depth)
-    uvec4 packed1; // x=color.rg, y=color.ba, z=packedSourceIndex, w=drawIndex
+    uvec4 packedEye0_0; // x=basis0.xy, y=basis1.xy, z=centerNdc.xy, w=floatBits(depth)
+    uvec4 packedEye0_1; // x=color.rg, y=color.ba, z=packedSourceIndex, w=drawIndex
+    uvec4 packedEye1_0; // x=basis0.xy, y=basis1.xy, z=centerNdc.xy, w=floatBits(depth)
+    uvec4 packedEye1_1; // x=color.rg, y=color.ba, z=packedSourceIndex, w=drawIndex
 };
 
 struct GeneralGaussianSplatDispatchArgs

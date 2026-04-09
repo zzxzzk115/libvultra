@@ -147,27 +147,21 @@ namespace vultra
         }
     } // namespace
 
-    FrameGraphResource CompatibilityBaseColorPass::addPass(FrameGraphBuildContext& ctx, const FrameGraphResource target)
+    FrameGraphResource CompatibilityBaseColorPass::addPass(FrameGraphBuildContext& ctx)
     {
-        const bool webgpu       = ctx.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
-        const bool directTarget = static_cast<bool>(target);
+        const bool webgpu = ctx.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU;
 
         struct PassData
         {
             FrameGraphResource camera;
-            FrameGraphResource target;
             FrameGraphResource color;
             FrameGraphResource depth;
         };
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [webgpu,
-             directTarget,
-             target,
-             resolution  = ctx.view().extent,
-             cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource](FrameGraph::Builder& builder,
-                                                                            PassData&            data) {
+            [webgpu, resolution = ctx.view().extent, cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource](
+                FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
                 data.camera = builder.read(cameraBlock,
@@ -176,32 +170,19 @@ namespace vultra
                                                .pipelineStage = framegraph::PipelineStage::eVertexShader,
                                            });
 
-                if (!directTarget)
-                {
-                    data.color = builder.create<framegraph::FrameGraphTexture>(
-                        "Compatibility BaseColor Color",
-                        {
-                            .extent     = resolution,
-                            .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                            .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
-                        });
-                    data.color  = builder.write(data.color,
-                                               framegraph::Attachment {
-                                                    .index       = 0,
-                                                    .imageAspect = rhi::ImageAspect::eColor,
-                                                    .clearValue  = framegraph::ClearValue::eOpaqueBlack,
-                                               });
-                    data.target = data.color;
-                }
-                else
-                {
-                    data.target = builder.write(target,
-                                                framegraph::Attachment {
-                                                    .index       = 0,
-                                                    .imageAspect = rhi::ImageAspect::eColor,
-                                                    .clearValue  = framegraph::ClearValue::eOpaqueBlack,
-                                                });
-                }
+                data.color = builder.create<framegraph::FrameGraphTexture>(
+                    "Compatibility BaseColor Color",
+                    {
+                        .extent     = resolution,
+                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                    });
+                data.color = builder.write(data.color,
+                                           framegraph::Attachment {
+                                               .index       = 0,
+                                               .imageAspect = rhi::ImageAspect::eColor,
+                                               .clearValue  = framegraph::ClearValue::eOpaqueBlack,
+                                           });
 
                 data.depth = builder.create<framegraph::FrameGraphTexture>(
                     "Compatibility BaseColor Depth",
@@ -217,9 +198,11 @@ namespace vultra
                                            });
             },
             [this, webgpu](const PassData&, FrameGraphPassResources&, void* context) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(context);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, context);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
 
                 setRenderDevice(rc.rd);
                 setShaderLib(*rc.ext.builtinShaderLib);
@@ -227,7 +210,9 @@ namespace vultra
                 const auto* renderWorld      = rc.view().renderWorld;
                 const auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
                 if (!renderWorld || !gpuSceneDatabase || !gpuSceneDatabase->resources)
+                {
                     return;
+                }
 
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
@@ -274,7 +259,7 @@ namespace vultra
 
                     const uint32_t positionOffset  = posIt->second.offset;
                     const uint32_t texCoord0Offset = uvIt->second.offset;
-                    const auto* pipeline =
+                    const auto*    pipeline =
                         getPipeline(colorFormat, webgpu, texCoord0Offset, positionOffset, mesh.vertexStrideBytes);
                     if (!pipeline)
                         continue;
@@ -345,10 +330,9 @@ namespace vultra
                 }
 
                 rc.cb.endRendering();
-                rc.clear();
             });
 
-        return directTarget ? target : data.color;
+        return data.color;
     }
 
     rhi::GraphicsPipeline CompatibilityBaseColorPass::createPipeline(const rhi::PixelFormat colorFormat,

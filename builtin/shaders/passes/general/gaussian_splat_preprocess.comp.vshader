@@ -2,6 +2,9 @@
 language = glsl
 version = 460
 
+[keywords]
+USE_MULTIVIEW : bool permute
+
 [comp]
 #define VULTRA_DECLARE_CAMERA
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_DRAW_BUFFER
@@ -12,6 +15,9 @@ version = 460
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_COUNT_BUFFER
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_DISPATCH_ARGS_BUFFER
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SH_BUFFER
+#if USE_MULTIVIEW
+#define VULTRA_DECLARE_STEREO_CAMERA
+#endif
 #include "include/common/gpu_scene.glsl"
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
@@ -38,6 +44,17 @@ layout(push_constant) uniform GeneralGaussianSplatPreprocessPushConstants
     uint padding0;
     uint padding1;
 } u_PC;
+
+struct EyePreprocessResult
+{
+    vec2 v1;
+    vec2 v2;
+    vec2 centerNdc;
+    float depth;
+    vec4 colorOpacity;
+    float sortDepth;
+    bool visible;
+};
 
 mat3 buildJacobian(const vec3 camspace, const vec2 focal)
 {
@@ -101,44 +118,48 @@ vec3 evaluateGeneralGaussianSplatColor(const vec3 dir, const GeneralGaussianSpla
     return max(result, vec3(0.0));
 }
 
-void main()
+EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
+                                  const GeneralGaussianSplatDrawRecord draw,
+                                  const vec3 localPos,
+                                  const vec3 worldPos,
+                                  const mat3 modelLinear,
+                                  const vec3 modelTranslation,
+                                  const CameraData camera)
 {
-    const uint idx = gl_GlobalInvocationID.x;
-    if (idx >= u_PC.pointCount)
-        return;
+    EyePreprocessResult result;
+    result.v1 = vec2(0.0);
+    result.v2 = vec2(0.0);
+    result.centerNdc = vec2(2.0);
+    result.depth = 1.0;
+    result.colorOpacity = vec4(0.0);
+    result.sortDepth = 0.0;
+    result.visible = false;
 
-    const GeneralGaussianSplatPackedSource src = s_GeneralGaussianSplatPackedSources.points[idx];
-    const GeneralGaussianSplatDrawRecord draw  = s_GeneralGaussianSplatDraws.draws[src.aux0.y];
-    const vec3 localPos                        = decodeGeneralGaussianSplatPosition(src);
-    const mat4 model                           = draw.model;
-    const mat3 modelLinear                     = mat3(model);
-    const vec3 modelTranslation                = model[3].xyz;
-    const vec3 worldPos                        = (model * vec4(localPos, 1.0)).xyz;
-    vec4 colorOpacity                          = decodeGeneralGaussianSplatBaseColorOpacity(src);
+    vec4 colorOpacity = decodeGeneralGaussianSplatBaseColorOpacity(src);
     colorOpacity.a *= max(draw.params0.z, 0.0);
     if (colorOpacity.a < MIN_VISIBLE_OPACITY)
-        return;
+        return result;
 
-    const vec4 posView = u_Camera.view * vec4(worldPos, 1.0);
-    const vec4 posClip = u_Camera.projection * posView;
+    const vec4 posView = camera.view * vec4(worldPos, 1.0);
+    const vec4 posClip = camera.projection * posView;
     if (posClip.w <= 1e-5)
-        return;
+        return result;
 
     const vec3 centerNdc = posClip.xyz / posClip.w;
     const float bounds = 1.2 * posClip.w;
     if (centerNdc.z <= 0.0 || centerNdc.z >= 1.0)
-        return;
+        return result;
     if (posClip.x < -bounds || posClip.x > bounds || posClip.y < -bounds || posClip.y > bounds)
-        return;
+        return result;
 
-    const vec2 viewport = u_Camera.resolution.xy;
+    const vec2 viewport = camera.resolution.xy;
     const vec2 focal =
-        0.5 * vec2(abs(u_Camera.projection[0][0]) * viewport.x, abs(u_Camera.projection[1][1]) * viewport.y);
+        0.5 * vec2(abs(camera.projection[0][0]) * viewport.x, abs(camera.projection[1][1]) * viewport.y);
 
     const mat3 sigmaLocal = decodeGeneralGaussianSplatCovariance(src);
     const mat3 sigmaWorld = modelLinear * sigmaLocal * transpose(modelLinear);
     const mat3 J          = buildJacobian(posView.xyz, focal);
-    const mat3 W          = transpose(mat3(u_Camera.view[0].xyz, u_Camera.view[1].xyz, u_Camera.view[2].xyz));
+    const mat3 W          = transpose(mat3(camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz));
     const mat3 T          = W * J;
     const mat3 cov        = transpose(T) * sigmaWorld * T;
 
@@ -147,19 +168,19 @@ void main()
     const float det1 =
         max(1e-6, (cov[0][0] + kernelSize) * (cov[1][1] + kernelSize) - cov[0][1] * cov[0][1]);
     if (det0 <= 1e-6 || det1 <= 1e-6)
-        return;
+        return result;
 
     colorOpacity.a *= sqrt(det0 / (det1 + 1e-6) + 1e-6);
     if (colorOpacity.a < MIN_VISIBLE_OPACITY)
-        return;
+        return result;
 
-    const float diagonal1  = cov[0][0] + kernelSize;
+    const float diagonal1 = cov[0][0] + kernelSize;
     const float offDiagonal = cov[0][1];
-    const float diagonal2  = cov[1][1] + kernelSize;
-    const float mid        = 0.5 * (diagonal1 + diagonal2);
-    const float radius     = length(vec2((diagonal1 - diagonal2) * 0.5, offDiagonal));
-    const float lambda1    = max(mid + radius, 1e-4);
-    const float lambda2    = max(mid - radius, 0.1);
+    const float diagonal2 = cov[1][1] + kernelSize;
+    const float mid = 0.5 * (diagonal1 + diagonal2);
+    const float radius = length(vec2((diagonal1 - diagonal2) * 0.5, offDiagonal));
+    const float lambda1 = max(mid + radius, 1e-4);
+    const float lambda2 = max(mid - radius, 0.1);
 
     vec2 diagonalVector = vec2(offDiagonal, lambda1 - diagonal1);
     if (length(diagonalVector) < 1e-6)
@@ -168,10 +189,10 @@ void main()
         diagonalVector = normalize(diagonalVector);
 
     const float cutoffScale = max(draw.params0.y, 1e-3);
-    const vec2 v1 = sqrt(2.0 * lambda1) * diagonalVector * cutoffScale;
-    const vec2 v2 = sqrt(2.0 * lambda2) * vec2(diagonalVector.y, -diagonalVector.x) * cutoffScale;
+    result.v1 = sqrt(2.0 * lambda1) * diagonalVector * cutoffScale;
+    result.v2 = sqrt(2.0 * lambda2) * vec2(diagonalVector.y, -diagonalVector.x) * cutoffScale;
 
-    const vec3 cameraWorld = u_Camera.inverseView[3].xyz;
+    const vec3 cameraWorld = camera.inverseView[3].xyz;
     vec3 dirLocal;
     const float detLinear = determinant(modelLinear);
     if (abs(detLinear) < 1e-8)
@@ -187,7 +208,66 @@ void main()
         dirLocal = vec3(0.0, 0.0, 1.0);
     else
         dirLocal = normalize(dirLocal);
-    colorOpacity.rgb = evaluateGeneralGaussianSplatColor(dirLocal, src, min(draw.shDegree, 3u));
+
+    result.centerNdc = centerNdc.xy;
+    result.depth = centerNdc.z;
+    result.colorOpacity = colorOpacity;
+    result.colorOpacity.rgb = evaluateGeneralGaussianSplatColor(dirLocal, src, min(draw.shDegree, 3u));
+    result.sortDepth = max(camera.zFar - posClip.z, 0.0);
+    result.visible = true;
+    return result;
+}
+
+void packEyeResult(const EyePreprocessResult eye,
+                   const uint sourceIndex,
+                   const uint drawIndex,
+                   out uvec4 packed0,
+                   out uvec4 packed1)
+{
+    if (!eye.visible)
+    {
+        packed0 = uvec4(packHalf2x16(vec2(0.0)),
+                        packHalf2x16(vec2(0.0)),
+                        packHalf2x16(vec2(2.0)),
+                        floatBitsToUint(1.0));
+        packed1 = uvec4(0u, 0u, sourceIndex, drawIndex);
+        return;
+    }
+
+    packed0 = uvec4(packHalf2x16(eye.v1 / u_Camera.resolution.xy),
+                    packHalf2x16(eye.v2 / u_Camera.resolution.xy),
+                    packHalf2x16(eye.centerNdc),
+                    floatBitsToUint(eye.depth));
+    packed1 = uvec4(packHalf2x16(eye.colorOpacity.rg),
+                    packHalf2x16(eye.colorOpacity.ba),
+                    sourceIndex,
+                    drawIndex);
+}
+
+void main()
+{
+    const uint idx = gl_GlobalInvocationID.x;
+    if (idx >= u_PC.pointCount)
+        return;
+
+    const GeneralGaussianSplatPackedSource src = s_GeneralGaussianSplatPackedSources.points[idx];
+    const GeneralGaussianSplatDrawRecord draw  = s_GeneralGaussianSplatDraws.draws[src.aux0.y];
+    const vec3 localPos                        = decodeGeneralGaussianSplatPosition(src);
+    const mat4 model                           = draw.model;
+    const mat3 modelLinear                     = mat3(model);
+    const vec3 modelTranslation                = model[3].xyz;
+    const vec3 worldPos                        = (model * vec4(localPos, 1.0)).xyz;
+    const EyePreprocessResult eye0 = preprocessEye(src, draw, localPos, worldPos, modelLinear, modelTranslation, u_Camera);
+#if USE_MULTIVIEW
+    const EyePreprocessResult eye1 =
+        preprocessEye(src, draw, localPos, worldPos, modelLinear, modelTranslation, u_StereoCameraBlock.cameras[1]);
+    const bool visible = eye0.visible || eye1.visible;
+#else
+    const EyePreprocessResult eye1 = eye0;
+    const bool visible = eye0.visible;
+#endif
+    if (!visible)
+        return;
 
     const uint visibleIndex = atomicAdd(s_GeneralGaussianSplatVisibleCount.visibleCount, 1u);
     if (visibleIndex >= u_PC.maxVisibleSplats)
@@ -196,15 +276,23 @@ void main()
         return;
     }
 
-    s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packed0 = uvec4(packHalf2x16(v1 / viewport),
-                                                                              packHalf2x16(v2 / viewport),
-                                                                              packHalf2x16(centerNdc.xy),
-                                                                              floatBitsToUint(centerNdc.z));
-    s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packed1 =
-        uvec4(packHalf2x16(colorOpacity.rg), packHalf2x16(colorOpacity.ba), idx, src.aux0.y);
+    packEyeResult(eye0,
+                  idx,
+                  src.aux0.y,
+                  s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_0,
+                  s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_1);
+    packEyeResult(eye1,
+                  idx,
+                  src.aux0.y,
+                  s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_0,
+                  s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_1);
 
-    const float sortDepth = max(u_Camera.zFar - posClip.z, 0.0);
-    s_GeneralGaussianSplatSortKeys.keys[visibleIndex]    = floatBitsToUint(sortDepth);
+    float sortDepth = eye0.visible ? eye0.sortDepth : 0.0;
+#if USE_MULTIVIEW
+    if (eye1.visible)
+        sortDepth = max(sortDepth, eye1.sortDepth);
+#endif
+    s_GeneralGaussianSplatSortKeys.keys[visibleIndex] = floatBitsToUint(sortDepth);
     s_GeneralGaussianSplatSortIndices.indices[visibleIndex] = visibleIndex;
 
     const uint keysPerGroup = 256u * 15u;

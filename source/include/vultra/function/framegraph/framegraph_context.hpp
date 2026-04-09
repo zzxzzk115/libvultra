@@ -9,6 +9,7 @@
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
+#include <vbase/core/scope_exit.hpp>
 
 namespace vultra
 {
@@ -54,7 +55,11 @@ namespace vultra
             }
         }
 
-        void clear() { resourceSet.clear(); }
+        void clear()
+        {
+            resourceSet.clear();
+            viewData.framebufferInfo = std::nullopt;
+        }
 
         inline static void overrideSampler(rhi::ResourceBinding& v, const rhi::Sampler sampler)
         {
@@ -63,6 +68,17 @@ namespace vultra
                 std::get<rhi::bindings::CombinedImageSampler>(v).sampler = sampler;
         }
     };
+
+    inline auto makeScopedFrameGraphExecContextClear(FrameGraphExecContext& rc) noexcept
+    {
+        return vbase::scope_exit([&rc] { rc.clear(); });
+    }
 } // namespace vultra
 
 #define PASS_SETUP_ZONE ZoneScopedN("SetupPass")
+#define VULTRA_FRAMEGRAPH_EXEC_CONTEXT_JOIN_(a, b) VULTRA_FRAMEGRAPH_EXEC_CONTEXT_JOIN_INNER_(a, b)
+#define VULTRA_FRAMEGRAPH_EXEC_CONTEXT_JOIN_INNER_(a, b) a##b
+#define VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(name, ctxPtr) \
+    auto& name = *static_cast<::vultra::FrameGraphExecContext*>(ctxPtr); \
+    auto  VULTRA_FRAMEGRAPH_EXEC_CONTEXT_JOIN_(_frameGraphExecContextScope_, __LINE__) = \
+        ::vultra::makeScopedFrameGraphExecContextClear(name)

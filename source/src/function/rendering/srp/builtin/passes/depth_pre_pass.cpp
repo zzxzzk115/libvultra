@@ -92,11 +92,13 @@ namespace vultra
                                          });
             },
             [this](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
 
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
@@ -112,14 +114,15 @@ namespace vultra
                     !gpuSceneDatabase->resources->meshlets.meshletVerticesBuffer ||
                     !gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer || gpuSceneView->maxDraws == 0u)
                 {
-                    rc.clear();
                     return;
                 }
 
                 assert(rc.framebufferInfo().has_value());
                 const auto* pipeline = getPipeline();
                 if (!pipeline)
+                {
                     return;
+                }
 
                 rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
 
@@ -215,7 +218,6 @@ namespace vultra
                 drawQueueWindow(kRenderQueueAlphaMask);
 
                 rc.cb.endRendering();
-                rc.clear();
             });
 
         ctx.data.set(kResKey_DepthTexture, data.depth);

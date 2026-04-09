@@ -31,6 +31,10 @@
 #define VULTRA_CAMERA_BINDING 0
 #endif
 
+#ifndef VULTRA_STEREO_CAMERA_BINDING
+#define VULTRA_STEREO_CAMERA_BINDING 23
+#endif
+
 #ifndef VULTRA_MATERIAL_TABLE_BINDING
 #define VULTRA_MATERIAL_TABLE_BINDING 8
 #endif
@@ -114,6 +118,13 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_CAMERA_BINDING) uniform Camera
     CameraData data;
 } u_CameraBlock;
 #define u_Camera u_CameraBlock.data
+#endif
+
+#ifdef VULTRA_DECLARE_STEREO_CAMERA
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_STEREO_CAMERA_BINDING) uniform StereoCamera
+{
+    CameraData cameras[2];
+} u_StereoCameraBlock;
 #endif
 
 #ifdef VULTRA_DECLARE_DEPTH_TEXTURE

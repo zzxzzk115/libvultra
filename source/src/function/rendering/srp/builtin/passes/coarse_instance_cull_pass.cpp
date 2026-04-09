@@ -94,7 +94,7 @@ namespace vultra
                                   });
             },
             [](const ResetPassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 RHI_GPU_ZONE(rc.cb, "ResetCoarseCullBuffersPass");
 
                 auto* visibleInstanceCountBuf =
@@ -110,7 +110,6 @@ namespace vultra
                     uint32_t z;
                 } argsInit {0u, 1u, 1u};
                 rc.cb.update(*meshletCullDispatchArgsBuf, 0, sizeof(DispatchArgsInit), &argsInit);
-                rc.clear();
             });
 
         auto data = ctx.fg.addCallbackPass<PassData>(
@@ -178,29 +177,34 @@ namespace vultra
                                   });
             },
             [this, instanceCount, maxVisibleInstance](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 if (instanceCount == 0 || maxVisibleInstance == 0)
                 {
-                    rc.clear();
                     return;
                 }
 
                 auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
                 if (!gpuSceneDatabase)
+                {
                     return;
+                }
 
                 auto variantHash = computeHighendVariantHash(
                     "coarse_instance_cull.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
+                {
                     return;
+                }
 
                 CoarseCullPushConstants pc {};
                 pc.instanceCount       = instanceCount;
@@ -210,7 +214,6 @@ namespace vultra
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
                 rc.cb.dispatch({(instanceCount + 63u) / 64u, 1u, 1u});
-                rc.clear();
             });
 
         ctx.data.set(kResKey_VisibleInstanceBuffer, data.visibleInstanceBuffer);

@@ -81,11 +81,15 @@ namespace vultra::resource
 
     // Screen-space payload mirrors Visionary's compact Splat2D contract:
     // packed axes, packed NDC center, high-precision depth, packed RGBA.
+    // XR multiview stores one payload per eye so the render pass can select
+    // the correct screen-space data via gl_ViewIndex.
     struct GpuGeneralGaussianSplatVisibleSplat
     {
-        glm::uvec4 packed0 {0u}; // x=basis0.xy, y=basis1.xy, z=centerNdc.xy, w=floatBits(depth)
-        glm::uvec4 packed1 {0u}; // x=color.rg, y=color.ba, z=packedSourceIndex, w=drawIndex
+        glm::uvec4 packedEye0_0 {0u}; // x=basis0.xy, y=basis1.xy, z=centerNdc.xy, w=floatBits(depth)
+        glm::uvec4 packedEye0_1 {0u}; // x=color.rg, y=color.ba, z=packedSourceIndex, w=drawIndex
+        glm::uvec4 packedEye1_0 {0u}; // x=basis0.xy, y=basis1.xy, z=centerNdc.xy, w=floatBits(depth)
+        glm::uvec4 packedEye1_1 {0u}; // x=color.rg, y=color.ba, z=packedSourceIndex, w=drawIndex
     };
-    static_assert(sizeof(GpuGeneralGaussianSplatVisibleSplat) == 32,
+    static_assert(sizeof(GpuGeneralGaussianSplatVisibleSplat) == 64,
                   "GpuGeneralGaussianSplatVisibleSplat must remain tightly packed");
 } // namespace vultra::resource

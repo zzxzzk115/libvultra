@@ -9,23 +9,27 @@ MANUAL_SRGB_ENCODE : bool permute
 [frag]
 #include "include/common/color.glsl"
 
-#if USE_MULTIVIEW
+#if USE_MULTIVIEW && !PLATFORM_WEBGPU
 #extension GL_EXT_multiview : require
 #endif
 layout (location = 0) in vec2 v_TexCoord;
 layout (location = 0) out vec4 FragColor;
 
-#if USE_MULTIVIEW
+#if USE_MULTIVIEW && !PLATFORM_WEBGPU
 layout (set = 3, binding = 0) uniform sampler2DArray t_0;
 #else
 layout (set = 3, binding = 0) uniform sampler2D t_0;
 #endif
 
 void main() {
-#if USE_MULTIVIEW
-    const vec4 source = texture(t_0, vec3(v_TexCoord, float(gl_ViewIndex)));
+    vec2 sampleUv = v_TexCoord;
+#if PLATFORM_WEBGPU
+    sampleUv.y = 1.0 - sampleUv.y;
+#endif
+#if USE_MULTIVIEW && !PLATFORM_WEBGPU
+    const vec4 source = texture(t_0, vec3(sampleUv, float(gl_ViewIndex)));
 #else
-    const vec4 source = texture(t_0, v_TexCoord);
+    const vec4 source = texture(t_0, sampleUv);
 #endif
 #if MANUAL_SRGB_ENCODE
     FragColor = vec4(linearTosRGB(source.rgb), 1.0);

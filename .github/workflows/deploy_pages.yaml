@@ -45,7 +45,7 @@ jobs:
         run: xmake f -p wasm --policies=build.ccache:y --libvultra_build_examples=y --libvultra_build_tests=n -y
 
       - name: Build WASM examples
-        run: xmake repo -u && xmake build -y example-demo-app example-gaussian-splatting
+        run: xmake repo -u && xmake build -y example-demo-app && xmake build -y example-gaussian-splatting
 
       - name: Prepare pages site
         run: |

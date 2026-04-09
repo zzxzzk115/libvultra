@@ -14,6 +14,6 @@ namespace vultra
 
         FrameGraphResource addPass(FrameGraphBuildContext& ctx);
 
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useMultiview) const;
     };
 } // namespace vultra

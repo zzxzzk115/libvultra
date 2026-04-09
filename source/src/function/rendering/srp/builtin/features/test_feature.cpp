@@ -18,9 +18,14 @@ namespace vultra
         const bool hasMeshletDraws =
             gpuSceneView &&
             (gpuSceneView->isGpuDriven() ? (gpuSceneView->maxDraws > 0u) : (gpuSceneView->countMeshletDraws() > 0u));
+        const bool hasGeneralGaussianSplats = gpuSceneView && gpuSceneView->hasGeneralGaussianSplats();
 
         if (!hasMeshletDraws)
         {
+            // Let gaussian-only views allocate their own color target so XR multiview keeps a layered attachment.
+            if (hasGeneralGaussianSplats)
+                return;
+
             auto fallbackColor = m_TestPass->addPass(ctx);
             ctx.data.set(kResKey_FinalCompositionSource, fallbackColor);
             return;

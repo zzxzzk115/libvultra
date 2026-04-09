@@ -2,6 +2,7 @@
 #include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/final_composition_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 namespace vultra
 {
@@ -11,6 +12,9 @@ namespace vultra
 
     void FinalCompositionFeature::addPasses(FrameGraphBuildContext& ctx)
     {
+        if (!ctx.view().target || !ctx.data.contains(kResKey_FinalCompositionSource))
+            return;
+
         const auto backBuffer = framegraph::importTexture(ctx.fg, "Backbuffer", ctx.view().target);
         m_FinalCompositionPass->compose(ctx, backBuffer);
     }

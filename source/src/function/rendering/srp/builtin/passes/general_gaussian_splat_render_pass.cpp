@@ -2,7 +2,6 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
-#include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
@@ -29,11 +28,6 @@ namespace vultra
         auto indirectBuffer     = ctx.data.tryGet(kResKey_GeneralGaussianSplatIndirectBuffer);
         auto existingColor      = ctx.data.tryGet(kResKey_FinalCompositionSource);
 
-        FrameGraphResource importedTarget;
-        const bool         writesDirectToTarget = !existingColor && ctx.view().target;
-        if (writesDirectToTarget)
-            importedTarget = framegraph::importTexture(ctx.fg, "GeneralGaussianSplatTarget", ctx.view().target);
-
         const auto resolution   = ctx.view().extent;
         const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u;
 
@@ -47,13 +41,8 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution,
-             useMultiview,
-             visibleSplatBuffer,
-             sortIndexBuffer,
-             indirectBuffer,
-             existingColor,
-             importedTarget](FrameGraph::Builder& builder, PassData& data) {
+            [resolution, useMultiview, visibleSplatBuffer, sortIndexBuffer, indirectBuffer, existingColor](
+                FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
                 data.visibleSplatBuffer = builder.read(visibleSplatBuffer,
@@ -80,14 +69,6 @@ namespace vultra
                                                    .imageAspect = rhi::ImageAspect::eColor,
                                                });
                 }
-                else if (importedTarget)
-                {
-                    data.color = builder.write(importedTarget,
-                                               framegraph::Attachment {
-                                                   .index       = 0,
-                                                   .imageAspect = rhi::ImageAspect::eColor,
-                                               });
-                }
                 else
                 {
                     data.color = builder.create<framegraph::FrameGraphTexture>(
@@ -95,7 +76,7 @@ namespace vultra
                         {
                             .extent     = resolution,
                             .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                            .layers     = useMultiview ? 2u : 1u,
+                            .layers     = useMultiview ? 2u : 0u, // 0 -> non-array texture
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                         });
                     data.color = builder.write(data.color,
@@ -106,30 +87,45 @@ namespace vultra
                                                });
                 }
             },
-            [this](const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+            [this, useMultiview](const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 if (!rc.framebufferInfo().has_value())
+                {
                     return;
+                }
 
                 auto* indirectBuf = reinterpret_cast<rhi::DrawIndirectBuffer*>(
                     resources.get<framegraph::FrameGraphBuffer>(data.indirectBuffer).buffer);
                 if (!indirectBuf)
+                {
                     return;
+                }
 
                 rhi::prepareForDrawingIndirect(rc.cb, *indirectBuf);
 
-                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
+                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0), useMultiview);
                 if (!pipeline)
+                {
                     return;
+                }
 
-                rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
+                auto framebufferInfo = rc.framebufferInfo().value();
+                if (useMultiview)
+                {
+                    framebufferInfo.layers   = 2u;
+                    framebufferInfo.viewMask = 0x3u;
+                }
+
+                rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.drawIndirect(rhi::DrawIndirectInfo {
                     .buffer       = indirectBuf,
@@ -137,15 +133,19 @@ namespace vultra
                     .commandCount = 1u,
                 });
                 rc.cb.endRendering();
-                rc.clear();
             });
 
-        return writesDirectToTarget ? FrameGraphResource {} : data.color;
+        return data.color;
     }
 
-    rhi::GraphicsPipeline GeneralGaussianSplatRenderPass::createPipeline(const rhi::PixelFormat colorFormat) const
+    rhi::GraphicsPipeline GeneralGaussianSplatRenderPass::createPipeline(const rhi::PixelFormat colorFormat,
+                                                                         const bool             useMultiview) const
     {
-        auto vertexShader = loadGeneralShader("gaussian_splat_render.vert", vshadersystem::ShaderStage::eVert, {});
+        rhi::ShaderLibraryRuntime::KeywordValues vertexKeywords {
+            {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
+        };
+
+        auto vertexShader = loadGeneralShader("gaussian_splat_render.vert", vshadersystem::ShaderStage::eVert, vertexKeywords);
         if (!vertexShader)
             return {};
 
@@ -154,7 +154,8 @@ namespace vultra
             return {};
 
         auto builder = rhi::GraphicsPipeline::Builder {};
-        builder.setColorFormats({colorFormat})
+        builder.setViewMask(useMultiview ? 0x3u : 0u)
+            .setColorFormats({colorFormat})
             .setTopology(rhi::PrimitiveTopology::eTriangleStrip)
             .setDepthStencil({
                 .depthTest  = false,

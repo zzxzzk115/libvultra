@@ -88,7 +88,7 @@ namespace vultra
                                                              });
             },
             [](const ResetPassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 RHI_GPU_ZONE(rc.cb, "ResetMeshletCullBuffersPass");
 
                 // Usually clearing the count is enough, but keep the full clear for now
@@ -100,7 +100,6 @@ namespace vultra
                     resources.get<framegraph::FrameGraphBuffer>(pd.visibleMeshletCountBuffer).buffer;
                 rc.cb.clear(*visibleMeshletCountBuf, 0u);
 
-                rc.clear();
             });
 
         auto data = ctx.fg.addCallbackPass<PassData>(
@@ -203,17 +202,18 @@ namespace vultra
             },
             [this, maxVisibleInstances, maxVisible](
                 const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
-                auto& rc = *static_cast<FrameGraphExecContext*>(ctxPtr);
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
+                {
                     return;
+                }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 if (maxVisibleInstances == 0 || maxVisible == 0)
                 {
-                    rc.clear();
                     return;
                 }
 
@@ -226,7 +226,9 @@ namespace vultra
                     computeHighendVariantHash("meshlet_cull.comp", vshadersystem::ShaderStage::eComp, {});
                 const auto* pipeline = getPipeline(variantHash);
                 if (!pipeline)
+                {
                     return;
+                }
 
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
@@ -237,7 +239,6 @@ namespace vultra
                 rhi::prepareForDrawingIndirect(rc.cb, *meshletCullDispatchArgsBuffer);
                 rc.cb.dispatchIndirect(*meshletCullDispatchArgsBuffer);
 
-                rc.clear();
             });
 
         ctx.data.set(kResKey_VisibleMeshletBuffer, data.visibleMeshletBuffer);
