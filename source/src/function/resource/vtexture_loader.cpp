@@ -55,6 +55,62 @@ namespace vultra::resource
             }
         }
 
+        rhi::PixelFormat toRHI(vasset::VTextureFormat format, uint32_t vkFormatHint = 0)
+        {
+            using enum rhi::PixelFormat;
+
+            using VF = vasset::VTextureFormat;
+            if (format == VF::eR8)
+                return eR8_UNorm;
+            if (format == VF::eRG8)
+                return eRG8_UNorm;
+            if (format == VF::eRG8S)
+                return eRG8_SNorm;
+            if (format == VF::eRGB8)
+                return eRGB8_UNorm;
+            if (format == VF::eRGBA8)
+                return eRGBA8_UNorm;
+            if (format == VF::eBGRA8)
+                return eBGRA8_UNorm;
+
+            // eR16 and eRGBA16 share a legacy enum value in VTextureFormat (70).
+            // Use vkFormat hint from parsed KTX2 payload to disambiguate when available.
+            if (format == VF::eR16 || format == VF::eRGBA16)
+            {
+                return vkFormatHint == 91u ? eRGBA16_UNorm : eR16_UNorm;
+            }
+
+            if (format == VF::eR16F)
+                return eR16F;
+            if (format == VF::eR32F)
+                return eR32F;
+            if (format == VF::eRG16)
+                return eRG16_UNorm;
+            if (format == VF::eRG16F)
+                return eRG16F;
+            if (format == VF::eRGBA16F)
+                return eRGBA16F;
+            if (format == VF::eRGBA32F)
+                return eRGBA32F;
+
+            if (format == VF::eBC1)
+                return eBC1_UNorm;
+            if (format == VF::eBC2)
+                return eBC2_UNorm;
+            if (format == VF::eBC3)
+                return eBC3_UNorm;
+            if (format == VF::eBC4)
+                return eBC4_UNorm;
+            if (format == VF::eBC5)
+                return eBC5_UNorm;
+            if (format == VF::eBC6H)
+                return eBC6H_RGB16F;
+            if (format == VF::eBC7)
+                return eBC7_RGBA8_UNorm;
+
+            return eUndefined;
+        }
+
         vbase::Result<rhi::Texture, std::string> loadKTX_DDS(const std::vector<uint8_t>& bintex, rhi::RenderDevice& rd)
         {
             ddsktx_texture_info tc {0};
@@ -222,11 +278,11 @@ namespace vultra::resource
         // ============================================================
         // KTX2
         // ============================================================
-        vbase::Result<rhi::Texture, std::string> loadKTX2(const std::vector<uint8_t>& bin, rhi::RenderDevice& rd)
+        vbase::Result<rhi::Texture, std::string> loadKTX2(const vasset::VTexture& v, rhi::RenderDevice& rd)
         {
-            ktxTexture2* tex;
+            ktxTexture2* tex = nullptr;
 
-            if (ktxTexture2_CreateFromMemory(bin.data(), bin.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &tex) !=
+            if (ktxTexture2_CreateFromMemory(v.data.data(), v.data.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &tex) !=
                 KTX_SUCCESS)
             {
                 return vbase::Result<rhi::Texture, std::string>::err("ktx load fail");
@@ -257,13 +313,41 @@ namespace vultra::resource
                 return std::pair {KTX_TTF_RGBA32, rhi::PixelFormat::eRGBA8_UNorm};
             };
 
-            auto [basisTarget, pixelFormat] = chooseBasisTarget();
-            if (ktxTexture2_NeedsTranscoding(tex))
+            const bool needsTranscoding = ktxTexture2_NeedsTranscoding(tex) != 0;
+            bool       useBasisUPath    = v.compressedBasisU;
+            if (!useBasisUPath && needsTranscoding)
             {
-                const auto transcodeResult = ktxTexture2_TranscodeBasis(tex, basisTarget, 0);
-                if (transcodeResult != KTX_SUCCESS)
+                // Backward compatibility: old assets had no compressedBasisU metadata.
+                useBasisUPath = true;
+            }
+
+            rhi::PixelFormat pixelFormat = rhi::PixelFormat::eUndefined;
+            if (useBasisUPath)
+            {
+                if (!needsTranscoding)
                 {
-                    return vbase::Result<rhi::Texture, std::string>::err("KTX2 transcode failed");
+                    // Metadata says BasisU, but payload does not require transcoding.
+                    // Prefer payload truth to avoid uploading incompatible data.
+                    useBasisUPath = false;
+                }
+                else
+                {
+                    auto [basisTarget, basisPixelFormat] = chooseBasisTarget();
+                    pixelFormat                           = basisPixelFormat;
+
+                    const auto transcodeResult = ktxTexture2_TranscodeBasis(tex, basisTarget, 0);
+                    if (transcodeResult != KTX_SUCCESS)
+                    {
+                        return vbase::Result<rhi::Texture, std::string>::err("KTX2 transcode failed");
+                    }
+                }
+            }
+            if (!useBasisUPath)
+            {
+                pixelFormat = toRHI(v.format, tex->vkFormat);
+                if (pixelFormat == rhi::PixelFormat::eUndefined)
+                {
+                    return vbase::Result<rhi::Texture, std::string>::err("Unsupported KTX2 pixel format");
                 }
             }
 
@@ -274,6 +358,10 @@ namespace vultra::resource
                               .setUsageFlags(rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled)
                               .setupOptimalSampler(true)
                               .build(rd);
+            if (!rhiTex)
+            {
+                return vbase::Result<rhi::Texture, std::string>::err("Failed to create texture.");
+            }
 
             // If the KTX2 has mipmaps, we will upload each mip level separately.
             if (tex->numLevels > 1)
@@ -341,7 +429,7 @@ namespace vultra::resource
         switch (v.fileFormat)
         {
             case eKTX2:
-                return loadKTX2(v.data, rd);
+                return loadKTX2(v, rd);
 
             case eEXR:
                 return loadEXR(v.data, rd);

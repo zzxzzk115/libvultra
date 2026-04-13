@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="mesh"
-uid="206733c1f880193cbd1dd2b65e0d0cbd"
+uid="4195b9103855ad085e4e5d699e77a0c9"
 
 [source]
 file="models/DamagedHelmet/DamagedHelmet.gltf"
 
 [output]
-file="imported/mesh/DamagedHelmet"
+file="imported/mesh/models/DamagedHelmet/DamagedHelmet"
 
 [params]

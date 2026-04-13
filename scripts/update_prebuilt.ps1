@@ -1,7 +1,7 @@
 param(
     [string]$TargetName = 'vasset-cli',
-    [string]$Platform,
-    [string]$Arch,
+    [string]$Platform = 'windows',
+    [string]$Arch = 'x64',
     [string]$Mode = 'release'
 )
 

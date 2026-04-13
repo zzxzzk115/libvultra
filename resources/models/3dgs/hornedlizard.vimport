@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="gaussian_splat"
-uid="3acfb36237062821a78452d799871ba6"
+uid="9f078bf3b6d0191203fc6a4419fd0cd7"
 
 [source]
 file="models/3dgs/hornedlizard.spz"
 
 [output]
-file="imported/gaussian_splat/hornedlizard"
+file="imported/gaussian_splat/models/3dgs/hornedlizard"
 
 [params]

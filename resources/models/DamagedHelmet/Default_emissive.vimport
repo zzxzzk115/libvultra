@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="texture"
-uid="a9f485c67cf7633136ef60b3d395d6b6"
+uid="ecf37a5d3e4b93cdf1e01bda90418612"
 
 [source]
 file="models/DamagedHelmet/Default_emissive.jpg"
 
 [output]
-file="imported/texture/Default_emissive"
+file="imported/texture/models/DamagedHelmet/Default_emissive"
 
 [params]

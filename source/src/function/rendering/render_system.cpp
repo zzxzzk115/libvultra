@@ -37,6 +37,9 @@
 #include <limits>
 #include <numeric>
 #include <unordered_set>
+#ifndef NDEBUG
+#include <fstream>
+#endif
 
 namespace vultra
 {
