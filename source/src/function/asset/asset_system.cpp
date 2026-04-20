@@ -367,11 +367,14 @@ namespace vultra
         m_Desc.registryFile   = ctx().config.asset.registryFile;
         m_Desc.vpkFile        = ctx().config.asset.vpkFile;
 
-        const auto resolveAssetPath = [&](const std::string& p) {
+        const auto resolveVpkPath = [&](const std::string& p) {
             std::filesystem::path path {p};
+#if defined(__EMSCRIPTEN__)
+            // wasm preloads VPK at "/resources.vpk", keep this deterministic.
             if (path.is_relative())
-                path = std::filesystem::path(m_Desc.assetRoot) / path;
-            return path;
+                path = std::filesystem::path("/") / path;
+#endif
+            return path.lexically_normal();
         };
 
         m_Registry.setAssetRootPath(m_Desc.assetRoot);
@@ -381,7 +384,7 @@ namespace vultra
         {
             // For production, mount the VPK file (read-only). The VPK's embedded registry is the source of truth
             // for UUID -> source path mapping.
-            const auto vpkPath       = resolveAssetPath(m_Desc.vpkFile).generic_string();
+            const auto vpkPath       = resolveVpkPath(m_Desc.vpkFile).generic_string();
             auto       vpkFileSystem = createRef<vasset::VpkFileSystem>(vpkPath);
             auto       openResult    = vpkFileSystem->openPackage();
             if (!openResult)
@@ -389,6 +392,7 @@ namespace vultra
                 VULTRA_CORE_ERROR("[AssetSystem] Failed to open VPK file: {}", vpkPath);
                 return;
             }
+            m_Desc.vpkFile = vpkPath;
 
             m_Registry = vasset::VAssetRegistry {};
             m_Registry.setAssetRootPath(m_Desc.assetRoot);

@@ -314,35 +314,27 @@ namespace vultra::resource
             };
 
             const bool needsTranscoding = ktxTexture2_NeedsTranscoding(tex) != 0;
-            bool       useBasisUPath    = v.compressedBasisU;
-            if (!useBasisUPath && needsTranscoding)
+            const bool useBasisUPath    = v.compressedBasisU;
+
+            if (useBasisUPath != needsTranscoding)
             {
-                // Backward compatibility: old assets had no compressedBasisU metadata.
-                useBasisUPath = true;
+                return vbase::Result<rhi::Texture, std::string>::err(
+                    "KTX2 metadata mismatch: compressedBasisU does not match payload. Please reimport/repack textures.");
             }
 
             rhi::PixelFormat pixelFormat = rhi::PixelFormat::eUndefined;
             if (useBasisUPath)
             {
-                if (!needsTranscoding)
-                {
-                    // Metadata says BasisU, but payload does not require transcoding.
-                    // Prefer payload truth to avoid uploading incompatible data.
-                    useBasisUPath = false;
-                }
-                else
-                {
-                    auto [basisTarget, basisPixelFormat] = chooseBasisTarget();
-                    pixelFormat                           = basisPixelFormat;
+                auto [basisTarget, basisPixelFormat] = chooseBasisTarget();
+                pixelFormat                           = basisPixelFormat;
 
-                    const auto transcodeResult = ktxTexture2_TranscodeBasis(tex, basisTarget, 0);
-                    if (transcodeResult != KTX_SUCCESS)
-                    {
-                        return vbase::Result<rhi::Texture, std::string>::err("KTX2 transcode failed");
-                    }
+                const auto transcodeResult = ktxTexture2_TranscodeBasis(tex, basisTarget, 0);
+                if (transcodeResult != KTX_SUCCESS)
+                {
+                    return vbase::Result<rhi::Texture, std::string>::err("KTX2 transcode failed");
                 }
             }
-            if (!useBasisUPath)
+            else
             {
                 pixelFormat = toRHI(v.format, tex->vkFormat);
                 if (pixelFormat == rhi::PixelFormat::eUndefined)
