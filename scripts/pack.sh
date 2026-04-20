@@ -1,10 +1,20 @@
 #!/usr/bin/env sh
 set -eu
 
-repo_root="$1"
+repo_root="$(cd "$1" && pwd -P)"
 asset_root="$2"
 out_vpk="$3"
 shift 3
+
+case "$asset_root" in
+    /*) ;;
+    *) asset_root="$repo_root/$asset_root" ;;
+esac
+
+case "$out_vpk" in
+    /*) ;;
+    *) out_vpk="$repo_root/$out_vpk" ;;
+esac
 
 normalize_platform() {
     case "$(uname -s)" in
@@ -25,15 +35,24 @@ normalize_arch() {
 
 platform="$(normalize_platform)"
 arch="$(normalize_arch)"
-vasset_name="vasset-cli"
-if [ "$platform" = "windows" ]; then
-    vasset_name="vasset-cli.exe"
-fi
 
-vasset_cli="$repo_root/prebuilt/$platform/$arch/$vasset_name"
+install_root="$repo_root/build/.generated/vasset-host/$platform/$arch/release"
+vasset_name="vasset-cli"
+
+(cd "$repo_root" && \
+    xmake f -p "$platform" -a "$arch" -m release -y && \
+    xmake install -y -o "$install_root" vasset-cli)
+
+vasset_cli="$install_root/bin/$vasset_name"
 if [ ! -f "$vasset_cli" ]; then
-    echo "Missing prebuilt vasset-cli: $vasset_cli" >&2
+    echo "Installed vasset-cli not found: $vasset_cli" >&2
     exit 1
 fi
+
+if [ -d "$install_root/lib" ]; then
+    export LD_LIBRARY_PATH="$install_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export DYLD_LIBRARY_PATH="$install_root/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+fi
+export PATH="$install_root/bin:$PATH"
 
 exec "$vasset_cli" pack "$asset_root" "$out_vpk" --zstd 6 "$@"

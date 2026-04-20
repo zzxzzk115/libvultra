@@ -15,32 +15,60 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Get-VultraHostPlatform {
-    $platformId = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription.ToLowerInvariant()
-    if ($platformId.Contains('windows')) {
+    $os = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription.ToLowerInvariant()
+    if ($os.Contains('windows')) {
         return 'windows'
     }
-    if ($platformId.Contains('mac') -or $platformId.Contains('darwin') -or $platformId.Contains('os x')) {
-        return 'macos'
+    if ($os.Contains('mac') -or $os.Contains('darwin') -or $os.Contains('os x')) {
+        return 'macosx'
     }
     return 'linux'
 }
 
 function Get-VultraHostArch {
-    switch ($env:PROCESSOR_ARCHITECTURE.ToLowerInvariant()) {
-        'amd64' { return 'x64' }
-        'x86_64' { return 'x64' }
+    switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()) {
+        'x64' { return 'x64' }
         'arm64' { return 'arm64' }
         default { return $env:PROCESSOR_ARCHITECTURE.ToLowerInvariant() }
     }
 }
 
+$repoRootPath = (Resolve-Path -LiteralPath $RepoRoot).Path
+$assetRootPath = if ([System.IO.Path]::IsPathRooted($AssetRoot)) { $AssetRoot } else { Join-Path $repoRootPath $AssetRoot }
+$outVpkPath = if ([System.IO.Path]::IsPathRooted($OutVpk)) { $OutVpk } else { Join-Path $repoRootPath $OutVpk }
+
 $platform = Get-VultraHostPlatform
 $arch = Get-VultraHostArch
-$vassetName = if ($platform -eq 'windows') { 'vasset-cli.exe' } else { 'vasset-cli' }
-$vassetCli = Join-Path $RepoRoot "prebuilt/$platform/$arch/$vassetName"
-if (-not (Test-Path $vassetCli)) {
-    throw "Missing prebuilt vasset-cli: $vassetCli"
+$installRoot = Join-Path $repoRootPath "build/.generated/vasset-host/$platform/$arch/release"
+
+Push-Location $repoRootPath
+try {
+    & xmake f -p $platform -a $arch -m release -y
+    if ($LASTEXITCODE -ne 0) {
+        throw "xmake configure failed"
+    }
+
+    & xmake install -y -o $installRoot vasset-cli
+    if ($LASTEXITCODE -ne 0) {
+        throw "xmake install vasset-cli failed"
+    }
+}
+finally {
+    Pop-Location
 }
 
-& $vassetCli pack $AssetRoot $OutVpk --zstd 6 @ExtraArgs
-exit $LASTEXITCODE
+$vassetName = if ($platform -eq 'windows') { 'vasset-cli.exe' } else { 'vasset-cli' }
+$vassetCli = Join-Path $installRoot "bin/$vassetName"
+if (-not (Test-Path -LiteralPath $vassetCli)) {
+    throw "Installed vasset-cli not found: $vassetCli"
+}
+
+$oldPath = $env:PATH
+try {
+    $env:PATH = (Join-Path $installRoot 'bin') + ';' + (Join-Path $installRoot 'lib') + ';' + $oldPath
+    & $vassetCli pack $assetRootPath $outVpkPath --zstd 6 @ExtraArgs
+    exit $LASTEXITCODE
+}
+finally {
+    $env:PATH = $oldPath
+}
