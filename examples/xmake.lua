@@ -126,11 +126,12 @@ rule("resources.vpk_pack")
                             "-ExecutionPolicy",
                             "Bypass",
                             "-File",
-                            _vpk_setting(target, "vpk.import_script", "wasm_vpk.import_script")
-                                or path.join(project_dir, "scripts", "import.ps1"),
-                            project_dir,
-                            resources_dir
-                         })
+                             _vpk_setting(target, "vpk.import_script", "wasm_vpk.import_script")
+                                 or path.join(project_dir, "scripts", "import.ps1"),
+                             "-NoBootstrap",
+                             project_dir,
+                             resources_dir
+                          })
             end
             if pack_enabled then
                 os.execv("powershell.exe",
@@ -139,11 +140,12 @@ rule("resources.vpk_pack")
                             "-ExecutionPolicy",
                             "Bypass",
                             "-File",
-                            _vpk_setting(target, "vpk.pack_script", "wasm_vpk.pack_script")
-                                or path.join(project_dir, "scripts", "pack.ps1"),
-                            project_dir,
-                            resources_dir,
-                            output_vpk,
+                             _vpk_setting(target, "vpk.pack_script", "wasm_vpk.pack_script")
+                                 or path.join(project_dir, "scripts", "pack.ps1"),
+                             "-NoBootstrap",
+                             project_dir,
+                             resources_dir,
+                             output_vpk,
                             table.unpack(pack_args)
                          })
             end
@@ -151,22 +153,24 @@ rule("resources.vpk_pack")
             if import_enabled then
                 os.execv("sh",
                          {
-                            _vpk_setting(target, "vpk.import_script", "wasm_vpk.import_script")
-                                or path.join(project_dir, "scripts", "import.sh"),
-                            project_dir,
-                            resources_dir
-                         })
+                             _vpk_setting(target, "vpk.import_script", "wasm_vpk.import_script")
+                                 or path.join(project_dir, "scripts", "import.sh"),
+                             project_dir,
+                             resources_dir,
+                             "--no-bootstrap"
+                          })
             end
             if pack_enabled then
                 os.execv("sh",
                          {
-                            _vpk_setting(target, "vpk.pack_script", "wasm_vpk.pack_script")
-                                or path.join(project_dir, "scripts", "pack.sh"),
-                            project_dir,
-                            resources_dir,
-                            output_vpk,
-                            table.unpack(pack_args)
-                         })
+                             _vpk_setting(target, "vpk.pack_script", "wasm_vpk.pack_script")
+                                 or path.join(project_dir, "scripts", "pack.sh"),
+                             project_dir,
+                             resources_dir,
+                             output_vpk,
+                             "--no-bootstrap",
+                             table.unpack(pack_args)
+                          })
             end
         end
     end)

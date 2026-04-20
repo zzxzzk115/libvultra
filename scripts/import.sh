@@ -3,6 +3,10 @@ set -eu
 
 repo_root="$(cd "$1" && pwd -P)"
 asset_root="$2"
+no_bootstrap=0
+if [ "${3:-}" = "--no-bootstrap" ]; then
+    no_bootstrap=1
+fi
 
 case "$asset_root" in
     /*) ;;
@@ -32,12 +36,20 @@ arch="$(normalize_arch)"
 install_root="$repo_root/build/.generated/vasset-host/$platform/$arch/release"
 vasset_name="vasset-cli"
 
-(cd "$repo_root" && \
-    xmake f -p "$platform" -a "$arch" -m release -y && \
-    xmake install -y -o "$install_root" vasset-cli)
+if [ "$no_bootstrap" -eq 0 ]; then
+    (cd "$repo_root" && \
+        xmake f -p "$platform" -a "$arch" -m release -y && \
+        xmake install -y -o "$install_root" vasset-cli)
+fi
 
 vasset_cli="$install_root/bin/$vasset_name"
 if [ ! -f "$vasset_cli" ]; then
+    if [ "$no_bootstrap" -eq 1 ]; then
+        echo "Installed vasset-cli not found: $vasset_cli" >&2
+        echo "Bootstrap once outside xmake:" >&2
+        echo "  xmake f -p $platform -a $arch -m release -y && xmake install -y -o \"$install_root\" vasset-cli" >&2
+        exit 1
+    fi
     echo "Installed vasset-cli not found: $vasset_cli" >&2
     exit 1
 fi
