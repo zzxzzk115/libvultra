@@ -41,6 +41,9 @@ jobs:
       - name: Install dependencies
         run: brew install ninja pkg-config
 
+      - name: Bootstrap host vasset-cli
+        run: sh scripts/bootstrap_vasset_cli.sh "$GITHUB_WORKSPACE"
+
       - name: Configure WASM Build
         run: xmake f -p wasm --policies=build.ccache:y --libvultra_build_examples=y --libvultra_build_tests=n -y
 

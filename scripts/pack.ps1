@@ -44,20 +44,9 @@ $arch = Get-VultraHostArch
 $installRoot = Join-Path $repoRootPath "build/.generated/vasset-host/$platform/$arch/release"
 
 if (-not $NoBootstrap) {
-    Push-Location $repoRootPath
-    try {
-        & xmake f -p $platform -a $arch -m release -y
-        if ($LASTEXITCODE -ne 0) {
-            throw "xmake configure failed"
-        }
-
-        & xmake install -y -o $installRoot vasset-cli
-        if ($LASTEXITCODE -ne 0) {
-            throw "xmake install vasset-cli failed"
-        }
-    }
-    finally {
-        Pop-Location
+    & (Join-Path $repoRootPath "scripts/bootstrap_vasset_cli.ps1") $repoRootPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "bootstrap_vasset_cli.ps1 failed"
     }
 }
 
@@ -65,7 +54,7 @@ $vassetName = if ($platform -eq 'windows') { 'vasset-cli.exe' } else { 'vasset-c
 $vassetCli = Join-Path $installRoot "bin/$vassetName"
 if (-not (Test-Path -LiteralPath $vassetCli)) {
     if ($NoBootstrap) {
-        throw "Installed vasset-cli not found: $vassetCli. Bootstrap once outside xmake: xmake f -p $platform -a $arch -m release -y && xmake install -y -o `"$installRoot`" vasset-cli"
+        throw "Installed vasset-cli not found: $vassetCli. Bootstrap once outside xmake: powershell -ExecutionPolicy Bypass -File `"$repoRootPath/scripts/bootstrap_vasset_cli.ps1`" `"$repoRootPath`""
     }
     throw "Installed vasset-cli not found: $vassetCli"
 }

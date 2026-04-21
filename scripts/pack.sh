@@ -45,9 +45,7 @@ install_root="$repo_root/build/.generated/vasset-host/$platform/$arch/release"
 vasset_name="vasset-cli"
 
 if [ "$no_bootstrap" -eq 0 ]; then
-    (cd "$repo_root" && \
-        xmake f -p "$platform" -a "$arch" -m release -y && \
-        xmake install -y -o "$install_root" vasset-cli)
+    sh "$repo_root/scripts/bootstrap_vasset_cli.sh" "$repo_root"
 fi
 
 vasset_cli="$install_root/bin/$vasset_name"
@@ -55,7 +53,7 @@ if [ ! -f "$vasset_cli" ]; then
     if [ "$no_bootstrap" -eq 1 ]; then
         echo "Installed vasset-cli not found: $vasset_cli" >&2
         echo "Bootstrap once outside xmake:" >&2
-        echo "  xmake f -p $platform -a $arch -m release -y && xmake install -y -o \"$install_root\" vasset-cli" >&2
+        echo "  sh \"$repo_root/scripts/bootstrap_vasset_cli.sh\" \"$repo_root\"" >&2
         exit 1
     fi
     echo "Installed vasset-cli not found: $vasset_cli" >&2

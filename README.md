@@ -79,9 +79,20 @@ xmake build -y
 
 ### WASM (Emscripten)
 ```bash
+sh scripts/bootstrap_vasset_cli.sh
 xmake f -p wasm --libvultra_build_examples=y --libvultra_build_tests=n -y
 xmake build -y example-demo-app
 ```
+
+On Windows PowerShell:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_vasset_cli.ps1
+xmake f -p wasm --libvultra_build_examples=y --libvultra_build_tests=n -y
+xmake build -y example-demo-app
+```
+
+The bootstrap step installs a host-side `vasset-cli` under `build/.generated/vasset-host/...`.
+`example-demo-app` and `example-gaussian-splatting` use it to import assets and package `resources.vpk` for the wasm build.
 
 Output is generated under:
 - `build/wasm/wasm32/release/example-demo-app/`
