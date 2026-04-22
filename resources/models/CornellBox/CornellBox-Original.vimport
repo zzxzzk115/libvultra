@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="mesh"
-uid="f195b6ea40ff8e76ee4e5f4f978d817b"
+uid="23d29e295e4ac658b881780ef040b999"
 
 [source]
 file="models/CornellBox/CornellBox-Original.obj"
 
 [output]
-file="imported/mesh/models/CornellBox/CornellBox-Original"
+file="imported/mesh/CornellBox-Original"
 
 [params]

@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="gaussian_splat"
-uid="d1ada6cfe3a52c58cea64fa875261f99"
+uid="88d5d7a86cd71cd3158ebe91e3f40f14"
 
 [source]
 file="models/3dgs/racoonfamily.spz"
 
 [output]
-file="imported/gaussian_splat/models/3dgs/racoonfamily"
+file="imported/gaussian_splat/racoonfamily"
 
 [params]

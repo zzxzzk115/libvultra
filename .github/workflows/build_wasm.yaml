@@ -43,6 +43,13 @@ jobs:
       - name: Configure WASM Build
         run: xmake f -p wasm --policies=build.ccache:y --libvultra_build_examples=y --libvultra_build_tests=n -y
 
+      - name: Reset generated WASM assets
+        run: |
+          rm -rf resources/imported
+          rm -rf build/.generated/wasm_resources
+          rm -rf build/wasm/wasm32/release/example-demo-app
+          rm -rf build/wasm/wasm32/release/example-gaussian-splatting
+
       - name: Build WASM examples
         run: xmake repo -u && xmake build -y example-demo-app example-gaussian-splatting
 

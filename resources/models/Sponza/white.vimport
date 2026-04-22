@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="texture"
-uid="f7d57805ce3a274ae48e1e7200531a8f"
+uid="a013b55987ec4a353cc050decee13dba"
 
 [source]
 file="models/Sponza/white.png"
 
 [output]
-file="imported/texture/models/Sponza/white"
+file="imported/texture/white"
 
 [params]

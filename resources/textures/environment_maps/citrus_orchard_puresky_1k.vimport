@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="texture"
-uid="5da424a8890fcb784250c191cfbdbe79"
+uid="9a5cf6f3664c0e0b07179f44e84101cc"
 
 [source]
 file="textures/environment_maps/citrus_orchard_puresky_1k.hdr"
 
 [output]
-file="imported/texture/textures/environment_maps/citrus_orchard_puresky_1k"
+file="imported/texture/citrus_orchard_puresky_1k"
 
 [params]

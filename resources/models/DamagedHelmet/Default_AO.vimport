@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="texture"
-uid="5173f4f5b7f9eada4e6091421e935d1f"
+uid="615e8623de5f7b467e156014706dee8b"
 
 [source]
 file="models/DamagedHelmet/Default_AO.jpg"
 
 [output]
-file="imported/texture/models/DamagedHelmet/Default_AO"
+file="imported/texture/Default_AO"
 
 [params]

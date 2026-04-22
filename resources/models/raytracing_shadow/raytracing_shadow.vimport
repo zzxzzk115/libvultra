@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="mesh"
-uid="2ef2d568e73e1c54b3e1b0d1694f0f95"
+uid="2f4eac020826e9fdac054a764ea45dc2"
 
 [source]
 file="models/raytracing_shadow/raytracing_shadow.gltf"
 
 [output]
-file="imported/mesh/models/raytracing_shadow/raytracing_shadow"
+file="imported/mesh/raytracing_shadow"
 
 [params]

@@ -1,12 +1,12 @@
 [vimport]
 version=1
 importer="texture"
-uid="4f5dfad15357c2cb4c169ba68575b50c"
+uid="2ba348649c1d23d4b0502dd532ae1615"
 
 [source]
 file="models/Sponza/8006627369776289000.png"
 
 [output]
-file="imported/texture/models/Sponza/8006627369776289000"
+file="imported/texture/8006627369776289000"
 
 [params]
