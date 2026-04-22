@@ -34,25 +34,19 @@ if (-not (Test-Path -LiteralPath $vassetProjectDir)) {
     throw "vasset project not found: $vassetProjectDir"
 }
 
-Push-Location $vassetProjectDir
-try {
-    & xmake repo -u
-    if ($LASTEXITCODE -ne 0) {
-        throw "xmake repo -u failed"
-    }
-
-    & xmake f -p $platform -a $arch -m release --vasset_build_examples=n --vasset_build_tests=n -y
-    if ($LASTEXITCODE -ne 0) {
-        throw "xmake configure failed"
-    }
-
-    & xmake install -y -o $installRoot vasset-cli
-    if ($LASTEXITCODE -ne 0) {
-        throw "xmake install vasset-cli failed"
-    }
+& xmake f -P $vassetProjectDir -p $platform -a $arch -m release --vasset_build_examples=n --vasset_build_tests=n -y
+if ($LASTEXITCODE -ne 0) {
+    throw "xmake configure failed"
 }
-finally {
-    Pop-Location
+
+& xmake build -P $vassetProjectDir -y vasset-cli
+if ($LASTEXITCODE -ne 0) {
+    throw "xmake build vasset-cli failed"
+}
+
+& xmake install -P $vassetProjectDir -y -o $installRoot vasset-cli
+if ($LASTEXITCODE -ne 0) {
+    throw "xmake install vasset-cli failed"
 }
 
 Write-Host "Installed host vasset-cli to: $vassetCliPath"

@@ -31,9 +31,8 @@ if [ ! -d "$vasset_project_dir" ]; then
     exit 1
 fi
 
-(cd "$vasset_project_dir" && \
-    xmake repo -u && \
-    xmake f -p "$platform" -a "$arch" -m release --vasset_build_examples=n --vasset_build_tests=n -y && \
-    xmake install -y -o "$install_root" vasset-cli)
+xmake f -P "$vasset_project_dir" -p "$platform" -a "$arch" -m release --vasset_build_examples=n --vasset_build_tests=n -y
+xmake build -P "$vasset_project_dir" -y vasset-cli
+xmake install -P "$vasset_project_dir" -y -o "$install_root" vasset-cli
 
 echo "Installed host vasset-cli to: $install_root/bin/vasset-cli"
