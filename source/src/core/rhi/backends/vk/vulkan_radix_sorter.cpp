@@ -101,6 +101,7 @@ namespace vultra
             if (elementCount <= 1u)
                 return;
 
+            cb.insertComputeUavBarrier();
             vrdxCmdSort(asVkHandle<VkCommandBuffer>(cb.getHandle()),
                         m_Sorter,
                         elementCount,
@@ -110,6 +111,7 @@ namespace vultra
                         storageOffset,
                         VK_NULL_HANDLE,
                         0u);
+            cb.insertComputeUavBarrier();
         }
 
         void VulkanRadixSorter::sortKeyValues(CommandBuffer& cb,
@@ -124,6 +126,7 @@ namespace vultra
             if (elementCount <= 1u)
                 return;
 
+            cb.insertComputeUavBarrier();
             vrdxCmdSortKeyValue(asVkHandle<VkCommandBuffer>(cb.getHandle()),
                                 m_Sorter,
                                 elementCount,
@@ -135,6 +138,7 @@ namespace vultra
                                 storageOffset,
                                 VK_NULL_HANDLE,
                                 0u);
+            cb.insertComputeUavBarrier();
         }
 
         void VulkanRadixSorter::sortKeyValuesIndirect(CommandBuffer& cb,
@@ -151,6 +155,7 @@ namespace vultra
             if (maxElementCount <= 1u)
                 return;
 
+            cb.insertComputeUavBarrier();
             vrdxCmdSortKeyValueIndirect(asVkHandle<VkCommandBuffer>(cb.getHandle()),
                                         m_Sorter,
                                         maxElementCount,
@@ -164,6 +169,7 @@ namespace vultra
                                         storageOffset,
                                         VK_NULL_HANDLE,
                                         0u);
+            cb.insertComputeUavBarrier();
         }
     } // namespace rhi
 } // namespace vultra

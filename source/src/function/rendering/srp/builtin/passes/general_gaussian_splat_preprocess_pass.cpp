@@ -310,6 +310,15 @@ namespace vultra
                     const uint32_t zeroArgs[4] = {0u, 1u, 1u, 0u};
                     rc.cb.update(*dispatchArgsBuf, 0u, sizeof(zeroArgs), zeroArgs);
                 }
+                rc.cb.getBarrierBuilder().memoryBarrier(
+                    {
+                        .srcStage  = rhi::PipelineStages::eTransfer,
+                        .srcAccess = rhi::Access::eTransferWrite,
+                    },
+                    {
+                        .dstStage  = rhi::PipelineStages::eComputeShader,
+                        .dstAccess = rhi::Access::eShaderRead | rhi::Access::eShaderWrite,
+                    });
 
                 const auto* preprocessPipeline = getPipeline(useMultiview);
                 if (!preprocessPipeline)
@@ -332,6 +341,7 @@ namespace vultra
                 }
                 rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
                 rc.cb.dispatch({(pointCount + 255u) / 256u, 1u, 1u});
+                rc.cb.insertComputeUavBarrier();
 
                 auto* sortKeyBuf     = resources.get<framegraph::FrameGraphBuffer>(data.sortKeyBuffer).buffer;
                 auto* sortIndexBuf   = resources.get<framegraph::FrameGraphBuffer>(data.sortIndexBuffer).buffer;
@@ -351,6 +361,7 @@ namespace vultra
                                                                                     0u,
                                                                                     *sortStorageBuf,
                                                                                     0u);
+                    rc.cb.insertComputeUavBarrier();
                 }
 
                 auto writeIndirectVariantHash = computeShaderVariantHash(

@@ -127,6 +127,9 @@ namespace vultra
 
         for (var b = 0u; b < 4u; b = b + 1u) {
             let bitmask = select(0u, 1u, extract_bits == b);
+            if (tid == 0u) {
+                s_PrefixScan[in_offset] = 0u;
+            }
             s_PrefixScan[in_offset + 1u] = bitmask;
             workgroupBarrier();
 
