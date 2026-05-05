@@ -23,8 +23,8 @@ if not is_plat("android") then
             set_values("vpk.enable_pack", true)
             set_values("vpk.include_paths",
                        {
-                           "scenes",
-                           "scripts",
+                           "scenes/test.vmanifest",
+                           "scripts/test_move.lua",
                            "models/DamagedHelmet",
                            "models/Sponza",
                        })

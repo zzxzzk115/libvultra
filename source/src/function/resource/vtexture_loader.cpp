@@ -432,6 +432,9 @@ namespace vultra::resource
             case eHDR:
             case eBMP:
             case eTGA:
+            case eGIF:
+            case ePSD:
+            case ePIC:
                 return loadSTB(v.data, rd);
 
             case eKTX:

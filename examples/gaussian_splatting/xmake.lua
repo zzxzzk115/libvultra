@@ -22,8 +22,8 @@ target("example-gaussian-splatting")
         set_values("vpk.enable_pack", true)
         set_values("vpk.include_paths",
                    {
-                       "scenes",
-                       "models/3dgs",
+                       "scenes/3dgs_example.vmanifest",
+                       "models/3dgs/hornedlizard.spz",
                    })
         set_values("wasm.vpk_path", output_vpk)
         set_values("wasm.vpk_mount", "/resources.vpk")
