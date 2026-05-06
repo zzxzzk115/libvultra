@@ -1,4 +1,4 @@
-= Android Template Skeleton for libvultra
+= Android Template Skeleton for VultraEngine
 
 This directory is the copyable Android template counterpart to `examples/android_app`.
 

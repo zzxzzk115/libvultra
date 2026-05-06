@@ -30,7 +30,7 @@ if not is_plat("android") then
                        })
             set_values("wasm.vpk_path", output_vpk)
             set_values("wasm.vpk_mount", "/resources.vpk")
-            set_values("wasm.shell_file", path.join(project_dir, "web", "emscripten_libvultra.html"))
+            set_values("wasm.shell_file", path.join(project_dir, "web", "emscripten_vultra.html"))
             set_values("wasm.imgui_ini", path.join(os.scriptdir(), "imgui.ini"))
             set_values("wasm.imgui_ini_mount", "/imgui.ini")
             -- Optional overrides:

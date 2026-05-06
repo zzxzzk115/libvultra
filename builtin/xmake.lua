@@ -9,7 +9,7 @@
 --         local shader_root = path.join(projectdir, "builtin/shaders")
 --         local spv_root = path.join(projectdir, "builtin/shader_spvs")
 -- 		local shader_header_root = path.join(projectdir, "builtin/generated/include/shader_headers")
---         local shader_config_root = path.join(projectdir, "source/include/vultra/function/renderer/shader_config")
+--         local shader_config_root = path.join(projectdir, "source/vultra/include/vultra/function/renderer/shader_config")
 --         os.mkdir(spv_root)
 
 --         -- valid shader stages to compile

@@ -39,7 +39,7 @@ jobs:
           ls -la "${ANDROID_SDK_ROOT}/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin"
 
       - name: Configure Android Build
-        run: xmake f -p android --ndk="${ANDROID_SDK_ROOT}/ndk/30.0.14904198" --policies=build.ccache:y --libvultra_build_examples=n --libvultra_build_tests=n -y
+        run: xmake f -p android --ndk="${ANDROID_SDK_ROOT}/ndk/30.0.14904198" --policies=build.ccache:y --vultra_build_examples=n --vultra_build_tests=n -y
 
       - name: Show Targets
         run: xmake show -l targets

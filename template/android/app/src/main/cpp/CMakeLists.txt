@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22.1)
 # Enable C++ module dependency scanning
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
-project(libvultra_android)
+project(vultra_android)
 
 # Set the path to the main CMakeLists.txt relative to this file
 set(MAIN_CMAKE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../CMakeLists.txt")
@@ -121,7 +121,7 @@ configure_file(
 
 # Compile shaders
 set(SHADER_SOURCES "${SHADER_OUTPUT_DIR}/27_shader_depth.frag" "${SHADER_OUTPUT_DIR}/27_shader_depth.vert")
-add_shaders_target(libvultra_android_shaders CHAPTER_NAME "${SHADER_OUTPUT_DIR}" SOURCES ${SHADER_SOURCES})
+add_shaders_target(vultra_android_shaders CHAPTER_NAME "${SHADER_OUTPUT_DIR}" SOURCES ${SHADER_SOURCES})
 
 # Set default chapter if not provided
 if(NOT DEFINED CHAPTER)
@@ -144,16 +144,16 @@ endif()
 message(STATUS "Building chapter: ${CHAPTER}")
 
 # Add the main native library
-add_library(libvultra_android SHARED
+add_library(vultra_android SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../attachments/${CHAPTER}.cpp
     game_activity_bridge.cpp
 )
 
 # Add dependency on shader compilation
-add_dependencies(libvultra_android libvultra_android_shaders)
+add_dependencies(vultra_android vultra_android_shaders)
 
 # Set include directories
-target_include_directories(libvultra_android PRIVATE
+target_include_directories(vultra_android PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${Vulkan_INCLUDE_DIR}
     ${ANDROID_NDK}/sources/android/game-activity/include
@@ -161,7 +161,7 @@ target_include_directories(libvultra_android PRIVATE
 )
 
 # Link against libraries
-target_link_libraries(libvultra_android
+target_link_libraries(vultra_android
     VulkanCppModule
     game-activity::game-activity
     android
@@ -172,17 +172,17 @@ target_link_libraries(libvultra_android
 
 # Add chapter-specific libraries and definitions
 if(CHAPTER STREQUAL "34_android")
-    target_link_libraries(libvultra_android
+    target_link_libraries(vultra_android
         tinyobjloader::tinyobjloader
     )
 elseif(CHAPTER STREQUAL "35_gltf_ktx" OR CHAPTER STREQUAL "36_multiple_objects")
-    target_link_libraries(libvultra_android
+    target_link_libraries(vultra_android
         tinygltf::tinygltf
         KTX::ktx
     )
 
     # Add necessary definitions for tinygltf and KTX
-    target_compile_definitions(libvultra_android PRIVATE
+    target_compile_definitions(vultra_android PRIVATE
         TINYGLTF_IMPLEMENTATION
         TINYGLTF_NO_EXTERNAL_IMAGE
         TINYGLTF_NO_STB_IMAGE

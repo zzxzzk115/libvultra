@@ -45,7 +45,7 @@ jobs:
         run: sh scripts/bootstrap_vasset_cli.sh "$GITHUB_WORKSPACE"
 
       - name: Configure WASM Build
-        run: xmake f -p wasm --policies=build.ccache:y --libvultra_build_examples=y --libvultra_build_tests=n -y
+        run: xmake f -p wasm --policies=build.ccache:y --vultra_build_examples=y --vultra_build_tests=n -y
 
       - name: Reset generated WASM assets
         run: |
@@ -72,7 +72,7 @@ jobs:
             rsync -av --delete "${source_dir}/" "site/${slug}/"
             if [ -f "site/${slug}/${html_name}" ]; then
               mv "site/${slug}/${html_name}" "site/${slug}/index.html"
-              PAGE_TITLE="${page_title}" perl -0pi -e 'my $title = $ENV{PAGE_TITLE}; s{<title>libvultra</title>}{<title>${title} | libvultra</title>}g' "site/${slug}/index.html"
+              PAGE_TITLE="${page_title}" perl -0pi -e 'my $title = $ENV{PAGE_TITLE}; s{<title>VultraEngine</title>}{<title>${title} | VultraEngine</title>}g' "site/${slug}/index.html"
             fi
           }
 

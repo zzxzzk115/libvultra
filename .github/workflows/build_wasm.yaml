@@ -41,7 +41,7 @@ jobs:
           xmake --version
 
       - name: Configure WASM Build
-        run: xmake f -p wasm --policies=build.ccache:y --libvultra_build_examples=y --libvultra_build_tests=n -y
+        run: xmake f -p wasm --policies=build.ccache:y --vultra_build_examples=y --vultra_build_tests=n -y
 
       - name: Reset generated WASM assets
         run: |

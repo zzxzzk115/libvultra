@@ -11,10 +11,10 @@ def resolveOpenXRLoaderForAbi = { abi ->
 }
 
 android {
-    namespace "org.libvultra.android"
+    namespace "org.vultraengine.android"
     compileSdk 36
     defaultConfig {
-        applicationId "org.libvultra.android"
+        applicationId "org.vultraengine.android"
         minSdk 24
         targetSdk 36
         versionCode 1

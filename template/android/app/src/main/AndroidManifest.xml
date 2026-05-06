@@ -14,7 +14,7 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity
-            android:name=".LibvultraActivity"
+            android:name=".VultraActivity"
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:theme="@style/AppTheme"
             android:exported="true">
@@ -24,7 +24,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.app.lib_name"
-                android:value="libvultra_android" />
+                android:value="vultra_android" />
         </activity>
     </application>
 

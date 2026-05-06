@@ -4,9 +4,9 @@
 #include <cstring>
 
 // Define logging macros
-#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "libvultra", __VA_ARGS__))
-#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "libvultra", __VA_ARGS__))
-#define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "libvultra", __VA_ARGS__))
+#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "VultraEngine", __VA_ARGS__))
+#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "VultraEngine", __VA_ARGS__))
+#define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "VultraEngine", __VA_ARGS__))
 
 // Forward declaration of the main entry point
 extern "C" void android_main(android_app* app);

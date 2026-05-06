@@ -1,36 +1,36 @@
-# libvultra
+# VultraEngine
 
 <h4 align="center">
-  libvultra is the core runtime library of <a href="https://github.com/zzxzzk115/Vultra" target="_blank" rel="noopener noreferrer">Vultra</a>, focused on rapid graphics and game prototyping without requiring VultraEditor.
+  VultraEngine is the core runtime library of <a href="https://github.com/zzxzzk115/Vultra" target="_blank" rel="noopener noreferrer">Vultra</a>, focused on rapid graphics and game prototyping without requiring VultraEditor.
 </h4>
 
 <p align="center">
-  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_windows.yaml">
-    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_windows.yaml?branch=master&label=Build-Windows&logo=github" alt="Build-Windows" />
+  <a href="https://github.com/zzxzzk115/VultraEngine/actions/workflows/build_windows.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/VultraEngine/build_windows.yaml?branch=master&label=Build-Windows&logo=github" alt="Build-Windows" />
   </a>
-  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_linux.yaml">
-    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_linux.yaml?branch=master&label=Build-Linux&logo=github" alt="Build-Linux" />
+  <a href="https://github.com/zzxzzk115/VultraEngine/actions/workflows/build_linux.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/VultraEngine/build_linux.yaml?branch=master&label=Build-Linux&logo=github" alt="Build-Linux" />
   </a>
-  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_macos.yaml">
-    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_macos.yaml?branch=master&label=Build-macOS&logo=github" alt="Build-macOS" />
+  <a href="https://github.com/zzxzzk115/VultraEngine/actions/workflows/build_macos.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/VultraEngine/build_macos.yaml?branch=master&label=Build-macOS&logo=github" alt="Build-macOS" />
   </a>
-  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_android.yaml">
-    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_android.yaml?branch=master&label=Build-Android&logo=github" alt="Build-Android" />
+  <a href="https://github.com/zzxzzk115/VultraEngine/actions/workflows/build_android.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/VultraEngine/build_android.yaml?branch=master&label=Build-Android&logo=github" alt="Build-Android" />
   </a>
-  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/build_wasm.yaml">
-    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/build_wasm.yaml?branch=master&label=Build-WASM&logo=github" alt="Build-WASM" />
+  <a href="https://github.com/zzxzzk115/VultraEngine/actions/workflows/build_wasm.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/VultraEngine/build_wasm.yaml?branch=master&label=Build-WASM&logo=github" alt="Build-WASM" />
   </a>
-  <a href="https://github.com/zzxzzk115/libvultra/actions/workflows/deploy_pages.yaml">
-    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/libvultra/deploy_pages.yaml?branch=master&label=Deploy-Pages&logo=github" alt="Deploy-Pages" />
+  <a href="https://github.com/zzxzzk115/VultraEngine/actions/workflows/deploy_pages.yaml">
+    <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/VultraEngine/deploy_pages.yaml?branch=master&label=Deploy-Pages&logo=github" alt="Deploy-Pages" />
   </a>
-  <a href="https://www.codefactor.io/repository/github/zzxzzk115/libvultra">
-    <img src="https://www.codefactor.io/repository/github/zzxzzk115/libvultra/badge" alt="CodeFactor" />
+  <a href="https://www.codefactor.io/repository/github/zzxzzk115/VultraEngine">
+    <img src="https://www.codefactor.io/repository/github/zzxzzk115/VultraEngine/badge" alt="CodeFactor" />
   </a>
-  <a href="https://github.com/zzxzzk115/libvultra/issues">
-    <img src="https://img.shields.io/github/issues/zzxzzk115/libvultra" alt="Issues" />
+  <a href="https://github.com/zzxzzk115/VultraEngine/issues">
+    <img src="https://img.shields.io/github/issues/zzxzzk115/VultraEngine" alt="Issues" />
   </a>
-  <a href="https://github.com/zzxzzk115/libvultra/blob/master/LICENSE">
-    <img src="https://img.shields.io/github/license/zzxzzk115/libvultra" alt="License" />
+  <a href="https://github.com/zzxzzk115/VultraEngine/blob/master/LICENSE">
+    <img src="https://img.shields.io/github/license/zzxzzk115/VultraEngine" alt="License" />
   </a>
 </p>
 
@@ -70,8 +70,8 @@
 
 ### Desktop (default)
 ```bash
-git clone --recursive https://github.com/zzxzzk115/libvultra.git
-cd libvultra
+git clone --recursive https://github.com/zzxzzk115/VultraEngine.git
+cd VultraEngine
 git submodule update --init --recursive
 xmake f -y
 xmake build -y
@@ -80,14 +80,14 @@ xmake build -y
 ### WASM (Emscripten)
 ```bash
 sh scripts/bootstrap_vasset_cli.sh
-xmake f -p wasm --libvultra_build_examples=y --libvultra_build_tests=n -y
+xmake f -p wasm --vultra_build_examples=y --vultra_build_tests=n -y
 xmake build -y example-demo-app
 ```
 
 On Windows PowerShell:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_vasset_cli.ps1
-xmake f -p wasm --libvultra_build_examples=y --libvultra_build_tests=n -y
+xmake f -p wasm --vultra_build_examples=y --vultra_build_tests=n -y
 xmake build -y example-demo-app
 ```
 
@@ -99,7 +99,7 @@ Output is generated under:
 
 ### Android
 ```bash
-xmake f -p android --ndk=/path/to/Android/Sdk/ndk/30.0.14904198 --libvultra_build_examples=n --libvultra_build_tests=n -y
+xmake f -p android --ndk=/path/to/Android/Sdk/ndk/30.0.14904198 --vultra_build_examples=n --vultra_build_tests=n -y
 xmake build -y
 ```
 
@@ -113,7 +113,7 @@ xmake run example-gaussian-splatting
 
 ## Starter Template
 Create your own project with:
-- [libvultra-starter-template](https://github.com/zzxzzk115/libvultra-starter-template)
+- [VultraEngine-starter-template](https://github.com/zzxzzk115/VultraEngine-starter-template)
 
 For Android host integration reference:
 - [`template/android`](./template/android/)

@@ -87,7 +87,7 @@ end
 
 -- add requirements
 add_requires("fmt", { system = false })
-add_requires("spdlog", "magic_enum", "entt", "cereal", "sol2")
+add_requires("spdlog", "magic_enum", "entt", "cereal", "sol2", "argparse")
 add_requires("vulkan-headers 1.4.335+0")
 if not is_plat("wasm") then
     add_requires("vulkan-memory-allocator-hpp")
@@ -120,7 +120,7 @@ target("vultra")
     end
 
     -- add include dir
-    add_includedirs("include", {public = true}) -- public: let other targets to auto include
+    add_includedirs("vultra/include", {public = true}) -- public: let other targets to auto include
     if is_plat("android") then
         local game_activity_root = path.join(os.projectdir(), "external", "android", "game-activity_static")
         add_includedirs(path.join(game_activity_root, "include"), {public = true})
@@ -135,25 +135,25 @@ target("vultra")
     end
 
     -- add header files
-    add_headerfiles("include/(vultra/**.hpp)")
+    add_headerfiles("vultra/include/(vultra/**.hpp)")
 
     -- add source files
-    add_files("src/**.cpp")
+    add_files("vultra/src/**.cpp")
     if is_plat("android") then
-        remove_files("src/platform/sdl/**.cpp")
-        remove_files("src/platform/glfw/**.cpp")
+        remove_files("vultra/src/platform/sdl/**.cpp")
+        remove_files("vultra/src/platform/glfw/**.cpp")
     elseif is_plat("wasm") then
-        remove_files("src/platform/sdl/**.cpp")
-        remove_files("src/platform/android/**.cpp")
+        remove_files("vultra/src/platform/sdl/**.cpp")
+        remove_files("vultra/src/platform/android/**.cpp")
     else
-        remove_files("src/platform/android/**.cpp")
+        remove_files("vultra/src/platform/android/**.cpp")
     end
     if is_plat("wasm") then
-        remove_files("src/function/openxr/**.cpp")
-        remove_files("src/core/rhi/backends/vk/**.cpp")
-        remove_files("src/core/profiling/tracky.cpp")
-        remove_files("src/core/profiling/renderdoc_api.cpp")
-        remove_files("src/function/debugging/frame_debugger_system.cpp")
+        remove_files("vultra/src/function/openxr/**.cpp")
+        remove_files("vultra/src/core/rhi/backends/vk/**.cpp")
+        remove_files("vultra/src/core/profiling/tracky.cpp")
+        remove_files("vultra/src/core/profiling/renderdoc_api.cpp")
+        remove_files("vultra/src/function/debugging/frame_debugger_system.cpp")
     end
 
     -- add deps
@@ -263,3 +263,17 @@ target("vultra")
 
     -- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra")
+
+if not is_plat("android") then
+    target("vultra-app")
+        set_kind("binary")
+        set_basename("vultra")
+        add_includedirs("vultra_app/include")
+        add_headerfiles("vultra_app/include/(**.hpp)")
+        add_files("vultra_app/src/**.cpp")
+        add_deps("vultra")
+        add_files("../examples/demo_app/imgui.ini")
+        add_packages("argparse")
+        set_rundir("$(projectdir)")
+        set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra-app")
+end

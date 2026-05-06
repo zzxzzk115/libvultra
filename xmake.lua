@@ -1,5 +1,5 @@
 -- set project name
-set_project("libvultra")
+set_project("VultraEngine")
 
 -- set project version
 set_version("0.1.0")
@@ -26,16 +26,16 @@ set_config("root", is_root)
 set_config("project_dir", os.scriptdir())
 
 -- global options
-option("libvultra_build_examples") -- build examples?
+option("vultra_build_examples") -- build examples?
     set_default(not is_plat("android") and not is_plat("wasm"))
     set_showmenu(true)
-    set_description("Enable libvultra examples")
+    set_description("Enable VultraEngine examples")
 option_end()
 
-option("libvultra_build_tests") -- build tests?
+option("vultra_build_tests") -- build tests?
     set_default(not is_plat("android") and not is_plat("wasm"))
     set_showmenu(true)
-    set_description("Enable libvultra tests")
+    set_description("Enable VultraEngine tests")
 option_end()
 
 if is_plat("linux") then
@@ -172,12 +172,12 @@ includes("builtin")
 includes("source")
 
 -- include tests
-if has_config("libvultra_build_tests") then
+if has_config("vultra_build_tests") then
     includes("tests")
 end
 
 -- if build examples, then include examples
-if has_config("libvultra_build_examples") then
+if has_config("vultra_build_examples") then
     includes("examples")
 end
 

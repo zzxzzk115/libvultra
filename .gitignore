@@ -50,3 +50,6 @@ tracky*.csv
 # Gradle wrapper launchers generated locally
 **/gradlew
 **/gradlew.bat
+
+# Vultra
+.vutra/
