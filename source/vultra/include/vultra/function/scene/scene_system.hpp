@@ -36,6 +36,9 @@ namespace vultra
         entt::entity
              instantiateScene(World& world, std::string_view uri, entt::entity parent, bool clearWorld) override;
         bool saveWorldAsSceneSync(std::string_view uri, World& world, entt::entity root) override;
+        SceneDocument captureWorldAsScene(World& world, entt::entity root) override;
+        entt::entity
+        instantiateSceneDocument(World& world, const SceneDocument& doc, entt::entity parent, bool clearWorld) override;
 
     private:
         SceneComponentRegistry m_ComponentRegistry;

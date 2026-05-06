@@ -26,7 +26,7 @@ namespace vultra
         virtual void      end() override;
         virtual void      postRender() override;
         virtual void      processEvent(const os::GeneralWindowEvent& event) override;
-        virtual TextureID addTexture(const rhi::Texture& texture) override;
+        virtual TextureID addTexture(const rhi::Texture& texture, rhi::Sampler sampler = {}) override;
         virtual void      removeTexture(TextureID& textureID) override;
 
     private:

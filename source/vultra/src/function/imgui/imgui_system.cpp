@@ -1,6 +1,9 @@
 #include "vultra/function/imgui/imgui_system.hpp"
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/services/window_service.hpp"
+#include "vultra/core/rhi/structs/sampler_info.hpp"
+#include "vultra/core/rhi/texture.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #if defined(__ANDROID__)
 #include "vultra/platform/android/android_native_window.hpp"
@@ -26,6 +29,24 @@
 
 namespace
 {
+    vultra::rhi::Sampler resolveImGuiSampler(vultra::rhi::RenderDevice& rd,
+                                             const vultra::rhi::Texture& texture,
+                                             vultra::rhi::Sampler        sampler)
+    {
+        if (sampler)
+            return sampler;
+
+        sampler = texture.getSampler();
+        if (sampler)
+            return sampler;
+
+        return rd.getSampler(vultra::rhi::SamplerInfo {
+            .addressModeS = vultra::rhi::SamplerAddressMode::eClampToEdge,
+            .addressModeT = vultra::rhi::SamplerAddressMode::eClampToEdge,
+            .addressModeR = vultra::rhi::SamplerAddressMode::eClampToEdge,
+        });
+    }
+
     template<typename T>
     T toImGuiTextureId(std::uintptr_t textureId)
     {
@@ -235,10 +256,12 @@ namespace vultra
 
     void ImGuiSystem::postRender() { ctx().services.require<IRenderBackendService>().imguiBackend().postRender(); }
 
-    IImGuiService::TextureID ImGuiSystem::addTexture(const rhi::Texture& texture)
+    IImGuiService::TextureID ImGuiSystem::addTexture(const rhi::Texture& texture, rhi::Sampler sampler)
     {
         auto& renderBackendService = ctx().services.require<IRenderBackendService>();
-        return toImGuiTextureId<IImGuiService::TextureID>(renderBackendService.imguiBackend().addTexture(texture));
+        auto& rd                   = renderBackendService.renderDevice();
+        return toImGuiTextureId<IImGuiService::TextureID>(
+            renderBackendService.imguiBackend().addTexture(texture, resolveImGuiSampler(rd, texture, sampler)));
     }
 
     void ImGuiSystem::removeTexture(TextureID& textureID)

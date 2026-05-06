@@ -50,7 +50,17 @@ namespace vultra
 
     void ScriptSystem::onUpdate(fsec dt)
     {
+        if (!m_PlaybackPlaying)
+        {
+            if (!m_Instances.empty())
+                destroyAllInstances();
+            return;
+        }
+
         syncInstances();
+
+        if (m_PlaybackPaused)
+            return;
 
         auto* worldSvc = ctx().services.tryGet<IWorldService>();
         if (!worldSvc)
@@ -80,6 +90,9 @@ namespace vultra
 
     void ScriptSystem::onPhysics(fsec /*dt*/)
     {
+        if (!m_PlaybackPlaying || m_PlaybackPaused)
+            return;
+
         auto* timingSvc = ctx().services.tryGet<ITimingService>();
         auto* worldSvc  = ctx().services.tryGet<IWorldService>();
         if (!timingSvc || !worldSvc)
@@ -282,6 +295,21 @@ namespace vultra
         }
 
         m_Instances.erase(it);
+    }
+
+    void ScriptSystem::setPlaybackState(bool playing, bool paused)
+    {
+        if (!playing)
+            paused = false;
+
+        if (m_PlaybackPlaying == playing && m_PlaybackPaused == paused)
+            return;
+
+        m_PlaybackPlaying = playing;
+        m_PlaybackPaused  = paused;
+
+        if (!m_PlaybackPlaying)
+            destroyAllInstances();
     }
 
     void ScriptSystem::destroyAllInstances()

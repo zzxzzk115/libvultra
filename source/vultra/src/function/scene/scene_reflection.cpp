@@ -1,6 +1,8 @@
 #include "vultra/function/scene/scene_reflection.hpp"
 
 #include "vultra/core/base/uuid.hpp"
+#include "vultra/function/world/components/camera_component.hpp"
+#include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
@@ -20,11 +22,19 @@ namespace vultra
         entt::meta_factory<CoreUUID>().type("CoreUUID"_hs);
 
         entt::meta_factory<glm::vec3>().type("glm::vec3"_hs);
+        entt::meta_factory<glm::vec4>().type("glm::vec4"_hs);
         entt::meta_factory<glm::quat>().type("glm::quat"_hs);
 
         entt::meta_factory<IDComponent>().type("IDComponent"_hs).data<&IDComponent::uuid>("uuid"_hs);
 
         entt::meta_factory<NameComponent>().type("NameComponent"_hs).data<&NameComponent::name>("name"_hs);
+
+        entt::meta_factory<EntityStatusComponent>()
+            .type("EntityStatusComponent"_hs)
+            .data<&EntityStatusComponent::active>("active"_hs)
+            .data<&EntityStatusComponent::visible>("visible"_hs)
+            .data<&EntityStatusComponent::locked>("locked"_hs)
+            .data<&EntityStatusComponent::selectable>("selectable"_hs);
 
         entt::meta_factory<TransformComponent>()
             .type("TransformComponent"_hs)
@@ -36,6 +46,18 @@ namespace vultra
         entt::meta_factory<GaussianSplatComponent>()
             .type("GaussianSplatComponent"_hs)
             .data<&GaussianSplatComponent::gaussianSplat>("gaussianSplat"_hs);
+
+        entt::meta_factory<CameraComponent>()
+            .type("CameraComponent"_hs)
+            .data<&CameraComponent::primary>("primary"_hs)
+            .data<&CameraComponent::projection>("projection"_hs)
+            .data<&CameraComponent::fovYDegrees>("fovYDegrees"_hs)
+            .data<&CameraComponent::orthographicHeight>("orthographicHeight"_hs)
+            .data<&CameraComponent::zNear>("zNear"_hs)
+            .data<&CameraComponent::zFar>("zFar"_hs)
+            .data<&CameraComponent::clearColor>("clearColor"_hs)
+            .data<&CameraComponent::priority>("priority"_hs)
+            .data<&CameraComponent::rendererKey>("rendererKey"_hs);
 
         entt::meta_factory<ScriptComponent>()
             .type("ScriptComponent"_hs)

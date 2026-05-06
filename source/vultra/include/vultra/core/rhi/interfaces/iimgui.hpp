@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/os/window.hpp"
+#include "vultra/core/rhi/sampler.hpp"
 
 #include <cstdint>
 #include <string>
@@ -36,7 +37,7 @@ namespace vultra
             virtual void postRender()                                   = 0;
             virtual void processEvent(const os::GeneralWindowEvent& event) = 0;
 
-            virtual std::uintptr_t addTexture(const Texture& texture) = 0;
+            virtual std::uintptr_t addTexture(const Texture& texture, Sampler sampler) = 0;
             virtual void           removeTexture(std::uintptr_t& textureId) = 0;
         };
     } // namespace rhi

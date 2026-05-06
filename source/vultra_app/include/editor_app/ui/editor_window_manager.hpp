@@ -22,10 +22,12 @@ namespace vultra_app
         }
 
         void draw(EditorContext& ctx);
+        void destroy(EditorContext& ctx);
 
         [[nodiscard]] const std::vector<std::unique_ptr<EditorWindow>>& windows() const { return m_Windows; }
 
     private:
         std::vector<std::unique_ptr<EditorWindow>> m_Windows;
+        std::vector<bool>                          m_WasOpen;
     };
 } // namespace vultra_app

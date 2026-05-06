@@ -60,6 +60,7 @@ namespace vultra
         // Render target (nullptr => backbuffer or XR-provided target)
         rhi::Texture* target {nullptr};
         glm::vec4     clearValue {0, 0, 0, 1};
+        bool          renderImGui {true};
 
         // SRP binding (string key, resolved to a Renderer instance by RenderSystem)
         // Example: "universal", "hd"

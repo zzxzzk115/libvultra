@@ -65,6 +65,7 @@ namespace vultra
         }
         if (m_CoreInitialized)
         {
+            onBeforeShutdown(m_Engine);
             m_Engine.shutdownCore();
         }
         m_Shutdown = true;

@@ -13,6 +13,8 @@ namespace vultra_app
         virtual ~EditorWindow() = default;
 
         virtual void draw(EditorContext& ctx) = 0;
+        virtual void onClosed(EditorContext& /*ctx*/) {}
+        virtual void onDestroy(EditorContext& /*ctx*/) {}
 
         [[nodiscard]] const std::string& name() const { return m_Name; }
         [[nodiscard]] bool&              open() { return m_Open; }

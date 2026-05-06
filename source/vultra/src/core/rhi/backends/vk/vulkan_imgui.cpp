@@ -262,10 +262,10 @@ namespace vultra::rhi
 #endif
     }
 
-    std::uintptr_t VulkanImGui::addTexture(const Texture& texture)
+    std::uintptr_t VulkanImGui::addTexture(const Texture& texture, const Sampler sampler)
     {
         auto* const descriptorSet = ImGui_ImplVulkan_AddTexture(
-            asVkHandle<VkSampler>(m_RenderDevice.getSamplerHandle(texture.getSampler()).value),
+            asVkHandle<VkSampler>(m_RenderDevice.getSamplerHandle(sampler).value),
             asVkHandle<VkImageView>(texture.getImageView().getHandle()),
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         return toBackendHandle(descriptorSet);

@@ -5,6 +5,13 @@
 #include "vultra/core/services/input_service.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
+#include "vultra/function/services/world_service.hpp"
+#include "vultra/function/world/components/camera_component.hpp"
+#include "vultra/function/world/components/entity_status_component.hpp"
+#include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/name_component.hpp"
+#include "vultra/function/world/components/transform_component.hpp"
+#include "vultra/function/world/world.hpp"
 
 #include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/hand_closed.png.bintex.h>
 #include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/look_b.png.bintex.h>
@@ -15,7 +22,9 @@
 
 #include <glm/common.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/trigonometric.hpp>
 
 #include <algorithm>
@@ -110,6 +119,27 @@ namespace vultra
 
             return glm::normalize(forward);
         }
+
+        glm::mat4 makeTransformMatrix(const TransformComponent& transform)
+        {
+            return glm::translate(glm::mat4 {1.0f}, transform.position) * glm::mat4_cast(transform.rotation) *
+                   glm::scale(glm::mat4 {1.0f}, transform.scale);
+        }
+
+        glm::mat4 makeProjectionMatrix(const CameraComponent& camera, const float aspect)
+        {
+            const float zNear = std::max(camera.zNear, 0.0001f);
+            const float zFar  = std::max(camera.zFar, zNear + 0.0001f);
+
+            if (camera.projection == 1u)
+            {
+                const float height = std::max(camera.orthographicHeight, 0.0001f);
+                const float width  = height * std::max(aspect, 0.0001f);
+                return glm::orthoRH_ZO(-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, zNear, zFar);
+            }
+
+            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
+        }
     } // namespace
 
     bool CameraSystem::onInit()
@@ -157,7 +187,63 @@ namespace vultra
                                         std::span<const IRenderBackendService::XREyeView> {};
 
         const std::size_t viewMultiplier = xrEyeViews.empty() ? 1u : xrEyeViews.size();
-        m_Cooked.reserve(m_Manual.size() * viewMultiplier);
+        std::size_t       ecsCameraCount = 0;
+        if (auto* worldService = ctx().services.tryGet<IWorldService>())
+            ecsCameraCount = worldService->world().registry().view<IDComponent, TransformComponent, CameraComponent>().size_hint();
+        m_Cooked.reserve((ecsCameraCount + m_Manual.size()) * viewMultiplier);
+
+        if (auto* worldService = ctx().services.tryGet<IWorldService>())
+        {
+            auto&      world = worldService->world();
+            auto&      reg   = world.registry();
+            const auto extent = backendService ? backendService->backbuffer().getExtent() : rhi::Extent2D {1u, 1u};
+            const float aspect =
+                static_cast<float>(std::max(extent.width, 1u)) / static_cast<float>(std::max(extent.height, 1u));
+
+            auto view = reg.view<IDComponent, TransformComponent, CameraComponent>();
+            for (auto e : view)
+            {
+                const auto& id     = view.get<IDComponent>(e);
+                const auto& tr     = view.get<TransformComponent>(e);
+                const auto& camera = view.get<CameraComponent>(e);
+                if (auto* status = reg.try_get<EntityStatusComponent>(e); status && !status->active)
+                    continue;
+
+                RenderCamera cam {};
+                cam.uuid        = id.uuid;
+                cam.name        = reg.all_of<NameComponent>(e) ? reg.get<NameComponent>(e).name : "Camera";
+                cam.priority    = camera.priority;
+                cam.view        = glm::inverse(makeTransformMatrix(tr));
+                cam.projection  = makeProjectionMatrix(camera, aspect);
+                cam.zNear       = std::max(camera.zNear, 0.0001f);
+                cam.zFar        = std::max(camera.zFar, cam.zNear + 0.0001f);
+                cam.fovY        = glm::radians(camera.fovYDegrees);
+                cam.clearValue  = camera.clearColor;
+                cam.renderImGui = false;
+                cam.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
+
+                if (!xrEyeViews.empty())
+                {
+                    for (const auto& eyeView : xrEyeViews)
+                    {
+                        RenderCamera eyeCam = cam;
+                        eyeCam.view            = eyeView.view;
+                        eyeCam.projection      = eyeView.projection;
+                        eyeCam.target          = eyeView.target;
+                        eyeCam.viewIndex       = eyeView.eyeIndex;
+                        eyeCam.viewCount       = static_cast<uint32_t>(xrEyeViews.size());
+                        eyeCam.isXRView        = true;
+                        eyeCam.isXRPrimaryView = eyeView.eyeIndex == 0u;
+                        finalizeCamera(eyeCam);
+                        m_Cooked.push_back(std::move(eyeCam));
+                    }
+                    continue;
+                }
+
+                finalizeCamera(cam);
+                m_Cooked.push_back(std::move(cam));
+            }
+        }
 
         for (const auto& srcCam : m_Manual)
         {

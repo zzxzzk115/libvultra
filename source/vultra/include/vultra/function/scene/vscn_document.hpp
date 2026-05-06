@@ -34,6 +34,7 @@ namespace vultra
     {
         uint32_t                   version {1};
         bool                       isManifest {false};
+        bool                       syntheticRoot {false};
         std::unordered_map<std::string, std::string> assets;
         std::unique_ptr<SceneNode> root;
     };

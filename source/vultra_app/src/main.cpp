@@ -6,11 +6,24 @@
 
 #include <vultra/core/app/demo_app_host.hpp>
 #include <vultra/core/base/common_context.hpp>
+#include <vultra/core/services/window_service.hpp>
+#include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/renderer.hpp>
+#include <vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp>
+#include <vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp>
+#include <vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp>
+#include <vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp>
+#include <vultra/function/rendering/srp/builtin/features/test_feature.hpp>
 #include <vultra/function/services/scene_service.hpp>
+#include <vultra/function/services/camera_service.hpp>
+#include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
+
 #include <filesystem>
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -27,10 +40,59 @@ namespace
         {
         }
 
-        std::string_view name() const override { return "vultra_shell"; }
+        std::string_view name() const override { return "universal"; }
+
+        void init() override
+        {
+            auto* services = getServices();
+            if (!services)
+                return;
+
+            const auto backendApi = services->require<vultra::IRenderBackendService>().renderDevice().getBackendApi();
+            if (backendApi == vultra::rhi::RenderBackendApi::eWebGPU)
+            {
+                emplaceFeature<vultra::CompatibilityBaseColorFeature>();
+                emplaceFeature<vultra::GeneralGaussianSplatFeature>();
+                emplaceFeature<vultra::FinalCompositionFeature>();
+                return;
+            }
+
+            emplaceFeature<vultra::MeshletFeature>();
+            emplaceFeature<vultra::TestFeature>();
+            emplaceFeature<vultra::GeneralGaussianSplatFeature>();
+            emplaceFeature<vultra::FinalCompositionFeature>();
+        }
 
         void onImGui() override
         {
+            if (auto* services = getServices())
+            {
+                auto* cameraService = services->tryGet<vultra::ICameraService>();
+                auto* windowService = services->tryGet<IWindowService>();
+                if (cameraService && windowService)
+                {
+                    cameraService->clearManualCameras();
+
+                    const auto extent = windowService->window().getExtent();
+                    const float width  = static_cast<float>(std::max(extent.x, 1));
+                    const float height = static_cast<float>(std::max(extent.y, 1));
+                    vultra::RenderCamera shellCamera {};
+                    shellCamera.name        = "Vultra Editor UI";
+                    shellCamera.priority    = 1000;
+                    shellCamera.view        = glm::lookAt(glm::vec3 {0.0f, 0.0f, 1.0f},
+                                                   glm::vec3 {0.0f, 0.0f, 0.0f},
+                                                   glm::vec3 {0.0f, 1.0f, 0.0f});
+                    shellCamera.projection  = glm::perspectiveRH_ZO(glm::radians(60.0f), width / height, 0.1f, 1000.0f);
+                    shellCamera.zNear       = 0.1f;
+                    shellCamera.zFar        = 1000.0f;
+                    shellCamera.fovY        = glm::radians(60.0f);
+                    shellCamera.clearValue  = {0.018f, 0.02f, 0.026f, 1.0f};
+                    shellCamera.renderImGui = true;
+                    shellCamera.rendererKey = "universal";
+                    cameraService->addManualCamera(shellCamera);
+                }
+            }
+
             if (m_State.mode == vultra_app::AppMode::Editor)
             {
                 vultra_app::EditorContext ctx {.state = m_State, .services = getServices()};
@@ -89,6 +151,17 @@ namespace
 
         bool demoEnableExperimentalWebGPUContent() const override { return true; }
 
+        vultra::FPSCameraController makeFPSCameraController() const override
+        {
+            auto controller = vultra::DemoAppHost::makeFPSCameraController();
+            if (m_State.mode != vultra_app::AppMode::Runtime)
+            {
+                controller.enabled      = false;
+                controller.captureMouse = false;
+            }
+            return controller;
+        }
+
         vultra::Ref<vultra::Renderer> makeRenderer() const override
         {
             if (m_State.mode == vultra_app::AppMode::Runtime)
@@ -138,6 +211,12 @@ namespace
             sceneService.instantiateScene(worldService.world(), m_Options.sceneUri);
 
             VULTRA_CLIENT_INFO("[Vultra] Loaded scene '{}' from VPK '{}'", m_Options.sceneUri, m_VpkPath->generic_string());
+        }
+
+        void onBeforeShutdown(vultra::Engine& engine) override
+        {
+            vultra_app::EditorContext ctx {.state = m_State, .services = &engine.ctx().services};
+            m_Editor.shutdown(ctx);
         }
 
         vultra_app::LaunchOptions             m_Options;

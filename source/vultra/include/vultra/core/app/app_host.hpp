@@ -38,6 +38,7 @@ namespace vultra
         // Optional
         virtual void onBeforeEngineTick(fsec /*dt*/) {}
         virtual void onAfterEngineTick(fsec /*dt*/) {}
+        virtual void onBeforeShutdown(Engine& /*engine*/) {}
 
         EngineContext&       engineCtx() { return m_Engine.ctx(); }
         const EngineContext& engineCtx() const { return m_Engine.ctx(); }

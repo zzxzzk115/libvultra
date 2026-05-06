@@ -2,20 +2,26 @@
 
 #include "editor_app/ui/windows/asset_browser_window.hpp"
 #include "editor_app/ui/windows/console_window.hpp"
+#include "editor_app/ui/windows/game_view_window.hpp"
 #include "editor_app/ui/windows/inspector_window.hpp"
 #include "editor_app/ui/windows/scene_hierarchy_window.hpp"
 #include "editor_app/ui/windows/scene_view_window.hpp"
+#include "editor_app/selection.hpp"
 #include "vproject.hpp"
 
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
+#include <vultra/function/services/script_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 
+#include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <entt/entity/entity.hpp>
 #include <filesystem>
 
 namespace vultra_app
@@ -54,22 +60,89 @@ namespace vultra_app
         buildDefaultDockLayout();
         drawMainMenuBar(ctx);
         m_WindowManager.draw(ctx);
+        syncPlaybackState(ctx);
 
         if (m_ShowAboutPopup)
         {
-            ImGui::OpenPopup("About VultraEngine Editor");
+            ImGui::OpenPopup("About Vultra Editor");
             m_ShowAboutPopup = false;
         }
 
-        if (ImGui::BeginPopupModal("About VultraEngine Editor", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ImGui::BeginPopupModal("About Vultra Editor", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::TextUnformatted("VultraEngine Editor");
+            ImGui::TextUnformatted("Vultra Editor");
             ImGui::Separator();
-            ImGui::TextUnformatted("Integrated editor shell migrated from the Vultra-dev reference.");
+            ImGui::Text("Version: %s", "0.1.0");
+            ImGui::TextUnformatted("Contributors: Lazy_V (Kexuan Zhang)");
+            ImGui::TextUnformatted("License: MIT");
+            ImGui::TextLinkOpenURL(ICON_MDI_GITHUB " GitHub", "https://github.com/zzxzzk115/Vultra");
+            ImGui::Spacing();
             if (ImGui::Button("Close"))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
+    }
+
+    void EditorApp::syncPlaybackState(EditorContext& ctx)
+    {
+        if (!ctx.services)
+            return;
+
+        auto* scriptService = ctx.services->tryGet<vultra::IScriptService>();
+
+        if (ctx.state.editorPlaying && !m_PlaybackWasPlaying)
+            capturePlayModeSnapshot(ctx);
+
+        if (!ctx.state.editorPlaying && m_PlaybackWasPlaying)
+        {
+            if (scriptService)
+                scriptService->setPlaybackState(false, false);
+            restorePlayModeSnapshot(ctx);
+        }
+
+        if (scriptService)
+            scriptService->setPlaybackState(ctx.state.editorPlaying, ctx.state.editorPaused);
+
+        m_PlaybackWasPlaying = ctx.state.editorPlaying;
+    }
+
+    void EditorApp::capturePlayModeSnapshot(EditorContext& ctx)
+    {
+        if (!ctx.services)
+            return;
+
+        auto* sceneService = ctx.services->tryGet<vultra::ISceneService>();
+        auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
+        if (!sceneService || !worldService)
+            return;
+
+        auto snapshot = sceneService->captureWorldAsScene(worldService->world(), entt::null);
+        if (!snapshot.root)
+        {
+            ctx.state.statusMessage = "Play mode snapshot failed: scene has no serializable root.";
+            ctx.state.editorPlaying = false;
+            ctx.state.editorPaused  = false;
+            return;
+        }
+
+        m_PlayModeSnapshot     = std::move(snapshot);
+        ctx.state.statusMessage = "Entered Play Mode.";
+    }
+
+    void EditorApp::restorePlayModeSnapshot(EditorContext& ctx)
+    {
+        if (!ctx.services || !m_PlayModeSnapshot)
+            return;
+
+        auto* sceneService = ctx.services->tryGet<vultra::ISceneService>();
+        auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
+        if (!sceneService || !worldService)
+            return;
+
+        sceneService->instantiateSceneDocument(worldService->world(), *m_PlayModeSnapshot, entt::null, true);
+        m_PlayModeSnapshot.reset();
+        Selection::clear(SelectionCategory::Entity);
+        ctx.state.statusMessage = "Exited Play Mode. Scene state restored.";
     }
 
     void EditorApp::ensureInitialized()
@@ -79,6 +152,7 @@ namespace vultra_app
 
         m_WindowManager.addWindow<SceneHierarchyWindow>();
         m_WindowManager.addWindow<SceneViewWindow>();
+        m_WindowManager.addWindow<GameViewWindow>();
         m_WindowManager.addWindow<AssetBrowserWindow>();
         m_WindowManager.addWindow<ConsoleWindow>();
         m_WindowManager.addWindow<InspectorWindow>();
@@ -94,6 +168,8 @@ namespace vultra_app
         if (projectRoot.empty())
         {
             m_SyncedProject.clear();
+            m_PlayModeSnapshot.reset();
+            m_PlaybackWasPlaying = false;
             return;
         }
 
@@ -113,6 +189,8 @@ namespace vultra_app
         assetService->configure(desc);
 
         m_SyncedProject         = projectRoot;
+        m_PlayModeSnapshot.reset();
+        m_PlaybackWasPlaying    = false;
         ctx.state.statusMessage = "Loaded project assets: " + desc.assetRoot;
 
         auto* sceneService = ctx.services->tryGet<vultra::ISceneService>();
@@ -142,9 +220,14 @@ namespace vultra_app
                 ctx.state.selectedSourceAsset.clear();
                 ctx.state.currentAssetRoot    = "resources";
                 ctx.state.currentDefaultScene = "res://scenes/main.vscn";
+                ctx.state.editorPlaying       = false;
+                ctx.state.editorPaused        = false;
                 ctx.state.mode                = AppMode::Launcher;
                 ctx.state.statusMessage       = "Returned to Project Launcher.";
                 m_SyncedProject.clear();
+                m_PlayModeSnapshot.reset();
+                m_PlaybackWasPlaying = false;
+                shutdown(ctx);
             }
             ImGui::EndMenu();
         }
@@ -158,13 +241,29 @@ namespace vultra_app
 
         if (ImGui::BeginMenu("Help"))
         {
-            if (ImGui::MenuItem("About"))
+            if (ImGui::MenuItem("About Vultra Editor"))
                 m_ShowAboutPopup = true;
             ImGui::EndMenu();
         }
 
         ImGui::TextUnformatted("VultraEngine Editor");
         ImGui::EndMainMenuBar();
+    }
+
+    void EditorApp::shutdown(EditorContext& ctx)
+    {
+        if (ctx.services)
+        {
+            if (auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>())
+                backendService->renderDevice().waitIdle();
+        }
+
+        m_WindowManager.destroy(ctx);
+        m_Initialized        = false;
+        m_DefaultLayoutBuilt = false;
+        m_SyncedProject.clear();
+        m_PlayModeSnapshot.reset();
+        m_PlaybackWasPlaying = false;
     }
 
     void EditorApp::buildDefaultDockLayout()
@@ -190,6 +289,7 @@ namespace vultra_app
 
         ImGui::DockBuilderDockWindow("Scene Hierarchy", leftId);
         ImGui::DockBuilderDockWindow("Scene View", mainId);
+        ImGui::DockBuilderDockWindow("Game View", mainId);
         ImGui::DockBuilderDockWindow("Inspector", rightId);
         ImGui::DockBuilderDockWindow("Assets", bottomId);
         ImGui::DockBuilderDockWindow("Console", bottomId);

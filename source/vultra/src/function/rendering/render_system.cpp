@@ -18,6 +18,7 @@
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
 #include "vultra/function/services/world_service.hpp"
+#include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
@@ -83,6 +84,8 @@ namespace vultra
             const auto& id   = view.get<IDComponent>(e);
             const auto& tr   = view.get<TransformComponent>(e);
             const auto& mesh = view.get<MeshComponent>(e);
+            if (auto* status = reg.try_get<EntityStatusComponent>(e); status && (!status->active || !status->visible))
+                continue;
 
             auto h = assets.loadMeshSync(mesh.mesh);
             if (!h.ready())
@@ -102,6 +105,8 @@ namespace vultra
             const auto& id    = splatView.get<IDComponent>(e);
             const auto& tr    = splatView.get<TransformComponent>(e);
             const auto& splat = splatView.get<GaussianSplatComponent>(e);
+            if (auto* status = reg.try_get<EntityStatusComponent>(e); status && (!status->active || !status->visible))
+                continue;
 
             auto h = assets.loadGaussianSplatSync(splat.gaussianSplat);
             if (!h.ready())
@@ -798,7 +803,7 @@ namespace vultra
                 skipRemainingStereoViews = true;
 
             // Optional ImGui rendering per non-XR camera
-            if (imguiService && !cam.isXRView)
+            if (imguiService && !cam.isXRView && cam.renderImGui)
             {
                 imguiService->begin();
                 renderer->onImGui();

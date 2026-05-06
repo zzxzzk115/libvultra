@@ -20,6 +20,8 @@ namespace vultra_app::ui
                 return nullptr;
             case FileDialogMode::ProjectFile:
                 return ".vproject";
+            case FileDialogMode::LuaScript:
+                return ".lua";
             }
             return nullptr;
         }

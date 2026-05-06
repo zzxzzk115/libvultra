@@ -291,12 +291,13 @@ namespace vultra::rhi
 #endif
     }
 
-    std::uintptr_t WebGPUImGui::addTexture(const Texture& texture)
+    std::uintptr_t WebGPUImGui::addTexture(const Texture& texture, const Sampler sampler)
     {
         if (!m_Initialized)
             return 0;
 
 #if VULTRA_HAS_IMGUI_IMPL_WGPU
+        (void)sampler;
         return texture.getImageView().getHandle();
 #else
         if (!m_WarnedTexturePath)
@@ -305,6 +306,7 @@ namespace vultra::rhi
             m_WarnedTexturePath = true;
         }
         (void)texture;
+        (void)sampler;
         return 0;
 #endif
     }

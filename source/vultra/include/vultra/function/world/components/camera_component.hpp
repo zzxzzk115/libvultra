@@ -1,0 +1,27 @@
+#pragma once
+
+#include <glm/vec4.hpp>
+
+#include <cstdint>
+#include <string>
+
+namespace vultra
+{
+    struct CameraComponent
+    {
+        bool primary {false};
+
+        // 0 = perspective, 1 = orthographic. Kept numeric for simple v1 scene serialization.
+        uint32_t projection {0};
+
+        float fovYDegrees {60.0f};
+        float orthographicHeight {10.0f};
+        float zNear {0.1f};
+        float zFar {1000.0f};
+
+        glm::vec4 clearColor {0.02f, 0.025f, 0.035f, 1.0f};
+        int       priority {0};
+
+        std::string rendererKey {"universal"};
+    };
+} // namespace vultra

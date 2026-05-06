@@ -7,6 +7,8 @@
 #include "vultra/function/scene/vscn_reader.hpp"
 #include "vultra/function/scene/vscn_writer.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/world/components/camera_component.hpp"
+#include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
@@ -173,6 +175,13 @@ namespace vultra
                 return entt::meta_any {glm::vec3 {v[0], v[1], v[2]}};
         }
 
+        if (expected == entt::resolve<glm::vec4>())
+        {
+            std::vector<float> v;
+            if (parse_vec(t, v) && v.size() == 4)
+                return entt::meta_any {glm::vec4 {v[0], v[1], v[2], v[3]}};
+        }
+
         if (expected == entt::resolve<glm::quat>())
         {
             std::vector<float> v;
@@ -236,6 +245,14 @@ namespace vultra
             return oss.str();
         }
 
+        if (t == entt::resolve<glm::vec4>())
+        {
+            auto               vv = v.cast<glm::vec4>();
+            std::ostringstream oss;
+            oss << "(" << vv.x << ", " << vv.y << ", " << vv.z << ", " << vv.w << ")";
+            return oss.str();
+        }
+
         if (t == entt::resolve<glm::quat>())
         {
             auto               q = v.cast<glm::quat>();
@@ -265,10 +282,22 @@ namespace vultra
         // Register components that we want to support in .vscn.
         m_ComponentRegistry.registerComponent<IDComponent>("IDComponent", {"uuid"});
         m_ComponentRegistry.registerComponent<NameComponent>("NameComponent", {"name"});
+        m_ComponentRegistry.registerComponent<EntityStatusComponent>("EntityStatusComponent",
+                                                                     {"active", "visible", "locked", "selectable"});
         m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent",
                                                                   {"position", "rotation", "scale"});
         m_ComponentRegistry.registerComponent<MeshComponent>("MeshComponent", {"mesh"});
         m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});
+        m_ComponentRegistry.registerComponent<CameraComponent>("CameraComponent",
+                                                               {"primary",
+                                                                "projection",
+                                                                "fovYDegrees",
+                                                                "orthographicHeight",
+                                                                "zNear",
+                                                                "zFar",
+                                                                "clearColor",
+                                                                "priority",
+                                                                "rendererKey"});
         m_ComponentRegistry.registerComponent<ScriptComponent>("ScriptComponent", {"scriptUri", "enabled"});
 
         m_AssetService = &ctx().services.require<IAssetService>();
@@ -484,6 +513,44 @@ namespace vultra
         return std::move(rootResult).value();
     }
 
+    entt::entity SceneSystem::instantiateSceneDocument(World&             world,
+                                                       const SceneDocument& doc,
+                                                       entt::entity         parent,
+                                                       bool                 clearWorld)
+    {
+        if (!doc.root)
+            return entt::null;
+
+        if (clearWorld)
+            world.clear();
+
+        entt::entity firstRoot = entt::null;
+        if (doc.syntheticRoot)
+        {
+            for (const auto& child : doc.root->children)
+            {
+                auto childResult = instantiateNodeR(world, *child, parent, {}, !doc.isManifest, doc.assets);
+                if (!childResult)
+                {
+                    VULTRA_CORE_ERROR("[SceneSystem] Failed to instantiate scene document: {}",
+                                      std::move(childResult).error());
+                    return entt::null;
+                }
+                if (firstRoot == entt::null)
+                    firstRoot = std::move(childResult).value();
+            }
+            return firstRoot;
+        }
+
+        auto rootResult = instantiateNodeR(world, *doc.root, parent, {}, !doc.isManifest, doc.assets);
+        if (!rootResult)
+        {
+            VULTRA_CORE_ERROR("[SceneSystem] Failed to instantiate scene document: {}", std::move(rootResult).error());
+            return entt::null;
+        }
+        return std::move(rootResult).value();
+    }
+
     SceneSystem::BuildNodeResult SceneSystem::buildNodeFromWorldR(World& world, entt::entity e)
     {
         entt::registry& reg = world.registry();
@@ -570,7 +637,17 @@ namespace vultra
 
     bool SceneSystem::saveWorldAsSceneSync(std::string_view uri, World& world, entt::entity root)
     {
+        auto doc = captureWorldAsScene(world, root);
+        if (!doc.root)
+            return false;
+        return saveSceneSync(uri, doc);
+    }
+
+    SceneDocument SceneSystem::captureWorldAsScene(World& world, entt::entity root)
+    {
         entt::registry& reg = world.registry();
+        SceneDocument   doc;
+        doc.version = 1;
 
         if (root == entt::null)
         {
@@ -585,7 +662,7 @@ namespace vultra
             }
 
             if (roots.empty())
-                return false;
+                return doc;
 
             if (roots.size() == 1)
             {
@@ -594,11 +671,10 @@ namespace vultra
             else
             {
                 // Synthetic root (does not modify world).
-                SceneDocument doc;
-                doc.version = 1;
-                doc.root    = std::make_unique<SceneNode>();
+                doc.syntheticRoot = true;
+                doc.root          = std::make_unique<SceneNode>();
                 // Deterministic synthetic root UUID to keep file stable.
-                doc.root->id   = CoreUUIDHelper::getFromName(std::string("SceneRoot:") + std::string(uri));
+                doc.root->id   = CoreUUIDHelper::getFromName("SceneRoot:memory");
                 doc.root->name = "SceneRoot";
 
                 // Deterministic root ordering (by UUID).
@@ -607,7 +683,8 @@ namespace vultra
                     if (!reg.all_of<IDComponent>(r) || !reg.get<IDComponent>(r).uuid.valid())
                     {
                         VULTRA_CORE_ERROR("[SceneSystem] Scene save: root entity missing IDComponent.uuid");
-                        return false;
+                        doc.root.reset();
+                        return doc;
                     }
                 }
                 std::sort(roots.begin(), roots.end(), [&](entt::entity a, entt::entity b) {
@@ -622,23 +699,22 @@ namespace vultra
                     if (!nodeResult)
                     {
                         VULTRA_CORE_ERROR("[SceneSystem] {}", std::move(nodeResult).error());
-                        return false;
+                        doc.root.reset();
+                        return doc;
                     }
                     doc.root->children.push_back(std::move(nodeResult).value());
                 }
-                return saveSceneSync(uri, doc);
+                return doc;
             }
         }
 
-        SceneDocument doc;
-        doc.version         = 1;
         auto rootNodeResult = buildNodeFromWorldR(world, root);
         if (!rootNodeResult)
         {
             VULTRA_CORE_ERROR("[SceneSystem] {}", std::move(rootNodeResult).error());
-            return false;
+            return doc;
         }
         doc.root = std::move(rootNodeResult).value();
-        return saveSceneSync(uri, doc);
+        return doc;
     }
 } // namespace vultra

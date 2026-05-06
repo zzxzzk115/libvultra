@@ -4,6 +4,8 @@
 
 #include <entt/entity/entity.hpp>
 
+#include <array>
+
 namespace vultra
 {
     class World;
@@ -20,5 +22,8 @@ namespace vultra_app
 
     private:
         void drawEntityNode(EditorContext& ctx, vultra::World& world, entt::entity entity);
+
+        entt::entity          m_RenameEntity {entt::null};
+        std::array<char, 128> m_RenameBuffer {};
     };
 } // namespace vultra_app

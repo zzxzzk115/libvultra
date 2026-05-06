@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/function/scene/vscn_document.hpp"
 #include "vultra/function/world/world.hpp"
 
 #include <vbase/service/service_registry.hpp>
@@ -42,5 +43,9 @@ namespace vultra
         {
             return saveWorldAsSceneSync(uri, world, entt::null);
         }
+
+        virtual SceneDocument captureWorldAsScene(World& world, entt::entity root) = 0;
+        virtual entt::entity
+        instantiateSceneDocument(World& world, const SceneDocument& doc, entt::entity parent, bool clearWorld) = 0;
     };
 } // namespace vultra

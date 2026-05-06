@@ -4,6 +4,8 @@
 
 #include <vultra/core/base/logger.hpp>
 
+#include <imgui.h>
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -28,10 +30,11 @@ namespace vultra_app
 
         void subscribeLogger();
 
-        std::array<char, 128> m_Filter {};
+        ImGuiTextFilter      m_Filter;
         std::vector<LogEntry> m_Logs;
         uint32_t              m_LevelMask {0xFFFFFFFFu};
         bool                  m_Subscribed {false};
         bool                  m_AutoScroll {true};
+        bool                  m_RequestScrollToBottom {false};
     };
 } // namespace vultra_app

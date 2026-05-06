@@ -24,7 +24,7 @@ namespace vultra::rhi
         void postRender() override;
         void processEvent(const os::GeneralWindowEvent& event) override;
 
-        std::uintptr_t addTexture(const Texture& texture) override;
+        std::uintptr_t addTexture(const Texture& texture, Sampler sampler) override;
         void           removeTexture(std::uintptr_t& textureId) override;
 
     private:

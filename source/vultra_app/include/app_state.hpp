@@ -22,5 +22,7 @@ namespace vultra_app
         std::string           currentAssetRoot {"resources"};
         std::string           currentDefaultScene {"res://scenes/main.vscn"};
         std::string           statusMessage;
+        bool                  editorPlaying {false};
+        bool                  editorPaused {false};
     };
 } // namespace vultra_app

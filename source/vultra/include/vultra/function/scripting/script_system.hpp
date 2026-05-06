@@ -31,6 +31,9 @@ namespace vultra
         bool reloadAllScripts() override;
         bool hasScriptInstance(entt::entity e) const override;
         void destroyScriptInstance(entt::entity e) override;
+        void setPlaybackState(bool playing, bool paused) override;
+        bool isPlaybackPlaying() const override { return m_PlaybackPlaying; }
+        bool isPlaybackPaused() const override { return m_PlaybackPaused; }
         bool runString(std::string_view code) override;
 
     private:
@@ -47,5 +50,7 @@ namespace vultra
         ScriptEngine  m_Engine;
         ScriptContext m_ScriptContext;
         InstanceMap   m_Instances;
+        bool          m_PlaybackPlaying {true};
+        bool          m_PlaybackPaused {false};
     };
 } // namespace vultra

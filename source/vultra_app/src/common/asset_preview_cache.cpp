@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <limits>
+#include <utility>
 
 namespace vultra_app::ui
 {
@@ -28,7 +29,25 @@ namespace vultra_app::ui
         return hasExtension(path, {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".ktx2"});
     }
 
-    ImTextureID AssetPreviewCache::getTexturePreview(EditorContext& ctx, const std::filesystem::path& path)
+    std::string AssetPreviewCache::textureUriFor(EditorContext& ctx, const std::filesystem::path& path) const
+    {
+        const auto assetRoot = ctx.state.currentProject / ctx.state.currentAssetRoot;
+        std::error_code relEc;
+        const auto      rel = std::filesystem::relative(path, assetRoot, relEc);
+        if (relEc)
+            return {};
+        return "res://" + rel.generic_string();
+    }
+
+    bool AssetPreviewCache::hasCachedTexturePreview(EditorContext& ctx, const std::filesystem::path& path) const
+    {
+        const auto uri = textureUriFor(ctx, path);
+        return !uri.empty() && m_TexturePreviewIds.find(uri) != m_TexturePreviewIds.end();
+    }
+
+    ImTextureID AssetPreviewCache::getTexturePreview(EditorContext& ctx,
+                                                     const std::filesystem::path& path,
+                                                     bool                         allowLoad)
     {
         m_LastError.clear();
 
@@ -47,19 +66,29 @@ namespace vultra_app::ui
             return {};
         }
 
-        const auto assetRoot = ctx.state.currentProject / ctx.state.currentAssetRoot;
-        std::error_code relEc;
-        const auto      rel = std::filesystem::relative(path, assetRoot, relEc);
-        if (relEc)
+        const std::string uri = textureUriFor(ctx, path);
+        if (uri.empty())
         {
             m_LastError = "Texture is outside the project asset root.";
             return {};
         }
 
-        const std::string uri = "res://" + rel.generic_string();
+        if (!allowLoad && m_TexturePreviewIds.find(uri) == m_TexturePreviewIds.end())
+        {
+            m_LastError = "Texture preview deferred.";
+            return {};
+        }
+
         auto&             handle = m_TextureHandles[uri];
         if (!handle)
+        {
+            if (!allowLoad)
+            {
+                m_LastError = "Texture preview deferred.";
+                return {};
+            }
             handle = assetService->loadTextureSync(uri);
+        }
 
         if (!handle.ready() || handle.gpuIndex() == std::numeric_limits<uint32_t>::max())
         {
@@ -76,8 +105,55 @@ namespace vultra_app::ui
 
         auto& previewId = m_TexturePreviewIds[uri];
         if (!previewId)
+        {
+            if (!allowLoad)
+            {
+                m_LastError = "Texture preview deferred.";
+                return {};
+            }
             previewId = imguiService->addTexture(*pool.textures[handle.gpuIndex()].texture);
+            m_LruUris.push_back(uri);
+        }
 
         return previewId;
+    }
+
+    void AssetPreviewCache::clear(EditorContext& ctx)
+    {
+        if (ctx.services)
+        {
+            if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
+            {
+                for (auto& [uri, textureId] : m_TexturePreviewIds)
+                    imguiService->removeTexture(textureId);
+            }
+        }
+
+        m_TexturePreviewIds.clear();
+        m_TextureHandles.clear();
+        m_LruUris.clear();
+        m_LastError.clear();
+    }
+
+    void AssetPreviewCache::trim(EditorContext& ctx, const std::size_t maxPreviewCount)
+    {
+        if (m_TexturePreviewIds.size() <= maxPreviewCount)
+            return;
+
+        auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        while (m_TexturePreviewIds.size() > maxPreviewCount && !m_LruUris.empty())
+        {
+            const auto uri = std::move(m_LruUris.front());
+            m_LruUris.erase(m_LruUris.begin());
+
+            auto previewIt = m_TexturePreviewIds.find(uri);
+            if (previewIt != m_TexturePreviewIds.end())
+            {
+                if (imguiService)
+                    imguiService->removeTexture(previewIt->second);
+                m_TexturePreviewIds.erase(previewIt);
+            }
+            m_TextureHandles.erase(uri);
+        }
     }
 } // namespace vultra_app::ui

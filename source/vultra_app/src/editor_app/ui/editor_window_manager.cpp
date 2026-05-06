@@ -4,10 +4,33 @@ namespace vultra_app
 {
     void EditorWindowManager::draw(EditorContext& ctx)
     {
-        for (auto& window : m_Windows)
+        if (m_WasOpen.size() != m_Windows.size())
         {
-            if (window->open())
-                window->draw(ctx);
+            m_WasOpen.resize(m_Windows.size(), false);
+            for (std::size_t i = 0; i < m_Windows.size(); ++i)
+                m_WasOpen[i] = m_Windows[i]->open();
         }
+
+        for (std::size_t i = 0; i < m_Windows.size(); ++i)
+        {
+            auto& window = m_Windows[i];
+            if (window->open())
+            {
+                window->draw(ctx);
+            }
+            else if (m_WasOpen[i])
+            {
+                window->onClosed(ctx);
+            }
+            m_WasOpen[i] = window->open();
+        }
+    }
+
+    void EditorWindowManager::destroy(EditorContext& ctx)
+    {
+        for (auto& window : m_Windows)
+            window->onDestroy(ctx);
+        m_Windows.clear();
+        m_WasOpen.clear();
     }
 } // namespace vultra_app

@@ -59,8 +59,8 @@ namespace vultra
 
         // Incremental helper (until ECS cooking is wired):
         // App can push cameras manually.
-        void          clearManualCameras();
-        RenderCamera& addManualCamera(const RenderCamera& cam);
+        void          clearManualCameras() override;
+        RenderCamera& addManualCamera(const RenderCamera& cam) override;
 
         void setFPSCameraController(const FPSCameraController& controller, std::size_t manualCameraIndex = 0);
         void disableFPSCameraController();

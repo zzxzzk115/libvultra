@@ -9,6 +9,7 @@ namespace vultra_app::ui
     {
         Directory,
         ProjectFile,
+        LuaScript,
     };
 
     class FileDialogField

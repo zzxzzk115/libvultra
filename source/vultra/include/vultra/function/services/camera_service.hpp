@@ -30,6 +30,8 @@ namespace vultra
 
         // Access cooked cameras for the current frame.
         virtual std::span<const RenderCamera> cameras() = 0;
+        virtual void                          clearManualCameras() {}
+        virtual RenderCamera&                 addManualCamera(const RenderCamera& camera) = 0;
         virtual std::optional<CameraControlOverlayInfo> cameraControlOverlayInfo() const { return std::nullopt; }
         virtual void setCameraControlInputSuppressed(bool) {}
     };
