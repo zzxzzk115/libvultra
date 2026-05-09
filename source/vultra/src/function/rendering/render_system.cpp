@@ -433,7 +433,10 @@ namespace vultra
                     static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size());
                 drawRecord.pointCount = gpuSplat.pointCount;
                 drawRecord.shDegree   = static_cast<uint32_t>(std::max(gpuSplat.shDegree, 0));
-                drawRecord.params0    = glm::vec4 {0.3f, 1.0f, 1.0f, 0.0f};
+                // x: kernel size, y: cutoff scale, z: opacity scale, w: sort order.
+                // Sort order 3 is a StopThePop-inspired conservative depth key
+                // that accounts for each 3D Gaussian's extent along the view ray.
+                drawRecord.params0    = glm::vec4 {0.3f, 1.0f, 1.0f, 3.0f};
                 drawRecord.model      = splatInst.worldMatrix;
                 const uint32_t  pointBase   = gpuSplat.pointOffset;
                 const uint32_t  shBaseStride = std::max(gpuSplat.shRestCoeffCount, 1u);
@@ -525,7 +528,7 @@ namespace vultra
             {
                 std::vector<rhi::DrawIndirectCommand> indirect(1u);
                 indirect[0].type          = rhi::DrawIndirectType::eNonIndexed;
-                indirect[0].count         = 3u;
+                indirect[0].count         = 4u;
                 indirect[0].instanceCount = 0u;
                 indirect[0].first         = 0u;
                 indirect[0].vertexOffset  = 0;

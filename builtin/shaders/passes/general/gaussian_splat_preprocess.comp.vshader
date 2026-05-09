@@ -23,6 +23,10 @@ USE_MULTIVIEW : bool permute
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 const float MIN_VISIBLE_OPACITY = 0.02;
+const uint SORT_ORDER_Z_DEPTH = 0u;
+const uint SORT_ORDER_DISTANCE = 1u;
+const uint SORT_ORDER_VIEW_DEPTH = 2u;
+const uint SORT_ORDER_CONSERVATIVE_DEPTH = 3u;
 const float SH_C1 = 0.4886025119029199;
 const float SH_C2[5] = float[5](1.0925484305920792,
                                 -1.0925484305920792,
@@ -118,6 +122,30 @@ vec3 evaluateGeneralGaussianSplatColor(const vec3 dir, const GeneralGaussianSpla
     return max(result, vec3(0.0));
 }
 
+float computeGeneralGaussianSplatSortDepth(const vec4 posClip,
+                                           const vec4 posView,
+                                           const mat3 sigmaWorld,
+                                           const mat3 viewLinear,
+                                           const float zFar,
+                                           const uint sortOrder)
+{
+    if (sortOrder == SORT_ORDER_DISTANCE)
+        return max(zFar - length(posView.xyz), 0.0);
+
+    const float viewDepth = max(-posView.z, 0.0);
+    if (sortOrder == SORT_ORDER_VIEW_DEPTH)
+        return max(zFar - viewDepth, 0.0);
+
+    if (sortOrder == SORT_ORDER_CONSERVATIVE_DEPTH)
+    {
+        const mat3 sigmaView = viewLinear * sigmaWorld * transpose(viewLinear);
+        const float depthRadius = 3.0 * sqrt(max(sigmaView[2][2], 0.0));
+        return max(zFar - max(viewDepth - depthRadius, 0.0), 0.0);
+    }
+
+    return max(zFar - posClip.z, 0.0);
+}
+
 EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
                                   const GeneralGaussianSplatDrawRecord draw,
                                   const vec3 localPos,
@@ -158,6 +186,7 @@ EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
 
     const mat3 sigmaLocal = decodeGeneralGaussianSplatCovariance(src);
     const mat3 sigmaWorld = modelLinear * sigmaLocal * transpose(modelLinear);
+    const mat3 viewLinear = mat3(camera.view);
     const mat3 J          = buildJacobian(posView.xyz, focal);
     const mat3 W          = transpose(mat3(camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz));
     const mat3 T          = W * J;
@@ -213,7 +242,12 @@ EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
     result.depth = centerNdc.z;
     result.colorOpacity = colorOpacity;
     result.colorOpacity.rgb = evaluateGeneralGaussianSplatColor(dirLocal, src, min(draw.shDegree, 3u));
-    result.sortDepth = max(camera.zFar - posClip.z, 0.0);
+    result.sortDepth = computeGeneralGaussianSplatSortDepth(posClip,
+                                                            posView,
+                                                            sigmaWorld,
+                                                            viewLinear,
+                                                            camera.zFar,
+                                                            uint(round(clamp(draw.params0.w, 0.0, 3.0))));
     result.visible = true;
     return result;
 }
