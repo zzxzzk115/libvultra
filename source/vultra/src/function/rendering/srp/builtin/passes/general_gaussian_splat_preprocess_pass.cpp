@@ -326,47 +326,52 @@ namespace vultra
                     data.dispatchArgsBuffer ?
                         resources.get<framegraph::FrameGraphBuffer>(data.dispatchArgsBuffer).buffer :
                         nullptr;
-                if (visibleCountBuf)
+
                 {
-                    const uint32_t zero = 0u;
-                    rc.cb.update(*visibleCountBuf, 0u, sizeof(uint32_t), &zero);
-                }
-                if (dispatchArgsBuf)
-                {
-                    const uint32_t zeroArgs[4] = {0u, 1u, 1u, 0u};
-                    rc.cb.update(*dispatchArgsBuf, 0u, sizeof(zeroArgs), zeroArgs);
-                }
-                rc.cb.getBarrierBuilder().memoryBarrier(
+                    RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::ProjectCull");
+
+                    if (visibleCountBuf)
                     {
-                        .srcStage  = rhi::PipelineStages::eTransfer,
-                        .srcAccess = rhi::Access::eTransferWrite,
-                    },
+                        const uint32_t zero = 0u;
+                        rc.cb.update(*visibleCountBuf, 0u, sizeof(uint32_t), &zero);
+                    }
+                    if (dispatchArgsBuf)
                     {
-                        .dstStage  = rhi::PipelineStages::eComputeShader,
-                        .dstAccess = rhi::Access::eShaderRead | rhi::Access::eShaderWrite,
-                    });
+                        const uint32_t zeroArgs[4] = {0u, 1u, 1u, 0u};
+                        rc.cb.update(*dispatchArgsBuf, 0u, sizeof(zeroArgs), zeroArgs);
+                    }
+                    rc.cb.getBarrierBuilder().memoryBarrier(
+                        {
+                            .srcStage  = rhi::PipelineStages::eTransfer,
+                            .srcAccess = rhi::Access::eTransferWrite,
+                        },
+                        {
+                            .dstStage  = rhi::PipelineStages::eComputeShader,
+                            .dstAccess = rhi::Access::eShaderRead | rhi::Access::eShaderWrite,
+                        });
 
-                const auto* preprocessPipeline = getPipeline(useMultiview);
-                if (!preprocessPipeline)
-                {
-                    return;
+                    const auto* preprocessPipeline = getPipeline(useMultiview);
+                    if (!preprocessPipeline)
+                    {
+                        return;
+                    }
+
+                    GeneralGaussianSplatPreprocessPushConstants pc {};
+                    pc.pointCount       = pointCount;
+                    pc.maxVisibleSplats = maxVisible;
+
+                    rc.cb.bindPipeline(*preprocessPipeline);
+                    std::vector<uint32_t> preprocessBindings {0u, 13u, 14u, 15u, 16u, 17u, 18u, 19u, 22u, 27u};
+                    if (useMultiview)
+                    {
+                        preprocessBindings.push_back(kStereoCameraBinding);
+                    }
+                    bindSubset(*preprocessPipeline, preprocessBindings);
+                    rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
+                    const uint32_t dispatchX = (pointCount + 255u) / 256u;
+                    rc.cb.dispatch({dispatchX, 1u, 1u});
+                    rc.cb.insertComputeUavBarrier();
                 }
-
-                GeneralGaussianSplatPreprocessPushConstants pc {};
-                pc.pointCount       = pointCount;
-                pc.maxVisibleSplats = maxVisible;
-
-                rc.cb.bindPipeline(*preprocessPipeline);
-                std::vector<uint32_t> preprocessBindings {0u, 13u, 14u, 15u, 16u, 17u, 18u, 19u, 22u, 27u};
-                if (useMultiview)
-                {
-                    preprocessBindings.push_back(kStereoCameraBinding);
-                }
-                bindSubset(*preprocessPipeline, preprocessBindings);
-                rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
-                const uint32_t dispatchX = (pointCount + 255u) / 256u;
-                rc.cb.dispatch({dispatchX, 1u, 1u});
-                rc.cb.insertComputeUavBarrier();
 
                 auto* sortKeyBuf     = resources.get<framegraph::FrameGraphBuffer>(data.sortKeyBuffer).buffer;
                 auto* sortIndexBuf   = resources.get<framegraph::FrameGraphBuffer>(data.sortIndexBuffer).buffer;
@@ -376,6 +381,8 @@ namespace vultra
                     static_cast<bool>(*gpuSceneView->generalGaussianSplatSorter) && visibleCountBuf && sortKeyBuf &&
                     sortIndexBuf && sortStorageBuf)
                 {
+                    RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::Sort");
+
                     gpuSceneView->generalGaussianSplatSorter->sortKeyValuesIndirect(rc.cb,
                                                                                     maxVisible,
                                                                                     *visibleCountBuf,
@@ -389,17 +396,21 @@ namespace vultra
                     rc.cb.insertComputeUavBarrier();
                 }
 
-                auto writeIndirectVariantHash = computeShaderVariantHash(
-                    "gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
-                const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
-                if (!writeIndirectPipeline)
                 {
-                    return;
-                }
+                    RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::WriteIndirect");
 
-                rc.cb.bindPipeline(*writeIndirectPipeline);
-                bindSubset(*writeIndirectPipeline, std::initializer_list<uint32_t> {18u, 20u});
-                rc.cb.dispatch({1u, 1u, 1u});
+                    auto writeIndirectVariantHash = computeShaderVariantHash(
+                        "gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
+                    const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
+                    if (!writeIndirectPipeline)
+                    {
+                        return;
+                    }
+
+                    rc.cb.bindPipeline(*writeIndirectPipeline);
+                    bindSubset(*writeIndirectPipeline, std::initializer_list<uint32_t> {18u, 20u});
+                    rc.cb.dispatch({1u, 1u, 1u});
+                }
             });
     }
 
