@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <bit>
 #include <chrono>
+#include <cmath>
 #include <limits>
 #include <numeric>
 #include <unordered_set>
@@ -47,6 +48,12 @@ namespace vultra
     namespace
     {
         thread_local rhi::BuiltinProfilerGpuScopeContext g_CurrentBuiltinProfilerGpuScopeContext {};
+
+        constexpr float    kGaussianLodCameraReuseDistance        = 0.35f;
+        constexpr float    kGaussianLodCameraForceRebuildDistance = 6.0f;
+        constexpr float    kGaussianLodCameraMovingDistance       = 0.03f;
+        constexpr uint32_t kGaussianLodStationaryFramesToRefresh  = 4u;
+        constexpr uint64_t kGaussianLodSelectionCooldownFrames    = 12u;
 
         void clearColorTarget(rhi::CommandBuffer&        cb,
                               rhi::Texture&              target,
@@ -68,6 +75,196 @@ namespace vultra
             rhi::prepareForAttachment(cb, target, false);
             cb.beginRendering(clearFbInfo);
             cb.endRendering();
+        }
+
+        constexpr uint32_t kGaussianSplatSelectedTransitionFlag = 2u;
+
+        uint32_t effectiveGaussianLodBudget(const GaussianSplatRenderSettings& settings, const uint32_t totalSplatCount)
+        {
+            // The selected-source path is shared by every mode, but only Ordered
+            // CLOD is allowed to reduce the active count. Baseline and conservative
+            // sort therefore return the full raw splat count.
+            if (!settings.lodBudgetEnabled())
+                return totalSplatCount;
+
+            // An explicit budget is useful for repeatable profiling. With budget 0
+            // the UI exposes clodLevel as the paper-style continuous LOD fraction.
+            if (settings.lodBudget > 0u)
+                return std::min(totalSplatCount, settings.lodBudget);
+            const float clodLevel = std::clamp(settings.clodLevel, 0.01f, 1.0f);
+            return std::min(totalSplatCount,
+                            std::max(1u, static_cast<uint32_t>(
+                                             std::ceil(static_cast<float>(totalSplatCount) * clodLevel))));
+        }
+
+        float gaussianOrderedClodOpacityWeight(const GaussianSplatRenderSettings& settings,
+                                               const float                       rankFraction,
+                                               const float                       globalClodFraction,
+                                               const float                       distance)
+        {
+            if (!settings.clodDistanceLodEnabled)
+                return 1.0f;
+
+            // rankFraction is measured against the full asset. Dividing by the
+            // global selected fraction maps it into the active prefix, so distance
+            // settings can fade the tail of the chosen prefix without changing the
+            // underlying importance order.
+            const float minDistance = std::max(settings.clodMinDistance, 0.0f);
+            const float maxDistance = std::max(settings.clodMaxDistance, minDistance + 1e-3f);
+            const float alpha       = std::clamp((distance - minDistance) / (maxDistance - minDistance), 0.0f, 1.0f);
+
+            const float farLod      = std::clamp(settings.clodFarLod, 0.01f, 1.0f);
+            const float nearLod     = std::clamp(settings.clodNearLod, farLod, 1.0f);
+            const float distanceLod = nearLod + (farLod - nearLod) * alpha;
+
+            const float rankInGlobal = rankFraction / std::max(globalClodFraction, 1e-5f);
+            if (rankInGlobal > distanceLod)
+                return 0.0f;
+            if (rankInGlobal <= farLod || nearLod <= farLod + 1e-5f)
+                return 1.0f;
+
+            // Smoothly attenuate only the transition band. Points outside the
+            // distance budget are skipped entirely; points inside the far budget
+            // stay at full opacity.
+            const float alphaHigh =
+                1.0f - std::clamp((rankInGlobal - farLod) / std::max(nearLod - farLod, 1e-5f), 0.0f, 1.0f);
+            return std::clamp((alphaHigh - alpha) / std::max(settings.clodFadeWidth, 1e-3f), 0.0f, 1.0f);
+        }
+
+        void rebuildGaussianSplatOrderedClodSelectedSources(resource::GpuSceneView&                       gpuSceneView,
+                                                            const std::vector<RenderGaussianSplatInstance>& gaussianSplats,
+                                                            const resource::GpuResourcePool&                 pool,
+                                                            const GaussianSplatRenderSettings&                settings,
+                                                            const RenderCamera*                              lodCamera,
+                                                            const uint32_t                                   totalSplatCount,
+                                                            GaussianSplatFrameStats&                         stats,
+                                                            RuntimeProfiler&                                 profiler)
+        {
+            gpuSceneView.generalGaussianSplatSelectedSources.clear();
+            if (totalSplatCount == 0u)
+                return;
+
+            // A single global budget is converted into a fraction and then applied
+            // to each asset. This keeps multi-splat scenes predictable without
+            // requiring a global sort/merge of all Gaussian ranks.
+            const uint32_t targetSplatCount = effectiveGaussianLodBudget(settings, totalSplatCount);
+            const float    globalClodFraction =
+                std::clamp(static_cast<float>(targetSplatCount) / static_cast<float>(std::max(totalSplatCount, 1u)),
+                           0.0f,
+                           1.0f);
+            if (globalClodFraction <= 0.0f)
+                return;
+
+            const glm::vec3 cameraWorld = lodCamera ? glm::vec3(lodCamera->inverseView[3]) : glm::vec3(0.0f);
+            const bool      useDistanceLod = settings.clodDistanceLodEnabled && lodCamera;
+
+            RuntimeProfiler::Scope scope {profiler, "GaussianCLOD::BuildSelection"};
+            uint32_t               drawIndex = 0u;
+            for (const auto& splatInst : gaussianSplats)
+            {
+                if (splatInst.splatIndex >= pool.gaussianSplats.size())
+                    continue;
+                if (drawIndex >= gpuSceneView.generalGaussianSplatDraws.size())
+                    break;
+
+                const auto& gpuSplat = pool.gaussianSplats[splatInst.splatIndex];
+                if (gpuSplat.pointCount == 0u)
+                    continue;
+
+                const auto& drawRecord = gpuSceneView.generalGaussianSplatDraws[drawIndex];
+                const uint32_t rawSourceOffset = drawRecord.pointOffset;
+                // clodPointIndices is local to the asset. If an asset was imported
+                // without importance data it is already an identity order, so the
+                // renderer can consume it the same way.
+                const uint32_t orderedCount =
+                    gpuSplat.hasClodOrder() ? static_cast<uint32_t>(gpuSplat.clodPointIndices.size()) : gpuSplat.pointCount;
+                const uint32_t maxRankCount =
+                    std::min<uint32_t>(orderedCount,
+                                       std::max(1u, static_cast<uint32_t>(
+                                                          std::ceil(static_cast<float>(gpuSplat.pointCount) *
+                                                                    globalClodFraction))));
+
+                for (uint32_t rank = 0u; rank < maxRankCount; ++rank)
+                {
+                    const uint32_t localPoint =
+                        gpuSplat.hasClodOrder() ? gpuSplat.clodPointIndices[rank] : rank;
+                    if (localPoint >= gpuSplat.pointCount)
+                        continue;
+
+                    const float rankFraction =
+                        static_cast<float>(rank + 1u) / static_cast<float>(std::max(gpuSplat.pointCount, 1u));
+                    float weight = 1.0f;
+                    if (useDistanceLod)
+                    {
+                        const uint32_t globalPoint = gpuSplat.pointOffset + localPoint;
+                        glm::vec3     localPos(0.0f);
+                        if (globalPoint < pool.gaussianStorage.cpuCenters.size())
+                            localPos = glm::vec3(pool.gaussianStorage.cpuCenters[globalPoint]);
+                        const glm::vec3 worldPos = glm::vec3(splatInst.worldMatrix * glm::vec4(localPos, 1.0f));
+                        const float distance = glm::length(worldPos - cameraWorld);
+                        weight = gaussianOrderedClodOpacityWeight(settings, rankFraction, globalClodFraction, distance);
+                    }
+                    if (weight <= 0.001f)
+                        continue;
+
+                    // Emit only an indirection and an opacity multiplier. We never
+                    // synthesize proxy splats in the renderer, which keeps this
+                    // path compatible with learned importance rankings.
+                    resource::GpuGeneralGaussianSplatSelectedSource selection {};
+                    selection.sourceIndex  = rawSourceOffset + localPoint;
+                    selection.drawIndex    = drawIndex;
+                    selection.packedWeight = std::bit_cast<uint32_t>(std::clamp(weight, 0.0f, 1.0f));
+                    selection.flags        = weight < 0.999f ? kGaussianSplatSelectedTransitionFlag : 0u;
+                    gpuSceneView.pushGeneralGaussianSplatSelectedSource(selection);
+
+                    ++stats.lodSelectedRawSplats;
+                    if (weight < 0.999f)
+                        ++stats.lodTransitionSplats;
+                }
+
+                ++drawIndex;
+            }
+        }
+
+        void rebuildGaussianSplatSelectedSources(resource::GpuSceneView&                       gpuSceneView,
+                                                 const std::vector<RenderGaussianSplatInstance>& gaussianSplats,
+                                                 const resource::GpuResourcePool&                 pool,
+                                                 GaussianSplatFrameStats&                         stats,
+                                                 RuntimeProfiler&                                 profiler)
+        {
+            gpuSceneView.generalGaussianSplatSelectedSources.clear();
+
+            // Baseline still builds a selected-source table. That small CPU cost
+            // buys a single preprocess shader path for raw rendering, conservative
+            // sort, and Ordered CLOD.
+            RuntimeProfiler::Scope scope {profiler, "GaussianSplat::BuildRawSelection"};
+            uint32_t               drawIndex = 0u;
+            for (const auto& splatInst : gaussianSplats)
+            {
+                if (splatInst.splatIndex >= pool.gaussianSplats.size())
+                    continue;
+                if (drawIndex >= gpuSceneView.generalGaussianSplatDraws.size())
+                    break;
+
+                const auto& gpuSplat = pool.gaussianSplats[splatInst.splatIndex];
+                if (gpuSplat.pointCount == 0u)
+                    continue;
+
+                const auto&  drawRecord      = gpuSceneView.generalGaussianSplatDraws[drawIndex];
+                const uint32_t sourceOffset  = drawRecord.pointOffset;
+                for (uint32_t localPoint = 0u; localPoint < gpuSplat.pointCount; ++localPoint)
+                {
+                    resource::GpuGeneralGaussianSplatSelectedSource selection {};
+                    selection.sourceIndex  = sourceOffset + localPoint;
+                    selection.drawIndex    = drawIndex;
+                    selection.packedWeight = std::bit_cast<uint32_t>(1.0f);
+                    selection.flags        = 0u;
+                    gpuSceneView.pushGeneralGaussianSplatSelectedSource(selection);
+                    ++stats.lodSelectedRawSplats;
+                }
+
+                ++drawIndex;
+            }
         }
     } // namespace
 
@@ -174,6 +371,10 @@ namespace vultra
         m_GpuSceneDatabaseBack.clear();
         m_GpuSceneDatabaseFront.clear();
         m_GpuSceneDirtyTracker.reset();
+        m_AppliedGaussianSplatLodViewState.valid                = false;
+        m_AppliedGaussianSplatLodViewState.nextSelectionFrame   = 0u;
+        m_AppliedGaussianSplatLodViewState.observedCameraValid  = false;
+        m_AppliedGaussianSplatLodViewState.stationaryFrameCount = 0u;
 
         for (auto& [key, renderer] : m_Renderers)
             renderer = nullptr;
@@ -273,9 +474,113 @@ namespace vultra
         }
         m_RenderWorldBack.frameIndex = m_FrameCounter;
 
-        const uint64_t resourceRevision     = gpuResourceService.contentRevision();
-        const bool     gpuSceneDirty        =
+        const RenderCamera* gaussianLodCamera = nullptr;
+        for (const auto& cam : cams)
+        {
+            if (cam.isXRView && !cam.isXRPrimaryView)
+                continue;
+            if (!gaussianLodCamera || cam.priority < gaussianLodCamera->priority)
+                gaussianLodCamera = &cam;
+        }
+
+        const auto gaussianLodExtent = gaussianLodCamera && gaussianLodCamera->target ?
+                                           gaussianLodCamera->target->getExtent() :
+                                           defaultTarget.getExtent();
+        const bool gaussianOrderedClodMode = m_GaussianSplatSettings.orderedClodEnabled();
+        const bool gaussianOrderedClodNeedsView =
+            gaussianOrderedClodMode && m_GaussianSplatSettings.clodDistanceLodEnabled && gaussianLodCamera;
+        const glm::vec3 gaussianLodCameraPosition =
+            gaussianLodCamera ? glm::vec3(gaussianLodCamera->inverseView[3]) : glm::vec3(0.0f);
+        bool gaussianLodViewDirty = false;
+        if (gaussianOrderedClodNeedsView)
+        {
+            bool cameraMovingThisFrame = false;
+            if (m_AppliedGaussianSplatLodViewState.observedCameraValid)
+            {
+                const glm::vec3 frameCameraDelta =
+                    gaussianLodCameraPosition - m_AppliedGaussianSplatLodViewState.observedCameraPosition;
+                cameraMovingThisFrame =
+                    glm::dot(frameCameraDelta, frameCameraDelta) >
+                    kGaussianLodCameraMovingDistance * kGaussianLodCameraMovingDistance;
+            }
+
+            if (cameraMovingThisFrame)
+                m_AppliedGaussianSplatLodViewState.stationaryFrameCount = 0u;
+            else if (m_AppliedGaussianSplatLodViewState.observedCameraValid)
+                ++m_AppliedGaussianSplatLodViewState.stationaryFrameCount;
+
+            m_AppliedGaussianSplatLodViewState.observedCameraPosition = gaussianLodCameraPosition;
+            m_AppliedGaussianSplatLodViewState.observedCameraValid    = true;
+
+            const glm::vec3 cameraDelta =
+                gaussianLodCameraPosition - m_AppliedGaussianSplatLodViewState.cameraPosition;
+            const float cameraDelta2 = glm::dot(cameraDelta, cameraDelta);
+            const bool  projectionDirty =
+                std::abs(gaussianLodCamera->fovY - m_AppliedGaussianSplatLodViewState.fovY) > 0.001f ||
+                gaussianLodExtent.width != m_AppliedGaussianSplatLodViewState.extentWidth ||
+                gaussianLodExtent.height != m_AppliedGaussianSplatLodViewState.extentHeight;
+            const bool movedPastReuse =
+                cameraDelta2 > kGaussianLodCameraReuseDistance * kGaussianLodCameraReuseDistance;
+            const bool movedPastForce =
+                cameraDelta2 > kGaussianLodCameraForceRebuildDistance * kGaussianLodCameraForceRebuildDistance;
+            const bool cooldownReady =
+                m_FrameCounter >= m_AppliedGaussianSplatLodViewState.nextSelectionFrame;
+            const bool stationaryRefreshReady =
+                m_AppliedGaussianSplatLodViewState.stationaryFrameCount >= kGaussianLodStationaryFramesToRefresh;
+
+            gaussianLodViewDirty =
+                !m_AppliedGaussianSplatLodViewState.valid || projectionDirty || (movedPastForce && cooldownReady) ||
+                (movedPastReuse && cooldownReady && stationaryRefreshReady);
+        }
+        else
+        {
+            m_AppliedGaussianSplatLodViewState.observedCameraValid  = false;
+            m_AppliedGaussianSplatLodViewState.stationaryFrameCount = 0u;
+        }
+
+        const uint64_t resourceRevision = gpuResourceService.contentRevision();
+        const auto&    pool             = gpuResourceService.pool();
+
+        uint32_t maxGeneralGaussianSplatPoints = 0;
+        uint32_t maxGeneralGaussianSplatSourceCount = 0;
+        for (const auto& splatInst : m_RenderWorldBack.gaussianSplats)
+        {
+            if (splatInst.splatIndex >= pool.gaussianSplats.size())
+                continue;
+            const auto& gpuSplat = pool.gaussianSplats[splatInst.splatIndex];
+            maxGeneralGaussianSplatPoints += gpuSplat.pointCount;
+            maxGeneralGaussianSplatSourceCount += gpuSplat.pointCount;
+        }
+
+        GaussianSplatFrameStats gaussianStats {};
+        gaussianStats.frameIndex       = m_FrameCounter;
+        gaussianStats.baselineMode     = m_GaussianSplatSettings.baselineMode;
+        gaussianStats.sortMode         = m_GaussianSplatSettings.sortMode();
+        gaussianStats.lodBudgetEnabled = m_GaussianSplatSettings.lodBudgetEnabled();
+        gaussianStats.lodBudget        = m_GaussianSplatSettings.lodBudget;
+        gaussianStats.splatAssets      = static_cast<uint32_t>(m_RenderWorldBack.gaussianSplats.size());
+        gaussianStats.totalSplats      = maxGeneralGaussianSplatPoints;
+
+        const bool gaussianModeSettingsDirty =
+            m_GaussianSplatSettings.baselineMode != m_AppliedGaussianSplatSettings.baselineMode;
+        const bool gaussianSelectionSettingsDirty =
+            m_GaussianSplatSettings.lodBudget != m_AppliedGaussianSplatSettings.lodBudget ||
+            m_GaussianSplatSettings.clodLevel != m_AppliedGaussianSplatSettings.clodLevel ||
+            m_GaussianSplatSettings.clodDistanceLodEnabled !=
+                m_AppliedGaussianSplatSettings.clodDistanceLodEnabled ||
+            m_GaussianSplatSettings.clodMinDistance != m_AppliedGaussianSplatSettings.clodMinDistance ||
+            m_GaussianSplatSettings.clodMaxDistance != m_AppliedGaussianSplatSettings.clodMaxDistance ||
+            m_GaussianSplatSettings.clodNearLod != m_AppliedGaussianSplatSettings.clodNearLod ||
+            m_GaussianSplatSettings.clodFarLod != m_AppliedGaussianSplatSettings.clodFarLod ||
+            m_GaussianSplatSettings.clodFadeWidth != m_AppliedGaussianSplatSettings.clodFadeWidth;
+        const bool gpuSceneDirty =
+            gaussianModeSettingsDirty ||
             m_GpuSceneDirtyTracker.shouldRebuild(m_RenderWorldBack, resourceRevision, m_EnableGpuDrivenMeshletPipeline);
+        const bool gaussianOrderedClodSelectionDirty =
+            gaussianOrderedClodMode &&
+            (gaussianSelectionSettingsDirty ||
+             (m_GaussianSplatSettings.clodDistanceLodEnabled && gaussianLodViewDirty));
+        const bool gaussianSelectionDirty = gaussianOrderedClodSelectionDirty;
 
         // Build GPU scene database + per-view draw state.
         //
@@ -289,7 +594,6 @@ namespace vultra
         if (gpuSceneDirty)
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::rebuild"};
-            const auto& pool = gpuResourceService.pool();
             auto        packGaussianCovariance = [](const glm::uvec4 packed) {
                 const glm::vec2 p0 = glm::unpackHalf2x16(packed.x);
                 const glm::vec2 p1 = glm::unpackHalf2x16(packed.y);
@@ -343,14 +647,6 @@ namespace vultra
                 if (inst.meshIndex >= pool.meshes.size())
                     continue;
                 maxMeshletDraws += pool.meshes[inst.meshIndex].meshletCount;
-            }
-
-            uint32_t maxGeneralGaussianSplatPoints = 0;
-            for (const auto& splatInst : m_RenderWorldBack.gaussianSplats)
-            {
-                if (splatInst.splatIndex >= pool.gaussianSplats.size())
-                    continue;
-                maxGeneralGaussianSplatPoints += pool.gaussianSplats[splatInst.splatIndex].pointCount;
             }
 
             if (m_EnableGpuDrivenMeshletPipeline)
@@ -415,8 +711,9 @@ namespace vultra
 
             m_GpuSceneViewBack.generalGaussianSplatDraws.clear();
             m_GpuSceneViewBack.generalGaussianSplatPackedSources.clear();
+            m_GpuSceneViewBack.generalGaussianSplatSelectedSources.clear();
             m_GpuSceneViewBack.generalGaussianSplatDraws.reserve(m_RenderWorldBack.gaussianSplats.size());
-            m_GpuSceneViewBack.generalGaussianSplatPackedSources.reserve(maxGeneralGaussianSplatPoints);
+            m_GpuSceneViewBack.generalGaussianSplatPackedSources.reserve(maxGeneralGaussianSplatSourceCount);
 
             for (const auto& splatInst : m_RenderWorldBack.gaussianSplats)
             {
@@ -427,66 +724,103 @@ namespace vultra
                 if (gpuSplat.pointCount == 0u)
                     continue;
 
-                resource::GpuGeneralGaussianSplatDrawRecord drawRecord {};
-                drawRecord.splatIndex = splatInst.splatIndex;
-                drawRecord.pointOffset =
+                const uint32_t drawIndex = static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatDraws.size());
+                const uint32_t pointBase = gpuSplat.pointOffset;
+                const uint32_t shBaseStride = std::max(gpuSplat.shRestCoeffCount, 1u);
+                const uint32_t rawSourceOffset =
                     static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size());
-                drawRecord.pointCount = gpuSplat.pointCount;
-                drawRecord.shDegree   = static_cast<uint32_t>(std::max(gpuSplat.shDegree, 0));
+
+                resource::GpuGeneralGaussianSplatDrawRecord drawRecord {};
+                drawRecord.splatIndex  = splatInst.splatIndex;
+                drawRecord.pointOffset = rawSourceOffset;
+                drawRecord.pointCount  = gpuSplat.pointCount;
+                drawRecord.shDegree    = static_cast<uint32_t>(std::max(gpuSplat.shDegree, 0));
                 // x: kernel size, y: cutoff scale, z: opacity scale, w: sort order.
-                // Sort order 3 is a StopThePop-inspired conservative depth key
-                // that accounts for each 3D Gaussian's extent along the view ray.
-                drawRecord.params0    = glm::vec4 {0.3f, 1.0f, 1.0f, 3.0f};
-                drawRecord.model      = splatInst.worldMatrix;
-                const uint32_t  pointBase   = gpuSplat.pointOffset;
-                const uint32_t  shBaseStride = std::max(gpuSplat.shRestCoeffCount, 1u);
-                const uint32_t  drawIndex   = static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatDraws.size());
+                drawRecord.params0 = glm::vec4 {0.3f,
+                                                1.0f,
+                                                1.0f,
+                                                static_cast<float>(m_GaussianSplatSettings.sortMode())};
+                drawRecord.model   = splatInst.worldMatrix;
 
                 for (uint32_t localPoint = 0; localPoint < gpuSplat.pointCount; ++localPoint)
                 {
                     const uint32_t globalPoint = pointBase + localPoint;
-                    if (globalPoint >= pool.gaussianStorage.cpuCenters.size() ||
-                        globalPoint >= pool.gaussianStorage.cpuCovariances.size() ||
-                        globalPoint >= pool.gaussianStorage.cpuColors.size())
-                    {
-                        break;
-                    }
-
-                    const glm::vec4 localCenter = pool.gaussianStorage.cpuCenters[globalPoint];
-
-                    const uint32_t shOffset = globalPoint * shBaseStride;
-                    const glm::uvec2 sh0 =
-                        shOffset < pool.gaussianStorage.cpuSh.size() ? pool.gaussianStorage.cpuSh[shOffset] : glm::uvec2 {0u};
-
                     resource::GpuGeneralGaussianSplatPackedSource packed {};
-                    packed.posOpacity = glm::uvec4 {
-                        std::bit_cast<uint32_t>(localCenter.x),
-                        std::bit_cast<uint32_t>(localCenter.y),
-                        std::bit_cast<uint32_t>(localCenter.z),
-                        pool.gaussianStorage.cpuColors[globalPoint].y,
-                    };
-                    packed.covariance0 = pool.gaussianStorage.cpuCovariances[globalPoint];
-                    packed.colorSh0    = glm::uvec4 {
-                        pool.gaussianStorage.cpuColors[globalPoint].x,
-                        pool.gaussianStorage.cpuColors[globalPoint].y,
-                        sh0.x,
-                        sh0.y,
-                    };
-                    packed.aux0 = glm::uvec4 {globalPoint, drawIndex, shOffset, 0u};
+                    if (globalPoint < pool.gaussianStorage.cpuCenters.size() &&
+                        globalPoint < pool.gaussianStorage.cpuCovariances.size() &&
+                        globalPoint < pool.gaussianStorage.cpuColors.size())
+                    {
+                        const glm::vec4 localCenter = pool.gaussianStorage.cpuCenters[globalPoint];
+                        const uint32_t shOffset = globalPoint * shBaseStride;
+                        const glm::uvec2 sh0 =
+                            shOffset < pool.gaussianStorage.cpuSh.size() ?
+                                pool.gaussianStorage.cpuSh[shOffset] :
+                                glm::uvec2 {0u};
 
+                        packed.posOpacity = glm::uvec4 {
+                            std::bit_cast<uint32_t>(localCenter.x),
+                            std::bit_cast<uint32_t>(localCenter.y),
+                            std::bit_cast<uint32_t>(localCenter.z),
+                            pool.gaussianStorage.cpuColors[globalPoint].y,
+                        };
+                        packed.covariance0 = pool.gaussianStorage.cpuCovariances[globalPoint];
+                        packed.colorSh0    = glm::uvec4 {
+                            pool.gaussianStorage.cpuColors[globalPoint].x,
+                            pool.gaussianStorage.cpuColors[globalPoint].y,
+                            sh0.x,
+                            sh0.y,
+                        };
+                        packed.aux0 = glm::uvec4 {globalPoint, 0u, shOffset, 0u};
+                    }
                     m_GpuSceneViewBack.pushGeneralGaussianSplatSource(packed);
                 }
 
-                drawRecord.pointCount =
-                    static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size()) - drawRecord.pointOffset;
-                if (drawRecord.pointCount > 0u)
-                    m_GpuSceneViewBack.pushGeneralGaussianSplatDraw(drawRecord);
+                m_GpuSceneViewBack.pushGeneralGaussianSplatDraw(drawRecord);
             }
 
+            uint32_t preparedGaussianSplats = 0u;
+            if (gaussianOrderedClodMode)
+            {
+                rebuildGaussianSplatOrderedClodSelectedSources(m_GpuSceneViewBack,
+                                                               m_RenderWorldBack.gaussianSplats,
+                                                               pool,
+                                                               m_GaussianSplatSettings,
+                                                               gaussianLodCamera,
+                                                               maxGeneralGaussianSplatPoints,
+                                                               gaussianStats,
+                                                               m_RuntimeProfiler);
+                preparedGaussianSplats =
+                    static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatSelectedSources.size());
+            }
+            else
+            {
+                rebuildGaussianSplatSelectedSources(m_GpuSceneViewBack,
+                                                    m_RenderWorldBack.gaussianSplats,
+                                                    pool,
+                                                    gaussianStats,
+                                                    m_RuntimeProfiler);
+                preparedGaussianSplats =
+                    static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatSelectedSources.size());
+            }
+
+            const uint32_t packedGaussianSources =
+                static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size());
+            uint32_t maxVisibleGaussianSplats = preparedGaussianSplats;
+            if (m_GaussianSplatSettings.lodBudgetEnabled() && m_GaussianSplatSettings.lodBudget > 0u)
+            {
+                maxVisibleGaussianSplats = std::min(maxVisibleGaussianSplats, m_GaussianSplatSettings.lodBudget);
+            }
+
+            gaussianStats.drawRecords        = static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatDraws.size());
+            gaussianStats.preparedSplats     = preparedGaussianSplats;
+            gaussianStats.maxVisibleSplatCap = maxVisibleGaussianSplats;
+            m_GaussianSplatStats             = gaussianStats;
+
             m_GpuSceneViewBack.setGeneralGaussianSplatCaps(
-                static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatDraws.size()),
-                static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size()),
-                static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size()));
+                gaussianStats.drawRecords,
+                packedGaussianSources,
+                preparedGaussianSplats,
+                maxVisibleGaussianSplats);
             m_GpuSceneViewBack.generalGaussianSplatShBuffer = pool.gaussianStorage.shBuffer;
             m_GpuSceneViewBack.ensureGeneralGaussianSplatBuffers(rd);
 
@@ -507,6 +841,17 @@ namespace vultra
                           static_cast<uint64_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size()) *
                               sizeof(resource::GpuGeneralGaussianSplatPackedSource),
                           m_GpuSceneViewBack.generalGaussianSplatPackedSources.data());
+            }
+
+            if (!m_GpuSceneViewBack.generalGaussianSplatSelectedSources.empty() &&
+                m_GpuSceneViewBack.generalGaussianSplatSelectedSourceBuffer)
+            {
+                RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GaussianLOD::UploadSelected"};
+                cb.update(*m_GpuSceneViewBack.generalGaussianSplatSelectedSourceBuffer,
+                          0,
+                          static_cast<uint64_t>(m_GpuSceneViewBack.generalGaussianSplatSelectedSources.size()) *
+                              sizeof(resource::GpuGeneralGaussianSplatSelectedSource),
+                          m_GpuSceneViewBack.generalGaussianSplatSelectedSources.data());
             }
 
             if (m_GpuSceneViewBack.generalGaussianSplatVisibleCountBuffer)
@@ -546,7 +891,111 @@ namespace vultra
             m_RenderWorldBack.gpuSceneView     = &m_GpuSceneViewFront;
         }
 
+        if (!gpuSceneDirty && gaussianSelectionDirty)
+        {
+            RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::gaussian_lod_selection"};
+            auto& gpuSceneView = m_GpuSceneViewFront;
+
+            uint32_t preparedGaussianSplats = 0u;
+            if (gaussianOrderedClodMode)
+            {
+                rebuildGaussianSplatOrderedClodSelectedSources(gpuSceneView,
+                                                               m_RenderWorldBack.gaussianSplats,
+                                                               pool,
+                                                               m_GaussianSplatSettings,
+                                                               gaussianLodCamera,
+                                                               maxGeneralGaussianSplatPoints,
+                                                               gaussianStats,
+                                                               m_RuntimeProfiler);
+                preparedGaussianSplats =
+                    static_cast<uint32_t>(gpuSceneView.generalGaussianSplatSelectedSources.size());
+            }
+            else
+            {
+                rebuildGaussianSplatSelectedSources(gpuSceneView,
+                                                    m_RenderWorldBack.gaussianSplats,
+                                                    pool,
+                                                    gaussianStats,
+                                                    m_RuntimeProfiler);
+                preparedGaussianSplats =
+                    static_cast<uint32_t>(gpuSceneView.generalGaussianSplatSelectedSources.size());
+            }
+
+            uint32_t maxVisibleGaussianSplats = preparedGaussianSplats;
+            if (m_GaussianSplatSettings.lodBudgetEnabled() && m_GaussianSplatSettings.lodBudget > 0u)
+            {
+                maxVisibleGaussianSplats = std::min(maxVisibleGaussianSplats, m_GaussianSplatSettings.lodBudget);
+            }
+
+            gaussianStats.drawRecords        = static_cast<uint32_t>(gpuSceneView.generalGaussianSplatDraws.size());
+            gaussianStats.preparedSplats     = preparedGaussianSplats;
+            gaussianStats.maxVisibleSplatCap = maxVisibleGaussianSplats;
+            m_GaussianSplatStats             = gaussianStats;
+
+            gpuSceneView.setGeneralGaussianSplatCaps(
+                gaussianStats.drawRecords,
+                static_cast<uint32_t>(gpuSceneView.generalGaussianSplatPackedSources.size()),
+                preparedGaussianSplats,
+                maxVisibleGaussianSplats);
+            gpuSceneView.generalGaussianSplatShBuffer = pool.gaussianStorage.shBuffer;
+            gpuSceneView.ensureGeneralGaussianSplatBuffers(rd);
+
+            if (!gpuSceneView.generalGaussianSplatSelectedSources.empty() &&
+                gpuSceneView.generalGaussianSplatSelectedSourceBuffer)
+            {
+                RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GaussianLOD::UploadSelected"};
+                cb.update(*gpuSceneView.generalGaussianSplatSelectedSourceBuffer,
+                          0,
+                          static_cast<uint64_t>(gpuSceneView.generalGaussianSplatSelectedSources.size()) *
+                              sizeof(resource::GpuGeneralGaussianSplatSelectedSource),
+                          gpuSceneView.generalGaussianSplatSelectedSources.data());
+            }
+
+            if (gpuSceneView.generalGaussianSplatVisibleCountBuffer)
+            {
+                const uint32_t zero = 0u;
+                cb.update(*gpuSceneView.generalGaussianSplatVisibleCountBuffer, 0, sizeof(uint32_t), &zero);
+            }
+
+            if (gpuSceneView.generalGaussianSplatDispatchArgsBuffer)
+            {
+                const uint32_t zeroArgs[4] = {0u, 1u, 1u, 0u};
+                cb.update(*gpuSceneView.generalGaussianSplatDispatchArgsBuffer, 0, sizeof(zeroArgs), zeroArgs);
+            }
+
+            if (gpuSceneView.generalGaussianSplatIndirectBuffer.has_value())
+            {
+                std::vector<rhi::DrawIndirectCommand> indirect(1u);
+                indirect[0].type          = rhi::DrawIndirectType::eNonIndexed;
+                indirect[0].count         = 4u;
+                indirect[0].instanceCount = 0u;
+                indirect[0].first         = 0u;
+                indirect[0].vertexOffset  = 0;
+                indirect[0].firstInstance = 0u;
+                rd.uploadDrawIndirect(gpuSceneView.generalGaussianSplatIndirectBuffer.value(), indirect);
+            }
+        }
+
         m_GpuSceneDirtyTracker.markBuilt(m_RenderWorldBack, resourceRevision, m_EnableGpuDrivenMeshletPipeline);
+        if (gpuSceneDirty || gaussianSelectionDirty)
+        {
+            m_AppliedGaussianSplatSettings = m_GaussianSplatSettings;
+            if (gaussianOrderedClodNeedsView)
+            {
+                m_AppliedGaussianSplatLodViewState.valid          = true;
+                m_AppliedGaussianSplatLodViewState.cameraPosition = gaussianLodCameraPosition;
+                m_AppliedGaussianSplatLodViewState.fovY           = gaussianLodCamera->fovY;
+                m_AppliedGaussianSplatLodViewState.extentWidth    = gaussianLodExtent.width;
+                m_AppliedGaussianSplatLodViewState.extentHeight   = gaussianLodExtent.height;
+                m_AppliedGaussianSplatLodViewState.nextSelectionFrame =
+                    m_FrameCounter + kGaussianLodSelectionCooldownFrames;
+            }
+            else
+            {
+                m_AppliedGaussianSplatLodViewState.valid              = false;
+                m_AppliedGaussianSplatLodViewState.nextSelectionFrame = 0u;
+            }
+        }
 
         std::swap(m_RenderWorldFront, m_RenderWorldBack);
         if (gpuSceneDirty)

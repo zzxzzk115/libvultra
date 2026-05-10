@@ -10,6 +10,7 @@
 #include <glm/vec4.hpp>
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -82,6 +83,86 @@ namespace vultra
         CoreUUID  entity;
         uint32_t  splatIndex {0};
         glm::mat4 worldMatrix {1.0f};
+    };
+
+    // Gaussian splat rendering is intentionally split into two orthogonal switches:
+    // visibility selection (baseline vs. ordered CLOD prefix) and sort quality
+    // (plain clip-depth vs. conservative depth). There is no hierarchy/proxy LOD
+    // mode here; trained or imported importance is consumed only as an ordering.
+    enum class GaussianSplatBaselineMode : uint8_t
+    {
+        eBaseline = 0,
+        eConservativeSort,
+        eOrderedClod,
+        eOrderedClodAndConservativeSort,
+    };
+
+    enum class GaussianSplatSortMode : uint8_t
+    {
+        eClipDepth = 0,
+        eDistance,
+        eViewDepth,
+        eConservativeDepth,
+    };
+
+    struct GaussianSplatRenderSettings
+    {
+        GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
+        uint32_t                  lodBudget {0}; // 0 means derive the selected count from clodLevel.
+        float                     clodLevel {1.0f}; // Fraction of the ordered list to keep when lodBudget is automatic.
+
+        // Optional distance modulation keeps nearby points at a higher ordered prefix
+        // and fades far points out instead of swapping to proxy splats.
+        bool                      clodDistanceLodEnabled {false};
+        float                     clodMinDistance {1.0f};
+        float                     clodMaxDistance {10.0f};
+        float                     clodNearLod {1.0f};
+        float                     clodFarLod {0.25f};
+        float                     clodFadeWidth {0.2f};
+
+        [[nodiscard]] bool conservativeSortEnabled() const
+        {
+            return baselineMode == GaussianSplatBaselineMode::eConservativeSort ||
+                   baselineMode == GaussianSplatBaselineMode::eOrderedClodAndConservativeSort;
+        }
+
+        [[nodiscard]] bool orderedClodEnabled() const
+        {
+            return baselineMode == GaussianSplatBaselineMode::eOrderedClod ||
+                   baselineMode == GaussianSplatBaselineMode::eOrderedClodAndConservativeSort;
+        }
+
+        [[nodiscard]] bool lodBudgetEnabled() const
+        {
+            return orderedClodEnabled();
+        }
+
+        [[nodiscard]] GaussianSplatSortMode sortMode() const
+        {
+            return conservativeSortEnabled() ? GaussianSplatSortMode::eConservativeDepth :
+                                               GaussianSplatSortMode::eClipDepth;
+        }
+    };
+
+    struct GaussianSplatFrameStats
+    {
+        uint64_t frameIndex {0};
+        GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
+        GaussianSplatSortMode     sortMode {GaussianSplatSortMode::eClipDepth};
+        bool                      lodBudgetEnabled {false};
+        uint32_t                  lodBudget {0};
+
+        uint32_t splatAssets {0};
+        uint32_t drawRecords {0};
+        uint32_t totalSplats {0};
+        uint32_t preparedSplats {0};
+        uint32_t maxVisibleSplatCap {0};
+        uint32_t lodSelectedRawSplats {0};
+        uint32_t lodTransitionSplats {0};
+
+        // GPU readback for these counters is intentionally left out of stage 0.
+        uint32_t visibleSplats {UINT32_MAX};
+        uint32_t drawnSplats {UINT32_MAX};
     };
 
     // Double-buffered cooked scene for rendering.

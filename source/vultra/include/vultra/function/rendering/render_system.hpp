@@ -15,6 +15,8 @@
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 
+#include <glm/vec3.hpp>
+
 #include <string>
 #include <unordered_map>
 
@@ -57,6 +59,9 @@ namespace vultra
         // Cooked render world (read-only for renderer)
         const RenderWorld& renderWorld() const { return m_RenderWorldFront; }
         RuntimeProfiler*   runtimeProfiler() override { return &m_RuntimeProfiler; }
+        GaussianSplatRenderSettings&       gaussianSplatSettings() override { return m_GaussianSplatSettings; }
+        const GaussianSplatRenderSettings& gaussianSplatSettings() const override { return m_GaussianSplatSettings; }
+        const GaussianSplatFrameStats&     gaussianSplatFrameStats() const override { return m_GaussianSplatStats; }
 
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
@@ -89,6 +94,22 @@ namespace vultra
         bool                 m_EnableGpuDrivenMeshletPipeline {true};
         GpuSceneDirtyTracker m_GpuSceneDirtyTracker;
         RuntimeProfiler      m_RuntimeProfiler;
+        GaussianSplatRenderSettings m_GaussianSplatSettings;
+        GaussianSplatRenderSettings m_AppliedGaussianSplatSettings;
+        GaussianSplatFrameStats     m_GaussianSplatStats;
+
+        struct GaussianSplatLodViewState
+        {
+            bool      valid {false};
+            glm::vec3 cameraPosition {0.0f};
+            float     fovY {0.0f};
+            uint32_t  extentWidth {0};
+            uint32_t  extentHeight {0};
+            uint64_t  nextSelectionFrame {0};
+            bool      observedCameraValid {false};
+            glm::vec3 observedCameraPosition {0.0f};
+            uint32_t  stationaryFrameCount {0};
+        } m_AppliedGaussianSplatLodViewState;
     };
 
     // Cook World into RenderWorld.

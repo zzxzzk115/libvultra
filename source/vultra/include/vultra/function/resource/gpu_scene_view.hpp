@@ -49,6 +49,7 @@ namespace vultra::resource
         // Unified eGeneral gaussian splat path
         std::vector<GpuGeneralGaussianSplatDrawRecord>  generalGaussianSplatDraws;
         std::vector<GpuGeneralGaussianSplatPackedSource> generalGaussianSplatPackedSources;
+        std::vector<GpuGeneralGaussianSplatSelectedSource> generalGaussianSplatSelectedSources;
 
         // Optional CPU mirror for GPU-driven intermediate visibility.
         std::vector<GpuVisibleMeshlet> visibleMeshlets;
@@ -67,6 +68,7 @@ namespace vultra::resource
         // General gaussian splat path
         Ref<rhi::StorageBuffer>                generalGaussianSplatDrawBuffer {nullptr};
         Ref<rhi::StorageBuffer>                generalGaussianSplatPackedSourceBuffer {nullptr};
+        Ref<rhi::StorageBuffer>                generalGaussianSplatSelectedSourceBuffer {nullptr};
         Ref<rhi::StorageBuffer>                generalGaussianSplatVisibleSplatBuffer {nullptr};
         Ref<rhi::StorageBuffer>                generalGaussianSplatSortKeyBuffer {nullptr};
         Ref<rhi::StorageBuffer>                generalGaussianSplatSortIndexBuffer {nullptr};
@@ -81,6 +83,9 @@ namespace vultra::resource
         uint32_t maxVisibleMeshlets {0};
         uint32_t maxDraws {0};
         uint32_t maxGeneralGaussianSplatDraws {0};
+        // Source count is the full packed raw table; point count below is the
+        // current selected-source table length and can shrink under Ordered CLOD.
+        uint32_t maxGeneralGaussianSplatSourceCount {0};
         uint32_t maxGeneralGaussianSplatPoints {0};
         uint32_t maxGeneralGaussianSplatVisibleSplats {0};
 
@@ -92,6 +97,7 @@ namespace vultra::resource
             indirectCommands.clear();
             generalGaussianSplatDraws.clear();
             generalGaussianSplatPackedSources.clear();
+            generalGaussianSplatSelectedSources.clear();
             visibleMeshlets.clear();
             visibleInstanceBuffer         = nullptr;
             visibleInstanceCountBuffer    = nullptr;
@@ -103,6 +109,7 @@ namespace vultra::resource
             indirectBuffer.reset();
             generalGaussianSplatDrawBuffer        = nullptr;
             generalGaussianSplatPackedSourceBuffer = nullptr;
+            generalGaussianSplatSelectedSourceBuffer = nullptr;
             generalGaussianSplatVisibleSplatBuffer = nullptr;
             generalGaussianSplatSortKeyBuffer      = nullptr;
             generalGaussianSplatSortIndexBuffer    = nullptr;
@@ -116,6 +123,7 @@ namespace vultra::resource
             maxVisibleMeshlets           = 0;
             maxDraws                     = 0;
             maxGeneralGaussianSplatDraws         = 0;
+            maxGeneralGaussianSplatSourceCount   = 0;
             maxGeneralGaussianSplatPoints        = 0;
             maxGeneralGaussianSplatVisibleSplats = 0;
         }
@@ -128,11 +136,13 @@ namespace vultra::resource
             indirectCommands.clear();
             generalGaussianSplatDraws.clear();
             generalGaussianSplatPackedSources.clear();
+            generalGaussianSplatSelectedSources.clear();
             visibleMeshlets.clear();
             maxVisibleInstances          = 0;
             maxVisibleMeshlets           = 0;
             maxDraws                     = 0;
             maxGeneralGaussianSplatDraws         = 0;
+            maxGeneralGaussianSplatSourceCount   = 0;
             maxGeneralGaussianSplatPoints        = 0;
             maxGeneralGaussianSplatVisibleSplats = 0;
         }
@@ -214,6 +224,13 @@ namespace vultra::resource
         {
             const uint32_t index = static_cast<uint32_t>(generalGaussianSplatPackedSources.size());
             generalGaussianSplatPackedSources.push_back(src);
+            return index;
+        }
+
+        uint32_t pushGeneralGaussianSplatSelectedSource(const GpuGeneralGaussianSplatSelectedSource& src)
+        {
+            const uint32_t index = static_cast<uint32_t>(generalGaussianSplatSelectedSources.size());
+            generalGaussianSplatSelectedSources.push_back(src);
             return index;
         }
 
@@ -335,9 +352,15 @@ namespace vultra::resource
             ensureIndirectBuffer(rd);
         }
 
-        void setGeneralGaussianSplatCaps(uint32_t maxDrawCount, uint32_t maxPointCount, uint32_t maxVisibleSplatCount)
+        // maxSourceCount sizes immutable packed raw data, while maxPointCount sizes
+        // the per-frame selected-source indirection consumed by the preprocess pass.
+        void setGeneralGaussianSplatCaps(uint32_t maxDrawCount,
+                                         uint32_t maxSourceCount,
+                                         uint32_t maxPointCount,
+                                         uint32_t maxVisibleSplatCount)
         {
             maxGeneralGaussianSplatDraws         = maxDrawCount;
+            maxGeneralGaussianSplatSourceCount   = maxSourceCount;
             maxGeneralGaussianSplatPoints        = maxPointCount;
             maxGeneralGaussianSplatVisibleSplats = maxVisibleSplatCount;
         }
@@ -355,15 +378,27 @@ namespace vultra::resource
                 }
             }
 
-            if (maxGeneralGaussianSplatPoints > 0u)
+            if (maxGeneralGaussianSplatSourceCount > 0u)
             {
                 const uint64_t packedBytes =
-                    static_cast<uint64_t>(maxGeneralGaussianSplatPoints) * sizeof(GpuGeneralGaussianSplatPackedSource);
+                    static_cast<uint64_t>(maxGeneralGaussianSplatSourceCount) * sizeof(GpuGeneralGaussianSplatPackedSource);
                 if (!generalGaussianSplatPackedSourceBuffer ||
                     static_cast<uint64_t>(generalGaussianSplatPackedSourceBuffer->getSize()) < packedBytes)
                 {
                     generalGaussianSplatPackedSourceBuffer =
                         createRef<rhi::StorageBuffer>(rd.createStorageBuffer(packedBytes));
+                }
+            }
+
+            if (maxGeneralGaussianSplatPoints > 0u)
+            {
+                const uint64_t selectedBytes =
+                    static_cast<uint64_t>(maxGeneralGaussianSplatPoints) * sizeof(GpuGeneralGaussianSplatSelectedSource);
+                if (!generalGaussianSplatSelectedSourceBuffer ||
+                    static_cast<uint64_t>(generalGaussianSplatSelectedSourceBuffer->getSize()) < selectedBytes)
+                {
+                    generalGaussianSplatSelectedSourceBuffer =
+                        createRef<rhi::StorageBuffer>(rd.createStorageBuffer(selectedBytes));
                 }
             }
 
@@ -432,5 +467,6 @@ namespace vultra::resource
                 }
             }
         }
+
     };
 } // namespace vultra::resource

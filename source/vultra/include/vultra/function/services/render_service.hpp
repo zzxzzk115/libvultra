@@ -11,6 +11,8 @@ namespace vultra
     class Renderer;
     class RuntimeProfiler;
     class World;
+    struct GaussianSplatFrameStats;
+    struct GaussianSplatRenderSettings;
     struct RenderCamera;
 
     class IRenderService
@@ -28,5 +30,9 @@ namespace vultra
 
         // Built-in runtime profiler (default disabled).
         virtual RuntimeProfiler* runtimeProfiler() = 0;
+
+        virtual GaussianSplatRenderSettings&       gaussianSplatSettings() = 0;
+        virtual const GaussianSplatRenderSettings& gaussianSplatSettings() const = 0;
+        virtual const GaussianSplatFrameStats&     gaussianSplatFrameStats() const = 0;
     };
 } // namespace vultra

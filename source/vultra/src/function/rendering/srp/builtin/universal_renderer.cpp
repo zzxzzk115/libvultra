@@ -1,6 +1,7 @@
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/function/rendering/runtime_profiler.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp"
@@ -19,7 +20,9 @@
 #include <implot/implot.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
+#include <limits>
 
 namespace vultra
 {
@@ -50,6 +53,147 @@ namespace vultra
                 std::snprintf(buf, sizeof(buf), "%llu B", static_cast<unsigned long long>(bytes));
             }
             return std::string(buf);
+        }
+
+        [[nodiscard]] const char* gaussianBaselineModeLabel(const GaussianSplatBaselineMode mode)
+        {
+            switch (mode)
+            {
+                case GaussianSplatBaselineMode::eBaseline:
+                    return "Baseline";
+                case GaussianSplatBaselineMode::eConservativeSort:
+                    return "Conservative Sort";
+                case GaussianSplatBaselineMode::eOrderedClod:
+                    return "Ordered CLOD";
+                case GaussianSplatBaselineMode::eOrderedClodAndConservativeSort:
+                    return "Ordered CLOD + Sort";
+            }
+            return "Unknown";
+        }
+
+        [[nodiscard]] const char* gaussianSortModeLabel(const GaussianSplatSortMode mode)
+        {
+            switch (mode)
+            {
+                case GaussianSplatSortMode::eClipDepth:
+                    return "Clip Depth";
+                case GaussianSplatSortMode::eDistance:
+                    return "Distance";
+                case GaussianSplatSortMode::eViewDepth:
+                    return "View Depth";
+                case GaussianSplatSortMode::eConservativeDepth:
+                    return "Conservative Depth";
+            }
+            return "Unknown";
+        }
+
+        [[nodiscard]] double findScopeGpuMs(const std::vector<RuntimeProfiler::ScopeNode>& nodes,
+                                            const char*                                    namePart)
+        {
+            for (const auto& node : nodes)
+            {
+                if (node.name.find(namePart) != std::string::npos && node.gpuTotalMs >= 0.0)
+                    return node.gpuTotalMs;
+            }
+            return -1.0;
+        }
+
+        void drawOptionalCounter(const char* label, const uint32_t value)
+        {
+            if (value == UINT32_MAX)
+                ImGui::Text("%s: N/A", label);
+            else
+                ImGui::Text("%s: %u", label, value);
+        }
+
+        void drawGaussianSplatBaselinePanel(IRenderService& renderService)
+        {
+            if (!ImGui::CollapsingHeader("Gaussian Splat Baseline", ImGuiTreeNodeFlags_DefaultOpen))
+                return;
+
+            auto&       settings = renderService.gaussianSplatSettings();
+            const auto& stats    = renderService.gaussianSplatFrameStats();
+
+            constexpr const char* kModeLabels[] = {"Baseline",
+                                                   "Conservative Sort",
+                                                   "Ordered CLOD",
+                                                   "Ordered CLOD + Sort"};
+            int modeIndex = static_cast<int>(settings.baselineMode);
+            if (ImGui::Combo("Mode", &modeIndex, kModeLabels, IM_ARRAYSIZE(kModeLabels)))
+            {
+                modeIndex             = std::clamp(modeIndex, 0, IM_ARRAYSIZE(kModeLabels) - 1);
+                settings.baselineMode = static_cast<GaussianSplatBaselineMode>(modeIndex);
+            }
+
+            const bool lodControlsEnabled = settings.lodBudgetEnabled();
+            const bool orderedClodEnabled  = settings.orderedClodEnabled();
+            const uint32_t budgetSliderMax =
+                std::min(stats.totalSplats, static_cast<uint32_t>(std::numeric_limits<int>::max()));
+            settings.lodBudget = std::min(settings.lodBudget, budgetSliderMax);
+            int budget = static_cast<int>(std::min(settings.lodBudget, budgetSliderMax));
+            if (!lodControlsEnabled)
+                ImGui::BeginDisabled();
+            if (ImGui::SliderInt("LOD Budget", &budget, 0, static_cast<int>(budgetSliderMax), budget == 0 ? "Auto" : "%d"))
+                settings.lodBudget = static_cast<uint32_t>(std::clamp(budget, 0, static_cast<int>(budgetSliderMax)));
+            if (!lodControlsEnabled)
+                ImGui::EndDisabled();
+
+            if (!orderedClodEnabled)
+                ImGui::BeginDisabled();
+            ImGui::SliderFloat("CLOD Level", &settings.clodLevel, 0.01f, 1.0f, "%.2f");
+            settings.clodLevel = std::clamp(settings.clodLevel, 0.01f, 1.0f);
+            ImGui::Checkbox("Distance CLOD", &settings.clodDistanceLodEnabled);
+            if (!settings.clodDistanceLodEnabled)
+                ImGui::BeginDisabled();
+            ImGui::SliderFloat("Near Distance", &settings.clodMinDistance, 0.0f, 100.0f, "%.2f");
+            settings.clodMaxDistance = std::max(settings.clodMaxDistance, settings.clodMinDistance + 0.001f);
+            ImGui::SliderFloat("Far Distance", &settings.clodMaxDistance, settings.clodMinDistance + 0.001f, 200.0f, "%.2f");
+            ImGui::SliderFloat("Near LOD", &settings.clodNearLod, 0.05f, 1.0f, "%.2f");
+            settings.clodNearLod = std::clamp(settings.clodNearLod, 0.05f, 1.0f);
+            settings.clodFarLod  = std::min(settings.clodFarLod, settings.clodNearLod);
+            ImGui::SliderFloat("Far LOD", &settings.clodFarLod, 0.01f, settings.clodNearLod, "%.2f");
+            settings.clodFarLod = std::clamp(settings.clodFarLod, 0.01f, settings.clodNearLod);
+            ImGui::SliderFloat("Fade Width", &settings.clodFadeWidth, 0.01f, 1.0f, "%.2f");
+            settings.clodFadeWidth = std::clamp(settings.clodFadeWidth, 0.01f, 1.0f);
+            if (!settings.clodDistanceLodEnabled)
+                ImGui::EndDisabled();
+            if (!orderedClodEnabled)
+                ImGui::EndDisabled();
+
+            ImGui::SeparatorText("Counters");
+            ImGui::Text("Mode: %s", gaussianBaselineModeLabel(stats.baselineMode));
+            ImGui::Text("Sort: %s", gaussianSortModeLabel(stats.sortMode));
+            ImGui::Text("Total Splats: %u", stats.totalSplats);
+            ImGui::Text("Prepared Splats: %u", stats.preparedSplats);
+            ImGui::Text("Visible Cap: %u", stats.maxVisibleSplatCap);
+            ImGui::Text("Draw Records: %u", stats.drawRecords);
+            ImGui::Text("LOD Raw Splats: %u", stats.lodSelectedRawSplats);
+            ImGui::Text("CLOD Transition Splats: %u", stats.lodTransitionSplats);
+            drawOptionalCounter("Visible Splats", stats.visibleSplats);
+            drawOptionalCounter("Drawn Splats", stats.drawnSplats);
+
+            if (auto* profiler = renderService.runtimeProfiler())
+            {
+                const auto* selected = profiler->selectedFrame();
+                ImGui::SeparatorText("Timings");
+                if (selected && selected->gpuFrameMs >= 0.0)
+                    ImGui::Text("GPU Frame: %.3f ms", selected->gpuFrameMs);
+                else
+                    ImGui::TextUnformatted("GPU Frame: N/A");
+
+                const double preprocessMs =
+                    selected ? findScopeGpuMs(selected->gpuScopeTree, "GeneralGaussianSplatPreprocess") : -1.0;
+                if (preprocessMs >= 0.0)
+                    ImGui::Text("Preprocess: %.3f ms", preprocessMs);
+                else
+                    ImGui::TextUnformatted("Preprocess: N/A");
+
+                const double sortMs = selected ? findScopeGpuMs(selected->gpuScopeTree, "Sort") : -1.0;
+                if (sortMs >= 0.0)
+                    ImGui::Text("Sort: %.3f ms", sortMs);
+                else
+                    ImGui::TextUnformatted("Sort: N/A");
+            }
         }
 
         void drawRuntimeProfilerPanel(IRenderService& renderService)
@@ -507,6 +651,8 @@ namespace vultra
         drawCameraHintOverlay(cameraService.cameraControlOverlayInfo());
 
         ImGui::Begin("Universal Renderer");
+
+        drawGaussianSplatBaselinePanel(renderService);
 
         if (backendService.isXREnabled() && backendService.isXRMirrorEnabled())
         {

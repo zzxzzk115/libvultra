@@ -9,6 +9,7 @@ USE_MULTIVIEW : bool permute
 #define VULTRA_DECLARE_CAMERA
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_DRAW_BUFFER
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_PACKED_SOURCE_BUFFER
+#define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BUFFER
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_SPLAT_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_KEY_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_INDEX_BUFFER_READWRITE
@@ -152,6 +153,7 @@ EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
                                   const vec3 worldPos,
                                   const mat3 modelLinear,
                                   const vec3 modelTranslation,
+                                  const float lodWeight,
                                   const CameraData camera)
 {
     EyePreprocessResult result;
@@ -165,6 +167,9 @@ EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
 
     vec4 colorOpacity = decodeGeneralGaussianSplatBaseColorOpacity(src);
     colorOpacity.a *= max(draw.params0.z, 0.0);
+    // Ordered CLOD encodes transition fade as an opacity multiplier. Geometry,
+    // covariance and SH evaluation stay identical to the raw splat path.
+    colorOpacity.a *= lodWeight;
     if (colorOpacity.a < MIN_VISIBLE_OPACITY)
         return result;
 
@@ -284,52 +289,73 @@ void main()
     if (idx >= u_PC.pointCount)
         return;
 
-    const GeneralGaussianSplatPackedSource src = s_GeneralGaussianSplatPackedSources.points[idx];
-    const GeneralGaussianSplatDrawRecord draw  = s_GeneralGaussianSplatDraws.draws[src.aux0.y];
-    const vec3 localPos                        = decodeGeneralGaussianSplatPosition(src);
-    const mat4 model                           = draw.model;
-    const mat3 modelLinear                     = mat3(model);
-    const vec3 modelTranslation                = model[3].xyz;
-    const vec3 worldPos                        = (model * vec4(localPos, 1.0)).xyz;
-    const EyePreprocessResult eye0 = preprocessEye(src, draw, localPos, worldPos, modelLinear, modelTranslation, u_Camera);
-#if USE_MULTIVIEW
-    const EyePreprocessResult eye1 =
-        preprocessEye(src, draw, localPos, worldPos, modelLinear, modelTranslation, u_StereoCameraBlock.cameras[1]);
-    const bool visible = eye0.visible || eye1.visible;
-#else
-    const EyePreprocessResult eye1 = eye0;
-    const bool visible = eye0.visible;
-#endif
-    if (!visible)
+    // Each invocation processes one selected-source entry, not necessarily one raw
+    // file-order point. This is what allows the CPU to feed an arbitrary learned
+    // importance order while the rest of the shader remains a normal 3DGS
+    // preprocess pass.
+    const GeneralGaussianSplatSelectedSource selection = s_GeneralGaussianSplatSelectedSources.sources[idx];
+    if ((selection.flags & GENERAL_GAUSSIAN_SPLAT_SELECTED_FLAG_INVALID) != 0u)
         return;
 
-    const uint visibleIndex = atomicAdd(s_GeneralGaussianSplatVisibleCount.visibleCount, 1u);
-    if (visibleIndex >= u_PC.maxVisibleSplats)
     {
-        atomicMin(s_GeneralGaussianSplatVisibleCount.visibleCount, u_PC.maxVisibleSplats);
-        return;
-    }
-
-    packEyeResult(eye0,
-                  idx,
-                  src.aux0.y,
-                  s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_0,
-                  s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_1);
-    packEyeResult(eye1,
-                  idx,
-                  src.aux0.y,
-                  s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_0,
-                  s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_1);
-
-    float sortDepth = eye0.visible ? eye0.sortDepth : 0.0;
+        const GeneralGaussianSplatPackedSource src = s_GeneralGaussianSplatPackedSources.points[selection.sourceIndex];
+        const GeneralGaussianSplatDrawRecord draw  = s_GeneralGaussianSplatDraws.draws[selection.drawIndex];
+        // Zero defaults to full opacity so non-CLOD/baseline entries can use the
+        // same packed structure without needing an extra initialization path.
+        const float lodWeight = selection.packedWeight == 0u ? 1.0 : clamp(uintBitsToFloat(selection.packedWeight), 0.0, 1.0);
+        const vec3 localPos                        = decodeGeneralGaussianSplatPosition(src);
+        const mat4 model                           = draw.model;
+        const mat3 modelLinear                     = mat3(model);
+        const vec3 modelTranslation                = model[3].xyz;
+        const vec3 worldPos                        = (model * vec4(localPos, 1.0)).xyz;
+        const EyePreprocessResult eye0 =
+            preprocessEye(src, draw, localPos, worldPos, modelLinear, modelTranslation, lodWeight, u_Camera);
 #if USE_MULTIVIEW
-    if (eye1.visible)
-        sortDepth = max(sortDepth, eye1.sortDepth);
+        const EyePreprocessResult eye1 =
+            preprocessEye(src,
+                          draw,
+                          localPos,
+                          worldPos,
+                          modelLinear,
+                          modelTranslation,
+                          lodWeight,
+                          u_StereoCameraBlock.cameras[1]);
+        const bool visible = eye0.visible || eye1.visible;
+#else
+        const EyePreprocessResult eye1 = eye0;
+        const bool visible = eye0.visible;
 #endif
-    s_GeneralGaussianSplatSortKeys.keys[visibleIndex] = floatBitsToUint(sortDepth);
-    s_GeneralGaussianSplatSortIndices.indices[visibleIndex] = visibleIndex;
+        if (!visible)
+            return;
 
-    const uint keysPerGroup = 256u * 15u;
-    if ((visibleIndex % keysPerGroup) == 0u)
-        atomicAdd(s_GeneralGaussianSplatDispatchArgs.dispatchArgs.dispatchX, 1u);
+        const uint visibleIndex = atomicAdd(s_GeneralGaussianSplatVisibleCount.visibleCount, 1u);
+        if (visibleIndex >= u_PC.maxVisibleSplats)
+        {
+            atomicMin(s_GeneralGaussianSplatVisibleCount.visibleCount, u_PC.maxVisibleSplats);
+            return;
+        }
+
+        packEyeResult(eye0,
+                      selection.sourceIndex,
+                      selection.drawIndex,
+                      s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_0,
+                      s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_1);
+        packEyeResult(eye1,
+                      selection.sourceIndex,
+                      selection.drawIndex,
+                      s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_0,
+                      s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_1);
+
+        float sortDepth = eye0.visible ? eye0.sortDepth : 0.0;
+#if USE_MULTIVIEW
+        if (eye1.visible)
+            sortDepth = max(sortDepth, eye1.sortDepth);
+#endif
+        s_GeneralGaussianSplatSortKeys.keys[visibleIndex] = floatBitsToUint(sortDepth);
+        s_GeneralGaussianSplatSortIndices.indices[visibleIndex] = visibleIndex;
+
+        const uint keysPerGroup = 256u * 15u;
+        if ((visibleIndex % keysPerGroup) == 0u)
+            atomicAdd(s_GeneralGaussianSplatDispatchArgs.dispatchArgs.dispatchX, 1u);
+    }
 }
