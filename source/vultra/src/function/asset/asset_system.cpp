@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <numeric>
 #include <string_view>
 
 namespace vultra
@@ -246,9 +247,16 @@ namespace vultra
             return sizeof(texture) + vectorBytes(texture.data);
         }
 
+        [[nodiscard]] uint64_t estimateVGaussianSplatLodBytes(const vasset::VGaussianSplatLodData& lod)
+        {
+            return sizeof(lod) + vectorBytes(lod.importance) + vectorBytes(lod.lodLevel) +
+                   vectorBytes(lod.clusterId);
+        }
+
         [[nodiscard]] uint64_t estimateVGaussianSplatBytes(const vasset::VGaussianSplat& splat)
         {
-            return sizeof(splat) + vectorBytes(splat.splats) + vectorBytes(splat.sh) + stringBytes(splat.name) +
+            return sizeof(splat) + vectorBytes(splat.splats) + vectorBytes(splat.sh) +
+                   estimateVGaussianSplatLodBytes(splat.lod) + stringBytes(splat.name) +
                    stringBytes(splat.sourceFileName);
         }
 
@@ -918,12 +926,20 @@ namespace vultra
         std::vector<glm::uvec4> packedCovariances;
         std::vector<glm::uvec2> packedColors;
         std::vector<glm::uvec2> packedSh;
+        std::vector<float>      packedImportance;
 
         packedCenters.reserve(cpuSplat.splats.size());
         packedScales.reserve(cpuSplat.splats.size());
         packedCovariances.reserve(cpuSplat.splats.size());
         packedColors.reserve(cpuSplat.splats.size());
         packedSh.reserve(cpuSplat.splats.size() * resource::GpuGaussianSplat::s_PackedShRestCoeffs);
+        packedImportance.reserve(cpuSplat.splats.size());
+
+        // The CLOD renderer only needs a per-point rank. Keep the imported
+        // importance side-by-side with the packed, alpha-filtered points so the
+        // eventual order always indexes the GPU-local point array, not the source
+        // file array that may contain discarded invalid/transparent splats.
+        const bool hasPerPointImportance = cpuSplat.lod.importance.size() == cpuSplat.splats.size();
 
         for (size_t i = 0; i < cpuSplat.splats.size(); ++i)
         {
@@ -936,6 +952,8 @@ namespace vultra
                 continue;
 
             packedCenters.push_back(glm::vec4(p.position, 1.0f));
+            packedImportance.push_back(
+                hasPerPointImportance && std::isfinite(cpuSplat.lod.importance[i]) ? cpuSplat.lod.importance[i] : 0.0f);
 
             const glm::vec3 baseRgb = decodeBaseRgb(p);
             packedColors.emplace_back(packF16x2Clamp01(baseRgb.r, baseRgb.g), packF16x2Clamp01(baseRgb.b, alpha));
@@ -1018,6 +1036,19 @@ namespace vultra
         out.shDegree    = fileDegree;
         out.center      = center;
         out.radius      = radius;
+        // Ordered CLOD consumes a prefix of clodPointIndices. Larger importance
+        // means earlier rank. The stable tie-breaker keeps output deterministic
+        // and gives a raw-order fallback when the asset has no importance stream.
+        out.clodPointIndices.resize(out.pointCount);
+        std::iota(out.clodPointIndices.begin(), out.clodPointIndices.end(), 0u);
+        if (hasPerPointImportance && packedImportance.size() == out.clodPointIndices.size())
+        {
+            std::stable_sort(out.clodPointIndices.begin(), out.clodPointIndices.end(), [&](const uint32_t a, const uint32_t b) {
+                if (packedImportance[a] != packedImportance[b])
+                    return packedImportance[a] > packedImportance[b];
+                return a < b;
+            });
+        }
         out.pointOffset = pool.gaussianStorage.appendCenters(*m_RenderDevice, packedCenters.data(), out.pointCount);
         pool.gaussianStorage.appendScales(*m_RenderDevice, packedScales.data(), out.pointCount);
         pool.gaussianStorage.appendCovariances(*m_RenderDevice, packedCovariances.data(), out.pointCount);

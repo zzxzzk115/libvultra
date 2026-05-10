@@ -45,6 +45,13 @@
 #define VULTRA_GENERAL_GAUSSIAN_SPLAT_SH_BINDING 22
 #endif
 
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BINDING 27
+#endif
+
+const uint GENERAL_GAUSSIAN_SPLAT_SELECTED_FLAG_TRANSITION = 2u;
+const uint GENERAL_GAUSSIAN_SPLAT_SELECTED_FLAG_INVALID = 0x80000000u;
+
 struct GeneralGaussianSplatDrawRecord
 {
     uint splatIndex;
@@ -61,6 +68,14 @@ struct GeneralGaussianSplatPackedSource
     uvec4 covariance0;
     uvec4 colorSh0;
     uvec4 aux0;
+};
+
+struct GeneralGaussianSplatSelectedSource
+{
+    uint sourceIndex;
+    uint drawIndex;
+    uint packedWeight;
+    uint flags;
 };
 
 struct GeneralGaussianSplatVisibleSplat
@@ -132,6 +147,22 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_PACKED_SO
 {
     GeneralGaussianSplatPackedSource points[];
 } s_GeneralGaussianSplatPackedSources;
+#endif
+
+#ifdef VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BINDING, std430) readonly buffer
+    GeneralGaussianSplatSelectedSourceBuffer
+{
+    GeneralGaussianSplatSelectedSource sources[];
+} s_GeneralGaussianSplatSelectedSources;
+#endif
+
+#ifdef VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BUFFER_READWRITE
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BINDING, std430) buffer
+    GeneralGaussianSplatSelectedSourceBuffer
+{
+    GeneralGaussianSplatSelectedSource sources[];
+} s_GeneralGaussianSplatSelectedSources;
 #endif
 
 #ifdef VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_SPLAT_BUFFER_READONLY

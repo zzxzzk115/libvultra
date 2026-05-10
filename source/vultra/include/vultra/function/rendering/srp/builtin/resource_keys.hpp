@@ -63,6 +63,9 @@ namespace vultra
     // set = 0, binding = 22
     constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatShBuffer {
         .id = vbase::hashLiteral("GeneralGaussianSplatShBuffer")};
+    // set = 0, binding = 27
+    constexpr FrameGraphResourceKey kResKey_GeneralGaussianSplatSelectedSourceBuffer {
+        .id = vbase::hashLiteral("GeneralGaussianSplatSelectedSourceBuffer")};
     // set = 0, binding = 24
     constexpr FrameGraphResourceKey kResKey_VisibleInstanceBuffer {.id = vbase::hashLiteral("VisibleInstanceBuffer")};
     // set = 0, binding = 25

@@ -74,10 +74,32 @@ namespace vultra::resource
         glm::uvec4 posOpacity {0u};
         glm::uvec4 covariance0 {0u};
         glm::uvec4 colorSh0 {0u};
-        glm::uvec4 aux0 {0u}; // x=sourcePointIndex, y=drawIndex, z=shCoeffOffset, w=flags
+        glm::uvec4 aux0 {0u}; // x=sourcePointIndex, y=reserved, z=shCoeffOffset, w=flags
     };
     static_assert(sizeof(GpuGeneralGaussianSplatPackedSource) == 64,
                   "GpuGeneralGaussianSplatPackedSource must remain 64 bytes");
+
+    // Per-frame ordered-CLOD selection indirection. The packed source table keeps
+    // every raw Gaussian for the asset; this compact table says which entries are
+    // active this frame and how strongly they should contribute. Keeping selection
+    // separate from packed data lets future training code replace only the order
+    // or budget policy without changing the GPU splat representation.
+    struct GpuGeneralGaussianSplatSelectedSource
+    {
+        // Index into GpuGeneralGaussianSplatPackedSource. Ordered CLOD may jump
+        // around the packed table because importance order is independent of file
+        // order; baseline fills this as a dense identity mapping.
+        uint32_t sourceIndex {0};
+        // Draw record that owns the source point and provides the model matrix.
+        uint32_t drawIndex {0};
+        // floatBitsToUint(opacity multiplier). Zero is treated as 1.0 in shader
+        // code for backward-compatible/default entries.
+        uint32_t packedWeight {0};
+        // Per-entry metadata, currently used for transition/fade diagnostics.
+        uint32_t flags {0};
+    };
+    static_assert(sizeof(GpuGeneralGaussianSplatSelectedSource) == 16,
+                  "GpuGeneralGaussianSplatSelectedSource must remain 16 bytes");
 
     // Screen-space payload mirrors Visionary's compact Splat2D contract:
     // packed axes, packed NDC center, high-precision depth, packed RGBA.
