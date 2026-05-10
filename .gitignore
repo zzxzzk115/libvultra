@@ -20,6 +20,8 @@ out/
 
 # Engine
 *.log
+__pycache__/
+*.py[cod]
 
 # CMake
 CMakeLists.txt
@@ -33,6 +35,13 @@ vsxmake*/
 
 # imported files
 imported/
+
+# Local 3DGS datasets, trained importance outputs, and import sidecars.
+# Keep these on disk for experiments, but do not treat them as source changes.
+resources/training/
+resources/models/3dgs/train.*
+resources/models/3dgs/truck.*
+resources/models/3dgs/*_importance.*
 
 # vshader cache
 .vshader_cache/
