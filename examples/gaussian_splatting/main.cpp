@@ -61,6 +61,7 @@ namespace
 
         GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
         bool                      lodBudgetEnabled {false};
+        bool                      directPrefix {false};
         uint32_t                  lodBudget {0};
         uint32_t                  splatAssets {0};
         uint32_t                  drawRecords {0};
@@ -320,6 +321,7 @@ namespace
 
         sample.baselineMode        = gaussian.baselineMode;
         sample.lodBudgetEnabled    = gaussian.lodBudgetEnabled;
+        sample.directPrefix        = gaussian.directPrefix;
         sample.lodBudget           = gaussian.lodBudget;
         sample.splatAssets         = gaussian.splatAssets;
         sample.drawRecords         = gaussian.drawRecords;
@@ -410,7 +412,7 @@ namespace
             return;
         }
 
-        out << "sample,frame,mode,lod_budget_enabled,lod_budget,dt_ms,cpu_frame_ms,cpu_render_ms,"
+        out << "sample,frame,mode,lod_budget_enabled,direct_prefix,lod_budget,dt_ms,cpu_frame_ms,cpu_render_ms,"
                "gpu_frame_ms,draw_calls,dispatch_calls,copy_ops,update_ops,gpu_scope_resolved_count,"
                "gpu_scope_token_count,splat_assets,draw_records,total_splats,prepared_splats,"
                "max_visible_splat_cap,lod_selected_raw_splats,visible_splats,drawn_splats,"
@@ -423,8 +425,8 @@ namespace
         for (const auto& sample : samples)
         {
             out << sample.sampleIndex << ',' << sample.frameIndex << ',' << gaussianModeLabel(sample.baselineMode)
-                << ',' << (sample.lodBudgetEnabled ? 1 : 0) << ',' << sample.lodBudget << ',' << sample.dtMs
-                << ',' << sample.cpuFrameMs << ',' << sample.cpuRenderMs
+                << ',' << (sample.lodBudgetEnabled ? 1 : 0) << ',' << (sample.directPrefix ? 1 : 0) << ','
+                << sample.lodBudget << ',' << sample.dtMs << ',' << sample.cpuFrameMs << ',' << sample.cpuRenderMs
                 << ',' << sample.gpuFrameMs << ',' << sample.drawCalls << ',' << sample.dispatchCalls << ','
                 << sample.copyOps << ',' << sample.updateOps << ',' << sample.gpuScopeResolvedCount << ','
                 << sample.gpuScopeTokenCount << ',' << sample.splatAssets << ',' << sample.drawRecords << ','
@@ -576,6 +578,7 @@ private:
                   << "  samples: " << m_Samples.size() << "\n"
                   << "  output: " << m_Options.outputPath.string() << "\n"
                   << "  mode: " << gaussianModeLabel(last.baselineMode) << "\n"
+                  << "  direct_prefix: " << (last.directPrefix ? "yes" : "no") << "\n"
                   << "  splats: total=" << last.totalSplats << ", prepared=" << last.preparedSplats
                   << ", selected_raw=" << last.lodSelectedRawSplats << "\n"
                   << "  CPU frame: " << statsText(cpuFrameStats) << "\n"

@@ -590,6 +590,7 @@ namespace vultra
             m_GpuSceneViewBack.generalGaussianSplatDraws.clear();
             m_GpuSceneViewBack.generalGaussianSplatPackedSources.clear();
             m_GpuSceneViewBack.generalGaussianSplatSelectedSources.clear();
+            m_GpuSceneViewBack.generalGaussianSplatDirectPrefix = false;
             m_GpuSceneViewBack.generalGaussianSplatDraws.reserve(m_RenderWorldBack.gaussianSplats.size());
             m_GpuSceneViewBack.generalGaussianSplatPackedSources.reserve(maxGeneralGaussianSplatSourceCount);
 
@@ -658,7 +659,20 @@ namespace vultra
 
             uint32_t selectedSourceCapacity = 0u;
             uint32_t activeGaussianSplats   = 0u;
-            if (gaussianOrderedClodMode)
+            const uint32_t packedGaussianSources =
+                static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size());
+            const bool gaussianDirectPrefix =
+                gaussianOrderedClodMode && m_GpuSceneViewBack.generalGaussianSplatDraws.size() == 1u;
+            gaussianStats.directPrefix = gaussianDirectPrefix;
+            if (gaussianDirectPrefix)
+            {
+                selectedSourceCapacity = 0u;
+                activeGaussianSplats =
+                    std::min(packedGaussianSources,
+                             effectiveGaussianLodBudget(m_GaussianSplatSettings, maxGeneralGaussianSplatPoints));
+                gaussianStats.lodSelectedRawSplats = activeGaussianSplats;
+            }
+            else if (gaussianOrderedClodMode)
             {
                 rebuildGaussianSplatOrderedClodPrefixSources(m_GpuSceneViewBack,
                                                              m_RenderWorldBack.gaussianSplats,
@@ -683,8 +697,6 @@ namespace vultra
                 activeGaussianSplats = selectedSourceCapacity;
             }
 
-            const uint32_t packedGaussianSources =
-                static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size());
             uint32_t maxVisibleGaussianSplats = activeGaussianSplats;
             if (m_GaussianSplatSettings.lodBudgetEnabled() && m_GaussianSplatSettings.lodBudget > 0u)
             {
@@ -701,7 +713,8 @@ namespace vultra
                 packedGaussianSources,
                 selectedSourceCapacity,
                 activeGaussianSplats,
-                maxVisibleGaussianSplats);
+                maxVisibleGaussianSplats,
+                gaussianDirectPrefix);
             m_GpuSceneViewBack.generalGaussianSplatShBuffer = pool.gaussianStorage.shBuffer;
             m_GpuSceneViewBack.ensureGeneralGaussianSplatBuffers(rd);
 
@@ -780,7 +793,9 @@ namespace vultra
             uint32_t selectedSourceCapacity = static_cast<uint32_t>(gpuSceneView.generalGaussianSplatSelectedSources.size());
             uint32_t activeGaussianSplats   = 0u;
             bool     uploadSelectedSources  = false;
-            if (selectedSourceCapacity < maxGeneralGaussianSplatPoints)
+            const bool gaussianDirectPrefix = gpuSceneView.generalGaussianSplatDirectPrefix;
+            gaussianStats.directPrefix      = gaussianDirectPrefix;
+            if (!gaussianDirectPrefix && selectedSourceCapacity < maxGeneralGaussianSplatPoints)
             {
                 rebuildGaussianSplatOrderedClodPrefixSources(gpuSceneView,
                                                              m_RenderWorldBack.gaussianSplats,
@@ -791,8 +806,11 @@ namespace vultra
                 uploadSelectedSources = true;
             }
 
+            const uint32_t activeBudgetSourceCount =
+                gaussianDirectPrefix ? static_cast<uint32_t>(gpuSceneView.generalGaussianSplatPackedSources.size()) :
+                                       selectedSourceCapacity;
             activeGaussianSplats =
-                std::min(selectedSourceCapacity,
+                std::min(activeBudgetSourceCount,
                          effectiveGaussianLodBudget(m_GaussianSplatSettings, maxGeneralGaussianSplatPoints));
             gaussianStats.lodSelectedRawSplats = activeGaussianSplats;
 
@@ -812,7 +830,8 @@ namespace vultra
                 static_cast<uint32_t>(gpuSceneView.generalGaussianSplatPackedSources.size()),
                 selectedSourceCapacity,
                 activeGaussianSplats,
-                maxVisibleGaussianSplats);
+                maxVisibleGaussianSplats,
+                gaussianDirectPrefix);
             gpuSceneView.generalGaussianSplatShBuffer = pool.gaussianStorage.shBuffer;
             gpuSceneView.ensureGeneralGaussianSplatBuffers(rd);
 

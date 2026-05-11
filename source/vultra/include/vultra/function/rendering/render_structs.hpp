@@ -116,6 +116,7 @@ namespace vultra
         uint64_t frameIndex {0};
         GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
         bool                      lodBudgetEnabled {false};
+        bool                      directPrefix {false};
         uint32_t                  lodBudget {0};
 
         uint32_t splatAssets {0};
