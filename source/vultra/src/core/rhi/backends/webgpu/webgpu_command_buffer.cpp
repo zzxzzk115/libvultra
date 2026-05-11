@@ -1164,44 +1164,11 @@ namespace vultra
 
         void WebGPUCommandBuffer::pushDebugGroup(const std::string_view label) const
         {
-#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
-            WGPUStringView labelView {};
-            labelView.data   = label.data();
-            labelView.length = label.size();
-
-            if (m_RenderPass != nullptr)
-            {
-                wgpuRenderPassEncoderPushDebugGroup(m_RenderPass, labelView);
-            }
-            else if (m_ComputePass != nullptr)
-            {
-                wgpuComputePassEncoderPushDebugGroup(m_ComputePass, labelView);
-            }
-            else if (m_Encoder != nullptr)
-            {
-                wgpuCommandEncoderPushDebugGroup(m_Encoder, labelView);
-            }
-#else
             (void)label;
-#endif
         }
 
         void WebGPUCommandBuffer::popDebugGroup() const
         {
-#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
-            if (m_RenderPass != nullptr)
-            {
-                wgpuRenderPassEncoderPopDebugGroup(m_RenderPass);
-            }
-            else if (m_ComputePass != nullptr)
-            {
-                wgpuComputePassEncoderPopDebugGroup(m_ComputePass);
-            }
-            else if (m_Encoder != nullptr)
-            {
-                wgpuCommandEncoderPopDebugGroup(m_Encoder);
-            }
-#endif
         }
 
         [[noreturn]] void WebGPUCommandBuffer::unsupported(const char* name)

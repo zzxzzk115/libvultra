@@ -150,6 +150,7 @@ namespace vultra
         GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
         GaussianSplatSortMode     sortMode {GaussianSplatSortMode::eClipDepth};
         bool                      lodBudgetEnabled {false};
+        bool                      directPrefix {false};
         uint32_t                  lodBudget {0};
 
         uint32_t splatAssets {0};

@@ -163,6 +163,7 @@ namespace vultra
             ImGui::SeparatorText("Counters");
             ImGui::Text("Mode: %s", gaussianBaselineModeLabel(stats.baselineMode));
             ImGui::Text("Sort: %s", gaussianSortModeLabel(stats.sortMode));
+            ImGui::Text("Direct Prefix: %s", stats.directPrefix ? "yes" : "no");
             ImGui::Text("Total Splats: %u", stats.totalSplats);
             ImGui::Text("Prepared Splats: %u", stats.preparedSplats);
             ImGui::Text("Visible Cap: %u", stats.maxVisibleSplatCap);
