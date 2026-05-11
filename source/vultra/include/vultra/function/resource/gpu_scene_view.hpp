@@ -83,10 +83,12 @@ namespace vultra::resource
         uint32_t maxVisibleMeshlets {0};
         uint32_t maxDraws {0};
         uint32_t maxGeneralGaussianSplatDraws {0};
-        // Source count is the full packed raw table; point count below is the
-        // current selected-source table length and can shrink under Ordered CLOD.
+        // Source count is the full packed raw table. Point count sizes the
+        // selected-source buffer, while active point count is the dispatch prefix
+        // currently consumed by preprocess.
         uint32_t maxGeneralGaussianSplatSourceCount {0};
         uint32_t maxGeneralGaussianSplatPoints {0};
+        uint32_t activeGeneralGaussianSplatPoints {0};
         uint32_t maxGeneralGaussianSplatVisibleSplats {0};
 
         void clear()
@@ -125,6 +127,7 @@ namespace vultra::resource
             maxGeneralGaussianSplatDraws         = 0;
             maxGeneralGaussianSplatSourceCount   = 0;
             maxGeneralGaussianSplatPoints        = 0;
+            activeGeneralGaussianSplatPoints     = 0;
             maxGeneralGaussianSplatVisibleSplats = 0;
         }
 
@@ -144,6 +147,7 @@ namespace vultra::resource
             maxGeneralGaussianSplatDraws         = 0;
             maxGeneralGaussianSplatSourceCount   = 0;
             maxGeneralGaussianSplatPoints        = 0;
+            activeGeneralGaussianSplatPoints     = 0;
             maxGeneralGaussianSplatVisibleSplats = 0;
         }
 
@@ -352,16 +356,19 @@ namespace vultra::resource
             ensureIndirectBuffer(rd);
         }
 
-        // maxSourceCount sizes immutable packed raw data, while maxPointCount sizes
-        // the per-frame selected-source indirection consumed by the preprocess pass.
+        // maxSourceCount sizes immutable packed raw data. maxPointCount sizes the
+        // selected-source indirection buffer; activePointCount is the prefix length
+        // actually consumed by the preprocess pass this frame.
         void setGeneralGaussianSplatCaps(uint32_t maxDrawCount,
                                          uint32_t maxSourceCount,
                                          uint32_t maxPointCount,
+                                         uint32_t activePointCount,
                                          uint32_t maxVisibleSplatCount)
         {
             maxGeneralGaussianSplatDraws         = maxDrawCount;
             maxGeneralGaussianSplatSourceCount   = maxSourceCount;
             maxGeneralGaussianSplatPoints        = maxPointCount;
+            activeGeneralGaussianSplatPoints     = std::min(activePointCount, maxPointCount);
             maxGeneralGaussianSplatVisibleSplats = maxVisibleSplatCount;
         }
 

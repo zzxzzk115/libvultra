@@ -36,13 +36,6 @@ namespace
         std::optional<float>                     clodLevel;
         std::optional<uint32_t>                  lodBudget;
 
-        std::optional<bool>  distanceLodEnabled;
-        std::optional<float> clodMinDistance;
-        std::optional<float> clodMaxDistance;
-        std::optional<float> clodNearLod;
-        std::optional<float> clodFarLod;
-        std::optional<float> clodFadeWidth;
-
         bool                  benchmarkEnabled {false};
         uint32_t              benchmarkFrames {300};
         uint32_t              warmupFrames {60};
@@ -67,7 +60,6 @@ namespace
         uint32_t gpuScopeTokenCount {0};
 
         GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
-        GaussianSplatSortMode     sortMode {GaussianSplatSortMode::eClipDepth};
         bool                      lodBudgetEnabled {false};
         uint32_t                  lodBudget {0};
         uint32_t                  splatAssets {0};
@@ -76,7 +68,6 @@ namespace
         uint32_t                  preparedSplats {0};
         uint32_t                  maxVisibleSplatCap {0};
         uint32_t                  lodSelectedRawSplats {0};
-        uint32_t                  lodTransitionSplats {0};
         uint32_t                  visibleSplats {UINT32_MAX};
         uint32_t                  drawnSplats {UINT32_MAX};
 
@@ -173,30 +164,13 @@ namespace
         }
     }
 
-    std::optional<bool> parseBool(const std::string_view value)
-    {
-        const auto normalized = normalizeToken(value);
-        if (normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on")
-            return true;
-        if (normalized == "0" || normalized == "false" || normalized == "no" || normalized == "off")
-            return false;
-        return std::nullopt;
-    }
-
     std::optional<GaussianSplatBaselineMode> parseGaussianMode(const std::string_view value)
     {
         const auto normalized = normalizeToken(value);
         if (normalized == "baseline" || normalized == "default")
             return GaussianSplatBaselineMode::eBaseline;
-        if (normalized == "conservative" || normalized == "conservative-sort" || normalized == "sort")
-            return GaussianSplatBaselineMode::eConservativeSort;
         if (normalized == "ordered" || normalized == "ordered-clod" || normalized == "clod")
             return GaussianSplatBaselineMode::eOrderedClod;
-        if (normalized == "ordered-clod-sort" || normalized == "ordered-clod-conservative" ||
-            normalized == "clod-sort" || normalized == "clod-conservative")
-        {
-            return GaussianSplatBaselineMode::eOrderedClodAndConservativeSort;
-        }
         return std::nullopt;
     }
 
@@ -206,28 +180,8 @@ namespace
         {
             case GaussianSplatBaselineMode::eBaseline:
                 return "baseline";
-            case GaussianSplatBaselineMode::eConservativeSort:
-                return "conservative-sort";
             case GaussianSplatBaselineMode::eOrderedClod:
                 return "ordered-clod";
-            case GaussianSplatBaselineMode::eOrderedClodAndConservativeSort:
-                return "ordered-clod-sort";
-        }
-        return "unknown";
-    }
-
-    std::string_view gaussianSortModeLabel(const GaussianSplatSortMode mode)
-    {
-        switch (mode)
-        {
-            case GaussianSplatSortMode::eClipDepth:
-                return "clip-depth";
-            case GaussianSplatSortMode::eDistance:
-                return "distance";
-            case GaussianSplatSortMode::eViewDepth:
-                return "view-depth";
-            case GaussianSplatSortMode::eConservativeDepth:
-                return "conservative-depth";
         }
         return "unknown";
     }
@@ -256,18 +210,6 @@ namespace
             if (arg == "--benchmark")
             {
                 options.benchmarkEnabled = true;
-                continue;
-            }
-
-            if (arg == "--clod-distance-lod")
-            {
-                options.distanceLodEnabled = true;
-                continue;
-            }
-
-            if (arg == "--no-clod-distance-lod")
-            {
-                options.distanceLodEnabled = false;
                 continue;
             }
 
@@ -323,20 +265,7 @@ namespace
                 continue;
             }
 
-            if (const auto value = takeOptionValue(args, i, "--clod-distance-lod"))
-            {
-                options.distanceLodEnabled = parseBool(*value);
-                if (!options.distanceLodEnabled)
-                    VULTRA_CLIENT_WARN("Ignoring invalid --clod-distance-lod value: {}", *value);
-                continue;
-            }
-
             parseFloatOption(args, i, "--clod-level", options.clodLevel);
-            parseFloatOption(args, i, "--clod-min-distance", options.clodMinDistance);
-            parseFloatOption(args, i, "--clod-max-distance", options.clodMaxDistance);
-            parseFloatOption(args, i, "--clod-near-lod", options.clodNearLod);
-            parseFloatOption(args, i, "--clod-far-lod", options.clodFarLod);
-            parseFloatOption(args, i, "--clod-fade-width", options.clodFadeWidth);
         }
 
         return options;
@@ -344,9 +273,7 @@ namespace
 
     bool hasClodOverride(const GaussianBenchmarkOptions& options)
     {
-        return options.clodLevel.has_value() || options.lodBudget.has_value() || options.distanceLodEnabled.has_value() ||
-               options.clodMinDistance.has_value() || options.clodMaxDistance.has_value() ||
-               options.clodNearLod.has_value() || options.clodFarLod.has_value() || options.clodFadeWidth.has_value();
+        return options.clodLevel.has_value() || options.lodBudget.has_value();
     }
 
     double sumScopeMs(const std::vector<RuntimeProfiler::ScopeNode>& scopes,
@@ -392,7 +319,6 @@ namespace
         sample.gpuScopeTokenCount    = frame.gpuScopeTokenCount;
 
         sample.baselineMode        = gaussian.baselineMode;
-        sample.sortMode            = gaussian.sortMode;
         sample.lodBudgetEnabled    = gaussian.lodBudgetEnabled;
         sample.lodBudget           = gaussian.lodBudget;
         sample.splatAssets         = gaussian.splatAssets;
@@ -401,7 +327,6 @@ namespace
         sample.preparedSplats      = gaussian.preparedSplats;
         sample.maxVisibleSplatCap  = gaussian.maxVisibleSplatCap;
         sample.lodSelectedRawSplats = gaussian.lodSelectedRawSplats;
-        sample.lodTransitionSplats = gaussian.lodTransitionSplats;
         sample.visibleSplats       = gaussian.visibleSplats;
         sample.drawnSplats         = gaussian.drawnSplats;
 
@@ -409,7 +334,7 @@ namespace
         sample.cpuCookMs              = sumScopeMs(frame.cpuScopeTree, "RenderWorldCooker::cook", false);
         sample.cpuGpuSceneRebuildMs   = sumScopeMs(frame.cpuScopeTree, "GpuScene::rebuild", false);
         sample.cpuLodSelectionMs      = sumScopeMs(frame.cpuScopeTree, "GpuScene::gaussian_lod_selection", false);
-        sample.cpuClodSelectionMs     = sumScopeMs(frame.cpuScopeTree, "GaussianCLOD::BuildSelection", false);
+        sample.cpuClodSelectionMs     = sumScopeMs(frame.cpuScopeTree, "GaussianCLOD::BuildPrefix", false);
         sample.cpuRawSelectionMs      = sumScopeMs(frame.cpuScopeTree, "GaussianSplat::BuildRawSelection", false);
         sample.cpuLodUploadMs         = sumScopeMs(frame.cpuScopeTree, "GaussianLOD::UploadSelected", false);
         sample.cpuFrameGraphBuildMs   = sumScopeMs(frame.cpuScopeTree, "FrameGraph::build", false);
@@ -485,12 +410,12 @@ namespace
             return;
         }
 
-        out << "sample,frame,mode,sort_mode,lod_budget_enabled,lod_budget,dt_ms,cpu_frame_ms,cpu_render_ms,"
+        out << "sample,frame,mode,lod_budget_enabled,lod_budget,dt_ms,cpu_frame_ms,cpu_render_ms,"
                "gpu_frame_ms,draw_calls,dispatch_calls,copy_ops,update_ops,gpu_scope_resolved_count,"
                "gpu_scope_token_count,splat_assets,draw_records,total_splats,prepared_splats,"
-               "max_visible_splat_cap,lod_selected_raw_splats,lod_transition_splats,visible_splats,drawn_splats,"
+               "max_visible_splat_cap,lod_selected_raw_splats,visible_splats,drawn_splats,"
                "cpu_render_frame_ms,cpu_cook_ms,cpu_gpu_scene_rebuild_ms,cpu_lod_selection_ms,"
-               "cpu_clod_selection_ms,cpu_raw_selection_ms,cpu_lod_upload_ms,cpu_framegraph_build_ms,"
+               "cpu_clod_prefix_build_ms,cpu_raw_selection_ms,cpu_lod_upload_ms,cpu_framegraph_build_ms,"
                "cpu_framegraph_execute_ms,gpu_preprocess_pass_ms,gpu_project_cull_ms,gpu_sort_ms,"
                "gpu_write_indirect_ms,gpu_render_pass_ms\n";
 
@@ -498,14 +423,14 @@ namespace
         for (const auto& sample : samples)
         {
             out << sample.sampleIndex << ',' << sample.frameIndex << ',' << gaussianModeLabel(sample.baselineMode)
-                << ',' << gaussianSortModeLabel(sample.sortMode) << ',' << (sample.lodBudgetEnabled ? 1 : 0) << ','
-                << sample.lodBudget << ',' << sample.dtMs << ',' << sample.cpuFrameMs << ',' << sample.cpuRenderMs
+                << ',' << (sample.lodBudgetEnabled ? 1 : 0) << ',' << sample.lodBudget << ',' << sample.dtMs
+                << ',' << sample.cpuFrameMs << ',' << sample.cpuRenderMs
                 << ',' << sample.gpuFrameMs << ',' << sample.drawCalls << ',' << sample.dispatchCalls << ','
                 << sample.copyOps << ',' << sample.updateOps << ',' << sample.gpuScopeResolvedCount << ','
                 << sample.gpuScopeTokenCount << ',' << sample.splatAssets << ',' << sample.drawRecords << ','
                 << sample.totalSplats << ',' << sample.preparedSplats << ',' << sample.maxVisibleSplatCap << ','
-                << sample.lodSelectedRawSplats << ',' << sample.lodTransitionSplats << ','
-                << csvCounter(sample.visibleSplats) << ',' << csvCounter(sample.drawnSplats) << ','
+                << sample.lodSelectedRawSplats << ',' << csvCounter(sample.visibleSplats) << ','
+                << csvCounter(sample.drawnSplats) << ','
                 << sample.cpuRenderFrameMs << ',' << sample.cpuCookMs << ',' << sample.cpuGpuSceneRebuildMs << ','
                 << sample.cpuLodSelectionMs << ',' << sample.cpuClodSelectionMs << ',' << sample.cpuRawSelectionMs
                 << ',' << sample.cpuLodUploadMs << ',' << sample.cpuFrameGraphBuildMs << ','
@@ -555,18 +480,6 @@ protected:
             settings.clodLevel = std::clamp(*m_Options.clodLevel, 0.0f, 1.0f);
         if (m_Options.lodBudget)
             settings.lodBudget = *m_Options.lodBudget;
-        if (m_Options.distanceLodEnabled)
-            settings.clodDistanceLodEnabled = *m_Options.distanceLodEnabled;
-        if (m_Options.clodMinDistance)
-            settings.clodMinDistance = std::max(0.0f, *m_Options.clodMinDistance);
-        if (m_Options.clodMaxDistance)
-            settings.clodMaxDistance = std::max(settings.clodMinDistance, *m_Options.clodMaxDistance);
-        if (m_Options.clodNearLod)
-            settings.clodNearLod = std::clamp(*m_Options.clodNearLod, 0.0f, 1.0f);
-        if (m_Options.clodFarLod)
-            settings.clodFarLod = std::clamp(*m_Options.clodFarLod, 0.0f, 1.0f);
-        if (m_Options.clodFadeWidth)
-            settings.clodFadeWidth = std::max(0.0f, *m_Options.clodFadeWidth);
 
         if (m_Options.benchmarkEnabled)
         {
@@ -662,15 +575,14 @@ private:
         std::cout << "\nGaussian benchmark summary\n"
                   << "  samples: " << m_Samples.size() << "\n"
                   << "  output: " << m_Options.outputPath.string() << "\n"
-                  << "  mode: " << gaussianModeLabel(last.baselineMode)
-                  << ", sort: " << gaussianSortModeLabel(last.sortMode) << "\n"
+                  << "  mode: " << gaussianModeLabel(last.baselineMode) << "\n"
                   << "  splats: total=" << last.totalSplats << ", prepared=" << last.preparedSplats
                   << ", selected_raw=" << last.lodSelectedRawSplats << "\n"
                   << "  CPU frame: " << statsText(cpuFrameStats) << "\n"
                   << "  GPU frame: " << statsText(gpuFrameStats) << "\n"
                   << "  GPU preprocess pass: " << statsText(gpuPreprocess) << "\n"
                   << "  GPU render pass: " << statsText(gpuRenderPass) << "\n"
-                  << "  CPU CLOD selection: " << statsText(cpuClodSelect) << "\n\n";
+                  << "  CPU CLOD prefix build: " << statsText(cpuClodSelect) << "\n\n";
 
         VULTRA_CLIENT_INFO("Gaussian benchmark wrote {} samples to {}", m_Samples.size(), m_Options.outputPath.string());
     }

@@ -3,7 +3,7 @@ version = 1
 root = 1
 
 [assets]
-gaussian_splat.Lizard = "res://models/3dgs/hornedlizard.spz"
+gaussian_splat.Lizard = "res://models/3dgs/train_importance.ply"
 
 [node id=1 name="Root" parent=0]
 NameComponent/name = "Root"

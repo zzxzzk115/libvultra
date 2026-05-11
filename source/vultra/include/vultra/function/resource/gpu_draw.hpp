@@ -79,23 +79,19 @@ namespace vultra::resource
     static_assert(sizeof(GpuGeneralGaussianSplatPackedSource) == 64,
                   "GpuGeneralGaussianSplatPackedSource must remain 64 bytes");
 
-    // Per-frame ordered-CLOD selection indirection. The packed source table keeps
-    // every raw Gaussian for the asset; this compact table says which entries are
-    // active this frame and how strongly they should contribute. Keeping selection
-    // separate from packed data lets future training code replace only the order
-    // or budget policy without changing the GPU splat representation.
+    // Per-scene Gaussian source indirection. Imported CLOD assets are physically
+    // sorted by importance, so runtime LOD only changes the active prefix length.
+    // The table remains separate from packed data so baseline and Ordered CLOD can
+    // share one preprocess shader path.
     struct GpuGeneralGaussianSplatSelectedSource
     {
-        // Index into GpuGeneralGaussianSplatPackedSource. Ordered CLOD may jump
-        // around the packed table because importance order is independent of file
-        // order; baseline fills this as a dense identity mapping.
+        // Index into GpuGeneralGaussianSplatPackedSource.
         uint32_t sourceIndex {0};
         // Draw record that owns the source point and provides the model matrix.
         uint32_t drawIndex {0};
-        // floatBitsToUint(opacity multiplier). Zero is treated as 1.0 in shader
-        // code for backward-compatible/default entries.
+        // Reserved opacity multiplier. Zero is treated as 1.0 in shader code.
         uint32_t packedWeight {0};
-        // Per-entry metadata, currently used for transition/fade diagnostics.
+        // Per-entry metadata, currently unused outside the shader invalid bit.
         uint32_t flags {0};
     };
     static_assert(sizeof(GpuGeneralGaussianSplatSelectedSource) == 16,

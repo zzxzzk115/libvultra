@@ -85,24 +85,13 @@ namespace vultra
         glm::mat4 worldMatrix {1.0f};
     };
 
-    // Gaussian splat rendering is intentionally split into two orthogonal switches:
-    // visibility selection (baseline vs. ordered CLOD prefix) and sort quality
-    // (plain clip-depth vs. conservative depth). There is no hierarchy/proxy LOD
-    // mode here; trained or imported importance is consumed only as an ordering.
+    // Gaussian splat rendering has one LOD path: imported/trained assets are
+    // physically sorted by importance, and Ordered CLOD renders a prefix of that
+    // packed order. There is no hierarchy/proxy LOD or runtime importance sort.
     enum class GaussianSplatBaselineMode : uint8_t
     {
         eBaseline = 0,
-        eConservativeSort,
         eOrderedClod,
-        eOrderedClodAndConservativeSort,
-    };
-
-    enum class GaussianSplatSortMode : uint8_t
-    {
-        eClipDepth = 0,
-        eDistance,
-        eViewDepth,
-        eConservativeDepth,
     };
 
     struct GaussianSplatRenderSettings
@@ -111,36 +100,14 @@ namespace vultra
         uint32_t                  lodBudget {0}; // 0 means derive the selected count from clodLevel.
         float                     clodLevel {1.0f}; // Fraction of the ordered list to keep when lodBudget is automatic.
 
-        // Optional distance modulation keeps nearby points at a higher ordered prefix
-        // and fades far points out instead of swapping to proxy splats.
-        bool                      clodDistanceLodEnabled {false};
-        float                     clodMinDistance {1.0f};
-        float                     clodMaxDistance {10.0f};
-        float                     clodNearLod {1.0f};
-        float                     clodFarLod {0.25f};
-        float                     clodFadeWidth {0.2f};
-
-        [[nodiscard]] bool conservativeSortEnabled() const
-        {
-            return baselineMode == GaussianSplatBaselineMode::eConservativeSort ||
-                   baselineMode == GaussianSplatBaselineMode::eOrderedClodAndConservativeSort;
-        }
-
         [[nodiscard]] bool orderedClodEnabled() const
         {
-            return baselineMode == GaussianSplatBaselineMode::eOrderedClod ||
-                   baselineMode == GaussianSplatBaselineMode::eOrderedClodAndConservativeSort;
+            return baselineMode == GaussianSplatBaselineMode::eOrderedClod;
         }
 
         [[nodiscard]] bool lodBudgetEnabled() const
         {
             return orderedClodEnabled();
-        }
-
-        [[nodiscard]] GaussianSplatSortMode sortMode() const
-        {
-            return conservativeSortEnabled() ? GaussianSplatSortMode::eConservativeDepth :
-                                               GaussianSplatSortMode::eClipDepth;
         }
     };
 
@@ -148,7 +115,6 @@ namespace vultra
     {
         uint64_t frameIndex {0};
         GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
-        GaussianSplatSortMode     sortMode {GaussianSplatSortMode::eClipDepth};
         bool                      lodBudgetEnabled {false};
         uint32_t                  lodBudget {0};
 
@@ -158,7 +124,6 @@ namespace vultra
         uint32_t preparedSplats {0};
         uint32_t maxVisibleSplatCap {0};
         uint32_t lodSelectedRawSplats {0};
-        uint32_t lodTransitionSplats {0};
 
         // GPU readback for these counters is intentionally left out of stage 0.
         uint32_t visibleSplats {UINT32_MAX};

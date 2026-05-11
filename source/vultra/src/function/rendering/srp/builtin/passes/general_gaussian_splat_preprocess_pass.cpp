@@ -165,7 +165,7 @@ namespace vultra
         auto sortStorageBuffer  = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortStorageBuffer);
         auto shBuffer           = ctx.data.tryGet(kResKey_GeneralGaussianSplatShBuffer);
 
-        const uint32_t pointCount = gpuSceneView->maxGeneralGaussianSplatPoints;
+        const uint32_t pointCount = gpuSceneView->activeGeneralGaussianSplatPoints;
         const uint32_t maxVisible = gpuSceneView->maxGeneralGaussianSplatVisibleSplats;
 
         if (!cameraBlock || !drawBuffer || !packedSourceBuffer || !visibleSplatBuffer || !sortKeyBuffer ||
