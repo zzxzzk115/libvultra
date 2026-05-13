@@ -275,5 +275,6 @@ if not is_plat("android") then
         add_files("../examples/demo_app/imgui.ini")
         add_packages("argparse")
         set_rundir("$(projectdir)")
+        set_runargs("--editor", "--project", "$(projectdir)/example.vproject")
         set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra-app")
 end

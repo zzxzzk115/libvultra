@@ -61,4 +61,4 @@ tracky*.csv
 **/gradlew.bat
 
 # Vultra
-.vutra/
+.vultra/
