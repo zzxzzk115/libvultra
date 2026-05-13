@@ -37,6 +37,8 @@
 #include <filesystem>
 #include <limits>
 #include <numeric>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include <load-spz.h>
@@ -134,6 +136,13 @@ struct PushConstants
     glm::vec4 misc; // aaInflatePx, opacityDiscardThreshold, signedMaxAxisPx, extentStdDev
 };
 
+struct ClodOptions
+{
+    fs::path spzPath {"resources/models/hornedlizard.spz"};
+    float    clodLevel {1.0f};
+    uint32_t lodBudget {0};
+};
+
 // =================================================================================================
 // Small helpers
 // =================================================================================================
@@ -144,6 +153,110 @@ static bool fileExists(const fs::path& p)
 }
 
 static float sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
+
+static bool takeArgValue(int argc, char** argv, int& index, std::string_view option, std::string_view& value)
+{
+    const std::string_view arg {argv[index]};
+    if (arg == option)
+    {
+        if (index + 1 >= argc)
+            return false;
+        value = std::string_view {argv[++index]};
+        return true;
+    }
+
+    if (arg.starts_with(option) && arg.size() > option.size() && arg[option.size()] == '=')
+    {
+        value = arg.substr(option.size() + 1);
+        return true;
+    }
+
+    return false;
+}
+
+static bool parseFloat(std::string_view value, float& out)
+{
+    try
+    {
+        const std::string text {value};
+        size_t            consumed = 0;
+        const float       parsed   = std::stof(text, &consumed);
+        if (consumed != text.size())
+            return false;
+        out = parsed;
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
+static bool parseU32(std::string_view value, uint32_t& out)
+{
+    try
+    {
+        const std::string text {value};
+        size_t            consumed = 0;
+        const auto        parsed   = std::stoull(text, &consumed, 10);
+        if (consumed != text.size() || parsed > std::numeric_limits<uint32_t>::max())
+            return false;
+        out = static_cast<uint32_t>(parsed);
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
+static ClodOptions parseClodOptions(int argc, char** argv)
+{
+    ClodOptions options {};
+
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::string_view arg {argv[i]};
+        if (arg.empty())
+            continue;
+
+        std::string_view value;
+        if (takeArgValue(argc, argv, i, "--clod-level", value))
+        {
+            float parsed = 1.0f;
+            if (parseFloat(value, parsed))
+                options.clodLevel = std::clamp(parsed, 0.01f, 1.0f);
+            else
+                VULTRA_CLIENT_WARN("Ignoring invalid --clod-level value: {}", value);
+            continue;
+        }
+
+        if (takeArgValue(argc, argv, i, "--lod-budget", value))
+        {
+            if (!parseU32(value, options.lodBudget))
+                VULTRA_CLIENT_WARN("Ignoring invalid --lod-budget value: {}", value);
+            continue;
+        }
+
+        if (!arg.starts_with("--"))
+            options.spzPath = fs::path {std::string {arg}};
+        else
+            VULTRA_CLIENT_WARN("Ignoring unknown argument: {}", arg);
+    }
+
+    return options;
+}
+
+static uint32_t resolveActiveSplatCount(size_t totalCount, const ClodOptions& options)
+{
+    if (totalCount == 0)
+        return 0;
+    if (options.lodBudget > 0u)
+        return std::max(1u, std::min<uint32_t>(static_cast<uint32_t>(totalCount), options.lodBudget));
+
+    const float clampedLevel = std::clamp(options.clodLevel, 0.01f, 1.0f);
+    return std::max(1u, static_cast<uint32_t>(std::ceil(static_cast<float>(totalCount) * clampedLevel)));
+}
 
 // A simple nth_element quantile (0..1). Copies input by value intentionally.
 static float quantile(std::vector<float> v, float q01)
@@ -829,7 +942,8 @@ void main()
 int main(int argc, char** argv)
 try
 {
-    fs::path spzPath = (argc >= 2) ? fs::path(argv[1]) : fs::path("resources/models/hornedlizard.spz");
+    const ClodOptions options = parseClodOptions(argc, argv);
+    const fs::path&   spzPath = options.spzPath;
 
     VULTRA_CLIENT_INFO("CWD: {}", fs::current_path().string());
     VULTRA_CLIENT_INFO("SPZ path: {}", spzPath.string());
@@ -844,6 +958,15 @@ try
     if (!scene.success)
         return 1;
 
+    std::vector<uint32_t> clodOrder(scene.centers.size());
+    std::iota(clodOrder.begin(), clodOrder.end(), 0);
+
+    const uint32_t activeSplatCount = resolveActiveSplatCount(scene.centers.size(), options);
+    VULTRA_CLIENT_INFO("CLOD prefix: active splats={}/{} ({:.2f}%)",
+                       activeSplatCount,
+                       scene.centers.size(),
+                       100.0f * static_cast<float>(activeSplatCount) / static_cast<float>(scene.centers.size()));
+
     // Window + escape to quit
     os::Window window = os::Window::Builder {}.setExtent({1280, 800}).build();
     window.on<os::GeneralWindowEvent>([](const os::GeneralWindowEvent& e, os::Window& w) {
@@ -857,7 +980,9 @@ try
     const auto     swapFmt    = swapchain.getPixelFormat();
     const bool     swapIsSRGB = isSrgbPixelFormat(swapFmt);
 
-    window.setTitle(std::format("Gaussian Splatting (srgb-fix) ({}) fmt={} {}",
+    window.setTitle(std::format("Gaussian Splatting CLOD {:.0f}% ({}) fmt={} {}",
+                                100.0f * static_cast<float>(activeSplatCount) /
+                                    static_cast<float>(scene.centers.size()),
                                 renderDevice.getName(),
                                 static_cast<int>(swapFmt),
                                 swapIsSRGB ? "SRGB" : "UNORM/other"));
@@ -908,14 +1033,15 @@ try
     // ------------------------------------------
     // CPU depth-sorted instance IDs (for alpha blending)
     // ------------------------------------------
-    std::vector<uint32_t> sortedIds(scene.centers.size());
-    std::iota(sortedIds.begin(), sortedIds.end(), 0);
+    std::vector<uint32_t> sortedIds = clodOrder;
 
     auto idBuf = renderDevice.createStorageBuffer(sizeof(uint32_t) * sortedIds.size(), rhi::AllocationHints::eNone);
 
     auto sortIdsForView = [&](const glm::mat4& viewMat) {
-        // Back-to-front in view-space Z (camera forward is -Z).
-        std::sort(sortedIds.begin(), sortedIds.end(), [&](uint32_t ia, uint32_t ib) {
+        std::copy_n(clodOrder.begin(), activeSplatCount, sortedIds.begin());
+
+        // Back-to-front in view-space Z within the active CLOD prefix.
+        std::sort(sortedIds.begin(), sortedIds.begin() + activeSplatCount, [&](uint32_t ia, uint32_t ib) {
             glm::vec3 pa(scene.centers[ia].xyz1.x, scene.centers[ia].xyz1.y, scene.centers[ia].xyz1.z);
             glm::vec3 pb(scene.centers[ib].xyz1.x, scene.centers[ib].xyz1.y, scene.centers[ib].xyz1.z);
             float     za = (viewMat * glm::vec4(pa, 1.0f)).z;
@@ -1082,7 +1208,7 @@ try
             .bindDescriptorSet(0, ds)
             .pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pc)
             .draw(rhi::GeometryInfo {.vertexBuffer = &quadVB, .numVertices = static_cast<uint32_t>(kQuad.size())},
-                  static_cast<uint32_t>(scene.centers.size()))
+                  activeSplatCount)
             .endRendering();
 
         frameController.endFrame();
