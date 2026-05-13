@@ -1090,6 +1090,68 @@ namespace vultra
 #endif
         }
 
+        WebGPURenderDevice& WebGPURenderDevice::uploadDrawIndirect(
+            DrawIndirectBuffer& buffer, const std::vector<DrawIndirectCommand>& commands)
+        {
+            if (commands.empty())
+            {
+                return *this;
+            }
+
+            struct WebGPUDrawIndirectCommand
+            {
+                uint32_t vertexCount {0};
+                uint32_t instanceCount {0};
+                uint32_t firstVertex {0};
+                uint32_t firstInstance {0};
+            };
+
+            struct WebGPUDrawIndexedIndirectCommand
+            {
+                uint32_t indexCount {0};
+                uint32_t instanceCount {0};
+                uint32_t firstIndex {0};
+                int32_t  baseVertex {0};
+                uint32_t firstInstance {0};
+            };
+
+            assert(buffer);
+            assert(commands.size() <= buffer.getSize());
+
+            auto*      dst    = static_cast<std::byte*>(buffer.map());
+            const auto type   = buffer.getDrawIndirectType();
+            const auto stride = buffer.getStride();
+
+            for (uint32_t i = 0; i < commands.size(); ++i)
+            {
+                const DrawIndirectCommand& cmd = commands[i];
+                std::byte*                 ptr = dst + i * stride;
+
+                if (type == DrawIndirectType::eIndexed)
+                {
+                    WebGPUDrawIndexedIndirectCommand webgpuCmd {};
+                    webgpuCmd.indexCount    = cmd.count;
+                    webgpuCmd.instanceCount = cmd.instanceCount;
+                    webgpuCmd.firstIndex    = cmd.first;
+                    webgpuCmd.baseVertex    = cmd.vertexOffset;
+                    webgpuCmd.firstInstance = cmd.firstInstance;
+                    std::memcpy(ptr, &webgpuCmd, sizeof(webgpuCmd));
+                }
+                else
+                {
+                    WebGPUDrawIndirectCommand webgpuCmd {};
+                    webgpuCmd.vertexCount   = cmd.count;
+                    webgpuCmd.instanceCount = cmd.instanceCount;
+                    webgpuCmd.firstVertex   = cmd.first;
+                    webgpuCmd.firstInstance = cmd.firstInstance;
+                    std::memcpy(ptr, &webgpuCmd, sizeof(webgpuCmd));
+                }
+            }
+
+            buffer.flush().unmap();
+            return *this;
+        }
+
         WebGPURenderDevice::~WebGPURenderDevice()
         {
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU

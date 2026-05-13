@@ -17,7 +17,6 @@ USE_DIRECT_PREFIX : bool permute
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_KEY_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_INDEX_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_COUNT_BUFFER
-#define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_DISPATCH_ARGS_BUFFER
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SH_BUFFER
 #if USE_MULTIVIEW
 #define VULTRA_DECLARE_STEREO_CAMERA
@@ -364,8 +363,5 @@ void main()
         s_GeneralGaussianSplatSortKeys.keys[visibleIndex] = floatBitsToUint(sortDepth);
         s_GeneralGaussianSplatSortIndices.indices[visibleIndex] = visibleIndex;
 
-        const uint keysPerGroup = 256u * 15u;
-        if ((visibleIndex % keysPerGroup) == 0u)
-            atomicAdd(s_GeneralGaussianSplatDispatchArgs.dispatchArgs.dispatchX, 1u);
     }
 }

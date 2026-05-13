@@ -38,7 +38,7 @@ imported/
 
 # Local 3DGS datasets, trained importance outputs, and import sidecars.
 # Keep these on disk for experiments, but do not treat them as source changes.
-resources/training/
+training/
 resources/models/3dgs/train.*
 resources/models/3dgs/truck.*
 resources/models/3dgs/*_importance.*

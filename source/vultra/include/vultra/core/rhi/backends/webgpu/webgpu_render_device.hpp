@@ -1,7 +1,9 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
+#include "vultra/core/rhi/draw_indirect_buffer.hpp"
 #include "vultra/core/rhi/interfaces/irender_device.hpp"
+#include "vultra/core/rhi/structs/draw_indirect_command.hpp"
 #include "vultra/core/rhi/structs/handles.hpp"
 #include "vultra/core/rhi/structs/pipeline_layout_structs.hpp"
 #include "vultra/core/rhi/structs/render_device_structs.hpp"
@@ -104,6 +106,8 @@ namespace vultra
             void onMemoryAllocated(RenderMemoryKind kind, uint64_t bytes) override { m_MemoryTracker.add(kind, bytes); }
             void onMemoryFreed(RenderMemoryKind kind, uint64_t bytes) override { m_MemoryTracker.remove(kind, bytes); }
             [[nodiscard]] RenderDeviceMemoryStats getMemoryStats() const override { return m_MemoryTracker.snapshot(); }
+            WebGPURenderDevice& uploadDrawIndirect(DrawIndirectBuffer& buffer,
+                                                   const std::vector<DrawIndirectCommand>& commands);
 
             [[nodiscard]] std::array<float, 2> getLineWidthRange() const override { return {1.0f, 1.0f}; }
             [[nodiscard]] float                getMaxSamplerAnisotropy() const override { return 1.0f; }
