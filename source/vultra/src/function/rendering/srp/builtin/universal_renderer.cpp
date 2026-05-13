@@ -61,28 +61,8 @@ namespace vultra
             {
                 case GaussianSplatBaselineMode::eBaseline:
                     return "Baseline";
-                case GaussianSplatBaselineMode::eConservativeSort:
-                    return "Conservative Sort";
                 case GaussianSplatBaselineMode::eOrderedClod:
                     return "Ordered CLOD";
-                case GaussianSplatBaselineMode::eOrderedClodAndConservativeSort:
-                    return "Ordered CLOD + Sort";
-            }
-            return "Unknown";
-        }
-
-        [[nodiscard]] const char* gaussianSortModeLabel(const GaussianSplatSortMode mode)
-        {
-            switch (mode)
-            {
-                case GaussianSplatSortMode::eClipDepth:
-                    return "Clip Depth";
-                case GaussianSplatSortMode::eDistance:
-                    return "Distance";
-                case GaussianSplatSortMode::eViewDepth:
-                    return "View Depth";
-                case GaussianSplatSortMode::eConservativeDepth:
-                    return "Conservative Depth";
             }
             return "Unknown";
         }
@@ -114,10 +94,7 @@ namespace vultra
             auto&       settings = renderService.gaussianSplatSettings();
             const auto& stats    = renderService.gaussianSplatFrameStats();
 
-            constexpr const char* kModeLabels[] = {"Baseline",
-                                                   "Conservative Sort",
-                                                   "Ordered CLOD",
-                                                   "Ordered CLOD + Sort"};
+            constexpr const char* kModeLabels[] = {"Baseline", "Ordered CLOD"};
             int modeIndex = static_cast<int>(settings.baselineMode);
             if (ImGui::Combo("Mode", &modeIndex, kModeLabels, IM_ARRAYSIZE(kModeLabels)))
             {
@@ -142,34 +119,17 @@ namespace vultra
                 ImGui::BeginDisabled();
             ImGui::SliderFloat("CLOD Level", &settings.clodLevel, 0.01f, 1.0f, "%.2f");
             settings.clodLevel = std::clamp(settings.clodLevel, 0.01f, 1.0f);
-            ImGui::Checkbox("Distance CLOD", &settings.clodDistanceLodEnabled);
-            if (!settings.clodDistanceLodEnabled)
-                ImGui::BeginDisabled();
-            ImGui::SliderFloat("Near Distance", &settings.clodMinDistance, 0.0f, 100.0f, "%.2f");
-            settings.clodMaxDistance = std::max(settings.clodMaxDistance, settings.clodMinDistance + 0.001f);
-            ImGui::SliderFloat("Far Distance", &settings.clodMaxDistance, settings.clodMinDistance + 0.001f, 200.0f, "%.2f");
-            ImGui::SliderFloat("Near LOD", &settings.clodNearLod, 0.05f, 1.0f, "%.2f");
-            settings.clodNearLod = std::clamp(settings.clodNearLod, 0.05f, 1.0f);
-            settings.clodFarLod  = std::min(settings.clodFarLod, settings.clodNearLod);
-            ImGui::SliderFloat("Far LOD", &settings.clodFarLod, 0.01f, settings.clodNearLod, "%.2f");
-            settings.clodFarLod = std::clamp(settings.clodFarLod, 0.01f, settings.clodNearLod);
-            ImGui::SliderFloat("Fade Width", &settings.clodFadeWidth, 0.01f, 1.0f, "%.2f");
-            settings.clodFadeWidth = std::clamp(settings.clodFadeWidth, 0.01f, 1.0f);
-            if (!settings.clodDistanceLodEnabled)
-                ImGui::EndDisabled();
             if (!orderedClodEnabled)
                 ImGui::EndDisabled();
 
             ImGui::SeparatorText("Counters");
             ImGui::Text("Mode: %s", gaussianBaselineModeLabel(stats.baselineMode));
-            ImGui::Text("Sort: %s", gaussianSortModeLabel(stats.sortMode));
             ImGui::Text("Direct Prefix: %s", stats.directPrefix ? "yes" : "no");
             ImGui::Text("Total Splats: %u", stats.totalSplats);
             ImGui::Text("Prepared Splats: %u", stats.preparedSplats);
             ImGui::Text("Visible Cap: %u", stats.maxVisibleSplatCap);
             ImGui::Text("Draw Records: %u", stats.drawRecords);
             ImGui::Text("LOD Raw Splats: %u", stats.lodSelectedRawSplats);
-            ImGui::Text("CLOD Transition Splats: %u", stats.lodTransitionSplats);
             drawOptionalCounter("Visible Splats", stats.visibleSplats);
             drawOptionalCounter("Drawn Splats", stats.drawnSplats);
 

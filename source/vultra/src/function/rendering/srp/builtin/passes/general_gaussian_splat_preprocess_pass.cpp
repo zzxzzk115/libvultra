@@ -114,16 +114,6 @@ namespace vultra
                                                   sizeof(uint32_t)));
         }
 
-        if (gpuSceneView->generalGaussianSplatDispatchArgsBuffer)
-        {
-            ctx.data.set(kResKey_GeneralGaussianSplatDispatchArgsBuffer,
-                         framegraph::importBuffer(ctx.fg,
-                                                  "GeneralGaussianSplatDispatchArgsBuffer",
-                                                  gpuSceneView->generalGaussianSplatDispatchArgsBuffer.get(),
-                                                  framegraph::BufferType::eDispatchIndirectBuffer,
-                                                  sizeof(uint32_t)));
-        }
-
         if (gpuSceneView->generalGaussianSplatIndirectBuffer.has_value())
         {
             ctx.data.set(kResKey_GeneralGaussianSplatIndirectBuffer,
@@ -161,7 +151,6 @@ namespace vultra
         auto sortKeyBuffer      = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortKeyBuffer);
         auto sortIndexBuffer    = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortIndexBuffer);
         auto visibleCountBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatVisibleCountBuffer);
-        auto dispatchArgsBuffer = ctx.data.tryGet(kResKey_GeneralGaussianSplatDispatchArgsBuffer);
         auto indirectBuffer     = ctx.data.tryGet(kResKey_GeneralGaussianSplatIndirectBuffer);
         auto sortStorageBuffer  = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortStorageBuffer);
         auto shBuffer           = ctx.data.tryGet(kResKey_GeneralGaussianSplatShBuffer);
@@ -187,7 +176,6 @@ namespace vultra
             FrameGraphResource sortKeyBuffer;
             FrameGraphResource sortIndexBuffer;
             FrameGraphResource visibleCountBuffer;
-            FrameGraphResource dispatchArgsBuffer;
             FrameGraphResource indirectBuffer;
             FrameGraphResource sortStorageBuffer;
             FrameGraphResource shBuffer;
@@ -204,7 +192,6 @@ namespace vultra
              sortKeyBuffer,
              sortIndexBuffer,
              visibleCountBuffer,
-             dispatchArgsBuffer,
              indirectBuffer,
              sortStorageBuffer,
              shBuffer,
@@ -264,15 +251,6 @@ namespace vultra
                                                             .location      = {.set = 0, .binding = 18},
                                                             .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                                         });
-                if (dispatchArgsBuffer)
-                {
-                    data.dispatchArgsBuffer =
-                        builder.write(dispatchArgsBuffer,
-                                      framegraph::BindingInfo {
-                                          .location      = {.set = 0, .binding = 19},
-                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                      });
-                }
                 data.indirectBuffer    = builder.write(indirectBuffer,
                                                     framegraph::BindingInfo {
                                                            .location      = {.set = 0, .binding = 20},
@@ -327,10 +305,6 @@ namespace vultra
                 }
 
                 auto* visibleCountBuf = resources.get<framegraph::FrameGraphBuffer>(data.visibleCountBuffer).buffer;
-                auto* dispatchArgsBuf =
-                    data.dispatchArgsBuffer ?
-                        resources.get<framegraph::FrameGraphBuffer>(data.dispatchArgsBuffer).buffer :
-                        nullptr;
                 {
                     RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::ProjectCull");
 
@@ -338,11 +312,6 @@ namespace vultra
                     {
                         const uint32_t zero = 0u;
                         rc.cb.update(*visibleCountBuf, 0u, sizeof(uint32_t), &zero);
-                    }
-                    if (dispatchArgsBuf)
-                    {
-                        const uint32_t zeroArgs[4] = {0u, 1u, 1u, 0u};
-                        rc.cb.update(*dispatchArgsBuf, 0u, sizeof(zeroArgs), zeroArgs);
                     }
                     rc.cb.getBarrierBuilder().memoryBarrier(
                         {
@@ -365,7 +334,7 @@ namespace vultra
                     pc.maxVisibleSplats = maxVisible;
 
                     rc.cb.bindPipeline(*preprocessPipeline);
-                    std::vector<uint32_t> preprocessBindings {0u, 13u, 14u, 15u, 16u, 17u, 18u, 19u, 22u};
+                    std::vector<uint32_t> preprocessBindings {0u, 13u, 14u, 15u, 16u, 17u, 18u, 22u};
                     if (!useDirectPrefix)
                     {
                         preprocessBindings.push_back(27u);
@@ -389,6 +358,8 @@ namespace vultra
                     static_cast<bool>(*gpuSceneView->generalGaussianSplatSorter) && visibleCountBuf && sortKeyBuf &&
                     sortIndexBuf && sortStorageBuf)
                 {
+                    RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::Sort");
+
                     gpuSceneView->generalGaussianSplatSorter->sortKeyValuesIndirect(rc.cb,
                                                                                     maxVisible,
                                                                                     *visibleCountBuf,
@@ -402,17 +373,21 @@ namespace vultra
                     rc.cb.insertComputeUavBarrier();
                 }
 
-                auto writeIndirectVariantHash = computeShaderVariantHash(
-                    "gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
-                const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
-                if (!writeIndirectPipeline)
                 {
-                    return;
-                }
+                    RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::WriteIndirect");
 
-                rc.cb.bindPipeline(*writeIndirectPipeline);
-                bindSubset(*writeIndirectPipeline, std::initializer_list<uint32_t> {18u, 20u});
-                rc.cb.dispatch({1u, 1u, 1u});
+                    auto writeIndirectVariantHash = computeShaderVariantHash(
+                        "gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
+                    const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
+                    if (!writeIndirectPipeline)
+                    {
+                        return;
+                    }
+
+                    rc.cb.bindPipeline(*writeIndirectPipeline);
+                    bindSubset(*writeIndirectPipeline, std::initializer_list<uint32_t> {18u, 20u});
+                    rc.cb.dispatch({1u, 1u, 1u});
+                }
             });
     }
 
