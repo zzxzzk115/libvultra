@@ -183,6 +183,12 @@ namespace vultra
                     [[fallthrough]];
                 case vk::Result::eSuboptimalKHR:
                 case vk::Result::eSuccess:
+                    if (m_CurrentImageIndex < m_Buffers.size())
+                    {
+                        // A presented swapchain image is only used as a fresh render target after acquire.
+                        // Discarding the previous contents avoids carrying a stale tracked layout into the next frame.
+                        m_Buffers[m_CurrentImageIndex].setBarrierState({}, ImageLayout::eUndefined);
+                    }
                     return true;
                 default:
                     assert(false);

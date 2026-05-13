@@ -23,11 +23,33 @@ python tools/gaussian_importance/train_importance.py `
 Import `point_cloud_importance.ply` through vasset/libvultra and use Ordered
 CLOD mode. Higher `importance` means the Gaussian appears earlier in the prefix.
 
-## Optional gsplat training
+## LOD evaluation
 
-The `gsplat` mode is experimental but closer to the CLOD training idea. It keeps
-Gaussian geometry/SH fixed and learns one score per splat by rendering random
-continuous LOD budgets against the input images.
+Use `--eval-only` to render a PLY at several prefix budgets before or after
+training. This is the sanity loop for CLOD work: every training change should
+show a better PSNR/SSIM curve at low LOD, or at least a better quality/time
+tradeoff.
+
+```powershell
+python tools/gaussian_importance/train_importance.py `
+  --eval-only `
+  --ply resources/training/model/train/point_cloud/iteration_30000/point_cloud.ply `
+  --scene resources/training/tandt/train `
+  --cameras-json resources/training/model/train/cameras.json `
+  --downscale 8 `
+  --eval-cameras 16 `
+  --eval-lods 1.0 0.5 0.25 0.1 0.05 `
+  --eval-output build/train_lod_eval.json
+```
+
+When the PLY already has an `importance` property, evaluation uses it. Otherwise
+it computes the heuristic order first.
+
+## Optional gsplat score training
+
+The `gsplat` mode keeps Gaussian geometry and appearance fixed, then learns one
+score per splat by rendering random continuous LOD budgets against the input
+images. It is useful as a cheap learned ranking baseline.
 
 ```powershell
 python tools/gaussian_importance/train_importance.py `
@@ -41,10 +63,46 @@ python tools/gaussian_importance/train_importance.py `
   --train-max-points 600000
 ```
 
-Requirements for `gsplat` mode are intentionally not vendored into libvultra:
-install a CUDA-enabled PyTorch environment and `gsplat` in your own conda/venv.
-On 16 GB GPUs, start with `--downscale 8` to `16`, keep `--max-lod` below full
-resolution, and set `--train-max-points 0` only after smaller runs are stable.
+## CLOD-like prefix finetuning
+
+The `clod` mode is closer to the paper's training recipe. It fixes an ordering
+from an existing `importance` property or from the heuristic scorer, randomly
+chooses a prefix budget each iteration, renders only that prefix, and finetunes
+opacity plus spherical harmonics against both the ground-truth image and a
+full-model teacher render. Geometry stays frozen by default, which keeps the
+memory cost much lower than full 3DGS retraining.
+
+```powershell
+python tools/gaussian_importance/train_importance.py `
+  --method clod `
+  --ply resources/training/model/train/point_cloud/iteration_30000/point_cloud.ply `
+  --scene resources/training/tandt/train `
+  --cameras-json resources/training/model/train/cameras.json `
+  --output resources/training/model/train/point_cloud/iteration_30000/train_importance_clod.ply `
+  --iterations 5000 `
+  --downscale 8 `
+  --train-max-points 600000 `
+  --min-lod 0.05 `
+  --max-lod 0.35 `
+  --finetune-fields opacity,sh `
+  --eval-output build/train_clod_eval.json
+```
+
+For a 16 GB GPU, keep `--downscale 8`, start with
+`--train-max-points 300000` to `600000`, and make sure `--max-lod` does not ask
+for more splats than `--train-max-points` can cover. For example, if the model
+has 1.6M splats and `--train-max-points 600000`, keep `--max-lod` around
+`0.35` or lower for the first stable run.
+
+The tool uses all SH coefficients when `f_rest_*` properties are present. Use
+`--sh-degree 0` only for debugging; the default `--sh-degree -1` uses the PLY's
+maximum degree.
+
+Requirements for `gsplat`, `clod`, and `--eval-only` are intentionally not
+vendored into libvultra: install a CUDA-enabled PyTorch environment and
+`gsplat` in your own conda/venv. On 16 GB GPUs, start with `--downscale 8` to
+`16`, keep `--max-lod` below full resolution, and set `--train-max-points 0`
+only after smaller runs are stable.
 
 ## Windows conda setup
 
