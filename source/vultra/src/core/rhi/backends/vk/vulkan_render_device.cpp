@@ -435,9 +435,8 @@ namespace vultra
             }
 
             const uint32_t firstQuery = slotIndex * 2u;
-            m_Device.resetQueryPool(m_ScopeTimeQueryPool, firstQuery, 2u);
-
-            auto cmd = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
+            auto           cmd        = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
+            cmd.resetQueryPool(m_ScopeTimeQueryPool, firstQuery, 2u);
             cmd.writeTimestamp(vk::PipelineStageFlagBits::eTopOfPipe, m_ScopeTimeQueryPool, firstQuery);
 
             const uint64_t token = m_ScopeTimeNextToken++;

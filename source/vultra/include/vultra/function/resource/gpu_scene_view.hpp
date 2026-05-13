@@ -407,8 +407,11 @@ namespace vultra::resource
 
             const uint64_t visibleBytes = static_cast<uint64_t>(maxGeneralGaussianSplatVisibleSplats) *
                                           sizeof(GpuGeneralGaussianSplatVisibleSplat);
+            // vk_radix_sort may bind a small implementation-side sentinel tail for
+            // key/value buffers, so keep the external sort inputs padded beyond
+            // the visible splat cap.
             const uint64_t sortBytes =
-                static_cast<uint64_t>(maxGeneralGaussianSplatVisibleSplats) * sizeof(uint32_t);
+                (static_cast<uint64_t>(maxGeneralGaussianSplatVisibleSplats) + 3ull) * sizeof(uint32_t);
 
             if (!generalGaussianSplatVisibleSplatBuffer ||
                 static_cast<uint64_t>(generalGaussianSplatVisibleSplatBuffer->getSize()) < visibleBytes)
