@@ -328,7 +328,6 @@ namespace vultra
                     {
                         return;
                     }
-
                     GeneralGaussianSplatPreprocessPushConstants pc {};
                     pc.pointCount       = pointCount;
                     pc.maxVisibleSplats = maxVisible;
