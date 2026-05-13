@@ -6,7 +6,6 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
-#include <vector>
 
 namespace vultra::resource
 {
@@ -36,13 +35,5 @@ namespace vultra::resource
 
         glm::vec3 center {0.0f};
         float     radius {0.0f};
-
-        // Importance order for continuous LOD. Each value is a local point index;
-        // rank 0 is the most important point. If an asset has no valid importance
-        // stream, AssetSystem fills this with the original order so the renderer can
-        // keep one selected-source path for both baseline and CLOD modes.
-        std::vector<uint32_t>                   clodPointIndices;
-
-        [[nodiscard]] bool hasClodOrder() const { return !clodPointIndices.empty(); }
     };
 } // namespace vultra::resource
