@@ -3,8 +3,19 @@
 #include "vultra/function/openxr/xr_helper.hpp"
 #include "vultra/function/openxr/xr_utils.hpp"
 
+#include <cstdlib>
+#include <cstring>
 #include <sstream>
 #include <string>
+
+namespace
+{
+    [[nodiscard]] bool truthyEnv(const char* value)
+    {
+        return value != nullptr &&
+               (std::strcmp(value, "1") == 0 || std::strcmp(value, "true") == 0 || std::strcmp(value, "TRUE") == 0);
+    }
+} // namespace
 
 XRAPI_ATTR XrBool32 XRAPI_CALL
 OpenXRMessageCallbackFunction(XrDebugUtilsMessageSeverityFlagsEXT         messageSeverity,
@@ -94,11 +105,17 @@ OpenXRMessageCallbackFunction(XrDebugUtilsMessageSeverityFlagsEXT         messag
     errorMessage << functionName << "(" << messageSeverityStr << " / " << messageTypeStr << "): msgNum: " << messageId
                  << " - " << message;
 
-    // Log and debug break.
-    VULTRA_CORE_ERROR("[OpenXR] {}", errorMessage.str());
     if (BitwiseCheck(messageSeverity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT))
     {
-        DEBUG_BREAK();
+        VULTRA_CORE_ERROR("[OpenXR] {}", errorMessage.str());
+        if (truthyEnv(std::getenv("VULTRA_OPENXR_BREAK_ON_ERROR")))
+        {
+            DEBUG_BREAK();
+        }
+    }
+    else if (BitwiseCheck(messageSeverity, XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT))
+    {
+        VULTRA_CORE_WARN("[OpenXR] {}", errorMessage.str());
     }
     return XrBool32();
 }
@@ -111,8 +128,12 @@ XrDebugUtilsMessengerEXT CreateOpenXRDebugUtilsMessenger(XrInstance m_XrInstance
     XrDebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCI {};
     debugUtilsMessengerCI.type = XR_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     debugUtilsMessengerCI.messageSeverities =
-        XR_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
         XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    if (truthyEnv(std::getenv("VULTRA_OPENXR_VERBOSE_DEBUG")))
+    {
+        debugUtilsMessengerCI.messageSeverities |=
+            XR_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+    }
     debugUtilsMessengerCI.messageTypes =
         XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
         XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT;

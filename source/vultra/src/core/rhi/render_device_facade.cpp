@@ -1569,6 +1569,69 @@ namespace vultra
                 true);
         }
 
+        RenderDevice& RenderDevice::uploadDrawIndirect(DrawIndirectBuffer&                     buffer,
+                                                       const std::vector<DrawIndirectCommand>& commands)
+        {
+            if (commands.empty())
+            {
+                return *this;
+            }
+
+            assert(buffer);
+
+            const uint32_t maxCommands = buffer.getSize();
+
+            assert(commands.size() <= maxCommands);
+
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                webgpuBackend(m_Backend).uploadDrawIndirect(buffer, commands);
+                return *this;
+            }
+
+            auto*      dst    = static_cast<std::byte*>(buffer.map());
+            const auto type   = buffer.getDrawIndirectType();
+            const auto stride = buffer.getStride();
+
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+            assert(vkBackend(m_Backend).m_Device);
+
+            for (uint32_t i = 0; i < commands.size(); ++i)
+            {
+                const DrawIndirectCommand& cmd = commands[i];
+                std::byte*                 ptr = dst + i * stride;
+
+                if (type == DrawIndirectType::eIndexed)
+                {
+                    vk::DrawIndexedIndirectCommand vkCmd {};
+                    vkCmd.indexCount    = cmd.count;
+                    vkCmd.instanceCount = cmd.instanceCount;
+                    vkCmd.firstIndex    = cmd.first;
+                    vkCmd.vertexOffset  = cmd.vertexOffset;
+                    vkCmd.firstInstance = cmd.firstInstance;
+
+                    std::memcpy(ptr, &vkCmd, sizeof(vkCmd));
+                }
+                else
+                {
+                    vk::DrawIndirectCommand vkCmd {};
+                    vkCmd.vertexCount   = cmd.count;
+                    vkCmd.instanceCount = cmd.instanceCount;
+                    vkCmd.firstVertex   = cmd.first;
+                    vkCmd.firstInstance = cmd.firstInstance;
+
+                    std::memcpy(ptr, &vkCmd, sizeof(vkCmd));
+                }
+            }
+#else
+            (void)type;
+            (void)stride;
+#endif
+
+            buffer.flush().unmap();
+            return *this;
+        }
+
         Ref<rhi::Texture> RenderDevice::createDefaultWhite1x1Texture2D()
         {
             uint32_t whitePixel = 0xFFFFFFFF;
@@ -1595,14 +1658,6 @@ namespace vultra
 #endif
             (void)maxElementCount;
             return {};
-        }
-
-        RenderDevice& RenderDevice::uploadDrawIndirect(DrawIndirectBuffer&                     buffer,
-                                                       const std::vector<DrawIndirectCommand>& commands)
-        {
-            (void)buffer;
-            (void)commands;
-            return *this;
         }
 
         DeviceAddress RenderDevice::getBufferDeviceAddress(const Buffer& buffer) const

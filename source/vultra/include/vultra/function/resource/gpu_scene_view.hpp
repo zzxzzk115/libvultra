@@ -90,6 +90,7 @@ namespace vultra::resource
         uint32_t maxGeneralGaussianSplatPoints {0};
         uint32_t activeGeneralGaussianSplatPoints {0};
         uint32_t maxGeneralGaussianSplatVisibleSplats {0};
+        bool     generalGaussianSplatDirectPrefix {false};
 
         void clear()
         {
@@ -129,6 +130,7 @@ namespace vultra::resource
             maxGeneralGaussianSplatPoints        = 0;
             activeGeneralGaussianSplatPoints     = 0;
             maxGeneralGaussianSplatVisibleSplats = 0;
+            generalGaussianSplatDirectPrefix     = false;
         }
 
         void beginFrame(const GpuSceneDatabase& db, GpuSceneBuildMode buildMode = GpuSceneBuildMode::eCpuDriven)
@@ -149,6 +151,7 @@ namespace vultra::resource
             maxGeneralGaussianSplatPoints        = 0;
             activeGeneralGaussianSplatPoints     = 0;
             maxGeneralGaussianSplatVisibleSplats = 0;
+            generalGaussianSplatDirectPrefix     = false;
         }
 
         [[nodiscard]] bool isCpuDriven() const { return mode == GpuSceneBuildMode::eCpuDriven; }
@@ -357,18 +360,21 @@ namespace vultra::resource
         }
 
         // maxSourceCount sizes immutable packed raw data. maxPointCount sizes the
-        // selected-source indirection buffer; activePointCount is the prefix length
-        // actually consumed by the preprocess pass this frame.
+        // selected-source indirection buffer when the fallback path is active;
+        // directPrefix skips that buffer and consumes a packed-source prefix.
         void setGeneralGaussianSplatCaps(uint32_t maxDrawCount,
                                          uint32_t maxSourceCount,
                                          uint32_t maxPointCount,
                                          uint32_t activePointCount,
-                                         uint32_t maxVisibleSplatCount)
+                                         uint32_t maxVisibleSplatCount,
+                                         bool     directPrefix = false)
         {
             maxGeneralGaussianSplatDraws         = maxDrawCount;
             maxGeneralGaussianSplatSourceCount   = maxSourceCount;
             maxGeneralGaussianSplatPoints        = maxPointCount;
-            activeGeneralGaussianSplatPoints     = std::min(activePointCount, maxPointCount);
+            generalGaussianSplatDirectPrefix     = directPrefix;
+            const uint32_t activeCapacity        = directPrefix ? maxSourceCount : maxPointCount;
+            activeGeneralGaussianSplatPoints     = std::min(activePointCount, activeCapacity);
             maxGeneralGaussianSplatVisibleSplats = maxVisibleSplatCount;
         }
 

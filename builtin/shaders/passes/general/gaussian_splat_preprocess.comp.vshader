@@ -4,17 +4,19 @@ version = 460
 
 [keywords]
 USE_MULTIVIEW : bool permute
+USE_DIRECT_PREFIX : bool permute
 
 [comp]
 #define VULTRA_DECLARE_CAMERA
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_DRAW_BUFFER
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_PACKED_SOURCE_BUFFER
+#if !USE_DIRECT_PREFIX
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BUFFER
+#endif
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_SPLAT_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_KEY_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_INDEX_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_COUNT_BUFFER
-#define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_DISPATCH_ARGS_BUFFER
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SH_BUFFER
 #if USE_MULTIVIEW
 #define VULTRA_DECLARE_STEREO_CAMERA
@@ -289,20 +291,27 @@ void main()
     if (idx >= u_PC.pointCount)
         return;
 
-    // Each invocation processes one selected-source entry, not necessarily one raw
-    // file-order point. This is what allows the CPU to feed an arbitrary learned
-    // importance order while the rest of the shader remains a normal 3DGS
-    // preprocess pass.
+    // Single-asset Ordered CLOD can directly consume the physically sorted
+    // packed-source prefix. Baseline and multi-asset fallback use the selected
+    // source table to preserve draw/source indirection.
+#if USE_DIRECT_PREFIX
+    const uint sourceIndex = idx;
+    const uint drawIndex = 0u;
+    const float lodWeight = 1.0;
+#else
     const GeneralGaussianSplatSelectedSource selection = s_GeneralGaussianSplatSelectedSources.sources[idx];
     if ((selection.flags & GENERAL_GAUSSIAN_SPLAT_SELECTED_FLAG_INVALID) != 0u)
         return;
+    const uint sourceIndex = selection.sourceIndex;
+    const uint drawIndex = selection.drawIndex;
+    // Zero defaults to full opacity so non-CLOD/baseline entries can use the
+    // same packed structure without needing an extra initialization path.
+    const float lodWeight = selection.packedWeight == 0u ? 1.0 : clamp(uintBitsToFloat(selection.packedWeight), 0.0, 1.0);
+#endif
 
     {
-        const GeneralGaussianSplatPackedSource src = s_GeneralGaussianSplatPackedSources.points[selection.sourceIndex];
-        const GeneralGaussianSplatDrawRecord draw  = s_GeneralGaussianSplatDraws.draws[selection.drawIndex];
-        // Zero defaults to full opacity so non-CLOD/baseline entries can use the
-        // same packed structure without needing an extra initialization path.
-        const float lodWeight = selection.packedWeight == 0u ? 1.0 : clamp(uintBitsToFloat(selection.packedWeight), 0.0, 1.0);
+        const GeneralGaussianSplatPackedSource src = s_GeneralGaussianSplatPackedSources.points[sourceIndex];
+        const GeneralGaussianSplatDrawRecord draw  = s_GeneralGaussianSplatDraws.draws[drawIndex];
         const vec3 localPos                        = decodeGeneralGaussianSplatPosition(src);
         const mat4 model                           = draw.model;
         const mat3 modelLinear                     = mat3(model);
@@ -336,13 +345,13 @@ void main()
         }
 
         packEyeResult(eye0,
-                      selection.sourceIndex,
-                      selection.drawIndex,
+                      sourceIndex,
+                      drawIndex,
                       s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_0,
                       s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_1);
         packEyeResult(eye1,
-                      selection.sourceIndex,
-                      selection.drawIndex,
+                      sourceIndex,
+                      drawIndex,
                       s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_0,
                       s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_1);
 
@@ -354,8 +363,5 @@ void main()
         s_GeneralGaussianSplatSortKeys.keys[visibleIndex] = floatBitsToUint(sortDepth);
         s_GeneralGaussianSplatSortIndices.indices[visibleIndex] = visibleIndex;
 
-        const uint keysPerGroup = 256u * 15u;
-        if ((visibleIndex % keysPerGroup) == 0u)
-            atomicAdd(s_GeneralGaussianSplatDispatchArgs.dispatchArgs.dispatchX, 1u);
     }
 }
