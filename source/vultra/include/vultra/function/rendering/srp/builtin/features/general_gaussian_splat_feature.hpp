@@ -6,6 +6,7 @@ namespace vultra
 {
     class GeneralGaussianSplatPreprocessPass;
     class GeneralGaussianSplatRenderPass;
+    class GeneralGaussianSplatFoveatedCompositePass;
 
     class GeneralGaussianSplatFeature final : public RenderFeature
     {
@@ -18,7 +19,8 @@ namespace vultra
         void addPasses(FrameGraphBuildContext& ctx) override;
 
     private:
-        GeneralGaussianSplatPreprocessPass* m_PreprocessPass {nullptr};
-        GeneralGaussianSplatRenderPass*     m_RenderPass {nullptr};
+        GeneralGaussianSplatPreprocessPass*          m_PreprocessPass {nullptr};
+        GeneralGaussianSplatRenderPass*              m_RenderPass {nullptr};
+        GeneralGaussianSplatFoveatedCompositePass*   m_FoveatedCompositePass {nullptr};
     };
 } // namespace vultra

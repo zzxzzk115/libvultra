@@ -5,6 +5,7 @@ version = 460
 [keywords]
 USE_MULTIVIEW : bool permute
 USE_DIRECT_PREFIX : bool permute
+USE_FOVEATED_LAYER_OUTPUT : bool permute
 
 [comp]
 #define VULTRA_DECLARE_CAMERA
@@ -13,15 +14,20 @@ USE_DIRECT_PREFIX : bool permute
 #if !USE_DIRECT_PREFIX
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BUFFER
 #endif
+#if USE_FOVEATED_LAYER_OUTPUT
+#define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_FOVEATED_LAYER_BUFFERS
+#else
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_SPLAT_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_KEY_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SORT_INDEX_BUFFER_READWRITE
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_VISIBLE_COUNT_BUFFER
+#endif
 #define VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_SH_BUFFER
 #if USE_MULTIVIEW
 #define VULTRA_DECLARE_STEREO_CAMERA
 #endif
 #include "include/common/gpu_scene.glsl"
+#include "include/common/gaussian_splat_foveated.glsl"
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
@@ -48,8 +54,10 @@ layout(push_constant) uniform GeneralGaussianSplatPreprocessPushConstants
 {
     uint pointCount;
     uint maxVisibleSplats;
-    uint padding0;
-    uint padding1;
+    uint rankTotalCount;
+    uint foveatedClodEnabled;
+    vec4 foveatedGazeAndRings;
+    vec4 foveatedLevelsAndTransition;
 } u_PC;
 
 struct EyePreprocessResult
@@ -57,11 +65,44 @@ struct EyePreprocessResult
     vec2 v1;
     vec2 v2;
     vec2 centerNdc;
+    float eccentricityDegrees;
     float depth;
     vec4 colorOpacity;
     float sortDepth;
     bool visible;
 };
+
+float computeFoveatedEccentricityDegrees(const vec2 centerNdc, const CameraData camera)
+{
+    const vec2 tanHalfFov = vec2(1.0 / max(abs(camera.projection[0][0]), 1e-5),
+                                 1.0 / max(abs(camera.projection[1][1]), 1e-5));
+    return gaussianFoveatedEccentricityDegreesFromNdc(centerNdc, u_PC.foveatedGazeAndRings.xy, tanHalfFov);
+}
+
+float foveatedClodLevelForEccentricity(const float eccentricityDegrees)
+{
+    return gaussianFoveatedClodLevel(eccentricityDegrees,
+                                     u_PC.foveatedGazeAndRings.zw,
+                                     u_PC.foveatedLevelsAndTransition.xyz,
+                                     u_PC.foveatedLevelsAndTransition.w);
+}
+
+bool passesFoveatedClodLevel(const uint rank, const float level)
+{
+    if (u_PC.foveatedClodEnabled == 0u)
+        return true;
+
+    const uint rankTotalCount = max(u_PC.rankTotalCount, 1u);
+    const uint budget = uint(ceil(float(rankTotalCount) * level));
+    return rank < budget;
+}
+
+bool passesFoveatedLayerClod(const uint layer, const uint rank)
+{
+    const vec3 ringLevels = clamp(u_PC.foveatedLevelsAndTransition.xyz, vec3(0.0), vec3(1.0));
+    const float layerLevel = layer == 0u ? ringLevels.x : (layer == 1u ? ringLevels.y : ringLevels.z);
+    return passesFoveatedClodLevel(rank, layerLevel);
+}
 
 mat3 buildJacobian(const vec3 camspace, const vec2 focal)
 {
@@ -156,12 +197,14 @@ EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
                                   const mat3 modelLinear,
                                   const vec3 modelTranslation,
                                   const float lodWeight,
+                                  const uint rank,
                                   const CameraData camera)
 {
     EyePreprocessResult result;
     result.v1 = vec2(0.0);
     result.v2 = vec2(0.0);
     result.centerNdc = vec2(2.0);
+    result.eccentricityDegrees = 180.0;
     result.depth = 1.0;
     result.colorOpacity = vec4(0.0);
     result.sortDepth = 0.0;
@@ -186,6 +229,14 @@ EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
         return result;
     if (posClip.x < -bounds || posClip.x > bounds || posClip.y < -bounds || posClip.y > bounds)
         return result;
+#if !USE_FOVEATED_LAYER_OUTPUT
+    const float eccentricityDegrees = computeFoveatedEccentricityDegrees(centerNdc.xy, camera);
+    if (!passesFoveatedClodLevel(rank, foveatedClodLevelForEccentricity(eccentricityDegrees)))
+        return result;
+    result.eccentricityDegrees = eccentricityDegrees;
+#else
+    result.eccentricityDegrees = computeFoveatedEccentricityDegrees(centerNdc.xy, camera);
+#endif
 
     const vec2 viewport = camera.resolution.xy;
     const vec2 focal =
@@ -285,6 +336,117 @@ void packEyeResult(const EyePreprocessResult eye,
                     drawIndex);
 }
 
+bool isInsideFoveatedLayerEccentricity(const uint layer, const float eccentricityDegrees)
+{
+    return gaussianFoveatedLayerContains(layer,
+                                         eccentricityDegrees,
+                                         u_PC.foveatedGazeAndRings.zw,
+                                         u_PC.foveatedLevelsAndTransition.w);
+}
+
+float combinedFoveatedEccentricity(const EyePreprocessResult eye0, const EyePreprocessResult eye1)
+{
+    if (eye0.visible && eye1.visible)
+        return min(eye0.eccentricityDegrees, eye1.eccentricityDegrees);
+    if (eye0.visible)
+        return eye0.eccentricityDegrees;
+    return eye1.eccentricityDegrees;
+}
+
+void writeVisibleSplat(const EyePreprocessResult eye0,
+                       const EyePreprocessResult eye1,
+                       const uint sourceIndex,
+                       const uint drawIndex,
+                       const uint visibleIndex,
+                       const float sortDepth,
+                       inout GeneralGaussianSplatVisibleSplat visibleSplat,
+                       inout uint sortKey,
+                       inout uint sortIndex)
+{
+    packEyeResult(eye0,
+                  sourceIndex,
+                  drawIndex,
+                  visibleSplat.packedEye0_0,
+                  visibleSplat.packedEye0_1);
+    packEyeResult(eye1,
+                  sourceIndex,
+                  drawIndex,
+                  visibleSplat.packedEye1_0,
+                  visibleSplat.packedEye1_1);
+    sortKey = floatBitsToUint(sortDepth);
+    sortIndex = visibleIndex;
+}
+
+#if USE_FOVEATED_LAYER_OUTPUT
+void writeFoveatedLayerSplat(const uint layer,
+                             const EyePreprocessResult eye0,
+                             const EyePreprocessResult eye1,
+                             const uint sourceIndex,
+                             const uint drawIndex,
+                             const uint rank,
+                             const float sortDepth)
+{
+    if (!passesFoveatedLayerClod(layer, rank))
+        return;
+
+    uint visibleIndex = 0u;
+    if (layer == 0u)
+        visibleIndex = atomicAdd(s_GeneralGaussianSplatFoveatedFoveaVisibleCount.visibleCount, 1u);
+    else if (layer == 1u)
+        visibleIndex = atomicAdd(s_GeneralGaussianSplatFoveatedMidVisibleCount.visibleCount, 1u);
+    else
+        visibleIndex = atomicAdd(s_GeneralGaussianSplatFoveatedOuterVisibleCount.visibleCount, 1u);
+
+    if (visibleIndex >= u_PC.maxVisibleSplats)
+    {
+        if (layer == 0u)
+            atomicMin(s_GeneralGaussianSplatFoveatedFoveaVisibleCount.visibleCount, u_PC.maxVisibleSplats);
+        else if (layer == 1u)
+            atomicMin(s_GeneralGaussianSplatFoveatedMidVisibleCount.visibleCount, u_PC.maxVisibleSplats);
+        else
+            atomicMin(s_GeneralGaussianSplatFoveatedOuterVisibleCount.visibleCount, u_PC.maxVisibleSplats);
+        return;
+    }
+
+    if (layer == 0u)
+    {
+        writeVisibleSplat(eye0,
+                          eye1,
+                          sourceIndex,
+                          drawIndex,
+                          visibleIndex,
+                          sortDepth,
+                          s_GeneralGaussianSplatFoveatedFoveaVisibleSplats.splats[visibleIndex],
+                          s_GeneralGaussianSplatFoveatedFoveaSortKeys.keys[visibleIndex],
+                          s_GeneralGaussianSplatFoveatedFoveaSortIndices.indices[visibleIndex]);
+    }
+    else if (layer == 1u)
+    {
+        writeVisibleSplat(eye0,
+                          eye1,
+                          sourceIndex,
+                          drawIndex,
+                          visibleIndex,
+                          sortDepth,
+                          s_GeneralGaussianSplatFoveatedMidVisibleSplats.splats[visibleIndex],
+                          s_GeneralGaussianSplatFoveatedMidSortKeys.keys[visibleIndex],
+                          s_GeneralGaussianSplatFoveatedMidSortIndices.indices[visibleIndex]);
+    }
+    else
+    {
+        writeVisibleSplat(eye0,
+                          eye1,
+                          sourceIndex,
+                          drawIndex,
+                          visibleIndex,
+                          sortDepth,
+                          s_GeneralGaussianSplatFoveatedOuterVisibleSplats.splats[visibleIndex],
+                          s_GeneralGaussianSplatFoveatedOuterSortKeys.keys[visibleIndex],
+                          s_GeneralGaussianSplatFoveatedOuterSortIndices.indices[visibleIndex]);
+    }
+}
+#endif
+
 void main()
 {
     const uint idx = gl_GlobalInvocationID.x;
@@ -318,7 +480,7 @@ void main()
         const vec3 modelTranslation                = model[3].xyz;
         const vec3 worldPos                        = (model * vec4(localPos, 1.0)).xyz;
         const EyePreprocessResult eye0 =
-            preprocessEye(src, draw, localPos, worldPos, modelLinear, modelTranslation, lodWeight, u_Camera);
+            preprocessEye(src, draw, localPos, worldPos, modelLinear, modelTranslation, lodWeight, idx, u_Camera);
 #if USE_MULTIVIEW
         const EyePreprocessResult eye1 =
             preprocessEye(src,
@@ -328,15 +490,30 @@ void main()
                           modelLinear,
                           modelTranslation,
                           lodWeight,
+                          idx,
                           u_StereoCameraBlock.cameras[1]);
-        const bool visible = eye0.visible || eye1.visible;
 #else
         const EyePreprocessResult eye1 = eye0;
-        const bool visible = eye0.visible;
 #endif
+        const bool visible = eye0.visible || eye1.visible;
         if (!visible)
             return;
 
+        float sortDepth = eye0.visible ? eye0.sortDepth : 0.0;
+#if USE_MULTIVIEW
+        if (eye1.visible)
+            sortDepth = max(sortDepth, eye1.sortDepth);
+#endif
+
+#if USE_FOVEATED_LAYER_OUTPUT
+        const float eccentricityDegrees = combinedFoveatedEccentricity(eye0, eye1);
+        if (isInsideFoveatedLayerEccentricity(0u, eccentricityDegrees))
+            writeFoveatedLayerSplat(0u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
+        if (isInsideFoveatedLayerEccentricity(1u, eccentricityDegrees))
+            writeFoveatedLayerSplat(1u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
+        if (isInsideFoveatedLayerEccentricity(2u, eccentricityDegrees))
+            writeFoveatedLayerSplat(2u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
+#else
         const uint visibleIndex = atomicAdd(s_GeneralGaussianSplatVisibleCount.visibleCount, 1u);
         if (visibleIndex >= u_PC.maxVisibleSplats)
         {
@@ -344,24 +521,16 @@ void main()
             return;
         }
 
-        packEyeResult(eye0,
-                      sourceIndex,
-                      drawIndex,
-                      s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_0,
-                      s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye0_1);
-        packEyeResult(eye1,
-                      sourceIndex,
-                      drawIndex,
-                      s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_0,
-                      s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex].packedEye1_1);
-
-        float sortDepth = eye0.visible ? eye0.sortDepth : 0.0;
-#if USE_MULTIVIEW
-        if (eye1.visible)
-            sortDepth = max(sortDepth, eye1.sortDepth);
+        writeVisibleSplat(eye0,
+                          eye1,
+                          sourceIndex,
+                          drawIndex,
+                          visibleIndex,
+                          sortDepth,
+                          s_GeneralGaussianSplatVisibleSplats.splats[visibleIndex],
+                          s_GeneralGaussianSplatSortKeys.keys[visibleIndex],
+                          s_GeneralGaussianSplatSortIndices.indices[visibleIndex]);
 #endif
-        s_GeneralGaussianSplatSortKeys.keys[visibleIndex] = floatBitsToUint(sortDepth);
-        s_GeneralGaussianSplatSortIndices.indices[visibleIndex] = visibleIndex;
 
     }
 }

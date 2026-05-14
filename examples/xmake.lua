@@ -307,6 +307,7 @@ else
     -- includes("meshshading/triangle")
     -- includes("debug_draw")
     includes("gaussian_splatting")
+    includes("gaussian_splatting_foveated")
     includes("demo_app")
     if is_plat("android") then
         includes("android_app")

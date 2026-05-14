@@ -49,6 +49,52 @@
 #define VULTRA_GENERAL_GAUSSIAN_SPLAT_SELECTED_SOURCE_BINDING 27
 #endif
 
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_VISIBLE_SPLAT_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_VISIBLE_SPLAT_BINDING 31
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_VISIBLE_SPLAT_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_VISIBLE_SPLAT_BINDING 32
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_VISIBLE_SPLAT_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_VISIBLE_SPLAT_BINDING 33
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_SORT_KEY_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_SORT_KEY_BINDING 34
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_SORT_KEY_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_SORT_KEY_BINDING 35
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_SORT_KEY_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_SORT_KEY_BINDING 36
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_SORT_INDEX_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_SORT_INDEX_BINDING 37
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_SORT_INDEX_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_SORT_INDEX_BINDING 38
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_SORT_INDEX_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_SORT_INDEX_BINDING 39
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_VISIBLE_COUNT_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_VISIBLE_COUNT_BINDING 40
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_VISIBLE_COUNT_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_VISIBLE_COUNT_BINDING 41
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_VISIBLE_COUNT_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_VISIBLE_COUNT_BINDING 42
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_INDIRECT_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_INDIRECT_BINDING 43
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_INDIRECT_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_INDIRECT_BINDING 44
+#endif
+#ifndef VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_INDIRECT_BINDING
+#define VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_INDIRECT_BINDING 45
+#endif
+
 const uint GENERAL_GAUSSIAN_SPLAT_SELECTED_FLAG_TRANSITION = 2u;
 const uint GENERAL_GAUSSIAN_SPLAT_SELECTED_FLAG_INVALID = 0x80000000u;
 
@@ -261,6 +307,98 @@ vec3 decodeGeneralGaussianSplatShCoeff(const uint coeffOffset)
     const vec2 bz = unpackHalf2x16(packedCoeff.y);
     return vec3(rg, bz.x);
 }
+#endif
+
+#ifdef VULTRA_DECLARE_GENERAL_GAUSSIAN_SPLAT_FOVEATED_LAYER_BUFFERS
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_VISIBLE_SPLAT_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedFoveaVisibleSplatBuffer
+{
+    GeneralGaussianSplatVisibleSplat splats[];
+} s_GeneralGaussianSplatFoveatedFoveaVisibleSplats;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_VISIBLE_SPLAT_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedMidVisibleSplatBuffer
+{
+    GeneralGaussianSplatVisibleSplat splats[];
+} s_GeneralGaussianSplatFoveatedMidVisibleSplats;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_VISIBLE_SPLAT_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedOuterVisibleSplatBuffer
+{
+    GeneralGaussianSplatVisibleSplat splats[];
+} s_GeneralGaussianSplatFoveatedOuterVisibleSplats;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_SORT_KEY_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedFoveaSortKeyBuffer
+{
+    uint keys[];
+} s_GeneralGaussianSplatFoveatedFoveaSortKeys;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_SORT_KEY_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedMidSortKeyBuffer
+{
+    uint keys[];
+} s_GeneralGaussianSplatFoveatedMidSortKeys;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_SORT_KEY_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedOuterSortKeyBuffer
+{
+    uint keys[];
+} s_GeneralGaussianSplatFoveatedOuterSortKeys;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_SORT_INDEX_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedFoveaSortIndexBuffer
+{
+    uint indices[];
+} s_GeneralGaussianSplatFoveatedFoveaSortIndices;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_SORT_INDEX_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedMidSortIndexBuffer
+{
+    uint indices[];
+} s_GeneralGaussianSplatFoveatedMidSortIndices;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_SORT_INDEX_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedOuterSortIndexBuffer
+{
+    uint indices[];
+} s_GeneralGaussianSplatFoveatedOuterSortIndices;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_VISIBLE_COUNT_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedFoveaVisibleCountBuffer
+{
+    uint visibleCount;
+} s_GeneralGaussianSplatFoveatedFoveaVisibleCount;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_VISIBLE_COUNT_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedMidVisibleCountBuffer
+{
+    uint visibleCount;
+} s_GeneralGaussianSplatFoveatedMidVisibleCount;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_VISIBLE_COUNT_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedOuterVisibleCountBuffer
+{
+    uint visibleCount;
+} s_GeneralGaussianSplatFoveatedOuterVisibleCount;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_FOVEA_INDIRECT_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedFoveaIndirectBuffer
+{
+    GeneralGaussianSplatIndirectCommand command;
+} s_GeneralGaussianSplatFoveatedFoveaIndirect;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_MID_INDIRECT_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedMidIndirectBuffer
+{
+    GeneralGaussianSplatIndirectCommand command;
+} s_GeneralGaussianSplatFoveatedMidIndirect;
+
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_GENERAL_GAUSSIAN_SPLAT_FOVEATED_OUTER_INDIRECT_BINDING, std430)
+buffer GeneralGaussianSplatFoveatedOuterIndirectBuffer
+{
+    GeneralGaussianSplatIndirectCommand command;
+} s_GeneralGaussianSplatFoveatedOuterIndirect;
 #endif
 
 #endif
