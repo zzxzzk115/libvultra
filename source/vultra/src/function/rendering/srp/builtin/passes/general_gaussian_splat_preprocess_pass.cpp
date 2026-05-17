@@ -5,9 +5,12 @@
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
+#include <glm/vec4.hpp>
+
 #include <fg/FrameGraph.hpp>
 
 #include <algorithm>
+#include <array>
 #include <initializer_list>
 #include <vector>
 
@@ -17,14 +20,46 @@ namespace vultra
     {
         constexpr auto PASS_NAME = "GeneralGaussianSplatPreprocessPass";
         constexpr auto kStereoCameraBinding = 23u;
+        constexpr auto kFoveatedLayerCount = resource::kGeneralGaussianSplatFoveatedLayerCount;
+        constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedVisibleSplatBindings {31u, 32u, 33u};
+        constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedSortKeyBindings {34u, 35u, 36u};
+        constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedSortIndexBindings {37u, 38u, 39u};
+        constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedVisibleCountBindings {40u, 41u, 42u};
+        constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedIndirectBindings {43u, 44u, 45u};
 
         struct GeneralGaussianSplatPreprocessPushConstants
         {
             uint32_t pointCount {0};
             uint32_t maxVisibleSplats {0};
-            uint32_t padding0 {0};
-            uint32_t padding1 {0};
+            uint32_t rankTotalCount {0};
+            uint32_t foveatedClodEnabled {0};
+            glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 5.0f, 15.0f};
+            glm::vec4 foveatedLevelsAndTransition {1.0f, 0.25f, 0.05f, 2.0f};
         };
+
+        struct GeneralGaussianSplatFoveatedClodPushParams
+        {
+            uint32_t  enabled {0};
+            glm::vec4 gazeAndRings {0.5f, 0.5f, 5.0f, 15.0f};
+            glm::vec4 levelsAndTransition {1.0f, 0.25f, 0.05f, 2.0f};
+        };
+
+        GeneralGaussianSplatFoveatedClodPushParams makeFoveatedClodPushParams(
+            const resource::GpuSceneView& gpuSceneView)
+        {
+            GeneralGaussianSplatFoveatedClodPushParams params {};
+            params.enabled = gpuSceneView.generalGaussianSplatFoveatedClodEnabled ? 1u : 0u;
+            params.gazeAndRings = glm::vec4 {gpuSceneView.generalGaussianSplatFoveatedGaze.x,
+                                             gpuSceneView.generalGaussianSplatFoveatedGaze.y,
+                                             gpuSceneView.generalGaussianSplatFoveatedRingDegrees.x,
+                                             gpuSceneView.generalGaussianSplatFoveatedRingDegrees.y};
+            params.levelsAndTransition =
+                glm::vec4 {gpuSceneView.generalGaussianSplatFoveatedRingLevels.x,
+                           gpuSceneView.generalGaussianSplatFoveatedRingLevels.y,
+                           gpuSceneView.generalGaussianSplatFoveatedRingLevels.z,
+                           std::max(gpuSceneView.generalGaussianSplatFoveatedTransitionDegrees, 0.0f)};
+            return params;
+        }
 
     } // namespace
 
@@ -43,6 +78,7 @@ namespace vultra
         const bool useMultiview =
             ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u && static_cast<bool>(stereoCameraBlock);
         const bool useDirectPrefix = gpuSceneView->generalGaussianSplatDirectPrefix;
+        const bool useFoveatedLayerOutput = gpuSceneView->generalGaussianSplatFoveatedLayeredCompositeEnabled;
 
         if (gpuSceneView->generalGaussianSplatDrawBuffer)
         {
@@ -124,6 +160,63 @@ namespace vultra
                                                   sizeof(rhi::DrawIndirectCommand)));
         }
 
+        if (useFoveatedLayerOutput)
+        {
+            for (uint32_t layer = 0u; layer < kFoveatedLayerCount; ++layer)
+            {
+                if (gpuSceneView->generalGaussianSplatFoveatedVisibleSplatBuffers[layer])
+                {
+                    ctx.data.set(kResKey_GeneralGaussianSplatFoveatedVisibleSplatBuffers[layer],
+                                 framegraph::importBuffer(
+                                     ctx.fg,
+                                     "GeneralGaussianSplatFoveatedVisibleSplatBuffer",
+                                     gpuSceneView->generalGaussianSplatFoveatedVisibleSplatBuffers[layer].get(),
+                                     framegraph::BufferType::eStorageBuffer,
+                                     sizeof(resource::GpuGeneralGaussianSplatVisibleSplat)));
+                }
+                if (gpuSceneView->generalGaussianSplatFoveatedSortKeyBuffers[layer])
+                {
+                    ctx.data.set(kResKey_GeneralGaussianSplatFoveatedSortKeyBuffers[layer],
+                                 framegraph::importBuffer(
+                                     ctx.fg,
+                                     "GeneralGaussianSplatFoveatedSortKeyBuffer",
+                                     gpuSceneView->generalGaussianSplatFoveatedSortKeyBuffers[layer].get(),
+                                     framegraph::BufferType::eStorageBuffer,
+                                     sizeof(uint32_t)));
+                }
+                if (gpuSceneView->generalGaussianSplatFoveatedSortIndexBuffers[layer])
+                {
+                    ctx.data.set(kResKey_GeneralGaussianSplatFoveatedSortIndexBuffers[layer],
+                                 framegraph::importBuffer(
+                                     ctx.fg,
+                                     "GeneralGaussianSplatFoveatedSortIndexBuffer",
+                                     gpuSceneView->generalGaussianSplatFoveatedSortIndexBuffers[layer].get(),
+                                     framegraph::BufferType::eStorageBuffer,
+                                     sizeof(uint32_t)));
+                }
+                if (gpuSceneView->generalGaussianSplatFoveatedVisibleCountBuffers[layer])
+                {
+                    ctx.data.set(kResKey_GeneralGaussianSplatFoveatedVisibleCountBuffers[layer],
+                                 framegraph::importBuffer(
+                                     ctx.fg,
+                                     "GeneralGaussianSplatFoveatedVisibleCountBuffer",
+                                     gpuSceneView->generalGaussianSplatFoveatedVisibleCountBuffers[layer].get(),
+                                     framegraph::BufferType::eStorageBuffer,
+                                     sizeof(uint32_t)));
+                }
+                if (gpuSceneView->generalGaussianSplatFoveatedIndirectBuffers[layer].has_value())
+                {
+                    ctx.data.set(kResKey_GeneralGaussianSplatFoveatedIndirectBuffers[layer],
+                                 framegraph::importBuffer(
+                                     ctx.fg,
+                                     "GeneralGaussianSplatFoveatedIndirectBuffer",
+                                     &gpuSceneView->generalGaussianSplatFoveatedIndirectBuffers[layer].value(),
+                                     framegraph::BufferType::eDrawIndirectBuffer,
+                                     sizeof(rhi::DrawIndirectCommand)));
+                }
+            }
+        }
+
         if (gpuSceneView->generalGaussianSplatSortStorageBuffer)
         {
             ctx.data.set(kResKey_GeneralGaussianSplatSortStorageBuffer,
@@ -154,13 +247,53 @@ namespace vultra
         auto indirectBuffer     = ctx.data.tryGet(kResKey_GeneralGaussianSplatIndirectBuffer);
         auto sortStorageBuffer  = ctx.data.tryGet(kResKey_GeneralGaussianSplatSortStorageBuffer);
         auto shBuffer           = ctx.data.tryGet(kResKey_GeneralGaussianSplatShBuffer);
+        std::array<FrameGraphResource, kFoveatedLayerCount> foveatedVisibleSplatBuffers {};
+        std::array<FrameGraphResource, kFoveatedLayerCount> foveatedSortKeyBuffers {};
+        std::array<FrameGraphResource, kFoveatedLayerCount> foveatedSortIndexBuffers {};
+        std::array<FrameGraphResource, kFoveatedLayerCount> foveatedVisibleCountBuffers {};
+        std::array<FrameGraphResource, kFoveatedLayerCount> foveatedIndirectBuffers {};
+        for (uint32_t layer = 0u; layer < kFoveatedLayerCount; ++layer)
+        {
+            foveatedVisibleSplatBuffers[layer] =
+                ctx.data.tryGet(kResKey_GeneralGaussianSplatFoveatedVisibleSplatBuffers[layer]);
+            foveatedSortKeyBuffers[layer] =
+                ctx.data.tryGet(kResKey_GeneralGaussianSplatFoveatedSortKeyBuffers[layer]);
+            foveatedSortIndexBuffers[layer] =
+                ctx.data.tryGet(kResKey_GeneralGaussianSplatFoveatedSortIndexBuffers[layer]);
+            foveatedVisibleCountBuffers[layer] =
+                ctx.data.tryGet(kResKey_GeneralGaussianSplatFoveatedVisibleCountBuffers[layer]);
+            foveatedIndirectBuffers[layer] =
+                ctx.data.tryGet(kResKey_GeneralGaussianSplatFoveatedIndirectBuffers[layer]);
+        }
 
         const uint32_t pointCount = gpuSceneView->activeGeneralGaussianSplatPoints;
         const uint32_t maxVisible = gpuSceneView->maxGeneralGaussianSplatVisibleSplats;
+        const uint32_t rankTotalCount =
+            useDirectPrefix ? gpuSceneView->maxGeneralGaussianSplatSourceCount :
+                              gpuSceneView->maxGeneralGaussianSplatPoints;
+        const auto foveatedClodParams = makeFoveatedClodPushParams(*gpuSceneView);
 
-        if (!cameraBlock || !drawBuffer || !packedSourceBuffer || !visibleSplatBuffer || !sortKeyBuffer ||
-            !sortIndexBuffer || !visibleCountBuffer || !indirectBuffer || !sortStorageBuffer || !shBuffer ||
-            (!useDirectPrefix && !selectedSourceBuffer))
+        auto hasAllFoveatedLayerResources = [&]() {
+            for (uint32_t layer = 0u; layer < kFoveatedLayerCount; ++layer)
+            {
+                if (!foveatedVisibleSplatBuffers[layer] || !foveatedSortKeyBuffers[layer] ||
+                    !foveatedSortIndexBuffers[layer] || !foveatedVisibleCountBuffers[layer] ||
+                    !foveatedIndirectBuffers[layer])
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        const bool hasOutputResources =
+            useFoveatedLayerOutput ?
+                hasAllFoveatedLayerResources() :
+                static_cast<bool>(visibleSplatBuffer && sortKeyBuffer && sortIndexBuffer && visibleCountBuffer &&
+                                  indirectBuffer);
+
+        if (!cameraBlock || !drawBuffer || !packedSourceBuffer || !hasOutputResources || !sortStorageBuffer ||
+            !shBuffer || (!useDirectPrefix && !selectedSourceBuffer))
         {
             return;
         }
@@ -179,6 +312,11 @@ namespace vultra
             FrameGraphResource indirectBuffer;
             FrameGraphResource sortStorageBuffer;
             FrameGraphResource shBuffer;
+            std::array<FrameGraphResource, kFoveatedLayerCount> foveatedVisibleSplatBuffers;
+            std::array<FrameGraphResource, kFoveatedLayerCount> foveatedSortKeyBuffers;
+            std::array<FrameGraphResource, kFoveatedLayerCount> foveatedSortIndexBuffers;
+            std::array<FrameGraphResource, kFoveatedLayerCount> foveatedVisibleCountBuffers;
+            std::array<FrameGraphResource, kFoveatedLayerCount> foveatedIndirectBuffers;
         };
 
         ctx.fg.addCallbackPass<PassData>(
@@ -195,8 +333,14 @@ namespace vultra
              indirectBuffer,
              sortStorageBuffer,
              shBuffer,
+             foveatedVisibleSplatBuffers,
+             foveatedSortKeyBuffers,
+             foveatedSortIndexBuffers,
+             foveatedVisibleCountBuffers,
+             foveatedIndirectBuffers,
              selectedSourceBuffer,
-             useDirectPrefix](FrameGraph::Builder& builder, PassData& data) {
+             useDirectPrefix,
+             useFoveatedLayerOutput](FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
                 data.camera             = builder.read(cameraBlock,
@@ -231,31 +375,75 @@ namespace vultra
                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                      });
                 }
-                data.visibleSplatBuffer = builder.write(visibleSplatBuffer,
-                                                        framegraph::BindingInfo {
-                                                            .location      = {.set = 0, .binding = 15},
-                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                        });
-                data.sortKeyBuffer      = builder.write(sortKeyBuffer,
-                                                   framegraph::BindingInfo {
-                                                            .location      = {.set = 0, .binding = 16},
-                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                   });
-                data.sortIndexBuffer    = builder.write(sortIndexBuffer,
-                                                     framegraph::BindingInfo {
-                                                            .location      = {.set = 0, .binding = 17},
-                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                     });
-                data.visibleCountBuffer = builder.write(visibleCountBuffer,
-                                                        framegraph::BindingInfo {
-                                                            .location      = {.set = 0, .binding = 18},
-                                                            .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                        });
-                data.indirectBuffer    = builder.write(indirectBuffer,
-                                                    framegraph::BindingInfo {
-                                                           .location      = {.set = 0, .binding = 20},
-                                                           .pipelineStage = framegraph::PipelineStage::eComputeShader,
-                                                    });
+                if (useFoveatedLayerOutput)
+                {
+                    for (uint32_t layer = 0u; layer < kFoveatedLayerCount; ++layer)
+                    {
+                        data.foveatedVisibleSplatBuffers[layer] =
+                            builder.write(foveatedVisibleSplatBuffers[layer],
+                                          framegraph::BindingInfo {
+                                              .location      = {.set = 0, .binding = kFoveatedVisibleSplatBindings[layer]},
+                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                          });
+                        data.foveatedSortKeyBuffers[layer] =
+                            builder.write(foveatedSortKeyBuffers[layer],
+                                          framegraph::BindingInfo {
+                                              .location      = {.set = 0, .binding = kFoveatedSortKeyBindings[layer]},
+                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                          });
+                        data.foveatedSortIndexBuffers[layer] =
+                            builder.write(foveatedSortIndexBuffers[layer],
+                                          framegraph::BindingInfo {
+                                              .location      = {.set = 0, .binding = kFoveatedSortIndexBindings[layer]},
+                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                          });
+                        data.foveatedVisibleCountBuffers[layer] =
+                            builder.write(foveatedVisibleCountBuffers[layer],
+                                          framegraph::BindingInfo {
+                                              .location      = {.set = 0, .binding = kFoveatedVisibleCountBindings[layer]},
+                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                          });
+                        data.foveatedIndirectBuffers[layer] =
+                            builder.write(foveatedIndirectBuffers[layer],
+                                          framegraph::BindingInfo {
+                                              .location      = {.set = 0, .binding = kFoveatedIndirectBindings[layer]},
+                                              .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                          });
+                    }
+                }
+                else
+                {
+                    data.visibleSplatBuffer =
+                        builder.write(visibleSplatBuffer,
+                                      framegraph::BindingInfo {
+                                          .location      = {.set = 0, .binding = 15},
+                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                      });
+                    data.sortKeyBuffer =
+                        builder.write(sortKeyBuffer,
+                                      framegraph::BindingInfo {
+                                          .location      = {.set = 0, .binding = 16},
+                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                      });
+                    data.sortIndexBuffer =
+                        builder.write(sortIndexBuffer,
+                                      framegraph::BindingInfo {
+                                          .location      = {.set = 0, .binding = 17},
+                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                      });
+                    data.visibleCountBuffer =
+                        builder.write(visibleCountBuffer,
+                                      framegraph::BindingInfo {
+                                          .location      = {.set = 0, .binding = 18},
+                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                      });
+                    data.indirectBuffer =
+                        builder.write(indirectBuffer,
+                                      framegraph::BindingInfo {
+                                          .location      = {.set = 0, .binding = 20},
+                                          .pipelineStage = framegraph::PipelineStage::eComputeShader,
+                                      });
+                }
                 data.sortStorageBuffer = builder.write(sortStorageBuffer,
                                                        framegraph::BindingInfo {
                                                            .location      = {.set = 0, .binding = 21},
@@ -267,7 +455,14 @@ namespace vultra
                                                           .pipelineStage = framegraph::PipelineStage::eComputeShader,
                                              });
             },
-            [this, pointCount, maxVisible, useMultiview, useDirectPrefix](
+            [this,
+             pointCount,
+             maxVisible,
+             rankTotalCount,
+             foveatedClodParams,
+             useMultiview,
+             useDirectPrefix,
+             useFoveatedLayerOutput](
                 const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
@@ -304,11 +499,28 @@ namespace vultra
                     return;
                 }
 
-                auto* visibleCountBuf = resources.get<framegraph::FrameGraphBuffer>(data.visibleCountBuffer).buffer;
+                auto* visibleCountBuf = useFoveatedLayerOutput ?
+                                            nullptr :
+                                            resources.get<framegraph::FrameGraphBuffer>(data.visibleCountBuffer).buffer;
+                std::array<rhi::Buffer*, kFoveatedLayerCount> foveatedVisibleCountBufs {};
+                if (useFoveatedLayerOutput)
+                {
+                    for (uint32_t layer = 0u; layer < kFoveatedLayerCount; ++layer)
+                    {
+                        foveatedVisibleCountBufs[layer] =
+                            resources.get<framegraph::FrameGraphBuffer>(data.foveatedVisibleCountBuffers[layer]).buffer;
+                    }
+                }
                 {
                     RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::ProjectCull");
 
-                    if (visibleCountBuf)
+                    if (useFoveatedLayerOutput)
+                    {
+                        const uint32_t zero = 0u;
+                        for (auto* countBuf : foveatedVisibleCountBufs)
+                            rc.cb.update(*countBuf, 0u, sizeof(uint32_t), &zero);
+                    }
+                    else
                     {
                         const uint32_t zero = 0u;
                         rc.cb.update(*visibleCountBuf, 0u, sizeof(uint32_t), &zero);
@@ -323,17 +535,32 @@ namespace vultra
                             .dstAccess = rhi::Access::eShaderRead | rhi::Access::eShaderWrite,
                         });
 
-                    const auto* preprocessPipeline = getPipeline(useMultiview, useDirectPrefix);
+                    const auto* preprocessPipeline = getPipeline(useMultiview, useDirectPrefix, useFoveatedLayerOutput);
                     if (!preprocessPipeline)
                     {
                         return;
                     }
                     GeneralGaussianSplatPreprocessPushConstants pc {};
-                    pc.pointCount       = pointCount;
-                    pc.maxVisibleSplats = maxVisible;
+                    pc.pointCount            = pointCount;
+                    pc.maxVisibleSplats      = maxVisible;
+                    pc.rankTotalCount        = rankTotalCount;
+                    pc.foveatedClodEnabled   = foveatedClodParams.enabled;
+                    pc.foveatedGazeAndRings  = foveatedClodParams.gazeAndRings;
+                    pc.foveatedLevelsAndTransition =
+                        foveatedClodParams.levelsAndTransition;
 
                     rc.cb.bindPipeline(*preprocessPipeline);
-                    std::vector<uint32_t> preprocessBindings {0u, 13u, 14u, 15u, 16u, 17u, 18u, 22u};
+                    std::vector<uint32_t> preprocessBindings {0u, 13u, 14u, 22u};
+                    if (useFoveatedLayerOutput)
+                    {
+                        preprocessBindings.insert(preprocessBindings.end(),
+                                                  {31u, 32u, 33u, 34u, 35u, 36u, 37u,
+                                                   38u, 39u, 40u, 41u, 42u, 43u, 44u, 45u});
+                    }
+                    else
+                    {
+                        preprocessBindings.insert(preprocessBindings.end(), {15u, 16u, 17u, 18u});
+                    }
                     if (!useDirectPrefix)
                     {
                         preprocessBindings.push_back(27u);
@@ -349,14 +576,39 @@ namespace vultra
                     rc.cb.insertComputeUavBarrier();
                 }
 
-                auto* sortKeyBuf     = resources.get<framegraph::FrameGraphBuffer>(data.sortKeyBuffer).buffer;
-                auto* sortIndexBuf   = resources.get<framegraph::FrameGraphBuffer>(data.sortIndexBuffer).buffer;
                 auto* sortStorageBuf = resources.get<framegraph::FrameGraphBuffer>(data.sortStorageBuffer).buffer;
 
-                if (gpuSceneView->generalGaussianSplatSorter.has_value() &&
-                    static_cast<bool>(*gpuSceneView->generalGaussianSplatSorter) && visibleCountBuf && sortKeyBuf &&
-                    sortIndexBuf && sortStorageBuf)
+                if (useFoveatedLayerOutput && gpuSceneView->generalGaussianSplatSorter.has_value() &&
+                    static_cast<bool>(*gpuSceneView->generalGaussianSplatSorter))
                 {
+                    RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::Sort");
+
+                    for (uint32_t layer = 0u; layer < kFoveatedLayerCount; ++layer)
+                    {
+                        auto* countBuf     = foveatedVisibleCountBufs[layer];
+                        auto* sortKeyBuf   =
+                            resources.get<framegraph::FrameGraphBuffer>(data.foveatedSortKeyBuffers[layer]).buffer;
+                        auto* sortIndexBuf =
+                            resources.get<framegraph::FrameGraphBuffer>(data.foveatedSortIndexBuffers[layer]).buffer;
+
+                        gpuSceneView->generalGaussianSplatSorter->sortKeyValuesIndirect(rc.cb,
+                                                                                        maxVisible,
+                                                                                        *countBuf,
+                                                                                        0u,
+                                                                                        *sortKeyBuf,
+                                                                                        0u,
+                                                                                        *sortIndexBuf,
+                                                                                        0u,
+                                                                                        *sortStorageBuf,
+                                                                                        0u);
+                        rc.cb.insertComputeUavBarrier();
+                    }
+                }
+                else if (gpuSceneView->generalGaussianSplatSorter.has_value() &&
+                         static_cast<bool>(*gpuSceneView->generalGaussianSplatSorter))
+                {
+                    auto* sortKeyBuf   = resources.get<framegraph::FrameGraphBuffer>(data.sortKeyBuffer).buffer;
+                    auto* sortIndexBuf = resources.get<framegraph::FrameGraphBuffer>(data.sortIndexBuffer).buffer;
                     RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::Sort");
 
                     gpuSceneView->generalGaussianSplatSorter->sortKeyValuesIndirect(rc.cb,
@@ -375,8 +627,13 @@ namespace vultra
                 {
                     RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatPreprocess::WriteIndirect");
 
-                    auto writeIndirectVariantHash = computeShaderVariantHash(
-                        "gaussian_splat_write_indirect.comp", vshadersystem::ShaderStage::eComp, {});
+                    rhi::ShaderLibraryRuntime::KeywordValues writeIndirectKeywords {
+                        {"USE_FOVEATED_LAYER_OUTPUT", useFoveatedLayerOutput ? 1u : 0u},
+                    };
+                    auto writeIndirectVariantHash =
+                        computeShaderVariantHash("gaussian_splat_write_indirect.comp",
+                                                 vshadersystem::ShaderStage::eComp,
+                                                 writeIndirectKeywords);
                     const auto* writeIndirectPipeline = getPipeline(writeIndirectVariantHash);
                     if (!writeIndirectPipeline)
                     {
@@ -384,18 +641,30 @@ namespace vultra
                     }
 
                     rc.cb.bindPipeline(*writeIndirectPipeline);
-                    bindSubset(*writeIndirectPipeline, std::initializer_list<uint32_t> {18u, 20u});
+                    if (useFoveatedLayerOutput)
+                    {
+                        bindSubset(*writeIndirectPipeline,
+                                   std::initializer_list<uint32_t> {31u, 32u, 33u, 34u, 35u, 36u, 37u,
+                                                                    38u, 39u, 40u, 41u, 42u, 43u, 44u, 45u});
+                    }
+                    else
+                    {
+                        bindSubset(*writeIndirectPipeline, std::initializer_list<uint32_t> {18u, 20u});
+                    }
                     rc.cb.dispatch({1u, 1u, 1u});
+                    rc.cb.insertComputeUavBarrier();
                 }
             });
     }
 
     rhi::ComputePipeline GeneralGaussianSplatPreprocessPass::createPipeline(const bool useMultiview,
-                                                                            const bool useDirectPrefix) const
+                                                                            const bool useDirectPrefix,
+                                                                            const bool useFoveatedLayerOutput) const
     {
         rhi::ShaderLibraryRuntime::KeywordValues keywords {
             {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
             {"USE_DIRECT_PREFIX", useDirectPrefix ? 1u : 0u},
+            {"USE_FOVEATED_LAYER_OUTPUT", useFoveatedLayerOutput ? 1u : 0u},
         };
         auto shader = loadGeneralShader("gaussian_splat_preprocess.comp", vshadersystem::ShaderStage::eComp, keywords);
         if (!shader)

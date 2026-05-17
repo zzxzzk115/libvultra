@@ -12,8 +12,12 @@
 #include "vultra/function/resource/gpu_scene_database.hpp"
 #include "vultra/function/resource/gpu_visible_meshlet.hpp"
 
-#include <cstdint>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -24,6 +28,8 @@ namespace vultra::rhi
 
 namespace vultra::resource
 {
+    inline constexpr uint32_t kGeneralGaussianSplatFoveatedLayerCount = 3u;
+
     enum class GpuSceneBuildMode : uint8_t
     {
         eCpuDriven,
@@ -78,6 +84,16 @@ namespace vultra::resource
         Ref<rhi::StorageBuffer>                generalGaussianSplatShBuffer {nullptr};
         std::optional<rhi::DrawIndirectBuffer> generalGaussianSplatIndirectBuffer;
         std::optional<rhi::RadixSorter>        generalGaussianSplatSorter;
+        std::array<Ref<rhi::StorageBuffer>, kGeneralGaussianSplatFoveatedLayerCount>
+            generalGaussianSplatFoveatedVisibleSplatBuffers {};
+        std::array<Ref<rhi::StorageBuffer>, kGeneralGaussianSplatFoveatedLayerCount>
+            generalGaussianSplatFoveatedSortKeyBuffers {};
+        std::array<Ref<rhi::StorageBuffer>, kGeneralGaussianSplatFoveatedLayerCount>
+            generalGaussianSplatFoveatedSortIndexBuffers {};
+        std::array<Ref<rhi::StorageBuffer>, kGeneralGaussianSplatFoveatedLayerCount>
+            generalGaussianSplatFoveatedVisibleCountBuffers {};
+        std::array<std::optional<rhi::DrawIndirectBuffer>, kGeneralGaussianSplatFoveatedLayerCount>
+            generalGaussianSplatFoveatedIndirectBuffers {};
 
         uint32_t maxVisibleInstances {0};
         uint32_t maxVisibleMeshlets {0};
@@ -90,7 +106,14 @@ namespace vultra::resource
         uint32_t maxGeneralGaussianSplatPoints {0};
         uint32_t activeGeneralGaussianSplatPoints {0};
         uint32_t maxGeneralGaussianSplatVisibleSplats {0};
-        bool     generalGaussianSplatDirectPrefix {false};
+        bool      generalGaussianSplatDirectPrefix {false};
+        bool      generalGaussianSplatFoveatedClodEnabled {false};
+        bool      generalGaussianSplatFoveatedLayeredCompositeEnabled {false};
+        glm::vec2 generalGaussianSplatFoveatedGaze {0.5f, 0.5f};
+        glm::vec2 generalGaussianSplatFoveatedRingDegrees {5.0f, 15.0f};
+        glm::vec3 generalGaussianSplatFoveatedRingLevels {1.0f, 0.25f, 0.05f};
+        glm::vec3 generalGaussianSplatFoveatedResolutionScales {1.0f, 0.5f, 0.25f};
+        float     generalGaussianSplatFoveatedTransitionDegrees {2.0f};
 
         void clear()
         {
@@ -122,6 +145,16 @@ namespace vultra::resource
             generalGaussianSplatShBuffer           = nullptr;
             generalGaussianSplatIndirectBuffer.reset();
             generalGaussianSplatSorter.reset();
+            for (auto& buffer : generalGaussianSplatFoveatedVisibleSplatBuffers)
+                buffer = nullptr;
+            for (auto& buffer : generalGaussianSplatFoveatedSortKeyBuffers)
+                buffer = nullptr;
+            for (auto& buffer : generalGaussianSplatFoveatedSortIndexBuffers)
+                buffer = nullptr;
+            for (auto& buffer : generalGaussianSplatFoveatedVisibleCountBuffers)
+                buffer = nullptr;
+            for (auto& buffer : generalGaussianSplatFoveatedIndirectBuffers)
+                buffer.reset();
             maxVisibleInstances          = 0;
             maxVisibleMeshlets           = 0;
             maxDraws                     = 0;
@@ -131,6 +164,7 @@ namespace vultra::resource
             activeGeneralGaussianSplatPoints     = 0;
             maxGeneralGaussianSplatVisibleSplats = 0;
             generalGaussianSplatDirectPrefix     = false;
+            resetGeneralGaussianSplatFoveatedClod();
         }
 
         void beginFrame(const GpuSceneDatabase& db, GpuSceneBuildMode buildMode = GpuSceneBuildMode::eCpuDriven)
@@ -152,6 +186,7 @@ namespace vultra::resource
             activeGeneralGaussianSplatPoints     = 0;
             maxGeneralGaussianSplatVisibleSplats = 0;
             generalGaussianSplatDirectPrefix     = false;
+            resetGeneralGaussianSplatFoveatedClod();
         }
 
         [[nodiscard]] bool isCpuDriven() const { return mode == GpuSceneBuildMode::eCpuDriven; }
@@ -378,6 +413,34 @@ namespace vultra::resource
             maxGeneralGaussianSplatVisibleSplats = maxVisibleSplatCount;
         }
 
+        void setGeneralGaussianSplatFoveatedClod(bool enabled,
+                                                 bool layeredCompositeEnabled,
+                                                 glm::vec2 gaze,
+                                                 glm::vec2 ringDegrees,
+                                                 glm::vec3 ringLevels,
+                                                 glm::vec3 resolutionScales,
+                                                 float     transitionDegrees)
+        {
+            generalGaussianSplatFoveatedClodEnabled              = enabled;
+            generalGaussianSplatFoveatedLayeredCompositeEnabled = layeredCompositeEnabled;
+            generalGaussianSplatFoveatedGaze                     = gaze;
+            generalGaussianSplatFoveatedRingDegrees              = ringDegrees;
+            generalGaussianSplatFoveatedRingLevels               = ringLevels;
+            generalGaussianSplatFoveatedResolutionScales         = resolutionScales;
+            generalGaussianSplatFoveatedTransitionDegrees        = transitionDegrees;
+        }
+
+        void resetGeneralGaussianSplatFoveatedClod()
+        {
+            setGeneralGaussianSplatFoveatedClod(false,
+                                                false,
+                                                glm::vec2 {0.5f, 0.5f},
+                                                glm::vec2 {5.0f, 15.0f},
+                                                glm::vec3 {1.0f, 0.25f, 0.05f},
+                                                glm::vec3 {1.0f, 0.5f, 0.25f},
+                                                2.0f);
+        }
+
         void ensureGeneralGaussianSplatBuffers(rhi::RenderDevice& rd)
         {
             if (maxGeneralGaussianSplatDraws > 0u)
@@ -469,6 +532,35 @@ namespace vultra::resource
                 generalGaussianSplatSorter->getMaxElementCount() < maxGeneralGaussianSplatVisibleSplats)
             {
                 generalGaussianSplatSorter = rd.createRadixSorter(maxGeneralGaussianSplatVisibleSplats);
+            }
+
+            if (generalGaussianSplatFoveatedLayeredCompositeEnabled)
+            {
+                for (auto& buffer : generalGaussianSplatFoveatedVisibleSplatBuffers)
+                {
+                    if (!buffer || static_cast<uint64_t>(buffer->getSize()) < visibleBytes)
+                        buffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(visibleBytes));
+                }
+                for (auto& buffer : generalGaussianSplatFoveatedSortKeyBuffers)
+                {
+                    if (!buffer || static_cast<uint64_t>(buffer->getSize()) < sortBytes)
+                        buffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(sortBytes));
+                }
+                for (auto& buffer : generalGaussianSplatFoveatedSortIndexBuffers)
+                {
+                    if (!buffer || static_cast<uint64_t>(buffer->getSize()) < sortBytes)
+                        buffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(sortBytes));
+                }
+                for (auto& buffer : generalGaussianSplatFoveatedVisibleCountBuffers)
+                {
+                    if (!buffer || static_cast<uint64_t>(buffer->getSize()) < sizeof(uint32_t))
+                        buffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(sizeof(uint32_t)));
+                }
+                for (auto& buffer : generalGaussianSplatFoveatedIndirectBuffers)
+                {
+                    if (!buffer.has_value() || buffer->getCapacity() < 1u)
+                        buffer = rd.createDrawIndirectBufferByCount(1u, rhi::DrawIndirectType::eNonIndexed);
+                }
             }
 
             if (generalGaussianSplatSorter.has_value() && static_cast<bool>(*generalGaussianSplatSorter))

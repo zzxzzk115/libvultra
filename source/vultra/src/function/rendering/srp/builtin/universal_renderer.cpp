@@ -67,6 +67,18 @@ namespace vultra
             return "Unknown";
         }
 
+        [[nodiscard]] const char* gaussianFoveatedRenderModeLabel(const GaussianSplatFoveatedRenderMode mode)
+        {
+            switch (mode)
+            {
+                case GaussianSplatFoveatedRenderMode::eSinglePass:
+                    return "Single Pass";
+                case GaussianSplatFoveatedRenderMode::eLayeredComposite:
+                    return "Layered Composite";
+            }
+            return "Unknown";
+        }
+
         [[nodiscard]] double findScopeGpuMs(const std::vector<RuntimeProfiler::ScopeNode>& nodes,
                                             const char*                                    namePart)
         {
@@ -122,9 +134,71 @@ namespace vultra
             if (!orderedClodEnabled)
                 ImGui::EndDisabled();
 
+            ImGui::SeparatorText("Gaze Rendering");
+            if (!orderedClodEnabled)
+                ImGui::BeginDisabled();
+            ImGui::Checkbox("Enable Gaze Rendering", &settings.foveatedClodEnabled);
+            if (!orderedClodEnabled)
+                ImGui::EndDisabled();
+
+            const bool gazeControlsEnabled = orderedClodEnabled && settings.foveatedClodEnabled;
+            if (!gazeControlsEnabled)
+                ImGui::BeginDisabled();
+            constexpr const char* kFoveatedModeLabels[] = {"Single Pass", "Layered Composite"};
+            int foveatedModeIndex = static_cast<int>(settings.foveatedRenderMode);
+            if (ImGui::Combo("Gaze Render Path",
+                             &foveatedModeIndex,
+                             kFoveatedModeLabels,
+                             IM_ARRAYSIZE(kFoveatedModeLabels)))
+            {
+                foveatedModeIndex = std::clamp(foveatedModeIndex, 0, IM_ARRAYSIZE(kFoveatedModeLabels) - 1);
+                settings.foveatedRenderMode = static_cast<GaussianSplatFoveatedRenderMode>(foveatedModeIndex);
+            }
+            ImGui::SliderFloat2("Gaze UV", &settings.foveatedGaze.x, 0.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Fovea Degrees", &settings.foveatedRingDegrees.x, 0.0f, 45.0f, "%.1f");
+            ImGui::SliderFloat("Mid Degrees", &settings.foveatedRingDegrees.y, 0.0f, 90.0f, "%.1f");
+            settings.foveatedRingDegrees.x = std::max(settings.foveatedRingDegrees.x, 0.0f);
+            settings.foveatedRingDegrees.y =
+                std::max(settings.foveatedRingDegrees.y, settings.foveatedRingDegrees.x);
+            ImGui::SliderFloat("Fovea LOD", &settings.foveatedRingLevels.x, 0.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Mid LOD", &settings.foveatedRingLevels.y, 0.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Outer LOD", &settings.foveatedRingLevels.z, 0.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Fovea Resolution", &settings.foveatedResolutionScales.x, 0.05f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Mid Resolution", &settings.foveatedResolutionScales.y, 0.05f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Outer Resolution", &settings.foveatedResolutionScales.z, 0.05f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Transition Degrees", &settings.foveatedTransitionDegrees, 0.0f, 10.0f, "%.1f");
+            ImGui::Checkbox("Adaptive Budget", &settings.foveatedBudgetControllerEnabled);
+            ImGui::SliderFloat("Target Frame", &settings.foveatedTargetFrameMs, 1.0f, 33.3f, "%.1f ms");
+            ImGui::SliderFloat("Budget Step", &settings.foveatedBudgetAdjustRate, 0.001f, 0.25f, "%.3f");
+            settings.foveatedGaze.x = std::clamp(settings.foveatedGaze.x, 0.0f, 1.0f);
+            settings.foveatedGaze.y = std::clamp(settings.foveatedGaze.y, 0.0f, 1.0f);
+            settings.foveatedRingLevels.x = std::clamp(settings.foveatedRingLevels.x, 0.0f, 1.0f);
+            settings.foveatedRingLevels.y = std::clamp(settings.foveatedRingLevels.y, 0.0f, 1.0f);
+            settings.foveatedRingLevels.z = std::clamp(settings.foveatedRingLevels.z, 0.0f, 1.0f);
+            settings.foveatedResolutionScales.x = std::clamp(settings.foveatedResolutionScales.x, 0.05f, 1.0f);
+            settings.foveatedResolutionScales.y = std::clamp(settings.foveatedResolutionScales.y, 0.05f, 1.0f);
+            settings.foveatedResolutionScales.z = std::clamp(settings.foveatedResolutionScales.z, 0.05f, 1.0f);
+            settings.foveatedTransitionDegrees = std::max(settings.foveatedTransitionDegrees, 0.0f);
+            settings.foveatedTargetFrameMs = std::max(settings.foveatedTargetFrameMs, 0.1f);
+            settings.foveatedBudgetAdjustRate = std::clamp(settings.foveatedBudgetAdjustRate, 0.001f, 0.25f);
+            if (!gazeControlsEnabled)
+                ImGui::EndDisabled();
+
             ImGui::SeparatorText("Counters");
             ImGui::Text("Mode: %s", gaussianBaselineModeLabel(stats.baselineMode));
+            ImGui::Text("Gaze Rendering: %s", stats.foveatedClodEnabled ? "yes" : "no");
+            ImGui::Text("Gaze Render Path: %s", gaussianFoveatedRenderModeLabel(stats.foveatedRenderMode));
+            ImGui::Text("Layered Framebuffers: %s", stats.foveatedLayeredCompositeEnabled ? "yes" : "no");
+            ImGui::Text("Adaptive Budget: %s", stats.foveatedBudgetControllerEnabled ? "yes" : "no");
             ImGui::Text("Direct Prefix: %s", stats.directPrefix ? "yes" : "no");
+            ImGui::Text("Ring LODs: %.2f / %.2f / %.2f",
+                        stats.foveatedRingLevels.x,
+                        stats.foveatedRingLevels.y,
+                        stats.foveatedRingLevels.z);
+            ImGui::Text("Ring Res: %.2f / %.2f / %.2f",
+                        stats.foveatedResolutionScales.x,
+                        stats.foveatedResolutionScales.y,
+                        stats.foveatedResolutionScales.z);
             ImGui::Text("Total Splats: %u", stats.totalSplats);
             ImGui::Text("Prepared Splats: %u", stats.preparedSplats);
             ImGui::Text("Visible Cap: %u", stats.maxVisibleSplatCap);

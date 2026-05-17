@@ -71,6 +71,19 @@ namespace vultra
             cb.endRendering();
         }
 
+        float effectiveGaussianAutomaticClodLevel(const GaussianSplatRenderSettings& settings)
+        {
+            if (!settings.foveatedClodActive())
+                return std::clamp(settings.clodLevel, 0.01f, 1.0f);
+
+            const glm::vec3 levels {
+                std::clamp(settings.foveatedRingLevels.x, 0.0f, 1.0f),
+                std::clamp(settings.foveatedRingLevels.y, 0.0f, 1.0f),
+                std::clamp(settings.foveatedRingLevels.z, 0.0f, 1.0f),
+            };
+            return std::clamp(std::max(levels.x, std::max(levels.y, levels.z)), 0.01f, 1.0f);
+        }
+
         uint32_t effectiveGaussianLodBudget(const GaussianSplatRenderSettings& settings, const uint32_t totalSplatCount)
         {
             // Baseline consumes the full table. Ordered CLOD consumes a prefix of
@@ -82,10 +95,91 @@ namespace vultra
             // the UI exposes clodLevel as the paper-style continuous LOD fraction.
             if (settings.lodBudget > 0u)
                 return std::min(totalSplatCount, settings.lodBudget);
-            const float clodLevel = std::clamp(settings.clodLevel, 0.01f, 1.0f);
+            const float clodLevel = effectiveGaussianAutomaticClodLevel(settings);
             return std::min(totalSplatCount,
                             std::max(1u, static_cast<uint32_t>(
                                              std::ceil(static_cast<float>(totalSplatCount) * clodLevel))));
+        }
+
+        void applyGaussianSplatFoveatedClodSettings(resource::GpuSceneView&            gpuSceneView,
+                                                    const GaussianSplatRenderSettings& settings)
+        {
+            const auto layers = settings.foveatedLayers();
+            gpuSceneView.setGeneralGaussianSplatFoveatedClod(settings.foveatedClodActive(),
+                                                             settings.foveatedLayeredCompositeActive(),
+                                                             settings.foveatedGaze,
+                                                             glm::vec2 {layers[0].eccentricityDegrees,
+                                                                        layers[1].eccentricityDegrees},
+                                                             glm::vec3 {layers[0].lodLevel,
+                                                                        layers[1].lodLevel,
+                                                                        layers[2].lodLevel},
+                                                             glm::vec3 {layers[0].resolutionScale,
+                                                                        layers[1].resolutionScale,
+                                                                        layers[2].resolutionScale},
+                                                             std::max(settings.foveatedTransitionDegrees, 0.0f));
+        }
+
+        void resetGaussianSplatIndirectBuffer(rhi::RenderDevice& rd, rhi::DrawIndirectBuffer& buffer)
+        {
+            std::vector<rhi::DrawIndirectCommand> indirect(1u);
+            indirect[0].type          = rhi::DrawIndirectType::eNonIndexed;
+            indirect[0].count         = 4u;
+            indirect[0].instanceCount = 0u;
+            indirect[0].first         = 0u;
+            indirect[0].vertexOffset  = 0;
+            indirect[0].firstInstance = 0u;
+            rd.uploadDrawIndirect(buffer, indirect);
+        }
+
+        void resetGaussianSplatIndirectBuffers(rhi::RenderDevice& rd, resource::GpuSceneView& gpuSceneView)
+        {
+            if (gpuSceneView.generalGaussianSplatIndirectBuffer.has_value())
+                resetGaussianSplatIndirectBuffer(rd, gpuSceneView.generalGaussianSplatIndirectBuffer.value());
+
+            for (auto& buffer : gpuSceneView.generalGaussianSplatFoveatedIndirectBuffers)
+            {
+                if (buffer.has_value())
+                    resetGaussianSplatIndirectBuffer(rd, buffer.value());
+            }
+        }
+
+        bool gaussianSplatSelectionSettingsDirty(const GaussianSplatRenderSettings& current,
+                                                 const GaussianSplatRenderSettings& applied)
+        {
+            return current.lodBudget != applied.lodBudget ||
+                   current.clodLevel != applied.clodLevel ||
+                   current.foveatedClodEnabled != applied.foveatedClodEnabled ||
+                   current.foveatedRenderMode != applied.foveatedRenderMode ||
+                   current.foveatedGaze != applied.foveatedGaze ||
+                   current.foveatedRingDegrees != applied.foveatedRingDegrees ||
+                   current.foveatedRingLevels != applied.foveatedRingLevels ||
+                   current.foveatedResolutionScales != applied.foveatedResolutionScales ||
+                   current.foveatedTransitionDegrees != applied.foveatedTransitionDegrees;
+        }
+
+        void updateGaussianSplatFoveatedBudgetController(GaussianSplatRenderSettings& settings,
+                                                         const double                 gpuFrameMs)
+        {
+            if (!settings.foveatedClodActive() || !settings.foveatedBudgetControllerEnabled || gpuFrameMs <= 0.0)
+                return;
+
+            const float targetMs = std::max(settings.foveatedTargetFrameMs, 0.1f);
+            const float maxStep = std::clamp(settings.foveatedBudgetAdjustRate, 0.001f, 0.25f);
+            const float error = static_cast<float>((targetMs - gpuFrameMs) / targetMs);
+            if (std::abs(error) < 0.03f)
+                return;
+
+            const float signedStep = std::clamp(error * 0.5f, -maxStep, maxStep);
+            auto adjust = [signedStep](float value, const float floorValue) {
+                return std::clamp(value + signedStep * std::max(value, 0.1f), floorValue, 1.0f);
+            };
+
+            settings.foveatedRingLevels.z = adjust(settings.foveatedRingLevels.z, 0.01f);
+            settings.foveatedRingLevels.y = adjust(settings.foveatedRingLevels.y, settings.foveatedRingLevels.z);
+            if (error < -0.35f)
+                settings.foveatedRingLevels.x = adjust(settings.foveatedRingLevels.x, settings.foveatedRingLevels.y);
+            else
+                settings.foveatedRingLevels.x = std::max(settings.foveatedRingLevels.x, settings.foveatedRingLevels.y);
         }
 
         void rebuildGaussianSplatOrderedClodPrefixSources(resource::GpuSceneView&                       gpuSceneView,
@@ -443,18 +537,25 @@ namespace vultra
         }
 
         GaussianSplatFrameStats gaussianStats {};
-        gaussianStats.frameIndex       = m_FrameCounter;
-        gaussianStats.baselineMode     = m_GaussianSplatSettings.baselineMode;
-        gaussianStats.lodBudgetEnabled = m_GaussianSplatSettings.lodBudgetEnabled();
-        gaussianStats.lodBudget        = m_GaussianSplatSettings.lodBudget;
-        gaussianStats.splatAssets      = static_cast<uint32_t>(m_RenderWorldBack.gaussianSplats.size());
-        gaussianStats.totalSplats      = maxGeneralGaussianSplatPoints;
+        gaussianStats.frameIndex                       = m_FrameCounter;
+        gaussianStats.baselineMode                     = m_GaussianSplatSettings.baselineMode;
+        gaussianStats.foveatedRenderMode               = m_GaussianSplatSettings.foveatedRenderMode;
+        gaussianStats.lodBudgetEnabled                 = m_GaussianSplatSettings.lodBudgetEnabled();
+        gaussianStats.foveatedClodEnabled              = m_GaussianSplatSettings.foveatedClodActive();
+        gaussianStats.foveatedLayeredCompositeEnabled = m_GaussianSplatSettings.foveatedLayeredCompositeActive();
+        gaussianStats.foveatedBudgetControllerEnabled = m_GaussianSplatSettings.foveatedBudgetControllerEnabled;
+        gaussianStats.lodBudget                        = m_GaussianSplatSettings.lodBudget;
+        gaussianStats.foveatedRingLevels               = m_GaussianSplatSettings.foveatedRingLevels;
+        gaussianStats.foveatedResolutionScales         = m_GaussianSplatSettings.foveatedResolutionScales;
+        gaussianStats.foveatedRingDegrees              = m_GaussianSplatSettings.foveatedRingDegrees;
+        gaussianStats.foveatedTargetFrameMs            = m_GaussianSplatSettings.foveatedTargetFrameMs;
+        gaussianStats.splatAssets                      = static_cast<uint32_t>(m_RenderWorldBack.gaussianSplats.size());
+        gaussianStats.totalSplats                      = maxGeneralGaussianSplatPoints;
 
         const bool gaussianModeSettingsDirty =
             m_GaussianSplatSettings.baselineMode != m_AppliedGaussianSplatSettings.baselineMode;
         const bool gaussianSelectionSettingsDirty =
-            m_GaussianSplatSettings.lodBudget != m_AppliedGaussianSplatSettings.lodBudget ||
-            m_GaussianSplatSettings.clodLevel != m_AppliedGaussianSplatSettings.clodLevel;
+            gaussianSplatSelectionSettingsDirty(m_GaussianSplatSettings, m_AppliedGaussianSplatSettings);
         const bool gpuSceneDirty =
             gaussianModeSettingsDirty ||
             m_GpuSceneDirtyTracker.shouldRebuild(m_RenderWorldBack, resourceRevision, m_EnableGpuDrivenMeshletPipeline);
@@ -715,6 +816,7 @@ namespace vultra
                 activeGaussianSplats,
                 maxVisibleGaussianSplats,
                 gaussianDirectPrefix);
+            applyGaussianSplatFoveatedClodSettings(m_GpuSceneViewBack, m_GaussianSplatSettings);
             m_GpuSceneViewBack.generalGaussianSplatShBuffer = pool.gaussianStorage.shBuffer;
             m_GpuSceneViewBack.ensureGeneralGaussianSplatBuffers(rd);
 
@@ -763,17 +865,7 @@ namespace vultra
                           zeroArgs);
             }
 
-            if (m_GpuSceneViewBack.generalGaussianSplatIndirectBuffer.has_value())
-            {
-                std::vector<rhi::DrawIndirectCommand> indirect(1u);
-                indirect[0].type          = rhi::DrawIndirectType::eNonIndexed;
-                indirect[0].count         = 4u;
-                indirect[0].instanceCount = 0u;
-                indirect[0].first         = 0u;
-                indirect[0].vertexOffset  = 0;
-                indirect[0].firstInstance = 0u;
-                rd.uploadDrawIndirect(m_GpuSceneViewBack.generalGaussianSplatIndirectBuffer.value(), indirect);
-            }
+            resetGaussianSplatIndirectBuffers(rd, m_GpuSceneViewBack);
 
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;
             m_RenderWorldBack.gpuSceneView     = &m_GpuSceneViewBack;
@@ -832,6 +924,7 @@ namespace vultra
                 activeGaussianSplats,
                 maxVisibleGaussianSplats,
                 gaussianDirectPrefix);
+            applyGaussianSplatFoveatedClodSettings(gpuSceneView, m_GaussianSplatSettings);
             gpuSceneView.generalGaussianSplatShBuffer = pool.gaussianStorage.shBuffer;
             gpuSceneView.ensureGeneralGaussianSplatBuffers(rd);
 
@@ -858,17 +951,7 @@ namespace vultra
                 cb.update(*gpuSceneView.generalGaussianSplatDispatchArgsBuffer, 0, sizeof(zeroArgs), zeroArgs);
             }
 
-            if (gpuSceneView.generalGaussianSplatIndirectBuffer.has_value())
-            {
-                std::vector<rhi::DrawIndirectCommand> indirect(1u);
-                indirect[0].type          = rhi::DrawIndirectType::eNonIndexed;
-                indirect[0].count         = 4u;
-                indirect[0].instanceCount = 0u;
-                indirect[0].first         = 0u;
-                indirect[0].vertexOffset  = 0;
-                indirect[0].firstInstance = 0u;
-                rd.uploadDrawIndirect(gpuSceneView.generalGaussianSplatIndirectBuffer.value(), indirect);
-            }
+            resetGaussianSplatIndirectBuffers(rd, gpuSceneView);
         }
 
         m_GpuSceneDirtyTracker.markBuilt(m_RenderWorldBack, resourceRevision, m_EnableGpuDrivenMeshletPipeline);
@@ -1207,17 +1290,19 @@ namespace vultra
                                           commandStats.traceRaysCalls,
                                           commandStats.copyOps,
                                           commandStats.updateOps);
-        const auto  assetMemoryStats = assetService.memoryStats();
-        const auto memoryStats = rd.getMemoryStats();
+        const auto assetMemoryStats = assetService.memoryStats();
+        const auto memoryStats      = rd.getMemoryStats();
         m_RuntimeProfiler.setMemoryStats(assetMemoryStats.cpuCacheBytes,
-                         memoryStats.cpuCacheBytes,
-                         memoryStats.gpuDeviceLocalBytes,
-                         memoryStats.gpuHostVisibleBytes);
-        m_RuntimeProfiler.setGpuFrameMs(rd.consumeGpuFrameMs());
+                                          memoryStats.cpuCacheBytes,
+                                          memoryStats.gpuDeviceLocalBytes,
+                                          memoryStats.gpuHostVisibleBytes);
+        const double gpuFrameMs = rd.consumeGpuFrameMs();
+        m_RuntimeProfiler.setGpuFrameMs(gpuFrameMs);
         const auto renderFrameCpuEnd = std::chrono::steady_clock::now();
         m_RuntimeProfiler.setCpuRenderMs(
             std::chrono::duration<double, std::milli>(renderFrameCpuEnd - renderFrameCpuStart).count());
         m_RuntimeProfiler.endFrame();
+        updateGaussianSplatFoveatedBudgetController(m_GaussianSplatSettings, gpuFrameMs);
         rhi::setBuiltinProfilerGpuScopeCallbacks({}, {});
         m_RuntimeProfiler.setGpuScopeCallbacks({}, {}, {});
 

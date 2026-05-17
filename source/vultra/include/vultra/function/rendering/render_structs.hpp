@@ -7,6 +7,8 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/mat4x4.hpp>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
 #include <array>
@@ -94,11 +96,58 @@ namespace vultra
         eOrderedClod,
     };
 
+    enum class GaussianSplatFoveatedRenderMode : uint8_t
+    {
+        eSinglePass = 0,
+        eLayeredComposite,
+    };
+
+    inline constexpr uint32_t kGaussianSplatFoveatedLayerCount =
+        resource::kGeneralGaussianSplatFoveatedLayerCount;
+
+    struct GaussianSplatFoveatedLayerConfig
+    {
+        float eccentricityDegrees {0.0f};
+        float resolutionScale {1.0f};
+        float lodLevel {1.0f};
+    };
+
     struct GaussianSplatRenderSettings
     {
-        GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
-        uint32_t                  lodBudget {0}; // 0 means derive the selected count from clodLevel.
-        float                     clodLevel {1.0f}; // Fraction of the ordered list to keep when lodBudget is automatic.
+        GaussianSplatBaselineMode       baselineMode {GaussianSplatBaselineMode::eBaseline};
+        uint32_t                        lodBudget {0}; // 0 means derive the selected count from clodLevel.
+        float                           clodLevel {1.0f}; // Fraction of the ordered list to keep when lodBudget is automatic.
+        bool                            foveatedClodEnabled {false};
+        GaussianSplatFoveatedRenderMode foveatedRenderMode {GaussianSplatFoveatedRenderMode::eSinglePass};
+        glm::vec2                       foveatedGaze {0.5f, 0.5f}; // Viewport UV, top-left origin.
+        glm::vec2                       foveatedRingDegrees {5.0f, 15.0f};
+        glm::vec3                       foveatedRingLevels {1.0f, 0.25f, 0.05f};
+        glm::vec3                       foveatedResolutionScales {1.0f, 0.5f, 0.25f};
+        float                           foveatedTransitionDegrees {2.0f};
+        bool                            foveatedBudgetControllerEnabled {false};
+        float                           foveatedTargetFrameMs {11.1f};
+        float                           foveatedBudgetAdjustRate {0.05f};
+
+        [[nodiscard]] std::array<GaussianSplatFoveatedLayerConfig, kGaussianSplatFoveatedLayerCount> foveatedLayers() const
+        {
+            return {
+                GaussianSplatFoveatedLayerConfig {
+                    .eccentricityDegrees = foveatedRingDegrees.x,
+                    .resolutionScale     = foveatedResolutionScales.x,
+                    .lodLevel            = foveatedRingLevels.x,
+                },
+                GaussianSplatFoveatedLayerConfig {
+                    .eccentricityDegrees = foveatedRingDegrees.y,
+                    .resolutionScale     = foveatedResolutionScales.y,
+                    .lodLevel            = foveatedRingLevels.y,
+                },
+                GaussianSplatFoveatedLayerConfig {
+                    .eccentricityDegrees = 180.0f,
+                    .resolutionScale     = foveatedResolutionScales.z,
+                    .lodLevel            = foveatedRingLevels.z,
+                },
+            };
+        }
 
         [[nodiscard]] bool orderedClodEnabled() const
         {
@@ -109,15 +158,33 @@ namespace vultra
         {
             return orderedClodEnabled();
         }
+
+        [[nodiscard]] bool foveatedClodActive() const
+        {
+            return orderedClodEnabled() && foveatedClodEnabled;
+        }
+
+        [[nodiscard]] bool foveatedLayeredCompositeActive() const
+        {
+            return foveatedClodActive() && foveatedRenderMode == GaussianSplatFoveatedRenderMode::eLayeredComposite;
+        }
     };
 
     struct GaussianSplatFrameStats
     {
-        uint64_t frameIndex {0};
-        GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
-        bool                      lodBudgetEnabled {false};
-        bool                      directPrefix {false};
-        uint32_t                  lodBudget {0};
+        uint64_t                        frameIndex {0};
+        GaussianSplatBaselineMode       baselineMode {GaussianSplatBaselineMode::eBaseline};
+        GaussianSplatFoveatedRenderMode foveatedRenderMode {GaussianSplatFoveatedRenderMode::eSinglePass};
+        bool                            lodBudgetEnabled {false};
+        bool                            foveatedClodEnabled {false};
+        bool                            foveatedLayeredCompositeEnabled {false};
+        bool                            foveatedBudgetControllerEnabled {false};
+        bool                            directPrefix {false};
+        uint32_t                        lodBudget {0};
+        glm::vec3                       foveatedRingLevels {1.0f, 0.25f, 0.05f};
+        glm::vec3                       foveatedResolutionScales {1.0f, 0.5f, 0.25f};
+        glm::vec2                       foveatedRingDegrees {5.0f, 15.0f};
+        float                           foveatedTargetFrameMs {11.1f};
 
         uint32_t splatAssets {0};
         uint32_t drawRecords {0};

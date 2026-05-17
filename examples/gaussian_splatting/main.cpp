@@ -7,94 +7,57 @@
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
+
+#include "gaussian_splatting_benchmark.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <optional>
 #include <span>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
 
 using namespace vultra;
+using namespace vultra::gaussian_splatting_example;
 
 namespace
 {
-    struct GaussianBenchmarkOptions
+    struct GaussianDemoOptions
     {
-        std::optional<GaussianSplatBaselineMode> mode;
-        std::optional<float>                     clodLevel;
-        std::optional<uint32_t>                  lodBudget;
+        std::optional<GaussianSplatBaselineMode>       mode;
+        std::optional<float>                           clodLevel;
+        std::optional<uint32_t>                        lodBudget;
+        std::optional<std::string>                     splatUri;
+        std::optional<bool>                            foveatedClodEnabled;
+        std::optional<GaussianSplatFoveatedRenderMode> foveatedRenderMode;
+        std::optional<float>                           gazeX;
+        std::optional<float>                           gazeY;
+        std::optional<float>                           foveaDegrees;
+        std::optional<float>                           midDegrees;
+        std::optional<float>                           foveaLod;
+        std::optional<float>                           midLod;
+        std::optional<float>                           outerLod;
+        std::optional<float>                           foveaResolutionScale;
+        std::optional<float>                           midResolutionScale;
+        std::optional<float>                           outerResolutionScale;
+        std::optional<float>                           transitionDegrees;
+        std::optional<bool>                            adaptiveBudgetEnabled;
+        std::optional<float>                           targetFrameMs;
+        std::optional<float>                           budgetAdjustRate;
 
         bool                  benchmarkEnabled {false};
         uint32_t              benchmarkFrames {300};
         uint32_t              warmupFrames {60};
         std::filesystem::path outputPath {"build/gaussian_splat_benchmark.csv"};
-    };
-
-    struct GaussianBenchmarkSample
-    {
-        uint32_t sampleIndex {0};
-        uint64_t frameIndex {0};
-
-        double dtMs {0.0};
-        double cpuFrameMs {0.0};
-        double cpuRenderMs {0.0};
-        double gpuFrameMs {-1.0};
-
-        uint64_t drawCalls {0};
-        uint64_t dispatchCalls {0};
-        uint64_t copyOps {0};
-        uint64_t updateOps {0};
-        uint32_t gpuScopeResolvedCount {0};
-        uint32_t gpuScopeTokenCount {0};
-
-        GaussianSplatBaselineMode baselineMode {GaussianSplatBaselineMode::eBaseline};
-        bool                      lodBudgetEnabled {false};
-        bool                      directPrefix {false};
-        uint32_t                  lodBudget {0};
-        uint32_t                  splatAssets {0};
-        uint32_t                  drawRecords {0};
-        uint32_t                  totalSplats {0};
-        uint32_t                  preparedSplats {0};
-        uint32_t                  maxVisibleSplatCap {0};
-        uint32_t                  lodSelectedRawSplats {0};
-        uint32_t                  visibleSplats {UINT32_MAX};
-        uint32_t                  drawnSplats {UINT32_MAX};
-
-        double cpuRenderFrameMs {-1.0};
-        double cpuCookMs {-1.0};
-        double cpuGpuSceneRebuildMs {-1.0};
-        double cpuLodSelectionMs {-1.0};
-        double cpuClodSelectionMs {-1.0};
-        double cpuRawSelectionMs {-1.0};
-        double cpuLodUploadMs {-1.0};
-        double cpuFrameGraphBuildMs {-1.0};
-        double cpuFrameGraphExecuteMs {-1.0};
-
-        double gpuPreprocessPassMs {-1.0};
-        double gpuProjectCullMs {-1.0};
-        double gpuSortMs {-1.0};
-        double gpuWriteIndirectMs {-1.0};
-        double gpuRenderPassMs {-1.0};
-    };
-
-    struct SeriesStats
-    {
-        double average {0.0};
-        double median {0.0};
-        double minimum {0.0};
-        double maximum {0.0};
     };
 
     std::string normalizeToken(const std::string_view value)
@@ -175,19 +138,38 @@ namespace
         return std::nullopt;
     }
 
-    std::string_view gaussianModeLabel(const GaussianSplatBaselineMode mode)
+    std::optional<GaussianSplatFoveatedRenderMode> parseFoveatedRenderMode(const std::string_view value)
     {
-        switch (mode)
-        {
-            case GaussianSplatBaselineMode::eBaseline:
-                return "baseline";
-            case GaussianSplatBaselineMode::eOrderedClod:
-                return "ordered-clod";
-        }
-        return "unknown";
+        const auto normalized = normalizeToken(value);
+        if (normalized == "single-pass" || normalized == "single")
+            return GaussianSplatFoveatedRenderMode::eSinglePass;
+        if (normalized == "layered" || normalized == "layered-composite")
+            return GaussianSplatFoveatedRenderMode::eLayeredComposite;
+        return std::nullopt;
     }
 
-    void parseFloatOption(std::span<const std::string> args,
+    std::string splatUriFromCliValue(const std::string_view value)
+    {
+        const auto normalized = normalizeToken(value);
+        if (normalized == "lizard" || normalized == "hornedlizard")
+            return "res://models/3dgs/hornedlizard.spz";
+        if (normalized == "racoonfamily")
+            return "res://models/3dgs/racoonfamily.spz";
+        if (normalized == "train" || normalized == "truck" || normalized == "drjohnson" ||
+            normalized == "playroom")
+        {
+            return "res://models/3dgs/" + normalized + "/" + normalized + "_clod.ply";
+        }
+
+        const std::string text {value};
+        if (text.find("://") != std::string::npos)
+            return text;
+        if (text.starts_with("models/") || text.starts_with("imported/"))
+            return "res://" + text;
+        return text;
+    }
+
+    bool parseFloatOption(std::span<const std::string> args,
                           size_t&                      index,
                           const std::string_view       option,
                           std::optional<float>&        outValue)
@@ -197,12 +179,14 @@ namespace
             outValue = parseFloat(*value);
             if (!outValue)
                 VULTRA_CLIENT_WARN("Ignoring invalid {} value: {}", option, *value);
+            return true;
         }
+        return false;
     }
 
-    GaussianBenchmarkOptions parseBenchmarkOptions(std::span<const std::string> args)
+    GaussianDemoOptions parseDemoOptions(std::span<const std::string> args)
     {
-        GaussianBenchmarkOptions options {};
+        GaussianDemoOptions options {};
 
         for (size_t i = 0; i < args.size(); ++i)
         {
@@ -266,201 +250,173 @@ namespace
                 continue;
             }
 
-            parseFloatOption(args, i, "--clod-level", options.clodLevel);
+            if (const auto value = takeOptionValue(args, i, "--splat"))
+            {
+                options.splatUri = splatUriFromCliValue(*value);
+                continue;
+            }
+
+            if (arg == "--gaze-rendering")
+            {
+                options.foveatedClodEnabled = true;
+                continue;
+            }
+
+            if (arg == "--no-gaze-rendering")
+            {
+                options.foveatedClodEnabled = false;
+                continue;
+            }
+
+            if (const auto value = takeOptionValue(args, i, "--gaze-render-mode"))
+            {
+                options.foveatedRenderMode = parseFoveatedRenderMode(*value);
+                if (!options.foveatedRenderMode)
+                    VULTRA_CLIENT_WARN("Ignoring invalid --gaze-render-mode value: {}", *value);
+                continue;
+            }
+
+            if (arg == "--adaptive-gaze-budget")
+            {
+                options.adaptiveBudgetEnabled = true;
+                continue;
+            }
+
+            if (arg == "--no-adaptive-gaze-budget")
+            {
+                options.adaptiveBudgetEnabled = false;
+                continue;
+            }
+
+            if (parseFloatOption(args, i, "--clod-level", options.clodLevel) ||
+                parseFloatOption(args, i, "--gaze-x", options.gazeX) ||
+                parseFloatOption(args, i, "--gaze-y", options.gazeY) ||
+                parseFloatOption(args, i, "--fovea-degrees", options.foveaDegrees) ||
+                parseFloatOption(args, i, "--mid-degrees", options.midDegrees) ||
+                parseFloatOption(args, i, "--fovea-lod", options.foveaLod) ||
+                parseFloatOption(args, i, "--mid-lod", options.midLod) ||
+                parseFloatOption(args, i, "--outer-lod", options.outerLod) ||
+                parseFloatOption(args, i, "--fovea-res-scale", options.foveaResolutionScale) ||
+                parseFloatOption(args, i, "--mid-res-scale", options.midResolutionScale) ||
+                parseFloatOption(args, i, "--outer-res-scale", options.outerResolutionScale) ||
+                parseFloatOption(args, i, "--transition-degrees", options.transitionDegrees) ||
+                parseFloatOption(args, i, "--target-frame-ms", options.targetFrameMs) ||
+                parseFloatOption(args, i, "--budget-adjust-rate", options.budgetAdjustRate))
+            {
+                continue;
+            }
         }
 
         return options;
     }
 
-    bool hasClodOverride(const GaussianBenchmarkOptions& options)
+    void applyGaussianSplatOverride(World& world, IAssetService& assets, const std::string& uri)
     {
-        return options.clodLevel.has_value() || options.lodBudget.has_value();
-    }
-
-    double sumScopeMs(const std::vector<RuntimeProfiler::ScopeNode>& scopes,
-                      const std::string_view                         needle,
-                      const bool                                     useGpuMs)
-    {
-        double total = 0.0;
-        bool   found = false;
-
-        for (const auto& scope : scopes)
+        auto handle = assets.loadGaussianSplatSync(uri);
+        if (!handle || !handle.uuid().valid() || handle.state() == AssetState::eFailed)
         {
-            if (scope.name.find(needle) == std::string::npos)
-                continue;
-
-            const double ms = useGpuMs ? scope.gpuTotalMs : scope.totalMs;
-            if (ms < 0.0)
-                continue;
-
-            total += ms;
-            found = true;
-        }
-
-        return found ? total : -1.0;
-    }
-
-    GaussianBenchmarkSample makeBenchmarkSample(const uint32_t                         sampleIndex,
-                                                const fsec                             dt,
-                                                const RuntimeProfiler::FrameStats&     frame,
-                                                const GaussianSplatFrameStats&         gaussian)
-    {
-        GaussianBenchmarkSample sample {};
-        sample.sampleIndex           = sampleIndex;
-        sample.frameIndex            = frame.frameIndex;
-        sample.dtMs                  = static_cast<double>(dt.count()) * 1000.0;
-        sample.cpuFrameMs            = frame.cpuFrameMs;
-        sample.cpuRenderMs           = frame.cpuRenderMs;
-        sample.gpuFrameMs            = frame.gpuFrameMs;
-        sample.drawCalls             = frame.drawCalls;
-        sample.dispatchCalls         = frame.dispatchCalls;
-        sample.copyOps               = frame.copyOps;
-        sample.updateOps             = frame.updateOps;
-        sample.gpuScopeResolvedCount = frame.gpuScopeResolvedCount;
-        sample.gpuScopeTokenCount    = frame.gpuScopeTokenCount;
-
-        sample.baselineMode        = gaussian.baselineMode;
-        sample.lodBudgetEnabled    = gaussian.lodBudgetEnabled;
-        sample.directPrefix        = gaussian.directPrefix;
-        sample.lodBudget           = gaussian.lodBudget;
-        sample.splatAssets         = gaussian.splatAssets;
-        sample.drawRecords         = gaussian.drawRecords;
-        sample.totalSplats         = gaussian.totalSplats;
-        sample.preparedSplats      = gaussian.preparedSplats;
-        sample.maxVisibleSplatCap  = gaussian.maxVisibleSplatCap;
-        sample.lodSelectedRawSplats = gaussian.lodSelectedRawSplats;
-        sample.visibleSplats       = gaussian.visibleSplats;
-        sample.drawnSplats         = gaussian.drawnSplats;
-
-        sample.cpuRenderFrameMs       = sumScopeMs(frame.cpuScopeTree, "RenderSystem::renderFrame", false);
-        sample.cpuCookMs              = sumScopeMs(frame.cpuScopeTree, "RenderWorldCooker::cook", false);
-        sample.cpuGpuSceneRebuildMs   = sumScopeMs(frame.cpuScopeTree, "GpuScene::rebuild", false);
-        sample.cpuLodSelectionMs      = sumScopeMs(frame.cpuScopeTree, "GpuScene::gaussian_lod_selection", false);
-        sample.cpuClodSelectionMs     = sumScopeMs(frame.cpuScopeTree, "GaussianCLOD::BuildPrefix", false);
-        sample.cpuRawSelectionMs      = sumScopeMs(frame.cpuScopeTree, "GaussianSplat::BuildRawSelection", false);
-        sample.cpuLodUploadMs         = sumScopeMs(frame.cpuScopeTree, "GaussianLOD::UploadSelected", false);
-        sample.cpuFrameGraphBuildMs   = sumScopeMs(frame.cpuScopeTree, "FrameGraph::build", false);
-        sample.cpuFrameGraphExecuteMs = sumScopeMs(frame.cpuScopeTree, "FrameGraph::execute", false);
-
-        sample.gpuPreprocessPassMs = sumScopeMs(frame.gpuScopeTree, "GeneralGaussianSplatPreprocessPass", true);
-        sample.gpuProjectCullMs    = sumScopeMs(frame.gpuScopeTree, "GeneralGaussianSplatPreprocess::ProjectCull", true);
-        sample.gpuSortMs           = sumScopeMs(frame.gpuScopeTree, "GeneralGaussianSplatPreprocess::Sort", true);
-        sample.gpuWriteIndirectMs  = sumScopeMs(frame.gpuScopeTree, "GeneralGaussianSplatPreprocess::WriteIndirect", true);
-        sample.gpuRenderPassMs     = sumScopeMs(frame.gpuScopeTree, "GeneralGaussianSplatRenderPass", true);
-
-        return sample;
-    }
-
-    int64_t csvCounter(const uint32_t value)
-    {
-        return value == UINT32_MAX ? -1 : static_cast<int64_t>(value);
-    }
-
-    SeriesStats summarizeSeries(std::vector<double> values)
-    {
-        values.erase(std::remove_if(values.begin(), values.end(), [](const double value) { return value < 0.0; }),
-                     values.end());
-
-        if (values.empty())
-            return {};
-
-        std::sort(values.begin(), values.end());
-
-        double sum = 0.0;
-        for (const double value : values)
-            sum += value;
-
-        const size_t middle = values.size() / 2u;
-        const double median = values.size() % 2u == 0u ? (values[middle - 1u] + values[middle]) * 0.5 : values[middle];
-
-        return SeriesStats {
-            .average = sum / static_cast<double>(values.size()),
-            .median = median,
-            .minimum = values.front(),
-            .maximum = values.back(),
-        };
-    }
-
-    std::vector<double> collectSeries(const std::vector<GaussianBenchmarkSample>& samples,
-                                      double GaussianBenchmarkSample::*           member)
-    {
-        std::vector<double> values;
-        values.reserve(samples.size());
-        for (const auto& sample : samples)
-            values.push_back(sample.*member);
-        return values;
-    }
-
-    void writeBenchmarkCsv(const std::filesystem::path&                  path,
-                           const std::vector<GaussianBenchmarkSample>&   samples)
-    {
-        if (path.has_parent_path())
-        {
-            std::error_code ec;
-            std::filesystem::create_directories(path.parent_path(), ec);
-            if (ec)
-            {
-                VULTRA_CLIENT_WARN("Failed to create benchmark output directory {}: {}", path.parent_path().string(),
-                                   ec.message());
-            }
-        }
-
-        std::ofstream out {path};
-        if (!out)
-        {
-            VULTRA_CLIENT_WARN("Failed to open Gaussian benchmark output: {}", path.string());
+            VULTRA_CLIENT_WARN("Ignoring --splat override; failed to resolve {}", uri);
             return;
         }
 
-        out << "sample,frame,mode,lod_budget_enabled,direct_prefix,lod_budget,dt_ms,cpu_frame_ms,cpu_render_ms,"
-               "gpu_frame_ms,draw_calls,dispatch_calls,copy_ops,update_ops,gpu_scope_resolved_count,"
-               "gpu_scope_token_count,splat_assets,draw_records,total_splats,prepared_splats,"
-               "max_visible_splat_cap,lod_selected_raw_splats,visible_splats,drawn_splats,"
-               "cpu_render_frame_ms,cpu_cook_ms,cpu_gpu_scene_rebuild_ms,cpu_lod_selection_ms,"
-               "cpu_clod_prefix_build_ms,cpu_raw_selection_ms,cpu_lod_upload_ms,cpu_framegraph_build_ms,"
-               "cpu_framegraph_execute_ms,gpu_preprocess_pass_ms,gpu_project_cull_ms,gpu_sort_ms,"
-               "gpu_write_indirect_ms,gpu_render_pass_ms\n";
-
-        out << std::fixed << std::setprecision(6);
-        for (const auto& sample : samples)
+        uint32_t patched = 0;
+        auto     view    = world.registry().view<GaussianSplatComponent>();
+        for (const auto entity : view)
         {
-            out << sample.sampleIndex << ',' << sample.frameIndex << ',' << gaussianModeLabel(sample.baselineMode)
-                << ',' << (sample.lodBudgetEnabled ? 1 : 0) << ',' << (sample.directPrefix ? 1 : 0) << ','
-                << sample.lodBudget << ',' << sample.dtMs << ',' << sample.cpuFrameMs << ',' << sample.cpuRenderMs
-                << ',' << sample.gpuFrameMs << ',' << sample.drawCalls << ',' << sample.dispatchCalls << ','
-                << sample.copyOps << ',' << sample.updateOps << ',' << sample.gpuScopeResolvedCount << ','
-                << sample.gpuScopeTokenCount << ',' << sample.splatAssets << ',' << sample.drawRecords << ','
-                << sample.totalSplats << ',' << sample.preparedSplats << ',' << sample.maxVisibleSplatCap << ','
-                << sample.lodSelectedRawSplats << ',' << csvCounter(sample.visibleSplats) << ','
-                << csvCounter(sample.drawnSplats) << ','
-                << sample.cpuRenderFrameMs << ',' << sample.cpuCookMs << ',' << sample.cpuGpuSceneRebuildMs << ','
-                << sample.cpuLodSelectionMs << ',' << sample.cpuClodSelectionMs << ',' << sample.cpuRawSelectionMs
-                << ',' << sample.cpuLodUploadMs << ',' << sample.cpuFrameGraphBuildMs << ','
-                << sample.cpuFrameGraphExecuteMs << ',' << sample.gpuPreprocessPassMs << ','
-                << sample.gpuProjectCullMs << ',' << sample.gpuSortMs << ',' << sample.gpuWriteIndirectMs << ','
-                << sample.gpuRenderPassMs << '\n';
+            view.get<GaussianSplatComponent>(entity).gaussianSplat = handle.uuid();
+            ++patched;
         }
+
+        if (patched == 0)
+            VULTRA_CLIENT_WARN("Resolved --splat {}, but the scene has no GaussianSplatComponent", uri);
     }
 
-    std::string statsText(const SeriesStats& stats)
+    bool hasGazeRenderingParameterOverride(const GaussianDemoOptions& options)
     {
-        std::ostringstream stream;
-        stream << std::fixed << std::setprecision(3) << "avg=" << stats.average << "ms, median=" << stats.median
-               << "ms, min=" << stats.minimum << "ms, max=" << stats.maximum << "ms";
-        return stream.str();
+        return options.foveatedRenderMode.has_value() ||
+               options.gazeX.has_value() || options.gazeY.has_value() ||
+               options.foveaDegrees.has_value() || options.midDegrees.has_value() ||
+               options.foveaLod.has_value() || options.midLod.has_value() ||
+               options.outerLod.has_value() || options.foveaResolutionScale.has_value() ||
+               options.midResolutionScale.has_value() || options.outerResolutionScale.has_value() ||
+               options.transitionDegrees.has_value() || options.adaptiveBudgetEnabled.has_value() ||
+               options.targetFrameMs.has_value() || options.budgetAdjustRate.has_value();
     }
+
+    bool hasGazeRenderingOverride(const GaussianDemoOptions& options)
+    {
+        if (options.foveatedClodEnabled.has_value())
+            return *options.foveatedClodEnabled;
+        return hasGazeRenderingParameterOverride(options);
+    }
+
+    bool hasOrderedClodOverride(const GaussianDemoOptions& options)
+    {
+        return options.clodLevel.has_value() || options.lodBudget.has_value() || hasGazeRenderingOverride(options);
+    }
+
+    void applyGaussianDemoOptions(const GaussianDemoOptions& options, GaussianSplatRenderSettings& settings)
+    {
+        if (options.mode)
+            settings.baselineMode = *options.mode;
+        if (options.clodLevel)
+            settings.clodLevel = std::clamp(*options.clodLevel, 0.0f, 1.0f);
+        if (options.lodBudget)
+            settings.lodBudget = *options.lodBudget;
+
+        if (hasGazeRenderingParameterOverride(options) && !options.foveatedClodEnabled.has_value())
+            settings.foveatedClodEnabled = true;
+        if (options.foveatedClodEnabled.has_value())
+            settings.foveatedClodEnabled = *options.foveatedClodEnabled;
+        if (options.foveatedRenderMode)
+            settings.foveatedRenderMode = *options.foveatedRenderMode;
+        if (options.gazeX)
+            settings.foveatedGaze.x = std::clamp(*options.gazeX, 0.0f, 1.0f);
+        if (options.gazeY)
+            settings.foveatedGaze.y = std::clamp(*options.gazeY, 0.0f, 1.0f);
+        if (options.foveaDegrees)
+            settings.foveatedRingDegrees.x = std::max(*options.foveaDegrees, 0.0f);
+        if (options.midDegrees)
+            settings.foveatedRingDegrees.y = std::max(*options.midDegrees, 0.0f);
+        settings.foveatedRingDegrees.y =
+            std::max(settings.foveatedRingDegrees.y, settings.foveatedRingDegrees.x);
+        if (options.foveaLod)
+            settings.foveatedRingLevels.x = std::clamp(*options.foveaLod, 0.0f, 1.0f);
+        if (options.midLod)
+            settings.foveatedRingLevels.y = std::clamp(*options.midLod, 0.0f, 1.0f);
+        if (options.outerLod)
+            settings.foveatedRingLevels.z = std::clamp(*options.outerLod, 0.0f, 1.0f);
+        if (options.foveaResolutionScale)
+            settings.foveatedResolutionScales.x = std::clamp(*options.foveaResolutionScale, 0.05f, 1.0f);
+        if (options.midResolutionScale)
+            settings.foveatedResolutionScales.y = std::clamp(*options.midResolutionScale, 0.05f, 1.0f);
+        if (options.outerResolutionScale)
+            settings.foveatedResolutionScales.z = std::clamp(*options.outerResolutionScale, 0.05f, 1.0f);
+        if (options.transitionDegrees)
+            settings.foveatedTransitionDegrees = std::max(*options.transitionDegrees, 0.0f);
+        if (options.adaptiveBudgetEnabled)
+            settings.foveatedBudgetControllerEnabled = *options.adaptiveBudgetEnabled;
+        if (options.targetFrameMs)
+            settings.foveatedTargetFrameMs = std::max(*options.targetFrameMs, 0.1f);
+        if (options.budgetAdjustRate)
+            settings.foveatedBudgetAdjustRate = std::clamp(*options.budgetAdjustRate, 0.001f, 0.25f);
+    }
+
 } // namespace
 
 class GaussianSplattingDemoApp final : public DemoAppHost
 {
 protected:
-    std::string_view demoWindowTitle() const override { return "Gaussian Splatting Demo"; }
+    std::string_view demoWindowTitle() const override
+    {
+        return "Gaussian Splatting Demo";
+    }
 
     bool demoEnableExperimentalWebGPUContent() const override { return true; }
 
     void onPostConfigureDemo(Engine& engine) override
     {
-        m_Options = parseBenchmarkOptions(commandLineArgs());
+        m_Options = parseDemoOptions(commandLineArgs());
 
         auto& sceneService = engine.ctx().services.require<ISceneService>();
         auto& worldService = engine.ctx().services.require<IWorldService>();
@@ -469,19 +425,16 @@ protected:
 
         auto& world = worldService.world();
         sceneService.instantiateScene(world, "res://scenes/3dgs_example.vmanifest");
+        if (m_Options.splatUri)
+            applyGaussianSplatOverride(world, engine.ctx().services.require<IAssetService>(), *m_Options.splatUri);
 
         auto& settings = renderService.gaussianSplatSettings();
-        if (!m_Options.mode && hasClodOverride(m_Options))
+        if (!m_Options.mode && hasOrderedClodOverride(m_Options))
         {
             m_Options.mode = GaussianSplatBaselineMode::eOrderedClod;
             VULTRA_CLIENT_INFO("CLOD option detected; using gaussian mode: ordered-clod");
         }
-        if (m_Options.mode)
-            settings.baselineMode = *m_Options.mode;
-        if (m_Options.clodLevel)
-            settings.clodLevel = std::clamp(*m_Options.clodLevel, 0.0f, 1.0f);
-        if (m_Options.lodBudget)
-            settings.lodBudget = *m_Options.lodBudget;
+        applyGaussianDemoOptions(m_Options, settings);
 
         if (m_Options.benchmarkEnabled)
         {
@@ -490,8 +443,9 @@ protected:
                 profiler->setEnabled(true);
                 m_Profiler = profiler;
                 VULTRA_CLIENT_INFO(
-                    "Gaussian benchmark enabled: mode={}, frames={}, warmup={}, output={}",
-                    gaussianModeLabel(settings.baselineMode), m_Options.benchmarkFrames, m_Options.warmupFrames,
+                    "Gaussian benchmark enabled: mode={}, gaze_render_mode={}, frames={}, warmup={}, output={}",
+                    gaussianModeLabel(settings.baselineMode), foveatedRenderModeLabel(settings.foveatedRenderMode),
+                    m_Options.benchmarkFrames, m_Options.warmupFrames,
                     m_Options.outputPath.string());
             }
             else
@@ -569,15 +523,26 @@ private:
 
         const auto cpuFrameStats  = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::cpuFrameMs));
         const auto gpuFrameStats  = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuFrameMs));
-        const auto gpuPreprocess  = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuPreprocessPassMs));
-        const auto gpuRenderPass  = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuRenderPassMs));
-        const auto cpuClodSelect  = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::cpuClodSelectionMs));
+        const auto gpuPreprocess =
+            summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuPreprocessPassMs));
+        const auto gpuRenderPass =
+            summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuRenderPassMs));
+        const auto cpuClodSelect =
+            summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::cpuClodSelectionMs));
 
         const auto& last = m_Samples.back();
         std::cout << "\nGaussian benchmark summary\n"
                   << "  samples: " << m_Samples.size() << "\n"
                   << "  output: " << m_Options.outputPath.string() << "\n"
                   << "  mode: " << gaussianModeLabel(last.baselineMode) << "\n"
+                  << "  gaze_rendering: " << (last.foveatedClodEnabled ? "yes" : "no") << "\n"
+                  << "  gaze_render_mode: " << foveatedRenderModeLabel(last.foveatedRenderMode) << "\n"
+                  << "  layered_compositor: "
+                  << (last.foveatedLayeredCompositeEnabled ? "yes" : "no") << "\n"
+                  << "  adaptive_budget: " << (last.adaptiveBudgetEnabled ? "yes" : "no") << "\n"
+                  << "  ring_lod: " << last.foveaLod << ", " << last.midLod << ", " << last.outerLod << "\n"
+                  << "  ring_res: " << last.foveaResolutionScale << ", " << last.midResolutionScale << ", "
+                  << last.outerResolutionScale << "\n"
                   << "  direct_prefix: " << (last.directPrefix ? "yes" : "no") << "\n"
                   << "  splats: total=" << last.totalSplats << ", prepared=" << last.preparedSplats
                   << ", selected_raw=" << last.lodSelectedRawSplats << "\n"
@@ -591,7 +556,7 @@ private:
     }
 
 private:
-    GaussianBenchmarkOptions              m_Options {};
+    GaussianDemoOptions                   m_Options {};
     IRenderService*                       m_RenderService {nullptr};
     RuntimeProfiler*                      m_Profiler {nullptr};
     std::vector<GaussianBenchmarkSample>  m_Samples;
