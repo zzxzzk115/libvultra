@@ -74,16 +74,16 @@ namespace vultra
         }
 
         //
-        // Location (7 bits):
+        // Location (8 bits):
         //
-        // | 2 bits | 5 bits  |
-        // | [0..1] | [2..6]  |
+        // | 2 bits | 6 bits  |
+        // | [0..1] | [2..7]  |
         // |  set   | binding |
 
-        constexpr auto kLocationBits = 7;
+        constexpr auto kLocationBits = 8;
 
         constexpr auto kSetIndexBits     = 2;
-        constexpr auto kBindingIndexBits = 5;
+        constexpr auto kBindingIndexBits = 6;
 
         constexpr auto kSetIndexOffset     = 0;
         constexpr auto kBindingIndexOffset = kSetIndexOffset + kSetIndexBits;
@@ -109,13 +109,13 @@ namespace vultra
         }
 
         //
-        // BindingInfo (15 bits):
+        // BindingInfo (16 bits):
         //
-        // |  1 bit   |  7 bits  |    7 bits     |
-        // |   [0]    |  [1..7]  |   [8..14]     |
+        // |  1 bit   |  8 bits  |    7 bits     |
+        // |   [0]    |  [1..8]  |   [9..15]     |
         // | reserved | location | pipelineStage |
 
-        constexpr auto kBindingInfoBits   = 15;
+        constexpr auto kBindingInfoBits   = 16;
         constexpr auto kPipelineStageBits = 7;
 
         constexpr auto kLocationOffset      = kReservedBits;

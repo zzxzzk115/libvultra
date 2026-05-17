@@ -355,22 +355,6 @@ namespace
         return options.clodLevel.has_value() || options.lodBudget.has_value() || hasGazeRenderingOverride(options);
     }
 
-    void applyFoveatedExampleDefaults(GaussianSplatRenderSettings& settings)
-    {
-        settings.baselineMode                      = GaussianSplatBaselineMode::eOrderedClod;
-        settings.clodLevel                         = 1.0f;
-        settings.foveatedClodEnabled               = true;
-        settings.foveatedRenderMode               = GaussianSplatFoveatedRenderMode::eSinglePass;
-        settings.foveatedGaze                     = glm::vec2 {0.5f, 0.5f};
-        settings.foveatedRingDegrees              = glm::vec2 {5.0f, 15.0f};
-        settings.foveatedRingLevels               = glm::vec3 {1.0f, 0.25f, 0.05f};
-        settings.foveatedResolutionScales         = glm::vec3 {1.0f, 0.5f, 0.25f};
-        settings.foveatedTransitionDegrees        = 2.0f;
-        settings.foveatedBudgetControllerEnabled  = false;
-        settings.foveatedTargetFrameMs            = 11.1f;
-        settings.foveatedBudgetAdjustRate         = 0.05f;
-    }
-
     void applyGaussianDemoOptions(const GaussianDemoOptions& options, GaussianSplatRenderSettings& settings)
     {
         if (options.mode)
@@ -425,11 +409,7 @@ class GaussianSplattingDemoApp final : public DemoAppHost
 protected:
     std::string_view demoWindowTitle() const override
     {
-#if defined(VULTRA_GAUSSIAN_FOVEATED_EXAMPLE)
-        return "Gaussian Splatting Foveated CLOD Demo";
-#else
         return "Gaussian Splatting Demo";
-#endif
     }
 
     bool demoEnableExperimentalWebGPUContent() const override { return true; }
@@ -449,9 +429,6 @@ protected:
             applyGaussianSplatOverride(world, engine.ctx().services.require<IAssetService>(), *m_Options.splatUri);
 
         auto& settings = renderService.gaussianSplatSettings();
-#if defined(VULTRA_GAUSSIAN_FOVEATED_EXAMPLE)
-        applyFoveatedExampleDefaults(settings);
-#endif
         if (!m_Options.mode && hasOrderedClodOverride(m_Options))
         {
             m_Options.mode = GaussianSplatBaselineMode::eOrderedClod;

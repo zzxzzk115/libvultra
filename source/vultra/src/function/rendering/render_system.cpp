@@ -119,6 +119,30 @@ namespace vultra
                                                              std::max(settings.foveatedTransitionDegrees, 0.0f));
         }
 
+        void resetGaussianSplatIndirectBuffer(rhi::RenderDevice& rd, rhi::DrawIndirectBuffer& buffer)
+        {
+            std::vector<rhi::DrawIndirectCommand> indirect(1u);
+            indirect[0].type          = rhi::DrawIndirectType::eNonIndexed;
+            indirect[0].count         = 4u;
+            indirect[0].instanceCount = 0u;
+            indirect[0].first         = 0u;
+            indirect[0].vertexOffset  = 0;
+            indirect[0].firstInstance = 0u;
+            rd.uploadDrawIndirect(buffer, indirect);
+        }
+
+        void resetGaussianSplatIndirectBuffers(rhi::RenderDevice& rd, resource::GpuSceneView& gpuSceneView)
+        {
+            if (gpuSceneView.generalGaussianSplatIndirectBuffer.has_value())
+                resetGaussianSplatIndirectBuffer(rd, gpuSceneView.generalGaussianSplatIndirectBuffer.value());
+
+            for (auto& buffer : gpuSceneView.generalGaussianSplatFoveatedIndirectBuffers)
+            {
+                if (buffer.has_value())
+                    resetGaussianSplatIndirectBuffer(rd, buffer.value());
+            }
+        }
+
         bool gaussianSplatSelectionSettingsDirty(const GaussianSplatRenderSettings& current,
                                                  const GaussianSplatRenderSettings& applied)
         {
@@ -841,17 +865,7 @@ namespace vultra
                           zeroArgs);
             }
 
-            if (m_GpuSceneViewBack.generalGaussianSplatIndirectBuffer.has_value())
-            {
-                std::vector<rhi::DrawIndirectCommand> indirect(1u);
-                indirect[0].type          = rhi::DrawIndirectType::eNonIndexed;
-                indirect[0].count         = 4u;
-                indirect[0].instanceCount = 0u;
-                indirect[0].first         = 0u;
-                indirect[0].vertexOffset  = 0;
-                indirect[0].firstInstance = 0u;
-                rd.uploadDrawIndirect(m_GpuSceneViewBack.generalGaussianSplatIndirectBuffer.value(), indirect);
-            }
+            resetGaussianSplatIndirectBuffers(rd, m_GpuSceneViewBack);
 
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseBack;
             m_RenderWorldBack.gpuSceneView     = &m_GpuSceneViewBack;
@@ -937,17 +951,7 @@ namespace vultra
                 cb.update(*gpuSceneView.generalGaussianSplatDispatchArgsBuffer, 0, sizeof(zeroArgs), zeroArgs);
             }
 
-            if (gpuSceneView.generalGaussianSplatIndirectBuffer.has_value())
-            {
-                std::vector<rhi::DrawIndirectCommand> indirect(1u);
-                indirect[0].type          = rhi::DrawIndirectType::eNonIndexed;
-                indirect[0].count         = 4u;
-                indirect[0].instanceCount = 0u;
-                indirect[0].first         = 0u;
-                indirect[0].vertexOffset  = 0;
-                indirect[0].firstInstance = 0u;
-                rd.uploadDrawIndirect(gpuSceneView.generalGaussianSplatIndirectBuffer.value(), indirect);
-            }
+            resetGaussianSplatIndirectBuffers(rd, gpuSceneView);
         }
 
         m_GpuSceneDirtyTracker.markBuilt(m_RenderWorldBack, resourceRevision, m_EnableGpuDrivenMeshletPipeline);

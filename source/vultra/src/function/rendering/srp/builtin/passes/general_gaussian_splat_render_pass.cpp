@@ -118,7 +118,13 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             passName,
-            [passName, resolution, useMultiview, visibleSplatBuffer, sortIndexBuffer, indirectBuffer, existingColor](
+            [passName,
+             resolution,
+             useMultiview,
+             visibleSplatBuffer,
+             sortIndexBuffer,
+             indirectBuffer,
+             existingColor](
                 FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 

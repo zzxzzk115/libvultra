@@ -555,7 +555,7 @@ namespace vultra
                     {
                         preprocessBindings.insert(preprocessBindings.end(),
                                                   {31u, 32u, 33u, 34u, 35u, 36u, 37u,
-                                                   38u, 39u, 40u, 41u, 42u});
+                                                   38u, 39u, 40u, 41u, 42u, 43u, 44u, 45u});
                     }
                     else
                     {
@@ -644,13 +644,15 @@ namespace vultra
                     if (useFoveatedLayerOutput)
                     {
                         bindSubset(*writeIndirectPipeline,
-                                   std::initializer_list<uint32_t> {40u, 41u, 42u, 43u, 44u, 45u});
+                                   std::initializer_list<uint32_t> {31u, 32u, 33u, 34u, 35u, 36u, 37u,
+                                                                    38u, 39u, 40u, 41u, 42u, 43u, 44u, 45u});
                     }
                     else
                     {
                         bindSubset(*writeIndirectPipeline, std::initializer_list<uint32_t> {18u, 20u});
                     }
                     rc.cb.dispatch({1u, 1u, 1u});
+                    rc.cb.insertComputeUavBarrier();
                 }
             });
     }
