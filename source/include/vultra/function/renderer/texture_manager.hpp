@@ -17,6 +17,7 @@ namespace vultra
             ~TextureManager() = default;
 
             [[nodiscard]] TextureResourceHandle load(const std::filesystem::path&);
+            [[nodiscard]] TextureResourceHandle load(const std::filesystem::path&, TextureColorSpace);
 
         private:
             rhi::RenderDevice& m_RenderDevice;

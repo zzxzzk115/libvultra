@@ -125,6 +125,78 @@ namespace
         }
     }
 
+    rhi::PixelFormat toSRGB(rhi::PixelFormat format)
+    {
+        using enum rhi::PixelFormat;
+        switch (format)
+        {
+            case eRGBA8_UNorm:
+                return eRGBA8_sRGB;
+            case eBGRA8_UNorm:
+                return eBGRA8_sRGB;
+            case eBC1_UNorm:
+                return eBC1_sRGB;
+            case eBC2_UNorm:
+                return eBC2_sRGB;
+            case eBC3_UNorm:
+                return eBC3_sRGB;
+            case eBC7_RGBA8_UNorm:
+                return eBC7_RGBA8_sRGB;
+            case eETC2_RGB8_UNorm:
+                return eETC2_RGB8_sRGB;
+            case eETC2_RGBA8_UNorm:
+                return eETC2_RGBA8_sRGB;
+            case eETC2_RGB8A1_UNorm:
+                return eETC2_RGB8A1_sRGB;
+            default:
+                return format;
+        }
+    }
+
+    rhi::PixelFormat toLinear(rhi::PixelFormat format)
+    {
+        using enum rhi::PixelFormat;
+        switch (format)
+        {
+            case eRGBA8_sRGB:
+                return eRGBA8_UNorm;
+            case eBGRA8_sRGB:
+                return eBGRA8_UNorm;
+            case eBC1_sRGB:
+                return eBC1_UNorm;
+            case eBC2_sRGB:
+                return eBC2_UNorm;
+            case eBC3_sRGB:
+                return eBC3_UNorm;
+            case eBC7_RGBA8_sRGB:
+                return eBC7_RGBA8_UNorm;
+            case eETC2_RGB8_sRGB:
+                return eETC2_RGB8_UNorm;
+            case eETC2_RGBA8_sRGB:
+                return eETC2_RGBA8_UNorm;
+            case eETC2_RGB8A1_sRGB:
+                return eETC2_RGB8A1_UNorm;
+            default:
+                return format;
+        }
+    }
+
+    rhi::PixelFormat applyColorSpace(rhi::PixelFormat          format,
+                                     gfx::TextureColorSpace    colorSpace,
+                                     const bool                sourceIsSRGB = false)
+    {
+        if (colorSpace == gfx::TextureColorSpace::eSRGB ||
+            (colorSpace == gfx::TextureColorSpace::eAuto && sourceIsSRGB))
+        {
+            return toSRGB(format);
+        }
+        if (colorSpace == gfx::TextureColorSpace::eLinear)
+        {
+            return toLinear(format);
+        }
+        return format;
+    }
+
     std::expected<std::vector<uint8_t>, std::string> readAll(const std::filesystem::path& p)
     {
         std::ifstream f(p, std::ios::binary | std::ios::ate);
@@ -143,7 +215,8 @@ namespace vultra
 {
     namespace resource
     {
-        std::expected<rhi::Texture, std::string> loadTextureSTB(const std::filesystem::path& p, rhi::RenderDevice& rd)
+        std::expected<rhi::Texture, std::string>
+        loadTextureSTB(const std::filesystem::path& p, rhi::RenderDevice& rd, gfx::TextureColorSpace colorSpace)
         {
             stbi_set_flip_vertically_on_load(false);
 
@@ -185,7 +258,9 @@ namespace vultra
             if (generateMipmaps)
                 usageFlags |= rhi::ImageUsage::eTransferSrc;
 
-            const auto pixelFormat = hdr ? rhi::PixelFormat::eRGBA32F : rhi::PixelFormat::eRGBA8_UNorm;
+            const auto pixelFormat =
+                hdr ? rhi::PixelFormat::eRGBA32F :
+                      applyColorSpace(rhi::PixelFormat::eRGBA8_UNorm, colorSpace);
             auto       texture     = rhi::Texture::Builder {}
                                .setExtent(extent)
                                .setPixelFormat(pixelFormat)
@@ -209,7 +284,8 @@ namespace vultra
         }
 
         std::expected<rhi::Texture, std::string> loadTextureSTB_Raw(const std::vector<uint8_t>& bintex,
-                                                                    rhi::RenderDevice&          rd)
+                                                                    rhi::RenderDevice&          rd,
+                                                                    gfx::TextureColorSpace      colorSpace)
         {
             stbi_set_flip_vertically_on_load(false);
 
@@ -247,7 +323,9 @@ namespace vultra
             if (generateMipmaps)
                 usageFlags |= rhi::ImageUsage::eTransferSrc;
 
-            const auto pixelFormat = hdr ? rhi::PixelFormat::eRGBA32F : rhi::PixelFormat::eRGBA8_UNorm;
+            const auto pixelFormat =
+                hdr ? rhi::PixelFormat::eRGBA32F :
+                      applyColorSpace(rhi::PixelFormat::eRGBA8_UNorm, colorSpace);
             auto       texture     = rhi::Texture::Builder {}
                                .setExtent(extent)
                                .setPixelFormat(pixelFormat)
@@ -355,7 +433,8 @@ namespace vultra
         }
 
         std::expected<rhi::Texture, std::string> loadTextureKTX_DDS(const std::filesystem::path& p,
-                                                                    rhi::RenderDevice&           rd)
+                                                                    rhi::RenderDevice&           rd,
+                                                                    gfx::TextureColorSpace       colorSpace)
         {
             auto pathStr = p.string();
 
@@ -387,9 +466,12 @@ namespace vultra
                                  "to single layer.");
             }
 
+            const auto pixelFormat =
+                applyColorSpace(toRHI(tc.format), colorSpace, (tc.flags & DDSKTX_TEXTURE_FLAG_SRGB) != 0);
+
             rhi::Texture texture = rhi::Texture::Builder {}
                                        .setExtent(extent)
-                                       .setPixelFormat(toRHI(tc.format))
+                                       .setPixelFormat(pixelFormat)
                                        .setNumMipLevels(tc.num_mips)
                                        .setNumLayers(std::nullopt)
                                        .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst)
@@ -445,7 +527,8 @@ namespace vultra
         }
 
         std::expected<rhi::Texture, std::string> loadTextureKTX_DDS_Raw(const std::vector<uint8_t>& bintex,
-                                                                        rhi::RenderDevice&          rd)
+                                                                        rhi::RenderDevice&          rd,
+                                                                        gfx::TextureColorSpace      colorSpace)
         {
             // C++ file I/O
             auto fileBytes = std::expected<std::vector<uint8_t>, std::string> {bintex};
@@ -468,9 +551,12 @@ namespace vultra
                                  "to single layer.");
             }
 
+            const auto pixelFormat =
+                applyColorSpace(toRHI(tc.format), colorSpace, (tc.flags & DDSKTX_TEXTURE_FLAG_SRGB) != 0);
+
             rhi::Texture texture = rhi::Texture::Builder {}
                                        .setExtent(extent)
-                                       .setPixelFormat(toRHI(tc.format))
+                                       .setPixelFormat(pixelFormat)
                                        .setNumMipLevels(tc.num_mips)
                                        .setNumLayers(std::nullopt)
                                        .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst)
@@ -526,7 +612,8 @@ namespace vultra
 
         // https://docs.vulkan.org/samples/latest/samples/performance/texture_compression_basisu/README.html
         std::expected<rhi::Texture, std::string> loadTextureKTX2(const std::filesystem::path& path,
-                                                                 rhi::RenderDevice&           rd)
+                                                                 rhi::RenderDevice&           rd,
+                                                                 gfx::TextureColorSpace       colorSpace)
         {
             // Load from file using libktx
             ktxTexture2*   kTexture  = nullptr;
@@ -558,7 +645,7 @@ namespace vultra
 
             // Translate KTX format to RHI format
             VkFormat         vkFormat    = ktxTexture_GetVkFormat(reinterpret_cast<ktxTexture*>(kTexture));
-            rhi::PixelFormat pixelFormat = static_cast<rhi::PixelFormat>(vkFormat);
+            rhi::PixelFormat pixelFormat = applyColorSpace(static_cast<rhi::PixelFormat>(vkFormat), colorSpace);
             if (pixelFormat == rhi::PixelFormat::eUndefined)
             {
                 ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(kTexture));
@@ -641,7 +728,8 @@ namespace vultra
         }
 
         std::expected<rhi::Texture, std::string> loadTextureKTX2_Raw(const std::vector<uint8_t>& bintex,
-                                                                     rhi::RenderDevice&          rd)
+                                                                     rhi::RenderDevice&          rd,
+                                                                     gfx::TextureColorSpace      colorSpace)
         {
             // Load from memory using libktx
             ktxTexture2*   kTexture  = nullptr;
@@ -675,7 +763,7 @@ namespace vultra
 
             // Translate KTX format to RHI format
             VkFormat         vkFormat    = ktxTexture_GetVkFormat(reinterpret_cast<ktxTexture*>(kTexture));
-            rhi::PixelFormat pixelFormat = static_cast<rhi::PixelFormat>(vkFormat);
+            rhi::PixelFormat pixelFormat = applyColorSpace(static_cast<rhi::PixelFormat>(vkFormat), colorSpace);
             if (pixelFormat == rhi::PixelFormat::eUndefined)
             {
                 ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(kTexture));
@@ -759,15 +847,18 @@ namespace vultra
         }
 
         std::expected<rhi::Texture, std::string>
-        loadTextureRaw(const std::string& ext, const std::vector<uint8_t>& bintex, rhi::RenderDevice& rd)
+        loadTextureRaw(const std::string&          ext,
+                       const std::vector<uint8_t>& bintex,
+                       rhi::RenderDevice&          rd,
+                       gfx::TextureColorSpace      colorSpace)
         {
             if (ext == ".ktx2")
             {
-                return loadTextureKTX2_Raw(bintex, rd);
+                return loadTextureKTX2_Raw(bintex, rd, colorSpace);
             }
             else if (ext == ".ktx" || ext == ".dds")
             {
-                return loadTextureKTX_DDS_Raw(bintex, rd);
+                return loadTextureKTX_DDS_Raw(bintex, rd, colorSpace);
             }
             else if (ext == ".exr")
             {
@@ -776,7 +867,7 @@ namespace vultra
             else if (ext == ".hdr" || ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" ||
                      ext == ".tga" || ext == ".gif" || ext == ".psd" || ext == ".pic")
             {
-                return loadTextureSTB_Raw(bintex, rd);
+                return loadTextureSTB_Raw(bintex, rd, colorSpace);
             }
             else
             {

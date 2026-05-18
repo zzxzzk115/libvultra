@@ -11,6 +11,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+#include <entt/locator/locator.hpp>
 #include <magic_enum.hpp>
 
 namespace
@@ -214,12 +215,15 @@ namespace vultra
             uint32_t vertexOffset = 0;
             uint32_t indexOffset  = 0;
 
-            const auto loadTexture = [this, &p, &rd](const aiMaterial* material, const aiTextureType type) -> uint32_t {
+            const auto loadTexture =
+                [this, &p, &rd](const aiMaterial* material,
+                                const aiTextureType type,
+                                const TextureColorSpace colorSpace = TextureColorSpace::eLinear) -> uint32_t {
                 assert(material);
 
                 // lambda to load a texture from a path
-                auto loadTextureFromPath = [this, &rd](const std::filesystem::path& path) -> uint32_t {
-                    auto texture = resource::loadResource<TextureManager>(path.generic_string());
+                auto loadTextureFromPath = [this, &rd, colorSpace](const std::filesystem::path& path) -> uint32_t {
+                    auto texture = entt::locator<TextureManager>::value().load(path, colorSpace).handle();
                     if (texture)
                     {
                         // Find index if possible
@@ -432,15 +436,24 @@ namespace vultra
                     }
 
                     // Textures
-                    pbrMat.albedoIndex            = loadTexture(material, aiTextureType_DIFFUSE);
-                    pbrMat.alphaMaskIndex         = loadTexture(material, aiTextureType_OPACITY);
-                    pbrMat.metallicIndex          = loadTexture(material, aiTextureType_METALNESS);
-                    pbrMat.roughnessIndex         = loadTexture(material, aiTextureType_DIFFUSE_ROUGHNESS);
-                    pbrMat.specularIndex          = loadTexture(material, aiTextureType_SPECULAR);
-                    pbrMat.normalIndex            = loadTexture(material, aiTextureType_NORMALS);
-                    pbrMat.aoIndex                = loadTexture(material, aiTextureType_LIGHTMAP);
-                    pbrMat.emissiveIndex          = loadTexture(material, aiTextureType_EMISSIVE);
-                    pbrMat.metallicRoughnessIndex = loadTexture(material, aiTextureType_GLTF_METALLIC_ROUGHNESS);
+                    pbrMat.albedoIndex =
+                        loadTexture(material, aiTextureType_DIFFUSE, TextureColorSpace::eSRGB);
+                    pbrMat.alphaMaskIndex =
+                        loadTexture(material, aiTextureType_OPACITY, TextureColorSpace::eLinear);
+                    pbrMat.metallicIndex =
+                        loadTexture(material, aiTextureType_METALNESS, TextureColorSpace::eLinear);
+                    pbrMat.roughnessIndex =
+                        loadTexture(material, aiTextureType_DIFFUSE_ROUGHNESS, TextureColorSpace::eLinear);
+                    pbrMat.specularIndex =
+                        loadTexture(material, aiTextureType_SPECULAR, TextureColorSpace::eSRGB);
+                    pbrMat.normalIndex =
+                        loadTexture(material, aiTextureType_NORMALS, TextureColorSpace::eLinear);
+                    pbrMat.aoIndex =
+                        loadTexture(material, aiTextureType_LIGHTMAP, TextureColorSpace::eLinear);
+                    pbrMat.emissiveIndex =
+                        loadTexture(material, aiTextureType_EMISSIVE, TextureColorSpace::eSRGB);
+                    pbrMat.metallicRoughnessIndex =
+                        loadTexture(material, aiTextureType_GLTF_METALLIC_ROUGHNESS, TextureColorSpace::eLinear);
 
                     // Double sided?
                     bool doubleSided = false;

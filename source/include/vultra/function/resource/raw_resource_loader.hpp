@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/texture.hpp"
+#include "vultra/function/renderer/texture_loader.hpp"
 
 #include <expected>
 #include <filesystem>
@@ -15,9 +16,13 @@ namespace vultra
     namespace resource
     {
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureSTB(const std::filesystem::path&,
-                                                                              rhi::RenderDevice&);
+                                                                              rhi::RenderDevice&,
+                                                                              gfx::TextureColorSpace =
+                                                                                  gfx::TextureColorSpace::eAuto);
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureSTB_Raw(const std::vector<uint8_t>& bintex,
-                                                                                  rhi::RenderDevice&);
+                                                                                  rhi::RenderDevice&,
+                                                                                  gfx::TextureColorSpace =
+                                                                                      gfx::TextureColorSpace::eAuto);
 
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureEXR(const std::filesystem::path&,
                                                                               rhi::RenderDevice&);
@@ -25,16 +30,27 @@ namespace vultra
                                                                                   rhi::RenderDevice&);
 
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureKTX_DDS(const std::filesystem::path&,
-                                                                                  rhi::RenderDevice&);
+                                                                                  rhi::RenderDevice&,
+                                                                                  gfx::TextureColorSpace =
+                                                                                      gfx::TextureColorSpace::eAuto);
         [[nodiscard]] std::expected<rhi::Texture, std::string>
-        loadTextureKTX_DDS_Raw(const std::vector<uint8_t>& bintex, rhi::RenderDevice&);
+        loadTextureKTX_DDS_Raw(const std::vector<uint8_t>& bintex,
+                               rhi::RenderDevice&,
+                               gfx::TextureColorSpace = gfx::TextureColorSpace::eAuto);
 
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureKTX2(const std::filesystem::path&,
-                                                                               rhi::RenderDevice&);
+                                                                               rhi::RenderDevice&,
+                                                                               gfx::TextureColorSpace =
+                                                                                   gfx::TextureColorSpace::eAuto);
         [[nodiscard]] std::expected<rhi::Texture, std::string> loadTextureKTX2_Raw(const std::vector<uint8_t>& bintex,
-                                                                                   rhi::RenderDevice&);
+                                                                                   rhi::RenderDevice&,
+                                                                                   gfx::TextureColorSpace =
+                                                                                       gfx::TextureColorSpace::eAuto);
 
         [[nodiscard]] std::expected<rhi::Texture, std::string>
-        loadTextureRaw(const std::string& ext, const std::vector<uint8_t>& bintex, rhi::RenderDevice&);
+        loadTextureRaw(const std::string&       ext,
+                       const std::vector<uint8_t>& bintex,
+                       rhi::RenderDevice&       rd,
+                       gfx::TextureColorSpace   colorSpace = gfx::TextureColorSpace::eAuto);
     } // namespace resource
 } // namespace vultra

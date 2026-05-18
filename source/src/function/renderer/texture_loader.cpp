@@ -9,7 +9,8 @@ namespace vultra
         namespace
         {
             [[nodiscard]] std::expected<rhi::Texture, std::string> tryLoad(const std::filesystem::path& p,
-                                                                           rhi::RenderDevice&           rd)
+                                                                           rhi::RenderDevice&           rd,
+                                                                           TextureColorSpace colorSpace)
             {
                 if (!p.has_extension())
                 {
@@ -31,17 +32,17 @@ namespace vultra
                     case ".gif"_hs:
                     case ".hdr"_hs:
                     case ".pic"_hs:
-                        return resource::loadTextureSTB(p, rd);
+                        return resource::loadTextureSTB(p, rd, colorSpace);
 
                     case ".exr"_hs:
                         return resource::loadTextureEXR(p, rd);
 
                     case ".ktx"_hs:
                     case ".dds"_hs:
-                        return resource::loadTextureKTX_DDS(p, rd);
+                        return resource::loadTextureKTX_DDS(p, rd, colorSpace);
 
                     case ".ktx2"_hs:
-                        return resource::loadTextureKTX2(p, rd);
+                        return resource::loadTextureKTX2(p, rd, colorSpace);
 
                     default:
                         break;
@@ -52,9 +53,10 @@ namespace vultra
         } // namespace
 
         TextureLoader::result_type TextureLoader::operator()(const std::filesystem::path& p,
-                                                             rhi::RenderDevice&           rd) const
+                                                             rhi::RenderDevice&           rd,
+                                                             TextureColorSpace            colorSpace) const
         {
-            if (auto texture = tryLoad(p, rd); texture)
+            if (auto texture = tryLoad(p, rd, colorSpace); texture)
             {
                 return createRef<TextureResource>(std::move(texture.value()), p);
             }
