@@ -239,6 +239,7 @@ namespace vultra
             assert(invariant(State::eRecording, InvariantFlags::eValidComputePipeline));
 
             TRACY_GPU_ZONE2_("Dispatch");
+            TRACKY_GPU_ZONE((*this), "Dispatch");
             flushBarriers();
             m_Handle.dispatch(groupCount.x, groupCount.y, groupCount.z);
 
@@ -250,6 +251,7 @@ namespace vultra
             assert(invariant(State::eRecording, InvariantFlags::eValidRayTracingPipeline));
 
             TRACY_GPU_ZONE2_("TraceRays");
+            TRACKY_GPU_ZONE((*this), "TraceRays");
             flushBarriers();
 
             vk::StridedDeviceAddressRegionKHR raygenShaderBindingTable {};
@@ -403,6 +405,7 @@ namespace vultra
                              InvariantFlags::eValidGraphicsPipeline | InvariantFlags::eInsideRenderPass));
 
             TRACY_GPU_ZONE2_("Draw");
+            TRACKY_GPU_ZONE((*this), "Draw");
 
             constexpr auto kFirstInstance = 0u;
             setVertexBuffer(gi.vertexBuffer, 0);
