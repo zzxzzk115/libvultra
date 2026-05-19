@@ -13,6 +13,7 @@ namespace vultra
         {
             Ref<gfx::DefaultMesh> mesh {nullptr};
             glm::mat4             modelMatrix {1.0f};
+            bool                  excludeFromRaytracing {false};
         };
 
         struct RenderableGroup
