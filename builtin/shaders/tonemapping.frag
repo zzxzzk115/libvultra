@@ -10,7 +10,7 @@ layout (location = 0) out vec4 FragColor;
 
 layout (push_constant) uniform PushConstants {
     float exposure;
-    int   method; // 0: Khronos PBR Neutral, 1: ACES, 2: Reinhard (legacy)
+    int   method; // 0: Khronos PBR Neutral, 1: ACES, 2: Reinhard (legacy), 3: None
 } pc;
 
 void main() {

@@ -70,6 +70,8 @@ vec3 toneMapping(vec3 color, int method) {
         return toneMappingACES(color);
     } else if (method == 2) {
         return toneMappingReinhard(color);
+    } else if (method == 3) {
+        return color;
     } else {
         return toneMappingKhronosPbrNeutral(color); // Fallback to Khronos PBR Neutral
     }

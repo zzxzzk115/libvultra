@@ -47,7 +47,7 @@ namespace vultra
                         "ToneMapped",
                         {
                             .extent     = extent,
-                            .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                            .format     = rhi::PixelFormat::eRGBA16F,
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                         });
                     data.tonemapped = builder.write(data.tonemapped,
@@ -66,7 +66,7 @@ namespace vultra
                     struct PushConstants
                     {
                         float exposure;
-                        int   method; // 0: Khronos PBR Neutral, 1: ACES, 2: Reinhard (legacy)
+                        int   method; // 0: Khronos PBR Neutral, 1: ACES, 2: Reinhard (legacy), 3: None
                     } pushConstants {exposure, static_cast<int>(method)};
 
                     const auto* pipeline = getPipeline(rhi::getColorFormat(*framebufferInfo, 0));

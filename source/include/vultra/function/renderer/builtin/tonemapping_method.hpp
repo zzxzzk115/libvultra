@@ -10,6 +10,7 @@ namespace vultra
             KhronosPBRNeutral = 0,
             ACES              = 1,
             Reinhard          = 2, // Legacy
+            None              = 3,
         };
         // NOLINTEND
     } // namespace gfx
