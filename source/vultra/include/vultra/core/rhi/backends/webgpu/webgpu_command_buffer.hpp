@@ -78,6 +78,8 @@ namespace vultra
         private:
             [[noreturn]] static void unsupported(const char* name);
             void releaseTransientResources() noexcept;
+            void releaseRecordingResources() noexcept;
+            void releaseFrameTransientResources() noexcept;
 
         public:
             [[nodiscard]] WGPURenderPassEncoder getCurrentRenderPassEncoder() const { return m_RenderPass; }
@@ -104,9 +106,19 @@ namespace vultra
             std::unordered_map<std::size_t, WGPUBindGroup> m_EmptyBindGroups;
             std::array<WGPUBindGroup, kMinNumDescriptorSets> m_PendingRenderBindGroups {};
             std::array<WGPUBindGroup, kMinNumDescriptorSets> m_PendingComputeBindGroups {};
-            std::unordered_map<std::size_t, WGPUBindGroup> m_PushConstantBindGroups;
-            WGPUBuffer m_PushConstantBuffer {nullptr};
-            uint64_t   m_PushConstantBufferSize {0};
+            std::array<uint32_t, kMinNumDescriptorSets>      m_PendingRenderDynamicOffsets {};
+            std::array<uint32_t, kMinNumDescriptorSets>      m_PendingComputeDynamicOffsets {};
+            std::array<uint32_t, kMinNumDescriptorSets>      m_PendingRenderDynamicOffsetCounts {};
+            std::array<uint32_t, kMinNumDescriptorSets>      m_PendingComputeDynamicOffsetCounts {};
+            struct PushConstantPage
+            {
+                WGPUBuffer buffer {nullptr};
+                uint64_t   size {0};
+                std::unordered_map<std::size_t, WGPUBindGroup> bindGroups;
+            };
+            std::vector<PushConstantPage> m_PushConstantPages;
+            std::size_t                   m_PushConstantPageIndex {0};
+            uint64_t                      m_PushConstantPageOffset {0};
             bool           m_Recording {false};
             bool           m_InsideRendering {false};
             bool           m_SkipCurrentRendering {false};

@@ -264,7 +264,7 @@ target("vultra")
     -- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra")
 
-if not is_plat("android") then
+if not is_plat("android") and not is_plat("wasm") then
     target("vultra-app")
         set_kind("binary")
         set_basename("vultra")

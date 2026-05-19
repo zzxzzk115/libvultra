@@ -50,7 +50,7 @@ const float SH_C3[7] = float[7](-0.5900435899266435,
                                 1.445305721320277,
                                 -0.5900435899266435);
 
-layout(push_constant) uniform GeneralGaussianSplatPreprocessPushConstants
+layout(set = 1, binding = 30) uniform GeneralGaussianSplatPreprocessUniforms
 {
     uint pointCount;
     uint maxVisibleSplats;

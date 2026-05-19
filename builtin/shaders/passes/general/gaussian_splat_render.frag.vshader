@@ -11,7 +11,7 @@ layout(location = 0) out vec4 outColor;
 layout(location = 0) in vec2 v_ScreenPos;
 layout(location = 1) in vec4 v_Color;
 
-layout(push_constant) uniform GeneralGaussianSplatRenderPushConstants
+layout(set = 1, binding = 30) uniform GeneralGaussianSplatRenderUniforms
 {
     vec4 foveatedGazeAndRings;
     vec4 foveatedParams;
@@ -35,13 +35,8 @@ bool isInsideFoveatedLayer()
 
 void main()
 {
-    if (!isInsideFoveatedLayer())
-    {
-        discard;
-    }
-
     const float a = dot(v_ScreenPos, v_ScreenPos);
-    if (a > 2.0 * CUTOFF)
+    if (!isInsideFoveatedLayer() || a > 2.0 * CUTOFF)
     {
         outColor = vec4(0.0);
     }

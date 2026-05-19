@@ -115,13 +115,19 @@ task("shader_task")
             return
         end
 
-        local pkg = target:pkg("vshadersystem")
+        local pkg = project.required_package("vshadersystem~host") or target:pkg("vshadersystem")
         if not pkg then
             return
         end
 
         local vshaderc =
             path.join(pkg:installdir(), "bin", "vshaderc")
+        if is_host("windows") and not os.isfile(vshaderc) then
+            vshaderc = vshaderc .. ".exe"
+        end
+        if not os.isfile(vshaderc) then
+            raise("vshaderc host tool not found: %s", vshaderc)
+        end
 
         local projectdir = get_config("project_dir")
 
@@ -644,10 +650,17 @@ task("font_task")
     end)
 task_end()
 
+local vshadersystem_configs = { debug = is_mode("debug") }
+if is_host("windows") then
+    vshadersystem_configs.runtimes = is_mode("debug") and "MDd" or "MD"
+end
+
 if is_plat("android") then
-    add_requires("vshadersystem v0.6.2", { configs = { debug = is_mode("debug") }})
+    add_requires("vshadersystem v0.6.2", { configs = vshadersystem_configs })
+    add_requires("vshadersystem~host v0.6.2", { host = true, kind = "binary", configs = vshadersystem_configs })
 else
-    add_requires("vshadersystem v0.8.2", { configs = { debug = is_mode("debug") }})
+    add_requires("vshadersystem v0.8.2", { configs = vshadersystem_configs })
+    add_requires("vshadersystem~host v0.8.2", { host = true, kind = "binary", configs = vshadersystem_configs })
 end
 
 target("vultra_builtin_assets")

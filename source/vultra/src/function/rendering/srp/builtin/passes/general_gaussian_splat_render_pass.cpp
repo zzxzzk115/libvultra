@@ -19,7 +19,7 @@ namespace vultra
     {
         constexpr auto PASS_NAME = "GeneralGaussianSplatRenderPass";
 
-        struct GeneralGaussianSplatRenderPushConstants
+        struct GeneralGaussianSplatRenderUniforms
         {
             glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 5.0f, 15.0f};
             glm::vec4 foveatedParams {1.0f, 1.0f, 2.0f, 0.0f};
@@ -36,7 +36,7 @@ namespace vultra
                               1.0f / std::max(std::abs(projection[1][1]), 1e-5f)};
         }
 
-        [[nodiscard]] GeneralGaussianSplatRenderPushConstants makeRenderPushConstants(
+        [[nodiscard]] GeneralGaussianSplatRenderUniforms makeRenderUniforms(
             const RenderView&                       view,
             const resource::GpuSceneView&           gpuSceneView,
             const rhi::Extent2D                     targetSize,
@@ -44,7 +44,7 @@ namespace vultra
         {
             const glm::vec2 tanHalfFov = gaussianSplatFoveatedTanHalfFov(view);
 
-            GeneralGaussianSplatRenderPushConstants pc {};
+            GeneralGaussianSplatRenderUniforms pc {};
             pc.foveatedGazeAndRings =
                 glm::vec4 {gpuSceneView.generalGaussianSplatFoveatedGaze.x,
                            gpuSceneView.generalGaussianSplatFoveatedGaze.y,
@@ -106,7 +106,12 @@ namespace vultra
             layer == GeneralGaussianSplatFoveatedLayer::eFovea    ? "GeneralGaussianSplatFoveaLayerPass" :
             layer == GeneralGaussianSplatFoveatedLayer::eMid      ? "GeneralGaussianSplatMidLayerPass" :
                                                                     "GeneralGaussianSplatOuterLayerPass";
-        const auto pushConstants = makeRenderPushConstants(ctx.view(), *gpuSceneView, resolution, layer);
+        const auto uniformsData = makeRenderUniforms(ctx.view(), *gpuSceneView, resolution, layer);
+        auto&      uniformsBuffer = m_UniformBuffers[layerIndex];
+        if (!uniformsBuffer || uniformsBuffer.getSize() < sizeof(GeneralGaussianSplatRenderUniforms))
+        {
+            uniformsBuffer = ctx.rd.createUniformBuffer(sizeof(GeneralGaussianSplatRenderUniforms));
+        }
 
         struct PassData
         {
@@ -170,7 +175,7 @@ namespace vultra
                                                });
                 }
             },
-            [this, useMultiview, pushConstants](
+            [this, useMultiview, uniformsData, layerIndex](
                 const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
@@ -209,9 +214,11 @@ namespace vultra
                     framebufferInfo.viewMask = 0x3u;
                 }
 
+                auto& uniformsBuffer = m_UniformBuffers[layerIndex];
+                rc.cb.update(uniformsBuffer, 0, sizeof(GeneralGaussianSplatRenderUniforms), &uniformsData);
+                rc.resourceSet[1][30] = rhi::bindings::UniformBuffer {.buffer = &uniformsBuffer};
                 rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
-                rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pushConstants);
                 rc.cb.drawIndirect(rhi::DrawIndirectInfo {
                     .buffer       = indirectBuf,
                     .firstCommand = 0u,

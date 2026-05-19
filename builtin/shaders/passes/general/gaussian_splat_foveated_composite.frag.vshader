@@ -32,7 +32,7 @@ layout(set = 3, binding = 3) uniform sampler2D t_BaseLayer;
 #endif
 #endif
 
-layout(push_constant) uniform GeneralGaussianSplatFoveatedCompositePushConstants
+layout(set = 1, binding = 30) uniform GeneralGaussianSplatFoveatedCompositeUniforms
 {
     vec4 foveatedGazeAndRings;
     vec4 foveatedParams;

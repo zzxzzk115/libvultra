@@ -63,7 +63,15 @@ namespace vultra
                 uint32_t _pad3 {0};
             };
 
+            struct ParamsBinding
+            {
+                UniformBuffer* buffer {nullptr};
+                uint64_t       offset {0};
+            };
+
             void ensurePipelines();
+            void ensureParamsArena(uint32_t dispatchCount) const;
+            [[nodiscard]] ParamsBinding acquireParamsBinding() const;
             void sortImpl(CommandBuffer&,
                           uint32_t      elementCount,
                           bool          useIndirectCount,
@@ -93,7 +101,12 @@ namespace vultra
             uint64_t                       m_KeyValueLocalPrefixOffset {0};
             uint64_t                       m_KeyValuePrefixScratchOffset {0};
 
-            mutable UniformBuffer   m_ParamsBuffer;
+            mutable UniformBuffer m_ParamsArena;
+            mutable uint32_t      m_ParamsDispatchCapacity {0};
+            mutable uint32_t      m_ParamsSliceIndex {0};
+            mutable uint32_t      m_ParamsDispatchCursor {0};
+            mutable uint64_t      m_ParamsSliceBytes {0};
+            mutable uint64_t      m_ParamsSliceBaseOffset {0};
             mutable ComputePipeline m_BlockSumPipeline;
             mutable ComputePipeline m_ReorderKeysPipeline;
             mutable ComputePipeline m_ReorderKeyValuesPipeline;

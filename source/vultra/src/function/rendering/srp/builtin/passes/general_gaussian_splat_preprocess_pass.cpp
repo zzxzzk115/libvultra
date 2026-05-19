@@ -27,7 +27,7 @@ namespace vultra
         constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedVisibleCountBindings {40u, 41u, 42u};
         constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedIndirectBindings {43u, 44u, 45u};
 
-        struct GeneralGaussianSplatPreprocessPushConstants
+        struct GeneralGaussianSplatPreprocessUniforms
         {
             uint32_t pointCount {0};
             uint32_t maxVisibleSplats {0};
@@ -78,7 +78,8 @@ namespace vultra
         const bool useMultiview =
             ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u && static_cast<bool>(stereoCameraBlock);
         const bool useDirectPrefix = gpuSceneView->generalGaussianSplatDirectPrefix;
-        const bool useFoveatedLayerOutput = gpuSceneView->generalGaussianSplatFoveatedLayeredCompositeEnabled;
+        const bool useFoveatedLayerOutput = gpuSceneView->generalGaussianSplatFoveatedLayeredCompositeEnabled &&
+                                            ctx.rd.getBackendApi() != rhi::RenderBackendApi::eWebGPU;
 
         if (gpuSceneView->generalGaussianSplatDrawBuffer)
         {
@@ -272,6 +273,17 @@ namespace vultra
             useDirectPrefix ? gpuSceneView->maxGeneralGaussianSplatSourceCount :
                               gpuSceneView->maxGeneralGaussianSplatPoints;
         const auto foveatedClodParams = makeFoveatedClodPushParams(*gpuSceneView);
+        GeneralGaussianSplatPreprocessUniforms uniformsData {};
+        uniformsData.pointCount            = pointCount;
+        uniformsData.maxVisibleSplats      = maxVisible;
+        uniformsData.rankTotalCount        = rankTotalCount;
+        uniformsData.foveatedClodEnabled   = foveatedClodParams.enabled;
+        uniformsData.foveatedGazeAndRings  = foveatedClodParams.gazeAndRings;
+        uniformsData.foveatedLevelsAndTransition = foveatedClodParams.levelsAndTransition;
+        if (!m_UniformBuffer || m_UniformBuffer.getSize() < sizeof(GeneralGaussianSplatPreprocessUniforms))
+        {
+            m_UniformBuffer = ctx.rd.createUniformBuffer(sizeof(GeneralGaussianSplatPreprocessUniforms));
+        }
 
         auto hasAllFoveatedLayerResources = [&]() {
             for (uint32_t layer = 0u; layer < kFoveatedLayerCount; ++layer)
@@ -458,8 +470,7 @@ namespace vultra
             [this,
              pointCount,
              maxVisible,
-             rankTotalCount,
-             foveatedClodParams,
+             uniformsData,
              useMultiview,
              useDirectPrefix,
              useFoveatedLayerOutput](
@@ -472,7 +483,7 @@ namespace vultra
                 }
                 setShaderLib(*rc.ext.builtinShaderLib);
 
-                auto bindSubset = [&rc](const rhi::BasePipeline& pipeline, const auto& bindings) {
+                auto bindSubset = [&rc](const rhi::BasePipeline& pipeline, const auto& bindings, const bool includeUniforms = false) {
                     auto saved = rc.resourceSet;
                     rc.resourceSet.clear();
 
@@ -484,6 +495,13 @@ namespace vultra
                             {
                                 rc.resourceSet[0][binding] = bindingIt->second;
                             }
+                        }
+                    }
+                    if (includeUniforms)
+                    {
+                        if (const auto setIt = saved.find(1); setIt != saved.end())
+                        {
+                            rc.resourceSet[1] = setIt->second;
                         }
                     }
 
@@ -540,15 +558,8 @@ namespace vultra
                     {
                         return;
                     }
-                    GeneralGaussianSplatPreprocessPushConstants pc {};
-                    pc.pointCount            = pointCount;
-                    pc.maxVisibleSplats      = maxVisible;
-                    pc.rankTotalCount        = rankTotalCount;
-                    pc.foveatedClodEnabled   = foveatedClodParams.enabled;
-                    pc.foveatedGazeAndRings  = foveatedClodParams.gazeAndRings;
-                    pc.foveatedLevelsAndTransition =
-                        foveatedClodParams.levelsAndTransition;
-
+                    rc.cb.update(m_UniformBuffer, 0, sizeof(GeneralGaussianSplatPreprocessUniforms), &uniformsData);
+                    rc.resourceSet[1][30] = rhi::bindings::UniformBuffer {.buffer = &m_UniformBuffer};
                     rc.cb.bindPipeline(*preprocessPipeline);
                     std::vector<uint32_t> preprocessBindings {0u, 13u, 14u, 22u};
                     if (useFoveatedLayerOutput)
@@ -569,8 +580,7 @@ namespace vultra
                     {
                         preprocessBindings.push_back(kStereoCameraBinding);
                     }
-                    bindSubset(*preprocessPipeline, preprocessBindings);
-                    rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
+                    bindSubset(*preprocessPipeline, preprocessBindings, true);
                     const uint32_t dispatchX = (pointCount + 255u) / 256u;
                     rc.cb.dispatch({dispatchX, 1u, 1u});
                     rc.cb.insertComputeUavBarrier();

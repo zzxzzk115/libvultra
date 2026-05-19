@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/render_pass.hpp"
+#include "vultra/core/rhi/uniform_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 
 #include <fg/Fwd.hpp>
@@ -20,5 +21,8 @@ namespace vultra
                                    FrameGraphResource      baseColor = {});
 
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useMultiview, bool useBase) const;
+
+    private:
+        rhi::UniformBuffer m_UniformBuffer;
     };
 } // namespace vultra

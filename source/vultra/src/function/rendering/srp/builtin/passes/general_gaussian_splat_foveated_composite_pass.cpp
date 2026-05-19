@@ -17,7 +17,7 @@ namespace vultra
     {
         constexpr auto PASS_NAME = "GeneralGaussianSplatFoveatedCompositePass";
 
-        struct GeneralGaussianSplatFoveatedCompositePushConstants
+        struct GeneralGaussianSplatFoveatedCompositeUniforms
         {
             glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 5.0f, 15.0f};
             glm::vec4 foveatedParams {1.0f, 1.0f, 2.0f, 0.0f};
@@ -33,13 +33,13 @@ namespace vultra
                               1.0f / std::max(std::abs(projection[1][1]), 1e-5f)};
         }
 
-        [[nodiscard]] GeneralGaussianSplatFoveatedCompositePushConstants makeCompositePushConstants(
+        [[nodiscard]] GeneralGaussianSplatFoveatedCompositeUniforms makeCompositeUniforms(
             const RenderView&             view,
             const resource::GpuSceneView& gpuSceneView)
         {
             const glm::vec2 tanHalfFov = foveatedTanHalfFov(view);
 
-            GeneralGaussianSplatFoveatedCompositePushConstants pc {};
+            GeneralGaussianSplatFoveatedCompositeUniforms pc {};
             pc.foveatedGazeAndRings =
                 glm::vec4 {gpuSceneView.generalGaussianSplatFoveatedGaze.x,
                            gpuSceneView.generalGaussianSplatFoveatedGaze.y,
@@ -72,7 +72,11 @@ namespace vultra
         const bool useBase = static_cast<bool>(baseColor);
         const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u;
         const auto resolution = ctx.view().extent;
-        const auto pushConstants = makeCompositePushConstants(ctx.view(), *gpuSceneView);
+        const auto uniformsData = makeCompositeUniforms(ctx.view(), *gpuSceneView);
+        if (!m_UniformBuffer || m_UniformBuffer.getSize() < sizeof(GeneralGaussianSplatFoveatedCompositeUniforms))
+        {
+            m_UniformBuffer = ctx.rd.createUniformBuffer(sizeof(GeneralGaussianSplatFoveatedCompositeUniforms));
+        }
 
         struct PassData
         {
@@ -150,7 +154,7 @@ namespace vultra
                                                .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                            });
             },
-            [this, useMultiview, useBase, pushConstants](
+            [this, useMultiview, useBase, uniformsData](
                 const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
@@ -182,9 +186,10 @@ namespace vultra
                     framebufferInfo.viewMask = 0x3u;
                 }
 
+                rc.cb.update(m_UniformBuffer, 0, sizeof(GeneralGaussianSplatFoveatedCompositeUniforms), &uniformsData);
+                rc.resourceSet[1][30] = rhi::bindings::UniformBuffer {.buffer = &m_UniformBuffer};
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
-                rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pushConstants);
                 rc.cb.beginRendering(framebufferInfo).drawFullScreenTriangle().endRendering();
             });
 

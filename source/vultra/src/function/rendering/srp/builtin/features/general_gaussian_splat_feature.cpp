@@ -43,7 +43,9 @@ namespace vultra
             return;
 
         m_PreprocessPass->addPass(ctx);
-        if (gpuSceneView->generalGaussianSplatFoveatedLayeredCompositeEnabled)
+        const bool useLayeredComposite = gpuSceneView->generalGaussianSplatFoveatedLayeredCompositeEnabled &&
+                                         ctx.rd.getBackendApi() != rhi::RenderBackendApi::eWebGPU;
+        if (useLayeredComposite)
         {
             const auto baseColor = ctx.data.tryGet(kResKey_FinalCompositionSource);
             const auto fovea = m_RenderPass->addFoveatedLayerPass(ctx,

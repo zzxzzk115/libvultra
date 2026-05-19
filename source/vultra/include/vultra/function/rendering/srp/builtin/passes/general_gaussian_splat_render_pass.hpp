@@ -2,9 +2,12 @@
 
 #include "vultra/core/rhi/render_pass.hpp"
 #include "vultra/core/rhi/structs/extent2d.hpp"
+#include "vultra/core/rhi/uniform_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 
 #include <fg/Fwd.hpp>
+
+#include <array>
 
 namespace vultra
 {
@@ -27,5 +30,8 @@ namespace vultra
                                                 rhi::Extent2D                    resolution);
 
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useMultiview) const;
+
+    private:
+        std::array<rhi::UniformBuffer, 4> m_UniformBuffers;
     };
 } // namespace vultra

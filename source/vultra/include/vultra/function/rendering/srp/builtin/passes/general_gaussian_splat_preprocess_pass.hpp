@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/compute_pass.hpp"
+#include "vultra/core/rhi/uniform_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 
 namespace vultra
@@ -14,5 +15,8 @@ namespace vultra
 
         rhi::ComputePipeline createPipeline(bool useMultiview, bool useDirectPrefix, bool useFoveatedLayerOutput) const;
         rhi::ComputePipeline createPipeline(uint64_t variantHash) const;
+
+    private:
+        rhi::UniformBuffer m_UniformBuffer;
     };
 } // namespace vultra

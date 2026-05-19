@@ -35,6 +35,7 @@ namespace vultra
             constexpr DescriptorSetIndex kWebGPUPushConstantsSet        = 1u;
             constexpr BindingIndex       kWebGPUPushConstantsBinding    = 31u;
             constexpr uint64_t           kWebGPUPushConstantBufferBytes = 256u;
+            constexpr uint64_t           kWebGPUPushConstantPageBytes   = 64u * 1024u;
 
             class WebGPUDescriptorSetBuilder final : public IDescriptorSetBuilder
             {
@@ -233,6 +234,12 @@ namespace vultra
             m_BoundComputePipeline       = nullptr;
             m_PendingRenderBindGroups.fill(nullptr);
             m_PendingComputeBindGroups.fill(nullptr);
+            m_PendingRenderDynamicOffsets.fill(0);
+            m_PendingComputeDynamicOffsets.fill(0);
+            m_PendingRenderDynamicOffsetCounts.fill(0);
+            m_PendingComputeDynamicOffsetCounts.fill(0);
+            m_PushConstantPageIndex  = 0;
+            m_PushConstantPageOffset = 0;
             TRACKY_BIND_CMD_BUFFER(getHandle(), 0, 0);
             return *this;
         }
@@ -264,7 +271,8 @@ namespace vultra
 
         WebGPUCommandBuffer& WebGPUCommandBuffer::reset()
         {
-            releaseTransientResources();
+            releaseRecordingResources();
+            releaseFrameTransientResources();
             m_Recording                  = false;
             m_InsideRendering            = false;
             m_SkipCurrentRendering       = false;
@@ -277,6 +285,12 @@ namespace vultra
             m_PipelineBoundInCurrentPass = false;
             m_PendingRenderBindGroups.fill(nullptr);
             m_PendingComputeBindGroups.fill(nullptr);
+            m_PendingRenderDynamicOffsets.fill(0);
+            m_PendingComputeDynamicOffsets.fill(0);
+            m_PendingRenderDynamicOffsetCounts.fill(0);
+            m_PendingComputeDynamicOffsetCounts.fill(0);
+            m_PushConstantPageIndex  = 0;
+            m_PushConstantPageOffset = 0;
             TRACKY_BIND_CMD_BUFFER(0, 0, 0);
             return *this;
         }
@@ -308,7 +322,8 @@ namespace vultra
             }
 #endif
             TRACKY_BIND_CMD_BUFFER(0, 0, 0);
-            releaseTransientResources();
+            releaseRecordingResources();
+            releaseFrameTransientResources();
             m_BarrierBuilder = Barrier::Builder {};
             return *this;
         }
@@ -394,7 +409,10 @@ namespace vultra
             {
                 if (m_PendingComputeBindGroups[set] != nullptr)
                 {
-                    wgpuComputePassEncoderSetBindGroup(m_ComputePass, set, m_PendingComputeBindGroups[set], 0, nullptr);
+                    const auto dynamicOffsetCount = m_PendingComputeDynamicOffsetCounts[set];
+                    const auto* dynamicOffsets = dynamicOffsetCount > 0 ? &m_PendingComputeDynamicOffsets[set] : nullptr;
+                    wgpuComputePassEncoderSetBindGroup(
+                        m_ComputePass, set, m_PendingComputeBindGroups[set], dynamicOffsetCount, dynamicOffsets);
                 }
             }
             wgpuComputePassEncoderDispatchWorkgroups(m_ComputePass, groupCount.x, groupCount.y, groupCount.z);
@@ -452,6 +470,8 @@ namespace vultra
             if (m_BoundPipeline != nullptr)
             {
                 m_PendingRenderBindGroups[index] = bindGroup;
+                m_PendingRenderDynamicOffsets[index] = 0;
+                m_PendingRenderDynamicOffsetCounts[index] = 0;
                 if (m_RenderPass != nullptr)
                 {
                     wgpuRenderPassEncoderSetBindGroup(m_RenderPass, index, bindGroup, 0, nullptr);
@@ -464,6 +484,8 @@ namespace vultra
                     wgpuComputePassEncoderSetBindGroup(m_ComputePass, index, bindGroup, 0, nullptr);
                 }
                 m_PendingComputeBindGroups[index] = bindGroup;
+                m_PendingComputeDynamicOffsets[index] = 0;
+                m_PendingComputeDynamicOffsetCounts[index] = 0;
             }
             return *this;
 #endif
@@ -511,38 +533,49 @@ namespace vultra
                 return *this;
             }
 
-            const uint64_t requiredSize = std::max<uint64_t>(kWebGPUPushConstantBufferBytes, offset + size);
-            if (m_PushConstantBuffer == nullptr || m_PushConstantBufferSize < requiredSize)
-            {
-                for (auto& [_, bindGroup] : m_PushConstantBindGroups)
-                {
-                    if (bindGroup != nullptr)
-                    {
-                        wgpuBindGroupRelease(bindGroup);
-                    }
-                }
-                m_PushConstantBindGroups.clear();
-                if (m_PushConstantBuffer != nullptr)
-                {
-                    wgpuBufferRelease(m_PushConstantBuffer);
-                }
-
-                WGPUBufferDescriptor descriptor {};
-                descriptor.usage         = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform;
-                descriptor.size          = requiredSize;
-                m_PushConstantBuffer     = wgpuDeviceCreateBuffer(m_Device, &descriptor);
-                m_PushConstantBufferSize = requiredSize;
-            }
-            if (m_PushConstantBuffer == nullptr)
+            const uint64_t bindingSize    = std::max<uint64_t>(kWebGPUPushConstantBufferBytes, offset + size);
+            if (bindingSize > kWebGPUPushConstantBufferBytes)
             {
                 return *this;
             }
-            // Performance-oriented emulation: WebGPU push constants are represented by a tiny
-            // uniform buffer updated via queue write (similar to Bevy's dynamic-uniform workflow).
-            wgpuQueueWriteBuffer(m_Queue, m_PushConstantBuffer, offset, data, size);
+            const uint64_t allocationSize = kWebGPUPushConstantBufferBytes;
 
-            auto it = m_PushConstantBindGroups.find(layoutKey.value);
-            if (it == m_PushConstantBindGroups.end())
+            if (m_PushConstantPages.empty() || m_PushConstantPageOffset + allocationSize > kWebGPUPushConstantPageBytes)
+            {
+                if (!m_PushConstantPages.empty())
+                {
+                    ++m_PushConstantPageIndex;
+                }
+                m_PushConstantPageOffset = 0;
+            }
+            if (m_PushConstantPageIndex >= m_PushConstantPages.size())
+            {
+                auto& page = m_PushConstantPages.emplace_back();
+                page.size  = kWebGPUPushConstantPageBytes;
+
+                WGPUBufferDescriptor descriptor {};
+                descriptor.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_Uniform;
+                descriptor.size  = page.size;
+                page.buffer      = wgpuDeviceCreateBuffer(m_Device, &descriptor);
+                if (page.buffer == nullptr)
+                {
+                    page.size = 0;
+                    return *this;
+                }
+            }
+            auto& page = m_PushConstantPages[m_PushConstantPageIndex];
+            if (page.buffer == nullptr || m_PushConstantPageOffset + allocationSize > page.size)
+            {
+                return *this;
+            }
+            const auto bindingOffset = m_PushConstantPageOffset;
+            m_PushConstantPageOffset += allocationSize;
+
+            // Each push gets a stable 256-byte-aligned slice so later pushes do not overwrite earlier draws.
+            wgpuQueueWriteBuffer(m_Queue, page.buffer, bindingOffset + offset, data, size);
+
+            auto bindGroupIt = page.bindGroups.find(layoutKey.value);
+            if (bindGroupIt == page.bindGroups.end())
             {
                 const auto layoutIt = m_Backend->m_DescriptorSetLayouts.find(layoutKey.value);
                 if (layoutIt == m_Backend->m_DescriptorSetLayouts.end())
@@ -552,9 +585,9 @@ namespace vultra
 
                 WGPUBindGroupEntry entry {};
                 entry.binding = kWebGPUPushConstantsBinding;
-                entry.buffer  = m_PushConstantBuffer;
+                entry.buffer  = page.buffer;
                 entry.offset  = 0;
-                entry.size    = m_PushConstantBufferSize;
+                entry.size    = kWebGPUPushConstantBufferBytes;
 
                 WGPUBindGroupDescriptor bindGroupDesc {};
                 bindGroupDesc.layout     = layoutIt->second;
@@ -566,20 +599,32 @@ namespace vultra
                 {
                     return *this;
                 }
-                it = m_PushConstantBindGroups.emplace(layoutKey.value, bindGroup).first;
+                bindGroupIt = page.bindGroups.emplace(layoutKey.value, bindGroup).first;
             }
+            auto* const bindGroup = bindGroupIt->second;
+            const auto  dynamicOffset = static_cast<uint32_t>(bindingOffset);
 
             if (m_RenderPass != nullptr && m_BoundPipeline != nullptr)
             {
-                wgpuRenderPassEncoderSetBindGroup(m_RenderPass, kWebGPUPushConstantsSet, it->second, 0, nullptr);
+                wgpuRenderPassEncoderSetBindGroup(
+                    m_RenderPass, kWebGPUPushConstantsSet, bindGroup, 1, &dynamicOffset);
+            }
+            else if (m_BoundPipeline != nullptr)
+            {
+                m_PendingRenderBindGroups[kWebGPUPushConstantsSet] = bindGroup;
+                m_PendingRenderDynamicOffsets[kWebGPUPushConstantsSet] = dynamicOffset;
+                m_PendingRenderDynamicOffsetCounts[kWebGPUPushConstantsSet] = 1;
             }
             else if (m_BoundComputePipeline != nullptr)
             {
                 if (m_ComputePass != nullptr)
                 {
-                    wgpuComputePassEncoderSetBindGroup(m_ComputePass, kWebGPUPushConstantsSet, it->second, 0, nullptr);
+                    wgpuComputePassEncoderSetBindGroup(
+                        m_ComputePass, kWebGPUPushConstantsSet, bindGroup, 1, &dynamicOffset);
                 }
-                m_PendingComputeBindGroups[kWebGPUPushConstantsSet] = it->second;
+                m_PendingComputeBindGroups[kWebGPUPushConstantsSet] = bindGroup;
+                m_PendingComputeDynamicOffsets[kWebGPUPushConstantsSet] = dynamicOffset;
+                m_PendingComputeDynamicOffsetCounts[kWebGPUPushConstantsSet] = 1;
             }
             return *this;
 #endif
@@ -736,7 +781,7 @@ namespace vultra
             m_SkipCurrentRendering       = false;
             m_InsideRendering            = true;
             m_PipelineBoundInCurrentPass = false;
-            return *this;
+            return setViewport(framebufferInfo.area).setScissor(framebufferInfo.area);
         }
 
         WebGPUCommandBuffer& WebGPUCommandBuffer::endRendering()
@@ -783,8 +828,39 @@ namespace vultra
             return *this;
         }
 
-        WebGPUCommandBuffer& WebGPUCommandBuffer::setViewport(const Rect2D&) { return *this; }
-        WebGPUCommandBuffer& WebGPUCommandBuffer::setScissor(const Rect2D&) { return *this; }
+        WebGPUCommandBuffer& WebGPUCommandBuffer::setViewport(const Rect2D& rect)
+        {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_RenderPass != nullptr)
+            {
+                wgpuRenderPassEncoderSetViewport(m_RenderPass,
+                                                  static_cast<float>(rect.offset.x),
+                                                  static_cast<float>(rect.offset.y),
+                                                  static_cast<float>(rect.extent.width),
+                                                  static_cast<float>(rect.extent.height),
+                                                  0.0f,
+                                                  1.0f);
+            }
+#else
+            (void)rect;
+#endif
+            return *this;
+        }
+
+        WebGPUCommandBuffer& WebGPUCommandBuffer::setScissor(const Rect2D& rect)
+        {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            if (m_RenderPass != nullptr)
+            {
+                const auto x = rect.offset.x > 0 ? static_cast<uint32_t>(rect.offset.x) : 0u;
+                const auto y = rect.offset.y > 0 ? static_cast<uint32_t>(rect.offset.y) : 0u;
+                wgpuRenderPassEncoderSetScissorRect(m_RenderPass, x, y, rect.extent.width, rect.extent.height);
+            }
+#else
+            (void)rect;
+#endif
+            return *this;
+        }
 
         WebGPUCommandBuffer& WebGPUCommandBuffer::draw(const GeometryInfo& geometryInfo, const uint32_t numInstances)
         {
@@ -807,8 +883,10 @@ namespace vultra
             {
                 if (m_PendingRenderBindGroups[set] != nullptr)
                 {
+                    const auto dynamicOffsetCount = m_PendingRenderDynamicOffsetCounts[set];
+                    const auto* dynamicOffsets = dynamicOffsetCount > 0 ? &m_PendingRenderDynamicOffsets[set] : nullptr;
                     wgpuRenderPassEncoderSetBindGroup(
-                        m_RenderPass, set, m_PendingRenderBindGroups[set], 0, nullptr);
+                        m_RenderPass, set, m_PendingRenderBindGroups[set], dynamicOffsetCount, dynamicOffsets);
                 }
             }
 
@@ -914,8 +992,10 @@ namespace vultra
             {
                 if (m_PendingRenderBindGroups[set] != nullptr)
                 {
+                    const auto dynamicOffsetCount = m_PendingRenderDynamicOffsetCounts[set];
+                    const auto* dynamicOffsets = dynamicOffsetCount > 0 ? &m_PendingRenderDynamicOffsets[set] : nullptr;
                     wgpuRenderPassEncoderSetBindGroup(
-                        m_RenderPass, set, m_PendingRenderBindGroups[set], 0, nullptr);
+                        m_RenderPass, set, m_PendingRenderBindGroups[set], dynamicOffsetCount, dynamicOffsets);
                 }
             }
             wgpuRenderPassEncoderDrawIndirect(m_RenderPass,
@@ -1211,6 +1291,39 @@ namespace vultra
 
         void WebGPUCommandBuffer::releaseTransientResources() noexcept
         {
+            releaseRecordingResources();
+            releaseFrameTransientResources();
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
+            for (auto& [_, bindGroup] : m_EmptyBindGroups)
+            {
+                if (bindGroup != nullptr)
+                {
+                    wgpuBindGroupRelease(bindGroup);
+                }
+            }
+            for (auto& page : m_PushConstantPages)
+            {
+                for (auto& [_, bindGroup] : page.bindGroups)
+                {
+                    if (bindGroup != nullptr)
+                    {
+                        wgpuBindGroupRelease(bindGroup);
+                    }
+                }
+                if (page.buffer != nullptr)
+                {
+                    wgpuBufferRelease(page.buffer);
+                }
+            }
+#endif
+            m_EmptyBindGroups.clear();
+            m_PushConstantPages.clear();
+            m_PushConstantPageIndex  = 0;
+            m_PushConstantPageOffset = 0;
+        }
+
+        void WebGPUCommandBuffer::releaseRecordingResources() noexcept
+        {
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             if (m_RenderPass != nullptr)
             {
@@ -1245,16 +1358,18 @@ namespace vultra
                 wgpuCommandEncoderRelease(m_Encoder);
                 m_Encoder = nullptr;
             }
-            for (auto& [_, bindGroup] : m_EmptyBindGroups)
-            {
-                if (bindGroup != nullptr)
-                {
-                    wgpuBindGroupRelease(bindGroup);
-                }
-            }
 #endif
-            m_EmptyBindGroups.clear();
             m_PendingComputeBindGroups.fill(nullptr);
+            m_PendingRenderBindGroups.fill(nullptr);
+            m_PendingComputeDynamicOffsets.fill(0);
+            m_PendingRenderDynamicOffsets.fill(0);
+            m_PendingComputeDynamicOffsetCounts.fill(0);
+            m_PendingRenderDynamicOffsetCounts.fill(0);
+        }
+
+        void WebGPUCommandBuffer::releaseFrameTransientResources() noexcept
+        {
+#if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             for (auto* buffer : m_TransientUploadBuffers)
             {
                 if (buffer != nullptr)
@@ -1263,20 +1378,7 @@ namespace vultra
                 }
             }
             m_TransientUploadBuffers.clear();
-            for (auto& [_, bindGroup] : m_PushConstantBindGroups)
-            {
-                if (bindGroup != nullptr)
-                {
-                    wgpuBindGroupRelease(bindGroup);
-                }
-            }
-            m_PushConstantBindGroups.clear();
-            if (m_PushConstantBuffer != nullptr)
-            {
-                wgpuBufferRelease(m_PushConstantBuffer);
-                m_PushConstantBuffer = nullptr;
-            }
-            m_PushConstantBufferSize = 0;
+#endif
             m_DescriptorSets.clear();
         }
     } // namespace rhi

@@ -295,6 +295,7 @@ namespace vultra
                             entry.binding               = binding.binding;
                             entry.visibility            = visibility;
                             entry.buffer.type           = WGPUBufferBindingType_Uniform;
+                            entry.buffer.hasDynamicOffset = binding.binding == 31u;
                             entry.buffer.minBindingSize = 0;
                             entries.push_back(entry);
                             break;
