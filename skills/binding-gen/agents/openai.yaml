@@ -1,0 +1,4 @@
+interface:
+  display_name: "Binding Gen"
+  short_description: "Generate libvultra Lua binding modules consistently."
+  default_prompt: "Use $binding-gen to generate or update a libvultra Lua binding module."
