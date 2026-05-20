@@ -3,9 +3,14 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/services/input_service.hpp"
 #include "vultra/core/services/timing_service.hpp"
+#include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/scripting/script_binding.hpp"
 #include "vultra/function/scripting/script_types.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/services/frame_debugger_service.hpp"
+#include "vultra/function/services/render_backend_service.hpp"
+#include "vultra/function/services/render_service.hpp"
+#include "vultra/function/services/scene_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/world.hpp"
@@ -29,7 +34,14 @@ namespace vultra
 
         m_ScriptContext.worldService = ctx().services.tryGet<IWorldService>();
         m_ScriptContext.inputService = ctx().services.tryGet<IInputService>();
+        m_ScriptContext.timingService = ctx().services.tryGet<ITimingService>();
         m_ScriptContext.assetService = ctx().services.tryGet<IAssetService>();
+        m_ScriptContext.sceneService = ctx().services.tryGet<ISceneService>();
+        m_ScriptContext.scriptService = this;
+        m_ScriptContext.cameraService = ctx().services.tryGet<ICameraService>();
+        m_ScriptContext.renderService = ctx().services.tryGet<IRenderService>();
+        m_ScriptContext.renderBackendService = ctx().services.tryGet<IRenderBackendService>();
+        m_ScriptContext.frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>();
 
         VULTRA_CORE_TRACE("[ScriptSystem] Registering script bindings...");
         registerScriptBindings(m_Engine.lua(), m_ScriptContext);

@@ -27,8 +27,40 @@ namespace vultra
             return ctx.inputService ? ctx.inputService->getKeyUp(static_cast<KeyCode>(key)) : false;
         });
 
+        input.set_function("getKeyRepeat", [&ctx](int key) {
+            return ctx.inputService ? ctx.inputService->getKeyRepeat(static_cast<KeyCode>(key)) : false;
+        });
+
+        input.set_function("getMouseButton", [&ctx](int button) {
+            return ctx.inputService ? ctx.inputService->getMouseButton(static_cast<MouseCode>(button)) : false;
+        });
+
+        input.set_function("getMouseButtonDown", [&ctx](int button) {
+            return ctx.inputService ? ctx.inputService->getMouseButtonDown(static_cast<MouseCode>(button)) : false;
+        });
+
+        input.set_function("getMouseButtonUp", [&ctx](int button) {
+            return ctx.inputService ? ctx.inputService->getMouseButtonUp(static_cast<MouseCode>(button)) : false;
+        });
+
+        input.set_function("getMouseButtonClicks", [&ctx](int button) {
+            return ctx.inputService ? ctx.inputService->getMouseButtonClicks(static_cast<MouseCode>(button)) : 0;
+        });
+
         input.set_function("getMousePosition", [&ctx]() {
             return ctx.inputService ? toScriptVec2(ctx.inputService->getMousePosition()) : ScriptVec2 {};
+        });
+
+        input.set_function("getMousePositionFlipY", [&ctx]() {
+            return ctx.inputService ? toScriptVec2(ctx.inputService->getMousePositionFlipY()) : ScriptVec2 {};
+        });
+
+        input.set_function("getMousePositionDelta", [&ctx]() {
+            return ctx.inputService ? toScriptVec2(ctx.inputService->getMousePositionDelta()) : ScriptVec2 {};
+        });
+
+        input.set_function("getMouseScrollDelta", [&ctx]() {
+            return ctx.inputService ? toScriptVec2(ctx.inputService->getMouseScrollDelta()) : ScriptVec2 {};
         });
 
         script_binding::bindEnumTable<KeyCode>(lua, "KeyCode");

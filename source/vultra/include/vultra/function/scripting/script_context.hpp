@@ -7,13 +7,27 @@ namespace vultra
     class World;
     class IWorldService;
     class IInputService;
+    class ITimingService;
     class IAssetService;
+    class ISceneService;
+    class IScriptService;
+    class ICameraService;
+    class IRenderService;
+    class IRenderBackendService;
+    class IFrameDebuggerService;
 
     struct ScriptContext
     {
         IWorldService* worldService {nullptr};
         IInputService* inputService {nullptr};
+        ITimingService* timingService {nullptr};
         IAssetService* assetService {nullptr};
+        ISceneService* sceneService {nullptr};
+        IScriptService* scriptService {nullptr};
+        ICameraService* cameraService {nullptr};
+        IRenderService* renderService {nullptr};
+        IRenderBackendService* renderBackendService {nullptr};
+        IFrameDebuggerService* frameDebuggerService {nullptr};
 
         World* world() const;
         bool   isValid(entt::entity e) const;
