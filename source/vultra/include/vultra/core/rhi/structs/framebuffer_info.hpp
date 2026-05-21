@@ -22,12 +22,20 @@ namespace vultra
 
         using ClearValue = std::variant<glm::vec4, glm::ivec4, glm::uvec4, float, uint32_t>;
 
+        enum class AttachmentLoadOp
+        {
+            eLoad,
+            eClear,
+            eDontCare,
+        };
+
         struct AttachmentInfo
         {
             Texture*                  target {nullptr};
             std::optional<uint32_t>   layer {std::nullopt};
             std::optional<CubeFace>   face {std::nullopt};
             std::optional<ClearValue> clearValue {std::nullopt};
+            AttachmentLoadOp          loadOp {AttachmentLoadOp::eLoad};
         };
 
         struct FramebufferInfo

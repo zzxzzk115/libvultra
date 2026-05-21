@@ -70,17 +70,23 @@ namespace vultra
             }
             [[nodiscard]] vk::RenderingAttachmentInfo toVk(const AttachmentInfo& attachment, const bool readOnly)
             {
-                const auto& [target, layer, face, clearValue] = attachment;
-                assert(!readOnly || !clearValue.has_value());
+                assert(!readOnly || !attachment.clearValue.has_value());
                 vk::RenderingAttachmentInfo attachmentInfo {};
                 attachmentInfo.imageView =
-                    layer ? vk::ImageView {asVkHandle<VkImageView>(target->getLayer(*layer, face).getHandle())} :
-                            vk::ImageView {asVkHandle<VkImageView>(target->getImageView().getHandle())};
-                attachmentInfo.imageLayout = toVk(target->getImageLayout());
+                    attachment.layer ?
+                        vk::ImageView {asVkHandle<VkImageView>(
+                            attachment.target->getLayer(*attachment.layer, attachment.face).getHandle())} :
+                        vk::ImageView {asVkHandle<VkImageView>(attachment.target->getImageView().getHandle())};
+                attachmentInfo.imageLayout = toVk(attachment.target->getImageLayout());
                 attachmentInfo.resolveMode = vk::ResolveModeFlagBits::eNone;
-                attachmentInfo.loadOp      = clearValue ? vk::AttachmentLoadOp::eClear : vk::AttachmentLoadOp::eLoad;
+                attachmentInfo.loadOp      = attachment.clearValue.has_value() ||
+                                                attachment.loadOp == AttachmentLoadOp::eClear ?
+                                                 vk::AttachmentLoadOp::eClear :
+                                             attachment.loadOp == AttachmentLoadOp::eDontCare ?
+                                                 vk::AttachmentLoadOp::eDontCare :
+                                                 vk::AttachmentLoadOp::eLoad;
                 attachmentInfo.storeOp     = readOnly ? vk::AttachmentStoreOp::eNone : vk::AttachmentStoreOp::eStore;
-                attachmentInfo.clearValue  = clearValue ? toVk(*clearValue) : vk::ClearValue {};
+                attachmentInfo.clearValue  = attachment.clearValue ? toVk(*attachment.clearValue) : vk::ClearValue {};
                 return attachmentInfo;
             }
         } // namespace

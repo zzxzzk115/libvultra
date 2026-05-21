@@ -8,6 +8,7 @@
 #include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
+#include "vultra/function/resource/geometry_factory.hpp"
 #include "vultra/function/resource/gpu_scene_database.hpp"
 #include "vultra/function/resource/gpu_scene_view.hpp"
 #include "vultra/function/services/asset_service.hpp"
@@ -60,6 +61,8 @@ namespace vultra
         GaussianSplatRenderSettings&       gaussianSplatSettings() override { return m_GaussianSplatSettings; }
         const GaussianSplatRenderSettings& gaussianSplatSettings() const override { return m_GaussianSplatSettings; }
         const GaussianSplatFrameStats&     gaussianSplatFrameStats() const override { return m_GaussianSplatStats; }
+        BuiltinRenderSettings&             builtinRenderSettings() override { return m_BuiltinRenderSettings; }
+        const BuiltinRenderSettings&       builtinRenderSettings() const override { return m_BuiltinRenderSettings; }
 
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
@@ -95,12 +98,19 @@ namespace vultra
         GaussianSplatRenderSettings m_GaussianSplatSettings;
         GaussianSplatRenderSettings m_AppliedGaussianSplatSettings;
         GaussianSplatFrameStats     m_GaussianSplatStats;
+        BuiltinRenderSettings       m_BuiltinRenderSettings;
+        GeometryFactory             m_GeometryFactory;
     };
 
     // Cook World into RenderWorld.
     class RenderWorldCooker
     {
     public:
-        static void cook(World& world, IAssetService& assets, RenderWorld& out);
+        static void cook(World&              world,
+                         IAssetService&      assets,
+                         IGpuResourceService& gpuResources,
+                         rhi::RenderDevice&  rd,
+                         GeometryFactory&    geometryFactory,
+                         RenderWorld&        out);
     };
 } // namespace vultra

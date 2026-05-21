@@ -440,6 +440,9 @@ namespace
 #if defined(__APPLE__) && defined(TRACKY_VULKAN)
 		set_frame_lag(0);
 #endif
+#ifdef TRACKY_VULKAN
+		set_frame_lag(0);
+#endif
 
 		for( std::size_t i = 0; i < mFrameLag+1; ++i )
 		{
@@ -456,10 +459,10 @@ namespace
 		gpu.mQueryBuffer.resize( kInitialQueries_ );
 		glGenQueries( kInitialQueries_, gpu.mQueryBuffer.data() );
 #elifdef TRACKY_VULKAN
-        // Vulkan resources
+	    // Vulkan resources
 	    mDevice = aDevice;
 	    mMaxQueries = aQueryCount;
-	    mQueryIndex = 0;
+	    mQueryIndex = 1;
 	    mVkInitialized = true;
 	    mTimestampPeriodNs = aTimestampPeriodNs > 0.0f ? aTimestampPeriodNs : 1.0f;
 
@@ -860,7 +863,8 @@ namespace
 			{
 				last.frame.queryCount = mWebGPUQueryIndex;
 			}
-#elifdef TRACKY_VULKAN
+#endif
+#ifdef TRACKY_VULKAN
 			if( mVkInitialized )
 			{
 				last.frame.queryCount = mQueryIndex;
@@ -891,7 +895,10 @@ namespace
             }
             collect_vk_results_( frame.data(), frame.size() );
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
-			collect_webgpu_results_( frame.data(), frame.size() );
+			if( mWebGPUInitialized )
+			{
+				collect_webgpu_results_( frame.data(), frame.size() );
+			}
 #endif
 #endif
 
@@ -918,7 +925,7 @@ namespace
 	{
 	    mCmdBuf.resetQueryPool(mQueryPool, 0, mMaxQueries);
 	}
-        mQueryIndex = 0;
+        mQueryIndex = 1;
 #endif
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
@@ -1000,7 +1007,7 @@ namespace
 		auto ret = gpu.mQueryBuffer.back();
 		gpu.mQueryBuffer.pop_back();
 #elifdef TRACKY_VULKAN
-        auto ret = mVkInitialized ? mQueryIndex++ : 0u;
+        auto ret = (mVkInitialized && mQueryIndex < mMaxQueries) ? mQueryIndex++ : 0u;
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
         if( mWebGPUInitialized && mWebGPUSupportsTimestampQuery )
         {
@@ -1225,17 +1232,33 @@ namespace
     {
         assert( aRecords );
 
-        if (!mVkInitialized || mQueryIndex == 0) return;
         if (!aRecords || aCount == 0) return;
 
-        std::vector<uint64_t> results(mQueryIndex);
+        const uint32_t queryCount = aRecords[aCount - 1].frame.queryCount;
+        if (!mVkInitialized || queryCount <= 1) {
+            for (std::size_t i = 0; i < aCount; ++i) {
+                auto& rec = aRecords[i];
+                switch (rec.type) {
+                    case ERecord_::scopeEnter:
+                    case ERecord_::scopeNext:
+                    case ERecord_::scopeLeave:
+                        rec.scope.gpu.result = 0;
+                        break;
+                    default:
+                        break;
+                }
+            }
+            return;
+        }
+
+        std::vector<uint64_t> results(queryCount, 0);
 
         vk::Result result = mDevice.getQueryPoolResults(
             mQueryPool,
-            0,
-            mQueryIndex,
-            sizeof(uint64_t) * mQueryIndex,
-            results.data(),
+            1,
+            queryCount - 1,
+            sizeof(uint64_t) * (queryCount - 1),
+            results.data() + 1,
             sizeof(uint64_t),
             vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait
         );
@@ -1251,7 +1274,7 @@ namespace
                 case ERecord_::scopeEnter:
                 case ERecord_::scopeNext:
                 case ERecord_::scopeLeave: {
-                    if (rec.scope.gpu.query < mQueryIndex) {
+                    if (rec.scope.gpu.query < queryCount) {
                         rec.scope.gpu.result = results[rec.scope.gpu.query];
                     } else {
                         rec.scope.gpu.result = 0;
@@ -1262,10 +1285,6 @@ namespace
             }
         }
 
-        if (mCmdBuf != nullptr)
-        {
-            mCmdBuf.resetQueryPool(mQueryPool, 0, mMaxQueries);
-        }
     }
 #endif
 

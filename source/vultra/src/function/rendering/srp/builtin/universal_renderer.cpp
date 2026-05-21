@@ -2,15 +2,23 @@
 #include "vultra/core/rhi/structs/render_backend_api.hpp"
 #include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
+#include "vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp"
+#include "vultra/function/rendering/srp/builtin/features/direct_gbuffer_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
-#include "vultra/function/rendering/srp/builtin/features/test_feature.hpp"
+#include "vultra/function/rendering/srp/builtin/features/visibility_buffer_feature.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/render_service.hpp"
+#include "vultra/function/services/scene_service.hpp"
+#include "vultra/function/services/world_service.hpp"
+#include "vultra/function/world/components/light_component.hpp"
+#include "vultra/function/world/components/name_component.hpp"
+#include "vultra/function/world/components/transform_component.hpp"
+#include "vultra/function/world/world.hpp"
 #ifdef VULTRA_ENABLE_RENDERDOC
 #include "vultra/function/services/frame_debugger_service.hpp"
 #endif
@@ -22,7 +30,10 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <limits>
+#include <string>
 
 namespace vultra
 {
@@ -295,6 +306,9 @@ namespace vultra
                         selected->gpuScopeBeginCount,
                         selected->gpuScopeTokenCount,
                         selected->gpuScopeResolvedCount);
+#if defined(TRACKY_ENABLE) && TRACKY_ENABLE
+            ImGui::TextUnformatted("GPU scope timing is owned by Tracky in this build.");
+#endif
 
             const auto& history = profiler->history();
             if (!history.empty() && ImPlot::BeginPlot("Frame Times", ImVec2(-1, 180)))
@@ -433,6 +447,254 @@ namespace vultra
 
             drawScopeTreeTable("CPU Tree", "##RuntimeProfilerCpuTree", selected->cpuScopeTree, false);
             drawScopeTreeTable("GPU Tree", "##RuntimeProfilerGpuTree", selected->gpuScopeTree, true);
+        }
+
+        void drawBuiltinScreenSpacePanel(IRenderService& renderService)
+        {
+            if (!ImGui::CollapsingHeader("Screen Space Passes", ImGuiTreeNodeFlags_DefaultOpen))
+                return;
+
+            auto& settings = renderService.builtinRenderSettings();
+
+            ImGui::Checkbox("Enable HBAO", &settings.hbao.enabled);
+            if (!settings.hbao.enabled)
+                ImGui::BeginDisabled();
+            ImGui::SliderFloat("HBAO Radius", &settings.hbao.radius, 0.01f, 200.0f, "%.2f");
+            ImGui::SliderFloat("HBAO Bias", &settings.hbao.bias, 0.0f, 2.0f, "%.3f");
+            ImGui::SliderFloat("HBAO Intensity", &settings.hbao.intensity, 0.0f, 8.0f, "%.2f");
+            ImGui::SliderInt("HBAO Max Pixels", &settings.hbao.maxRadiusPixels, 1, 512);
+            ImGui::SliderInt("HBAO Steps", &settings.hbao.stepCount, 1, 16);
+            ImGui::SliderInt("HBAO Directions", &settings.hbao.directionCount, 1, 16);
+            if (!settings.hbao.enabled)
+                ImGui::EndDisabled();
+
+            ImGui::Separator();
+            ImGui::Checkbox("Enable SSR", &settings.ssr.enabled);
+            if (!settings.ssr.enabled)
+                ImGui::BeginDisabled();
+            ImGui::SliderFloat("SSR Factor", &settings.ssr.reflectionFactor, 0.0f, 2.0f, "%.2f");
+            ImGui::SliderInt("SSR Steps", &settings.ssr.maxSteps, 1, 256);
+            ImGui::SliderInt("SSR Refinement", &settings.ssr.binaryRefinement, 0, 16);
+            ImGui::SliderFloat("SSR Stride", &settings.ssr.stride, 0.001f, 4.0f, "%.3f");
+            ImGui::SliderFloat("SSR Thickness", &settings.ssr.thickness, 0.001f, 8.0f, "%.3f");
+            if (!settings.ssr.enabled)
+                ImGui::EndDisabled();
+
+            ImGui::Separator();
+            ImGui::Checkbox("Enable Shadows", &settings.shadow.enabled);
+            if (!settings.shadow.enabled)
+                ImGui::BeginDisabled();
+            constexpr uint32_t kMinOne = 1u;
+            constexpr uint32_t kMaxShadowResolution = 4096u;
+            constexpr uint32_t kMaxCascadeCount = 4u;
+            ImGui::SliderScalar("Shadow Resolution", ImGuiDataType_U32, &settings.shadow.resolution, &kMinOne, &kMaxShadowResolution);
+            ImGui::SliderScalar("Cascade Count", ImGuiDataType_U32, &settings.shadow.cascadeCount, &kMinOne, &kMaxCascadeCount);
+            ImGui::SliderFloat("Shadow Coverage", &settings.shadow.coverageRadius, 1.0f, 250.0f, "%.1f");
+            ImGui::SliderFloat("Shadow Distance", &settings.shadow.lightDistance, 1.0f, 250.0f, "%.1f");
+            ImGui::SliderFloat("Shadow Z Range", &settings.shadow.zRange, 1.0f, 500.0f, "%.1f");
+            ImGui::SliderFloat("Depth Bias", &settings.shadow.depthBias, 0.0f, 0.02f, "%.5f");
+            ImGui::SliderFloat("Normal Bias", &settings.shadow.normalBias, 0.0f, 0.2f, "%.4f");
+            ImGui::SliderFloat("Shadow Strength", &settings.pbrLighting.shadowStrength, 0.0f, 1.0f, "%.2f");
+            ImGui::SliderInt("PCF Radius", &settings.shadow.pcssFilterSamples, 0, 2);
+            if (!settings.shadow.enabled)
+                ImGui::EndDisabled();
+
+            ImGui::Separator();
+            ImGui::ColorEdit3("Light Color", &settings.pbrLighting.directionalLightColor.x);
+            ImGui::SliderFloat("Light Intensity", &settings.pbrLighting.directionalLightIntensity, 0.0f, 20.0f, "%.2f");
+            ImGui::ColorEdit3("Ambient Color", &settings.pbrLighting.ambientColor.x);
+            ImGui::SliderFloat("Ambient Intensity", &settings.pbrLighting.ambientIntensity, 0.0f, 5.0f, "%.2f");
+            ImGui::Checkbox("Enable IBL", &settings.pbrLighting.enableIBL);
+            if (!settings.pbrLighting.enableIBL)
+                ImGui::BeginDisabled();
+            ImGui::ColorEdit3("IBL Color", &settings.pbrLighting.iblColor.x);
+            ImGui::SliderFloat("IBL Intensity", &settings.pbrLighting.iblIntensity, 0.0f, 5.0f, "%.2f");
+            if (!settings.pbrLighting.enableIBL)
+                ImGui::EndDisabled();
+
+            ImGui::Separator();
+            ImGui::Checkbox("Enable FXAA", &settings.enableFXAA);
+        }
+
+        [[nodiscard]] const char* lightKindLabel(const uint32_t kind)
+        {
+            switch (kind)
+            {
+                case 0:
+                    return "Directional";
+                case 1:
+                    return "Point";
+                case 2:
+                    return "Spot";
+            }
+            return "Unknown";
+        }
+
+        [[nodiscard]] glm::quat rotationFromLightDirection(const glm::vec3& direction)
+        {
+            const float len2 = glm::dot(direction, direction);
+            const auto  dir  = len2 > 1e-8f ? direction * glm::inversesqrt(len2) : glm::vec3 {0.0f, -1.0f, 0.0f};
+            glm::vec3   up {0.0f, 1.0f, 0.0f};
+            if (std::abs(glm::dot(up, dir)) > 0.95f)
+                up = glm::vec3 {1.0f, 0.0f, 0.0f};
+            return glm::quatLookAtRH(dir, up);
+        }
+
+        void createLightEntity(World& world, const uint32_t kind, const char* name)
+        {
+            auto& registry = world.registry();
+            auto  entity   = world.createEntity();
+
+            auto& nameComponent = registry.emplace<NameComponent>(entity);
+            nameComponent.name  = name;
+
+            auto& transform      = registry.emplace<TransformComponent>(entity);
+            transform.position.y = kind == 0 ? 0.0f : 2.0f;
+            transform.rotation   = rotationFromLightDirection(glm::vec3 {-0.35f, -0.8f, -0.25f});
+            transform.dirty      = true;
+
+            auto& light     = registry.emplace<LightComponent>(entity);
+            light.kind      = kind;
+            light.color     = glm::vec3 {1.0f};
+            light.range     = kind == 0 ? 100.0f : 12.0f;
+            light.intensity = kind == 0 ? 4.0f : 20.0f;
+            light.castsShadow = kind == 0;
+        }
+
+        void drawLightTransformEditor(entt::registry& registry, entt::entity entity)
+        {
+            auto* transform = registry.try_get<TransformComponent>(entity);
+            if (!transform)
+                return;
+
+            bool changed = false;
+            changed |= ImGui::DragFloat3("Position", &transform->position.x, 0.05f, -1000.0f, 1000.0f, "%.2f");
+            glm::vec3 rotationDegrees = glm::degrees(glm::eulerAngles(transform->rotation));
+            if (ImGui::DragFloat3("Rotation", &rotationDegrees.x, 0.25f, -360.0f, 360.0f, "%.1f deg"))
+            {
+                transform->rotation = glm::quat(glm::radians(rotationDegrees));
+                changed = true;
+            }
+            changed |= ImGui::DragFloat3("Scale", &transform->scale.x, 0.01f, 0.001f, 100.0f, "%.2f");
+            if (changed)
+                transform->dirty = true;
+        }
+
+        void drawLightComponentEditor(LightComponent& light)
+        {
+            constexpr const char* kKindLabels[] = {"Directional", "Point", "Spot"};
+            int                   kindIndex     = static_cast<int>(std::min(light.kind, 2u));
+            if (ImGui::Combo("Kind", &kindIndex, kKindLabels, IM_ARRAYSIZE(kKindLabels)))
+            {
+                light.kind = static_cast<uint32_t>(std::clamp(kindIndex, 0, 2));
+                if (light.kind != 0)
+                    light.castsShadow = false;
+            }
+
+            ImGui::ColorEdit3("Color", &light.color.x);
+            ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 10000.0f, "%.2f");
+
+            if (light.kind == 0 || light.kind == 2)
+            {
+                ImGui::BeginDisabled();
+                ImGui::SliderFloat3("Fallback Direction", &light.direction.x, -1.0f, 1.0f, "%.2f");
+                ImGui::EndDisabled();
+            }
+
+            if (light.kind == 1 || light.kind == 2)
+            {
+                ImGui::DragFloat("Range", &light.range, 0.05f, 0.0f, 1000.0f, "%.2f");
+                ImGui::DragFloat("Radius", &light.radius, 0.01f, 0.0f, 100.0f, "%.3f");
+            }
+
+            if (light.kind == 2)
+            {
+                ImGui::DragFloat("Inner Cone", &light.innerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f deg");
+                ImGui::DragFloat("Outer Cone", &light.outerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f deg");
+                light.outerConeDegrees = std::max(light.outerConeDegrees, light.innerConeDegrees);
+            }
+
+            if (light.kind == 0)
+                ImGui::Checkbox("Casts Shadow", &light.castsShadow);
+            else
+                light.castsShadow = false;
+        }
+
+        void drawSceneLightHierarchyPanel(vbase::ServiceRegistry& services)
+        {
+            if (!ImGui::CollapsingHeader("Scene Lights", ImGuiTreeNodeFlags_DefaultOpen))
+                return;
+
+            auto& world        = services.require<IWorldService>().world();
+            auto& sceneService = services.require<ISceneService>();
+            auto& registry     = world.registry();
+            auto  lightView    = registry.view<LightComponent>();
+
+            size_t lightCount = 0;
+            for ([[maybe_unused]] auto entity : lightView)
+                ++lightCount;
+            ImGui::Text("Lights: %zu", lightCount);
+
+            if (ImGui::Button("Add Directional"))
+                createLightEntity(world, 0, "Directional Light");
+            ImGui::SameLine();
+            if (ImGui::Button("Add Point"))
+                createLightEntity(world, 1, "Point Light");
+            ImGui::SameLine();
+            if (ImGui::Button("Add Spot"))
+                createLightEntity(world, 2, "Spot Light");
+
+            ImGui::Separator();
+
+            for (auto entity : lightView)
+            {
+                auto&       light = lightView.get<LightComponent>(entity);
+                const auto* name  = registry.try_get<NameComponent>(entity);
+                const auto  id    = static_cast<uint32_t>(entt::to_integral(entity));
+                const char* label = name && !name->name.empty() ? name->name.c_str() : "(unnamed light)";
+
+                ImGui::PushID(id);
+                const bool open = ImGui::TreeNodeEx(
+                    "Light", ImGuiTreeNodeFlags_DefaultOpen, "%s [%s]", label, lightKindLabel(light.kind));
+                if (open)
+                {
+                    if (auto* editableName = registry.try_get<NameComponent>(entity))
+                    {
+                        char buffer[128] {};
+                        std::snprintf(buffer, sizeof(buffer), "%s", editableName->name.c_str());
+                        if (ImGui::InputText("Name", buffer, sizeof(buffer)))
+                            editableName->name = buffer;
+                    }
+
+                    drawLightTransformEditor(registry, entity);
+                    drawLightComponentEditor(light);
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+
+            ImGui::SeparatorText("Save Scene");
+            static char        savePath[256] = "res://scenes/test_saved.vscn";
+            static std::string saveStatus;
+
+            ImGui::InputText("VSCN Path", savePath, sizeof(savePath));
+            const std::string path {savePath};
+            const bool        isVscn = path.size() >= 5 && path.substr(path.size() - 5) == ".vscn";
+            if (!isVscn)
+                ImGui::TextUnformatted("Only .vscn snapshots are saved here. .vmanifest needs manifest-authoring support.");
+
+            if (!isVscn)
+                ImGui::BeginDisabled();
+            if (ImGui::Button("Save VSCN"))
+            {
+                const bool saved = sceneService.saveWorldAsSceneSync(path, world);
+                saveStatus      = saved ? "Saved." : "Save failed.";
+            }
+            if (!isVscn)
+                ImGui::EndDisabled();
+
+            if (!saveStatus.empty())
+                ImGui::TextUnformatted(saveStatus.c_str());
         }
 
         void drawHintRow(const char* icon, const char* text)
@@ -653,18 +915,22 @@ namespace vultra
         const bool forceCompatibilityByCli = m_RenderProfile == RenderProfile::eCompatibility;
         const bool useCompatibilityFeature =
             kForceCompatibilityFeature || forceCompatibilityByCli || backendApi == rhi::RenderBackendApi::eWebGPU;
+        auto& renderService = services->require<IRenderService>();
         if (useCompatibilityFeature)
         {
             emplaceFeature<CompatibilityBaseColorFeature>();
             emplaceFeature<GeneralGaussianSplatFeature>();
+            emplaceFeature<BuiltinScreenSpaceFeature>(renderService);
             emplaceFeature<FinalCompositionFeature>();
             return;
         }
 
-        // Add features in the desired order.
-        emplaceFeature<MeshletFeature>();
-        emplaceFeature<TestFeature>();
+        // Direct GBuffer is the stable highend baseline. Visibility Buffer /
+        // Thin G-Buffer remains available in-tree, but is not the default until
+        // its material/UV resolve is completed.
+        emplaceFeature<DirectGBufferFeature>(renderService);
         emplaceFeature<GeneralGaussianSplatFeature>();
+        emplaceFeature<BuiltinScreenSpaceFeature>(renderService);
         emplaceFeature<FinalCompositionFeature>();
     }
 
@@ -688,6 +954,8 @@ namespace vultra
         ImGui::Begin("Universal Renderer");
 
         drawGaussianSplatBaselinePanel(renderService);
+        drawBuiltinScreenSpacePanel(renderService);
+        drawSceneLightHierarchyPanel(*services);
 
         if (backendService.isXREnabled() && backendService.isXRMirrorEnabled())
         {

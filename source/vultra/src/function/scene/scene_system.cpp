@@ -12,6 +12,7 @@
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/prefab_instance_component.hpp"
@@ -286,7 +287,8 @@ namespace vultra
                                                                      {"active", "visible", "locked", "selectable"});
         m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent",
                                                                   {"position", "rotation", "scale"});
-        m_ComponentRegistry.registerComponent<MeshComponent>("MeshComponent", {"mesh"});
+        m_ComponentRegistry.registerComponent<MeshComponent>("MeshComponent",
+                                                             {"mesh", "builtinGeometry", "materialColor"});
         m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});
         m_ComponentRegistry.registerComponent<CameraComponent>("CameraComponent",
                                                                {"primary",
@@ -298,6 +300,19 @@ namespace vultra
                                                                 "clearColor",
                                                                 "priority",
                                                                 "rendererKey"});
+        m_ComponentRegistry.registerComponent<LightComponent>("LightComponent",
+                                                              {"kind",
+                                                               "color",
+                                                               "intensity",
+                                                               "direction",
+                                                               "range",
+                                                               "radius",
+                                                               "width",
+                                                               "height",
+                                                               "innerConeDegrees",
+                                                               "outerConeDegrees",
+                                                               "castsShadow",
+                                                               "twoSided"});
         m_ComponentRegistry.registerComponent<ScriptComponent>("ScriptComponent", {"scriptUri", "enabled"});
 
         m_AssetService = &ctx().services.require<IAssetService>();

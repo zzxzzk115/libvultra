@@ -49,6 +49,35 @@ namespace vultra::resource
 
                 case DDSKTX_FORMAT_RGBA8:
                     return eRGBA8_UNorm;
+                case DDSKTX_FORMAT_RGBA8S:
+                    return eRGBA8_UNorm;
+                case DDSKTX_FORMAT_BGRA8:
+                    return eBGRA8_UNorm;
+                case DDSKTX_FORMAT_RGB8:
+                    return eRGB8_UNorm;
+                case DDSKTX_FORMAT_RG8:
+                    return eRG8_UNorm;
+                case DDSKTX_FORMAT_RG8S:
+                    return eRG8_SNorm;
+                case DDSKTX_FORMAT_R8:
+                case DDSKTX_FORMAT_A8:
+                    return eR8_UNorm;
+                case DDSKTX_FORMAT_R16:
+                    return eR16_UNorm;
+                case DDSKTX_FORMAT_R16F:
+                    return eR16F;
+                case DDSKTX_FORMAT_R32F:
+                    return eR32F;
+                case DDSKTX_FORMAT_RG16:
+                    return eRG16_UNorm;
+                case DDSKTX_FORMAT_RG16S:
+                    return eRG16_SNorm;
+                case DDSKTX_FORMAT_RG16F:
+                    return eRG16F;
+                case DDSKTX_FORMAT_RGBA16:
+                    return eRGBA16_UNorm;
+                case DDSKTX_FORMAT_RGBA16F:
+                    return eRGBA16F;
 
                 default:
                     return eUndefined;
@@ -121,10 +150,15 @@ namespace vultra::resource
             }
 
             auto extent = rhi::Extent2D {static_cast<uint32_t>(tc.width), static_cast<uint32_t>(tc.height)};
+            auto pixelFormat = toRHI(tc.format);
+            if (pixelFormat == rhi::PixelFormat::eUndefined)
+            {
+                return vbase::Result<rhi::Texture, std::string>::err("Unsupported DDS/KTX texture format.");
+            }
 
             rhi::Texture texture = rhi::Texture::Builder {}
                                        .setExtent(extent)
-                                       .setPixelFormat(toRHI(tc.format))
+                                       .setPixelFormat(pixelFormat)
                                        .setNumMipLevels(tc.num_mips)
                                        .setNumLayers(std::nullopt)
                                        .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst)

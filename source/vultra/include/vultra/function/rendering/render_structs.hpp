@@ -78,6 +78,8 @@ namespace vultra
         uint32_t  meshIndex {0};
         uint32_t  materialIndex {0};
         glm::mat4 worldMatrix {1.0f};
+        glm::vec4 baseColorOverride {1.0f};
+        bool      hasBaseColorOverride {false};
     };
 
     struct RenderGaussianSplatInstance
@@ -85,6 +87,32 @@ namespace vultra
         CoreUUID  entity;
         uint32_t  splatIndex {0};
         glm::mat4 worldMatrix {1.0f};
+    };
+
+    enum class RenderLightKind : uint32_t
+    {
+        eDirectional = 0,
+        ePoint,
+        eSpot,
+        eArea,
+    };
+
+    struct RenderLight
+    {
+        CoreUUID        entity;
+        RenderLightKind kind {RenderLightKind::eDirectional};
+        glm::vec3       position {0.0f};
+        float           range {10.0f};
+        glm::vec3       direction {-0.35f, -0.8f, -0.25f};
+        float           intensity {3.0f};
+        glm::vec3       color {1.0f};
+        float           radius {0.05f};
+        float           width {1.0f};
+        float           height {1.0f};
+        float           innerConeDegrees {20.0f};
+        float           outerConeDegrees {30.0f};
+        bool            castsShadow {true};
+        bool            twoSided {false};
     };
 
     // Gaussian splat rendering has one LOD path: imported/trained assets are
@@ -198,6 +226,65 @@ namespace vultra
         uint32_t drawnSplats {UINT32_MAX};
     };
 
+    struct HbaoRenderSettings
+    {
+        bool  enabled {false};
+        float radius {80.0f};
+        float bias {0.2f};
+        float intensity {4.0f};
+        int   maxRadiusPixels {256};
+        int   stepCount {4};
+        int   directionCount {4};
+    };
+
+    struct SsrRenderSettings
+    {
+        bool  enabled {false};
+        float reflectionFactor {1.0f};
+        int   maxSteps {32};
+        int   binaryRefinement {6};
+        float stride {0.1f};
+        float thickness {1.0f};
+    };
+
+    struct ShadowRenderSettings
+    {
+        bool      enabled {true};
+        uint32_t resolution {2048};
+        uint32_t cascadeCount {4};
+        float     coverageRadius {80.0f};
+        float     lightDistance {80.0f};
+        float     zRange {160.0f};
+        glm::vec3 lightDirection {-0.35f, -0.8f, -0.25f};
+        float     depthBias {0.0015f};
+        float     normalBias {0.02f};
+        float     pcssLightRadius {2.5f};
+        int       pcssBlockerSamples {8};
+        int       pcssFilterSamples {1};
+    };
+
+    struct PbrLightingSettings
+    {
+        glm::vec3 directionalLightDirection {-0.35f, -0.8f, -0.25f};
+        float     shadowStrength {0.85f};
+        glm::vec3 directionalLightColor {1.0f, 0.96f, 0.9f};
+        float     directionalLightIntensity {8.0f};
+        glm::vec3 ambientColor {0.15f};
+        float     ambientIntensity {1.0f};
+        bool      enableIBL {false};
+        glm::vec3 iblColor {0.04f, 0.045f, 0.05f};
+        float     iblIntensity {0.0f};
+    };
+
+    struct BuiltinRenderSettings
+    {
+        HbaoRenderSettings hbao;
+        SsrRenderSettings  ssr;
+        ShadowRenderSettings shadow;
+        PbrLightingSettings pbrLighting;
+        bool               enableFXAA {true};
+    };
+
     // Double-buffered cooked scene for rendering.
     struct RenderWorld
     {
@@ -205,6 +292,7 @@ namespace vultra
         std::vector<RenderCamera>   cameras;
         std::vector<RenderInstance> instances;
         std::vector<RenderGaussianSplatInstance> gaussianSplats;
+        std::vector<RenderLight>    lights;
 
         resource::GpuSceneDatabase* gpuSceneDatabase {nullptr};
         resource::GpuSceneView*     gpuSceneView {nullptr};
@@ -214,6 +302,7 @@ namespace vultra
             cameras.clear();
             instances.clear();
             gaussianSplats.clear();
+            lights.clear();
         }
     };
 } // namespace vultra

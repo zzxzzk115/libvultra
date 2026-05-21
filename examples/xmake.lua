@@ -1,5 +1,3 @@
-print(get_config("project_dir"))
-
 local function _vpk_setting(target, key, legacy_key)
     local value = target:values(key)
     if value == nil and legacy_key ~= nil then

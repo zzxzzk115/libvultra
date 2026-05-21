@@ -2,10 +2,12 @@
 language = glsl
 version = 460
 
-[keywords]
-VTX_HAS_UV0 : bool permute
-
 [vert]
+#define VTX_HAS_COLOR 0
+#define VTX_HAS_NORMAL 1
+#define VTX_HAS_UV0 1
+#define VTX_HAS_UV1 0
+#define VTX_HAS_TANGENT 1
 #define VULTRA_DECLARE_CAMERA
 #define VULTRA_DECLARE_DRAW_BUFFER_READONLY
 #define VULTRA_DECLARE_MESHLET_BUFFER
@@ -16,7 +18,7 @@ VTX_HAS_UV0 : bool permute
 
 layout(location = 0) out vec2 v_TexCoord0;
 layout(location = 1) flat out uint v_DrawID;
-layout(location = 2) flat out uint v_TriangleDataIndex;
+layout(location = 2) flat out uint v_TriangleIndex;
 
 void main()
 {
@@ -43,20 +45,20 @@ void main()
     vec4 worldPos4 = d.model * vec4(v.position, 1.0);
 
     v_DrawID = drawId;
-	v_TriangleDataIndex = triDataIndex;
+    v_TriangleIndex = triIndex;
     gl_Position = u_Camera.viewProjection * vec4(worldPos4.xyz, 1.0);
 }
 
 [frag]
 layout(location = 0) in vec2 v_TexCoord0;
 layout(location = 1) flat in uint v_DrawID;
-layout(location = 2) flat in uint v_TriangleDataIndex;
+layout(location = 2) flat in uint v_TriangleIndex;
 
 layout(location = 0) out uint VisibilityOutput;
 
 void main()
 {
-	// Output the draw ID and triangle data index for use in visibility buffer techniques.
-	// The triangle data index can be used to fetch vertex indices for computing derivatives or other triangle-specific data.
-	VisibilityOutput = (v_DrawID << 16) | (v_TriangleDataIndex & 0xFFFFu);
+	// Pack draw ID and meshlet-local triangle ID. Thin G-Buffer resolve uses this
+	// to fetch all three vertices and reconstruct attributes once per visible pixel.
+	VisibilityOutput = (v_DrawID << 16) | (v_TriangleIndex & 0xFFFFu);
 }

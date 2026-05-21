@@ -147,20 +147,26 @@ namespace vultra
         auto& renderBackendService = ctx().services.require<IRenderBackendService>();
         renderBackendService.imguiBackend().beginFrame(window);
 
-        // Force-sync ImGui display metrics from our window abstraction every frame.
-        // This keeps wasm canvas resizing and HiDPI scale changes reflected even if
-        // backend-level callbacks lag behind or differ across platforms.
+        // Backend new-frame hooks own DisplaySize on native platforms. Keep a small
+        // fallback for backends/platforms where callbacks may lag behind the canvas.
         {
             ImGuiIO& io       = ImGui::GetIO();
             const auto extent = window.getExtent();
             const float width  = static_cast<float>(std::max(extent.x, 1));
             const float height = static_cast<float>(std::max(extent.y, 1));
-            io.DisplaySize = ImVec2(width, height);
 
             const auto fbExtent = window.getFrameBufferExtent();
             const float fbWidth  = static_cast<float>(std::max(fbExtent.x, 1));
             const float fbHeight = static_cast<float>(std::max(fbExtent.y, 1));
-            io.DisplayFramebufferScale = ImVec2(fbWidth / width, fbHeight / height);
+
+            const bool displaySizeInvalid = io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f;
+            const bool webgpuBackend =
+                renderBackendService.renderDevice().getBackendApi() == rhi::RenderBackendApi::eWebGPU;
+            if (displaySizeInvalid || webgpuBackend)
+            {
+                io.DisplaySize = ImVec2(width, height);
+                io.DisplayFramebufferScale = ImVec2(fbWidth / width, fbHeight / height);
+            }
         }
 
         ImGui::NewFrame();

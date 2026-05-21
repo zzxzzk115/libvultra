@@ -13,6 +13,7 @@ namespace vultra
     class World;
     struct GaussianSplatFrameStats;
     struct GaussianSplatRenderSettings;
+    struct BuiltinRenderSettings;
     struct RenderCamera;
 
     class IRenderService
@@ -34,5 +35,7 @@ namespace vultra
         virtual GaussianSplatRenderSettings&       gaussianSplatSettings() = 0;
         virtual const GaussianSplatRenderSettings& gaussianSplatSettings() const = 0;
         virtual const GaussianSplatFrameStats&     gaussianSplatFrameStats() const = 0;
+        virtual BuiltinRenderSettings&             builtinRenderSettings() = 0;
+        virtual const BuiltinRenderSettings&       builtinRenderSettings() const = 0;
     };
 } // namespace vultra

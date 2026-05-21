@@ -6,7 +6,7 @@ target("example-gaussian-splatting")
     if is_plat("wasm") then
         add_rules("resources.vpk_pack", "wasm.link")
 
-        local project_dir = os.projectdir()
+        local project_dir = get_config("project_dir") or path.join(os.scriptdir(), "..", "..")
         local generated_dir = path.join(project_dir,
                         "build",
                         ".generated",
@@ -43,6 +43,6 @@ target("example-gaussian-splatting")
 
     add_files("imgui.ini")
 
-    set_rundir("$(projectdir)")
+    set_rundir(get_config("project_dir") or path.join(os.scriptdir(), "..", ".."))
     -- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/example-gaussian-splatting")

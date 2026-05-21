@@ -110,7 +110,7 @@ namespace vultra
             m_RenderDevice->execute(cb,
                                     JobInfo {
                                         .wait      = imageAcquired,
-                                        .waitStage = PipelineStages::eColorAttachmentOutput,
+                                        .waitStage = PipelineStages::eAllCommands,
                                         .signal    = renderCompleted,
                                     });
 

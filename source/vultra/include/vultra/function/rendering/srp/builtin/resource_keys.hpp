@@ -114,4 +114,14 @@ namespace vultra
     constexpr FrameGraphResourceKey kResKey_FinalCompositionSource {.id = vbase::hashLiteral("FinalCompositionSource")};
     constexpr FrameGraphResourceKey kResKey_DepthTexture {.id = vbase::hashLiteral("DepthTexture")};
     constexpr FrameGraphResourceKey kResKey_HzbTexture {.id = vbase::hashLiteral("HZBTexture")};
+    constexpr FrameGraphResourceKey kResKey_VisibilityBuffer {.id = vbase::hashLiteral("VisibilityBuffer")};
+    constexpr FrameGraphResourceKey kResKey_GBufferColor {.id = vbase::hashLiteral("GBufferColor")};
+    constexpr FrameGraphResourceKey kResKey_ThinGBufferColor {.id = vbase::hashLiteral("ThinGBufferColor")};
+    constexpr FrameGraphResourceKey kResKey_GBufferNormal {.id = vbase::hashLiteral("GBufferNormal")};
+    constexpr FrameGraphResourceKey kResKey_GBufferMetallicRoughnessAO {
+        .id = vbase::hashLiteral("GBufferMetallicRoughnessAO")};
+    constexpr FrameGraphResourceKey kResKey_ShadowMap {.id = vbase::hashLiteral("ShadowMap")};
+    constexpr FrameGraphResourceKey kResKey_ShadowData {.id = vbase::hashLiteral("ShadowData")};
+    constexpr FrameGraphResourceKey kResKey_HbaoTexture {.id = vbase::hashLiteral("HBAOTexture")};
+    constexpr FrameGraphResourceKey kResKey_SsrTexture {.id = vbase::hashLiteral("SSRTexture")};
 } // namespace vultra

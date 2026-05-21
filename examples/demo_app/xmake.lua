@@ -1,4 +1,6 @@
 if not is_plat("android") then
+    local vultra_project_dir = get_config("project_dir") or path.join(os.scriptdir(), "..", "..")
+
     target("example-demo-app")
         set_kind("binary")
         add_files("main.cpp")
@@ -7,7 +9,7 @@ if not is_plat("android") then
         if is_plat("wasm") then
             add_rules("resources.vpk_pack", "wasm.link")
 
-            local project_dir = os.projectdir()
+            local project_dir = vultra_project_dir
             local generated_dir = path.join(project_dir,
                                             "build",
                                             ".generated",
@@ -46,6 +48,6 @@ if not is_plat("android") then
 
         add_files("imgui.ini")
 
-        set_rundir("$(projectdir)")
+        set_rundir(vultra_project_dir)
         set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/example-demo-app")
 end

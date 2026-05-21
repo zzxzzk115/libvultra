@@ -5,6 +5,7 @@
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
@@ -42,7 +43,11 @@ namespace vultra
             .data<&TransformComponent::rotation>("rotation"_hs)
             .data<&TransformComponent::scale>("scale"_hs);
 
-        entt::meta_factory<MeshComponent>().type("MeshComponent"_hs).data<&MeshComponent::mesh>("mesh"_hs);
+        entt::meta_factory<MeshComponent>()
+            .type("MeshComponent"_hs)
+            .data<&MeshComponent::mesh>("mesh"_hs)
+            .data<&MeshComponent::builtinGeometry>("builtinGeometry"_hs)
+            .data<&MeshComponent::materialColor>("materialColor"_hs);
         entt::meta_factory<GaussianSplatComponent>()
             .type("GaussianSplatComponent"_hs)
             .data<&GaussianSplatComponent::gaussianSplat>("gaussianSplat"_hs);
@@ -58,6 +63,21 @@ namespace vultra
             .data<&CameraComponent::clearColor>("clearColor"_hs)
             .data<&CameraComponent::priority>("priority"_hs)
             .data<&CameraComponent::rendererKey>("rendererKey"_hs);
+
+        entt::meta_factory<LightComponent>()
+            .type("LightComponent"_hs)
+            .data<&LightComponent::kind>("kind"_hs)
+            .data<&LightComponent::color>("color"_hs)
+            .data<&LightComponent::intensity>("intensity"_hs)
+            .data<&LightComponent::direction>("direction"_hs)
+            .data<&LightComponent::range>("range"_hs)
+            .data<&LightComponent::radius>("radius"_hs)
+            .data<&LightComponent::width>("width"_hs)
+            .data<&LightComponent::height>("height"_hs)
+            .data<&LightComponent::innerConeDegrees>("innerConeDegrees"_hs)
+            .data<&LightComponent::outerConeDegrees>("outerConeDegrees"_hs)
+            .data<&LightComponent::castsShadow>("castsShadow"_hs)
+            .data<&LightComponent::twoSided>("twoSided"_hs);
 
         entt::meta_factory<ScriptComponent>()
             .type("ScriptComponent"_hs)

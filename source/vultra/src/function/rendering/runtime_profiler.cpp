@@ -258,7 +258,7 @@ namespace vultra
             }
         }
 
-        return &m_History.back();
+        return nullptr;
     }
 
     void RuntimeProfiler::clearWorkingFrame()

@@ -398,7 +398,7 @@ namespace vultra
 
             if (!m_ScopeTimeQueryPool)
             {
-                m_ScopeTimeSlotCount = 256;
+                m_ScopeTimeSlotCount = 4096;
                 m_ScopeTimeSlots.resize(m_ScopeTimeSlotCount);
 
                 vk::QueryPoolCreateInfo queryInfo {};
@@ -437,7 +437,7 @@ namespace vultra
             const uint32_t firstQuery = slotIndex * 2u;
             auto           cmd        = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
             cmd.resetQueryPool(m_ScopeTimeQueryPool, firstQuery, 2u);
-            cmd.writeTimestamp(vk::PipelineStageFlagBits::eTopOfPipe, m_ScopeTimeQueryPool, firstQuery);
+            cmd.writeTimestamp(vk::PipelineStageFlagBits::eAllCommands, m_ScopeTimeQueryPool, firstQuery);
 
             const uint64_t token = m_ScopeTimeNextToken++;
             slot.token           = token;
@@ -469,7 +469,7 @@ namespace vultra
             }
 
             auto cmd = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
-            cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, m_ScopeTimeQueryPool, it->second * 2u + 1u);
+            cmd.writeTimestamp(vk::PipelineStageFlagBits::eAllCommands, m_ScopeTimeQueryPool, it->second * 2u + 1u);
             slot.active  = false;
             slot.pending = true;
         }

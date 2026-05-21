@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/rhi/acceleration_structure.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/structs/device_address.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
@@ -55,6 +56,8 @@ namespace vultra::resource
 
         rhi::DeviceAddress vertexBufferAddress {};
         rhi::DeviceAddress indexBufferAddress {};
+
+        rhi::AccelerationStructure blas;
 
         uint32_t indexBase {0};
         uint32_t vertexByteOffset {0};

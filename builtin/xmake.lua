@@ -168,6 +168,8 @@ task("shader_task")
 
         local highend_shader_patterns = {
             "passes/highend/**.vshader",
+            "passes/compatibility/basecolor_cpu.vert.vshader",
+            "passes/compatibility/basecolor_cpu.frag.vshader",
             "passes/general/**.vshader",
             "passes/common/**.vshader",
             "passes/shared/**.vshader",

@@ -69,6 +69,11 @@ namespace vultra
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 auto framebufferInfo = rc.framebufferInfo().value();
+                if (!framebufferInfo.colorAttachments.empty())
+                {
+                    framebufferInfo.colorAttachments[0].clearValue = std::nullopt;
+                    framebufferInfo.colorAttachments[0].loadOp     = rhi::AttachmentLoadOp::eDontCare;
+                }
                 if (useMultiview)
                 {
                     framebufferInfo.layers   = 2u;

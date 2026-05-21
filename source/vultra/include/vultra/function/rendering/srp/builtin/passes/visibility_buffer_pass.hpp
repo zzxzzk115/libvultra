@@ -3,19 +3,17 @@
 #include "vultra/core/rhi/render_pass.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 
-#include <fg/Fwd.hpp>
-
 namespace vultra
 {
-    class TestPass final : public rhi::RenderPass<TestPass>
+    class VisibilityBufferPass final : public rhi::RenderPass<VisibilityBufferPass>
     {
         friend class BasePass;
 
     public:
-        TestPass();
+        VisibilityBufferPass();
         FrameGraphResource addPass(FrameGraphBuildContext& ctx);
 
     private:
-        rhi::GraphicsPipeline createPipeline(const rhi::PixelFormat colorFormat) const;
+        rhi::GraphicsPipeline createPipeline() const;
     };
 } // namespace vultra

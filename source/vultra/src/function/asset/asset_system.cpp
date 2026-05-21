@@ -1,6 +1,7 @@
 #include "vultra/function/asset/asset_system.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/structs/render_mesh.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
@@ -34,13 +35,19 @@ namespace vultra
             glm::vec4 baseColor {1, 1, 1, 1};
             float     metallicFactor {1.0f};
             float     roughnessFactor {1.0f};
+            float     alphaCutoff {0.5f};
+            uint32_t  alphaMode {0};
             uint32_t  baseColorTex {0};
             uint32_t  normalTex {0};
             uint32_t  mrTex {0};
+            uint32_t  metallicTex {0};
+            uint32_t  roughnessTex {0};
             uint32_t  occlusionTex {0};
             uint32_t  emissiveTex {0};
+            uint32_t  doubleSided {0};
             uint32_t  pad0 {0};
             uint32_t  pad1 {0};
+            uint32_t  pad2 {0};
         };
         static_assert(sizeof(MaterialParamsPBRMR) % 16 == 0);
 
@@ -719,11 +726,16 @@ namespace vultra
                 p.baseColor       = m.core.pbrMR.baseColor;
                 p.metallicFactor  = m.core.pbrMR.metallicFactor;
                 p.roughnessFactor = m.core.pbrMR.roughnessFactor;
+                p.alphaCutoff     = m.core.pbrMR.alphaCutoff;
+                p.alphaMode       = static_cast<uint32_t>(m.core.pbrMR.alphaMode);
                 p.baseColorTex    = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.baseColorTexture.uuid));
                 p.normalTex       = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.normalTexture.uuid));
                 p.mrTex           = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.metallicRoughnessTexture.uuid));
+                p.metallicTex     = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.metallicTexture.uuid));
+                p.roughnessTex    = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.roughnessTexture.uuid));
                 p.occlusionTex    = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.ambientOcclusionTexture.uuid));
                 p.emissiveTex     = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.emissiveTexture.uuid));
+                p.doubleSided     = m.core.pbrMR.doubleSided ? 1u : 0u;
                 blockOffset       = allocBlock(&p, sizeof(p));
                 break;
             }
@@ -856,6 +868,41 @@ namespace vultra
             gpuSubMesh.indexCount    = subMesh.indexCount;
             gpuSubMesh.materialIndex = materialOffset + subMesh.materialIndex;
             pool.meshes[meshIndex].subMeshes.push_back(gpuSubMesh);
+        }
+
+        const bool rayTracingEnabled = HasFlagValues(m_RenderDevice->getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracing);
+        if (rayTracingEnabled && pool.meshes[meshIndex].vertexBuffer && pool.meshes[meshIndex].indexBuffer &&
+            !pool.meshes[meshIndex].subMeshes.empty())
+        {
+            auto& gpuMesh = pool.meshes[meshIndex];
+
+            const auto vertexAddress = m_RenderDevice->getBufferDeviceAddress(gpuMesh.vertexBuffer);
+            const auto indexAddress  = m_RenderDevice->getBufferDeviceAddress(gpuMesh.indexBuffer);
+            gpuMesh.vertexBufferAddress = vertexAddress;
+            gpuMesh.indexBufferAddress  = indexAddress;
+
+            std::vector<rhi::RenderSubMesh> rtSubMeshes;
+            rtSubMeshes.reserve(gpuMesh.subMeshes.size());
+            for (const auto& sm : gpuMesh.subMeshes)
+            {
+                if (sm.indexCount == 0)
+                    continue;
+
+                rhi::RenderSubMesh rtSubMesh {};
+                rtSubMesh.vertexBufferAddress = vertexAddress;
+                rtSubMesh.indexBufferAddress  = rhi::DeviceAddress {
+                    indexAddress.value + static_cast<uint64_t>(sm.indexOffset) * sizeof(uint32_t)};
+                rtSubMesh.vertexStride  = gpuMesh.vertexStrideBytes;
+                rtSubMesh.vertexCount   = gpuMesh.vertexCount;
+                rtSubMesh.indexCount    = sm.indexCount;
+                rtSubMesh.indexType     = rhi::IndexType::eUInt32;
+                rtSubMesh.materialIndex = sm.materialIndex;
+                rtSubMesh.opaque        = true;
+                rtSubMeshes.push_back(rtSubMesh);
+            }
+
+            if (!rtSubMeshes.empty())
+                gpuMesh.blas = m_RenderDevice->createBuildRenderMeshBLAS(rtSubMeshes);
         }
 
         // Remap meshlet vertex indices from local mesh space to global packed-vertex space.

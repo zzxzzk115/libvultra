@@ -3,6 +3,7 @@ language = glsl
 version = 460
 
 [vert]
+// Shared by compatibility rendering and the temporary highend direct-GBuffer fallback.
 #include "include/common/cpu_scene.glsl"
 
 layout(location = 0) in vec3 a_Position;
@@ -16,4 +17,3 @@ void main()
     gl_Position = u_CameraBlock.data.viewProjection * worldPos;
     v_TexCoord0 = a_TexCoord0;
 }
-

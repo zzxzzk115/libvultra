@@ -693,7 +693,12 @@ namespace vultra
             WGPURenderPassColorAttachment colorDesc {};
             colorDesc.view       = m_RenderView;
             colorDesc.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-            colorDesc.loadOp     = colorAttachment.clearValue.has_value() ? WGPULoadOp_Clear : WGPULoadOp_Load;
+            colorDesc.loadOp     = colorAttachment.clearValue.has_value() ||
+                                        colorAttachment.loadOp == AttachmentLoadOp::eClear ?
+                                        WGPULoadOp_Clear :
+                                    colorAttachment.loadOp == AttachmentLoadOp::eDontCare ?
+                                        WGPULoadOp_Undefined :
+                                        WGPULoadOp_Load;
             colorDesc.storeOp    = WGPUStoreOp_Store;
             colorDesc.clearValue = clearColor;
 
@@ -725,7 +730,12 @@ namespace vultra
                 {
                     depthDesc.view = m_DepthView;
                     depthDesc.depthLoadOp =
-                        framebufferInfo.depthAttachment->clearValue.has_value() ? WGPULoadOp_Clear : WGPULoadOp_Load;
+                        framebufferInfo.depthAttachment->clearValue.has_value() ||
+                            framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eClear ?
+                            WGPULoadOp_Clear :
+                        framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eDontCare ?
+                            WGPULoadOp_Undefined :
+                            WGPULoadOp_Load;
                     depthDesc.depthStoreOp    = framebufferInfo.depthReadOnly ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
                     depthDesc.depthClearValue = toWgpuDepthClear(framebufferInfo.depthAttachment->clearValue);
                     depthDesc.depthReadOnly   = framebufferInfo.depthReadOnly;
@@ -738,8 +748,13 @@ namespace vultra
                     if (!stencilReadOnly && framebufferInfo.stencilAttachment &&
                         framebufferInfo.stencilAttachment->target != nullptr)
                     {
-                        depthDesc.stencilLoadOp     = framebufferInfo.stencilAttachment->clearValue.has_value() ?
+                        depthDesc.stencilLoadOp     = framebufferInfo.stencilAttachment->clearValue.has_value() ||
+                                                          framebufferInfo.stencilAttachment->loadOp ==
+                                                              AttachmentLoadOp::eClear ?
                                                           WGPULoadOp_Clear :
+                                                      framebufferInfo.stencilAttachment->loadOp ==
+                                                              AttachmentLoadOp::eDontCare ?
+                                                          WGPULoadOp_Undefined :
                                                           WGPULoadOp_Load;
                         depthDesc.stencilStoreOp    = WGPUStoreOp_Store;
                         depthDesc.stencilClearValue = toWgpuStencilClear(framebufferInfo.stencilAttachment->clearValue);

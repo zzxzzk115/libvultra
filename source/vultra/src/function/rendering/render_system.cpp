@@ -2,6 +2,7 @@
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
+#include "vultra/core/math/math.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer_access.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/services/window_service.hpp"
@@ -21,10 +22,13 @@
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/world.hpp"
 
+#include <glm/geometric.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
 #include <glm/gtc/packing.hpp>
 
 #include <vbase/core/exe_path.hpp>
@@ -49,6 +53,15 @@ namespace vultra
     {
         thread_local rhi::BuiltinProfilerGpuScopeContext g_CurrentBuiltinProfilerGpuScopeContext {};
 
+        [[nodiscard]] constexpr bool isTrackyGpuProfilerEnabled()
+        {
+#if defined(TRACKY_ENABLE) && TRACKY_ENABLE
+            return true;
+#else
+            return false;
+#endif
+        }
+
         void clearColorTarget(rhi::CommandBuffer&        cb,
                               rhi::Texture&              target,
                               const rhi::Rect2D&         area,
@@ -69,6 +82,70 @@ namespace vultra
             rhi::prepareForAttachment(cb, target, false);
             cb.beginRendering(clearFbInfo);
             cb.endRendering();
+        }
+
+        [[nodiscard]] glm::vec3 safeNormalizeDirection(const glm::vec3& direction, const glm::vec3& fallback)
+        {
+            const float len2 = glm::dot(direction, direction);
+            return len2 > 1e-8f ? direction * glm::inversesqrt(len2) : fallback;
+        }
+
+        [[nodiscard]] bool isIdentityRotation(const glm::quat& q)
+        {
+            return std::abs(q.w - 1.0f) < 1e-4f && std::abs(q.x) < 1e-4f &&
+                   std::abs(q.y) < 1e-4f && std::abs(q.z) < 1e-4f;
+        }
+
+        void finalizeRenderCamera(RenderCamera& cam)
+        {
+            cam.viewProjection        = cam.projection * cam.view;
+            cam.inverseView           = glm::inverse(cam.view);
+            cam.inverseProjection     = glm::inverse(cam.projection);
+            cam.inverseViewProjection = glm::inverse(cam.viewProjection);
+
+            auto planes = math::extractFrustumPlanes(cam.viewProjection);
+            for (int i = 0; i < 6; ++i)
+                cam.frustumPlanes[i] = glm::vec4(planes[i].normal, planes[i].d);
+        }
+
+        [[nodiscard]] RenderCamera cameraForRenderExtent(const RenderCamera& src, const rhi::Extent2D extent)
+        {
+            RenderCamera cam = src;
+            if (cam.isXRView)
+                return cam;
+
+            const float aspect =
+                static_cast<float>(std::max(extent.width, 1u)) / static_cast<float>(std::max(extent.height, 1u));
+            if (std::abs(cam.projection[3][3]) < 1e-5f)
+            {
+                cam.projection = glm::perspectiveRH_ZO(cam.fovY, std::max(aspect, 0.0001f), cam.zNear, cam.zFar);
+                finalizeRenderCamera(cam);
+            }
+            else
+            {
+                const float orthoHeight = cam.projection[1][1] != 0.0f ?
+                                              std::abs(2.0f / cam.projection[1][1]) :
+                                              1.0f;
+                const float orthoWidth = orthoHeight * std::max(aspect, 0.0001f);
+                cam.projection = glm::orthoRH_ZO(-orthoWidth * 0.5f,
+                                                 orthoWidth * 0.5f,
+                                                 -orthoHeight * 0.5f,
+                                                 orthoHeight * 0.5f,
+                                                 cam.zNear,
+                                                 cam.zFar);
+                finalizeRenderCamera(cam);
+            }
+            return cam;
+        }
+
+        [[nodiscard]] glm::vec3 lightDirectionFromTransformNormal(const TransformComponent& transform,
+                                                                  const LightComponent&     light)
+        {
+            const glm::vec3 authored = safeNormalizeDirection(light.direction, glm::vec3 {0.0f, -1.0f, 0.0f});
+            if (isIdentityRotation(transform.rotation))
+                return authored;
+
+            return safeNormalizeDirection(-glm::vec3(transform.worldMatrix[2]), authored);
         }
 
         float effectiveGaussianAutomaticClodLevel(const GaussianSplatRenderSettings& settings)
@@ -318,7 +395,12 @@ namespace vultra
         }
     } // namespace
 
-    void RenderWorldCooker::cook(World& world, IAssetService& assets, RenderWorld& out)
+    void RenderWorldCooker::cook(World&               world,
+                                 IAssetService&       assets,
+                                 IGpuResourceService& gpuResources,
+                                 rhi::RenderDevice&   rd,
+                                 GeometryFactory&     geometryFactory,
+                                 RenderWorld&         out)
     {
         out.clear();
 
@@ -334,14 +416,32 @@ namespace vultra
             if (auto* status = reg.try_get<EntityStatusComponent>(e); status && (!status->active || !status->visible))
                 continue;
 
-            auto h = assets.loadMeshSync(mesh.mesh);
-            if (!h.ready())
+            uint32_t meshIndex = std::numeric_limits<uint32_t>::max();
+            if (mesh.builtinGeometry != UINT32_MAX)
+            {
+                meshIndex = geometryFactory.getOrCreateMeshIndex(
+                    static_cast<BuiltinGeometryKind>(mesh.builtinGeometry), gpuResources, rd);
+            }
+            else
+            {
+                auto h = assets.loadMeshSync(mesh.mesh);
+                if (!h.ready())
+                    continue;
+                meshIndex = h.gpuIndex();
+            }
+
+            if (meshIndex == std::numeric_limits<uint32_t>::max())
                 continue;
 
             RenderInstance inst {};
             inst.entity      = id.uuid;
-            inst.meshIndex   = h.gpuIndex();
+            inst.meshIndex   = meshIndex;
             inst.worldMatrix = tr.worldMatrix;
+            if (mesh.builtinGeometry != UINT32_MAX)
+            {
+                inst.baseColorOverride    = mesh.materialColor;
+                inst.hasBaseColorOverride = true;
+            }
             out.instances.push_back(inst);
         }
 
@@ -365,6 +465,34 @@ namespace vultra
             inst.worldMatrix = tr.worldMatrix;
             out.gaussianSplats.push_back(inst);
         }
+
+        auto lightView = reg.view<IDComponent, TransformComponent, LightComponent>();
+        out.lights.reserve(lightView.size_hint());
+        for (auto e : lightView)
+        {
+            const auto& id = lightView.get<IDComponent>(e);
+            const auto& tr = lightView.get<TransformComponent>(e);
+            const auto& light = lightView.get<LightComponent>(e);
+            if (auto* status = reg.try_get<EntityStatusComponent>(e); status && (!status->active || !status->visible))
+                continue;
+
+            RenderLight outLight {};
+            outLight.entity = id.uuid;
+            outLight.kind = static_cast<RenderLightKind>(light.kind);
+            outLight.position = glm::vec3(tr.worldMatrix[3]);
+            outLight.direction = lightDirectionFromTransformNormal(tr, light);
+            outLight.color = light.color;
+            outLight.intensity = light.intensity;
+            outLight.range = light.range;
+            outLight.radius = light.radius;
+            outLight.width = light.width;
+            outLight.height = light.height;
+            outLight.innerConeDegrees = light.innerConeDegrees;
+            outLight.outerConeDegrees = light.outerConeDegrees;
+            outLight.castsShadow = light.castsShadow;
+            outLight.twoSided = light.twoSided;
+            out.lights.push_back(outLight);
+        }
     }
 
     bool RenderSystem::onInit()
@@ -385,6 +513,9 @@ namespace vultra
         VULTRA_CORE_TRACE("[RenderSystem] Creating transient resources");
         m_TransientResources = createScope<framegraph::TransientResources>(backendService.renderDevice());
 
+        VULTRA_CORE_TRACE("[RenderSystem] Providing IRenderService");
+        ctx().services.provide<IRenderService>(this);
+
         VULTRA_CORE_TRACE("[RenderSystem] Initializing renderers");
         for (auto& [key, renderer] : m_Renderers)
         {
@@ -400,9 +531,6 @@ namespace vultra
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eLinear, .minFilter = rhi::TexelFilter::eLinear});
         m_Samplers["nearest"] = backendService.renderDevice().getSampler(
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eNearest, .minFilter = rhi::TexelFilter::eNearest});
-
-        VULTRA_CORE_TRACE("[RenderSystem] Providing IRenderService");
-        ctx().services.provide<IRenderService>(this);
 
         VULTRA_CORE_INFO("[RenderSystem] Initialized!");
 
@@ -494,7 +622,10 @@ namespace vultra
 
         auto& cb = backendService.commandBuffer();
         RuntimeProfiler::Scope scopeRenderFrame {m_RuntimeProfiler, "RenderSystem::renderFrame"};
-        rd.beginFrameGpuQuery(cb);
+        if (!isTrackyGpuProfilerEnabled())
+        {
+            rd.beginFrameGpuQuery(cb);
+        }
 
         // Default target for cameras without explicit RT
         auto& defaultTarget = backendService.backbuffer();
@@ -516,7 +647,7 @@ namespace vultra
         RenderWorldCooker cooker {};
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "RenderWorldCooker::cook"};
-            cooker.cook(world, assetService, m_RenderWorldBack);
+            cooker.cook(world, assetService, gpuResourceService, rd, m_GeometryFactory, m_RenderWorldBack);
         }
         m_RenderWorldBack.frameIndex = m_FrameCounter;
 
@@ -619,6 +750,9 @@ namespace vultra
                 m_GpuSceneDatabaseBack.pushInstance(gpuInst);
             }
             m_GpuSceneDatabaseBack.uploadSceneTables(rd, cb);
+
+            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracing))
+                m_GpuSceneDatabaseBack.rebuildRayTracingScene(rd);
 
             uint32_t maxMeshletDraws = 0;
             for (const auto& inst : m_RenderWorldBack.instances)
@@ -992,51 +1126,61 @@ namespace vultra
         bool       backbufferClearedThisFrame = false;
         m_RuntimeProfiler.setGpuScopeCpuFallback(rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU);
 
-        m_RuntimeProfiler.setGpuScopeCallbacks(
-            [this, &rd, &cb]() {
-                if (g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle == 0)
-                    return uint64_t {0};
+        if (isTrackyGpuProfilerEnabled())
+        {
+            m_RuntimeProfiler.setGpuScopeCallbacks(
+                []() { return uint64_t {0}; },
+                [](const uint64_t) {},
+                [](const uint64_t) { return -1.0; });
+        }
+        else
+        {
+            m_RuntimeProfiler.setGpuScopeCallbacks(
+                [this, &rd, &cb]() {
+                    if (g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle == 0)
+                        return uint64_t {0};
 
-                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
-                {
-                    return uint64_t {0};
-                }
+                    if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                    {
+                        return uint64_t {0};
+                    }
 
-                // WebGPU compute encoders are kept open lazily. At a framegraph pass boundary the next
-                // top-level scope may still observe the previous compute pass as active, which would
-                // incorrectly suppress or mis-attribute the new pass timing.
-                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU &&
-                    g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle == 0 &&
-                    g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle != 0 &&
-                    m_RuntimeProfiler.gpuScopeDepth() <= 1)
-                {
-                    rhi::WebGPUCommandBufferAccess::closeActiveComputePassForProfilingBoundary(cb);
-                    g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle = cb.getCurrentRenderPassEncoderHandle();
-                    g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle =
-                        cb.getCurrentComputePassEncoderHandle();
-                }
+                    // WebGPU compute encoders are kept open lazily. At a framegraph pass boundary the next
+                    // top-level scope may still observe the previous compute pass as active, which would
+                    // incorrectly suppress or mis-attribute the new pass timing.
+                    if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU &&
+                        g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle == 0 &&
+                        g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle != 0 &&
+                        m_RuntimeProfiler.gpuScopeDepth() <= 1)
+                    {
+                        rhi::WebGPUCommandBufferAccess::closeActiveComputePassForProfilingBoundary(cb);
+                        g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle = cb.getCurrentRenderPassEncoderHandle();
+                        g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle =
+                            cb.getCurrentComputePassEncoderHandle();
+                    }
 
-                // WebGPU fallback timestamps are pass-bound; ignore nested scopes inside an active pass.
-                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU &&
-                    (g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle != 0 ||
-                     g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle != 0))
-                {
-                    return uint64_t {0};
-                }
-                return rd.beginScopeGpuQuery(g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle);
-            },
-            [&rd](const uint64_t token) {
-                if (g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle == 0 || token == 0)
-                    return;
-                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
-                    return;
-                rd.endScopeGpuQuery(g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle, token);
-            },
-            [&rd](const uint64_t token) {
-                if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
-                    return -1.0;
-                return rd.consumeScopeGpuMs(token);
-            });
+                    // WebGPU fallback timestamps are pass-bound; ignore nested scopes inside an active pass.
+                    if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU &&
+                        (g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle != 0 ||
+                         g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle != 0))
+                    {
+                        return uint64_t {0};
+                    }
+                    return rd.beginScopeGpuQuery(g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle);
+                },
+                [&rd](const uint64_t token) {
+                    if (g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle == 0 || token == 0)
+                        return;
+                    if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                        return;
+                    rd.endScopeGpuQuery(g_CurrentBuiltinProfilerGpuScopeContext.commandBufferHandle, token);
+                },
+                [&rd](const uint64_t token) {
+                    if (rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                        return -1.0;
+                    return rd.consumeScopeGpuMs(token);
+                });
+        }
         rhi::setBuiltinProfilerGpuScopeCallbacks(
             [](const rhi::BuiltinProfilerGpuScopeContext& ctx) { g_CurrentBuiltinProfilerGpuScopeContext = ctx; },
             [this](const rhi::BuiltinProfilerGpuScopeContext& ctx, const char* label) {
@@ -1086,16 +1230,17 @@ namespace vultra
             const rhi::Rect2D renderArea = useWindowContentArea ?
                                                window.getContentArea() :
                                                rhi::Rect2D {.offset = {0, 0}, .extent = target->getExtent()};
+            const RenderCamera viewCamera = cameraForRenderExtent(cam, renderArea.extent);
 
             RenderView view {
                 .renderWorld          = &m_RenderWorldFront,
-                .camera               = &cam,
+                .camera               = &viewCamera,
                 .target               = target,
                 .extent               = renderArea.extent,
-                .clearValue           = cam.clearValue,
+                .clearValue           = viewCamera.clearValue,
                 .enableMultiview      = canUseXrMultiview,
                 .multiviewMask        = canUseXrMultiview ? 0x3u : 0u,
-                .multiviewCameras     = {&cam, nullptr},
+                .multiviewCameras     = {&viewCamera, nullptr},
                 .multiviewCameraCount = canUseXrMultiview ? 2u : 0u,
                 .gpuSceneDatabase     = m_RenderWorldFront.gpuSceneDatabase,
                 .gpuSceneView         = m_RenderWorldFront.gpuSceneView,
@@ -1114,7 +1259,7 @@ namespace vultra
                 .area             = renderArea,
                 .layers           = canUseXrMultiview ? 2u : 1u,
                 .viewMask         = canUseXrMultiview ? 0x3u : 0u,
-                .colorAttachments = {rhi::AttachmentInfo {.target = target, .clearValue = cam.clearValue}},
+                .colorAttachments = {rhi::AttachmentInfo {.target = target, .clearValue = viewCamera.clearValue}},
             };
 
             ViewRenderData viewData {
@@ -1130,7 +1275,7 @@ namespace vultra
                 clearColorTarget(cb,
                                  *target,
                                  renderArea,
-                                 cam.clearValue,
+                                 viewCamera.clearValue,
                                  canUseXrMultiview,
                                  0x3u);
                 backbufferClearedThisFrame = true;
@@ -1138,7 +1283,7 @@ namespace vultra
 
             {
                 ImmediateResourceUploader immediateUploader {m_FrameResources, rd};
-                prepareCameraData(immediateUploader, viewData, renderArea.extent, cam, rd.getBackendApi());
+                prepareCameraData(immediateUploader, viewData, renderArea.extent, viewCamera, rd.getBackendApi());
             }
 
             ImmediateRenderContext immediateCtx {
@@ -1155,7 +1300,7 @@ namespace vultra
             {
                 FrameGraphResourceUploader fgUploader {fg};
                 prepareFrameData(fgUploader, m_PreparedFrameData, m_RenderWorldFront.frameIndex, 0.0f, 0.0f);
-                prepareCameraData(fgUploader, viewData, renderArea.extent, cam, rd.getBackendApi());
+                prepareCameraData(fgUploader, viewData, renderArea.extent, viewCamera, rd.getBackendApi());
                 bb.add<FrameData>(m_PreparedFrameData.frameData);
                 bb.add<CameraData>(viewData.cameraData);
             }
@@ -1281,7 +1426,10 @@ namespace vultra
             [&rd](const uint64_t token) { return rd.consumeScopeGpuMs(token); });
 
         m_TransientResources->update();
-        rd.endFrameGpuQuery(cb);
+        if (!isTrackyGpuProfilerEnabled())
+        {
+            rd.endFrameGpuQuery(cb);
+        }
         backendService.endFrame();
 
         const auto commandStats = rhi::CommandBuffer::consumeFrameStats();
@@ -1296,7 +1444,7 @@ namespace vultra
                                           memoryStats.cpuCacheBytes,
                                           memoryStats.gpuDeviceLocalBytes,
                                           memoryStats.gpuHostVisibleBytes);
-        const double gpuFrameMs = rd.consumeGpuFrameMs();
+        const double gpuFrameMs = isTrackyGpuProfilerEnabled() ? -1.0 : rd.consumeGpuFrameMs();
         m_RuntimeProfiler.setGpuFrameMs(gpuFrameMs);
         const auto renderFrameCpuEnd = std::chrono::steady_clock::now();
         m_RuntimeProfiler.setCpuRenderMs(
