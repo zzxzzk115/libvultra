@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/base_pass.hpp"
 #include "vultra/core/rhi/descriptorset_builder.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/shader_library.hpp"
@@ -37,7 +38,24 @@ namespace vultra
         struct Extra
         {
             rhi::ShaderLibraryRuntime* builtinShaderLib {nullptr};
+            rhi::ShaderLibraryRuntime* builtinHighendShaderLib {nullptr};
+            rhi::ShaderLibraryRuntime* builtinCompatibilityShaderLib {nullptr};
             Samplers                   samplers;
+
+            [[nodiscard]] rhi::ShaderLibraryRuntime* builtinShaderLibForProfile(const rhi::ShaderProfile profile) const
+            {
+                switch (profile)
+                {
+                    case rhi::ShaderProfile::eHighend:
+                        return builtinHighendShaderLib ? builtinHighendShaderLib : builtinShaderLib;
+                    case rhi::ShaderProfile::eCompatibility:
+                        return builtinCompatibilityShaderLib ? builtinCompatibilityShaderLib : builtinShaderLib;
+                    case rhi::ShaderProfile::eGeneral:
+                    case rhi::ShaderProfile::eUnspecified:
+                    default:
+                        return builtinShaderLib;
+                }
+            }
         } ext;
 
         [[nodiscard]] const RenderView&                   view() const { return viewData.view; }

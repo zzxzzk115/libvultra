@@ -26,6 +26,7 @@ namespace vultra
 
         void onUpdate(fsec dt) override;
         void onPhysics(fsec dt) override;
+        void onPostUpdate(fsec dt) override;
 
         bool reloadEntityScript(entt::entity e) override;
         bool reloadAllScripts() override;
@@ -34,6 +35,7 @@ namespace vultra
         void setPlaybackState(bool playing, bool paused) override;
         bool isPlaybackPlaying() const override { return m_PlaybackPlaying; }
         bool isPlaybackPaused() const override { return m_PlaybackPaused; }
+        void requestSingleStep() override;
         bool runString(std::string_view code) override;
 
     private:
@@ -52,5 +54,7 @@ namespace vultra
         InstanceMap   m_Instances;
         bool          m_PlaybackPlaying {true};
         bool          m_PlaybackPaused {false};
+        bool          m_SingleStepActive {false};
+        uint32_t      m_SingleStepRequests {0};
     };
 } // namespace vultra

@@ -17,6 +17,8 @@
 #include <imgui.h>
 
 #include <cstring>
+#include <algorithm>
+#include <cctype>
 #include <string>
 
 namespace vultra_app
@@ -44,13 +46,25 @@ namespace vultra_app
                 return ICON_MDI_VECTOR_POINT;
             return ICON_MDI_CUBE_OUTLINE;
         }
+
+        std::string lowercase(std::string text)
+        {
+            std::transform(text.begin(),
+                           text.end(),
+                           text.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            return text;
+        }
     } // namespace
 
-    SceneHierarchyWindow::SceneHierarchyWindow() : EditorWindow("Scene Hierarchy") {}
+    SceneHierarchyWindow::SceneHierarchyWindow() : EditorWindow("Scene Hierarchy", ICON_MDI_FILE_TREE) {}
 
     void SceneHierarchyWindow::draw(EditorContext& ctx)
     {
-        ImGui::Begin(m_Name.c_str(), &m_Open);
+        ImGuiWindowFlags windowFlags = 0;
+        if (ctx.state.sceneDirty)
+            windowFlags |= ImGuiWindowFlags_UnsavedDocument;
+        ImGui::Begin(title().c_str(), &m_Open, windowFlags);
         ImGui::TextColored(ImVec4(0.72f, 0.80f, 0.92f, 1.0f), "%s", ICON_MDI_FILE_TREE);
         ImGui::SameLine();
         ImGui::TextUnformatted(ctx.state.currentDefaultScene.c_str());
@@ -63,13 +77,19 @@ namespace vultra_app
                 auto& reg   = world.registry();
                 auto  e     = world.createEntity();
                 reg.emplace<vultra::NameComponent>(e, vultra::NameComponent {"Empty Entity"});
-                reg.emplace<vultra::TransformComponent>(e);
+                static_cast<void>(reg.get_or_emplace<vultra::TransformComponent>(e));
                 if (auto* id = reg.try_get<vultra::IDComponent>(e))
                     Selection::select(SelectionCategory::Entity, id->uuid);
+                ctx.state.sceneDirty = true;
                 ctx.state.statusMessage = "Created empty entity.";
             }
         }
         ImGui::Separator();
+
+        ImGui::TextUnformatted(ICON_MDI_MAGNIFY);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputTextWithHint("##SceneHierarchySearch", "Search entities...", m_SearchBuffer.data(), m_SearchBuffer.size());
 
         if (!ctx.services)
         {
@@ -95,9 +115,10 @@ namespace vultra_app
             {
                 auto e = world.createEntity();
                 reg.emplace<vultra::NameComponent>(e, vultra::NameComponent {"Empty Entity"});
-                reg.emplace<vultra::TransformComponent>(e);
+                static_cast<void>(reg.get_or_emplace<vultra::TransformComponent>(e));
                 if (auto* id = reg.try_get<vultra::IDComponent>(e))
                     Selection::select(SelectionCategory::Entity, id->uuid);
+                ctx.state.sceneDirty = true;
             }
             ImGui::EndPopup();
         }
@@ -118,8 +139,11 @@ namespace vultra_app
                 if (world.parent(entity) != entt::null)
                     continue;
 
+                if (!entityMatchesFilter(world, entity, m_SearchBuffer.data()))
+                    continue;
+
                 drewAny = true;
-                drawEntityNode(ctx, world, entity);
+                drawEntityNode(ctx, world, entity, m_SearchBuffer.data());
             }
 
             ImGui::TableNextRow();
@@ -141,6 +165,7 @@ namespace vultra_app
                             else
                             {
                                 world.removeParent(dropped);
+                                ctx.state.sceneDirty = true;
                                 ctx.state.statusMessage = "Moved entity to scene root.";
                             }
                         }
@@ -158,7 +183,30 @@ namespace vultra_app
         ImGui::End();
     }
 
-    void SceneHierarchyWindow::drawEntityNode(EditorContext& ctx, vultra::World& world, entt::entity entity)
+    bool SceneHierarchyWindow::entityMatchesFilter(vultra::World& world, entt::entity entity, const char* filter) const
+    {
+        if (filter == nullptr || filter[0] == '\0')
+            return true;
+
+        auto& reg = world.registry();
+        if (!reg.valid(entity))
+            return false;
+
+        const auto needle = lowercase(filter);
+        const auto* nameComponent = reg.try_get<vultra::NameComponent>(entity);
+        const auto name = lowercase(nameComponent ? nameComponent->name : "Entity");
+        if (name.find(needle) != std::string::npos)
+            return true;
+
+        for (auto child = world.firstChild(entity); child != entt::null; child = world.nextSibling(child))
+        {
+            if (entityMatchesFilter(world, child, filter))
+                return true;
+        }
+        return false;
+    }
+
+    void SceneHierarchyWindow::drawEntityNode(EditorContext& ctx, vultra::World& world, entt::entity entity, const char* filter)
     {
         auto& reg = world.registry();
         if (!reg.valid(entity))
@@ -178,6 +226,8 @@ namespace vultra_app
             flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
         if (Selection::isSelected(SelectionCategory::Entity, id->uuid))
             flags |= ImGuiTreeNodeFlags_Selected;
+        if (world.parent(entity) == entt::null || (filter != nullptr && filter[0] != '\0'))
+            flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
         ImGui::PushID(static_cast<int>(entt::to_integral(entity)));
         ImGui::TableNextRow();
@@ -219,6 +269,7 @@ namespace vultra_app
                         else
                         {
                             world.setParent(dropped, entity);
+                            ctx.state.sceneDirty = true;
                             ctx.state.statusMessage = "Reparented entity.";
                         }
                     }
@@ -240,14 +291,16 @@ namespace vultra_app
             {
                 auto child = world.createChild(entity);
                 reg.emplace<vultra::NameComponent>(child, vultra::NameComponent {"Child Entity"});
-                reg.emplace<vultra::TransformComponent>(child);
+                static_cast<void>(reg.get_or_emplace<vultra::TransformComponent>(child));
                 if (auto* childId = reg.try_get<vultra::IDComponent>(child))
                     Selection::select(SelectionCategory::Entity, childId->uuid);
+                ctx.state.sceneDirty = true;
             }
             if (ImGui::MenuItem("Delete"))
             {
                 world.destroyRecursive(entity);
                 Selection::clear(SelectionCategory::Entity);
+                ctx.state.sceneDirty = true;
                 ctx.state.statusMessage = "Deleted entity.";
                 ImGui::EndPopup();
                 ImGui::PopID();
@@ -259,10 +312,16 @@ namespace vultra_app
         ImGui::TableNextColumn();
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 6.0f);
         if (ui::iconButton(status.visible ? ICON_MDI_EYE : ICON_MDI_EYE_OFF, "Toggle visibility", status.visible))
+        {
             status.visible = !status.visible;
+            ctx.state.sceneDirty = true;
+        }
         ImGui::SameLine();
         if (ui::iconButton(status.locked ? ICON_MDI_LOCK : ICON_MDI_LOCK_OPEN_VARIANT, "Toggle lock", status.locked))
+        {
             status.locked = !status.locked;
+            ctx.state.sceneDirty = true;
+        }
 
         if (m_RenameEntity == entity && ImGui::BeginPopupModal("Rename Entity", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
@@ -271,6 +330,7 @@ namespace vultra_app
             {
                 reg.get_or_emplace<vultra::NameComponent>(entity).name = m_RenameBuffer.data();
                 m_RenameEntity = entt::null;
+                ctx.state.sceneDirty = true;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
@@ -285,7 +345,10 @@ namespace vultra_app
         if (opened && !(flags & ImGuiTreeNodeFlags_NoTreePushOnOpen))
         {
             for (auto child = world.firstChild(entity); child != entt::null; child = world.nextSibling(child))
-                drawEntityNode(ctx, world, child);
+            {
+                if (entityMatchesFilter(world, child, filter))
+                    drawEntityNode(ctx, world, child, filter);
+            }
             ImGui::TreePop();
         }
 

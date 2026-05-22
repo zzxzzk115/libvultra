@@ -5,7 +5,10 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$AssetRoot,
 
-    [switch]$NoBootstrap
+    [switch]$NoBootstrap,
+
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$ExtraArgs
 )
 
 $ErrorActionPreference = 'Stop'
@@ -52,10 +55,25 @@ if (-not (Test-Path -LiteralPath $vassetCli)) {
     throw "Installed vasset-cli not found: $vassetCli"
 }
 
+$vshadercPath = $env:VSHADERC
+if (-not $vshadercPath) {
+    $xmakePackageRoot = Join-Path $env:LOCALAPPDATA ".xmake/packages/v/vshadersystem"
+    if (Test-Path -LiteralPath $xmakePackageRoot) {
+        $vshadercName = if ($platform -eq 'windows') { 'vshaderc.exe' } else { 'vshaderc' }
+        $candidate = Get-ChildItem -Path $xmakePackageRoot -Recurse -Filter $vshadercName -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if ($candidate) {
+            $vshadercPath = $candidate.FullName
+        }
+    }
+}
+
 $oldPath = $env:PATH
 try {
-    $env:PATH = (Join-Path $installRoot 'bin') + ';' + (Join-Path $installRoot 'lib') + ';' + $oldPath
-    & $vassetCli import $assetRootPath
+    $shaderToolDir = if ($vshadercPath) { [System.IO.Path]::GetDirectoryName($vshadercPath) } else { "" }
+    $env:PATH = (Join-Path $installRoot 'bin') + ';' + (Join-Path $installRoot 'lib') + ';' + $shaderToolDir + ';' + $oldPath
+    & $vassetCli import $assetRootPath @ExtraArgs
     exit $LASTEXITCODE
 }
 finally {

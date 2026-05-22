@@ -93,7 +93,7 @@ namespace vultra
                 {
                     return;
                 }
-                setShaderLib(*rc.ext.builtinShaderLib);
+                setShaderLib(*rc.ext.builtinShaderLibForProfile(getShaderProfile()));
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 

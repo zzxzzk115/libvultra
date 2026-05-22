@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="shader_library"
+uid="dd7102f0e4de1827c263e3496bef0ba8"
+
+[source]
+file="shaders/project.vshaderlib.lua"
+
+[output]
+file="imported/shader_library/project.vshlib"
+
+[params]

@@ -20,7 +20,9 @@
 #include <vultra/function/world/world.hpp>
 
 #include <entt/meta/meta.hpp>
+#include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 #include <imgui.h>
 
 #include <algorithm>
@@ -30,6 +32,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vultra_app
@@ -67,6 +70,32 @@ namespace vultra_app
                            ext.begin(),
                            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
             return std::any_of(exts.begin(), exts.end(), [&](const char* candidate) { return ext == candidate; });
+        }
+
+        bool isEditableSourceText(const std::filesystem::path& path)
+        {
+            auto name = path.filename().generic_string();
+            auto ext  = path.extension().generic_string();
+            std::transform(name.begin(),
+                           name.end(),
+                           name.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            std::transform(ext.begin(),
+                           ext.end(),
+                           ext.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+            const auto endsWith = [&](const char* suffix)
+            {
+                const std::string_view text(name);
+                const std::string_view tail(suffix);
+                return text.size() >= tail.size() && text.substr(text.size() - tail.size()) == tail;
+            };
+
+            return ext == ".lua" || ext == ".vshader" || ext == ".glsl" || ext == ".vert" || ext == ".frag" ||
+                   ext == ".comp" || ext == ".json" || ext == ".vproject" || ext == ".vscn" || ext == ".txt" ||
+                   ext == ".md" || endsWith(".vfeature.lua") || endsWith(".vsrp.lua") ||
+                   endsWith(".vshaderlib.lua") || endsWith(".vso.lua");
         }
 
         void drawImagePreviewPlaceholder(const std::filesystem::path& path, const char* note)
@@ -271,6 +300,74 @@ namespace vultra_app
             if (changed)
                 transform.dirty = true;
             return changed;
+        }
+
+        glm::mat4 makeTransformMatrix(const vultra::TransformComponent& transform)
+        {
+            return glm::translate(glm::mat4 {1.0f}, transform.position) * glm::mat4_cast(transform.rotation) *
+                   glm::scale(glm::mat4 {1.0f}, transform.scale);
+        }
+
+        bool decomposeTransformMatrix(const glm::mat4& matrix, vultra::TransformComponent& transform)
+        {
+            glm::vec3 skew {};
+            glm::vec4 perspective {};
+            glm::quat rotation {};
+            glm::vec3 translation {};
+            glm::vec3 scale {};
+            if (!glm::decompose(matrix, scale, rotation, translation, skew, perspective))
+                return false;
+
+            transform.position = translation;
+            transform.rotation = glm::normalize(glm::conjugate(rotation));
+            transform.scale    = scale;
+            transform.dirty    = true;
+            return true;
+        }
+
+        bool alignCameraEntityToSceneView(EditorContext& ctx, vultra::World& world, entt::entity entity)
+        {
+            if (!ctx.state.sceneCamera.valid)
+            {
+                ctx.state.statusMessage = "Scene View camera is not available yet.";
+                return false;
+            }
+
+            auto& reg = world.registry();
+            if (!reg.all_of<vultra::CameraComponent>(entity))
+                return false;
+
+            auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
+            auto& camera    = reg.get<vultra::CameraComponent>(entity);
+
+            if (auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(entity);
+                hierarchy && hierarchy->parent != entt::null && reg.valid(hierarchy->parent) &&
+                reg.all_of<vultra::TransformComponent>(hierarchy->parent))
+            {
+                vultra::TransformComponent desired {};
+                desired.position = ctx.state.sceneCamera.position;
+                desired.rotation = ctx.state.sceneCamera.rotation;
+                desired.scale    = transform.scale;
+
+                const auto& parentTransform = reg.get<vultra::TransformComponent>(hierarchy->parent);
+                const auto  targetLocal     = glm::inverse(parentTransform.worldMatrix) * makeTransformMatrix(desired);
+                if (!decomposeTransformMatrix(targetLocal, transform))
+                {
+                    ctx.state.statusMessage = "Failed to align camera transform.";
+                    return false;
+                }
+            }
+            else
+            {
+                transform.position = ctx.state.sceneCamera.position;
+                transform.rotation = ctx.state.sceneCamera.rotation;
+                transform.dirty    = true;
+            }
+
+            if (camera.projection == 0u)
+                camera.fovYDegrees = ctx.state.sceneCamera.fovYDegrees;
+            ctx.state.statusMessage = "Camera aligned to Scene View.";
+            return true;
         }
 
         const char* metaFieldNameFromId(const entt::id_type id)
@@ -814,7 +911,7 @@ namespace vultra_app
         }
     } // namespace
 
-    InspectorWindow::InspectorWindow() : EditorWindow("Inspector") {}
+    InspectorWindow::InspectorWindow() : EditorWindow("Inspector", ICON_MDI_TUNE) {}
 
     void InspectorWindow::onClosed(EditorContext& ctx) { m_PreviewCache.clear(ctx); }
 
@@ -822,7 +919,7 @@ namespace vultra_app
 
     void InspectorWindow::draw(EditorContext& ctx)
     {
-        ImGui::Begin(m_Name.c_str(), &m_Open);
+        ImGui::Begin(title().c_str(), &m_Open);
 
         if (Selection::lastCategory() == SelectionCategory::Entity)
             drawEntityInspector(ctx);
@@ -880,16 +977,23 @@ namespace vultra_app
             copyName(m_NameBuffer, name.name);
         }
         if (ImGui::InputText("Name", m_NameBuffer.data(), m_NameBuffer.size()))
+        {
             name.name = m_NameBuffer.data();
+            ctx.state.sceneDirty = true;
+        }
 
         auto& status = reg.get_or_emplace<vultra::EntityStatusComponent>(e);
         if (ImGui::CollapsingHeader("Status", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            drawMetaFields(&ctx, status);
+            if (drawMetaFields(&ctx, status))
+                ctx.state.sceneDirty = true;
         }
 
         if (auto* transform = reg.try_get<vultra::TransformComponent>(e))
-            drawTransformComponent(*transform);
+        {
+            if (drawTransformComponent(*transform))
+                ctx.state.sceneDirty = true;
+        }
 
         if (componentHeader<vultra::HierarchyComponent>(world, e))
         {
@@ -906,12 +1010,23 @@ namespace vultra_app
             }
         }
 
-        drawReflectedComponent<vultra::MeshComponent>(world, e, &ctx);
-        drawReflectedComponent<vultra::GaussianSplatComponent>(world, e, &ctx);
+        drawReflectedComponent<vultra::MeshComponent>(
+            world, e, &ctx, [&](vultra::MeshComponent&, const char*) { ctx.state.sceneDirty = true; });
+        drawReflectedComponent<vultra::GaussianSplatComponent>(
+            world, e, &ctx, [&](vultra::GaussianSplatComponent&, const char*) { ctx.state.sceneDirty = true; });
 
         if (componentHeader<vultra::CameraComponent>(world, e))
         {
             auto& camera = reg.get<vultra::CameraComponent>(e);
+            if (ImGui::Button(ICON_MDI_CAMERA_SWITCH "  Align With Scene View", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+            {
+                if (alignCameraEntityToSceneView(ctx, world, e))
+                    ctx.state.sceneDirty = true;
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("Move this Camera entity to the current Scene View camera pose.");
+            ImGui::Spacing();
+
             drawMetaFields<vultra::CameraComponent>(
                 &ctx,
                 camera,
@@ -928,10 +1043,12 @@ namespace vultra_app
                     }
                     if (camera.zFar <= camera.zNear)
                         camera.zFar = camera.zNear + 0.001f;
+                    ctx.state.sceneDirty = true;
                 });
         }
 
-        drawReflectedComponent<vultra::ScriptComponent>(world, e, &ctx);
+        drawReflectedComponent<vultra::ScriptComponent>(
+            world, e, &ctx, [&](vultra::ScriptComponent&, const char*) { ctx.state.sceneDirty = true; });
 
         if (componentHeader<vultra::PrefabInstanceComponent>(world, e))
         {
@@ -965,6 +1082,7 @@ namespace vultra_app
                 if (ImGui::MenuItem(desc.label))
                 {
                     desc.add(reg, entity);
+                    ctx.state.sceneDirty = true;
                     ctx.state.statusMessage = std::string("Added component: ") + desc.label;
                     ImGui::CloseCurrentPopup();
                 }
@@ -1016,6 +1134,16 @@ namespace vultra_app
 
         if (std::filesystem::is_regular_file(path, ec))
             ImGui::Text("Size: %s", formatFileSize(std::filesystem::file_size(path, ec)).c_str());
+
+        if (std::filesystem::is_regular_file(path, ec) && isEditableSourceText(path))
+        {
+            if (ImGui::Button(ICON_MDI_FILE_DOCUMENT_EDIT " Open in Code Editor"))
+            {
+                ctx.state.codeEditorPath          = path.lexically_normal();
+                ctx.state.codeEditorOpenRequested = true;
+                ctx.state.statusMessage           = "Opened in Code Editor: " + path.filename().generic_string();
+            }
+        }
 
         if (ui::isTextureSourceAsset(path))
         {

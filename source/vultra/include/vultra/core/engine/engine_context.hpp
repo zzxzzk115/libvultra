@@ -43,6 +43,7 @@ namespace vultra
                 uint32_t    height {768};
                 bool        resizable {true};
                 bool        fullscreen {false};
+                bool        decorated {true};
 #if defined(__ANDROID__)
                 struct AndroidConfig
                 {
@@ -70,6 +71,8 @@ namespace vultra
 #endif
                 rhi::RenderDeviceFeatureFlagBits renderDeviceFeatureFlag {rhi::RenderDeviceFeatureFlagBits::eNormal};
                 BuiltinShaderLibrary            builtinShaderLibrary {BuiltinShaderLibrary::eAuto};
+                std::string                     renderPipelineAsset {};
+                std::string                     renderPipelineRendererKey {"universal"};
                 rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eDisabled};
                 rhi::SwapchainFormat             swapchainFormat {rhi::SwapchainFormat::eLinear};
 

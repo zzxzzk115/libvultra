@@ -38,6 +38,8 @@ namespace vultra_app
                 project.assetRoot = value;
             else if (key == "default_scene")
                 project.defaultScene = value;
+            else if (key == "render_pipeline")
+                project.renderPipeline = value;
         }
     } // namespace
 
@@ -92,7 +94,9 @@ namespace vultra_app
         if (project.assetRoot.empty())
             project.assetRoot = "resources";
         if (project.defaultScene.empty())
-            project.defaultScene = "res://scenes/main.vscn";
+            project.defaultScene = "res://scenes/test.vscn";
+        if (project.renderPipeline.empty())
+            project.renderPipeline = "res://render/default.vsrp.lua";
 
         return project;
     }
@@ -123,6 +127,7 @@ namespace vultra_app
         file << "name = \"" << project.name << "\"\n";
         file << "asset_root = \"" << project.assetRoot << "\"\n";
         file << "default_scene = \"" << project.defaultScene << "\"\n";
+        file << "render_pipeline = \"" << project.renderPipeline << "\"\n";
         return true;
     }
 } // namespace vultra_app

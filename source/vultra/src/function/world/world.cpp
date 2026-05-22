@@ -3,6 +3,7 @@
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
+#include "vultra/function/world/components/transform_component.hpp"
 
 #include <ranges>
 #include <vector>
@@ -17,6 +18,7 @@ namespace vultra
         // Ensure stable identity + hierarchy links for scene/world workflows.
         m_Registry.emplace<IDComponent>(e, IDComponent {CoreUUIDHelper::createStandardUUID()});
         m_Registry.emplace<HierarchyComponent>(e);
+        m_Registry.emplace<TransformComponent>(e);
         return e;
     }
 

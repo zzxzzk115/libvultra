@@ -10,6 +10,7 @@
 #include "vultra/function/rendering/framework/resource_uploader.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/builtin/upload_resources.hpp"
+#include "vultra/function/rendering/srp/declarative_renderer.hpp"
 #include "vultra/function/rendering/srp/render_context.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
@@ -35,6 +36,7 @@
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -42,6 +44,9 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <optional>
+#include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 #ifndef NDEBUG
 #include <fstream>
@@ -61,6 +66,148 @@ namespace vultra
             return false;
 #endif
         }
+
+        struct FrameGraphSnapshotWriter
+        {
+            nlohmann::json                  snapshot;
+            std::unordered_map<std::string, size_t> emittedNodes;
+            std::unordered_set<std::string> emittedEdges;
+
+            FrameGraphSnapshotWriter(std::string_view cameraName, std::string_view rendererKey)
+            {
+                snapshot["camera"] = cameraName;
+                snapshot["renderer"] = rendererKey;
+                snapshot["nodes"] = nlohmann::json::array();
+                snapshot["edges"] = nlohmann::json::array();
+            }
+
+            static std::string passId(const PassNode& pass)
+            {
+                return "pass:" + std::to_string(pass.getId());
+            }
+
+            static std::string resourceId(const ResourceNode& resource)
+            {
+                return "resource:" + std::to_string(resource.getId());
+            }
+
+            static const ResourceNode* findResource(const std::vector<ResourceNode>& resources, FrameGraphResource id)
+            {
+                const auto it = std::find_if(resources.begin(), resources.end(), [&](const auto& resource) {
+                    return resource.getId() == id;
+                });
+                return it != resources.end() ? &*it : nullptr;
+            }
+
+            void emitNode(std::string id, std::string label, std::string kind, nlohmann::json extra = {})
+            {
+                if (id.empty())
+                    return;
+
+                if (auto it = emittedNodes.find(id); it != emittedNodes.end())
+                {
+                    auto& node = snapshot["nodes"][it->second];
+                    if (!label.empty())
+                        node["label"] = std::move(label);
+                    if (!kind.empty())
+                        node["kind"] = std::move(kind);
+                    node.update(extra);
+                    return;
+                }
+
+                nlohmann::json node {
+                    {"id", id},
+                    {"label", std::move(label)},
+                    {"kind", std::move(kind)},
+                };
+                node.update(extra);
+                emittedNodes.emplace(std::move(id), snapshot["nodes"].size());
+                snapshot["nodes"].push_back(std::move(node));
+            }
+
+            void emitPass(const PassNode& pass)
+            {
+                emitNode(passId(pass),
+                         std::string(pass.getName()),
+                         "pass",
+                         nlohmann::json {
+                             {"sideEffect", pass.hasSideEffect()},
+                             {"active", pass.canExecute()},
+                         });
+            }
+
+            void emitResource(const ResourceNode& resource, std::optional<bool> imported = std::nullopt)
+            {
+                std::string label(resource.getName());
+                if (resource.getVersion() > ResourceEntry::kInitialVersion)
+                    label += " v" + std::to_string(resource.getVersion());
+
+                nlohmann::json extra {
+                    {"version", resource.getVersion()},
+                    {"refCount", resource.getRefCount()},
+                };
+                if (imported)
+                    extra["imported"] = *imported;
+
+                emitNode(resourceId(resource),
+                         std::move(label),
+                         "resource",
+                         std::move(extra));
+            }
+
+            void emitEdge(std::string from, std::string to, std::string label)
+            {
+                if (from.empty() || to.empty() || from == to)
+                    return;
+
+                const std::string key = from + "->" + to + ":" + label;
+                if (!emittedEdges.insert(key).second)
+                    return;
+
+                snapshot["edges"].push_back({
+                    {"from", std::move(from)},
+                    {"to", std::move(to)},
+                    {"label", std::move(label)},
+                });
+            }
+
+            void operator()(const PassNode& pass, const std::vector<ResourceNode>& resources)
+            {
+                if (!pass.canExecute())
+                    return;
+
+                emitPass(pass);
+                const auto pid = passId(pass);
+
+                for (const auto& access : pass.each(PassNode::Read {}))
+                {
+                    if (const auto* resource = findResource(resources, access.id))
+                    {
+                        emitResource(*resource);
+                        emitEdge(resourceId(*resource), pid, "read");
+                    }
+                }
+                for (const auto& access : pass.each(PassNode::Write {}))
+                {
+                    if (const auto* resource = findResource(resources, access.id))
+                    {
+                        emitResource(*resource);
+                        emitEdge(pid, resourceId(*resource), "write");
+                    }
+                }
+            }
+
+            void operator()(const ResourceNode& resource, const ResourceEntry& entry, const std::vector<PassNode>&)
+            {
+                if (resource.getRefCount() > 0)
+                    emitResource(resource, entry.isImported());
+            }
+
+            void flush(std::ostream& os) const
+            {
+                os << snapshot.dump();
+            }
+        };
 
         void clearColorTarget(rhi::CommandBuffer&        cb,
                               rhi::Texture&              target,
@@ -513,8 +660,28 @@ namespace vultra
         VULTRA_CORE_TRACE("[RenderSystem] Creating transient resources");
         m_TransientResources = createScope<framegraph::TransientResources>(backendService.renderDevice());
 
-        VULTRA_CORE_TRACE("[RenderSystem] Providing IRenderService");
-        ctx().services.provide<IRenderService>(this);
+        if (!ctx().config.render.renderPipelineAsset.empty())
+        {
+            auto* assetService = ctx().services.tryGet<IAssetService>();
+            auto  pipelineText = assetService ? assetService->loadTextAssetSync(ctx().config.render.renderPipelineAsset) :
+                                                 vbase::Result<std::string, std::string>::err("asset service unavailable");
+            if (pipelineText)
+            {
+                VULTRA_CORE_INFO("[RenderSystem] Using project render pipeline '{}'",
+                                 ctx().config.render.renderPipelineAsset);
+                const auto rendererKey = ctx().config.render.renderPipelineRendererKey.empty() ?
+                                             std::string {"universal"} :
+                                             ctx().config.render.renderPipelineRendererKey;
+                m_Renderers[rendererKey] = createRef<DeclarativeRenderer>(ctx().config.render.renderPipelineAsset);
+                m_DefaultRendererKey     = rendererKey;
+            }
+            else
+            {
+                VULTRA_CORE_WARN("[RenderSystem] Project render pipeline '{}' is unavailable: {}. Falling back to registered renderer.",
+                                 ctx().config.render.renderPipelineAsset,
+                                 std::move(pipelineText).error());
+            }
+        }
 
         VULTRA_CORE_TRACE("[RenderSystem] Initializing renderers");
         for (auto& [key, renderer] : m_Renderers)
@@ -531,6 +698,13 @@ namespace vultra
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eLinear, .minFilter = rhi::TexelFilter::eLinear});
         m_Samplers["nearest"] = backendService.renderDevice().getSampler(
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eNearest, .minFilter = rhi::TexelFilter::eNearest});
+
+        VULTRA_CORE_TRACE("[RenderSystem] Providing IRenderService");
+        ctx().services.provide<IRenderService>(this);
+
+        const auto initialExtent = backendService.swapchain().getExtent();
+        if (initialExtent.width > 0u && initialExtent.height > 0u)
+            onResize(initialExtent.width, initialExtent.height);
 
         VULTRA_CORE_INFO("[RenderSystem] Initialized!");
 
@@ -588,8 +762,51 @@ namespace vultra
         }
     }
 
+    bool RenderSystem::reloadRenderPipeline()
+    {
+        if (m_InRenderFrame)
+        {
+            m_PendingRenderPipelineReload = true;
+            VULTRA_CORE_INFO("[RenderSystem] Queued render pipeline reload for next frame");
+            return true;
+        }
+
+        return reloadRenderPipelineNow();
+    }
+
+    bool RenderSystem::reloadRenderPipelineNow()
+    {
+        const auto& renderConfig = ctx().config.render;
+        if (renderConfig.renderPipelineAsset.empty())
+            return false;
+
+        if (auto* backendService = ctx().services.tryGet<IRenderBackendService>())
+            backendService->renderDevice().waitIdle();
+
+        const auto rendererKey = renderConfig.renderPipelineRendererKey.empty() ?
+                                     std::string {"project"} :
+                                     renderConfig.renderPipelineRendererKey;
+
+        auto renderer = createRef<DeclarativeRenderer>(renderConfig.renderPipelineAsset);
+        Services services = ctx().services;
+        renderer->setupServices(services);
+        renderer->init();
+        m_Renderers[rendererKey] = std::move(renderer);
+        m_DefaultRendererKey = rendererKey;
+        m_PendingRenderPipelineReload = false;
+        VULTRA_CORE_INFO("[RenderSystem] Reloaded render pipeline '{}'", renderConfig.renderPipelineAsset);
+        return true;
+    }
+
     void RenderSystem::renderFrame()
     {
+        m_InRenderFrame = true;
+        struct RenderFrameGuard
+        {
+            bool& value;
+            ~RenderFrameGuard() { value = false; }
+        } renderFrameGuard {m_InRenderFrame};
+
         const auto renderFrameCpuStart = std::chrono::steady_clock::now();
 
         auto& backendService     = ctx().services.require<IRenderBackendService>();
@@ -608,7 +825,11 @@ namespace vultra
 
         auto& rd = backendService.renderDevice();
 
+        if (m_PendingRenderPipelineReload)
+            reloadRenderPipelineNow();
+
         m_RuntimeProfiler.beginFrame(m_FrameCounter);
+        m_LastFrameGraphSnapshot.clear();
         m_RuntimeProfiler.setVsyncEnabled(ctx().config.render.vSyncConfig != rhi::VerticalSync::eDisabled);
         rhi::CommandBuffer::resetFrameStats();
 
@@ -1322,20 +1543,28 @@ namespace vultra
                 renderer->buildFrameGraph(buildCtx);
                 fg.compile();
 
+                {
+                    std::ostringstream       snapshot;
+                    FrameGraphSnapshotWriter snapshotWriter {cam.name, cam.rendererKey};
+                    fg.debugOutput(snapshot, snapshotWriter);
+                    m_LastFrameGraphSnapshot += snapshot.str();
+                    m_LastFrameGraphSnapshot += "\n";
+                }
+
 #ifndef NDEBUG
                 {
                     const std::filesystem::path debugRoot = !ctx().config.writableRoot.empty() ?
                                                                 std::filesystem::path(ctx().config.writableRoot) :
                                                                 vbase::executable_dir();
-                    const std::filesystem::path debugPath = debugRoot / "framegraph.dot";
+                    const std::filesystem::path debugPath = debugRoot / "framegraph.jsonl";
                     std::ofstream               ofs(debugPath);
                     if (ofs.is_open())
                     {
-                        ofs << fg;
+                        ofs << m_LastFrameGraphSnapshot;
                     }
                     else
                     {
-                        VULTRA_CORE_WARN("[RenderSystem] Failed to write framegraph dot file: {}",
+                        VULTRA_CORE_WARN("[RenderSystem] Failed to write framegraph snapshot file: {}",
                                          debugPath.generic_string());
                     }
                 }
@@ -1349,7 +1578,12 @@ namespace vultra
                     .frame       = m_PreparedFrameData,
                     .viewData    = viewData,
                     .resourceSet = {},
-                    .ext         = {.builtinShaderLib = &shaderService.builtinLibrary(), .samplers = m_Samplers},
+                    .ext         = {.builtinShaderLib = &shaderService.builtinLibrary(),
+                                    .builtinHighendShaderLib =
+                                        &shaderService.builtinLibrary(rhi::ShaderProfile::eHighend),
+                                    .builtinCompatibilityShaderLib =
+                                        &shaderService.builtinLibrary(rhi::ShaderProfile::eCompatibility),
+                                    .samplers = m_Samplers},
                 };
 
                 {

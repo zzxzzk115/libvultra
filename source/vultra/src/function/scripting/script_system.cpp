@@ -71,7 +71,8 @@ namespace vultra
 
         syncInstances();
 
-        if (m_PlaybackPaused)
+        m_SingleStepActive = m_PlaybackPaused && m_SingleStepRequests > 0u;
+        if (m_PlaybackPaused && !m_SingleStepActive)
             return;
 
         auto* worldSvc = ctx().services.tryGet<IWorldService>();
@@ -102,7 +103,7 @@ namespace vultra
 
     void ScriptSystem::onPhysics(fsec /*dt*/)
     {
-        if (!m_PlaybackPlaying || m_PlaybackPaused)
+        if (!m_PlaybackPlaying || (m_PlaybackPaused && !m_SingleStepActive))
             return;
 
         auto* timingSvc = ctx().services.tryGet<ITimingService>();
@@ -131,6 +132,16 @@ namespace vultra
             for (uint32_t step = 0; step < fixedSteps; ++step)
                 fixedUpdateInstance(e, inst, fixedDt);
         }
+    }
+
+    void ScriptSystem::onPostUpdate(fsec /*dt*/)
+    {
+        if (!m_SingleStepActive)
+            return;
+
+        if (m_SingleStepRequests > 0u)
+            --m_SingleStepRequests;
+        m_SingleStepActive = false;
     }
 
     void ScriptSystem::syncInstances()
@@ -321,7 +332,19 @@ namespace vultra
         m_PlaybackPaused  = paused;
 
         if (!m_PlaybackPlaying)
+        {
+            m_SingleStepActive   = false;
+            m_SingleStepRequests = 0u;
             destroyAllInstances();
+        }
+    }
+
+    void ScriptSystem::requestSingleStep()
+    {
+        if (!m_PlaybackPlaying)
+            return;
+        m_PlaybackPaused = true;
+        ++m_SingleStepRequests;
     }
 
     void ScriptSystem::destroyAllInstances()

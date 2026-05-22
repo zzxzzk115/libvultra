@@ -3,3 +3,4 @@ version = 1
 name = "example"
 asset_root = "resources"
 default_scene = "res://scenes/test.vscn"
+render_pipeline = "res://render/default.vsrp.lua"

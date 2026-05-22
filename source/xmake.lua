@@ -272,9 +272,14 @@ if not is_plat("android") and not is_plat("wasm") then
         add_headerfiles("vultra_app/include/(**.hpp)")
         add_files("vultra_app/src/**.cpp")
         add_deps("vultra")
-        add_files("../examples/demo_app/imgui.ini")
         add_packages("argparse")
         set_rundir("$(projectdir)")
         set_runargs("--editor", "--project", "$(projectdir)/example.vproject")
         set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra-app")
+        after_build(function (target)
+            local stale_imgui_ini = path.join(target:targetdir(), "imgui.ini")
+            if os.isfile(stale_imgui_ini) then
+                os.rm(stale_imgui_ini)
+            end
+        end)
 end

@@ -21,7 +21,8 @@ namespace vultra::platform::sdl
                   Position         position,
                   bool             cursorVisible,
                   bool             resizable,
-                  bool             fullscreen);
+                  bool             fullscreen,
+                  bool             decorated);
         ~SDLWindow() override;
 
         [[nodiscard]] PlatformType platformType() const override { return PlatformType::eSDL3; }
@@ -57,9 +58,11 @@ namespace vultra::platform::sdl
         [[nodiscard]] bool             getMouseRelativeMode() const override { return m_MouseRelativeMode; }
         [[nodiscard]] bool             isResizable() const override { return m_Resizable; }
         [[nodiscard]] bool             isFullscreen() const override { return m_Fullscreen; }
+        [[nodiscard]] bool             isDecorated() const override { return m_Decorated; }
         [[nodiscard]] float            getDisplayScale() const override;
         [[nodiscard]] bool             shouldClose() const override { return m_ShouldClose; }
         [[nodiscard]] bool             isMinimized() const override { return m_IsMinimized; }
+        [[nodiscard]] bool             isMaximized() const override;
         [[nodiscard]] bool             isReady() const override { return true; }
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
@@ -70,6 +73,9 @@ namespace vultra::platform::sdl
 
         void pollEvents(int timeoutMillis = 0) override;
         void close() override;
+        void minimize() override;
+        void maximize() override;
+        void restore() override;
 
         [[nodiscard]] SDL_Window* getHandle() const { return m_WindowHandle; }
 
@@ -95,6 +101,7 @@ namespace vultra::platform::sdl
         bool        m_MouseRelativeMode {false};
         bool        m_Resizable {true};
         bool        m_Fullscreen {false};
+        bool        m_Decorated {true};
         bool        m_ShouldClose {false};
         bool        m_IsMinimized {false};
 

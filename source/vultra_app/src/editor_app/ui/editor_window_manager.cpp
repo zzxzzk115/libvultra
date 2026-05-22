@@ -14,6 +14,11 @@ namespace vultra_app
         for (std::size_t i = 0; i < m_Windows.size(); ++i)
         {
             auto& window = m_Windows[i];
+            if (ctx.state.codeEditorOpenRequested && window->name() == "Code Editor")
+            {
+                window->open() = true;
+                ctx.state.codeEditorOpenRequested = false;
+            }
             if (window->open())
             {
                 window->draw(ctx);

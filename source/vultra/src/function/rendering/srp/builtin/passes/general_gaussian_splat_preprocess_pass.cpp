@@ -481,7 +481,7 @@ namespace vultra
                 {
                     return;
                 }
-                setShaderLib(*rc.ext.builtinShaderLib);
+                setShaderLib(*rc.ext.builtinShaderLibForProfile(getShaderProfile()));
 
                 auto bindSubset = [&rc](const rhi::BasePipeline& pipeline, const auto& bindings, const bool includeUniforms = false) {
                     auto saved = rc.resourceSet;

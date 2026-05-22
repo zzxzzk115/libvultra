@@ -21,7 +21,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <limits>
+#include <mutex>
 #include <string_view>
 
 namespace vultra
@@ -381,6 +383,10 @@ namespace vultra
     void AssetSystem::configure(const AssetSystemDesc& desc)
     {
         m_Desc = desc;
+        {
+            std::scoped_lock lock(m_TextOverrideMutex);
+            m_TextAssetOverrides.clear();
+        }
         if (m_Desc.assetRoot.empty())
             m_Desc.assetRoot = ctx().config.asset.assetRoot;
         if (m_Desc.importedFolder.empty())
@@ -1311,8 +1317,60 @@ namespace vultra
         return m_Desc.assetRoot + vbaseUri.path.str().data();
     }
 
+    bool AssetSystem::reimportAsset(std::string_view uri, const bool forceReimport)
+    {
+#ifdef VULTRA_HAS_VASSET_IMPORT
+        if (ctx().config.asset.loadFromVPK)
+            return false;
+
+        const auto physicalPath = std::filesystem::path(resolveUri(uri)).lexically_normal();
+        vasset::VAssetImporter importer {m_Registry};
+        auto result = importer.importOrReimportAsset(physicalPath.generic_string(), forceReimport);
+        if (!result)
+        {
+            VULTRA_CORE_ERROR("[AssetSystem] Failed to reimport asset '{}'", uri);
+            return false;
+        }
+
+        const auto registryPath = (std::filesystem::path(m_Desc.assetRoot) / m_Desc.importedFolder / m_Desc.registryFile)
+                                      .generic_string();
+        m_Registry.save(registryPath);
+        m_Resolver.loadFromAssetRegistry(m_Registry);
+        m_Resolver.setScheme(m_Desc.scheme);
+        return true;
+#else
+        static_cast<void>(uri);
+        static_cast<void>(forceReimport);
+        return false;
+#endif
+    }
+
     vbase::Result<std::string, std::string> AssetSystem::loadTextAssetSync(std::string_view uri)
     {
+        {
+            std::scoped_lock lock(m_TextOverrideMutex);
+            if (auto it = m_TextAssetOverrides.find(std::string(uri)); it != m_TextAssetOverrides.end())
+                return vbase::Result<std::string, std::string>::ok(it->second);
+        }
+
+        if (!ctx().config.asset.loadFromVPK)
+        {
+            const auto sourcePath = std::filesystem::path(resolveUri(uri)).lexically_normal();
+            std::error_code ec;
+            if (std::filesystem::is_regular_file(sourcePath, ec))
+            {
+                std::ifstream file(sourcePath, std::ios::binary | std::ios::ate);
+                if (file)
+                {
+                    const auto size = static_cast<std::streamsize>(file.tellg());
+                    std::string text(static_cast<size_t>(std::max<std::streamsize>(size, 0)), '\0');
+                    file.seekg(0);
+                    if (text.empty() || file.read(text.data(), size))
+                        return vbase::Result<std::string, std::string>::ok(std::move(text));
+                }
+            }
+        }
+
         auto bytesResult = m_VFS.readAll(uri);
         if (!bytesResult)
             return vbase::Result<std::string, std::string>::err("Failed to read text asset: " + std::string(uri));
@@ -1320,5 +1378,32 @@ namespace vultra
         const auto& bytes = bytesResult.value();
         return vbase::Result<std::string, std::string>::ok(
             std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+    }
+
+    void AssetSystem::setTextAssetOverride(std::string_view uri, std::string text)
+    {
+        std::scoped_lock lock(m_TextOverrideMutex);
+        m_TextAssetOverrides[std::string(uri)] = std::move(text);
+    }
+
+    void AssetSystem::clearTextAssetOverride(std::string_view uri)
+    {
+        std::scoped_lock lock(m_TextOverrideMutex);
+        m_TextAssetOverrides.erase(std::string(uri));
+    }
+
+    vbase::Result<std::vector<uint8_t>, std::string> AssetSystem::loadBinaryAssetSync(std::string_view uri)
+    {
+        auto bytesResult = m_VFS.readAll(uri);
+        if (!bytesResult)
+            return vbase::Result<std::vector<uint8_t>, std::string>::err("Failed to read binary asset: " + std::string(uri));
+
+        const auto& bytes = bytesResult.value();
+        std::vector<uint8_t> out;
+        out.reserve(bytes.size());
+        for (const auto byte : bytes)
+            out.push_back(static_cast<uint8_t>(byte));
+
+        return vbase::Result<std::vector<uint8_t>, std::string>::ok(std::move(out));
     }
 } // namespace vultra

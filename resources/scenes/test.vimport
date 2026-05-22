@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="scene"
+uid="1649bf55389482fb8b3aa7229e36f6fc"
+
+[source]
+file="scenes/test.vscn"
+
+[output]
+file="imported/scene/scenes/test.vscn"
+
+[params]

@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="script_lua"
+uid="2eedfe6f803f93deb3e6e7c8d64d87e3"
+
+[source]
+file="scripts/binding_probe.lua"
+
+[output]
+file="imported/script_lua/scripts/binding_probe.lua"
+
+[params]

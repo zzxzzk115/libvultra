@@ -13,7 +13,6 @@
 #include <vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp>
 #include <vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp>
 #include <vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/test_feature.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
@@ -58,7 +57,6 @@ namespace
             }
 
             emplaceFeature<vultra::MeshletFeature>();
-            emplaceFeature<vultra::TestFeature>();
             emplaceFeature<vultra::GeneralGaussianSplatFeature>();
             emplaceFeature<vultra::FinalCompositionFeature>();
         }
@@ -173,7 +171,14 @@ namespace
         void onConfigureDemo(vultra::Engine& engine) override
         {
             if (m_State.mode != vultra_app::AppMode::Runtime)
+            {
                 engine.ctx().config.imgui.enableDocking = true;
+                engine.ctx().config.imgui.imguiIniFile  = "vultra_editor_layout_v2.ini";
+                engine.ctx().config.window.width        = 1280;
+                engine.ctx().config.window.height       = 720;
+                engine.ctx().config.window.decorated =
+                    engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eWebGPU;
+            }
 
             if (m_Options.editorMode)
             {

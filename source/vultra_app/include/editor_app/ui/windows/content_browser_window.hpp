@@ -3,6 +3,7 @@
 #include "common/asset_preview_cache.hpp"
 #include "editor_app/ui/editor_window.hpp"
 
+#include <imgui.h>
 #include <array>
 #include <filesystem>
 #include <unordered_map>
@@ -10,10 +11,10 @@
 
 namespace vultra_app
 {
-    class AssetBrowserWindow final : public EditorWindow
+    class ContentBrowserWindow final : public EditorWindow
     {
     public:
-        AssetBrowserWindow();
+        ContentBrowserWindow();
 
         void draw(EditorContext& ctx) override;
         void onClosed(EditorContext& ctx) override;
@@ -27,6 +28,10 @@ namespace vultra_app
         void drawGridItem(EditorContext& ctx, const std::filesystem::path& path, float iconSize);
         void handleDeferredSelection(EditorContext& ctx, const std::filesystem::path& path, bool hovered);
         void selectPath(EditorContext& ctx, const std::filesystem::path& path);
+        void openPath(EditorContext& ctx, const std::filesystem::path& path);
+        void beginBoxSelection(const ImVec2& start);
+        void updateBoxSelection(EditorContext& ctx);
+        bool isPathSelected(const std::filesystem::path& path) const;
         void invalidateEntryCache();
         void drawContextMenu(EditorContext& ctx, const std::filesystem::path& path, bool isDirectory);
         void drawPendingPopups(EditorContext& ctx);
@@ -55,6 +60,17 @@ namespace vultra_app
         std::unordered_map<std::string, bool> m_VisibleChildDirectoryCache;
         int m_RemainingThumbnailLoads {0};
         bool m_PendingSelectDragging {false};
+        bool m_BoxSelecting {false};
+        ImVec2 m_BoxSelectStart {};
+        ImVec2 m_BoxSelectEnd {};
+        struct GridItemBounds
+        {
+            std::filesystem::path path;
+            ImVec2                min {};
+            ImVec2                max {};
+        };
+        std::vector<GridItemBounds> m_GridItemBounds;
+        std::vector<std::filesystem::path> m_SelectedPaths;
         bool m_OpenRenamePopup {false};
         bool m_OpenDeletePopup {false};
         bool m_OpenNewFolderPopup {false};

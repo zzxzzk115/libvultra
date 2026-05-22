@@ -13,7 +13,7 @@ namespace vultra::platform::glfw
     class GLFWWindow final : public os::Window
     {
     public:
-        GLFWWindow(std::string_view title, Extent extent, bool resizable, bool fullscreen);
+        GLFWWindow(std::string_view title, Extent extent, bool resizable, bool fullscreen, bool decorated);
         ~GLFWWindow() override;
 
         [[nodiscard]] PlatformType platformType() const override { return PlatformType::eGLFW; }
@@ -44,9 +44,11 @@ namespace vultra::platform::glfw
         [[nodiscard]] bool             getMouseRelativeMode() const override { return m_MouseRelativeMode; }
         [[nodiscard]] bool             isResizable() const override { return m_Resizable; }
         [[nodiscard]] bool             isFullscreen() const override { return m_Fullscreen; }
+        [[nodiscard]] bool             isDecorated() const override { return m_Decorated; }
         [[nodiscard]] float            getDisplayScale() const override;
         [[nodiscard]] bool             shouldClose() const override { return m_ShouldClose; }
         [[nodiscard]] bool             isMinimized() const override { return false; }
+        [[nodiscard]] bool             isMaximized() const override;
         [[nodiscard]] bool             isReady() const override { return m_WindowHandle != nullptr; }
         [[nodiscard]] GLFWwindow*      getHandle() const { return m_WindowHandle; }
 
@@ -58,6 +60,9 @@ namespace vultra::platform::glfw
 
         void pollEvents(int timeoutMillis) override;
         void close() override;
+        void minimize() override;
+        void maximize() override;
+        void restore() override;
 
         static void shutdown();
 
@@ -89,6 +94,7 @@ namespace vultra::platform::glfw
         bool        m_MouseRelativeMode {false};
         bool        m_Resizable {true};
         bool        m_Fullscreen {false};
+        bool        m_Decorated {true};
         bool        m_ShouldClose {false};
         glm::vec2   m_LastCursorPosition {};
         bool        m_HasLastCursorPosition {false};

@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="render_graph_json"
+uid="8d220a96c43bb51111d2ebe30a51a8d6"
+
+[source]
+file="render/graphs/tonemapping.vrg.json"
+
+[output]
+file="imported/render_graph_json/render/graphs/tonemapping.vrg.json"
+
+[params]

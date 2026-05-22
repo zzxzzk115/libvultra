@@ -36,6 +36,7 @@ namespace vultra
                        .setExtent({static_cast<int>(cfg.window.width), static_cast<int>(cfg.window.height)})
                        .setResizable(cfg.window.resizable)
                        .setFullscreen(cfg.window.fullscreen)
+                       .setDecorated(cfg.window.decorated)
                        .setPlatform(platformType)
                        .build();
 #endif

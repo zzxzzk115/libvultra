@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 
 namespace vultra_app
 {
@@ -26,16 +27,39 @@ namespace vultra_app
         void shutdown(EditorContext& ctx);
 
     private:
+        enum class LoadingPhase
+        {
+            Idle,
+            Pending,
+            ConfigureAssets,
+            LoadScene,
+            Finalize,
+        };
+
+        struct LoadingState
+        {
+            LoadingPhase         phase {LoadingPhase::Idle};
+            std::filesystem::path projectRoot;
+            float                progress {0.0f};
+            std::string          message;
+        };
+
         void ensureInitialized();
-        void syncProjectRuntime(EditorContext& ctx);
+        bool updateProjectLoading(EditorContext& ctx);
+        void startProjectLoading(const std::filesystem::path& projectRoot);
+        void drawLoadingOverlay() const;
+        void saveCurrentScene(EditorContext& ctx);
         void syncPlaybackState(EditorContext& ctx);
         void capturePlayModeSnapshot(EditorContext& ctx);
         void restorePlayModeSnapshot(EditorContext& ctx);
-        void drawMainMenuBar(EditorContext& ctx);
+        void beginDockSpace();
+        void endDockSpace();
         void buildDefaultDockLayout();
+        void resetDefaultDockLayout();
 
         EditorWindowManager m_WindowManager;
         std::filesystem::path m_SyncedProject;
+        LoadingState        m_Loading;
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                m_Initialized {false};
         bool                m_DefaultLayoutBuilt {false};

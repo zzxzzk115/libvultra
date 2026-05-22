@@ -62,6 +62,9 @@ namespace vultra
         loadGaussianSplatSync(std::string_view uri) override;
 
         vbase::Result<std::string, std::string> loadTextAssetSync(std::string_view uri) override;
+        void setTextAssetOverride(std::string_view uri, std::string text) override;
+        void clearTextAssetOverride(std::string_view uri) override;
+        vbase::Result<std::vector<uint8_t>, std::string> loadBinaryAssetSync(std::string_view uri) override;
 
         const vasset::VAssetRegistry& registry() const override { return m_Registry; }
         const vasset::VUUIDResolver&  resolver() const override { return m_Resolver; }
@@ -69,6 +72,7 @@ namespace vultra
         AssetMemoryStats memoryStats() const override;
 
         std::string resolveUri(const std::string_view uri) const override;
+        bool        reimportAsset(std::string_view uri, bool forceReimport = true) override;
 
         // Bindless texture index resolution.
         // Returns 0 for invalid UUID.
@@ -124,5 +128,8 @@ namespace vultra
 
         // Texture UUID -> bindless index
         std::unordered_map<CoreUUID, uint32_t> m_TexUUIDToBindlessIndex;
+
+        std::mutex                                   m_TextOverrideMutex;
+        std::unordered_map<std::string, std::string> m_TextAssetOverrides;
     };
 } // namespace vultra

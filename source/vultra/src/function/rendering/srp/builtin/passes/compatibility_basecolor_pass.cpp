@@ -205,7 +205,7 @@ namespace vultra
                 }
 
                 setRenderDevice(rc.rd);
-                setShaderLib(*rc.ext.builtinShaderLib);
+                setShaderLib(*rc.ext.builtinShaderLibForProfile(getShaderProfile()));
 
                 const auto* renderWorld      = rc.view().renderWorld;
                 const auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;

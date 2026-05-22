@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="script_lua"
+uid="54e8dd1393a49ed2499bb964c5269117"
+
+[source]
+file="scripts/test_move.lua"
+
+[output]
+file="imported/script_lua/scripts/test_move.lua"
+
+[params]

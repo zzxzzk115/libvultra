@@ -3,9 +3,11 @@ set -eu
 
 repo_root="$(cd "$1" && pwd -P)"
 asset_root="$2"
+shift 2
 no_bootstrap=0
-if [ "${3:-}" = "--no-bootstrap" ]; then
+if [ "${1:-}" = "--no-bootstrap" ]; then
     no_bootstrap=1
+    shift
 fi
 
 case "$asset_root" in
@@ -56,6 +58,24 @@ if [ -d "$install_root/lib" ]; then
     export LD_LIBRARY_PATH="$install_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     export DYLD_LIBRARY_PATH="$install_root/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
 fi
-export PATH="$install_root/bin:$PATH"
 
-exec "$vasset_cli" import "$asset_root"
+shader_tool_dir=""
+if [ -n "${VSHADERC:-}" ] && [ -x "$VSHADERC" ]; then
+    shader_tool_dir="$(dirname "$VSHADERC")"
+else
+    xmake_pkg_root="${XMAKE_GLOBALDIR:-$HOME/.xmake}/packages/v/vshadersystem"
+    if [ -d "$xmake_pkg_root" ]; then
+        found_vshaderc="$(find "$xmake_pkg_root" -name vshaderc -type f -perm -111 2>/dev/null | head -n 1 || true)"
+        if [ -n "$found_vshaderc" ]; then
+            shader_tool_dir="$(dirname "$found_vshaderc")"
+        fi
+    fi
+fi
+
+if [ -n "$shader_tool_dir" ]; then
+    export PATH="$install_root/bin:$shader_tool_dir:$PATH"
+else
+    export PATH="$install_root/bin:$PATH"
+fi
+
+exec "$vasset_cli" import "$asset_root" "$@"

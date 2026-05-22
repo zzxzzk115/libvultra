@@ -160,7 +160,7 @@ namespace vultra
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
                     return;
-                setShaderLib(*rc.ext.builtinShaderLib);
+                setShaderLib(*rc.ext.builtinShaderLibForProfile(getShaderProfile()));
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 

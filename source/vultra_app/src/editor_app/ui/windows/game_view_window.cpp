@@ -101,7 +101,7 @@ namespace vultra_app
             auto& reg = world.registry();
             auto  e   = world.createEntity();
             reg.emplace<vultra::NameComponent>(e, vultra::NameComponent {"Camera"});
-            auto& transform = reg.emplace<vultra::TransformComponent>(e);
+            auto& transform = reg.get_or_emplace<vultra::TransformComponent>(e);
             transform.position = {0.0f, 1.6f, 4.0f};
             transform.rotation = glm::quat(glm::radians(glm::vec3 {-12.0f, 180.0f, 0.0f}));
             transform.dirty    = true;
@@ -111,7 +111,7 @@ namespace vultra_app
         }
     } // namespace
 
-    GameViewWindow::GameViewWindow() : EditorWindow("Game View") {}
+    GameViewWindow::GameViewWindow() : EditorWindow("Game View", ICON_MDI_GAMEPAD_VARIANT) {}
 
     void GameViewWindow::onClosed(EditorContext& ctx) { releaseRenderTarget(ctx); }
 
@@ -119,9 +119,15 @@ namespace vultra_app
 
     void GameViewWindow::draw(EditorContext& ctx)
     {
-        ImGui::Begin(m_Name.c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        const bool visible =
+            ImGui::Begin(title().c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        ctx.state.gameViewVisible = visible && !ImGui::IsWindowCollapsed();
+        if (!visible)
+        {
+            ImGui::End();
+            return;
+        }
         drawToolbar(ctx);
-        ImGui::Separator();
 
         ImGui::BeginChild("##GameViewport", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
         ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -170,6 +176,8 @@ namespace vultra_app
                 {
                     const float aspect = outputSize.x / std::max(outputSize.y, 1.0f);
                     auto        renderCamera = makeGameCamera(world, cam, aspect, renderTarget);
+                    if (!ctx.state.currentProject.empty() && renderCamera.rendererKey == "universal")
+                        renderCamera.rendererKey = "project";
                     if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
                         cameraService->addManualCamera(renderCamera);
                 }
@@ -191,6 +199,7 @@ namespace vultra_app
                 if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
                 {
                     createDefaultCamera(worldService->world());
+                    ctx.state.sceneDirty = true;
                     ctx.state.statusMessage = "Created a primary Camera entity.";
                 }
             }
@@ -202,21 +211,8 @@ namespace vultra_app
 
     void GameViewWindow::drawToolbar(EditorContext& ctx)
     {
-        if (ImGui::SmallButton(ctx.state.editorPlaying ? ICON_MDI_STOP "  Stop" : ICON_MDI_PLAY "  Play"))
-        {
-            ctx.state.editorPlaying = !ctx.state.editorPlaying;
-            if (!ctx.state.editorPlaying)
-                ctx.state.editorPaused = false;
-        }
-        ImGui::SameLine();
-        if (!ctx.state.editorPlaying)
-            ImGui::BeginDisabled();
-        if (ImGui::SmallButton(ctx.state.editorPaused ? ICON_MDI_PLAY "  Resume" : ICON_MDI_PAUSE "  Pause"))
-            ctx.state.editorPaused = !ctx.state.editorPaused;
-        if (!ctx.state.editorPlaying)
-            ImGui::EndDisabled();
+        (void)ctx;
 
-        ImGui::SameLine(0.0f, 14.0f);
         const char* resolutionLabels[] = {"Free Aspect", "16:9", "4:3", "21:9", "1920x1080", "1280x720", "800x600"};
         ImGui::SetNextItemWidth(126.0f);
         if (ImGui::Combo("##GameViewResolution", &m_SelectedResolution, resolutionLabels, IM_ARRAYSIZE(resolutionLabels)))

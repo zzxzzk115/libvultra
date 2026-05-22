@@ -53,9 +53,11 @@ namespace vultra::platform::android
         [[nodiscard]] bool       getMouseRelativeMode() const override { return false; }
         [[nodiscard]] bool       isResizable() const override { return false; }
         [[nodiscard]] bool       isFullscreen() const override { return true; }
+        [[nodiscard]] bool       isDecorated() const override { return false; }
         [[nodiscard]] float      getDisplayScale() const override { return m_DisplayScale; }
         [[nodiscard]] bool       shouldClose() const override { return m_ShouldClose; }
         [[nodiscard]] bool       isMinimized() const override { return false; }
+        [[nodiscard]] bool       isMaximized() const override { return true; }
         [[nodiscard]] bool       isReady() const override;
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
@@ -66,6 +68,9 @@ namespace vultra::platform::android
 
         void pollEvents(int timeoutMillis) override;
         void close() override;
+        void minimize() override {}
+        void maximize() override {}
+        void restore() override {}
 
         [[nodiscard]] ANativeWindow* nativeWindow() const { return m_NativeWindow; }
 

@@ -26,6 +26,34 @@ namespace vultra
         return s.size() >= p.size() && s.substr(0, p.size()) == p;
     }
 
+    static inline std::string strip_inline_comment(std::string_view s)
+    {
+        bool inQuote = false;
+        bool escaped = false;
+        for (size_t i = 0; i < s.size(); ++i)
+        {
+            const char c = s[i];
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+            if (inQuote && c == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+            if (c == '"')
+            {
+                inQuote = !inQuote;
+                continue;
+            }
+            if (!inQuote && (c == '#' || c == ';'))
+                return trim_copy(s.substr(0, i));
+        }
+        return trim_copy(s);
+    }
+
     static inline bool try_parse_int(std::string_view s, int& out)
     {
         std::string trimmed = trim_copy(s);
@@ -120,7 +148,7 @@ namespace vultra
 
         while (std::getline(iss, line))
         {
-            std::string t = trim_copy(line);
+            std::string t = strip_inline_comment(line);
             if (t.empty() || t[0] == '#' || t[0] == ';')
                 continue;
 

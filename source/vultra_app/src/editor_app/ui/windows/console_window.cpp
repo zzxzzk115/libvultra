@@ -74,13 +74,13 @@ namespace vultra_app
         }
     } // namespace
 
-    ConsoleWindow::ConsoleWindow() : EditorWindow("Console") {}
+    ConsoleWindow::ConsoleWindow() : EditorWindow("Console", ICON_MDI_CONSOLE) {}
 
     void ConsoleWindow::draw(EditorContext& ctx)
     {
         subscribeLogger();
 
-        ImGui::Begin(m_Name.c_str(), &m_Open);
+        ImGui::Begin(title().c_str(), &m_Open);
 
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(ICON_MDI_MAGNIFY);
@@ -127,7 +127,6 @@ namespace vultra_app
         {
             ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 46.0f);
             ImGui::TableSetupColumn("Message");
-            ImGui::TableHeadersRow();
 
             for (const auto& log : m_Logs)
             {

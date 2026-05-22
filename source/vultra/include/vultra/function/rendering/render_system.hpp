@@ -48,6 +48,7 @@ namespace vultra
         void registerRenderer(Ref<Renderer> renderer) override;
         void renderFrame() override;
         void onResize(uint32_t width, uint32_t height) override;
+        bool reloadRenderPipeline() override;
 
         // Optional: set default renderer key used if camera.rendererKey not found
         void setDefaultRendererKey(std::string key) { m_DefaultRendererKey = std::move(key); }
@@ -58,6 +59,7 @@ namespace vultra
         // Cooked render world (read-only for renderer)
         const RenderWorld& renderWorld() const { return m_RenderWorldFront; }
         RuntimeProfiler*   runtimeProfiler() override { return &m_RuntimeProfiler; }
+        std::string_view lastFrameGraphSnapshot() const override { return m_LastFrameGraphSnapshot; }
         GaussianSplatRenderSettings&       gaussianSplatSettings() override { return m_GaussianSplatSettings; }
         const GaussianSplatRenderSettings& gaussianSplatSettings() const override { return m_GaussianSplatSettings; }
         const GaussianSplatFrameStats&     gaussianSplatFrameStats() const override { return m_GaussianSplatStats; }
@@ -66,9 +68,12 @@ namespace vultra
 
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
+        bool          reloadRenderPipelineNow();
 
     private:
         bool m_SkipRender {false};
+        bool m_InRenderFrame {false};
+        bool m_PendingRenderPipelineReload {false};
 
         std::unordered_map<std::string, Ref<Renderer>> m_Renderers;
         std::string                                    m_DefaultRendererKey {"builtin"};
@@ -95,6 +100,7 @@ namespace vultra
         bool                 m_EnableGpuDrivenMeshletPipeline {true};
         GpuSceneDirtyTracker m_GpuSceneDirtyTracker;
         RuntimeProfiler      m_RuntimeProfiler;
+        std::string          m_LastFrameGraphSnapshot;
         GaussianSplatRenderSettings m_GaussianSplatSettings;
         GaussianSplatRenderSettings m_AppliedGaussianSplatSettings;
         GaussianSplatFrameStats     m_GaussianSplatStats;

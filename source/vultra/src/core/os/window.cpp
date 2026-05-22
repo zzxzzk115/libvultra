@@ -56,6 +56,12 @@ namespace vultra
             return *this;
         }
 
+        Window::Builder& Window::Builder::setDecorated(bool decorated)
+        {
+            m_Decorated = decorated;
+            return *this;
+        }
+
         Window::Builder& Window::Builder::setPlatform(const PlatformType platformType)
         {
             m_PlatformType = platformType;
@@ -69,14 +75,16 @@ namespace vultra
                                "[Window::Builder] Android windows must be created from the Android runtime context.");
             return {};
 #elif defined(__EMSCRIPTEN__)
-            return std::make_shared<platform::glfw::GLFWWindow>(m_Title, m_Extent, m_Resizable, m_Fullscreen);
+            return std::make_shared<platform::glfw::GLFWWindow>(
+                m_Title, m_Extent, m_Resizable, m_Fullscreen, m_Decorated);
 #else
             if (m_PlatformType == PlatformType::eGLFW)
             {
-                return std::make_shared<platform::glfw::GLFWWindow>(m_Title, m_Extent, m_Resizable, m_Fullscreen);
+                return std::make_shared<platform::glfw::GLFWWindow>(
+                    m_Title, m_Extent, m_Resizable, m_Fullscreen, m_Decorated);
             }
             return std::make_shared<platform::sdl::SDLWindow>(
-                m_Title, m_Extent, m_Position, m_CursorVisibility, m_Resizable, m_Fullscreen);
+                m_Title, m_Extent, m_Position, m_CursorVisibility, m_Resizable, m_Fullscreen, m_Decorated);
 #endif
         }
 

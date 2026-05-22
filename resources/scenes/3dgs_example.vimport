@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="scene_manifest"
+uid="7b989fff3a7fe5bc604b46789c0d583d"
+
+[source]
+file="scenes/3dgs_example.vmanifest"
+
+[output]
+file="imported/scene_manifest/scenes/3dgs_example.vmanifest"
+
+[params]

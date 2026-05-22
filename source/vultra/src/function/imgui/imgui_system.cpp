@@ -20,12 +20,14 @@
 #include <type_traits>
 
 #include <IconsMaterialDesignIcons.h>
+#include <ImGuiAl/fonts/CousineRegular.inl>
 #include <ImGuiAl/fonts/RobotoBold.inl>
 #include <ImGuiAl/fonts/RobotoRegular.inl>
 #include <ImGuizmo/ImGuizmo.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <implot/implot.h>
+#include <imnodes/imnodes.h>
 
 namespace
 {
@@ -172,49 +174,6 @@ namespace vultra
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
 
-#ifdef IMGUI_HAS_DOCK
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
-        {
-            static bool               dockSpaceOpen  = true;
-            static ImGuiDockNodeFlags dockSpaceFlags = ImGuiDockNodeFlags_None;
-
-            ImGuiWindowFlags windowFlags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
-
-            ImGuiViewport* viewport = ImGui::GetMainViewport();
-            ImGui::SetNextWindowPos(viewport->Pos);
-            ImGui::SetNextWindowSize(viewport->Size);
-            ImGui::SetNextWindowViewport(viewport->ID);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-            windowFlags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-                           ImGuiWindowFlags_NoMove;
-            windowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
-
-            if (dockSpaceFlags & ImGuiDockNodeFlags_PassthruCentralNode)
-            {
-                windowFlags |= ImGuiWindowFlags_NoBackground;
-            }
-
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-            ImGui::Begin("DockSpaceWindow", &dockSpaceOpen, windowFlags);
-            ImGui::PopStyleVar(3);
-
-            if (s_SetDockSpace)
-            {
-                s_SetDockSpace(dockSpaceFlags);
-            }
-            else
-            {
-                // Default DockSpace
-                float   displayScale = window.getDisplayScale();
-                ImGuiID dockSpaceId  = ImGui::GetID("DockSpace");
-                ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(displayScale * 320.0f, displayScale * 240.0f));
-                ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), dockSpaceFlags);
-                ImGui::PopStyleVar();
-            }
-        }
-#endif
     }
 
     void ImGuiSystem::render(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& framebufferInfo)
@@ -251,13 +210,6 @@ namespace vultra
 
     void ImGuiSystem::end()
     {
-#ifdef IMGUI_HAS_DOCK
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
-        {
-            ImGui::End();
-        }
-#endif
     }
 
     void ImGuiSystem::postRender() { ctx().services.require<IRenderBackendService>().imguiBackend().postRender(); }
@@ -301,6 +253,7 @@ namespace vultra
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImPlot::CreateContext();
+        ImNodes::CreateContext();
         ImGuiIO& io = ImGui::GetIO();
 
 #ifdef IMGUI_HAS_DOCK
@@ -378,6 +331,11 @@ namespace vultra
         io.Fonts->AddFontFromMemoryCompressedTTF(
             RobotoRegular_compressed_data, RobotoRegular_compressed_size, fontSize * 0.8f, &fontConfig, ranges);
 
+        ImFontConfig codeFontConfig = fontConfig;
+        codeFontConfig.GlyphMinAdvanceX = 0.0f;
+        io.Fonts->AddFontFromMemoryCompressedTTF(
+            CousineRegular_compressed_data, CousineRegular_compressed_size, fontSize, &codeFontConfig, ranges);
+
         setImGuiStyle();
 
         // Keep window/display scale semantic intact in window backends.
@@ -402,6 +360,7 @@ namespace vultra
             ImGui::SaveIniSettingsToDisk(imguiIniPath.c_str());
         }
 
+        ImNodes::DestroyContext();
         ImPlot::DestroyContext();
         ImGui::DestroyContext();
     }
@@ -530,5 +489,79 @@ namespace vultra
             ImVec4(0.800000011920929f, 0.800000011920929f, 0.800000011920929f, 0.2000000029802322f);
         style.Colors[ImGuiCol_ModalWindowDimBg] =
             ImVec4(0.800000011920929f, 0.800000011920929f, 0.800000011920929f, 0.3499999940395355f);
+
+        // Vultra editor theme: compact Unreal-like dark UI with blue accents.
+        style.WindowPadding              = ImVec2(7.0f, 6.0f);
+        style.FramePadding               = ImVec2(7.0f, 4.0f);
+        style.CellPadding                = ImVec2(6.0f, 4.0f);
+        style.ItemSpacing                = ImVec2(7.0f, 5.0f);
+        style.ItemInnerSpacing           = ImVec2(5.0f, 4.0f);
+        style.WindowRounding             = 3.0f;
+        style.ChildRounding              = 4.0f;
+        style.PopupRounding              = 4.0f;
+        style.FrameRounding              = 4.0f;
+        style.GrabRounding               = 4.0f;
+        style.TabRounding                = 4.0f;
+        style.ScrollbarRounding          = 6.0f;
+        style.WindowBorderSize           = 1.0f;
+        style.ChildBorderSize            = 1.0f;
+        style.PopupBorderSize            = 1.0f;
+        style.FrameBorderSize            = 0.0f;
+        style.TabBorderSize              = 0.0f;
+        style.ScrollbarSize              = 12.0f;
+        style.IndentSpacing              = 18.0f;
+
+        auto& c = style.Colors;
+        c[ImGuiCol_Text]                  = ImVec4(0.86f, 0.90f, 0.95f, 1.00f);
+        c[ImGuiCol_TextDisabled]          = ImVec4(0.48f, 0.54f, 0.61f, 1.00f);
+        c[ImGuiCol_WindowBg]              = ImVec4(0.055f, 0.071f, 0.090f, 0.985f);
+        c[ImGuiCol_ChildBg]               = ImVec4(0.070f, 0.087f, 0.109f, 0.965f);
+        c[ImGuiCol_PopupBg]               = ImVec4(0.050f, 0.064f, 0.082f, 0.985f);
+        c[ImGuiCol_Border]                = ImVec4(0.145f, 0.185f, 0.235f, 0.88f);
+        c[ImGuiCol_BorderShadow]          = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+        c[ImGuiCol_FrameBg]               = ImVec4(0.035f, 0.045f, 0.058f, 0.96f);
+        c[ImGuiCol_FrameBgHovered]        = ImVec4(0.095f, 0.130f, 0.165f, 1.00f);
+        c[ImGuiCol_FrameBgActive]         = ImVec4(0.105f, 0.165f, 0.215f, 1.00f);
+        c[ImGuiCol_TitleBg]               = ImVec4(0.045f, 0.055f, 0.070f, 1.00f);
+        c[ImGuiCol_TitleBgActive]         = ImVec4(0.060f, 0.075f, 0.095f, 1.00f);
+        c[ImGuiCol_TitleBgCollapsed]      = ImVec4(0.035f, 0.043f, 0.055f, 0.95f);
+        c[ImGuiCol_MenuBarBg]             = ImVec4(0.045f, 0.056f, 0.071f, 1.00f);
+        c[ImGuiCol_ScrollbarBg]           = ImVec4(0.035f, 0.045f, 0.058f, 0.70f);
+        c[ImGuiCol_ScrollbarGrab]         = ImVec4(0.135f, 0.165f, 0.205f, 0.95f);
+        c[ImGuiCol_ScrollbarGrabHovered]  = ImVec4(0.195f, 0.245f, 0.305f, 1.00f);
+        c[ImGuiCol_ScrollbarGrabActive]   = ImVec4(0.230f, 0.300f, 0.375f, 1.00f);
+        c[ImGuiCol_CheckMark]             = ImVec4(0.36f, 0.78f, 1.00f, 1.00f);
+        c[ImGuiCol_SliderGrab]            = ImVec4(0.32f, 0.60f, 0.88f, 1.00f);
+        c[ImGuiCol_SliderGrabActive]      = ImVec4(0.43f, 0.78f, 1.00f, 1.00f);
+        c[ImGuiCol_Button]                = ImVec4(0.105f, 0.130f, 0.165f, 0.96f);
+        c[ImGuiCol_ButtonHovered]         = ImVec4(0.150f, 0.195f, 0.250f, 1.00f);
+        c[ImGuiCol_ButtonActive]          = ImVec4(0.075f, 0.310f, 0.545f, 1.00f);
+        c[ImGuiCol_Header]                = ImVec4(0.090f, 0.120f, 0.155f, 0.88f);
+        c[ImGuiCol_HeaderHovered]         = ImVec4(0.120f, 0.175f, 0.230f, 0.96f);
+        c[ImGuiCol_HeaderActive]          = ImVec4(0.065f, 0.275f, 0.500f, 1.00f);
+        c[ImGuiCol_Separator]             = ImVec4(0.130f, 0.165f, 0.205f, 0.95f);
+        c[ImGuiCol_SeparatorHovered]      = ImVec4(0.180f, 0.420f, 0.660f, 1.00f);
+        c[ImGuiCol_SeparatorActive]       = ImVec4(0.220f, 0.560f, 0.850f, 1.00f);
+        c[ImGuiCol_ResizeGrip]            = ImVec4(0.160f, 0.280f, 0.380f, 0.30f);
+        c[ImGuiCol_ResizeGripHovered]     = ImVec4(0.230f, 0.500f, 0.720f, 0.65f);
+        c[ImGuiCol_ResizeGripActive]      = ImVec4(0.270f, 0.670f, 0.950f, 0.95f);
+        c[ImGuiCol_Tab]                   = ImVec4(0.070f, 0.087f, 0.110f, 1.00f);
+        c[ImGuiCol_TabHovered]            = ImVec4(0.105f, 0.230f, 0.350f, 1.00f);
+        c[ImGuiCol_TabActive]             = ImVec4(0.085f, 0.125f, 0.165f, 1.00f);
+        c[ImGuiCol_TabUnfocused]          = ImVec4(0.050f, 0.063f, 0.080f, 1.00f);
+        c[ImGuiCol_TabUnfocusedActive]    = ImVec4(0.065f, 0.090f, 0.120f, 1.00f);
+        c[ImGuiCol_TableHeaderBg]         = ImVec4(0.080f, 0.100f, 0.128f, 1.00f);
+        c[ImGuiCol_TableBorderStrong]     = ImVec4(0.150f, 0.185f, 0.230f, 1.00f);
+        c[ImGuiCol_TableBorderLight]      = ImVec4(0.105f, 0.130f, 0.165f, 1.00f);
+        c[ImGuiCol_TableRowBg]            = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+        c[ImGuiCol_TableRowBgAlt]         = ImVec4(1.00f, 1.00f, 1.00f, 0.025f);
+        c[ImGuiCol_TextSelectedBg]        = ImVec4(0.110f, 0.380f, 0.660f, 0.55f);
+        c[ImGuiCol_DragDropTarget]        = ImVec4(0.32f, 0.74f, 1.00f, 0.90f);
+        c[ImGuiCol_NavHighlight]          = ImVec4(0.32f, 0.74f, 1.00f, 0.90f);
+        c[ImGuiCol_ModalWindowDimBg]      = ImVec4(0.01f, 0.015f, 0.020f, 0.68f);
+#ifdef IMGUI_HAS_DOCK
+        c[ImGuiCol_DockingPreview]        = ImVec4(0.20f, 0.62f, 1.00f, 0.62f);
+        c[ImGuiCol_DockingEmptyBg]        = ImVec4(0.040f, 0.050f, 0.064f, 1.00f);
+#endif
     }
 } // namespace vultra

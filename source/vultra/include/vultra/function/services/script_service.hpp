@@ -23,6 +23,7 @@ namespace vultra
         virtual void setPlaybackState(bool playing, bool paused) = 0;
         virtual bool isPlaybackPlaying() const                   = 0;
         virtual bool isPlaybackPaused() const                    = 0;
+        virtual void requestSingleStep()                         = 0;
 
         virtual bool runString(std::string_view code) = 0;
     };

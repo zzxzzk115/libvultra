@@ -56,8 +56,11 @@ namespace vultra_app
         if (!options.projectPath.empty())
         {
             if (auto project = loadVProject(options.projectPath); project.has_value())
+            {
                 engine.ctx().config.asset.assetRoot =
                     (project->projectDir / project->assetRoot).lexically_normal().generic_string();
+                engine.ctx().config.render.renderPipelineAsset = project->renderPipeline;
+            }
             else
                 engine.ctx().config.asset.assetRoot =
                     (std::filesystem::path(options.projectPath) / "resources").lexically_normal().generic_string();
@@ -133,7 +136,7 @@ namespace vultra_app
             state.currentProjectName.clear();
             state.selectedSourceAsset.clear();
             state.currentAssetRoot    = "resources";
-            state.currentDefaultScene = "res://scenes/main.vscn";
+            state.currentDefaultScene = "res://scenes/test.vscn";
             state.mode                = AppMode::Editor;
             state.statusMessage       = "Opened a blank editor session.";
         }
@@ -296,7 +299,7 @@ namespace vultra_app
                .projectDir   = projectDir,
                .name         = projectName,
                .assetRoot    = "resources",
-               .defaultScene = "res://scenes/main.vscn",
+               .defaultScene = "res://scenes/test.vscn",
         };
         if (!saveVProject(project, &errorMessage))
         {

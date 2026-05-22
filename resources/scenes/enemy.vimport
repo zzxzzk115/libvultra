@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="scene"
+uid="f0830b6d4a255a51ed71eaca8ca7cd96"
+
+[source]
+file="scenes/enemy.vscn"
+
+[output]
+file="imported/scene/scenes/enemy.vscn"
+
+[params]

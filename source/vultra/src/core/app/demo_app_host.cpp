@@ -264,6 +264,8 @@ namespace vultra
                 EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eCompatibility :
                 EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eAuto;
 
+        onConfigureDemo(engine);
+
 #if defined(__EMSCRIPTEN__)
         // Wasm bundles resources.vpk via --preload-file and loads assets from VPK by default.
         engine.ctx().config.asset.assetRoot   = "/";
@@ -348,16 +350,14 @@ namespace vultra
         }
         else
         {
+            engine.emplaceSubsystem<GpuResourceSystem>();
+            engine.emplaceSubsystem<AssetSystem>();
             auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
             renderSystem.registerRenderer(renderer);
 
-            engine.emplaceSubsystem<GpuResourceSystem>();
-            engine.emplaceSubsystem<AssetSystem>();
             engine.emplaceSubsystem<SceneSystem>();
             engine.emplaceSubsystem<ScriptSystem>();
         }
-
-        onConfigureDemo(engine);
     }
 
     void DemoAppHost::onPostConfigure(Engine& engine)

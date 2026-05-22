@@ -139,8 +139,8 @@ namespace vultra::platform::glfw
         }
     } // namespace
 
-    GLFWWindow::GLFWWindow(std::string_view title, Extent extent, bool resizable, bool fullscreen) :
-        m_Title(title), m_Extent(extent), m_Resizable(resizable), m_Fullscreen(fullscreen)
+    GLFWWindow::GLFWWindow(std::string_view title, Extent extent, bool resizable, bool fullscreen, bool decorated) :
+        m_Title(title), m_Extent(extent), m_Resizable(resizable), m_Fullscreen(fullscreen), m_Decorated(decorated)
     {
         if (!glfwInit())
         {
@@ -162,6 +162,7 @@ namespace vultra::platform::glfw
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, m_Resizable ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_DECORATED, m_Decorated ? GLFW_TRUE : GLFW_FALSE);
         m_WindowHandle =
             glfwCreateWindow(std::max(1, m_Extent.x), std::max(1, m_Extent.y), m_Title.c_str(), nullptr, nullptr);
         if (!m_WindowHandle)
@@ -442,6 +443,15 @@ namespace vultra::platform::glfw
 #endif
     }
 
+    bool GLFWWindow::isMaximized() const
+    {
+#if defined(__EMSCRIPTEN__)
+        return false;
+#else
+        return m_WindowHandle != nullptr && glfwGetWindowAttrib(m_WindowHandle, GLFW_MAXIMIZED) == GLFW_TRUE;
+#endif
+    }
+
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
     std::span<const char* const> GLFWWindow::getRequiredVulkanInstanceExtensions() const
     {
@@ -534,6 +544,24 @@ namespace vultra::platform::glfw
         {
             glfwSetWindowShouldClose(m_WindowHandle, GLFW_TRUE);
         }
+    }
+
+    void GLFWWindow::minimize()
+    {
+        if (m_WindowHandle)
+            glfwIconifyWindow(m_WindowHandle);
+    }
+
+    void GLFWWindow::maximize()
+    {
+        if (m_WindowHandle)
+            glfwMaximizeWindow(m_WindowHandle);
+    }
+
+    void GLFWWindow::restore()
+    {
+        if (m_WindowHandle)
+            glfwRestoreWindow(m_WindowHandle);
     }
 
     void GLFWWindow::applyCursorVisibility()

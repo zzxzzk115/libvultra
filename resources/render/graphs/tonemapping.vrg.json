@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "editor": {
+      "nodes": {
+        "CustomTonemapping": {
+          "pos": [
+            680.0,
+            77.0
+          ]
+        },
+        "resource:final_composition_source": {
+          "pos": [
+            260.0,
+            80.0
+          ]
+        }
+      }
+    }
+  },
+  "passes": [
+    {
+      "enabled": true,
+      "id": "CustomTonemapping",
+      "inputs": {
+        "source": "final_composition_source"
+      },
+      "outputs": {
+        "color": "CustomTonemapping.color"
+      },
+      "params": {
+        "exposure": 1.0,
+        "fragment": "tonemapping.frag",
+        "library": "project",
+        "method": 0,
+        "name": "CustomTonemapping",
+        "publish": "final_composition_source",
+        "pushConstants": true,
+        "vertex": "fullscreen_triangle.vert"
+      },
+      "type": "FullscreenShader"
+    }
+  ],
+  "resources": [
+    "final_composition_source"
+  ]
+}

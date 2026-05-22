@@ -5,6 +5,7 @@
 #include <vbase/service/service_registry.hpp>
 
 #include <cstdint>
+#include <string_view>
 
 namespace vultra
 {
@@ -28,9 +29,13 @@ namespace vultra
 
         // Notify render service that output size changed.
         virtual void onResize(uint32_t width, uint32_t height) = 0;
+        virtual bool reloadRenderPipeline() = 0;
 
         // Built-in runtime profiler (default disabled).
         virtual RuntimeProfiler* runtimeProfiler() = 0;
+
+        // DOT emitted by vrendergraph for the most recently compiled frame graph.
+        virtual std::string_view lastFrameGraphSnapshot() const = 0;
 
         virtual GaussianSplatRenderSettings&       gaussianSplatSettings() = 0;
         virtual const GaussianSplatRenderSettings& gaussianSplatSettings() const = 0;

@@ -21,9 +21,11 @@ namespace vultra_app
         void draw(EditorContext& ctx) override;
 
     private:
-        void drawEntityNode(EditorContext& ctx, vultra::World& world, entt::entity entity);
+        void drawEntityNode(EditorContext& ctx, vultra::World& world, entt::entity entity, const char* filter);
+        bool entityMatchesFilter(vultra::World& world, entt::entity entity, const char* filter) const;
 
         entt::entity          m_RenameEntity {entt::null};
         std::array<char, 128> m_RenameBuffer {};
+        std::array<char, 128> m_SearchBuffer {};
     };
 } // namespace vultra_app

@@ -21,6 +21,14 @@ namespace vultra::platform::sdl
     namespace
     {
         constexpr auto kSDLInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMEPAD;
+        constexpr int  kBorderlessResizeBorder  = 6;
+        constexpr int  kBorderlessTitleHeight   = 44;
+        constexpr int  kBorderlessControlsWidth = 112;
+
+        float sanitizeScale(const float scale)
+        {
+            return scale > 0.0f ? scale : 1.0f;
+        }
 
         bool cursorImagesEqual(const os::Window::CursorImage& lhs, const os::Window::CursorImage& rhs)
         {
@@ -61,6 +69,64 @@ namespace vultra::platform::sdl
                     return SDL_SYSTEM_CURSOR_DEFAULT;
             }
         }
+
+        void syncWindowMetrics(SDL_Window* window, os::Window::Extent& extent, os::Window::Extent& framebufferExtent)
+        {
+            if (!window)
+                return;
+
+            SDL_GetWindowSize(window, &extent.x, &extent.y);
+            SDL_GetWindowSizeInPixels(window, &framebufferExtent.x, &framebufferExtent.y);
+            extent.x = std::max(extent.x, 1);
+            extent.y = std::max(extent.y, 1);
+            framebufferExtent.x = std::max(framebufferExtent.x, 1);
+            framebufferExtent.y = std::max(framebufferExtent.y, 1);
+        }
+
+        SDL_HitTestResult hitTest(SDL_Window*, const SDL_Point* area, void* data)
+        {
+            auto* self = static_cast<SDLWindow*>(data);
+            if (!self || !area || self->isFullscreen())
+                return SDL_HITTEST_NORMAL;
+
+            const auto extent = self->getExtent();
+            const int  width  = std::max(extent.x, 1);
+            const int  height = std::max(extent.y, 1);
+            const int  x      = area->x;
+            const int  y      = area->y;
+
+            if (self->isResizable() && !self->isMaximized())
+            {
+                const bool left   = x >= 0 && x < kBorderlessResizeBorder;
+                const bool right  = x >= width - kBorderlessResizeBorder && x < width;
+                const bool top    = y >= 0 && y < kBorderlessResizeBorder;
+                const bool bottom = y >= height - kBorderlessResizeBorder && y < height;
+
+                if (left && top)
+                    return SDL_HITTEST_RESIZE_TOPLEFT;
+                if (right && top)
+                    return SDL_HITTEST_RESIZE_TOPRIGHT;
+                if (left && bottom)
+                    return SDL_HITTEST_RESIZE_BOTTOMLEFT;
+                if (right && bottom)
+                    return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
+                if (top)
+                    return SDL_HITTEST_RESIZE_TOP;
+                if (bottom)
+                    return SDL_HITTEST_RESIZE_BOTTOM;
+                if (left)
+                    return SDL_HITTEST_RESIZE_LEFT;
+                if (right)
+                    return SDL_HITTEST_RESIZE_RIGHT;
+            }
+
+            const bool inTitleDragBand  = y >= kBorderlessResizeBorder && y < kBorderlessTitleHeight;
+            const bool overWindowButtons = x >= width - kBorderlessControlsWidth;
+            if (inTitleDragBand && !overWindowButtons)
+                return SDL_HITTEST_DRAGGABLE;
+
+            return SDL_HITTEST_NORMAL;
+        }
     }
 
     SDLWindow::SDLWindow(std::string_view title,
@@ -68,9 +134,10 @@ namespace vultra::platform::sdl
                          Position         position,
                          bool             cursorVisible,
                          bool             resizable,
-                         bool             fullscreen) :
+                         bool             fullscreen,
+                         bool             decorated) :
         m_Title(title), m_Extent(extent), m_Position(position), m_CursorVisibility(cursorVisible),
-        m_Resizable(resizable), m_Fullscreen(fullscreen)
+        m_Resizable(resizable), m_Fullscreen(fullscreen), m_Decorated(decorated)
     {
         if (!SDL_Init(kSDLInitFlags))
         {
@@ -93,6 +160,10 @@ namespace vultra::platform::sdl
         {
             windowFlags |= SDL_WINDOW_FULLSCREEN;
         }
+        if (!m_Decorated)
+        {
+            windowFlags |= SDL_WINDOW_BORDERLESS;
+        }
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
         if (!SDL_Vulkan_LoadLibrary(nullptr))
@@ -108,7 +179,11 @@ namespace vultra::platform::sdl
         float mainScale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
 #endif
 
-        m_WindowHandle = SDL_CreateWindow(m_Title.c_str(), m_Extent.x * mainScale, m_Extent.y * mainScale, windowFlags);
+        m_WindowHandle = SDL_CreateWindow(
+            m_Title.c_str(),
+            static_cast<int>(static_cast<float>(m_Extent.x) * sanitizeScale(mainScale)),
+            static_cast<int>(static_cast<float>(m_Extent.y) * sanitizeScale(mainScale)),
+            windowFlags);
         if (m_WindowHandle == nullptr)
         {
             VULTRA_CORE_ERROR("[SDLWindow] Failed to create SDL3 window, Error:{}", SDL_GetError());
@@ -123,12 +198,21 @@ namespace vultra::platform::sdl
         {
             setPosition(m_Position);
         }
+        if (!m_Decorated)
+        {
+            SDL_SetWindowHitTest(m_WindowHandle, &hitTest, this);
+        }
         applyCursorVisibility();
         applyCursor();
-        SDL_GetWindowSizeInPixels(m_WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
+        syncWindowMetrics(m_WindowHandle, m_Extent, m_FrameBufferExtent);
 
-        VULTRA_CORE_INFO(
-            "[SDLWindow] Created window '{}' ({}x{}), DPI: {}", m_Title, m_Extent.x, m_Extent.y, mainScale);
+        VULTRA_CORE_INFO("[SDLWindow] Created window '{}' ({}x{}, framebuffer={}x{}, scale={})",
+                         m_Title,
+                         m_Extent.x,
+                         m_Extent.y,
+                         m_FrameBufferExtent.x,
+                         m_FrameBufferExtent.y,
+                         getDisplayScale());
     }
 
     SDLWindow::~SDLWindow()
@@ -177,8 +261,9 @@ namespace vultra::platform::sdl
 
     os::Window& SDLWindow::setExtent(Extent extent)
     {
-        m_Extent = extent;
-        SDL_SetWindowSize(m_WindowHandle, extent.x, extent.y);
+        m_Extent = {std::max(extent.x, 1), std::max(extent.y, 1)};
+        SDL_SetWindowSize(m_WindowHandle, m_Extent.x, m_Extent.y);
+        syncWindowMetrics(m_WindowHandle, m_Extent, m_FrameBufferExtent);
         return *this;
     }
 
@@ -341,7 +426,12 @@ namespace vultra::platform::sdl
         return *this;
     }
 
-    float SDLWindow::getDisplayScale() const { return SDL_GetWindowDisplayScale(m_WindowHandle); }
+    float SDLWindow::getDisplayScale() const { return sanitizeScale(SDL_GetWindowDisplayScale(m_WindowHandle)); }
+
+    bool SDLWindow::isMaximized() const
+    {
+        return m_WindowHandle != nullptr && (SDL_GetWindowFlags(m_WindowHandle) & SDL_WINDOW_MAXIMIZED) != 0;
+    }
 
     void SDLWindow::applyCursorVisibility()
     {
@@ -468,7 +558,6 @@ namespace vultra::platform::sdl
 
     void SDLWindow::pollEvents(int)
     {
-        m_ShouldClose = false;
         m_IsMinimized = false;
 
         SDL_Event event;
@@ -496,8 +585,19 @@ namespace vultra::platform::sdl
                     break;
 
                 case SDL_EVENT_WINDOW_RESIZED:
-                    m_Extent = {event.window.data1, event.window.data2};
-                    SDL_GetWindowSizeInPixels(m_WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
+                    syncWindowMetrics(m_WindowHandle, m_Extent, m_FrameBufferExtent);
+                    generalEvent.type = event::WindowEventType::eResized;
+                    emitEvent(generalEvent);
+                    break;
+
+                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                    syncWindowMetrics(m_WindowHandle, m_Extent, m_FrameBufferExtent);
+                    generalEvent.type = event::WindowEventType::eResized;
+                    emitEvent(generalEvent);
+                    break;
+
+                case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+                    syncWindowMetrics(m_WindowHandle, m_Extent, m_FrameBufferExtent);
                     generalEvent.type = event::WindowEventType::eResized;
                     emitEvent(generalEvent);
                     break;
@@ -553,6 +653,14 @@ namespace vultra::platform::sdl
                     generalEvent.mouseWheel = event::MouseWheelEvent {.delta = {event.wheel.x, event.wheel.y}};
                     emitEvent(generalEvent);
                     break;
+
+                default:
+                    // Dear ImGui needs raw SDL events beyond the engine input subset
+                    // (text input, IME composition, focus, etc.). Forward them as
+                    // native-only events; InputSystem ignores eUnknown, ImGui consumes
+                    // what it understands in ImGui_ImplSDL3_ProcessEvent.
+                    emitEvent(generalEvent);
+                    break;
             }
         }
 
@@ -563,7 +671,35 @@ namespace vultra::platform::sdl
         }
     }
 
-    void SDLWindow::close() { m_ShouldClose = true; }
+    void SDLWindow::close()
+    {
+        m_ShouldClose = true;
+        if (m_WindowHandle)
+        {
+            SDL_Event event {};
+            event.type            = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
+            event.window.windowID = SDL_GetWindowID(m_WindowHandle);
+            SDL_PushEvent(&event);
+        }
+    }
+
+    void SDLWindow::minimize()
+    {
+        if (m_WindowHandle)
+            SDL_MinimizeWindow(m_WindowHandle);
+    }
+
+    void SDLWindow::maximize()
+    {
+        if (m_WindowHandle)
+            SDL_MaximizeWindow(m_WindowHandle);
+    }
+
+    void SDLWindow::restore()
+    {
+        if (m_WindowHandle)
+            SDL_RestoreWindow(m_WindowHandle);
+    }
 
     void SDLWindow::shutdown() { SDL_Quit(); }
 

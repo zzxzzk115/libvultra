@@ -444,6 +444,7 @@ namespace vultra
                 rootEnt = world.createEntity();
 
             world.setParent(rootEnt, parent);
+            static_cast<void>(reg.get_or_emplace<TransformComponent>(rootEnt));
 
             // Override prefab root's IDComponent from this node's header uuid.
             if (!node.id.valid())
@@ -476,6 +477,7 @@ namespace vultra
         // Regular node
         entt::entity e = world.createEntity();
         world.setParent(e, parent);
+        static_cast<void>(reg.get_or_emplace<TransformComponent>(e));
 
         // IDComponent is represented by the node header attribute `uuid`.
         // It must always exist for nodes loaded from disk.

@@ -105,6 +105,7 @@ namespace vultra
                 Builder& setCursorVisibility(bool cursorVisibility);
                 Builder& setResizable(bool resizable);
                 Builder& setFullscreen(bool fullscreen);
+                Builder& setDecorated(bool decorated);
                 Builder& setPlatform(PlatformType platformType);
 
                 [[nodiscard]] std::shared_ptr<Window> build() const;
@@ -116,6 +117,7 @@ namespace vultra
                 bool         m_CursorVisibility {true};
                 bool         m_Resizable {true};
                 bool         m_Fullscreen {false};
+                bool         m_Decorated {true};
                 PlatformType m_PlatformType {PlatformType::eSDL3};
             };
 
@@ -155,9 +157,11 @@ namespace vultra
             [[nodiscard]] virtual bool             getMouseRelativeMode() const = 0;
             [[nodiscard]] virtual bool             isResizable() const          = 0;
             [[nodiscard]] virtual bool             isFullscreen() const         = 0;
+            [[nodiscard]] virtual bool             isDecorated() const          = 0;
             [[nodiscard]] virtual float            getDisplayScale() const      = 0;
             [[nodiscard]] virtual bool             shouldClose() const          = 0;
             [[nodiscard]] virtual bool             isMinimized() const          = 0;
+            [[nodiscard]] virtual bool             isMaximized() const          = 0;
             [[nodiscard]] virtual bool             isReady() const              = 0;
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
@@ -168,6 +172,9 @@ namespace vultra
 
             virtual void pollEvents(int timeoutMillis = 0) = 0;
             virtual void close()                           = 0;
+            virtual void minimize()                        = 0;
+            virtual void maximize()                        = 0;
+            virtual void restore()                         = 0;
 
             [[nodiscard]] static std::optional<CursorImage>
                 decodeCursorImage(std::span<const uint8_t> encodedBytes, int hotX, int hotY);

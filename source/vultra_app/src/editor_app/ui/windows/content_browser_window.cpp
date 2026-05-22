@@ -1,10 +1,11 @@
-#include "editor_app/ui/windows/asset_browser_window.hpp"
+#include "editor_app/ui/windows/content_browser_window.hpp"
 
 #include "common/ui_widgets.hpp"
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
 #include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/render_service.hpp>
 #include <imgui.h>
 
 #include <algorithm>
@@ -13,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vultra_app
@@ -58,6 +60,50 @@ namespace vultra_app
                 return false;
 
             return true;
+        }
+
+        std::string lowerString(std::string value)
+        {
+            std::transform(value.begin(),
+                           value.end(),
+                           value.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            return value;
+        }
+
+        bool hasSuffix(std::string_view text, std::string_view suffix)
+        {
+            return text.size() >= suffix.size() && text.substr(text.size() - suffix.size()) == suffix;
+        }
+
+        bool isCodeEditableSourceAsset(const std::filesystem::path& path)
+        {
+            const auto name = lowerString(path.filename().generic_string());
+            const auto ext  = lowerString(path.extension().generic_string());
+            return ext == ".lua" || ext == ".vshader" || ext == ".glsl" || ext == ".vert" || ext == ".frag" ||
+                   ext == ".comp" || ext == ".json" || ext == ".vproject" || ext == ".vscn" || ext == ".txt" ||
+                   ext == ".md" || hasSuffix(name, ".vfeature.lua") || hasSuffix(name, ".vsrp.lua") ||
+                   hasSuffix(name, ".vshaderlib.lua") || hasSuffix(name, ".vso.lua");
+        }
+
+        bool isRenderPipelineSource(const std::filesystem::path& path)
+        {
+            const auto name = lowerString(path.filename().generic_string());
+            const auto ext  = lowerString(path.extension().generic_string());
+            return ext == ".vshader" || ext == ".glsl" || ext == ".vert" || ext == ".frag" || ext == ".comp" ||
+                   ext == ".json" || hasSuffix(name, ".vfeature.lua") || hasSuffix(name, ".vsrp.lua") ||
+                   hasSuffix(name, ".vshaderlib.lua");
+        }
+
+        std::string pathToResUri(const EditorContext& ctx, const std::filesystem::path& path)
+        {
+            const auto root = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+            std::error_code ec;
+            const auto      rel     = std::filesystem::relative(path.lexically_normal(), root, ec);
+            const auto      relText = rel.generic_string();
+            if (ec || rel.empty() || relText == ".." || relText.starts_with("../"))
+                return {};
+            return "res://" + relText;
         }
 
         std::vector<std::filesystem::directory_entry> sortedEntries(const std::filesystem::path& path)
@@ -207,17 +253,17 @@ namespace vultra_app
         }
     } // namespace
 
-    AssetBrowserWindow::AssetBrowserWindow() : EditorWindow("Assets") {}
+    ContentBrowserWindow::ContentBrowserWindow() : EditorWindow("Content Browser", ICON_MDI_FOLDER_MULTIPLE_IMAGE) {}
 
-    void AssetBrowserWindow::onClosed(EditorContext& ctx) { m_PreviewCache.clear(ctx); }
+    void ContentBrowserWindow::onClosed(EditorContext& ctx) { m_PreviewCache.clear(ctx); }
 
-    void AssetBrowserWindow::onDestroy(EditorContext& ctx) { m_PreviewCache.clear(ctx); }
+    void ContentBrowserWindow::onDestroy(EditorContext& ctx) { m_PreviewCache.clear(ctx); }
 
-    void AssetBrowserWindow::draw(EditorContext& ctx)
+    void ContentBrowserWindow::draw(EditorContext& ctx)
     {
         syncAssetRoot(ctx);
 
-        ImGui::Begin(m_Name.c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        ImGui::Begin(title().c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
         if (m_AssetRoot.empty())
         {
@@ -266,7 +312,7 @@ namespace vultra_app
         ImGui::End();
     }
 
-    void AssetBrowserWindow::syncAssetRoot(EditorContext& ctx)
+    void ContentBrowserWindow::syncAssetRoot(EditorContext& ctx)
     {
         const auto& state = ctx.state;
         const auto assetRoot =
@@ -281,7 +327,7 @@ namespace vultra_app
         invalidateEntryCache();
     }
 
-    void AssetBrowserWindow::drawDirectoryTree(const std::filesystem::path& path)
+    void ContentBrowserWindow::drawDirectoryTree(const std::filesystem::path& path)
     {
         for (const auto& entry : sortedEntries(path))
         {
@@ -329,7 +375,7 @@ namespace vultra_app
         }
     }
 
-    void AssetBrowserWindow::drawContentPanel(EditorContext& ctx)
+    void ContentBrowserWindow::drawContentPanel(EditorContext& ctx)
     {
         ImGui::TextUnformatted(ICON_MDI_MAGNIFY);
         ImGui::SameLine();
@@ -388,6 +434,7 @@ namespace vultra_app
         const auto& entries = filteredEntriesForCurrentDir();
         m_RemainingThumbnailLoads = 8;
         m_PreviewCache.trim(ctx, 96);
+        m_GridItemBounds.clear();
 
         if (listMode)
         {
@@ -412,15 +459,32 @@ namespace vultra_app
         const float cellPadding = 12.0f;
         const float cellWidth   = m_IconSize + cellPadding;
         const float panelWidth  = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+        const ImVec2 gridMin    = ImGui::GetCursorScreenPos();
+        const ImVec2 gridMax {gridMin.x + panelWidth, gridMin.y + ImGui::GetContentRegionAvail().y};
         const int   columns     = std::max(1, static_cast<int>(panelWidth / cellWidth));
 
         ImGui::Columns(columns, nullptr, false);
         for (const auto& entry : entries)
             drawGridItem(ctx, entry, m_IconSize);
         ImGui::Columns(1);
+
+        if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemActive() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            const ImVec2 mouse = ImGui::GetMousePos();
+            const bool overItem = std::any_of(m_GridItemBounds.begin(),
+                                              m_GridItemBounds.end(),
+                                              [&](const GridItemBounds& item)
+                                              {
+                                                  return mouse.x >= item.min.x && mouse.x <= item.max.x &&
+                                                         mouse.y >= item.min.y && mouse.y <= item.max.y;
+                                              });
+            if (!overItem && mouse.x >= gridMin.x && mouse.x <= gridMax.x && mouse.y >= gridMin.y && mouse.y <= gridMax.y)
+                beginBoxSelection(mouse);
+        }
+        updateBoxSelection(ctx);
     }
 
-    void AssetBrowserWindow::drawListItem(EditorContext& ctx, const std::filesystem::path& path)
+    void ContentBrowserWindow::drawListItem(EditorContext& ctx, const std::filesystem::path& path)
     {
         std::error_code ec;
         const bool      isDir = std::filesystem::is_directory(path, ec);
@@ -431,8 +495,8 @@ namespace vultra_app
         ImGui::Selectable(label.c_str(), m_SelectedPath == path, ImGuiSelectableFlags_SpanAllColumns);
         const bool hovered = ImGui::IsItemHovered();
         handleDeferredSelection(ctx, path, hovered);
-        if (isDir && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-            m_CurrentDir = path;
+        if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+            openPath(ctx, path);
         if (!isDir)
             drawAssetDragSource(ctx, path);
         if (ImGui::BeginPopupContextItem("AssetListContext"))
@@ -448,7 +512,7 @@ namespace vultra_app
         ImGui::TextWrapped("%s", path.lexically_normal().generic_string().c_str());
     }
 
-    void AssetBrowserWindow::drawGridItem(EditorContext& ctx, const std::filesystem::path& path, float iconSize)
+    void ContentBrowserWindow::drawGridItem(EditorContext& ctx, const std::filesystem::path& path, float iconSize)
     {
         std::error_code ec;
         const bool      isDir = std::filesystem::is_directory(path, ec);
@@ -457,12 +521,14 @@ namespace vultra_app
         ImGui::PushID(path.generic_string().c_str());
         ImGui::BeginGroup();
 
-        const bool selected = m_SelectedPath == path;
-        if (selected)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_Header));
+        const bool selected = isPathSelected(path);
 
         ImTextureID previewId {};
-        if (!isDir && ui::isTextureSourceAsset(path))
+        if (isDir)
+        {
+            previewId = m_PreviewCache.getBuiltinIcon(ctx, ui::BuiltinAssetIcon::Folder, iconSize);
+        }
+        else if (ui::isTextureSourceAsset(path))
         {
             const bool cached    = m_PreviewCache.hasCachedTexturePreview(ctx, path);
             const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
@@ -472,24 +538,35 @@ namespace vultra_app
         }
         if (previewId)
         {
+            const ImVec2 iconPos = ImGui::GetCursorScreenPos();
+            auto*        drawList = ImGui::GetWindowDrawList();
+            if (selected)
+            {
+                drawList->AddRectFilled(ImVec2 {iconPos.x - 8.0f, iconPos.y - 8.0f},
+                                        ImVec2 {iconPos.x + iconSize + 8.0f, iconPos.y + iconSize + 30.0f},
+                                        IM_COL32(28, 45, 62, 230),
+                                        5.0f);
+                drawList->AddRectFilled(ImVec2 {iconPos.x - 8.0f, iconPos.y - 8.0f},
+                                        ImVec2 {iconPos.x + iconSize + 8.0f, iconPos.y - 3.0f},
+                                        IM_COL32(45, 145, 230, 230),
+                                        5.0f,
+                                        ImDrawFlags_RoundCornersTop);
+            }
             ImGui::Image(previewId, ImVec2(iconSize, iconSize));
-            ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(),
-                                                ImGui::GetItemRectMax(),
-                                                ImGui::GetColorU32(selected ? ImGuiCol_HeaderActive : ImGuiCol_Border),
-                                                4.0f);
+            drawList->AddRect(ImGui::GetItemRectMin(),
+                              ImGui::GetItemRectMax(),
+                              selected ? IM_COL32(68, 160, 242, 230) : ImGui::GetColorU32(ImGuiCol_Border),
+                              isDir ? 8.0f : 4.0f);
         }
         else
         {
             ImGui::Button(ui::sourceAssetIcon(path, isDir), ImVec2(iconSize, iconSize));
         }
 
-        if (selected)
-            ImGui::PopStyleColor();
-
         const bool hovered = ImGui::IsItemHovered();
         handleDeferredSelection(ctx, path, hovered);
-        if (isDir && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-            m_CurrentDir = path;
+        if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+            openPath(ctx, path);
         if (!isDir)
             drawAssetDragSource(ctx, path);
         if (ImGui::BeginPopupContextItem("AssetGridContext"))
@@ -504,11 +581,16 @@ namespace vultra_app
         ImGui::PopTextWrapPos();
 
         ImGui::EndGroup();
+        m_GridItemBounds.push_back(GridItemBounds {
+            .path = path,
+            .min  = ImGui::GetItemRectMin(),
+            .max  = ImGui::GetItemRectMax(),
+        });
         ImGui::NextColumn();
         ImGui::PopID();
     }
 
-    void AssetBrowserWindow::handleDeferredSelection(EditorContext& ctx,
+    void ContentBrowserWindow::handleDeferredSelection(EditorContext& ctx,
                                                      const std::filesystem::path& path,
                                                      bool                         hovered)
     {
@@ -534,24 +616,86 @@ namespace vultra_app
         }
     }
 
-    void AssetBrowserWindow::selectPath(EditorContext& ctx, const std::filesystem::path& path)
+    void ContentBrowserWindow::selectPath(EditorContext& ctx, const std::filesystem::path& path)
     {
         if (!std::filesystem::exists(path))
             return;
 
         m_SelectedPath                  = path;
         ctx.state.selectedSourceAsset   = path.lexically_normal();
+        m_SelectedPaths.clear();
+        m_SelectedPaths.push_back(path);
         Selection::clear(SelectionCategory::Entity);
         Selection::clear(SelectionCategory::Asset);
+    }
 
+    void ContentBrowserWindow::openPath(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        selectPath(ctx, path);
         if (std::filesystem::is_directory(path))
         {
             m_CurrentDir = path;
             invalidateEntryCache();
         }
+        else if (isCodeEditableSourceAsset(path))
+        {
+            ctx.state.codeEditorPath          = path.lexically_normal();
+            ctx.state.codeEditorOpenRequested = true;
+            ctx.state.statusMessage           = "Opened in Code Editor: " + path.filename().generic_string();
+        }
     }
 
-    void AssetBrowserWindow::invalidateEntryCache()
+    void ContentBrowserWindow::beginBoxSelection(const ImVec2& start)
+    {
+        m_BoxSelecting   = true;
+        m_BoxSelectStart = start;
+        m_BoxSelectEnd   = start;
+        m_PendingSelectPath.clear();
+        m_PendingSelectDragging = false;
+    }
+
+    bool ContentBrowserWindow::isPathSelected(const std::filesystem::path& path) const
+    {
+        return std::find(m_SelectedPaths.begin(), m_SelectedPaths.end(), path) != m_SelectedPaths.end() ||
+               m_SelectedPath == path;
+    }
+
+    void ContentBrowserWindow::updateBoxSelection(EditorContext& ctx)
+    {
+        if (!m_BoxSelecting)
+            return;
+
+        m_BoxSelectEnd = ImGui::GetMousePos();
+        const ImVec2 min {std::min(m_BoxSelectStart.x, m_BoxSelectEnd.x), std::min(m_BoxSelectStart.y, m_BoxSelectEnd.y)};
+        const ImVec2 max {std::max(m_BoxSelectStart.x, m_BoxSelectEnd.x), std::max(m_BoxSelectStart.y, m_BoxSelectEnd.y)};
+        auto* drawList = ImGui::GetForegroundDrawList(ImGui::GetWindowViewport());
+        drawList->PushClipRect(ImGui::GetWindowPos(), ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x, ImGui::GetWindowPos().y + ImGui::GetWindowSize().y), true);
+        drawList->AddRectFilled(min, max, IM_COL32(35, 110, 180, 54), 2.0f);
+        drawList->AddRect(min, max, IM_COL32(80, 176, 255, 220), 2.0f, 0, 1.35f);
+        drawList->PopClipRect();
+
+        m_SelectedPaths.clear();
+        for (const auto& item : m_GridItemBounds)
+        {
+            const bool intersects = item.max.x >= min.x && item.min.x <= max.x &&
+                                    item.max.y >= min.y && item.min.y <= max.y;
+            if (intersects)
+                m_SelectedPaths.push_back(item.path);
+        }
+
+        if (!m_SelectedPaths.empty())
+        {
+            m_SelectedPath = m_SelectedPaths.back();
+            ctx.state.selectedSourceAsset = m_SelectedPath.lexically_normal();
+            Selection::clear(SelectionCategory::Entity);
+            Selection::clear(SelectionCategory::Asset);
+        }
+
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+            m_BoxSelecting = false;
+    }
+
+    void ContentBrowserWindow::invalidateEntryCache()
     {
         m_CachedDir.clear();
         m_CachedFilter.clear();
@@ -560,12 +704,39 @@ namespace vultra_app
         m_VisibleChildDirectoryCache.clear();
     }
 
-    void AssetBrowserWindow::drawContextMenu(EditorContext& ctx, const std::filesystem::path& path, bool isDirectory)
+    void ContentBrowserWindow::drawContextMenu(EditorContext& ctx, const std::filesystem::path& path, bool isDirectory)
     {
         if (ImGui::MenuItem(isDirectory ? ICON_MDI_FOLDER_OPEN "  Open" : ICON_MDI_EYE "  Inspect"))
-            selectPath(ctx, path);
+        {
+            if (isDirectory)
+                openPath(ctx, path);
+            else
+                selectPath(ctx, path);
+        }
+        if (!isDirectory && isCodeEditableSourceAsset(path))
+        {
+            if (ImGui::MenuItem(ICON_MDI_FILE_DOCUMENT_EDIT "  Edit Source"))
+                openPath(ctx, path);
+        }
         if (ImGui::MenuItem(ICON_MDI_REFRESH "  Reimport"))
-            ctx.state.statusMessage = "Reimport from Asset Browser is not wired to vasset-cli yet.";
+        {
+            bool refreshed = false;
+            if (ctx.services)
+            {
+                if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
+                {
+                    const auto uri = pathToResUri(ctx, path);
+                    if (!uri.empty())
+                        refreshed = assetService->reimportAsset(uri, true);
+                }
+                if (!isDirectory && isRenderPipelineSource(path))
+                {
+                    if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+                        refreshed = renderService->reloadRenderPipeline() || refreshed;
+                }
+            }
+            ctx.state.statusMessage = refreshed ? "Reimported source asset." : "Failed to reimport source asset.";
+        }
         ImGui::Separator();
         if (ImGui::MenuItem(ICON_MDI_FOLDER_PLUS "  Create Folder"))
         {
@@ -587,7 +758,7 @@ namespace vultra_app
         }
     }
 
-    void AssetBrowserWindow::drawPendingPopups(EditorContext& ctx)
+    void ContentBrowserWindow::drawPendingPopups(EditorContext& ctx)
     {
         if (m_OpenRenamePopup)
         {
@@ -671,7 +842,7 @@ namespace vultra_app
         }
     }
 
-    const std::vector<std::filesystem::path>& AssetBrowserWindow::entriesForCurrentDir()
+    const std::vector<std::filesystem::path>& ContentBrowserWindow::entriesForCurrentDir()
     {
         if (m_CurrentDir != m_CachedDir)
         {
@@ -683,7 +854,7 @@ namespace vultra_app
         return m_CachedEntries;
     }
 
-    const std::vector<std::filesystem::path>& AssetBrowserWindow::filteredEntriesForCurrentDir()
+    const std::vector<std::filesystem::path>& ContentBrowserWindow::filteredEntriesForCurrentDir()
     {
         const auto filter = std::string(m_Filter.data());
         if (filter == m_CachedFilter && m_CurrentDir == m_CachedDir && !m_CachedFilteredEntries.empty())

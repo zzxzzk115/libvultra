@@ -16,6 +16,7 @@
 #include <vbase/service/service_registry.hpp>
 
 #include <string_view>
+#include <vector>
 
 namespace vultra
 {
@@ -50,6 +51,14 @@ namespace vultra
         // Text assets: scene documents, manifests, Lua scripts, etc.
         virtual vbase::Result<std::string, std::string> loadTextAssetSync(std::string_view uri) = 0;
 
+        // Editor-only live overrides. Runtime loaders read these before disk/VFS,
+        // allowing tools to preview unsaved text assets without writing them.
+        virtual void setTextAssetOverride(std::string_view uri, std::string text) = 0;
+        virtual void clearTextAssetOverride(std::string_view uri) = 0;
+
+        // Binary assets: cooked shader libraries and other opaque runtime payloads.
+        virtual vbase::Result<std::vector<uint8_t>, std::string> loadBinaryAssetSync(std::string_view uri) = 0;
+
         // Bindless texture index resolution.
         // Returns 0 for invalid UUID.
         virtual uint32_t resolveBindlessTextureIndex(const CoreUUID& texUUID) = 0;
@@ -61,6 +70,9 @@ namespace vultra
         [[nodiscard]] virtual AssetMemoryStats memoryStats() const = 0;
 
         virtual std::string resolveUri(const std::string_view uri) const = 0;
+
+        // Editor/development import path. Production builds may return false when import support is not linked.
+        virtual bool reimportAsset(std::string_view uri, bool forceReimport = true) = 0;
 
         // Allow overriding config (e.g., editor/runtime).
         // Per-frame update.
