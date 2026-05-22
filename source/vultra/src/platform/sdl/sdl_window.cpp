@@ -135,9 +135,10 @@ namespace vultra::platform::sdl
                          bool             cursorVisible,
                          bool             resizable,
                          bool             fullscreen,
-                         bool             decorated) :
+                         bool             decorated,
+                         bool             visible) :
         m_Title(title), m_Extent(extent), m_Position(position), m_CursorVisibility(cursorVisible),
-        m_Resizable(resizable), m_Fullscreen(fullscreen), m_Decorated(decorated)
+        m_Resizable(resizable), m_Fullscreen(fullscreen), m_Decorated(decorated), m_Visible(visible)
     {
         if (!SDL_Init(kSDLInitFlags))
         {
@@ -163,6 +164,10 @@ namespace vultra::platform::sdl
         if (!m_Decorated)
         {
             windowFlags |= SDL_WINDOW_BORDERLESS;
+        }
+        if (!m_Visible)
+        {
+            windowFlags |= SDL_WINDOW_HIDDEN;
         }
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
@@ -423,6 +428,31 @@ namespace vultra::platform::sdl
         }
         m_Fullscreen = fullscreen;
         SDL_SetWindowFullscreen(m_WindowHandle, fullscreen);
+        return *this;
+    }
+
+    os::Window& SDLWindow::setDecorated(bool decorated)
+    {
+        if (m_Decorated == decorated)
+        {
+            return *this;
+        }
+        m_Decorated = decorated;
+        SDL_SetWindowBordered(m_WindowHandle, decorated);
+        return *this;
+    }
+
+    os::Window& SDLWindow::setVisible(bool visible)
+    {
+        if (m_Visible == visible)
+        {
+            return *this;
+        }
+        m_Visible = visible;
+        if (m_Visible)
+            SDL_ShowWindow(m_WindowHandle);
+        else
+            SDL_HideWindow(m_WindowHandle);
         return *this;
     }
 

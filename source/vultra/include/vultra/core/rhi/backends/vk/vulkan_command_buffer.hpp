@@ -7,6 +7,7 @@
 #include "vultra/core/rhi/vertex_buffer.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
+#include "vultra/core/rhi/structs/render_device_structs.hpp"
 
 #include <glm/ext/vector_uint3.hpp>
 
@@ -30,6 +31,7 @@ namespace vultra
                                 const RenderDevice*,
                                 bool useKhrDynamicRendering,
                                 bool useKhrSynchronization2,
+                                bool enableDebugMarkers,
                                 bool enableRaytracing = false);
             VulkanCommandBuffer(VulkanCommandBuffer&&) noexcept;
             ~VulkanCommandBuffer() override;
@@ -146,6 +148,7 @@ namespace vultra
 
             bool m_UseKhrDynamicRendering {false};
             bool m_UseKhrSynchronization2 {false};
+            bool m_EnableDebugMarkers {defaultRenderDiagnosticsEnabled()};
             bool m_InsideRenderPass {false};
         };
     } // namespace rhi

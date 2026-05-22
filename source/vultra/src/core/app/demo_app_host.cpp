@@ -185,6 +185,47 @@ namespace vultra
             }
             return parsed;
         }
+
+        struct DiagnosticsCliOptions
+        {
+            std::optional<bool> validation;
+            std::optional<bool> debugMarkers;
+            std::optional<bool> renderDoc;
+        };
+
+        [[nodiscard]] DiagnosticsCliOptions parseCliDiagnostics(std::span<const std::string> args)
+        {
+            DiagnosticsCliOptions parsed;
+            for (const auto& argString : args)
+            {
+                const std::string_view arg = argString;
+                if (arg == "--validation")
+                {
+                    parsed.validation = true;
+                }
+                else if (arg == "--no-validation")
+                {
+                    parsed.validation = false;
+                }
+                else if (arg == "--debug-markers")
+                {
+                    parsed.debugMarkers = true;
+                }
+                else if (arg == "--no-debug-markers")
+                {
+                    parsed.debugMarkers = false;
+                }
+                else if (arg == "--renderdoc")
+                {
+                    parsed.renderDoc = true;
+                }
+                else if (arg == "--no-renderdoc")
+                {
+                    parsed.renderDoc = false;
+                }
+            }
+            return parsed;
+        }
     } // namespace
 
 #if defined(__ANDROID__)
@@ -263,6 +304,20 @@ namespace vultra
             universalRenderProfile == UniversalRenderer::RenderProfile::eCompatibility ?
                 EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eCompatibility :
                 EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eAuto;
+
+        const auto diagnostics = parseCliDiagnostics(commandLineArgs());
+        if (diagnostics.validation.has_value())
+        {
+            engine.ctx().config.render.enableValidation = *diagnostics.validation;
+        }
+        if (diagnostics.debugMarkers.has_value())
+        {
+            engine.ctx().config.render.enableDebugMarkers = *diagnostics.debugMarkers;
+        }
+        if (diagnostics.renderDoc.has_value())
+        {
+            engine.ctx().config.render.enableRenderDoc = *diagnostics.renderDoc;
+        }
 
         onConfigureDemo(engine);
 

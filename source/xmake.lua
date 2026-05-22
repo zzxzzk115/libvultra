@@ -236,11 +236,11 @@ target("vultra")
 
     if is_mode("debug") then
         add_defines("_DEBUG", { public = true })
-        if has_config("renderdoc") then
-            add_defines("VULTRA_ENABLE_RENDERDOC", { public = true })
-        end
     else
         add_defines("NDEBUG", { public = true })
+    end
+    if has_config("renderdoc") then
+        add_defines("VULTRA_ENABLE_RENDERDOC", { public = true })
     end
 
     if is_plat("android") then
@@ -274,7 +274,7 @@ if not is_plat("android") and not is_plat("wasm") then
         add_deps("vultra")
         add_packages("argparse")
         set_rundir("$(projectdir)")
-        set_runargs("--editor", "--project", "$(projectdir)/example.vproject")
+        set_runargs("--editor", "--project", "$(projectdir)/example.vproject", "--validation", "--debug-markers", "--renderdoc")
         set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra-app")
         after_build(function (target)
             local stale_imgui_ini = path.join(target:targetdir(), "imgui.ini")

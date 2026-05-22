@@ -1606,6 +1606,9 @@ namespace vultra
                 rhi::prepareForAttachment(cb, *target, false);
                 imguiService->render(cb, fbInfo);
             }
+
+            if (static_cast<bool>(target->getUsageFlags() & rhi::ImageUsage::eSampled))
+                rhi::prepareForReading(cb, *target);
         }
 
         if (imguiService && backendService.isXREnabled() && backendService.isXRMirrorEnabled() && !xrEyeViews.empty())
@@ -1688,8 +1691,6 @@ namespace vultra
         rhi::setBuiltinProfilerGpuScopeCallbacks({}, {});
         m_RuntimeProfiler.setGpuScopeCallbacks({}, {}, {});
 
-        if (frameDebuggerService)
-            frameDebuggerService->captureEnd();
     }
 
     void RenderSystem::onPreRender() { m_SkipRender = false; }
@@ -1710,5 +1711,8 @@ namespace vultra
 
         auto& backendService = ctx().services.require<IRenderBackendService>();
         backendService.present();
+
+        if (auto* frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>())
+            frameDebuggerService->captureEnd();
     }
 } // namespace vultra

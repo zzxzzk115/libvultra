@@ -16,6 +16,12 @@ namespace vultra
         void onShutdown() override;
 
         void captureSingleFrame() override;
+        void showReplayUI() override;
+
+        [[nodiscard]] bool     isAvailable() const override;
+        [[nodiscard]] bool     isFrameCapturing() const override;
+        [[nodiscard]] uint32_t getCaptureCount() const override;
+        [[nodiscard]] bool     isRenderDocEnabled() const override;
 
     protected:
         void captureStart() override;
@@ -26,5 +32,6 @@ namespace vultra
 
         bool m_CaptureRequested {false};
         bool m_ShowCaptureUIRequested {false};
+        bool m_RenderDocEnabled {false};
     };
 } // namespace vultra

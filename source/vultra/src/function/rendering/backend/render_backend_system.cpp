@@ -105,7 +105,9 @@ namespace vultra
                 m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
                                                                       ctx().config.window.title,
                                                                       window.getRequiredVulkanInstanceExtensions(),
-                                                                      rhi::RenderBackendApi::eVulkan);
+                                                                      rhi::RenderBackendApi::eVulkan,
+                                                                      ctx().config.render.enableValidation,
+                                                                      ctx().config.render.enableDebugMarkers);
                 m_ImGuiBackend = std::make_unique<rhi::VulkanImGui>(*m_RenderDevice);
                 break;
 #else
@@ -119,7 +121,9 @@ namespace vultra
                 m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
                                                                       ctx().config.window.title,
                                                                       std::span<const char* const> {},
-                                                                      rhi::RenderBackendApi::eWebGPU);
+                                                                      rhi::RenderBackendApi::eWebGPU,
+                                                                      ctx().config.render.enableValidation,
+                                                                      ctx().config.render.enableDebugMarkers);
                 m_ImGuiBackend = std::make_unique<rhi::WebGPUImGui>(*m_RenderDevice);
                 break;
         }

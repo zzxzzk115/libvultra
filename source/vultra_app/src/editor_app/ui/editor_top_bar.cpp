@@ -1,6 +1,7 @@
 #include "editor_app/ui/editor_top_bar.hpp"
 
 #include <vultra/core/services/window_service.hpp>
+#include <vultra/function/services/frame_debugger_service.hpp>
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -201,6 +202,35 @@ namespace vultra_app
             ImGui::PopStyleVar();
             ImGui::PopID();
         }
+
+        void drawRenderDocMenu(EditorContext& ctx)
+        {
+            auto* frameDebugger = ctx.services ? ctx.services->tryGet<vultra::IFrameDebuggerService>() : nullptr;
+            const bool enabled  = frameDebugger && frameDebugger->isRenderDocEnabled();
+            const bool available = enabled && frameDebugger->isAvailable();
+
+            if (ImGui::BeginMenu("RenderDoc", enabled))
+            {
+                if (!available)
+                    ImGui::BeginDisabled();
+
+                if (ImGui::MenuItem("Capture Next Frame", "F12") && frameDebugger)
+                    frameDebugger->captureSingleFrame();
+
+                if (!available)
+                    ImGui::EndDisabled();
+
+                ImGui::Separator();
+                ImGui::MenuItem(available ? "Available" : "Unavailable", nullptr, false, false);
+                if (frameDebugger)
+                {
+                    ImGui::MenuItem(frameDebugger->isFrameCapturing() ? "Capturing" : "Idle", nullptr, false, false);
+                    const std::string captureCount = "Captures: " + std::to_string(frameDebugger->getCaptureCount());
+                    ImGui::MenuItem(captureCount.c_str(), nullptr, false, false);
+                }
+                ImGui::EndMenu();
+            }
+        }
     } // namespace
 
     void drawEditorTopBar(EditorContext&                                      ctx,
@@ -260,6 +290,8 @@ namespace vultra_app
             {
                 ImGui::MenuItem("Import", nullptr, false, false);
                 ImGui::MenuItem("Save All", nullptr, false, false);
+                ImGui::Separator();
+                drawRenderDocMenu(ctx);
                 ImGui::EndPopup();
             }
 

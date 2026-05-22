@@ -79,10 +79,23 @@ namespace vultra
             return *this;
         }
 
-        GraphicsPipeline::Builder& GraphicsPipeline::Builder::addBuiltinShader(const ShaderType type, const SPIRV& spv)
+        GraphicsPipeline::Builder&
+        GraphicsPipeline::Builder::addBuiltinShader(const ShaderType type,
+                                                    const SPIRV&     spv,
+                                                    const ShaderReflection* reflection)
         {
-            m_BuiltinShaderStages.emplace(type, spv);
+            m_BuiltinShaderStages.emplace(type,
+                                          BuiltinShaderStage {
+                                              .spirv      = spv,
+                                              .reflection = reflection ? std::make_optional(*reflection) : std::nullopt,
+                                          });
             return *this;
+        }
+
+        GraphicsPipeline::Builder&
+        GraphicsPipeline::Builder::addBuiltinShader(const ShaderType type, const ShaderLibraryRuntime::LoadedShader& shader)
+        {
+            return addBuiltinShader(type, shader.spirv, &shader.reflection);
         }
 
         GraphicsPipeline::Builder& GraphicsPipeline::Builder::setDepthStencil(const DepthStencilState& desc)

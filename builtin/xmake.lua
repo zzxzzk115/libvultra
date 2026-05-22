@@ -120,8 +120,7 @@ task("shader_task")
             return
         end
 
-        local vshaderc =
-            path.join(pkg:installdir(), "bin", "vshaderc")
+        local vshaderc = os.getenv("VSHADERC") or path.join(pkg:installdir(), "bin", "vshaderc")
         if is_host("windows") and not os.isfile(vshaderc) then
             vshaderc = vshaderc .. ".exe"
         end
@@ -206,6 +205,9 @@ task("shader_task")
             end
             if os.exists(build_script) then
                 table.insert(files, build_script)
+            end
+            if os.exists(vshaderc) then
+                table.insert(files, vshaderc)
             end
             return files
         end
@@ -661,8 +663,8 @@ if is_plat("android") then
     add_requires("vshadersystem v0.6.2", { configs = vshadersystem_configs })
     add_requires("vshadersystem~host v0.6.2", { host = true, kind = "binary", configs = vshadersystem_configs })
 else
-    add_requires("vshadersystem v0.8.2", { configs = vshadersystem_configs })
-    add_requires("vshadersystem~host v0.8.2", { host = true, kind = "binary", configs = vshadersystem_configs })
+    add_requires("vshadersystem v0.8.3", { configs = vshadersystem_configs })
+    add_requires("vshadersystem~host v0.8.3", { host = true, kind = "binary", configs = vshadersystem_configs })
 end
 
 target("vultra_builtin_assets")

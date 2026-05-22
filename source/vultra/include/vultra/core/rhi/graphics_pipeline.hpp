@@ -7,6 +7,7 @@
 #include "vultra/core/rhi/structs/primitive_topology.hpp"
 #include "vultra/core/rhi/structs/shader_type.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
+#include "vultra/core/rhi/shader_library.hpp"
 
 #include <limits>
 #include <memory>
@@ -64,7 +65,8 @@ namespace vultra
                 Builder& setPipelineLayout(PipelineLayout);
 
                 Builder& addShader(const ShaderType, const ShaderStageInfo&);
-                Builder& addBuiltinShader(const ShaderType, const SPIRV&);
+                Builder& addBuiltinShader(const ShaderType, const SPIRV&, const ShaderReflection* = nullptr);
+                Builder& addBuiltinShader(const ShaderType, const ShaderLibraryRuntime::LoadedShader&);
 
                 Builder& setDepthStencil(const DepthStencilState&);
                 Builder& setRasterizer(const RasterizerState&);
@@ -87,7 +89,13 @@ namespace vultra
                 PrimitiveTopology m_PrimitiveTopology {PrimitiveTopology::eTriangleList};
 
                 std::unordered_map<ShaderType, ShaderStageInfo> m_ShaderStages;
-                std::unordered_map<ShaderType, SPIRV>           m_BuiltinShaderStages;
+                struct BuiltinShaderStage
+                {
+                    SPIRV                           spirv;
+                    std::optional<ShaderReflection> reflection;
+                };
+
+                std::unordered_map<ShaderType, BuiltinShaderStage> m_BuiltinShaderStages;
                 PipelineLayout                                  m_PipelineLayout;
 
                 DepthStencilState         m_DepthStencilState {};

@@ -229,6 +229,6 @@ namespace vultra
             VULTRA_CORE_ERROR("[CoarseInstanceCullPass] Failed to load compute shader variant");
             return {};
         }
-        return getRenderDevice().createComputePipelineBuiltin(shader->spirv);
+        return getRenderDevice().createComputePipelineBuiltin(*shader);
     }
 } // namespace vultra

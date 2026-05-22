@@ -315,6 +315,7 @@ namespace vultra
             .importedFolder = ctx().config.asset.importedFolder,
             .registryFile   = ctx().config.asset.registryFile,
             .vpkFile        = ctx().config.asset.vpkFile,
+            .enableImportScan = ctx().config.asset.enableImportScan,
         });
 
         VULTRA_CORE_TRACE("[AssetSystem] Providing IAssetService");
@@ -469,7 +470,7 @@ namespace vultra
                                     .generic_string();
             const bool hasRegistryFile = std::filesystem::exists(registryPath);
             const bool loadedRegistry  = hasRegistryFile && m_Registry.load(registryPath);
-            if (!loadedRegistry || m_Registry.getRegistry().empty())
+            if (m_Desc.enableImportScan && (!loadedRegistry || m_Registry.getRegistry().empty()))
             {
                 if (!loadedRegistry)
                 {
@@ -490,8 +491,29 @@ namespace vultra
             }
             else
             {
-                VULTRA_CORE_INFO("[AssetSystem] Loaded asset registry from file: {}", registryPath);
+                if (loadedRegistry)
+                {
+                    VULTRA_CORE_INFO("[AssetSystem] Loaded asset registry from file: {}", registryPath);
+                }
+                else
+                {
+                    VULTRA_CORE_WARN("[AssetSystem] Asset import scan disabled and registry is unavailable: {}",
+                                     registryPath);
+                }
             }
+
+#ifdef VULTRA_HAS_VASSET_IMPORT
+            if (m_Desc.enableImportScan)
+            {
+                vasset::VAssetImporter importer {m_Registry};
+                auto                   importResult = importer.importOrReimportAssetFolder(m_Desc.assetRoot, false);
+                if (!importResult)
+                {
+                    VULTRA_CORE_WARN("[AssetSystem] Asset import scan failed while checking stale editor assets.");
+                }
+                m_Registry.save(registryPath);
+            }
+#endif
 
             m_Resolver.loadFromAssetRegistry(m_Registry);
 

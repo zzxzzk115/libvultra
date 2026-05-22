@@ -22,7 +22,8 @@ namespace vultra::platform::sdl
                   bool             cursorVisible,
                   bool             resizable,
                   bool             fullscreen,
-                  bool             decorated);
+                  bool             decorated,
+                  bool             visible);
         ~SDLWindow() override;
 
         [[nodiscard]] PlatformType platformType() const override { return PlatformType::eSDL3; }
@@ -40,6 +41,8 @@ namespace vultra::platform::sdl
         os::Window& setMouseRelativeMode(bool mouseRelativeMode) override;
         os::Window& setResizable(bool resizable) override;
         os::Window& setFullscreen(bool fullscreen) override;
+        os::Window& setDecorated(bool decorated) override;
+        os::Window& setVisible(bool visible) override;
 
         [[nodiscard]] std::string_view getTitle() const override { return m_Title; }
         [[nodiscard]] Extent           getExtent() const override { return m_Extent; }
@@ -59,6 +62,7 @@ namespace vultra::platform::sdl
         [[nodiscard]] bool             isResizable() const override { return m_Resizable; }
         [[nodiscard]] bool             isFullscreen() const override { return m_Fullscreen; }
         [[nodiscard]] bool             isDecorated() const override { return m_Decorated; }
+        [[nodiscard]] bool             isVisible() const override { return m_Visible; }
         [[nodiscard]] float            getDisplayScale() const override;
         [[nodiscard]] bool             shouldClose() const override { return m_ShouldClose; }
         [[nodiscard]] bool             isMinimized() const override { return m_IsMinimized; }
@@ -102,6 +106,7 @@ namespace vultra::platform::sdl
         bool        m_Resizable {true};
         bool        m_Fullscreen {false};
         bool        m_Decorated {true};
+        bool        m_Visible {true};
         bool        m_ShouldClose {false};
         bool        m_IsMinimized {false};
 

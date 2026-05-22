@@ -243,8 +243,8 @@ namespace vultra
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({rhi::PixelFormat::eR32UI})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
-            .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
-            .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
+            .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
+            .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
             .setDepthStencil({
                 .depthTest      = true,
                 .depthWrite     = false,

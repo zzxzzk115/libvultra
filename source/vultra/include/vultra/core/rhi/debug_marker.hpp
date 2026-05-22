@@ -1,7 +1,5 @@
 #pragma once
 
-#if defined(RHI_USE_DEBUG_MARKER) || _DEBUG
-
 #include <string_view>
 
 namespace vultra
@@ -36,8 +34,3 @@ namespace vultra
 #define RHI_NAMED_DEBUG_MARKER(CommandBuffer, Label) \
     const rhi::DebugMarker RHI_DEBUG_MARKER_ID(_debug_marker, __LINE__) { CommandBuffer, Label }
 #define RHI_DEBUG_MARKER(CommandBuffer) RHI_NAMED_DEBUG_MARKER(CommandBuffer, __FUNCTION__)
-
-#else
-#define RHI_NAMED_DEBUG_MARKER(CommandBuffer, Label)
-#define RHI_DEBUG_MARKER(CommandBuffer)
-#endif

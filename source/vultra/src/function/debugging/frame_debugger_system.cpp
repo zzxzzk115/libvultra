@@ -8,8 +8,9 @@ namespace vultra
     {
         VULTRA_CORE_INFO("[FrameDebuggerSystem] Initializing...");
 
+        m_RenderDocEnabled = ctx().config.render.enableRenderDoc;
         VULTRA_CORE_TRACE("[FrameDebuggerSystem] Creating RenderDoc API instance");
-        m_RenderDocAPI = new RenderDocAPI();
+        m_RenderDocAPI = new RenderDocAPI(m_RenderDocEnabled, ctx().config.render.enableValidation);
 
         VULTRA_CORE_TRACE("[FrameDebuggerSystem] Providing IFrameDebuggerService");
         ctx().services.provide<IFrameDebuggerService>(this);
@@ -23,6 +24,7 @@ namespace vultra
 
         delete m_RenderDocAPI;
         m_RenderDocAPI = nullptr;
+        m_RenderDocEnabled = false;
     }
 
     void FrameDebuggerSystem::captureSingleFrame()
@@ -48,6 +50,31 @@ namespace vultra
         }
         m_CaptureRequested = true;
     }
+
+    void FrameDebuggerSystem::showReplayUI()
+    {
+        if (m_RenderDocAPI && m_RenderDocAPI->isAvailable())
+        {
+            m_RenderDocAPI->showReplayUI();
+        }
+    }
+
+    bool FrameDebuggerSystem::isAvailable() const
+    {
+        return m_RenderDocAPI != nullptr && m_RenderDocAPI->isAvailable();
+    }
+
+    bool FrameDebuggerSystem::isFrameCapturing() const
+    {
+        return m_RenderDocAPI != nullptr && m_RenderDocAPI->isFrameCapturing();
+    }
+
+    uint32_t FrameDebuggerSystem::getCaptureCount() const
+    {
+        return m_RenderDocAPI ? m_RenderDocAPI->getCaptureCount() : 0u;
+    }
+
+    bool FrameDebuggerSystem::isRenderDocEnabled() const { return m_RenderDocEnabled; }
 
     void FrameDebuggerSystem::captureStart()
     {

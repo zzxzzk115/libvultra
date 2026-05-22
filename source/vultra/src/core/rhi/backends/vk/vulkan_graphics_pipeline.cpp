@@ -336,10 +336,16 @@ namespace vultra
             shaderStages.reserve(numShaderStages);
 
             // -- Builtin stages:
-            for (const auto& [shaderType, spv] : m_BuiltinShaderStages)
+            for (const auto& [shaderType, stageInfo] : m_BuiltinShaderStages)
             {
-                auto shaderModule =
-                    rd.createShaderModule(spv, reflection ? std::addressof(reflection.value()) : nullptr);
+                if (reflection && stageInfo.reflection.has_value())
+                {
+                    reflection->accumulate(*stageInfo.reflection);
+                }
+
+                auto shaderModule = rd.createShaderModule(
+                    stageInfo.spirv,
+                    reflection && !stageInfo.reflection.has_value() ? std::addressof(reflection.value()) : nullptr);
                 if (!shaderModule)
                     continue;
 

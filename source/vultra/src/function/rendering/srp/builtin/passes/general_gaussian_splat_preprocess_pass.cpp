@@ -688,7 +688,7 @@ namespace vultra
             });
         }
 
-        return getRenderDevice().createComputePipelineBuiltin(shader->spirv);
+        return getRenderDevice().createComputePipelineBuiltin(*shader);
     }
 
     rhi::ComputePipeline GeneralGaussianSplatPreprocessPass::createPipeline(const uint64_t variantHash) const
@@ -705,6 +705,6 @@ namespace vultra
             });
         }
 
-        return getRenderDevice().createComputePipelineBuiltin(shader->spirv);
+        return getRenderDevice().createComputePipelineBuiltin(*shader);
     }
 } // namespace vultra

@@ -251,8 +251,8 @@ namespace vultra
         }
         else
         {
-            builder.addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
-                .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv);
+            builder.addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
+                .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader);
         }
 
         return builder.build(getRenderDevice());

@@ -159,6 +159,7 @@ namespace vultra
             bool         m_SupportsTimestampQuery {false};
             bool         m_SupportsScopeTimestampQuery {false};
             bool         m_SupportsTimestampQueryInsideEncoders {false};
+            bool         m_EnableDebugMarkers {defaultRenderDiagnosticsEnabled()};
             std::vector<FrameTimeQuerySlot> m_FrameTimeSlots;
             std::deque<uint32_t>            m_PendingFrameTimeSlots;
             uint32_t                        m_FrameTimeNextSlot {0};

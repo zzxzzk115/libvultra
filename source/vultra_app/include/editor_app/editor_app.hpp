@@ -7,8 +7,13 @@
 
 #include <vultra/core/engine/engine.hpp>
 #include <vultra/function/scene/vscn_document.hpp>
+#include <vtask/scheduler.hpp>
+#include <vtask/task_set.hpp>
 
+#include <atomic>
 #include <filesystem>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 
@@ -31,9 +36,26 @@ namespace vultra_app
         {
             Idle,
             Pending,
+            ImportAssets,
             ConfigureAssets,
             LoadScene,
             Finalize,
+            Complete,
+        };
+
+        struct ImportTaskProgress
+        {
+            std::mutex mutex;
+            float       progress {0.0f};
+            std::string message;
+        };
+
+        struct ImportTaskResult
+        {
+            bool        ok {false};
+            std::string error;
+            std::string assetRoot;
+            std::string registryPath;
         };
 
         struct LoadingState
@@ -47,6 +69,10 @@ namespace vultra_app
         void ensureInitialized();
         bool updateProjectLoading(EditorContext& ctx);
         void startProjectLoading(const std::filesystem::path& projectRoot);
+        void startAssetImportTask(const std::filesystem::path& projectRoot, const std::string& assetRoot);
+        void waitForAssetImportTask();
+        void applySplashWindow(EditorContext& ctx);
+        void applyEditorWindow(EditorContext& ctx);
         void drawLoadingOverlay() const;
         void saveCurrentScene(EditorContext& ctx);
         void syncPlaybackState(EditorContext& ctx);
@@ -60,10 +86,17 @@ namespace vultra_app
         EditorWindowManager m_WindowManager;
         std::filesystem::path m_SyncedProject;
         LoadingState        m_Loading;
+        std::unique_ptr<vtask::Scheduler>   m_ImportScheduler;
+        std::unique_ptr<vtask::TaskSet>     m_ImportTask;
+        ImportTaskResult                    m_ImportResult;
+        std::atomic_bool                    m_ImportTaskDone {false};
+        std::shared_ptr<ImportTaskProgress> m_ImportProgress;
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                m_Initialized {false};
         bool                m_DefaultLayoutBuilt {false};
         bool                m_ShowAboutPopup {false};
         bool                m_PlaybackWasPlaying {false};
+        bool                m_SplashWindowApplied {false};
+        bool                m_EditorWindowApplied {false};
     };
 } // namespace vultra_app

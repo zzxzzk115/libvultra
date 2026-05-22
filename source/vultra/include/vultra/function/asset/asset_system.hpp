@@ -33,6 +33,10 @@ namespace vultra
 
         // Whether to keep decoded CPU assets after GPU upload.
         bool keepCpuCopy {false};
+
+        // Editor boot can import assets before reconfiguring the runtime registry. In that path configure() should
+        // only load/mount the already refreshed registry to avoid blocking the render thread.
+        bool enableImportScan {true};
     };
 
     // Sync-only baseline. Async IO + main-thread upload will be added later without breaking APIs.

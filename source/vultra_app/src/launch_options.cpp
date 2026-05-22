@@ -30,6 +30,12 @@ namespace vultra_app
         program.add_argument("--project").default_value(std::string {});
         program.add_argument("--vpk").default_value(std::string {});
         program.add_argument("--scene").default_value(std::string {"res://scenes/main.vscn"});
+        program.add_argument("--validation").flag();
+        program.add_argument("--no-validation").flag();
+        program.add_argument("--debug-markers").flag();
+        program.add_argument("--no-debug-markers").flag();
+        program.add_argument("--renderdoc").flag();
+        program.add_argument("--no-renderdoc").flag();
 
         std::vector<std::string> argv;
         argv.emplace_back("vultra");
@@ -43,6 +49,22 @@ namespace vultra_app
             options.projectPath = program.get<std::string>("--project");
             options.vpkPath     = program.get<std::string>("--vpk");
             options.sceneUri    = program.get<std::string>("--scene");
+
+            for (const auto& arg : args)
+            {
+                if (arg == "--validation")
+                    options.validation = true;
+                else if (arg == "--no-validation")
+                    options.validation = false;
+                else if (arg == "--debug-markers")
+                    options.debugMarkers = true;
+                else if (arg == "--no-debug-markers")
+                    options.debugMarkers = false;
+                else if (arg == "--renderdoc")
+                    options.renderDoc = true;
+                else if (arg == "--no-renderdoc")
+                    options.renderDoc = false;
+            }
         }
         catch (const std::exception& e)
         {
@@ -90,6 +112,7 @@ namespace vultra_app
                   << "Usage:\n"
                   << "  vultra [--vpk resources.vpk] [--scene res://scenes/main.vscn]\n"
                   << "  vultra --editor --project <project-dir>\n"
+                  << "  vultra [--validation|--no-validation] [--debug-markers|--no-debug-markers] [--renderdoc|--no-renderdoc]\n"
                   << "  vultra --project <project-dir>\n"
                   << "  vultra help\n\n"
                   << "Notes:\n"

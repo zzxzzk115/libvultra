@@ -106,6 +106,7 @@ namespace vultra
                 Builder& setResizable(bool resizable);
                 Builder& setFullscreen(bool fullscreen);
                 Builder& setDecorated(bool decorated);
+                Builder& setVisible(bool visible);
                 Builder& setPlatform(PlatformType platformType);
 
                 [[nodiscard]] std::shared_ptr<Window> build() const;
@@ -118,6 +119,7 @@ namespace vultra
                 bool         m_Resizable {true};
                 bool         m_Fullscreen {false};
                 bool         m_Decorated {true};
+                bool         m_Visible {true};
                 PlatformType m_PlatformType {PlatformType::eSDL3};
             };
 
@@ -144,6 +146,8 @@ namespace vultra
             virtual Window& setMouseRelativeMode(bool mouseRelativeMode) = 0;
             virtual Window& setResizable(bool resizable)                 = 0;
             virtual Window& setFullscreen(bool fullscreen)               = 0;
+            virtual Window& setDecorated(bool decorated)                 = 0;
+            virtual Window& setVisible(bool visible)                     = 0;
 
             [[nodiscard]] virtual std::string_view getTitle() const             = 0;
             [[nodiscard]] virtual Extent           getExtent() const            = 0;
@@ -158,6 +162,7 @@ namespace vultra
             [[nodiscard]] virtual bool             isResizable() const          = 0;
             [[nodiscard]] virtual bool             isFullscreen() const         = 0;
             [[nodiscard]] virtual bool             isDecorated() const          = 0;
+            [[nodiscard]] virtual bool             isVisible() const            = 0;
             [[nodiscard]] virtual float            getDisplayScale() const      = 0;
             [[nodiscard]] virtual bool             shouldClose() const          = 0;
             [[nodiscard]] virtual bool             isMinimized() const          = 0;

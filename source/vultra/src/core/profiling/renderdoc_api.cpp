@@ -20,7 +20,7 @@ namespace vultra
         std::filesystem::path getCaptureRoot() { return vbase::executable_dir(); }
     } // namespace
 
-    RenderDocAPI::RenderDocAPI(bool enable)
+    RenderDocAPI::RenderDocAPI(bool enable, bool enableApiValidation) : m_EnableApiValidation(enableApiValidation)
     {
 #ifdef VULTRA_ENABLE_RENDERDOC
         VULTRA_CORE_TRACE("[Profiling] Initializing RenderDoc API...");
@@ -243,11 +243,11 @@ namespace vultra
                 m_RenderDocAPI->GetAPIVersion(&major, &minor, &patch);
                 VULTRA_CORE_TRACE("[Profiling] RenderDoc API version: {}.{}.{}", major, minor, patch);
 
-                // Set options for RenderDoc
-#if _DEBUG
                 m_RenderDocAPI->SetCaptureOptionU32(eRENDERDOC_Option_DebugOutputMute, 0);
-                m_RenderDocAPI->SetCaptureOptionU32(eRENDERDOC_Option_APIValidation, 1);
-#endif
+                // Vulkan validation is controlled by the engine launch options. Keeping RenderDoc's own API
+                // validation disabled avoids a second validation/capture path mutating swapchain image layouts while
+                // the normal validation layer is already active.
+                m_RenderDocAPI->SetCaptureOptionU32(eRENDERDOC_Option_APIValidation, 0);
                 const std::filesystem::path captureRoot = getCaptureRoot() / "captures";
                 std::filesystem::create_directories(captureRoot);
                 m_RenderDocAPI->SetCaptureFilePathTemplate((captureRoot / "myframe").generic_string().c_str());

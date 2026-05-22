@@ -62,6 +62,12 @@ namespace vultra
             return *this;
         }
 
+        Window::Builder& Window::Builder::setVisible(bool visible)
+        {
+            m_Visible = visible;
+            return *this;
+        }
+
         Window::Builder& Window::Builder::setPlatform(const PlatformType platformType)
         {
             m_PlatformType = platformType;
@@ -76,15 +82,15 @@ namespace vultra
             return {};
 #elif defined(__EMSCRIPTEN__)
             return std::make_shared<platform::glfw::GLFWWindow>(
-                m_Title, m_Extent, m_Resizable, m_Fullscreen, m_Decorated);
+                m_Title, m_Extent, m_Resizable, m_Fullscreen, m_Decorated, m_Visible);
 #else
             if (m_PlatformType == PlatformType::eGLFW)
             {
                 return std::make_shared<platform::glfw::GLFWWindow>(
-                    m_Title, m_Extent, m_Resizable, m_Fullscreen, m_Decorated);
+                    m_Title, m_Extent, m_Resizable, m_Fullscreen, m_Decorated, m_Visible);
             }
             return std::make_shared<platform::sdl::SDLWindow>(
-                m_Title, m_Extent, m_Position, m_CursorVisibility, m_Resizable, m_Fullscreen, m_Decorated);
+                m_Title, m_Extent, m_Position, m_CursorVisibility, m_Resizable, m_Fullscreen, m_Decorated, m_Visible);
 #endif
         }
 

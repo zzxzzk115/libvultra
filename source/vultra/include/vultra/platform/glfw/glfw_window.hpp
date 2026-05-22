@@ -13,7 +13,7 @@ namespace vultra::platform::glfw
     class GLFWWindow final : public os::Window
     {
     public:
-        GLFWWindow(std::string_view title, Extent extent, bool resizable, bool fullscreen, bool decorated);
+        GLFWWindow(std::string_view title, Extent extent, bool resizable, bool fullscreen, bool decorated, bool visible);
         ~GLFWWindow() override;
 
         [[nodiscard]] PlatformType platformType() const override { return PlatformType::eGLFW; }
@@ -31,6 +31,8 @@ namespace vultra::platform::glfw
         os::Window& setMouseRelativeMode(bool mouseRelativeMode) override;
         os::Window& setResizable(bool resizable) override;
         os::Window& setFullscreen(bool fullscreen) override;
+        os::Window& setDecorated(bool decorated) override;
+        os::Window& setVisible(bool visible) override;
 
         [[nodiscard]] std::string_view getTitle() const override { return m_Title; }
         [[nodiscard]] Extent           getExtent() const override { return m_Extent; }
@@ -45,6 +47,7 @@ namespace vultra::platform::glfw
         [[nodiscard]] bool             isResizable() const override { return m_Resizable; }
         [[nodiscard]] bool             isFullscreen() const override { return m_Fullscreen; }
         [[nodiscard]] bool             isDecorated() const override { return m_Decorated; }
+        [[nodiscard]] bool             isVisible() const override { return m_Visible; }
         [[nodiscard]] float            getDisplayScale() const override;
         [[nodiscard]] bool             shouldClose() const override { return m_ShouldClose; }
         [[nodiscard]] bool             isMinimized() const override { return false; }
@@ -95,6 +98,7 @@ namespace vultra::platform::glfw
         bool        m_Resizable {true};
         bool        m_Fullscreen {false};
         bool        m_Decorated {true};
+        bool        m_Visible {true};
         bool        m_ShouldClose {false};
         glm::vec2   m_LastCursorPosition {};
         bool        m_HasLastCursorPosition {false};

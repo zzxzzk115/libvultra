@@ -11,6 +11,15 @@ namespace vultra
 {
     namespace rhi
     {
+        [[nodiscard]] constexpr bool defaultRenderDiagnosticsEnabled()
+        {
+#if defined(_DEBUG)
+            return true;
+#else
+            return false;
+#endif
+        }
+
         enum class RenderDeviceFeatureFlagBits : uint32_t
         {
             eNormal             = 0,

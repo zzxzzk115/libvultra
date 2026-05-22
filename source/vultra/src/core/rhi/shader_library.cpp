@@ -103,7 +103,6 @@ namespace vultra
                 VULTRA_CORE_ERROR("[ShaderLibraryRuntime] Failed to parse vshbin: {}", bin.error().message);
                 return std::nullopt;
             }
-
             auto parsed = std::move(bin.value());
 
             LoadedShader out;

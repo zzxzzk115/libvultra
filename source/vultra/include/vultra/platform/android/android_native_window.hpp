@@ -35,6 +35,8 @@ namespace vultra::platform::android
         Window& setMouseRelativeMode(bool mouseRelativeMode) override;
         Window& setResizable(bool resizable) override;
         Window& setFullscreen(bool fullscreen) override;
+        Window& setDecorated(bool decorated) override;
+        Window& setVisible(bool visible) override;
 
         [[nodiscard]] std::string_view getTitle() const override { return m_Title; }
         [[nodiscard]] Extent           getExtent() const override { return m_ContentExtent; }
@@ -54,6 +56,7 @@ namespace vultra::platform::android
         [[nodiscard]] bool       isResizable() const override { return false; }
         [[nodiscard]] bool       isFullscreen() const override { return true; }
         [[nodiscard]] bool       isDecorated() const override { return false; }
+        [[nodiscard]] bool       isVisible() const override { return true; }
         [[nodiscard]] float      getDisplayScale() const override { return m_DisplayScale; }
         [[nodiscard]] bool       shouldClose() const override { return m_ShouldClose; }
         [[nodiscard]] bool       isMinimized() const override { return false; }

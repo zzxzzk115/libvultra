@@ -1,8 +1,8 @@
 #include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer.hpp"
+#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/backends/webgpu/conversions.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_descriptor_set.hpp"
 
-#include "vultra/core/base/common_context.hpp"
 #include "vultra/core/base/visitor_helper.hpp"
 #include "vultra/core/profiling/tracky.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_swapchain.hpp"
@@ -1259,6 +1259,11 @@ namespace vultra
 
         void WebGPUCommandBuffer::pushDebugGroup(const std::string_view label) const
         {
+            if (m_Backend == nullptr || !m_Backend->m_EnableDebugMarkers)
+            {
+                return;
+            }
+
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             WGPUStringView labelView {};
             labelView.data   = label.data();
@@ -1283,6 +1288,11 @@ namespace vultra
 
         void WebGPUCommandBuffer::popDebugGroup() const
         {
+            if (m_Backend == nullptr || !m_Backend->m_EnableDebugMarkers)
+            {
+                return;
+            }
+
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             if (m_RenderPass != nullptr)
             {

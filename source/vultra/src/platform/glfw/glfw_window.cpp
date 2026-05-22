@@ -139,8 +139,14 @@ namespace vultra::platform::glfw
         }
     } // namespace
 
-    GLFWWindow::GLFWWindow(std::string_view title, Extent extent, bool resizable, bool fullscreen, bool decorated) :
-        m_Title(title), m_Extent(extent), m_Resizable(resizable), m_Fullscreen(fullscreen), m_Decorated(decorated)
+    GLFWWindow::GLFWWindow(std::string_view title,
+                           Extent           extent,
+                           bool             resizable,
+                           bool             fullscreen,
+                           bool             decorated,
+                           bool             visible) :
+        m_Title(title), m_Extent(extent), m_Resizable(resizable), m_Fullscreen(fullscreen), m_Decorated(decorated),
+        m_Visible(visible)
     {
         if (!glfwInit())
         {
@@ -163,6 +169,7 @@ namespace vultra::platform::glfw
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, m_Resizable ? GLFW_TRUE : GLFW_FALSE);
         glfwWindowHint(GLFW_DECORATED, m_Decorated ? GLFW_TRUE : GLFW_FALSE);
+        glfwWindowHint(GLFW_VISIBLE, m_Visible ? GLFW_TRUE : GLFW_FALSE);
         m_WindowHandle =
             glfwCreateWindow(std::max(1, m_Extent.x), std::max(1, m_Extent.y), m_Title.c_str(), nullptr, nullptr);
         if (!m_WindowHandle)
@@ -417,6 +424,41 @@ namespace vultra::platform::glfw
             return *this;
         }
         m_Fullscreen = fullscreen;
+        return *this;
+    }
+
+    os::Window& GLFWWindow::setDecorated(bool decorated)
+    {
+        if (m_Decorated == decorated)
+        {
+            return *this;
+        }
+        m_Decorated = decorated;
+#if !defined(__EMSCRIPTEN__)
+        if (m_WindowHandle)
+        {
+            glfwSetWindowAttrib(m_WindowHandle, GLFW_DECORATED, decorated ? GLFW_TRUE : GLFW_FALSE);
+        }
+#endif
+        return *this;
+    }
+
+    os::Window& GLFWWindow::setVisible(bool visible)
+    {
+        if (m_Visible == visible)
+        {
+            return *this;
+        }
+        m_Visible = visible;
+#if !defined(__EMSCRIPTEN__)
+        if (m_WindowHandle)
+        {
+            if (m_Visible)
+                glfwShowWindow(m_WindowHandle);
+            else
+                glfwHideWindow(m_WindowHandle);
+        }
+#endif
         return *this;
     }
 

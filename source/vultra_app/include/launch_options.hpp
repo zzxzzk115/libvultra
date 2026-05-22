@@ -17,6 +17,9 @@ namespace vultra_app
         std::string projectPath;
         std::string vpkPath;
         std::string sceneUri {"res://scenes/main.vscn"};
+        std::optional<bool> validation;
+        std::optional<bool> debugMarkers;
+        std::optional<bool> renderDoc;
     };
 
     LaunchOptions parseLaunchOptions(std::span<const std::string> args);

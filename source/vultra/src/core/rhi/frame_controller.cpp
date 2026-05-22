@@ -66,7 +66,7 @@ namespace vultra
             assert(m_ImageAcquireAttempted);
             ZoneScopedN("RHI::BeginFrame");
 
-            auto& [cb, _1, _2] = m_Frames[m_FrameIndex];
+            auto& [cb, _1] = m_Frames[m_FrameIndex];
 
             cb.begin();
             {
@@ -82,7 +82,9 @@ namespace vultra
             assert(m_Swapchain);
             ZoneScopedN("RHI::AcquireNextFrame");
 
-            auto& [cb, imageAcquired, _] = m_Frames[m_FrameIndex];
+            ensureSwapchainSyncObjects();
+
+            auto& [cb, imageAcquired] = m_Frames[m_FrameIndex];
             cb.reset();
 
             m_ImageAcquired         = m_Swapchain->acquireNextImage(imageAcquired);
@@ -95,7 +97,9 @@ namespace vultra
             assert(m_Swapchain);
             ZoneScopedN("RHI::EndFrame");
 
-            auto& [cb, imageAcquired, renderCompleted] = m_Frames[m_FrameIndex];
+            auto& [cb, imageAcquired] = m_Frames[m_FrameIndex];
+            assert(m_Swapchain->getCurrentBufferIndex() < m_RenderCompleted.size());
+            auto& renderCompleted = m_RenderCompleted[m_Swapchain->getCurrentBufferIndex()];
             cb.getBarrierBuilder().imageBarrier(
                 {
                     .image            = m_Swapchain->getCurrentBuffer(),
@@ -123,13 +127,17 @@ namespace vultra
         void FrameController::present()
         {
             assert(m_Swapchain);
-            auto& currentFrame = m_Frames[m_FrameIndex];
-            m_RenderDevice->present(*m_Swapchain, currentFrame.renderCompleted);
+            assert(m_Swapchain->getCurrentBufferIndex() < m_RenderCompleted.size());
+            m_RenderDevice->present(*m_Swapchain, m_RenderCompleted[m_Swapchain->getCurrentBufferIndex()]);
             FrameMark;
             ++m_FrameIndex;
         }
 
-        void FrameController::recreate() { m_Swapchain->recreate(); }
+        void FrameController::recreate()
+        {
+            m_Swapchain->recreate();
+            ensureSwapchainSyncObjects();
+        }
 
         void FrameController::create(const FrameIndex::ValueType numFramesInFlight)
         {
@@ -138,10 +146,28 @@ namespace vultra
                 return PerFrameData {
                     .commandBuffer   = rd.createCommandBuffer(),
                     .imageAcquired   = rd.createSemaphore(),
-                    .renderCompleted = rd.createSemaphore(),
                 };
             });
+            ensureSwapchainSyncObjects();
             VULTRA_CORE_TRACE("[FrameController] Created with {} frames in flight", numFramesInFlight);
+        }
+
+        void FrameController::ensureSwapchainSyncObjects()
+        {
+            if (!m_RenderDevice || !m_Swapchain)
+                return;
+
+            const auto numBuffers = m_Swapchain->getNumBuffers();
+            if (m_RenderCompleted.size() == numBuffers)
+                return;
+
+            for (auto& semaphore : m_RenderCompleted)
+                m_RenderDevice->destroy(semaphore);
+            m_RenderCompleted.clear();
+            m_RenderCompleted.reserve(numBuffers);
+            std::generate_n(std::back_inserter(m_RenderCompleted), numBuffers, [this] {
+                return m_RenderDevice->createSemaphore();
+            });
         }
 
         void FrameController::destroy() noexcept
@@ -152,9 +178,12 @@ namespace vultra
             for (auto& f : m_Frames)
             {
                 f.commandBuffer = {};
-                m_RenderDevice->destroy(f.imageAcquired).destroy(f.renderCompleted);
+                m_RenderDevice->destroy(f.imageAcquired);
             }
             m_Frames.clear();
+            for (auto& semaphore : m_RenderCompleted)
+                m_RenderDevice->destroy(semaphore);
+            m_RenderCompleted.clear();
 
             m_Swapchain    = nullptr;
             m_RenderDevice = nullptr;

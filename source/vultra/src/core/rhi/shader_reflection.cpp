@@ -132,5 +132,47 @@ namespace vultra
                 }
             }
         }
+
+        void ShaderReflection::accumulate(const ShaderReflection& r)
+        {
+            if (r.localSize.has_value())
+            {
+                localSize = r.localSize;
+            }
+
+            for (size_t set = 0; set < r.descriptorSets.size(); ++set)
+            {
+                for (const auto& [binding, descriptor] : r.descriptorSets[set])
+                {
+                    auto [it, emplaced] = descriptorSets[set].try_emplace(binding, descriptor.type);
+                    auto& out           = it->second;
+                    if (emplaced)
+                    {
+                        out.access = descriptor.access;
+                        out.count  = descriptor.count;
+                        out.flags  = descriptor.flags;
+                    }
+                    out.stageFlags |= descriptor.stageFlags;
+                }
+            }
+
+            for (const auto& range : r.pushConstantRanges)
+            {
+                bool merged = false;
+                for (auto& existing : pushConstantRanges)
+                {
+                    if (existing.offset == range.offset && existing.size == range.size)
+                    {
+                        existing.stageFlags |= range.stageFlags;
+                        merged = true;
+                        break;
+                    }
+                }
+                if (!merged)
+                {
+                    pushConstantRanges.push_back(range);
+                }
+            }
+        }
     } // namespace rhi
 } // namespace vultra

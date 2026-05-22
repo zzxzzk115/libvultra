@@ -136,7 +136,7 @@ namespace vultra
         }
 
         if (forceReload)
-            assetService->reimportAsset(uri, true);
+            assetService->reimportAsset(uri, false);
 
         std::string runtimeUri = std::string(uri);
         const auto  logicalPath = logicalPathFromUri(uri);

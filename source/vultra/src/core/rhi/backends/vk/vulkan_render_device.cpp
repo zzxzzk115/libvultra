@@ -20,6 +20,11 @@
 #include <exception>
 #include <limits>
 #include <set>
+#include <string_view>
+
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 #if UINTPTR_MAX < UINT64_MAX && !defined(VULTRA_ALLOW_UNSAFE_32BIT_VULKAN_HANDLES)
 #error "32-bit Vulkan build is blocked by default due to handle truncation risk. Enable android_allow_32bit_unsafe to override."
@@ -179,17 +184,39 @@ namespace
 
 namespace
 {
-#if _DEBUG
     const char* validationLayers[] = {"VK_LAYER_KHRONOS_validation"};
-#endif
 
     const char* requestLayers[] = {"VK_LAYER_KHRONOS_synchronization2"};
+
+    bool isRenderDocSwapchainLayoutNoise(const char* message)
+    {
+        if (message == nullptr)
+            return false;
+
+#ifdef _WIN32
+        if (GetModuleHandleA("renderdoc.dll") == nullptr)
+            return false;
+#endif
+
+        const std::string_view text {message};
+        // RenderDoc's implicit capture layer can leave validation's swapchain layout bookkeeping at GENERAL while
+        // the app-facing command stream still presents normally. Keep this suppression limited to that known
+        // RenderDoc/swapchain interaction so ordinary image layout errors remain visible.
+        return text.find("VK_IMAGE_LAYOUT_PRESENT_SRC_KHR--instead, current layout is VK_IMAGE_LAYOUT_GENERAL") !=
+                   std::string_view::npos &&
+               text.find("vkQueueSubmit") != std::string_view::npos;
+    }
 
     VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT      messageSeverity,
                                                  vk::DebugUtilsMessageTypeFlagsEXT             messageType,
                                                  const vk::DebugUtilsMessengerCallbackDataEXT* pCallbackData,
                                                  void*)
     {
+        if (isRenderDocSwapchainLayoutNoise(pCallbackData ? pCallbackData->pMessage : nullptr))
+        {
+            return VK_FALSE;
+        }
+
         switch (messageSeverity)
         {
             case vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose:
@@ -593,12 +620,15 @@ namespace vultra
             std::vector<const char*> requiredExtensions;
             std::vector<const char*> extensions;
             bool                     enableDebugUtils = false;
+            const bool               validationRequested   = backendOf(m_Backend).m_EnableValidation;
+            const bool               debugMarkersRequested = backendOf(m_Backend).m_EnableDebugMarkers;
 
             requiredExtensions.assign(backendOf(m_Backend).m_RequiredInstanceExtensions.begin(), backendOf(m_Backend).m_RequiredInstanceExtensions.end());
 
-#if _DEBUG
-            requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-#endif
+            if (validationRequested || debugMarkersRequested)
+            {
+                requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+            }
 
 #ifdef __APPLE__
             requiredExtensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
@@ -617,12 +647,10 @@ namespace vultra
                     {
                         extensions.push_back(requiredExtension);
                         extensionMap[requiredExtension] = true;
-#if _DEBUG
                         if (std::strcmp(requiredExtension, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0)
                         {
                             enableDebugUtils = true;
                         }
-#endif
                     }
                 }
             }
@@ -631,13 +659,11 @@ namespace vultra
             {
                 if (!found)
                 {
-#if _DEBUG
                     if (std::strcmp(extension, VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == 0)
                     {
                         VULTRA_CORE_WARN("[RenderDevice] Optional extension unavailable: {}", extension);
                         continue;
                     }
-#endif
                     VULTRA_CORE_ERROR("[RenderDevice] Cannot find required extension: {}", extension);
                     throw std::runtime_error("Missing required extension");
                 }
@@ -671,8 +697,7 @@ namespace vultra
                         }
                     }
                 }
-#if _DEBUG
-                if (strcmp(validationLayers[0], layer.layerName) == 0)
+                if (validationRequested && strcmp(validationLayers[0], layer.layerName) == 0)
                 {
                     if (!found)
                     {
@@ -680,15 +705,12 @@ namespace vultra
                         enabledLayers.push_back(layer.layerName);
                     }
                 }
-#endif
             }
 
-#if _DEBUG
-            if (!found)
+            if (validationRequested && !found)
             {
                 VULTRA_CORE_WARN("[RenderDevice] Validation layer unavailable, continuing without it");
             }
-#endif
 
             createInfo.enabledLayerCount   = static_cast<uint32_t>(enabledLayers.size());
             createInfo.ppEnabledLayerNames = enabledLayers.data();
@@ -765,12 +787,10 @@ namespace vultra
 
             VULKAN_HPP_DEFAULT_DISPATCHER.init(backendOf(m_Backend).m_Instance);
 
-#if _DEBUG
-            if (enableDebugUtils)
+            if (validationRequested && enableDebugUtils)
             {
                 setupDebugMessenger(backendOf(m_Backend).m_Instance, backendOf(m_Backend).m_DebugMessenger);
             }
-#endif
         }
 
         void RenderDevice::selectPhysicalDevice()

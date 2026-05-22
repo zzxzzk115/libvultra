@@ -37,6 +37,7 @@ namespace vultra
                        .setResizable(cfg.window.resizable)
                        .setFullscreen(cfg.window.fullscreen)
                        .setDecorated(cfg.window.decorated)
+                       .setVisible(cfg.window.visible)
                        .setPlatform(platformType)
                        .build();
 #endif

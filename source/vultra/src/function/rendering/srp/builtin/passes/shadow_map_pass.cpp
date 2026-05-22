@@ -369,8 +369,8 @@ namespace vultra
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
             .setInputAssembly(buildPipelineVertexAttributes(positionOffset))
             .setVertexStride(vertexStride)
-            .addBuiltinShader(rhi::ShaderType::eVertex, vertexShader->spirv)
-            .addBuiltinShader(rhi::ShaderType::eFragment, fragmentShader->spirv)
+            .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
+            .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
             .setDepthStencil({
                 .depthTest      = true,
                 .depthWrite     = true,

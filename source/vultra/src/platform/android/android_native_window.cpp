@@ -59,6 +59,10 @@ namespace vultra::platform::android
 
     os::Window& AndroidNativeWindow::setFullscreen(bool) { return *this; }
 
+    os::Window& AndroidNativeWindow::setDecorated(bool) { return *this; }
+
+    os::Window& AndroidNativeWindow::setVisible(bool) { return *this; }
+
     bool AndroidNativeWindow::isReady() const { return m_NativeWindow != nullptr; }
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN

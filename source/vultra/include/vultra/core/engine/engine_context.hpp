@@ -44,6 +44,7 @@ namespace vultra
                 bool        resizable {true};
                 bool        fullscreen {false};
                 bool        decorated {true};
+                bool        visible {true};
 #if defined(__ANDROID__)
                 struct AndroidConfig
                 {
@@ -75,6 +76,9 @@ namespace vultra
                 std::string                     renderPipelineRendererKey {"universal"};
                 rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eDisabled};
                 rhi::SwapchainFormat             swapchainFormat {rhi::SwapchainFormat::eLinear};
+                bool                             enableValidation {rhi::defaultRenderDiagnosticsEnabled()};
+                bool                             enableDebugMarkers {rhi::defaultRenderDiagnosticsEnabled()};
+                bool                             enableRenderDoc {rhi::defaultRenderDiagnosticsEnabled()};
 
                 struct XRConfig
                 {
@@ -90,6 +94,7 @@ namespace vultra
             struct AssetConfig
             {
                 bool        loadFromVPK {false};
+                bool        enableImportScan {true};
                 std::string assetRoot {"resources"};
                 std::string importedFolder {"imported"};
                 std::string registryFile {"asset_registry.tsv"};

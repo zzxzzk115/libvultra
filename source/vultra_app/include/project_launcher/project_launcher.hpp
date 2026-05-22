@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+class IWindowService;
+
 namespace vultra_app
 {
     class ProjectLauncher
@@ -21,7 +23,7 @@ namespace vultra_app
         static void configureAssets(vultra::Engine& engine, const LaunchOptions& options);
         static void logStartup();
 
-        void draw(AppState& state);
+        void draw(AppState& state, IWindowService* windowService);
 
     private:
         struct ProjectEntry
@@ -42,6 +44,7 @@ namespace vultra_app
 
         bool                               m_HasScannedProjects {false};
         int                                m_SelectedProject {-1};
+        std::array<char, 128>              m_SearchQuery {};
         std::array<char, 128>              m_NewProjectName {};
         std::array<char, 260>              m_NewProjectRoot {"."};
         std::array<char, 260>              m_ExistingProjectRoot {};

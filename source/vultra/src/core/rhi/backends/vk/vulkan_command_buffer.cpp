@@ -107,7 +107,8 @@ namespace vultra
             m_BarrierBuilder(std::move(other.m_BarrierBuilder)), m_Pipeline(other.m_Pipeline),
             m_VertexBuffer(other.m_VertexBuffer), m_IndexBuffer(other.m_IndexBuffer),
             m_UseKhrDynamicRendering(other.m_UseKhrDynamicRendering),
-            m_UseKhrSynchronization2(other.m_UseKhrSynchronization2), m_InsideRenderPass(other.m_InsideRenderPass)
+            m_UseKhrSynchronization2(other.m_UseKhrSynchronization2),
+            m_EnableDebugMarkers(other.m_EnableDebugMarkers), m_InsideRenderPass(other.m_InsideRenderPass)
         {
             other.m_Device                 = nullptr;
             other.m_CommandPool            = nullptr;
@@ -121,6 +122,7 @@ namespace vultra
             other.m_IndexBuffer            = nullptr;
             other.m_UseKhrDynamicRendering = false;
             other.m_UseKhrSynchronization2 = false;
+            other.m_EnableDebugMarkers     = false;
             other.m_InsideRenderPass       = false;
         }
 
@@ -154,6 +156,7 @@ namespace vultra
 
                 std::swap(m_UseKhrDynamicRendering, rhs.m_UseKhrDynamicRendering);
                 std::swap(m_UseKhrSynchronization2, rhs.m_UseKhrSynchronization2);
+                std::swap(m_EnableDebugMarkers, rhs.m_EnableDebugMarkers);
                 std::swap(m_InsideRenderPass, rhs.m_InsideRenderPass);
             }
 
@@ -932,24 +935,6 @@ namespace vultra
                     .layerCount     = texture.getLayerFaceCount(),
                 };
 
-                // Transition current mip level to transfer dst
-                m_BarrierBuilder.imageBarrier(
-                    {
-                        .image            = texture,
-                        .newLayout        = ImageLayout::eTransferDst,
-                        .subresourceRange = ImageSubresourceRange {mipSubRange.aspectMask,
-                                                                   mipSubRange.baseMipLevel,
-                                                                   mipSubRange.levelCount,
-                                                                   mipSubRange.baseArrayLayer,
-                                                                   mipSubRange.layerCount},
-                    },
-                    {
-                        .dstStage  = PipelineStages::eTransfer,
-                        .dstAccess = Access::eTransferWrite,
-                    });
-
-                flushBarriers();
-
                 vk::ImageBlit blitInfo {};
                 blitInfo.srcSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
                 blitInfo.srcSubresource.mipLevel   = i - 1;
@@ -980,23 +965,26 @@ namespace vultra
                                    &blitInfo,
                                    toVk(filter));
 
-                // Transition current mip level to transfer src
-                m_BarrierBuilder.imageBarrier(
-                    {
-                        .image            = texture,
-                        .newLayout        = ImageLayout::eTransferSrc,
-                        .subresourceRange = ImageSubresourceRange {mipSubRange.aspectMask,
-                                                                   mipSubRange.baseMipLevel,
-                                                                   mipSubRange.levelCount,
-                                                                   mipSubRange.baseArrayLayer,
-                                                                   mipSubRange.layerCount},
-                    },
-                    {
-                        .dstStage  = PipelineStages::eTransfer,
-                        .dstAccess = Access::eTransferRead,
-                    });
+                vk::ImageMemoryBarrier2 mipBarrier {};
+                mipBarrier.srcStageMask                 = vk::PipelineStageFlagBits2::eTransfer;
+                mipBarrier.srcAccessMask                = vk::AccessFlagBits2::eTransferWrite;
+                mipBarrier.dstStageMask                 = vk::PipelineStageFlagBits2::eTransfer;
+                mipBarrier.dstAccessMask                = vk::AccessFlagBits2::eTransferRead;
+                mipBarrier.oldLayout                    = vk::ImageLayout::eTransferDstOptimal;
+                mipBarrier.newLayout                    = vk::ImageLayout::eTransferSrcOptimal;
+                mipBarrier.srcQueueFamilyIndex          = VK_QUEUE_FAMILY_IGNORED;
+                mipBarrier.dstQueueFamilyIndex          = VK_QUEUE_FAMILY_IGNORED;
+                mipBarrier.image                        = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(texture))};
+                mipBarrier.subresourceRange.aspectMask  = vk::ImageAspectFlagBits::eColor;
+                mipBarrier.subresourceRange.baseMipLevel = i;
+                mipBarrier.subresourceRange.levelCount   = 1u;
+                mipBarrier.subresourceRange.baseArrayLayer = 0u;
+                mipBarrier.subresourceRange.layerCount     = texture.getLayerFaceCount();
 
-                flushBarriers();
+                vk::DependencyInfo dependencyInfo {};
+                dependencyInfo.imageMemoryBarrierCount = 1u;
+                dependencyInfo.pImageMemoryBarriers    = &mipBarrier;
+                m_Handle.pipelineBarrier2(dependencyInfo);
             }
 
             // After the loop, all mip layers are in transfer src layout.
@@ -1101,13 +1089,15 @@ namespace vultra
                                                  const RenderDevice*     renderDevice,
                                                  const bool              useKhrDynamicRendering,
                                                  const bool              useKhrSynchronization2,
+                                                 const bool              enableDebugMarkers,
                                                  const bool              enableRaytracing) :
             m_Device(device), m_CommandPool(commandPool), m_State(State::eInitial), m_Handle(handle),
             m_TracyContext(tracyContext), m_Fence(fence), m_RenderDevice(renderDevice),
             m_DescriptorSetAllocator(std::make_unique<VulkanDescriptorSetAllocator>(
                                          reinterpret_cast<std::uintptr_t>(static_cast<VkDevice>(device))),
                                      enableRaytracing),
-            m_UseKhrDynamicRendering(useKhrDynamicRendering), m_UseKhrSynchronization2(useKhrSynchronization2)
+            m_UseKhrDynamicRendering(useKhrDynamicRendering), m_UseKhrSynchronization2(useKhrSynchronization2),
+            m_EnableDebugMarkers(enableDebugMarkers)
         {}
 
         bool VulkanCommandBuffer::invariant(const State requiredState, const InvariantFlags flags) const
@@ -1236,6 +1226,9 @@ namespace vultra
         {
             assert(invariant(State::eRecording));
 
+            if (!m_EnableDebugMarkers)
+                return;
+
             if (!vk::detail::defaultDispatchLoaderDynamic.vkCmdBeginDebugUtilsLabelEXT)
                 return;
 
@@ -1248,6 +1241,9 @@ namespace vultra
         void VulkanCommandBuffer::popDebugGroup() const
         {
             assert(invariant(State::eRecording));
+
+            if (!m_EnableDebugMarkers)
+                return;
 
             if (!vk::detail::defaultDispatchLoaderDynamic.vkCmdEndDebugUtilsLabelEXT)
                 return;

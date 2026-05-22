@@ -13,9 +13,11 @@
 #include "vproject.hpp"
 
 #include <vultra/core/base/common_context.hpp>
+#include <vultra/core/services/window_service.hpp>
 #include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
+#include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/script_service.hpp>
 #include <vultra/function/services/world_service.hpp>
@@ -29,7 +31,13 @@
 #include <entt/entity/entity.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
+
+#ifdef VULTRA_HAS_VASSET_IMPORT
+#include <vasset/vasset_importers.hpp>
+#include <vasset/vasset_registry.hpp>
+#endif
 
 namespace vultra_app
 {
@@ -279,10 +287,157 @@ namespace vultra_app
 
     void EditorApp::startProjectLoading(const std::filesystem::path& projectRoot)
     {
+        waitForAssetImportTask();
+        m_ImportProgress.reset();
         m_Loading.projectRoot = projectRoot.lexically_normal();
         m_Loading.phase       = LoadingPhase::Pending;
         m_Loading.progress    = 0.04f;
         m_Loading.message     = "Preparing editor workspace...";
+        m_EditorWindowApplied = false;
+    }
+
+    void EditorApp::startAssetImportTask(const std::filesystem::path& projectRoot, const std::string& assetRoot)
+    {
+        auto progress     = std::make_shared<ImportTaskProgress>();
+        progress->message = "Scanning project assets...";
+        progress->progress = 0.08f;
+        m_ImportProgress  = progress;
+
+        const auto rootPath       = projectRoot.lexically_normal();
+        const auto assetRootPath  = (rootPath / assetRoot).lexically_normal();
+        const auto importedFolder = std::string {"imported"};
+        const auto registryFile   = std::string {"asset_registry.tsv"};
+
+        if (!m_ImportScheduler)
+            m_ImportScheduler = std::make_unique<vtask::Scheduler>();
+
+        m_ImportResult   = {};
+        m_ImportTaskDone = false;
+        m_ImportTask     = std::make_unique<vtask::TaskSet>(
+            1,
+            1,
+            [this, progress, assetRootPath, importedFolder, registryFile](vtask::Range) {
+                                      ImportTaskResult result;
+                                      result.assetRoot = assetRootPath.generic_string();
+                                      result.registryPath =
+                                          (assetRootPath / importedFolder / registryFile).generic_string();
+
+#ifdef VULTRA_HAS_VASSET_IMPORT
+                                      vasset::VAssetRegistry registry;
+                                      registry.setAssetRootPath(result.assetRoot);
+                                      registry.setImportedFolderName(importedFolder);
+
+                                      if (std::filesystem::exists(result.registryPath))
+                                          registry.load(result.registryPath);
+
+                                      vasset::VAssetImporter importer {registry};
+                                      vasset::VAssetImporter::ImportOptions options;
+                                      options.progress = [progress](const vasset::VAssetImporter::ImportProgress& p) {
+                                          std::scoped_lock lock(progress->mutex);
+                                          switch (p.phase)
+                                          {
+                                              case vasset::VAssetImporter::ImportProgress::Phase::eScan:
+                                                  progress->progress = 0.08f;
+                                                  progress->message  = p.currentPath.empty()
+                                                                           ? "Scanning project assets..."
+                                                                           : "Scanning " + p.currentPath;
+                                                  break;
+                                              case vasset::VAssetImporter::ImportProgress::Phase::eImport: {
+                                                  const float amount =
+                                                      p.totalFiles > 0 ?
+                                                          static_cast<float>(p.processedFiles) /
+                                                              static_cast<float>(p.totalFiles) :
+                                                          1.0f;
+                                                  progress->progress = 0.12f + amount * 0.68f;
+                                                  progress->message  = p.currentPath.empty()
+                                                                           ? "Importing project assets..."
+                                                                           : "Importing " + p.currentPath;
+                                                  break;
+                                              }
+                                              case vasset::VAssetImporter::ImportProgress::Phase::eDone:
+                                                  progress->progress = 0.82f;
+                                                  progress->message  = "Finalizing asset database...";
+                                                  break;
+                                          }
+                                      };
+                                      importer.setOptions(options);
+
+                                      auto importResult = importer.importOrReimportAssetFolder(result.assetRoot, false);
+                                      if (!importResult)
+                                      {
+                                          result.ok    = false;
+                                          result.error = "asset import failed";
+                                      }
+                                      else if (!registry.save(result.registryPath))
+                                      {
+                                          result.ok    = false;
+                                          result.error = "failed to save asset registry";
+                                      }
+                                      else
+                                      {
+                                          result.ok = true;
+                                      }
+#else
+                                      result.ok = std::filesystem::exists(result.registryPath);
+                                      if (!result.ok)
+                                          result.error = "vasset importer is unavailable and no registry exists";
+#endif
+                                      m_ImportResult = std::move(result);
+                                      m_ImportTaskDone.store(true, std::memory_order_release);
+                                  });
+        m_ImportScheduler->run(*m_ImportTask);
+    }
+
+    void EditorApp::waitForAssetImportTask()
+    {
+        if (!m_ImportTask)
+            return;
+
+        if (m_ImportScheduler)
+            m_ImportScheduler->wait(*m_ImportTask);
+        m_ImportTask.reset();
+        m_ImportTaskDone.store(true, std::memory_order_release);
+    }
+
+    void EditorApp::applySplashWindow(EditorContext& ctx)
+    {
+        if (m_SplashWindowApplied || !ctx.services)
+            return;
+
+        auto* windowService = ctx.services->tryGet<IWindowService>();
+        if (!windowService)
+            return;
+
+        auto& window = windowService->window();
+        window.setTitle("VultraEngine")
+            .setResizable(false)
+            .setDecorated(false)
+            .setExtent({640, 360})
+            .setVisible(true);
+        m_SplashWindowApplied = true;
+    }
+
+    void EditorApp::applyEditorWindow(EditorContext& ctx)
+    {
+        if (m_EditorWindowApplied || !ctx.services)
+            return;
+
+        auto* windowService = ctx.services->tryGet<IWindowService>();
+        auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>();
+        if (!windowService)
+            return;
+
+        const bool decorated =
+            backendService &&
+            backendService->renderDevice().getBackendApi() == vultra::rhi::RenderBackendApi::eWebGPU;
+
+        auto& window = windowService->window();
+        window.setTitle(kWindowTitle)
+            .setDecorated(decorated)
+            .setResizable(true)
+            .setExtent({1280, 720})
+            .setVisible(true);
+        m_EditorWindowApplied = true;
     }
 
     bool EditorApp::updateProjectLoading(EditorContext& ctx)
@@ -319,10 +474,44 @@ namespace vultra_app
         switch (m_Loading.phase)
         {
             case LoadingPhase::Pending:
-                m_Loading.phase    = LoadingPhase::ConfigureAssets;
-                m_Loading.progress = 0.12f;
-                m_Loading.message  = "Configuring project assets...";
+                applySplashWindow(ctx);
+                startAssetImportTask(projectRoot, ctx.state.currentAssetRoot);
+                m_Loading.phase    = LoadingPhase::ImportAssets;
+                m_Loading.progress = 0.08f;
+                m_Loading.message  = "Scanning project assets...";
                 return true;
+
+            case LoadingPhase::ImportAssets:
+            {
+                if (m_ImportProgress)
+                {
+                    std::scoped_lock lock(m_ImportProgress->mutex);
+                    m_Loading.progress = m_ImportProgress->progress;
+                    m_Loading.message  = m_ImportProgress->message;
+                }
+
+                if (!m_ImportTaskDone.load(std::memory_order_acquire))
+                {
+                    return true;
+                }
+
+                waitForAssetImportTask();
+                auto importResult = std::move(m_ImportResult);
+                if (!importResult.ok)
+                {
+                    ctx.state.statusMessage = "Project asset import failed: " + importResult.error;
+                    m_Loading.message       = ctx.state.statusMessage;
+                    m_Loading.progress      = 0.84f;
+                    m_Loading.phase         = LoadingPhase::ConfigureAssets;
+                    return true;
+                }
+
+                ctx.state.statusMessage = "Imported project assets: " + importResult.assetRoot;
+                m_Loading.phase         = LoadingPhase::ConfigureAssets;
+                m_Loading.progress      = 0.84f;
+                m_Loading.message       = "Opening asset database...";
+                return true;
+            }
 
             case LoadingPhase::ConfigureAssets:
             {
@@ -340,6 +529,7 @@ namespace vultra_app
                 desc.registryFile   = "asset_registry.tsv";
                 desc.scheme         = "res";
                 desc.keepCpuCopy    = true;
+                desc.enableImportScan = false;
                 assetService->configure(desc);
 
                 m_SyncedProject         = projectRoot;
@@ -347,8 +537,11 @@ namespace vultra_app
                 m_PlaybackWasPlaying    = false;
                 ctx.state.statusMessage = "Loaded project assets: " + desc.assetRoot;
 
+                if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+                    renderService->reloadRenderPipeline();
+
                 m_Loading.phase    = LoadingPhase::LoadScene;
-                m_Loading.progress = 0.55f;
+                m_Loading.progress = 0.90f;
                 m_Loading.message  = ctx.state.currentDefaultScene.empty()
                                          ? "Preparing editor windows..."
                                          : "Loading scene " + ctx.state.currentDefaultScene + "...";
@@ -379,6 +572,11 @@ namespace vultra_app
             case LoadingPhase::Finalize:
                 m_Loading.progress = 1.0f;
                 m_Loading.message  = "Ready.";
+                m_Loading.phase    = LoadingPhase::Complete;
+                return true;
+
+            case LoadingPhase::Complete:
+                applyEditorWindow(ctx);
                 m_Loading          = {};
                 return false;
 
@@ -398,44 +596,89 @@ namespace vultra_app
         ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
         const ImVec2 min     = viewport->WorkPos;
         const ImVec2 max {viewport->WorkPos.x + viewport->WorkSize.x, viewport->WorkPos.y + viewport->WorkSize.y};
-        drawList->AddRectFilled(min, max, IM_COL32(10, 13, 17, 120));
+        const ImVec2 size {viewport->WorkSize.x, viewport->WorkSize.y};
+        const ImVec2 center {min.x + size.x * 0.5f, min.y + size.y * 0.5f};
+        const float  progress = std::clamp(m_Loading.progress, 0.0f, 1.0f);
 
-        const ImVec2 windowSize {460.0f, 156.0f};
-        const ImVec2 windowPos {
-            viewport->WorkPos.x + (viewport->WorkSize.x - windowSize.x) * 0.5f,
-            viewport->WorkPos.y + (viewport->WorkSize.y - windowSize.y) * 0.5f,
-        };
+        drawList->AddRectFilled(min, max, IM_COL32(13, 17, 22, 255));
 
-        ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
-        ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {22.0f, 18.0f});
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4 {0.055f, 0.071f, 0.090f, 1.0f});
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4 {0.22f, 0.30f, 0.38f, 0.95f});
-
-        const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
-                                       ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove |
-                                       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoNavFocus;
-        if (ImGui::Begin("##VultraEditorLoading", nullptr, flags))
+        // A few translucent bands give the borderless splash depth without relying on any external texture.
+        for (int i = 0; i < 10; ++i)
         {
-            ImGui::TextUnformatted("VultraEngine Editor");
-            ImGui::Spacing();
-            ImGui::TextDisabled("%s", m_Loading.projectRoot.empty()
-                                          ? "Loading project..."
-                                          : m_Loading.projectRoot.filename().generic_string().c_str());
-            ImGui::Spacing();
-            ImGui::TextWrapped("%s", m_Loading.message.empty() ? "Loading..." : m_Loading.message.c_str());
-            ImGui::Spacing();
-
-            ImGui::PushStyleColor(ImGuiCol_PlotHistogram, ImVec4 {0.25f, 0.62f, 0.94f, 1.0f});
-            ImGui::ProgressBar(std::clamp(m_Loading.progress, 0.0f, 1.0f), ImVec2 {-1.0f, 10.0f}, "");
-            ImGui::PopStyleColor();
+            const float t = static_cast<float>(i) / 9.0f;
+            const float y = min.y + size.y * t;
+            drawList->AddRectFilled(ImVec2 {min.x, y},
+                                    ImVec2 {max.x, y + size.y * 0.12f},
+                                    IM_COL32(26, 34, 44, static_cast<int>(18.0f * (1.0f - std::abs(t - 0.5f)))));
         }
-        ImGui::End();
 
-        ImGui::PopStyleColor(2);
-        ImGui::PopStyleVar(3);
+        const ImVec2 logoCenter {center.x, min.y + size.y * 0.36f};
+        const float  logoRadius = 42.0f;
+        for (int i = 5; i >= 1; --i)
+        {
+            drawList->AddCircle(logoCenter,
+                                logoRadius + static_cast<float>(i * 4),
+                                IM_COL32(54, 150, 220, 10),
+                                96,
+                                static_cast<float>(i));
+        }
+        drawList->AddCircle(logoCenter, logoRadius, IM_COL32(54, 150, 220, 210), 96, 2.0f);
+        drawList->AddCircleFilled(logoCenter, logoRadius - 2.0f, IM_COL32(6, 10, 15, 210), 96);
+
+        ImFont* font = ImGui::GetFont();
+        const float logoFontSize = 56.0f;
+        const char* logoText = "V";
+        const ImVec2 logoTextSize = font->CalcTextSizeA(logoFontSize, FLT_MAX, 0.0f, logoText);
+        drawList->AddText(font,
+                          logoFontSize,
+                          ImVec2 {logoCenter.x - logoTextSize.x * 0.5f, logoCenter.y - logoTextSize.y * 0.52f},
+                          IM_COL32(225, 238, 250, 245),
+                          logoText);
+
+        const char* title = progress >= 1.0f ? "OPENING EDITOR..." : "LOADING ASSETS...";
+        const float titleFontSize = 16.0f;
+        const ImVec2 titleSize = font->CalcTextSizeA(titleFontSize, FLT_MAX, 0.0f, title);
+        const ImVec2 titlePos {center.x - titleSize.x * 0.5f, logoCenter.y + logoRadius + 30.0f};
+        drawList->AddText(font, titleFontSize, titlePos, IM_COL32(184, 198, 214, 235), title);
+
+        const float barWidth  = std::min(size.x * 0.54f, 340.0f);
+        const float barHeight = 8.0f;
+        const ImVec2 barMin {center.x - barWidth * 0.5f, titlePos.y + 42.0f};
+        const ImVec2 barMax {barMin.x + barWidth, barMin.y + barHeight};
+        const float  rounding = barHeight * 0.5f;
+
+        drawList->AddRectFilled(ImVec2 {barMin.x - 1.0f, barMin.y - 1.0f},
+                                ImVec2 {barMax.x + 1.0f, barMax.y + 1.0f},
+                                IM_COL32(38, 48, 60, 170),
+                                rounding + 1.0f);
+        drawList->AddRectFilled(barMin, barMax, IM_COL32(18, 24, 31, 230), rounding);
+
+        const float fillWidth = std::max(barHeight, barWidth * progress);
+        const ImVec2 fillMax {barMin.x + fillWidth, barMax.y};
+        drawList->AddRectFilled(ImVec2 {barMin.x - 8.0f, barMin.y - 6.0f},
+                                ImVec2 {fillMax.x + 12.0f, barMax.y + 6.0f},
+                                IM_COL32(45, 145, 230, 22),
+                                10.0f);
+        drawList->AddRectFilled(barMin, fillMax, IM_COL32(68, 160, 242, 230), rounding);
+
+        char percentText[16] {};
+        std::snprintf(percentText, sizeof(percentText), "%d%%", static_cast<int>(std::round(progress * 100.0f)));
+        const float percentFontSize = 18.0f;
+        const ImVec2 percentSize = font->CalcTextSizeA(percentFontSize, FLT_MAX, 0.0f, percentText);
+        drawList->AddText(font,
+                          percentFontSize,
+                          ImVec2 {center.x - percentSize.x * 0.5f, barMax.y + 18.0f},
+                          IM_COL32(126, 142, 158, 245),
+                          percentText);
+
+        const std::string detail = m_Loading.message.empty() ? std::string {"Preparing..."} : m_Loading.message;
+        const float detailFontSize = 13.0f;
+        const ImVec2 detailSize = font->CalcTextSizeA(detailFontSize, FLT_MAX, 0.0f, detail.c_str());
+        drawList->AddText(font,
+                          detailFontSize,
+                          ImVec2 {center.x - detailSize.x * 0.5f, max.y - 32.0f},
+                          IM_COL32(128, 146, 174, 185),
+                          detail.c_str());
     }
 
     void EditorApp::shutdown(EditorContext& ctx)

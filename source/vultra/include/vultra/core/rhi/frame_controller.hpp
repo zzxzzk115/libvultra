@@ -40,6 +40,7 @@ namespace vultra
 
         private:
             void create(const FrameIndex::ValueType numFramesInFlight);
+            void ensureSwapchainSyncObjects();
             void destroy() noexcept;
 
         private:
@@ -50,9 +51,9 @@ namespace vultra
             {
                 CommandBuffer   commandBuffer;
                 SemaphoreHandle imageAcquired;
-                SemaphoreHandle renderCompleted;
             };
             std::vector<PerFrameData> m_Frames;
+            std::vector<SemaphoreHandle> m_RenderCompleted;
             FrameIndex                m_FrameIndex;
 
             bool m_ImageAcquired {false};

@@ -12,7 +12,8 @@ namespace vultra
     class RenderDocAPI
     {
     public:
-        RenderDocAPI(bool enable = true);
+        RenderDocAPI(bool enable = rhi::defaultRenderDiagnosticsEnabled(),
+                     bool enableApiValidation = rhi::defaultRenderDiagnosticsEnabled());
         ~RenderDocAPI();
 
         bool load();
@@ -44,6 +45,7 @@ namespace vultra
 
     private:
         bool m_IsAvailable {false};
+        bool m_EnableApiValidation {rhi::defaultRenderDiagnosticsEnabled()};
 
         void* m_Module {nullptr}; // Handle to the RenderDoc DLL
 

@@ -97,7 +97,7 @@ namespace
                 m_Editor.draw(ctx);
             }
             else
-                m_Launcher.draw(m_State);
+                m_Launcher.draw(m_State, getServices() ? getServices()->tryGet<IWindowService>() : nullptr);
         }
 
     private:
@@ -170,19 +170,36 @@ namespace
 
         void onConfigureDemo(vultra::Engine& engine) override
         {
+            if (m_Options.validation.has_value())
+            {
+                engine.ctx().config.render.enableValidation = *m_Options.validation;
+            }
+            if (m_Options.debugMarkers.has_value())
+            {
+                engine.ctx().config.render.enableDebugMarkers = *m_Options.debugMarkers;
+            }
+            if (m_Options.renderDoc.has_value())
+            {
+                engine.ctx().config.render.enableRenderDoc = *m_Options.renderDoc;
+            }
+
             if (m_State.mode != vultra_app::AppMode::Runtime)
             {
                 engine.ctx().config.imgui.enableDocking = true;
                 engine.ctx().config.imgui.imguiIniFile  = "vultra_editor_layout_v2.ini";
-                engine.ctx().config.window.width        = 1280;
-                engine.ctx().config.window.height       = 720;
+                engine.ctx().config.window.width        = m_Options.editorMode ? 640 : 1280;
+                engine.ctx().config.window.height       = m_Options.editorMode ? 360 : 720;
+                engine.ctx().config.window.resizable    = !m_Options.editorMode;
+                engine.ctx().config.window.visible      = !m_Options.editorMode;
                 engine.ctx().config.window.decorated =
+                    !m_Options.editorMode &&
                     engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eWebGPU;
             }
 
             if (m_Options.editorMode)
             {
                 vultra_app::EditorApp::configureProject(engine, m_Options);
+                engine.ctx().config.asset.enableImportScan = false;
                 return;
             }
 

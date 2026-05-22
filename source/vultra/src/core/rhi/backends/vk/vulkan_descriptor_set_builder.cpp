@@ -44,11 +44,12 @@ namespace vultra
             m_Bindings[index]  = {DescriptorType::eCombinedImageSampler, 1, static_cast<int32_t>(m_ImageInfos.size())};
             const auto sampler = info.sampler.value_or(info.texture->getSampler());
             assert(sampler);
-            const auto imageLayout = info.texture->getImageLayout();
-            assert(imageLayout != ImageLayout::eUndefined);
 
+            // Descriptor image layouts describe how the shader will access the image, not the texture's current
+            // tracked transition state. This matters for backbuffer-derived views whose current layout may become
+            // Present after a previous frame while the next use is still a sampled read.
             addCombinedImageSampler(
-                info.texture->getImageView(toRhi(toVk(info.imageAspect))).getHandle(), imageLayout, sampler);
+                info.texture->getImageView(toRhi(toVk(info.imageAspect))).getHandle(), ImageLayout::eReadOnly, sampler);
         }
 
         void VulkanDescriptorSetBuilder::bind(const BindingIndex index, const bindings::CombinedImageSamplerArray& info)
@@ -59,12 +60,10 @@ namespace vultra
                 DescriptorType::eCombinedImageSampler, numImages, static_cast<int32_t>(m_ImageInfos.size())};
             for (const auto* texture : info.textures)
             {
-                const auto imageLayout = texture->getImageLayout();
-                assert(imageLayout != ImageLayout::eUndefined);
                 const auto sampler = info.sampler.value_or(texture->getSampler());
                 assert(sampler);
                 addCombinedImageSampler(
-                    texture->getImageView(toRhi(toVk(info.imageAspect))).getHandle(), imageLayout, sampler);
+                    texture->getImageView(toRhi(toVk(info.imageAspect))).getHandle(), ImageLayout::eReadOnly, sampler);
             }
         }
 
@@ -72,7 +71,7 @@ namespace vultra
         {
             m_Bindings[index] = {DescriptorType::eSampledImage, 1, static_cast<int32_t>(m_ImageInfos.size())};
             addImage(info.texture->getImageView(toRhi(toVk(info.imageAspect))).getHandle(),
-                     info.texture->getImageLayout());
+                     ImageLayout::eReadOnly);
         }
 
         void VulkanDescriptorSetBuilder::bind(const BindingIndex index, const bindings::StorageImage& info)
@@ -81,8 +80,7 @@ namespace vultra
             m_Bindings[index] = {DescriptorType::eStorageImage, numImages, static_cast<int32_t>(m_ImageInfos.size())};
             for (uint32_t i = 0; i < numImages; ++i)
             {
-                addImage(info.texture->getMipLevel(i, toRhi(toVk(info.imageAspect))).getHandle(),
-                         info.texture->getImageLayout());
+                addImage(info.texture->getMipLevel(i, toRhi(toVk(info.imageAspect))).getHandle(), ImageLayout::eGeneral);
             }
         }
 

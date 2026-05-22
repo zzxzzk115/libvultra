@@ -19,6 +19,7 @@ namespace vultra
         {
             // Accumulate reflection information computed by vshadersystem.
             void accumulate(const vshadersystem::ShaderReflection&);
+            void accumulate(const ShaderReflection&);
 
             std::optional<glm::uvec3> localSize; // ComputeShader only.
 

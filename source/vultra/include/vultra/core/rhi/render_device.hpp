@@ -15,6 +15,7 @@
 #include "vultra/core/rhi/scratch_buffer.hpp"
 #include "vultra/core/rhi/shader_binding_table.hpp"
 #include "vultra/core/rhi/shader_compiler.hpp"
+#include "vultra/core/rhi/shader_library.hpp"
 #include "vultra/core/rhi/shader_module.hpp"
 #include "vultra/core/rhi/storage_buffer.hpp"
 #include "vultra/core/rhi/structs/allocation_hints.hpp"
@@ -80,7 +81,9 @@ namespace vultra
             explicit RenderDevice(RenderDeviceFeatureFlagBits,
                                   std::string_view             appName                    = "Untitled Vultra App",
                                   std::span<const char* const> requiredInstanceExtensions = {},
-                                  RenderBackendApi             backendApi                 = RenderBackendApi::eAuto);
+                                  RenderBackendApi             backendApi                 = RenderBackendApi::eAuto,
+                                  bool enableValidation = defaultRenderDiagnosticsEnabled(),
+                                  bool enableDebugMarkers = defaultRenderDiagnosticsEnabled());
             RenderDevice(const RenderDevice&)     = delete;
             RenderDevice(RenderDevice&&) noexcept = delete;
             ~RenderDevice();
@@ -183,7 +186,10 @@ namespace vultra
 
             [[nodiscard]] RadixSorter createRadixSorter(uint32_t maxElementCount);
 
-            [[nodiscard]] ComputePipeline createComputePipelineBuiltin(const SPIRV& spv,
+            [[nodiscard]] ComputePipeline createComputePipelineBuiltin(const SPIRV&            spv,
+                                                                       std::optional<PipelineLayout> = std::nullopt,
+                                                                       const ShaderReflection*       reflection = nullptr);
+            [[nodiscard]] ComputePipeline createComputePipelineBuiltin(const ShaderLibraryRuntime::LoadedShader&,
                                                                        std::optional<PipelineLayout> = std::nullopt);
 
             // Direct mapping without staging buffer. Use with host-coherent memory or persistent mapped memory.

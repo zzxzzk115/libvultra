@@ -507,7 +507,9 @@ namespace vultra
         RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits  featureFlag,
                                    const std::string_view             appName,
                                    const std::span<const char* const> requiredInstanceExtensions,
-                                   const RenderBackendApi             backendApi)
+                                   const RenderBackendApi             backendApi,
+                                   const bool                         enableValidation,
+                                   const bool                         enableDebugMarkers)
         {
             switch (backendApi)
             {
@@ -517,6 +519,7 @@ namespace vultra
                     m_Backend = std::make_unique<VulkanRenderDevice>();
 #else
                     m_Backend = createWebGPUBackend(appName);
+                    webgpuBackend(m_Backend).m_EnableDebugMarkers = enableDebugMarkers;
 #ifdef TRACKY_ENABLE
                     TRACKY_STARTUP_WEBGPU(reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Instance),
                                           reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Device),
@@ -530,21 +533,29 @@ namespace vultra
                     break;
                 case RenderBackendApi::eWebGPU: {
                     m_Backend = createWebGPUBackend(appName);
-#ifdef TRACKY_ENABLE
-                    TRACKY_STARTUP_WEBGPU(reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Instance),
-                                          reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Device),
-                                          reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Queue),
-                                          4 * 1024,
-                                          false,
-                                          1.0f);
-#endif
-                    return;
+                    break;
                 }
             }
 
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                webgpuBackend(m_Backend).m_EnableDebugMarkers = enableDebugMarkers;
+#ifdef TRACKY_ENABLE
+                TRACKY_STARTUP_WEBGPU(reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Instance),
+                                      reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Device),
+                                      reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Queue),
+                                      4 * 1024,
+                                      false,
+                                      1.0f);
+#endif
+                return;
+            }
+
             vkBackend(m_Backend).m_FeatureFlag = featureFlag;
             vkBackend(m_Backend).m_AppName     = appName;
+            vkBackend(m_Backend).m_EnableValidation   = enableValidation;
+            vkBackend(m_Backend).m_EnableDebugMarkers = enableDebugMarkers;
             vkBackend(m_Backend).m_RequiredInstanceExtensions.assign(requiredInstanceExtensions.begin(),
                                                                      requiredInstanceExtensions.end());
 
@@ -568,6 +579,8 @@ namespace vultra
 #else
             (void)featureFlag;
             (void)requiredInstanceExtensions;
+            (void)enableValidation;
+            (void)enableDebugMarkers;
 #endif
         }
 
@@ -633,13 +646,12 @@ namespace vultra
 
             if (vkBackend(m_Backend).m_Instance)
             {
-#if _DEBUG
                 if (vkBackend(m_Backend).m_DebugMessenger)
                 {
                     vkBackend(m_Backend).m_Instance.destroyDebugUtilsMessengerEXT(
                         vkBackend(m_Backend).m_DebugMessenger);
+                    vkBackend(m_Backend).m_DebugMessenger = nullptr;
                 }
-#endif
                 vkBackend(m_Backend).m_Instance.destroy();
             }
 
@@ -819,7 +831,7 @@ namespace vultra
             return {};
 #else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
-            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst;
+            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferSrc | BufferUsage::eTransferDst;
             if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
                               RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
@@ -854,7 +866,7 @@ namespace vultra
             return {};
 #else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
-            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferDst | extraUsage;
+            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferSrc | BufferUsage::eTransferDst | extraUsage;
             if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
                               RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
@@ -1507,6 +1519,7 @@ namespace vultra
                 this,
                 vkBackend(m_Backend).m_UseKhrDynamicRendering,
                 vkBackend(m_Backend).m_UseKhrSynchronization2,
+                vkBackend(m_Backend).m_EnableDebugMarkers,
                 isRaytracingOrRayQueryEnabled(vkBackend(m_Backend).m_FeatureFlag))};
 #endif
         }
@@ -1919,8 +1932,12 @@ namespace vultra
                     return {};
                 }
 
-                const auto localSize =
-                    reflection && reflection->localSize.has_value() ? *reflection->localSize : glm::uvec3 {1u, 1u, 1u};
+                if (!reflection || !reflection->localSize.has_value())
+                {
+                    VULTRA_CORE_ERROR("[RenderDevice] Compute shader reflection is missing local workgroup size");
+                    return {};
+                }
+                const auto localSize = *reflection->localSize;
 
                 return ComputePipeline {
                     std::move(*pipelineLayout),
@@ -1971,36 +1988,48 @@ namespace vultra
                 throw std::runtime_error("Failed to create compute pipeline");
             }
 
+            if (!reflection || !reflection->localSize.has_value())
+            {
+                VULTRA_CORE_ERROR("[RenderDevice] Compute shader reflection is missing local workgroup size");
+                return {};
+            }
+            const auto localSize = *reflection->localSize;
+
             return ComputePipeline {
                 std::move(pipelineLayout.value()),
-                reflection ? reflection->localSize.value() : glm::uvec3 {},
+                localSize,
                 toBackendHandle(static_cast<VkPipeline>(computePipeline)),
                 std::make_unique<VulkanPipeline>(toBackendHandle(static_cast<VkDevice>(vkBackend(m_Backend).m_Device))),
                 std::make_unique<VulkanComputePipeline>(toBackendHandle(static_cast<VkPipeline>(computePipeline)),
-                                                        reflection ? reflection->localSize.value() : glm::uvec3 {}),
+                                                        localSize),
             };
 #endif
         }
 
-        ComputePipeline RenderDevice::createComputePipelineBuiltin(const SPIRV&                  spv,
-                                                                   std::optional<PipelineLayout> pipelineLayout)
+        ComputePipeline RenderDevice::createComputePipelineBuiltin(const SPIRV&            spv,
+                                                                   std::optional<PipelineLayout> pipelineLayout,
+                                                                   const ShaderReflection*       bakedReflection)
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
                 (void)spv;
                 (void)pipelineLayout;
+                (void)bakedReflection;
                 VULTRA_CORE_WARN("[RenderDevice] WebGPU compute pipeline is not implemented yet");
                 return {};
             }
 #if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
             (void)spv;
             (void)pipelineLayout;
+            (void)bakedReflection;
             return {};
 #else
-            auto reflection = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
+            auto reflection = pipelineLayout ? std::nullopt :
+                               bakedReflection ? std::make_optional<ShaderReflection>(*bakedReflection) :
+                                                 std::make_optional<ShaderReflection>();
 
             const auto shaderModule =
-                createShaderModule(spv, reflection ? std::addressof(reflection.value()) : nullptr);
+                createShaderModule(spv, reflection && !bakedReflection ? std::addressof(reflection.value()) : nullptr);
             if (!shaderModule)
             {
                 return {};
@@ -2028,15 +2057,29 @@ namespace vultra
                 throw std::runtime_error("Failed to create compute pipeline");
             }
 
+            if (!reflection || !reflection->localSize.has_value())
+            {
+                VULTRA_CORE_ERROR("[RenderDevice] Compute shader reflection is missing local workgroup size");
+                return {};
+            }
+            const auto localSize = *reflection->localSize;
+
             return ComputePipeline {
                 std::move(pipelineLayout.value()),
-                reflection ? reflection->localSize.value() : glm::uvec3 {},
+                localSize,
                 toBackendHandle(static_cast<VkPipeline>(computePipeline)),
                 std::make_unique<VulkanPipeline>(toBackendHandle(static_cast<VkDevice>(vkBackend(m_Backend).m_Device))),
                 std::make_unique<VulkanComputePipeline>(toBackendHandle(static_cast<VkPipeline>(computePipeline)),
-                                                        reflection ? reflection->localSize.value() : glm::uvec3 {}),
+                                                        localSize),
             };
 #endif
+        }
+
+        ComputePipeline
+        RenderDevice::createComputePipelineBuiltin(const ShaderLibraryRuntime::LoadedShader& shader,
+                                                   std::optional<PipelineLayout>             pipelineLayout)
+        {
+            return createComputePipelineBuiltin(shader.spirv, std::move(pipelineLayout), &shader.reflection);
         }
 
         PipelineLayout RenderDevice::createPipelineLayout(const PipelineLayoutInfo& layoutInfo)
