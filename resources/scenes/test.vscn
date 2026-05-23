@@ -12,50 +12,7 @@ TransformComponent/position = (0, 0, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (1, 1, 1)
 
-[node id=2 name="BindingProbe" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0ca9"]
-NameComponent/name = "BindingProbe"
-EntityStatusComponent/active = true
-EntityStatusComponent/visible = true
-EntityStatusComponent/locked = false
-EntityStatusComponent/selectable = true
-TransformComponent/position = (0, 0.507867, 0)
-TransformComponent/rotation = (0, 0, 0, 1)
-TransformComponent/scale = (1, 1, 1)
-ScriptComponent/scriptUri = "res://scripts/binding_probe.lua"
-ScriptComponent/enabled = true
-
-[node id=8 name="Sun" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0ca8"]
-NameComponent/name = "Sun"
-TransformComponent/position = (0, 4, 0)
-TransformComponent/rotation = (0, 0, 0, 1)
-TransformComponent/scale = (1, 1, 1)
-LightComponent/kind = 0
-LightComponent/color = (1, 0.96, 0.9)
-LightComponent/intensity = 8
-LightComponent/direction = (-0.35, -0.8, -0.25)
-LightComponent/range = 100
-LightComponent/radius = 0.05
-LightComponent/width = 1
-LightComponent/height = 1
-LightComponent/innerConeDegrees = 20
-LightComponent/outerConeDegrees = 30
-LightComponent/castsShadow = false
-LightComponent/twoSided = false
-
-[node id=3 name="LizardSplat" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0caa"]
-NameComponent/name = "LizardSplat"
-EntityStatusComponent/active = true
-EntityStatusComponent/visible = true
-EntityStatusComponent/locked = false
-EntityStatusComponent/selectable = true
-TransformComponent/position = (0, 0, -1)
-TransformComponent/rotation = (0, 0, 0, 1)
-TransformComponent/scale = (1, 1, 1)
-GaussianSplatComponent/gaussianSplat = "3acfb36237062821a78452d799871ba6"
-ScriptComponent/scriptUri = "res://scripts/test_move.lua"
-ScriptComponent/enabled = true
-
-[node id=4 name="Camera" parent=1 uuid="d6348e9e870dff93209ad02615cfefbb"]
+[node id=2 name="Camera" parent=1 uuid="d6348e9e870dff93209ad02615cfefbb"]
 NameComponent/name = "Camera"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -73,3 +30,51 @@ CameraComponent/zFar = 1000.000000
 CameraComponent/clearColor = (0.02, 0.025, 0.035, 1)
 CameraComponent/priority = 0
 CameraComponent/rendererKey = "universal"
+
+[node id=3 name="LizardSplat" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0caa"]
+NameComponent/name = "LizardSplat"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0.0515436, -1)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+GaussianSplatComponent/gaussianSplat = "3acfb36237062821a78452d799871ba6"
+ScriptComponent/scriptUri = "res://scripts/test_move.lua"
+ScriptComponent/enabled = true
+
+[node id=4 name="Sun" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0ca8"]
+NameComponent/name = "Sun"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 4, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+LightComponent/kind = 0
+LightComponent/color = (1, 0.96, 0.9)
+LightComponent/intensity = 8.000000
+LightComponent/direction = (-0.35, -0.8, -0.25)
+LightComponent/range = 100.000000
+LightComponent/radius = 0.050000
+LightComponent/width = 1.000000
+LightComponent/height = 1.000000
+LightComponent/innerConeDegrees = 20.000000
+LightComponent/outerConeDegrees = 30.000000
+LightComponent/castsShadow = false
+LightComponent/twoSided = false
+
+[node id=5 name="BindingProbe" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0ca9"]
+NameComponent/name = "BindingProbe"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0.481151, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+ScriptComponent/scriptUri = "res://scripts/binding_probe.lua"
+ScriptComponent/enabled = true
+
