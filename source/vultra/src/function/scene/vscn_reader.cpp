@@ -4,9 +4,11 @@
 #include <cctype>
 #include <charconv>
 #include <filesystem>
+#include <functional>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace vultra
 {
@@ -130,6 +132,7 @@ namespace vultra
 
         std::unordered_map<int, std::unique_ptr<SceneNode>> nodes;
         std::unordered_map<int, int>                        parentOf;
+        std::vector<int>                                     nodeOrder;
 
         int         rootId        = -1;
         int         currentNodeId = -1;
@@ -236,6 +239,7 @@ namespace vultra
                             parent = 0;
                     }
                     parentOf[id] = parent;
+                    nodeOrder.push_back(id);
 
                     nodes[id] = std::move(node);
                     continue;
@@ -325,9 +329,9 @@ namespace vultra
         if (rootId <= 0)
         {
             // fallback: first node whose parent is 0
-            for (auto& [id, p] : parentOf)
+            for (int id : nodeOrder)
             {
-                if (p == 0)
+                if (auto it = parentOf.find(id); it != parentOf.end() && it->second == 0)
                 {
                     rootId = id;
                     break;
@@ -338,14 +342,15 @@ namespace vultra
         if (rootId <= 0 || nodes.find(rootId) == nodes.end())
         {
             // fallback: smallest id
-            rootId = nodes.begin()->first;
+            rootId = nodeOrder.empty() ? nodes.begin()->first : nodeOrder.front();
         }
 
         // Build adjacency list: parentId -> [childIds]
         std::unordered_map<int, std::vector<int>> children;
-        for (auto& [id, p] : parentOf)
+        for (int id : nodeOrder)
         {
-            children[p].push_back(id);
+            if (auto it = parentOf.find(id); it != parentOf.end())
+                children[it->second].push_back(id);
         }
 
         auto takeNode = [&](int id) -> std::unique_ptr<SceneNode> {

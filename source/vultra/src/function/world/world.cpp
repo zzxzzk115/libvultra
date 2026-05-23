@@ -10,7 +10,11 @@
 
 namespace vultra
 {
-    void World::clear() { m_Registry.clear(); }
+    void World::clear()
+    {
+        m_Registry.clear();
+        m_FirstRoot = entt::null;
+    }
 
     entt::entity World::createEntity()
     {
@@ -19,6 +23,7 @@ namespace vultra
         m_Registry.emplace<IDComponent>(e, IDComponent {CoreUUIDHelper::createStandardUUID()});
         m_Registry.emplace<HierarchyComponent>(e);
         m_Registry.emplace<TransformComponent>(e);
+        attachToParent(e, entt::null);
         return e;
     }
 
@@ -58,45 +63,86 @@ namespace vultra
             return;
 
         auto& hc = m_Registry.get<HierarchyComponent>(child);
-        if (hc.parent == entt::null)
-            return;
-
-        auto& parentH = ensureHierarchy(hc.parent);
-
-        // Remove from parent's child list.
-        if (parentH.firstChild == child)
-            parentH.firstChild = hc.nextSibling;
+        if (hc.parent != entt::null)
+        {
+            auto& parentH = ensureHierarchy(hc.parent);
+            if (parentH.firstChild == child)
+                parentH.firstChild = hc.nextSibling;
+            if (parentH.childCount > 0)
+                parentH.childCount--;
+        }
+        else if (m_FirstRoot == child)
+        {
+            m_FirstRoot = hc.nextSibling;
+        }
 
         if (hc.prevSibling != entt::null)
             ensureHierarchy(hc.prevSibling).nextSibling = hc.nextSibling;
         if (hc.nextSibling != entt::null)
             ensureHierarchy(hc.nextSibling).prevSibling = hc.prevSibling;
 
-        if (parentH.childCount > 0)
-            parentH.childCount--;
-
         hc.parent      = entt::null;
         hc.prevSibling = entt::null;
         hc.nextSibling = entt::null;
     }
 
-    void World::attachToParent(entt::entity child, entt::entity parent)
+    void World::attachToParent(entt::entity child, entt::entity parent, entt::entity beforeSibling)
     {
-        auto& childH  = ensureHierarchy(child);
-        auto& parentH = ensureHierarchy(parent);
+        auto& childH = ensureHierarchy(child);
+        auto* parentH = parent != entt::null ? &ensureHierarchy(parent) : nullptr;
 
         childH.parent = parent;
+        if (parentH)
+            parentH->childCount++;
 
-        // Insert at head (cheap + stable). Editor can later support ordering.
-        entt::entity oldFirst = parentH.firstChild;
-        parentH.firstChild    = child;
-        parentH.childCount++;
+        if (beforeSibling == child ||
+            (beforeSibling != entt::null &&
+             (!m_Registry.valid(beforeSibling) || ensureHierarchy(beforeSibling).parent != parent)))
+            beforeSibling = entt::null;
 
-        childH.prevSibling = entt::null;
-        childH.nextSibling = oldFirst;
+        if (beforeSibling != entt::null)
+        {
+            auto& beforeH = ensureHierarchy(beforeSibling);
 
-        if (oldFirst != entt::null)
-            ensureHierarchy(oldFirst).prevSibling = child;
+            childH.prevSibling  = beforeH.prevSibling;
+            childH.nextSibling  = beforeSibling;
+            beforeH.prevSibling = child;
+
+            if (childH.prevSibling != entt::null)
+                ensureHierarchy(childH.prevSibling).nextSibling = child;
+            else if (parentH)
+                parentH->firstChild = child;
+            else
+                m_FirstRoot = child;
+
+            return;
+        }
+
+        // Append by default so load/save and editor operations preserve visible sibling order.
+        entt::entity last = entt::null;
+        entt::entity first = parentH ? parentH->firstChild : m_FirstRoot;
+        for (entt::entity c = first; c != entt::null; c = ensureHierarchy(c).nextSibling)
+            last = c;
+
+        childH.prevSibling = last;
+        childH.nextSibling = entt::null;
+
+        if (last != entt::null)
+            ensureHierarchy(last).nextSibling = child;
+        else if (parentH)
+            parentH->firstChild = child;
+        else
+            m_FirstRoot = child;
+    }
+
+    bool World::isDescendantOf(entt::entity entity, entt::entity possibleAncestor) const
+    {
+        for (auto p = parent(entity); p != entt::null; p = parent(p))
+        {
+            if (p == possibleAncestor)
+                return true;
+        }
+        return false;
     }
 
     void World::setParent(entt::entity child, entt::entity parent)
@@ -111,13 +157,48 @@ namespace vultra
         if (child == parent)
             parent = entt::null;
 
-        detachFromParent(child);
+        if (parent != entt::null && isDescendantOf(parent, child))
+            parent = entt::null;
 
-        if (parent != entt::null)
-            attachToParent(child, parent);
+        detachFromParent(child);
+        attachToParent(child, parent);
     }
 
-    void World::removeParent(entt::entity child) { detachFromParent(child); }
+    void World::insertBefore(entt::entity child, entt::entity sibling)
+    {
+        if (!m_Registry.valid(child) || !m_Registry.valid(sibling) || child == sibling)
+            return;
+
+        const entt::entity parentEntity = parent(sibling);
+        if (parentEntity == child || (parentEntity != entt::null && isDescendantOf(parentEntity, child)))
+            return;
+
+        detachFromParent(child);
+        attachToParent(child, parentEntity, sibling);
+    }
+
+    void World::insertAfter(entt::entity child, entt::entity sibling)
+    {
+        if (!m_Registry.valid(child) || !m_Registry.valid(sibling) || child == sibling)
+            return;
+
+        const entt::entity parentEntity = parent(sibling);
+        if (parentEntity == child || (parentEntity != entt::null && isDescendantOf(parentEntity, child)))
+            return;
+
+        const entt::entity before = nextSibling(sibling);
+        if (before == child)
+            return;
+        detachFromParent(child);
+        attachToParent(child, parentEntity, before);
+    }
+
+    void World::removeParent(entt::entity child)
+    {
+        detachFromParent(child);
+        if (m_Registry.valid(child))
+            attachToParent(child, entt::null);
+    }
 
     entt::entity World::createChild(entt::entity parent)
     {
@@ -165,6 +246,8 @@ namespace vultra
 
     entt::entity World::firstChild(entt::entity e) const
     {
+        if (e == entt::null)
+            return m_FirstRoot;
         if (const auto* h = tryHierarchy(e))
             return h->firstChild;
         return entt::null;

@@ -54,10 +54,9 @@ namespace vultra
         std::vector<entt::entity> roots;
         roots.reserve(view.size_hint());
 
-        for (auto e : view)
+        for (auto e = w.firstChild(entt::null); e != entt::null; e = w.nextSibling(e))
         {
-            const auto& h = view.get<HierarchyComponent>(e);
-            if (h.parent == entt::null)
+            if (reg.all_of<TransformComponent, HierarchyComponent>(e))
                 roots.push_back(e);
         }
 

@@ -623,25 +623,7 @@ namespace vultra
             }
         }
 
-        // Children (deterministic order): sort by child UUID string.
-        std::vector<entt::entity> children;
         for (entt::entity c = world.firstChild(e); c != entt::null; c = world.nextSibling(c))
-            children.push_back(c);
-
-        auto uuid_key = [&](entt::entity ent) -> std::string {
-            if (reg.all_of<IDComponent>(ent) && reg.get<IDComponent>(ent).uuid.valid())
-                return reg.get<IDComponent>(ent).uuid.toString();
-            // If a child is missing UUID, we still want a stable failure message.
-            return std::string();
-        };
-
-        std::stable_sort(children.begin(), children.end(), [&](entt::entity a, entt::entity b) {
-            const std::string ka = uuid_key(a);
-            const std::string kb = uuid_key(b);
-            return ka < kb;
-        });
-
-        for (entt::entity c : children)
         {
             auto childResult = buildNodeFromWorldR(world, c);
             if (!childResult)
@@ -670,13 +652,8 @@ namespace vultra
         {
             // Find a root entity (parent == null). If multiple, synthesize a root.
             std::vector<entt::entity> roots;
-            auto                      view = reg.view<HierarchyComponent>();
-            for (auto e : view)
-            {
-                auto& h = view.get<HierarchyComponent>(e);
-                if (h.parent == entt::null)
-                    roots.push_back(e);
-            }
+            for (entt::entity e = world.firstChild(entt::null); e != entt::null; e = world.nextSibling(e))
+                roots.push_back(e);
 
             if (roots.empty())
                 return doc;
@@ -694,7 +671,8 @@ namespace vultra
                 doc.root->id   = CoreUUIDHelper::getFromName("SceneRoot:memory");
                 doc.root->name = "SceneRoot";
 
-                // Deterministic root ordering (by UUID).
+                // Preserve the registry root iteration order for synthetic roots. Scenes with
+                // meaningful ordering should use a single root and child sibling order.
                 for (auto r : roots)
                 {
                     if (!reg.all_of<IDComponent>(r) || !reg.get<IDComponent>(r).uuid.valid())
@@ -704,11 +682,6 @@ namespace vultra
                         return doc;
                     }
                 }
-                std::sort(roots.begin(), roots.end(), [&](entt::entity a, entt::entity b) {
-                    const auto& ua = reg.get<IDComponent>(a).uuid;
-                    const auto& ub = reg.get<IDComponent>(b).uuid;
-                    return ua.toString() < ub.toString();
-                });
 
                 for (auto r : roots)
                 {

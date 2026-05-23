@@ -58,6 +58,47 @@ namespace vultra_app
                            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
             return text;
         }
+
+        enum class EntityDropMode
+        {
+            Before,
+            AsChild,
+            After,
+        };
+
+        EntityDropMode dropModeForItem(const ImVec2& itemMin, const ImVec2& itemMax)
+        {
+            const float height = itemMax.y - itemMin.y;
+            if (height <= 0.0f)
+                return EntityDropMode::AsChild;
+
+            const float y = ImGui::GetMousePos().y;
+            if (y < itemMin.y + height * 0.35f)
+                return EntityDropMode::Before;
+            if (y > itemMax.y - height * 0.35f)
+                return EntityDropMode::After;
+            return EntityDropMode::AsChild;
+        }
+
+        void drawDropIndicator(const ImVec2& itemMin, const ImVec2& itemMax, EntityDropMode mode)
+        {
+            auto* drawList = ImGui::GetWindowDrawList();
+            if (!drawList)
+                return;
+
+            const ImU32 accent = ImGui::GetColorU32(ImGuiCol_DragDropTarget);
+            if (mode == EntityDropMode::AsChild)
+            {
+                drawList->AddRect(itemMin, itemMax, accent, 3.0f, 0, 2.0f);
+                return;
+            }
+
+            const float y = mode == EntityDropMode::Before ? itemMin.y : itemMax.y;
+            const float x0 = itemMin.x + 2.0f;
+            const float x1 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - 2.0f;
+            drawList->AddLine(ImVec2(x0, y), ImVec2(x1, y), accent, 2.0f);
+            drawList->AddCircleFilled(ImVec2(x0, y), 3.0f, accent);
+        }
     } // namespace
 
     SceneHierarchyWindow::SceneHierarchyWindow() : EditorWindow("Scene Hierarchy", ICON_MDI_FILE_TREE) {}
@@ -136,12 +177,8 @@ namespace vultra_app
             ImGui::TableHeadersRow();
 
             bool drewAny = false;
-            auto view    = reg.view<vultra::IDComponent>();
-            for (auto entity : view)
+            for (auto entity = world.firstChild(entt::null); entity != entt::null; entity = world.nextSibling(entity))
             {
-                if (world.parent(entity) != entt::null)
-                    continue;
-
                 if (!entityMatchesFilter(world, entity, m_SearchBuffer.data()))
                     continue;
 
@@ -236,6 +273,8 @@ namespace vultra_app
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         const bool opened = ImGui::TreeNodeEx("##entity", flags, "%s", label.c_str());
+        const ImVec2 itemMin = ImGui::GetItemRectMin();
+        const ImVec2 itemMax = ImGui::GetItemRectMax();
         if (ImGui::IsItemClicked() && status.selectable)
         {
             ctx.state.selectedSourceAsset.clear();
@@ -258,22 +297,46 @@ namespace vultra_app
 
         if (ImGui::BeginDragDropTarget())
         {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("VULTRA_ENTITY"))
+            const EntityDropMode dropMode = dropModeForItem(itemMin, itemMax);
+            drawDropIndicator(itemMin, itemMax, dropMode);
+
+            if (const ImGuiPayload* payload =
+                    ImGui::AcceptDragDropPayload("VULTRA_ENTITY", ImGuiDragDropFlags_AcceptNoDrawDefaultRect))
             {
                 if (payload->DataSize == sizeof(entt::entity))
                 {
                     entt::entity dropped {};
                     std::memcpy(&dropped, payload->Data, sizeof(entt::entity));
-                    if (reg.valid(dropped) && dropped != entity && !isDescendantOf(world, entity, dropped))
+                    const bool           validChildDrop =
+                        dropMode == EntityDropMode::AsChild && !isDescendantOf(world, entity, dropped);
+                    const entt::entity targetParent = world.parent(entity);
+                    const bool         validSiblingDrop =
+                        dropMode != EntityDropMode::AsChild && targetParent != dropped &&
+                        (targetParent == entt::null || !isDescendantOf(world, targetParent, dropped));
+
+                    if (reg.valid(dropped) && dropped != entity && (validChildDrop || validSiblingDrop))
                     {
                         if (auto* draggedStatus = reg.try_get<vultra::EntityStatusComponent>(dropped);
                             draggedStatus && draggedStatus->locked)
                             ctx.state.statusMessage = "Entity is locked.";
                         else
                         {
-                            world.setParent(dropped, entity);
+                            if (dropMode == EntityDropMode::Before)
+                            {
+                                world.insertBefore(dropped, entity);
+                                ctx.state.statusMessage = "Moved entity above sibling.";
+                            }
+                            else if (dropMode == EntityDropMode::After)
+                            {
+                                world.insertAfter(dropped, entity);
+                                ctx.state.statusMessage = "Moved entity below sibling.";
+                            }
+                            else
+                            {
+                                world.setParent(dropped, entity);
+                                ctx.state.statusMessage = "Reparented entity.";
+                            }
                             ctx.state.sceneDirty = true;
-                            ctx.state.statusMessage = "Reparented entity.";
                         }
                     }
                 }

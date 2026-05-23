@@ -23,6 +23,8 @@ namespace vultra
 
         // Hierarchy ops (World owns tree invariants)
         void         setParent(entt::entity child, entt::entity parent);
+        void         insertBefore(entt::entity child, entt::entity sibling);
+        void         insertAfter(entt::entity child, entt::entity sibling);
         void         removeParent(entt::entity child);
         entt::entity createChild(entt::entity parent);
         void         destroyRecursive(entt::entity root);
@@ -34,11 +36,13 @@ namespace vultra
 
     private:
         entt::registry m_Registry;
+        entt::entity   m_FirstRoot {entt::null};
 
         HierarchyComponent&       ensureHierarchy(entt::entity e);
         const HierarchyComponent* tryHierarchy(entt::entity e) const;
 
         void detachFromParent(entt::entity child);
-        void attachToParent(entt::entity child, entt::entity parent);
+        void attachToParent(entt::entity child, entt::entity parent, entt::entity beforeSibling = entt::null);
+        bool isDescendantOf(entt::entity entity, entt::entity possibleAncestor) const;
     };
 } // namespace vultra
