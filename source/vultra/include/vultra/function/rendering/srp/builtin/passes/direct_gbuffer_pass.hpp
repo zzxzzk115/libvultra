@@ -24,6 +24,7 @@ namespace vultra
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat,
                                              rhi::PixelFormat normalFormat,
                                              rhi::PixelFormat materialFormat,
+                                             rhi::PixelFormat entityIdFormat,
                                              uint32_t         positionOffset,
                                              uint32_t         normalOffset,
                                              uint32_t         texCoord0Offset,
@@ -34,7 +35,12 @@ namespace vultra
 
         rhi::UniformBuffer& retainDrawParamBuffer(uint64_t frameIndex, rhi::UniformBuffer buffer);
 
-        uint64_t                                          m_DrawParamBufferFrameIndex {UINT64_MAX};
-        std::vector<std::unique_ptr<rhi::UniformBuffer>>  m_DrawParamBuffers;
+        struct RetainedDrawParamBuffer
+        {
+            uint64_t                            frameIndex {0};
+            std::unique_ptr<rhi::UniformBuffer> buffer;
+        };
+
+        std::vector<RetainedDrawParamBuffer> m_DrawParamBuffers;
     };
 } // namespace vultra

@@ -9,11 +9,7 @@
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/renderer.hpp>
-#include <vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/direct_gbuffer_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp>
+#include <vultra/function/rendering/srp/builtin/universal_renderer.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
@@ -42,29 +38,11 @@ namespace
         {
         }
 
-        std::string_view name() const override { return "universal"; }
+        std::string_view name() const override { return "editor-shell"; }
 
-        void init() override
-        {
-            auto* services = getServices();
-            if (!services)
-                return;
+        void init() override {}
 
-            const auto backendApi = services->require<vultra::IRenderBackendService>().renderDevice().getBackendApi();
-            if (backendApi == vultra::rhi::RenderBackendApi::eWebGPU)
-            {
-                emplaceFeature<vultra::CompatibilityBaseColorFeature>();
-                emplaceFeature<vultra::GeneralGaussianSplatFeature>();
-                emplaceFeature<vultra::FinalCompositionFeature>();
-                return;
-            }
-
-            auto& renderService = services->require<vultra::IRenderService>();
-            emplaceFeature<vultra::DirectGBufferFeature>(renderService);
-            emplaceFeature<vultra::GeneralGaussianSplatFeature>();
-            emplaceFeature<vultra::BuiltinScreenSpaceFeature>(renderService);
-            emplaceFeature<vultra::FinalCompositionFeature>();
-        }
+        [[nodiscard]] bool usesFrameGraph() const override { return false; }
 
         void onImGui() override
         {
@@ -91,7 +69,7 @@ namespace
                     shellCamera.fovY        = glm::radians(60.0f);
                     shellCamera.clearValue  = {0.018f, 0.02f, 0.026f, 1.0f};
                     shellCamera.renderImGui = true;
-                    shellCamera.rendererKey = "universal";
+                    shellCamera.rendererKey = "editor-shell";
                     cameraService->addManualCamera(shellCamera);
                 }
             }
@@ -133,8 +111,17 @@ namespace
         shellCamera.fovY        = glm::radians(60.0f);
         shellCamera.clearValue  = {0.018f, 0.02f, 0.026f, 1.0f};
         shellCamera.renderImGui = true;
-        shellCamera.rendererKey = "universal";
+        shellCamera.rendererKey = "editor-shell";
         cameraService->addManualCamera(shellCamera);
+    }
+
+    void registerEditorSceneRenderer(vbase::ServiceRegistry& services)
+    {
+        auto* renderService = services.tryGet<vultra::IRenderService>();
+        if (!renderService)
+            return;
+
+        renderService->registerRenderer(vultra::createRef<vultra::UniversalRenderer>());
     }
 
     class VultraStandaloneApp final : public vultra::DemoAppHost
@@ -265,12 +252,14 @@ namespace
         {
             if (m_Options.editorMode)
             {
+                registerEditorSceneRenderer(engine.ctx().services);
                 vultra_app::EditorApp::logStartup(m_Options);
                 return;
             }
 
             if (!m_VpkPath.has_value())
             {
+                registerEditorSceneRenderer(engine.ctx().services);
                 vultra_app::ProjectLauncher::logStartup();
                 return;
             }

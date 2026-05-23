@@ -811,6 +811,18 @@ namespace vultra
                                       static_cast<vk::DeviceSize>(size),
                                       data);
             }
+
+            m_BarrierBuilder.memoryBarrier(
+                {
+                    .srcStage  = PipelineStages::eTransfer,
+                    .srcAccess = Access::eTransferWrite,
+                },
+                {
+                    .dstStage  = PipelineStages::eAllCommands,
+                    .dstAccess = Access::eMemoryRead | Access::eUniformRead | Access::eShaderRead |
+                                 Access::eShaderStorageRead | Access::eIndirectCommandRead |
+                                 Access::eIndexRead | Access::eVertexAttributeRead | Access::eTransferRead,
+                });
             return *this;
         }
 

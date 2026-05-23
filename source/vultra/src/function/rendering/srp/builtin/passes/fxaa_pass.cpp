@@ -55,7 +55,8 @@ namespace vultra
                     {
                         .extent     = extent,
                         .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 pd.output = builder.write(pd.output,
                                           framegraph::Attachment {

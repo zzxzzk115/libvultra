@@ -120,6 +120,8 @@ namespace vultra
     constexpr FrameGraphResourceKey kResKey_GBufferNormal {.id = vbase::hashLiteral("GBufferNormal")};
     constexpr FrameGraphResourceKey kResKey_GBufferMetallicRoughnessAO {
         .id = vbase::hashLiteral("GBufferMetallicRoughnessAO")};
+    constexpr FrameGraphResourceKey kResKey_GBufferEntityId {.id = vbase::hashLiteral("GBufferEntityId")};
+    constexpr FrameGraphResourceKey kResKey_SelectionOutlineOutput {.id = vbase::hashLiteral("SelectionOutlineOutput")};
     constexpr FrameGraphResourceKey kResKey_ShadowMap {.id = vbase::hashLiteral("ShadowMap")};
     constexpr FrameGraphResourceKey kResKey_ShadowData {.id = vbase::hashLiteral("ShadowData")};
     constexpr FrameGraphResourceKey kResKey_HbaoTexture {.id = vbase::hashLiteral("HBAOTexture")};

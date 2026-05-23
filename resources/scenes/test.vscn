@@ -1,25 +1,15 @@
 [vscn]
 version = 1
-root    = 1
+root    = 0
 
-[node id=1 name="SceneRoot" parent=0 uuid="b32742be42ef01022fdc23bb959c74c7"]
-NameComponent/name = "SceneRoot"
-EntityStatusComponent/active = true
-EntityStatusComponent/visible = true
-EntityStatusComponent/locked = false
-EntityStatusComponent/selectable = true
-TransformComponent/position = (0, 0, 0)
-TransformComponent/rotation = (0, 0, 0, 1)
-TransformComponent/scale = (1, 1, 1)
-
-[node id=2 name="Camera" parent=1 uuid="d6348e9e870dff93209ad02615cfefbb"]
+[node id=1 name="Camera" parent=0 uuid="d6348e9e870dff93209ad02615cfefbb"]
 NameComponent/name = "Camera"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
 EntityStatusComponent/locked = false
 EntityStatusComponent/selectable = true
-TransformComponent/position = (0.179705, 0.774571, 1.30218)
-TransformComponent/rotation = (-0.140886, 0.0145115, 0.00206528, 0.989917)
+TransformComponent/position = (-0.699464, 1.46506, 1.41913)
+TransformComponent/rotation = (-0.150684, -0.214522, -0.0335166, 0.964444)
 TransformComponent/scale = (1, 1, 1)
 CameraComponent/primary = true
 CameraComponent/projection = 0
@@ -31,27 +21,27 @@ CameraComponent/clearColor = (0.02, 0.025, 0.035, 1)
 CameraComponent/priority = 0
 CameraComponent/rendererKey = "universal"
 
-[node id=3 name="LizardSplat" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0caa"]
+[node id=2 name="LizardSplat" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0caa"]
 NameComponent/name = "LizardSplat"
 EntityStatusComponent/active = true
-EntityStatusComponent/visible = true
+EntityStatusComponent/visible = false
 EntityStatusComponent/locked = false
 EntityStatusComponent/selectable = true
-TransformComponent/position = (0, 0.102597, -1)
+TransformComponent/position = (0, 0.459861, -1)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (1, 1, 1)
 GaussianSplatComponent/gaussianSplat = "3acfb36237062821a78452d799871ba6"
 ScriptComponent/scriptUri = "res://scripts/test_move.lua"
 ScriptComponent/enabled = true
 
-[node id=4 name="Sun" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0ca8"]
+[node id=3 name="Sun" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0ca8"]
 NameComponent/name = "Sun"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
 EntityStatusComponent/locked = false
 EntityStatusComponent/selectable = true
-TransformComponent/position = (0, 4, 0)
-TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (-0.699544, -0.111872, 0.112315, 0.696784)
 TransformComponent/scale = (1, 1, 1)
 LightComponent/kind = 0
 LightComponent/color = (1, 0.96, 0.9)
@@ -63,18 +53,46 @@ LightComponent/width = 1.000000
 LightComponent/height = 1.000000
 LightComponent/innerConeDegrees = 20.000000
 LightComponent/outerConeDegrees = 30.000000
-LightComponent/castsShadow = false
+LightComponent/castsShadow = true
 LightComponent/twoSided = false
 
-[node id=5 name="BindingProbe" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0ca9"]
+[node id=4 name="BindingProbe" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0ca9"]
 NameComponent/name = "BindingProbe"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
 EntityStatusComponent/locked = false
 EntityStatusComponent/selectable = true
-TransformComponent/position = (0, 0.453451, 0)
+TransformComponent/position = (0, 0.244876, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (1, 1, 1)
 ScriptComponent/scriptUri = "res://scripts/binding_probe.lua"
 ScriptComponent/enabled = true
+
+[node id=5 name="Helmet" parent=0 uuid="19e435a6e8213a2dfe78aba80bea9b6e"]
+NameComponent/name = "Helmet"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 1.25558, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.3, 0.3, 0.3)
+MeshComponent/mesh = "206733c1f880193cbd1dd2b65e0d0cbd"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+ScriptComponent/scriptUri = "res://scripts/test_move.lua"
+ScriptComponent/enabled = true
+
+[node id=6 name="Sponza" parent=0 uuid="d8f87fb53e73ae4fb3e040a47953c8aa"]
+NameComponent/name = "Sponza"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+MeshComponent/mesh = "b51e0d7c911e053929d6e8fdc7af78be"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
 

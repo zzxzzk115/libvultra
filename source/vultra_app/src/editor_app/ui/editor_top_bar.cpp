@@ -319,6 +319,8 @@ namespace vultra_app
                 ImGui::Separator();
                 if (ImGui::MenuItem("Profiler Window"))
                     ctx.state.profilerWindowOpenRequested = true;
+                if (ImGui::MenuItem("Frame Debugger"))
+                    ctx.state.frameDebuggerWindowOpenRequested = true;
                 drawRenderDocMenu(ctx);
                 ImGui::EndPopup();
             }
@@ -421,7 +423,8 @@ namespace vultra_app
             }
             if (settingsStart > ImGui::GetCursorPosX())
                 ImGui::SetCursorPosX(settingsStart);
-            toolbarButton(ICON_MDI_COG "  Settings", "Editor settings", ImVec2 {settingsWidth, 0.0f});
+            if (toolbarButton(ICON_MDI_COG "  Settings", "Editor settings", ImVec2 {settingsWidth, 0.0f}))
+                ctx.state.editorSettingsOpen = true;
 
             ImGui::End();
         }

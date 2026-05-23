@@ -39,6 +39,7 @@ layout(set = 1, binding = 0) uniform DrawParams
     vec4 materialMRA;
     uvec4 materialTextureInfo0;
     uvec4 materialTextureInfo1;
+    uvec4 entityInfo;
 } u_Draw;
 
 layout(location = 0) in vec3 a_Position;

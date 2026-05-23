@@ -7,8 +7,12 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
+#include "vultra/function/framegraph/framegraph_import.hpp"
+#include "vultra/function/framegraph/framegraph_resource_access.hpp"
+#include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/framework/resource_uploader.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
+#include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/rendering/srp/builtin/upload_resources.hpp"
 #include "vultra/function/rendering/srp/declarative_renderer.hpp"
 #include "vultra/function/rendering/srp/render_context.hpp"
@@ -694,11 +698,13 @@ namespace vultra
             renderer->setupServices(services);
             renderer->init();
         }
+        m_Initialized = true;
 
         VULTRA_CORE_TRACE("[RenderSystem] Initializing samplers");
         m_Samplers["default"] = backendService.renderDevice().getSampler(rhi::SamplerInfo {});
         m_Samplers["linear"]  = backendService.renderDevice().getSampler(
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eLinear, .minFilter = rhi::TexelFilter::eLinear});
+        m_Samplers["bilinear"] = m_Samplers["linear"];
         m_Samplers["nearest"] = backendService.renderDevice().getSampler(
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eNearest, .minFilter = rhi::TexelFilter::eNearest});
 
@@ -728,9 +734,15 @@ namespace vultra
             renderer = nullptr;
         m_Renderers.clear();
 
+        m_FrameGraphTextureCaptureEnabled = false;
+        m_FrameGraphDebugTextures.clear();
+        m_FrameGraphDebugTextureSlots.clear();
+        m_RetiredFrameGraphDebugTextureSlots.clear();
+
         m_TransientResources.reset();
 
         m_FrameResources.clear();
+        m_Initialized = false;
     }
 
     void RenderSystem::registerRenderer(Ref<Renderer> renderer)
@@ -739,6 +751,12 @@ namespace vultra
             return;
         if (m_Renderers.contains(std::string(renderer->name())))
             return;
+        if (m_Initialized)
+        {
+            Services services = ctx().services;
+            renderer->setupServices(services);
+            renderer->init();
+        }
         m_Renderers[std::string(renderer->name())] = renderer;
     }
 
@@ -839,6 +857,135 @@ namespace vultra
         return true;
     }
 
+    void RenderSystem::addFrameGraphTextureCapturePasses(FrameGraphBuildContext& ctx, std::string_view cameraName)
+    {
+        if (!m_FrameGraphTextureCaptureEnabled)
+            return;
+        if (ctx.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+            return;
+
+        struct CaptureCandidate
+        {
+            FrameGraphResourceKey key;
+            const char*           name;
+            rhi::PixelFormat      format;
+        };
+
+        constexpr CaptureCandidate candidates[] {
+            {kResKey_GBufferColor, "GBufferColor", rhi::PixelFormat::eRGBA8_UNorm},
+            {kResKey_GBufferMetallicRoughnessAO, "GBufferMetallicRoughnessAO", rhi::PixelFormat::eRGBA8_UNorm},
+            {kResKey_GBufferEntityId, "GBufferEntityId", rhi::PixelFormat::eRGBA8_UNorm},
+            {kResKey_SelectionOutlineOutput, "SelectionOutlineOutput", rhi::PixelFormat::eRGBA8_UNorm},
+            {kResKey_FinalCompositionSource, "FinalCompositionSource", rhi::PixelFormat::eRGBA8_UNorm},
+        };
+
+        struct PassData
+        {
+            FrameGraphResource source;
+            FrameGraphResource target;
+        };
+
+        const auto extent = ctx.view().extent;
+        for (const auto& candidate : candidates)
+        {
+            if (!ctx.data.contains(candidate.key))
+                continue;
+
+            std::string camera {cameraName.empty() ? std::string {"Camera"} : std::string {cameraName}};
+            std::string slotKey = camera + "/" + candidate.name;
+            auto&       slot = m_FrameGraphDebugTextureSlots[slotKey];
+            const bool recreate = !slot.texture || slot.extent.width != extent.width || slot.extent.height != extent.height ||
+                                  slot.format != candidate.format;
+            if (recreate)
+            {
+                if (slot.texture)
+                {
+                    slot.lastTouchedFrame = m_FrameCounter;
+                    m_RetiredFrameGraphDebugTextureSlots.push_back(std::move(slot));
+                    slot = {};
+                }
+
+                slot.texture =
+                    rhi::Texture::Builder {}
+                        .setExtent(extent)
+                        .setPixelFormat(candidate.format)
+                        .setNumMipLevels(1)
+                        .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst |
+                                       rhi::ImageUsage::eRenderTarget)
+                        .build(ctx.rd);
+            }
+
+            slot.camera = camera;
+            slot.name = candidate.name;
+            slot.key = slotKey + "@" + std::to_string(extent.width) + "x" + std::to_string(extent.height) + ":" +
+                       std::string(rhi::toString(candidate.format));
+            slot.extent = extent;
+            slot.format = candidate.format;
+            slot.lastTouchedFrame = m_FrameCounter;
+
+            if (!slot.texture)
+                continue;
+
+            auto source = ctx.data.get(candidate.key);
+            auto target = framegraph::importTexture(ctx.fg, std::string {"DebugCapture/"} + slotKey, &*slot.texture);
+            ctx.fg.addCallbackPass<PassData>(
+                std::string {"DebugCapture/"} + candidate.name,
+                [source, target](FrameGraph::Builder& builder, PassData& pd) {
+                    pd.source = builder.read(source,
+                                             framegraph::TextureRead {
+                                                 .binding =
+                                                     {
+                                                         .location      = {.set = 3, .binding = 14},
+                                                         .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                                     },
+                                                 .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                                 .imageAspect = rhi::ImageAspect::eColor,
+                                             });
+                    pd.target = builder.write(target,
+                                              framegraph::ImageWrite {
+                                                  .binding =
+                                                      {
+                                                          .location      = {.set = 3, .binding = 63},
+                                                          .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                                      },
+                                                  .imageAspect = rhi::ImageAspect::eColor,
+                                              });
+                },
+                [](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+                    VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
+                    auto* sourceTexture = resources.get<framegraph::FrameGraphTexture>(pd.source).texture;
+                    auto* targetTexture = resources.get<framegraph::FrameGraphTexture>(pd.target).texture;
+                    if (!sourceTexture || !targetTexture)
+                        return;
+                    rc.cb.getBarrierBuilder().imageBarrier(
+                        {
+                            .image            = *targetTexture,
+                            .newLayout        = rhi::ImageLayout::eTransferDst,
+                            .subresourceRange = rhi::ImageSubresourceRange {
+                                .levelCount = UINT32_MAX,
+                                .layerCount = UINT32_MAX,
+                            },
+                        },
+                        {
+                            .dstStage  = rhi::PipelineStages::eTransfer,
+                            .dstAccess = rhi::Access::eTransferWrite,
+                        });
+                    rc.cb.blit(*sourceTexture, *targetTexture, rhi::TexelFilter::eNearest);
+                    rhi::prepareForReading(rc.cb, *sourceTexture);
+                    rhi::prepareForReading(rc.cb, *targetTexture);
+                });
+
+            m_FrameGraphDebugTextures.push_back(FrameGraphDebugTexture {
+                .camera = slot.camera,
+                .name = slot.name,
+                .key = slot.key,
+                .texture = &*slot.texture,
+                .extent = slot.extent,
+                .format = slot.format,
+            });
+        }
+    }
+
     void RenderSystem::renderFrame()
     {
         m_InRenderFrame = true;
@@ -876,6 +1023,23 @@ namespace vultra
 
         m_RuntimeProfiler.beginFrame(m_FrameCounter);
         m_LastFrameGraphSnapshot.clear();
+        m_FrameGraphDebugTextures.clear();
+        {
+            constexpr uint64_t kDebugTextureReleaseDelayFrames = 8u;
+            std::size_t        out = 0;
+            for (auto& slot : m_RetiredFrameGraphDebugTextureSlots)
+            {
+                if (m_FrameCounter > slot.lastTouchedFrame + kDebugTextureReleaseDelayFrames)
+                {
+                    slot.texture.reset();
+                }
+                else
+                {
+                    m_RetiredFrameGraphDebugTextureSlots[out++] = std::move(slot);
+                }
+            }
+            m_RetiredFrameGraphDebugTextureSlots.resize(out);
+        }
         m_RuntimeProfiler.setVsyncEnabled(ctx().config.render.vSyncConfig != rhi::VerticalSync::eDisabled);
         rhi::CommandBuffer::resetFrameStats();
 
@@ -1672,6 +1836,7 @@ namespace vultra
                 // This sets up the frame graph using a feature renderer or a custom graph-aware renderer.
                 rhi::prepareForAttachment(cb, *target, false);
                 renderer->buildFrameGraph(buildCtx);
+                addFrameGraphTextureCapturePasses(buildCtx, cam.name);
                 fg.compile();
 
                 {

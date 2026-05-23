@@ -5,6 +5,7 @@ version = 460
 [keywords]
 USE_MULTIVIEW : bool permute
 MANUAL_SRGB_ENCODE : bool permute
+DEBUG_ENTITY_ID_OUTPUT : bool permute
 
 [frag]
 #include "include/common/color.glsl"
@@ -20,6 +21,9 @@ layout (set = 3, binding = 0) uniform sampler2DArray t_0;
 #else
 layout (set = 3, binding = 0) uniform sampler2D t_0;
 #endif
+#if DEBUG_ENTITY_ID_OUTPUT
+layout (set = 3, binding = 1) uniform sampler2D t_EntityId;
+#endif
 
 void main() {
     vec2 sampleUv = v_TexCoord;
@@ -30,6 +34,10 @@ void main() {
     const vec4 source = texture(t_0, vec3(sampleUv, float(gl_ViewIndex)));
 #else
     const vec4 source = texture(t_0, sampleUv);
+#endif
+#if DEBUG_ENTITY_ID_OUTPUT
+    FragColor = texture(t_EntityId, sampleUv);
+    return;
 #endif
 #if MANUAL_SRGB_ENCODE
     FragColor = vec4(linearTosRGB(source.rgb), 1.0);

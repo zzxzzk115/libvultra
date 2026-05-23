@@ -29,7 +29,10 @@ namespace vultra
                                                 GeneralGaussianSplatFoveatedLayer layer,
                                                 rhi::Extent2D                    resolution);
 
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useMultiview) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat,
+                                             rhi::PixelFormat entityIdFormat,
+                                             bool             useMultiview,
+                                             bool             writeEntityId) const;
 
     private:
         std::array<rhi::UniformBuffer, 4> m_UniformBuffers;

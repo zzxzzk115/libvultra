@@ -1583,6 +1583,65 @@ namespace vultra
                 true);
         }
 
+        std::optional<std::array<uint8_t, 4>>
+        RenderDevice::readTexturePixelRGBA8(const Texture& texture, const uint32_t x, const uint32_t y)
+        {
+            if (!texture || texture.getPixelFormat() != PixelFormat::eRGBA8_UNorm)
+                return std::nullopt;
+
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                static bool warned = false;
+                if (!warned)
+                {
+                    VULTRA_CORE_WARN("[RenderDevice] RGBA8 texture pixel readback is not implemented for WebGPU");
+                    warned = true;
+                }
+                return std::nullopt;
+            }
+
+            const auto extent = texture.getExtent();
+            if (x >= extent.width || y >= extent.height)
+                return std::nullopt;
+
+            auto stagingBuffer = createStagingBuffer(texture.getSize());
+            execute([&](CommandBuffer& cb) {
+                cb.getBarrierBuilder().imageBarrier(
+                    {
+                        .image     = const_cast<Texture&>(texture),
+                        .newLayout = ImageLayout::eGeneral,
+                    },
+                    {
+                        .dstStage  = PipelineStages::eTransfer,
+                        .dstAccess = Access::eTransferRead,
+                    });
+                cb.copyImage(texture, stagingBuffer, ImageAspect::eColor);
+                cb.getBarrierBuilder().bufferBarrier({.buffer = stagingBuffer},
+                                                     {
+                                                         .dstStage  = PipelineStages::eTransfer,
+                                                         .dstAccess = Access::eTransferRead,
+                                                     });
+            }, true);
+            waitIdle();
+
+            const auto* mappedPtr = static_cast<const uint8_t*>(stagingBuffer.map());
+            if (!mappedPtr)
+            {
+                VULTRA_CORE_ERROR("[RenderDevice] Failed to map staging buffer for pixel readback");
+                return std::nullopt;
+            }
+
+            const uint64_t offset = (static_cast<uint64_t>(y) * extent.width + x) * 4u;
+            std::array<uint8_t, 4> out {
+                mappedPtr[offset + 0u],
+                mappedPtr[offset + 1u],
+                mappedPtr[offset + 2u],
+                mappedPtr[offset + 3u],
+            };
+            stagingBuffer.unmap();
+            return out;
+        }
+
         RenderDevice& RenderDevice::uploadDrawIndirect(DrawIndirectBuffer&                     buffer,
                                                        const std::vector<DrawIndirectCommand>& commands)
         {

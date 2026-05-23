@@ -106,19 +106,9 @@ namespace vultra_app
         {
             constexpr std::string_view kSampleScene = R"([vscn]
 version = 1
-root    = 1
+root    = 0
 
-[node id=1 name="SceneRoot" parent=0 uuid="b32742be42ef01022fdc23bb959c74c7"]
-NameComponent/name = "SceneRoot"
-EntityStatusComponent/active = true
-EntityStatusComponent/visible = true
-EntityStatusComponent/locked = false
-EntityStatusComponent/selectable = true
-TransformComponent/position = (0, 0, 0)
-TransformComponent/rotation = (0, 0, 0, 1)
-TransformComponent/scale = (1, 1, 1)
-
-[node id=2 name="Sun" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0ca8"]
+[node id=1 name="Sun" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0ca8"]
 NameComponent/name = "Sun"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -140,7 +130,7 @@ LightComponent/outerConeDegrees = 30
 LightComponent/castsShadow = false
 LightComponent/twoSided = false
 
-[node id=3 name="Camera" parent=1 uuid="d6348e9e870dff93209ad02615cfefbb"]
+[node id=2 name="Camera" parent=0 uuid="d6348e9e870dff93209ad02615cfefbb"]
 NameComponent/name = "Camera"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true

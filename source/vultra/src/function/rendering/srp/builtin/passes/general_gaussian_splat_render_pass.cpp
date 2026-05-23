@@ -4,12 +4,14 @@
 #include "vultra/function/framegraph/framegraph_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 
 #include <fg/FrameGraph.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
@@ -24,7 +26,21 @@ namespace vultra
             glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 5.0f, 15.0f};
             glm::vec4 foveatedParams {1.0f, 1.0f, 2.0f, 0.0f};
             glm::vec4 targetSize {1.0f, 1.0f, 0.0f, 0.0f};
+            glm::uvec4 entityInfo {0u};
         };
+
+        [[nodiscard]] uint32_t gaussianSplatEntityPickingId(const RenderView& view)
+        {
+            if (!view.renderWorld)
+                return 0u;
+            for (const auto& splat : view.renderWorld->gaussianSplats)
+            {
+                const uint32_t id = makeEntityPickingId(splat.entity);
+                if (id != 0u)
+                    return id;
+            }
+            return 0u;
+        }
 
         [[nodiscard]] glm::vec2 gaussianSplatFoveatedTanHalfFov(const RenderView& view)
         {
@@ -62,6 +78,7 @@ namespace vultra
                 0.0f,
                 0.0f,
             };
+            pc.entityInfo = glm::uvec4 {gaussianSplatEntityPickingId(view), 0u, 0u, 0u};
             return pc;
         }
     }
@@ -97,10 +114,14 @@ namespace vultra
         auto existingColor      = layer == GeneralGaussianSplatFoveatedLayer::eDisabled ?
                                       ctx.data.tryGet(kResKey_FinalCompositionSource) :
                                       FrameGraphResource {};
+        auto existingEntityId   = layer == GeneralGaussianSplatFoveatedLayer::eDisabled ?
+                                      ctx.data.tryGet(kResKey_GBufferEntityId) :
+                                      FrameGraphResource {};
         if (!visibleSplatBuffer || !sortIndexBuffer || !indirectBuffer)
             return {};
 
         const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u;
+        const bool writeEntityId = ctx.view().camera != nullptr && ctx.view().camera->debugEntityIdOutput;
         const auto passName =
             layer == GeneralGaussianSplatFoveatedLayer::eDisabled ? PASS_NAME :
             layer == GeneralGaussianSplatFoveatedLayer::eFovea    ? "GeneralGaussianSplatFoveaLayerPass" :
@@ -116,20 +137,23 @@ namespace vultra
         struct PassData
         {
             FrameGraphResource color;
+            FrameGraphResource entityId;
             FrameGraphResource visibleSplatBuffer;
             FrameGraphResource sortIndexBuffer;
             FrameGraphResource indirectBuffer;
         };
 
         auto data = ctx.fg.addCallbackPass<PassData>(
-            passName,
-            [passName,
+             passName,
+             [passName,
              resolution,
              useMultiview,
              visibleSplatBuffer,
              sortIndexBuffer,
              indirectBuffer,
-             existingColor](
+             existingColor,
+             existingEntityId,
+             writeEntityId](
                 FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
@@ -165,7 +189,8 @@ namespace vultra
                             .extent     = resolution,
                             .format     = rhi::PixelFormat::eRGBA8_UNorm,
                             .layers     = useMultiview ? 2u : 0u, // 0 -> non-array texture
-                            .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                            .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                          rhi::ImageUsage::eTransferSrc,
                         });
                     data.color = builder.write(data.color,
                                                framegraph::Attachment {
@@ -174,8 +199,35 @@ namespace vultra
                                                    .clearValue  = framegraph::ClearValue::eTransparentBlack,
                                                });
                 }
+
+                if (writeEntityId && existingEntityId)
+                {
+                    data.entityId = builder.write(existingEntityId,
+                                                  framegraph::Attachment {
+                                                      .index       = 1,
+                                                      .imageAspect = rhi::ImageAspect::eColor,
+                                                  });
+                }
+                else if (writeEntityId)
+                {
+                    data.entityId = builder.create<framegraph::FrameGraphTexture>(
+                        "GBufferEntityId",
+                        {
+                            .extent     = resolution,
+                            .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                            .layers     = useMultiview ? 2u : 0u,
+                            .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                          rhi::ImageUsage::eTransferSrc,
+                        });
+                    data.entityId = builder.write(data.entityId,
+                                                  framegraph::Attachment {
+                                                      .index       = 1,
+                                                      .imageAspect = rhi::ImageAspect::eColor,
+                                                      .clearValue  = framegraph::ClearValue::eTransparentBlack,
+                                                  });
+                }
             },
-            [this, useMultiview, uniformsData, layerIndex](
+            [this, useMultiview, writeEntityId, uniformsData, layerIndex](
                 const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
@@ -201,13 +253,19 @@ namespace vultra
 
                 rhi::prepareForDrawingIndirect(rc.cb, *indirectBuf);
 
-                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0), useMultiview);
+                auto framebufferInfo = rc.framebufferInfo().value();
+                const auto entityIdFormat = writeEntityId && framebufferInfo.colorAttachments.size() > 1 ?
+                                                rhi::getColorFormat(framebufferInfo, 1) :
+                                                rhi::PixelFormat::eUndefined;
+                const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0),
+                                                   entityIdFormat,
+                                                   useMultiview,
+                                                   writeEntityId);
                 if (!pipeline)
                 {
                     return;
                 }
 
-                auto framebufferInfo = rc.framebufferInfo().value();
                 if (useMultiview)
                 {
                     framebufferInfo.layers   = 2u;
@@ -227,11 +285,16 @@ namespace vultra
                 rc.cb.endRendering();
             });
 
+        if (layer == GeneralGaussianSplatFoveatedLayer::eDisabled && data.entityId)
+            ctx.data.set(kResKey_GBufferEntityId, data.entityId);
+
         return data.color;
     }
 
     rhi::GraphicsPipeline GeneralGaussianSplatRenderPass::createPipeline(const rhi::PixelFormat colorFormat,
-                                                                         const bool             useMultiview) const
+                                                                         const rhi::PixelFormat entityIdFormat,
+                                                                         const bool             useMultiview,
+                                                                         const bool             writeEntityId) const
     {
         rhi::ShaderLibraryRuntime::KeywordValues vertexKeywords {
             {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
@@ -241,13 +304,20 @@ namespace vultra
         if (!vertexShader)
             return {};
 
-        auto fragmentShader = loadGeneralShader("gaussian_splat_render.frag", vshadersystem::ShaderStage::eFrag, {});
+        rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
+            {"WRITE_ENTITY_ID", writeEntityId ? 1u : 0u},
+        };
+        auto fragmentShader =
+            loadGeneralShader("gaussian_splat_render.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
         if (!fragmentShader)
             return {};
 
         auto builder = rhi::GraphicsPipeline::Builder {};
+        std::vector<rhi::PixelFormat> colorFormats {colorFormat};
+        if (writeEntityId)
+            colorFormats.push_back(entityIdFormat);
         builder.setViewMask(useMultiview ? 0x3u : 0u)
-            .setColorFormats({colorFormat})
+            .setColorFormats(colorFormats)
             .setTopology(rhi::PrimitiveTopology::eTriangleStrip)
             .setDepthStencil({
                 .depthTest  = false,
@@ -266,7 +336,15 @@ namespace vultra
                              .srcAlpha = rhi::BlendFactor::eOne,
                              .dstAlpha = rhi::BlendFactor::eOneMinusSrcAlpha,
                              .alphaOp  = rhi::BlendOp::eAdd,
-                         });
+                         })
+            ;
+        if (writeEntityId)
+        {
+            builder.setBlending(1,
+                                {
+                                    .enabled = false,
+                                });
+        }
 
         if (getRenderDevice().getBackendApi() == rhi::RenderBackendApi::eWebGPU)
         {

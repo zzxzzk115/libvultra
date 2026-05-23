@@ -7,6 +7,7 @@
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
 
@@ -36,6 +37,7 @@ namespace vultra
             glm::vec4 materialMRA {0.0f, 1.0f, 1.0f, 0.0f};
             glm::uvec4 materialTextureInfo0 {0u};
             glm::uvec4 materialTextureInfo1 {0u};
+            glm::uvec4 entityInfo {0u};
         };
 
         struct alignas(16) MaterialParamsPBRMR
@@ -126,6 +128,8 @@ namespace vultra
                     out.materialTextureInfo1.x = p.occlusionTex;
                     out.materialTextureInfo1.z = p.metallicTex;
                     out.materialTextureInfo1.w = p.roughnessTex;
+                    out.entityInfo.y = p.alphaMode;
+                    out.entityInfo.z = static_cast<uint32_t>(glm::clamp(p.alphaCutoff, 0.0f, 1.0f) * 255.0f);
                     break;
                 }
                 case resource::GpuMaterialModel::ePBRSpecularGlossiness:
@@ -220,6 +224,24 @@ namespace vultra
             return alignment == 0u ? value : ((value + alignment - 1u) / alignment) * alignment;
         }
 
+        [[nodiscard]] const rhi::Texture*
+        sanitizeBindlessTextures(std::vector<const rhi::Texture*>& materialTextures)
+        {
+            const auto fallbackIt = std::find_if(materialTextures.begin(), materialTextures.end(), [](const auto* tex) {
+                return tex != nullptr;
+            });
+            if (fallbackIt == materialTextures.end())
+                return nullptr;
+
+            const auto* fallback = *fallbackIt;
+            for (auto*& texture : materialTextures)
+            {
+                if (!texture)
+                    texture = fallback;
+            }
+            return fallback;
+        }
+
     } // namespace
 
     FrameGraphResource DirectGBufferPass::addPass(FrameGraphBuildContext& ctx)
@@ -230,6 +252,7 @@ namespace vultra
             FrameGraphResource color;
             FrameGraphResource normal;
             FrameGraphResource material;
+            FrameGraphResource entityId;
             FrameGraphResource depth;
         };
 
@@ -251,7 +274,8 @@ namespace vultra
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 pd.color = builder.write(pd.color,
                                          framegraph::Attachment {
@@ -265,7 +289,8 @@ namespace vultra
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eRGBA16F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 pd.normal = builder.write(pd.normal,
                                           framegraph::Attachment {
@@ -279,13 +304,29 @@ namespace vultra
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 pd.material = builder.write(pd.material,
                                             framegraph::Attachment {
                                                 .index       = 2,
                                                 .imageAspect = rhi::ImageAspect::eColor,
                                                 .clearValue  = framegraph::ClearValue::eTransparentWhite,
+                                            });
+
+                pd.entityId = builder.create<framegraph::FrameGraphTexture>(
+                    "DirectGBufferEntityId",
+                    {
+                        .extent     = resolution,
+                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
+                    });
+                pd.entityId = builder.write(pd.entityId,
+                                            framegraph::Attachment {
+                                                .index       = 3,
+                                                .imageAspect = rhi::ImageAspect::eColor,
+                                                .clearValue  = framegraph::ClearValue::eTransparentBlack,
                                             });
 
                 pd.depth = builder.create<framegraph::FrameGraphTexture>(
@@ -318,10 +359,15 @@ namespace vultra
                 const auto colorFormat     = rhi::getColorFormat(framebufferInfo, 0);
                 const auto normalFormat    = rhi::getColorFormat(framebufferInfo, 1);
                 const auto materialFormat  = rhi::getColorFormat(framebufferInfo, 2);
+                const auto entityIdFormat  = rhi::getColorFormat(framebufferInfo, 3);
 
-                const auto materialTextures = gpuSceneDatabase->resources->getBindlessTextureHandles();
-                if (materialTextures.empty())
+                auto materialTextures = gpuSceneDatabase->resources->getBindlessTextureHandles();
+                if (!sanitizeBindlessTextures(materialTextures))
+                {
+                    RHI_GPU_ZONE(rc.cb, PASS_NAME);
+                    rc.cb.beginRendering(framebufferInfo).endRendering();
                     return;
+                }
 
                 rc.resourceSet[3] = {
                     {4,
@@ -377,6 +423,7 @@ namespace vultra
                             return;
 
                         auto drawParams = makeDrawParams(*gpuSceneDatabase->resources, subMesh.materialIndex, instance.worldMatrix);
+                        drawParams.entityInfo.x = makeEntityPickingId(instance.entity);
                         if (instance.hasBaseColorOverride)
                         {
                             drawParams.baseColorFactor = instance.baseColorOverride;
@@ -408,6 +455,7 @@ namespace vultra
                 if (!drawParamBytes.empty())
                     rc.cb.update(drawParamsBuffer, 0, drawParamBufferSize, drawParamBytes.data());
                 auto& retainedDrawParamsBuffer = retainDrawParamBuffer(rc.frame.frameIndex, std::move(drawParamsBuffer));
+                rhi::prepareForReading(rc.cb, retainedDrawParamsBuffer);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
                 rc.cb.beginRendering(framebufferInfo);
@@ -437,6 +485,7 @@ namespace vultra
                         const auto* pipeline = getPipeline(colorFormat,
                                                            normalFormat,
                                                            materialFormat,
+                                                           entityIdFormat,
                                                            posIt->second.offset,
                                                            normalIt->second.offset,
                                                            uvIt->second.offset,
@@ -496,26 +545,30 @@ namespace vultra
         ctx.data.set(kResKey_DepthTexture, data.depth);
         ctx.data.set(kResKey_GBufferNormal, data.normal);
         ctx.data.set(kResKey_GBufferMetallicRoughnessAO, data.material);
+        ctx.data.set(kResKey_GBufferEntityId, data.entityId);
         return data.color;
     }
 
     rhi::UniformBuffer& DirectGBufferPass::retainDrawParamBuffer(const uint64_t frameIndex, rhi::UniformBuffer buffer)
     {
-        if (m_DrawParamBufferFrameIndex != frameIndex)
-        {
-            m_DrawParamBufferFrameIndex = frameIndex;
-            m_DrawParamBuffers.clear();
-        }
+        constexpr uint64_t kReleaseDelayFrames = 4;
+        std::erase_if(m_DrawParamBuffers, [frameIndex](const RetainedDrawParamBuffer& retained) {
+            return retained.frameIndex + kReleaseDelayFrames < frameIndex;
+        });
 
         auto retained = std::make_unique<rhi::UniformBuffer>(std::move(buffer));
         auto* ptr     = retained.get();
-        m_DrawParamBuffers.push_back(std::move(retained));
+        m_DrawParamBuffers.push_back(RetainedDrawParamBuffer {
+            .frameIndex = frameIndex,
+            .buffer     = std::move(retained),
+        });
         return *ptr;
     }
 
     rhi::GraphicsPipeline DirectGBufferPass::createPipeline(const rhi::PixelFormat colorFormat,
                                                             const rhi::PixelFormat normalFormat,
                                                             const rhi::PixelFormat materialFormat,
+                                                            const rhi::PixelFormat entityIdFormat,
                                                             const uint32_t         positionOffset,
                                                             const uint32_t         normalOffset,
                                                             const uint32_t         texCoord0Offset,
@@ -537,7 +590,7 @@ namespace vultra
         }
 
         return rhi::GraphicsPipeline::Builder {}
-            .setColorFormats({colorFormat, normalFormat, materialFormat})
+            .setColorFormats({colorFormat, normalFormat, materialFormat, entityIdFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
             .setInputAssembly(
                 buildPipelineVertexAttributes(positionOffset, normalOffset, texCoord0Offset, tangentOffset, hasTangent))
@@ -556,6 +609,7 @@ namespace vultra
             .setBlending(0, {.enabled = false})
             .setBlending(1, {.enabled = false})
             .setBlending(2, {.enabled = false})
+            .setBlending(3, {.enabled = false})
             .build(getRenderDevice());
     }
 } // namespace vultra

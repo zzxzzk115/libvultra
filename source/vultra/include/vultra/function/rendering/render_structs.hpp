@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -64,6 +65,8 @@ namespace vultra
         rhi::Texture* target {nullptr};
         glm::vec4     clearValue {0, 0, 0, 1};
         bool          renderImGui {true};
+        bool          debugEntityIdOutput {false};
+        bool          selectionOutlineEnabled {false};
 
         // SRP binding (string key, resolved to a Renderer instance by RenderSystem)
         // Example: "universal", "hd"
@@ -88,6 +91,14 @@ namespace vultra
         uint32_t  splatIndex {0};
         glm::mat4 worldMatrix {1.0f};
     };
+
+    [[nodiscard]] inline uint32_t makeEntityPickingId(const CoreUUID& entity)
+    {
+        if (!entity.valid())
+            return 0u;
+        uint32_t id = static_cast<uint32_t>(std::hash<CoreUUID> {}(entity) & 0x00FFFFFFu);
+        return id == 0u ? 1u : id;
+    }
 
     enum class RenderLightKind : uint32_t
     {
@@ -278,10 +289,21 @@ namespace vultra
 
     struct BuiltinRenderSettings
     {
+        struct SelectionOutlineSettings
+        {
+            bool      enabled {true};
+            uint32_t  selectedEntityId {0u};
+            glm::vec4 color {1.0f, 0.55f, 0.08f, 1.0f};
+            float     thickness {3.0f};
+            float     fillOpacity {0.0f};
+            float     edgeOpacity {0.35f};
+        };
+
         HbaoRenderSettings hbao;
         SsrRenderSettings  ssr;
         ShadowRenderSettings shadow;
         PbrLightingSettings pbrLighting;
+        SelectionOutlineSettings selectionOutline;
         bool               enableFXAA {true};
     };
 

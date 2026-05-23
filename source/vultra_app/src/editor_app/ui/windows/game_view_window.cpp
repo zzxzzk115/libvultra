@@ -412,6 +412,7 @@ namespace vultra_app
             vultra::rhi::Texture::Builder {}
                 .setExtent(m_PendingRenderTarget.extent)
                 .setPixelFormat(format)
+                .setNumMipLevels(1)
                 .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
                 .build(rd);
         m_PendingRenderTarget.textureId     = imguiService->addTexture(*m_PendingRenderTarget.texture);

@@ -96,6 +96,7 @@ namespace vultra_app
         void applyEditorWindow(EditorContext& ctx);
         void drawLoadingOverlay() const;
         void drawBuildRunPopup();
+        void drawEditorSettingsPopup(EditorContext& ctx);
         void saveCurrentScene(EditorContext& ctx);
         void syncPlaybackState(EditorContext& ctx);
         void capturePlayModeSnapshot(EditorContext& ctx);

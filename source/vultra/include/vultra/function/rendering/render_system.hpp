@@ -18,6 +18,8 @@
 
 #include <string>
 #include <unordered_map>
+#include <optional>
+#include <vector>
 
 namespace vultra
 {
@@ -61,6 +63,12 @@ namespace vultra
         const RenderWorld& renderWorld() const { return m_RenderWorldFront; }
         RuntimeProfiler*   runtimeProfiler() override { return &m_RuntimeProfiler; }
         std::string_view lastFrameGraphSnapshot() const override { return m_LastFrameGraphSnapshot; }
+        void setFrameGraphTextureCaptureEnabled(bool enabled) override { m_FrameGraphTextureCaptureEnabled = enabled; }
+        bool frameGraphTextureCaptureEnabled() const override { return m_FrameGraphTextureCaptureEnabled; }
+        const std::vector<FrameGraphDebugTexture>& frameGraphDebugTextures() const override
+        {
+            return m_FrameGraphDebugTextures;
+        }
         GaussianSplatRenderSettings&       gaussianSplatSettings() override { return m_GaussianSplatSettings; }
         const GaussianSplatRenderSettings& gaussianSplatSettings() const override { return m_GaussianSplatSettings; }
         const GaussianSplatFrameStats&     gaussianSplatFrameStats() const override { return m_GaussianSplatStats; }
@@ -71,9 +79,11 @@ namespace vultra
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
         bool          reloadRenderPipelineNow();
         bool          reloadRenderPipelineNow(std::string_view asset, std::string_view rendererKey);
+        void          addFrameGraphTextureCapturePasses(FrameGraphBuildContext& ctx, std::string_view cameraName);
 
     private:
         bool m_SkipRender {false};
+        bool m_Initialized {false};
         bool m_InRenderFrame {false};
         bool m_PendingRenderPipelineReload {false};
         std::string m_PendingRenderPipelineAsset;
@@ -105,6 +115,20 @@ namespace vultra
         GpuSceneDirtyTracker m_GpuSceneDirtyTracker;
         RuntimeProfiler      m_RuntimeProfiler;
         std::string          m_LastFrameGraphSnapshot;
+        struct FrameGraphDebugTextureSlot
+        {
+            std::optional<rhi::Texture> texture;
+            std::string                 camera;
+            std::string                 name;
+            std::string                 key;
+            rhi::Extent2D               extent {};
+            rhi::PixelFormat            format {rhi::PixelFormat::eUndefined};
+            uint64_t                    lastTouchedFrame {0};
+        };
+        std::vector<FrameGraphDebugTextureSlot> m_RetiredFrameGraphDebugTextureSlots;
+        bool                                              m_FrameGraphTextureCaptureEnabled {false};
+        std::unordered_map<std::string, FrameGraphDebugTextureSlot> m_FrameGraphDebugTextureSlots;
+        std::vector<FrameGraphDebugTexture>               m_FrameGraphDebugTextures;
         GaussianSplatRenderSettings m_GaussianSplatSettings;
         GaussianSplatRenderSettings m_AppliedGaussianSplatSettings;
         GaussianSplatFrameStats     m_GaussianSplatStats;

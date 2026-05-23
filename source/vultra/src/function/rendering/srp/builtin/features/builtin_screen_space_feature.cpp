@@ -2,9 +2,12 @@
 #include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/fxaa_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/hbao_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/services/render_service.hpp"
+
+#include <vultra/core/rhi/structs/render_backend_api.hpp>
 
 namespace vultra
 {
@@ -12,6 +15,7 @@ namespace vultra
     {
         m_HbaoPass = new HbaoPass();
         m_SsrPass  = new SsrPass();
+        m_SelectionOutlinePass = new SelectionOutlinePass();
         m_FxaaPass = new FxaaPass();
     }
 
@@ -19,6 +23,7 @@ namespace vultra
     {
         delete m_HbaoPass;
         delete m_SsrPass;
+        delete m_SelectionOutlinePass;
         delete m_FxaaPass;
     }
 
@@ -30,6 +35,7 @@ namespace vultra
         const bool hasNormal = ctx.data.contains(kResKey_GBufferNormal);
         const bool hasMrAo   = ctx.data.contains(kResKey_GBufferMetallicRoughnessAO);
         const bool hasColor  = ctx.data.contains(kResKey_FinalCompositionSource);
+        const bool hasEntityId = ctx.data.contains(kResKey_GBufferEntityId);
 
         // The pass implementations are intentionally gated on SRP resources instead of legacy mesh/texture systems.
         // HBAO requires depth + normal; SSR requires depth + normal + material MR/AO + current scene color.
@@ -55,6 +61,20 @@ namespace vultra
         {
             auto aaColor = m_FxaaPass->addPass(ctx, ctx.data.get(kResKey_FinalCompositionSource));
             ctx.data.set(kResKey_FinalCompositionSource, aaColor);
+        }
+
+        const bool cameraAllowsOutline = ctx.view().camera != nullptr && ctx.view().camera->selectionOutlineEnabled;
+        if (settings.selectionOutline.enabled && settings.selectionOutline.selectedEntityId != 0u &&
+            cameraAllowsOutline && hasColor && hasEntityId && hasDepth &&
+            ctx.rd.getBackendApi() != rhi::RenderBackendApi::eWebGPU)
+        {
+            auto outlined = m_SelectionOutlinePass->addPass(ctx,
+                                                            ctx.data.get(kResKey_FinalCompositionSource),
+                                                            ctx.data.get(kResKey_GBufferEntityId),
+                                                            ctx.data.get(kResKey_DepthTexture),
+                                                            settings.selectionOutline);
+            ctx.data.set(kResKey_SelectionOutlineOutput, outlined);
+            ctx.data.set(kResKey_FinalCompositionSource, outlined);
         }
     }
 } // namespace vultra

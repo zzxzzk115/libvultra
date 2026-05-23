@@ -10,6 +10,7 @@
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <fg/FrameGraph.hpp>
 
@@ -175,7 +176,8 @@ namespace vultra
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 data.color = builder.write(data.color,
                                            framegraph::Attachment {
@@ -189,7 +191,8 @@ namespace vultra
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eDepth32F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 data.depth = builder.write(data.depth,
                                            framegraph::Attachment {
@@ -235,6 +238,8 @@ namespace vultra
                 const uint64_t drawParamBufferSize = std::max<uint64_t>(1u, drawCallCount) * drawParamStride;
                 auto           drawParamsBuffer =
                     rc.rd.createUniformBuffer(drawParamBufferSize, rhi::AllocationHints::eSequentialWrite);
+                auto& retainedDrawParamsBuffer =
+                    retainDrawParamBuffer(rc.frame.frameIndex, std::move(drawParamsBuffer));
 
                 rc.cb.beginRendering(framebufferInfo);
 
@@ -269,7 +274,10 @@ namespace vultra
                         CompatDrawParams drawParams {};
                         drawParams.model         = instance.worldMatrix;
                         drawParams.materialIndex = subMesh.materialIndex;
-                        rc.rd.uploadS(drawParamsBuffer, drawParamOffset, sizeof(CompatDrawParams), &drawParams);
+                        rc.rd.uploadS(retainedDrawParamsBuffer,
+                                      drawParamOffset,
+                                      sizeof(CompatDrawParams),
+                                      &drawParams);
 
                         const uint32_t textureIndex =
                             resolveMaterialTextureIndex(*gpuSceneDatabase->resources, subMesh.materialIndex);
@@ -293,7 +301,7 @@ namespace vultra
                         rc.resourceSet[1] = {
                             {0,
                              rhi::bindings::UniformBuffer {
-                                 .buffer = &drawParamsBuffer,
+                                 .buffer = &retainedDrawParamsBuffer,
                                  .offset = drawParamOffset,
                                  .range  = sizeof(CompatDrawParams),
                              }},
@@ -333,6 +341,23 @@ namespace vultra
             });
 
         return data.color;
+    }
+
+    rhi::UniformBuffer& CompatibilityBaseColorPass::retainDrawParamBuffer(const uint64_t frameIndex,
+                                                                          rhi::UniformBuffer buffer)
+    {
+        constexpr uint64_t kReleaseDelayFrames = 4;
+        std::erase_if(m_DrawParamBuffers, [frameIndex](const RetainedDrawParamBuffer& retained) {
+            return retained.frameIndex + kReleaseDelayFrames < frameIndex;
+        });
+
+        auto retained = std::make_unique<rhi::UniformBuffer>(std::move(buffer));
+        auto* ptr     = retained.get();
+        m_DrawParamBuffers.push_back(RetainedDrawParamBuffer {
+            .frameIndex = frameIndex,
+            .buffer     = std::move(retained),
+        });
+        return *ptr;
     }
 
     rhi::GraphicsPipeline CompatibilityBaseColorPass::createPipeline(const rhi::PixelFormat colorFormat,

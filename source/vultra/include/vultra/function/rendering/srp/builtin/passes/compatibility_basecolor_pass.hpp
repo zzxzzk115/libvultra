@@ -1,9 +1,14 @@
 #pragma once
 
 #include "vultra/core/rhi/render_pass.hpp"
+#include "vultra/core/rhi/uniform_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 
 #include <fg/Fwd.hpp>
+
+#include <cstdint>
+#include <memory>
+#include <vector>
 
 namespace vultra
 {
@@ -21,5 +26,15 @@ namespace vultra
                                              uint32_t              texCoord0Offset,
                                              uint32_t              positionOffset,
                                              uint32_t              vertexStride) const;
+
+        rhi::UniformBuffer& retainDrawParamBuffer(uint64_t frameIndex, rhi::UniformBuffer buffer);
+
+        struct RetainedDrawParamBuffer
+        {
+            uint64_t                            frameIndex {0};
+            std::unique_ptr<rhi::UniformBuffer> buffer;
+        };
+
+        std::vector<RetainedDrawParamBuffer> m_DrawParamBuffers;
     };
 } // namespace vultra

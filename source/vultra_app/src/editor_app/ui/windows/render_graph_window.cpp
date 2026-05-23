@@ -885,17 +885,7 @@ namespace vultra_app
                 lineStart = lineEnd + 1;
             }
 
-            std::vector<nlohmann::json> graphEntries;
-            graphEntries.reserve(allGraphEntries.size());
-            for (const auto& json : allGraphEntries)
-            {
-                const auto cameraName = json.value("camera", std::string {});
-                if (cameraName == "Vultra Editor UI")
-                    continue;
-                graphEntries.push_back(json);
-            }
-            if (graphEntries.empty())
-                graphEntries = std::move(allGraphEntries);
+            auto graphEntries = std::move(allGraphEntries);
 
             int projectGraphIndex = -1;
             int gameGraphIndex = -1;
@@ -2228,6 +2218,7 @@ namespace vultra_app
             vultra::rhi::Texture::Builder {}
                 .setExtent(m_OverlayPendingRenderTarget.extent)
                 .setPixelFormat(format)
+                .setNumMipLevels(1)
                 .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
                 .build(rd);
         m_OverlayPendingRenderTarget.textureId = imguiService->addTexture(*m_OverlayPendingRenderTarget.texture);

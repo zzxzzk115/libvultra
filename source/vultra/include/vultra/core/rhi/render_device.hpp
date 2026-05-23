@@ -42,6 +42,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <span>
 #include <string>
@@ -220,6 +221,8 @@ namespace vultra
             bool saveTextureToFile(const Texture&         texture,
                                    const std::string&     filePath,
                                    const rhi::ImageAspect imageAspect = rhi::ImageAspect::eColor);
+            [[nodiscard]] std::optional<std::array<uint8_t, 4>>
+            readTexturePixelRGBA8(const Texture& texture, uint32_t x, uint32_t y);
 
             // For the RTX
             // General for ray query

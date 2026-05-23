@@ -1,11 +1,15 @@
 #pragma once
 
 #include "vultra/core/base/base.hpp"
+#include "vultra/core/rhi/structs/extent2d.hpp"
+#include "vultra/core/rhi/structs/pixel_format.hpp"
 
 #include <vbase/service/service_registry.hpp>
 
 #include <cstdint>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace vultra
 {
@@ -16,6 +20,20 @@ namespace vultra
     struct GaussianSplatRenderSettings;
     struct BuiltinRenderSettings;
     struct RenderCamera;
+    namespace rhi
+    {
+        class Texture;
+    }
+
+    struct FrameGraphDebugTexture
+    {
+        std::string      camera;
+        std::string      name;
+        std::string      key;
+        rhi::Texture*    texture {nullptr};
+        rhi::Extent2D    extent {};
+        rhi::PixelFormat format {rhi::PixelFormat::eUndefined};
+    };
 
     class IRenderService
     {
@@ -37,6 +55,9 @@ namespace vultra
 
         // DOT emitted by vrendergraph for the most recently compiled frame graph.
         virtual std::string_view lastFrameGraphSnapshot() const = 0;
+        virtual void             setFrameGraphTextureCaptureEnabled(bool enabled) = 0;
+        virtual bool             frameGraphTextureCaptureEnabled() const = 0;
+        virtual const std::vector<FrameGraphDebugTexture>& frameGraphDebugTextures() const = 0;
 
         virtual GaussianSplatRenderSettings&       gaussianSplatSettings() = 0;
         virtual const GaussianSplatRenderSettings& gaussianSplatSettings() const = 0;

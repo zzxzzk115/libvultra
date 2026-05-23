@@ -43,14 +43,26 @@ namespace vultra
 
         out << "[vscn]\n";
         out << "version = " << doc.version << "\n";
-        out << "root    = 1\n\n";
+        out << "root    = " << (doc.syntheticRoot ? 0 : 1) << "\n\n";
 
         if (!doc.root)
             return out.str();
 
         std::unordered_map<const SceneNode*, int> ids;
-        int                                       nextId = 2;
-        writeNode(out, *doc.root, 1, 0, ids, nextId);
+        int                                       nextId = 1;
+        if (doc.syntheticRoot)
+        {
+            for (const auto& child : doc.root->children)
+            {
+                const int nodeId = nextId++;
+                writeNode(out, *child, nodeId, 0, ids, nextId);
+            }
+        }
+        else
+        {
+            nextId = 2;
+            writeNode(out, *doc.root, 1, 0, ids, nextId);
+        }
 
         return out.str();
     }

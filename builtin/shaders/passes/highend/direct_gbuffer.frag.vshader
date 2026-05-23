@@ -41,6 +41,7 @@ layout(set = 1, binding = 0) uniform DrawParams
     vec4 materialMRA;
     uvec4 materialTextureInfo0;
     uvec4 materialTextureInfo1;
+    uvec4 entityInfo;
 } u_Draw;
 
 layout(set = 3, binding = 4) uniform sampler2D u_BindlessTextures[];
@@ -55,6 +56,7 @@ layout(location = 3) in vec4 v_TangentWS;
 layout(location = 0) out vec4 GBufferColor;
 layout(location = 1) out vec4 GBufferNormal;
 layout(location = 2) out vec4 GBufferMetallicRoughnessAO;
+layout(location = 3) out vec4 GBufferEntityId;
 
 vec4 sampleBindless(uint textureIndex, vec2 uv)
 {
@@ -73,7 +75,9 @@ void main()
     vec4 baseColor = u_Draw.baseColorFactor;
     if (baseColorTex != 0u)
         baseColor *= sampleBindless(baseColorTex, v_TexCoord0);
-    if (baseColor.a < 0.35)
+    uint alphaMode = u_Draw.entityInfo.y;
+    float alphaCutoff = float(u_Draw.entityInfo.z) / 255.0;
+    if (alphaMode == 1u && baseColor.a < alphaCutoff)
         discard;
 
     vec3 normalWS = normalize(v_NormalWS);
@@ -107,5 +111,12 @@ void main()
 
     GBufferColor = baseColor;
     GBufferNormal = vec4(normalWS, 1.0);
-    GBufferMetallicRoughnessAO = vec4(mra, u_Draw.materialMRA.w);
+    // Keep lit material debug previews visible in ImGui while preserving the unlit flag threshold.
+    GBufferMetallicRoughnessAO = vec4(mra, max(u_Draw.materialMRA.w, 0.25));
+
+    uint id = u_Draw.entityInfo.x;
+    GBufferEntityId = vec4(float(id & 0xFFu),
+                           float((id >> 8u) & 0xFFu),
+                           float((id >> 16u) & 0xFFu),
+                           255.0) / 255.0;
 }

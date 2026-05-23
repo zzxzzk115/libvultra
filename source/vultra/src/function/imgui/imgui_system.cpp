@@ -44,6 +44,9 @@ namespace
             return sampler;
 
         return rd.getSampler(vultra::rhi::SamplerInfo {
+            .magFilter = vultra::rhi::TexelFilter::eNearest,
+            .minFilter = vultra::rhi::TexelFilter::eNearest,
+            .mipmapMode = vultra::rhi::MipmapMode::eNearest,
             .addressModeS = vultra::rhi::SamplerAddressMode::eClampToEdge,
             .addressModeT = vultra::rhi::SamplerAddressMode::eClampToEdge,
             .addressModeR = vultra::rhi::SamplerAddressMode::eClampToEdge,

@@ -94,6 +94,8 @@ namespace vultra
                                            lightingSettings,
                                            ctx.view().renderWorld);
         if (lit)
+        {
             ctx.data.set(kResKey_FinalCompositionSource, lit);
+        }
     }
 } // namespace vultra

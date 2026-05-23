@@ -138,6 +138,7 @@ namespace vultra
         int         currentNodeId = -1;
         std::string currentSection;
         bool        isManifest = false;
+        bool        hasExplicitRoot = false;
 
         auto strip_quotes = [](std::string s) {
             s = trim_copy(s);
@@ -267,6 +268,7 @@ namespace vultra
                 }
                 else if (key == "root")
                 {
+                    hasExplicitRoot = true;
                     int parsedRoot = -1;
                     if (try_parse_int(val, parsedRoot))
                         rootId = parsedRoot;
@@ -325,8 +327,20 @@ namespace vultra
         if (nodes.empty())
             return doc;
 
-        // Determine root
-        if (rootId <= 0)
+        // Build adjacency list: parentId -> [childIds]
+        std::unordered_map<int, std::vector<int>> children;
+        for (int id : nodeOrder)
+        {
+            if (auto it = parentOf.find(id); it != parentOf.end())
+                children[it->second].push_back(id);
+        }
+
+        // Determine root. root=0 means the file intentionally has no concrete scene root.
+        if (rootId == 0 && hasExplicitRoot)
+        {
+            doc.syntheticRoot = true;
+        }
+        else if (rootId <= 0)
         {
             // fallback: first node whose parent is 0
             for (int id : nodeOrder)
@@ -343,14 +357,6 @@ namespace vultra
         {
             // fallback: smallest id
             rootId = nodeOrder.empty() ? nodes.begin()->first : nodeOrder.front();
-        }
-
-        // Build adjacency list: parentId -> [childIds]
-        std::unordered_map<int, std::vector<int>> children;
-        for (int id : nodeOrder)
-        {
-            if (auto it = parentOf.find(id); it != parentOf.end())
-                children[it->second].push_back(id);
         }
 
         auto takeNode = [&](int id) -> std::unique_ptr<SceneNode> {
@@ -377,6 +383,19 @@ namespace vultra
             return n;
         };
 
+        if (doc.syntheticRoot)
+        {
+            doc.root     = std::make_unique<SceneNode>();
+            doc.root->id = CoreUUIDHelper::getFromName("SceneRoot:synthetic");
+            doc.root->name = "SceneRoot";
+            for (int cid : children[0])
+            {
+                if (auto c = build(cid))
+                    doc.root->children.push_back(std::move(c));
+            }
+            return doc;
+        }
+
         doc.root = build(rootId);
 
         // Attach any other root-level nodes (parent=0) under doc.root.
@@ -386,6 +405,13 @@ namespace vultra
                 continue;
             if (auto c = build(cid))
                 doc.root->children.push_back(std::move(c));
+        }
+
+        // Compatibility: older editor-created scenes used a concrete top-level
+        // entity named SceneRoot as a container. Treat it as an implicit root.
+        if (doc.root && doc.root->name == "SceneRoot" && parentOf[rootId] == 0 && !doc.root->children.empty())
+        {
+            doc.syntheticRoot = true;
         }
 
         return doc;

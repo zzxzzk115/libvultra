@@ -7,6 +7,7 @@ namespace vultra
     class FxaaPass;
     class HbaoPass;
     class IRenderService;
+    class SelectionOutlinePass;
     class SsrPass;
 
     class BuiltinScreenSpaceFeature final : public RenderFeature
@@ -23,6 +24,7 @@ namespace vultra
         IRenderService& m_RenderService;
         HbaoPass*       m_HbaoPass {nullptr};
         SsrPass*        m_SsrPass {nullptr};
+        SelectionOutlinePass* m_SelectionOutlinePass {nullptr};
         FxaaPass*       m_FxaaPass {nullptr};
     };
 } // namespace vultra

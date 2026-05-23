@@ -4,6 +4,7 @@
 #include "editor_app/ui/windows/code_editor_window.hpp"
 #include "editor_app/ui/windows/content_browser_window.hpp"
 #include "editor_app/ui/windows/console_window.hpp"
+#include "editor_app/ui/windows/frame_debugger_window.hpp"
 #include "editor_app/ui/windows/game_view_window.hpp"
 #include "editor_app/ui/windows/inspector_window.hpp"
 #include "editor_app/ui/windows/profiler_window.hpp"
@@ -17,6 +18,7 @@
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/imgui/imgui_theme.hpp>
 #include <vultra/function/asset/asset_system.hpp>
+#include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
@@ -209,6 +211,18 @@ namespace vultra_app
             return out.str();
         }
 
+        uint32_t selectedEntityPickingId(EditorContext& ctx)
+        {
+            if (Selection::lastCategory() != SelectionCategory::Entity)
+                return 0u;
+
+            const auto selectedId = Selection::lastId();
+            if (!selectedId.valid() || !ctx.services)
+                return 0u;
+
+            return vultra::makeEntityPickingId(selectedId);
+        }
+
         BuildRunResult runPcVulkanBuildAndLaunch(const std::filesystem::path& projectRoot,
                                                  const std::string&           assetRoot,
                                                  const std::string&           projectName,
@@ -361,10 +375,7 @@ namespace vultra_app
 
                                  auto& world = worldService->world();
                                  world.clear();
-                                 const auto root = world.createEntity();
-                                 auto& reg = world.registry();
-                                 reg.get_or_emplace<vultra::NameComponent>(root).name = "SceneRoot";
-                                 Selection::select(SelectionCategory::Entity, reg.get<vultra::IDComponent>(root).uuid);
+                                 Selection::clear(SelectionCategory::Entity);
                                  topBarCtx.state.sceneDirty = true;
                                  topBarCtx.state.statusMessage = "Created an empty scene workspace.";
                              },
@@ -404,12 +415,18 @@ namespace vultra_app
             saveCurrentScene(ctx);
         if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F5))
             startBuildAndRun(ctx);
+
         beginDockSpace();
         buildDefaultDockLayout();
         m_WindowManager.draw(ctx);
         endDockSpace();
+
+        if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
+            renderService->builtinRenderSettings().selectionOutline.selectedEntityId = selectedEntityPickingId(ctx);
+
         syncPlaybackState(ctx);
         drawBuildRunPopup();
+        drawEditorSettingsPopup(ctx);
 
         if (m_ShowAboutPopup)
         {
@@ -430,6 +447,40 @@ namespace vultra_app
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
+    }
+
+    void EditorApp::drawEditorSettingsPopup(EditorContext& ctx)
+    {
+        if (ctx.state.editorSettingsOpen)
+        {
+            ImGui::OpenPopup("Editor Settings");
+            ctx.state.editorSettingsOpen = false;
+        }
+
+        if (!ImGui::BeginPopupModal("Editor Settings", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            return;
+
+        if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
+        {
+            auto& outline = renderService->builtinRenderSettings().selectionOutline;
+            if (ImGui::CollapsingHeader("Render Settings", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Checkbox("Selection outline", &outline.enabled);
+                ImGui::ColorEdit3("Outline color", &outline.color.x);
+                ImGui::SliderFloat("Outline thickness", &outline.thickness, 1.0f, 8.0f, "%.0f px");
+                ImGui::SliderFloat("Fill opacity", &outline.fillOpacity, 0.0f, 0.25f, "%.2f");
+                ImGui::SliderFloat("Edge opacity", &outline.edgeOpacity, 0.0f, 1.0f, "%.2f");
+            }
+        }
+        else
+        {
+            ImGui::TextUnformatted("Render service is not available.");
+        }
+
+        ImGui::Spacing();
+        if (ImGui::Button("Close"))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
     }
 
     void EditorApp::syncPlaybackState(EditorContext& ctx)
@@ -659,6 +710,7 @@ namespace vultra_app
         m_WindowManager.addWindow<CodeEditorWindow>();
         m_WindowManager.addWindow<ConsoleWindow>();
         m_WindowManager.addWindow<RenderGraphWindow>();
+        m_WindowManager.addWindow<FrameDebuggerWindow>();
         m_WindowManager.addWindow<ProfilerWindow>();
         m_WindowManager.addWindow<InspectorWindow>();
         m_Initialized = true;
@@ -1191,6 +1243,7 @@ namespace vultra_app
             dockWindow("Inspector", rightId);
             dockWindow("Content Browser", bottomId);
             dockWindow("Console", bottomId);
+            dockWindow("Frame Debugger", bottomId);
             dockWindow("Profiler", bottomId);
             ImGui::DockBuilderFinish(id);
         }

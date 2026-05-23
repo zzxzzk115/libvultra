@@ -218,11 +218,26 @@ namespace vultra
                     static_cast<float>(std::max(extent.width, 1u)) / static_cast<float>(std::max(extent.height, 1u));
 
                 auto view = reg.view<IDComponent, TransformComponent, CameraComponent>();
+                bool hasActivePrimaryCamera = false;
+                for (auto e : view)
+                {
+                    const auto& camera = view.get<CameraComponent>(e);
+                    if (!camera.primary)
+                        continue;
+                    if (auto* status = reg.try_get<EntityStatusComponent>(e); status && !status->active)
+                        continue;
+
+                    hasActivePrimaryCamera = true;
+                    break;
+                }
+
                 for (auto e : view)
                 {
                     const auto& id     = view.get<IDComponent>(e);
                     const auto& camera = view.get<CameraComponent>(e);
                     if (auto* status = reg.try_get<EntityStatusComponent>(e); status && !status->active)
+                        continue;
+                    if (hasActivePrimaryCamera && !camera.primary)
                         continue;
 
                     RenderCamera cam {};

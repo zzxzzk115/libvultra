@@ -2,12 +2,18 @@
 language = glsl
 version = 460
 
+[keywords]
+WRITE_ENTITY_ID : bool permute
+
 [frag]
 #include "include/common/color.glsl"
 #include "include/common/gaussian_splat_foveated.glsl"
 const float CUTOFF = 2.3539888583335364;
 
 layout(location = 0) out vec4 outColor;
+#if WRITE_ENTITY_ID
+layout(location = 1) out vec4 outEntityId;
+#endif
 layout(location = 0) in vec2 v_ScreenPos;
 layout(location = 1) in vec4 v_Color;
 
@@ -16,6 +22,7 @@ layout(set = 1, binding = 30) uniform GeneralGaussianSplatRenderUniforms
     vec4 foveatedGazeAndRings;
     vec4 foveatedParams;
     vec4 targetSize;
+    uvec4 entityInfo;
 } u_PC;
 
 bool isInsideFoveatedLayer()
@@ -38,11 +45,19 @@ void main()
     const float a = dot(v_ScreenPos, v_ScreenPos);
     if (!isInsideFoveatedLayer() || a > 2.0 * CUTOFF)
     {
-        outColor = vec4(0.0);
+        discard;
     }
     else
     {
         const float b = min(0.99, exp(-a) * v_Color.a);
         outColor      = vec4(sRGBToLinear(v_Color.rgb), 1.0) * b;
+#if WRITE_ENTITY_ID
+        const uint id = u_PC.entityInfo.x;
+        outEntityId = vec4(float(id & 0xFFu),
+                           float((id >> 8u) & 0xFFu),
+                           float((id >> 16u) & 0xFFu),
+                           255.0) /
+                      255.0;
+#endif
     }
 }

@@ -22,11 +22,13 @@ namespace vultra
     FrameGraphResource FinalCompositionPass::compose(FrameGraphBuildContext& ctx, FrameGraphResource target)
     {
         auto       source       = ctx.data.get(kResKey_FinalCompositionSource);
+        auto       entityId     = ctx.data.tryGet(kResKey_GBufferEntityId);
         const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount == 2u;
+        const bool debugEntityIdOutput = ctx.view().camera && ctx.view().camera->debugEntityIdOutput && entityId;
 
         ctx.fg.addCallbackPass(
             PASS_NAME,
-            [source, &target](FrameGraph::Builder& builder, auto&) {
+            [source, entityId, debugEntityIdOutput, &target](FrameGraph::Builder& builder, auto&) {
                 PASS_SETUP_ZONE;
 
                 builder.read(source,
@@ -39,6 +41,19 @@ namespace vultra
                                  .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
                                  .imageAspect = rhi::ImageAspect::eColor,
                              });
+                if (debugEntityIdOutput)
+                {
+                    builder.read(entityId,
+                                 framegraph::TextureRead {
+                                     .binding =
+                                         {
+                                             .location      = {.set = 3, .binding = 1},
+                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                         },
+                                     .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                     .imageAspect = rhi::ImageAspect::eColor,
+                                 });
+                }
 
                 target = builder.write(target,
                                        framegraph::Attachment {
@@ -47,7 +62,7 @@ namespace vultra
                                            .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                        });
             },
-            [this, target, useMultiview](const auto&, FrameGraphPassResources&, void* ctxPtr) {
+            [this, target, useMultiview, debugEntityIdOutput](const auto&, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -59,13 +74,17 @@ namespace vultra
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 assert(rc.framebufferInfo().has_value());
-                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0), useMultiview);
+                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0),
+                                                   useMultiview,
+                                                   debugEntityIdOutput);
                 if (!pipeline)
                 {
                     return;
                 }
 
-                rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["nearest"]);
+                rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["linear"]);
+                if (debugEntityIdOutput)
+                    rc.overrideSampler(rc.resourceSet[3][1], rc.ext.samplers["nearest"]);
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 auto framebufferInfo = rc.framebufferInfo().value();
@@ -86,7 +105,8 @@ namespace vultra
     }
 
     rhi::GraphicsPipeline FinalCompositionPass::createPipeline(const rhi::PixelFormat colorFormat,
-                                                               const bool             useMultiview) const
+                                                               const bool             useMultiview,
+                                                               const bool             debugEntityIdOutput) const
     {
         auto vertexShader = loadGeneralShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -99,6 +119,7 @@ namespace vultra
         rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
             {"MANUAL_SRGB_ENCODE", manualSrgbEncode ? 1u : 0u},
             {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
+            {"DEBUG_ENTITY_ID_OUTPUT", debugEntityIdOutput ? 1u : 0u},
         };
 
         auto fragmentShader = loadGeneralShader("final_composition.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);

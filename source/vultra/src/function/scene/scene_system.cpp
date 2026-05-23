@@ -521,6 +521,25 @@ namespace vultra
 
         const auto baseDir = uri_base_dir(uri);
 
+        entt::entity firstRoot = entt::null;
+        if (doc->syntheticRoot)
+        {
+            for (const auto& child : doc->root->children)
+            {
+                auto childResult = instantiateNodeR(world, *child, parent, baseDir, !doc->isManifest, doc->assets);
+                if (!childResult)
+                {
+                    VULTRA_CORE_ERROR("[SceneSystem] Failed to instantiate scene '{}': {}",
+                                      uri,
+                                      std::move(childResult).error());
+                    return entt::null;
+                }
+                if (firstRoot == entt::null)
+                    firstRoot = std::move(childResult).value();
+            }
+            return firstRoot;
+        }
+
         auto rootResult = instantiateNodeR(world, *doc->root, parent, baseDir, !doc->isManifest, doc->assets);
         if (!rootResult)
         {

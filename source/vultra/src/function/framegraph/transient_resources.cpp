@@ -5,6 +5,7 @@
 
 #include <fmt/format.h>
 
+#include <algorithm>
 #include <type_traits>
 
 namespace std
@@ -51,6 +52,8 @@ namespace vultra
     {
         namespace
         {
+            constexpr std::size_t kMinReusableResourceAgeFrames = 4;
+            constexpr std::size_t kMaxCachedResourceAgeFrames   = 10;
 
             [[nodiscard]] auto getSize(const auto& pool)
             {
@@ -64,9 +67,6 @@ namespace vultra
 
             void heartbeat(auto& pool)
             {
-                // A resource's life (for how long it is going to be cached).
-                constexpr auto kMaxNumFrames = 10;
-
                 auto& [resources, entryGroups] = pool;
 
                 auto groupsIt = entryGroups.begin();
@@ -84,7 +84,7 @@ namespace vultra
                         {
                             auto& [resource, life] = *entryIt;
                             ++life;
-                            if (life >= kMaxNumFrames)
+                            if (life >= kMaxCachedResourceAgeFrames)
                             {
                                 VULTRA_CORE_TRACE("[FrameGraph] Deleting resource: {}", fmt::ptr(resource));
                                 *resource = {};
@@ -128,7 +128,11 @@ namespace vultra
         {
             const auto h = std::hash<FrameGraphTexture::Desc> {}(desc);
 
-            if (auto& pool = m_Textures.entryGroups[h]; pool.empty())
+            auto& pool = m_Textures.entryGroups[h];
+            auto  reusableIt = std::find_if(pool.begin(), pool.end(), [](const auto& entry) {
+                return entry.life >= kMinReusableResourceAgeFrames;
+            });
+            if (reusableIt == pool.end())
             {
                 ZoneScopedN("CreateTexture");
 
@@ -151,8 +155,8 @@ namespace vultra
             }
             else
             {
-                auto* texture = pool.back().resource;
-                pool.pop_back();
+                auto* texture = reusableIt->resource;
+                pool.erase(reusableIt);
                 return texture;
             }
         }
@@ -167,7 +171,11 @@ namespace vultra
             assert(desc.dataSize() > 0);
             const auto h = std::hash<FrameGraphBuffer::Desc> {}(desc);
 
-            if (auto& pool = m_Buffers.entryGroups[h]; pool.empty())
+            auto& pool = m_Buffers.entryGroups[h];
+            auto  reusableIt = std::find_if(pool.begin(), pool.end(), [](const auto& entry) {
+                return entry.life >= kMinReusableResourceAgeFrames;
+            });
+            if (reusableIt == pool.end())
             {
                 ZoneScopedN("CreateBuffer");
 
@@ -217,8 +225,8 @@ namespace vultra
             }
             else
             {
-                auto* buffer = pool.back().resource;
-                pool.pop_back();
+                auto* buffer = reusableIt->resource;
+                pool.erase(reusableIt);
                 return buffer;
             }
         }

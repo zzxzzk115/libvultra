@@ -24,6 +24,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cmath>
 #include <limits>
@@ -84,12 +85,35 @@ namespace vultra_app
             return best;
         }
 
+        entt::entity findEntityByPickingId(vultra::World& world, const uint32_t pickingId)
+        {
+            if (pickingId == 0u)
+                return entt::null;
+
+            auto& reg  = world.registry();
+            auto  view = reg.view<vultra::IDComponent>();
+            for (auto e : view)
+            {
+                const auto& id = view.get<vultra::IDComponent>(e).uuid;
+                if (vultra::makeEntityPickingId(id) == pickingId)
+                    return e;
+            }
+            return entt::null;
+        }
+
+        uint32_t decodePickingId(const std::array<uint8_t, 4>& pixel)
+        {
+            return static_cast<uint32_t>(pixel[0]) | (static_cast<uint32_t>(pixel[1]) << 8u) |
+                   (static_cast<uint32_t>(pixel[2]) << 16u);
+        }
+
         vultra::RenderCamera makeEditorCamera(const glm::vec3& position,
                                               const float      yaw,
                                               const float      pitch,
                                               const float      fovY,
                                               const float      aspect,
-                                              vultra::rhi::Texture* target)
+                                              vultra::rhi::Texture* target,
+                                              const bool       useProjectRenderer)
         {
             const auto forward = makeForward(yaw, pitch);
 
@@ -104,7 +128,9 @@ namespace vultra_app
             camera.target      = target;
             camera.clearValue  = {0.035f, 0.04f, 0.052f, 1.0f};
             camera.renderImGui = false;
-            camera.rendererKey = "universal";
+            camera.rendererKey = useProjectRenderer ? "project" : "universal";
+            camera.debugEntityIdOutput = false;
+            camera.selectionOutlineEnabled = true;
             return camera;
         }
 
@@ -224,6 +250,86 @@ namespace vultra_app
             cameraYaw      = glm::degrees(std::atan2(forward.z, forward.x));
             cameraPitch    = glm::degrees(std::asin(std::clamp(forward.y, -1.0f, 1.0f)));
         }
+
+        bool isMouseOverViewManipulator(const ImVec2& viewportMin, const ImVec2& viewportMax)
+        {
+            const ImVec2 viewportSize {viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y};
+            if (viewportSize.x < kViewManipulatorSize + kViewManipulatorMargin * 2.0f ||
+                viewportSize.y < kViewManipulatorSize + kViewManipulatorMargin * 2.0f)
+                return false;
+
+            const ImVec2 position {viewportMax.x - kViewManipulatorSize - kViewManipulatorMargin,
+                                   viewportMin.y + kViewManipulatorMargin};
+            const ImVec2 center {position.x + kViewManipulatorSize * 0.5f,
+                                 position.y + kViewManipulatorSize * 0.5f};
+            const ImVec2 mouse = ImGui::GetMousePos();
+            const float dx = mouse.x - center.x;
+            const float dy = mouse.y - center.y;
+            const float radius = kViewManipulatorSize * 0.5f;
+            return dx * dx + dy * dy <= radius * radius;
+        }
+
+        bool isMouseInRect(const ImVec2& min, const ImVec2& max)
+        {
+            const ImVec2 mouse = ImGui::GetIO().MousePos;
+            return mouse.x >= min.x && mouse.x <= max.x && mouse.y >= min.y && mouse.y <= max.y;
+        }
+
+        bool isMouseOverToolbar(const ImVec2& viewportMin)
+        {
+            constexpr float buttonSize = 28.0f;
+            constexpr float padding    = 6.0f;
+            constexpr float gap        = 4.0f;
+            constexpr int   itemCount  = 5;
+            const ImVec2 panelPos {viewportMin.x + 12.0f, viewportMin.y + 12.0f};
+            const ImVec2 buttonsMin {panelPos.x + padding, panelPos.y + padding};
+            for (int i = 0; i < itemCount; ++i)
+            {
+                const float x = buttonsMin.x + static_cast<float>(i) * (buttonSize + gap);
+                if (isMouseInRect(ImVec2 {x, buttonsMin.y}, ImVec2 {x + buttonSize, buttonsMin.y + buttonSize}))
+                    return true;
+            }
+            return false;
+        }
+
+        bool isMouseOverGameOverlay(const EditorContext& ctx,
+                                    const ImVec2&        viewportMin,
+                                    const ImVec2&        viewportMax,
+                                    const float          gameOverlayZoom)
+        {
+            if (ctx.state.gameViewVisibleLastFrame)
+                return false;
+
+            const ImVec2 viewportSize {viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y};
+            if (viewportSize.x < 220.0f || viewportSize.y < 160.0f)
+                return false;
+
+            constexpr float aspect = 16.0f / 9.0f;
+            const float baseWidth = std::min(320.0f, std::max(180.0f, viewportSize.x * 0.22f));
+            const float width = std::min(viewportSize.x - 32.0f,
+                                         baseWidth * std::clamp(gameOverlayZoom,
+                                                                kOverlayZoomMin,
+                                                                kOverlayZoomMax));
+            const float height = width / aspect;
+            const ImVec2 padding {14.0f, 14.0f};
+            constexpr float controlHeight = 30.0f;
+            const ImVec2 panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
+            const ImVec2 panelMin {viewportMin.x + 16.0f, viewportMax.y - panelSize.y - 16.0f};
+            const ImVec2 panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
+            return isMouseInRect(panelMin, panelMax);
+        }
+
+        bool supportsScenePicking(EditorContext& ctx)
+        {
+            auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+            return backendService &&
+                   backendService->renderDevice().getBackendApi() != vultra::rhi::RenderBackendApi::eWebGPU;
+        }
+
+        bool shouldUseProjectRenderer(const EditorContext& ctx)
+        {
+            return !ctx.state.currentProject.empty() && !ctx.state.currentRenderPipeline.empty();
+        }
     } // namespace
 
     SceneViewWindow::SceneViewWindow() : EditorWindow("Scene View", ICON_MDI_EYE) {}
@@ -231,12 +337,14 @@ namespace vultra_app
     void SceneViewWindow::onClosed(EditorContext& ctx)
     {
         releaseRenderTarget(ctx);
+        releasePickingRenderTarget();
         releaseGameOverlayRenderTarget(ctx);
     }
 
     void SceneViewWindow::onDestroy(EditorContext& ctx)
     {
         releaseRenderTarget(ctx);
+        releasePickingRenderTarget();
         releaseGameOverlayRenderTarget(ctx);
     }
 
@@ -257,6 +365,7 @@ namespace vultra_app
         avail.y      = std::max(1.0f, avail.y);
 
         ensureRenderTarget(ctx, static_cast<uint32_t>(avail.x), static_cast<uint32_t>(avail.y));
+        initializeCameraFromPrimaryCamera(ctx);
         applyCameraAlignRequest(ctx.state, m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY);
 
         const ImVec2 imagePos = ImGui::GetCursorScreenPos();
@@ -269,6 +378,39 @@ namespace vultra_app
         const ImVec2 imageMax = ImGui::GetItemRectMax();
         const bool   hovered  = ImGui::IsItemHovered();
         auto*        dl       = ImGui::GetWindowDrawList();
+
+        if (ctx.state.scenePicking.readbackPending && m_PickingRenderTarget.texture && supportsScenePicking(ctx))
+        {
+            if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+            {
+                auto& rd = backendService->renderDevice();
+                bool hitEntity = false;
+                if (auto pixel = rd.readTexturePixelRGBA8(*m_PickingRenderTarget.texture,
+                                                          ctx.state.scenePicking.x,
+                                                          ctx.state.scenePicking.y))
+                {
+                    const uint32_t pickingId = decodePickingId(*pixel);
+                    if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                    {
+                        auto& world = worldService->world();
+                        auto& reg = world.registry();
+                        auto entity = findEntityByPickingId(world, pickingId);
+                        if (entity != entt::null && reg.valid(entity))
+                        {
+                            if (auto* id = reg.try_get<vultra::IDComponent>(entity))
+                            {
+                                ctx.state.selectedSourceAsset.clear();
+                                Selection::select(SelectionCategory::Entity, id->uuid);
+                                hitEntity = true;
+                            }
+                        }
+                    }
+                }
+                if (!hitEntity)
+                    Selection::clear(SelectionCategory::Entity);
+            }
+            ctx.state.scenePicking.readbackPending = false;
+        }
 
         if (m_ShowGrid)
         {
@@ -285,18 +427,36 @@ namespace vultra_app
         auto*       renderTarget =
             m_PendingRenderTarget.texture ? &*m_PendingRenderTarget.texture :
                                             (m_ActiveRenderTarget.texture ? &*m_ActiveRenderTarget.texture : nullptr);
-        auto        editorCamera =
-            makeEditorCamera(m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget);
+        const bool useProjectRenderer = shouldUseProjectRenderer(ctx);
+        auto        editorCamera = makeEditorCamera(
+            m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget, useProjectRenderer);
         ctx.state.sceneCamera.valid       = true;
         ctx.state.sceneCamera.position    = m_CameraPosition;
         ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
         ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
 
+        const bool mouseOverToolbar        = isMouseOverToolbar(imageMin);
+        const bool mouseOverViewManipulator = isMouseOverViewManipulator(imageMin, imageMax);
+        const bool mouseOverGameOverlay    = isMouseOverGameOverlay(ctx, imageMin, imageMax, m_GameOverlayZoom);
+        const bool sceneViewportHovered =
+            hovered && !mouseOverToolbar && !mouseOverViewManipulator && !mouseOverGameOverlay;
+        const bool flyActive = sceneViewportHovered && ImGui::IsMouseDown(ImGuiMouseButton_Right);
+        if (sceneViewportHovered && !flyActive && !ImGui::GetIO().WantTextInput && !ImGuizmo::IsUsing())
+        {
+            if (ImGui::IsKeyPressed(ImGuiKey_Q))
+                m_Tool = Tool::Select;
+            if (ImGui::IsKeyPressed(ImGuiKey_W))
+                m_Tool = Tool::Move;
+            if (ImGui::IsKeyPressed(ImGuiKey_E))
+                m_Tool = Tool::Rotate;
+            if (ImGui::IsKeyPressed(ImGuiKey_R))
+                m_Tool = Tool::Scale;
+        }
+
         if (ctx.services)
         {
             if (auto* input = ctx.services->tryGet<vultra::IInputService>())
             {
-                const bool flyActive = hovered && ImGui::IsMouseDown(ImGuiMouseButton_Right);
                 if (flyActive)
                 {
                     const ImVec2 delta = ImGui::GetIO().MouseDelta;
@@ -326,8 +486,22 @@ namespace vultra_app
                     }
                 }
 
-                if (hovered)
+                if (sceneViewportHovered)
                 {
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGuizmo::IsOver() &&
+                        !ImGuizmo::IsUsing())
+                    {
+                        const ImVec2 mouse = ImGui::GetMousePos();
+                        const float localX = std::clamp(mouse.x - imageMin.x, 0.0f, avail.x - 1.0f);
+                        const float localY = std::clamp(mouse.y - imageMin.y, 0.0f, avail.y - 1.0f);
+                        if (supportsScenePicking(ctx))
+                        {
+                            ctx.state.scenePicking.requested = true;
+                            ctx.state.scenePicking.x = static_cast<uint32_t>(localX);
+                            ctx.state.scenePicking.y = static_cast<uint32_t>(localY);
+                        }
+                    }
+
                     if (ImGui::IsMouseDown(ImGuiMouseButton_Middle))
                     {
                         const ImVec2 delta = ImGui::GetIO().MouseDelta;
@@ -347,8 +521,8 @@ namespace vultra_app
                 }
             }
 
-            editorCamera =
-                makeEditorCamera(m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget);
+            editorCamera = makeEditorCamera(
+                m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget, useProjectRenderer);
             ctx.state.sceneCamera.position    = m_CameraPosition;
             ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
             ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
@@ -356,8 +530,8 @@ namespace vultra_app
             if (drawViewManipulator(imageMin, imageMax, editorCamera.view, editorCamera.projection))
             {
                 applyViewMatrixToCamera(editorCamera.view, m_CameraPosition, m_CameraYaw, m_CameraPitch);
-                editorCamera =
-                    makeEditorCamera(m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget);
+                editorCamera = makeEditorCamera(
+                    m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget, useProjectRenderer);
                 ctx.state.sceneCamera.position    = m_CameraPosition;
                 ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
                 ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
@@ -366,7 +540,28 @@ namespace vultra_app
             if (renderTarget != nullptr)
             {
                 if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
+                {
                     cameraService->addManualCamera(editorCamera);
+                    if (ctx.state.scenePicking.requested && supportsScenePicking(ctx))
+                    {
+                        ensurePickingRenderTarget(ctx, static_cast<uint32_t>(avail.x), static_cast<uint32_t>(avail.y));
+                        if (m_PickingRenderTarget.texture)
+                        {
+                            auto pickingCamera = makeEditorCamera(m_CameraPosition,
+                                                                  m_CameraYaw,
+                                                                  m_CameraPitch,
+                                                                  m_CameraFovY,
+                                                                  aspect,
+                                                                  &*m_PickingRenderTarget.texture,
+                                                                  useProjectRenderer);
+                            pickingCamera.name = "Scene Picking";
+                            pickingCamera.priority = editorCamera.priority + 1;
+                            pickingCamera.debugEntityIdOutput = true;
+                            pickingCamera.selectionOutlineEnabled = false;
+                            cameraService->addManualCamera(pickingCamera);
+                        }
+                    }
+                }
             }
 
             if (m_Tool != Tool::Select)
@@ -407,6 +602,16 @@ namespace vultra_app
         }
 
         drawGameViewOverlay(ctx, imageMin, imageMax);
+
+        if (ctx.state.scenePicking.requested && sceneViewportHovered)
+        {
+            ctx.state.scenePicking.requested = false;
+            ctx.state.scenePicking.readbackPending = true;
+        }
+        else if (ctx.state.scenePicking.requested && !sceneViewportHovered)
+        {
+            ctx.state.scenePicking.requested = false;
+        }
 
         ImGui::End();
     }
@@ -478,13 +683,13 @@ namespace vultra_app
                 m_Tool = tool;
         };
 
-        toolButton(ICON_MDI_CURSOR_DEFAULT, "Select", Tool::Select);
+        toolButton(ICON_MDI_CURSOR_DEFAULT, "Select (Q)", Tool::Select);
         ImGui::SameLine();
-        toolButton(ICON_MDI_AXIS_ARROW, "Move", Tool::Move);
+        toolButton(ICON_MDI_AXIS_ARROW, "Move (W)", Tool::Move);
         ImGui::SameLine();
-        toolButton(ICON_MDI_ROTATE_3D, "Rotate", Tool::Rotate);
+        toolButton(ICON_MDI_ROTATE_3D, "Rotate (E)", Tool::Rotate);
         ImGui::SameLine();
-        toolButton(ICON_MDI_RESIZE, "Scale", Tool::Scale);
+        toolButton(ICON_MDI_RESIZE, "Scale (R)", Tool::Scale);
         ImGui::SameLine();
         if (m_ShowGrid)
         {
@@ -660,11 +865,44 @@ namespace vultra_app
             vultra::rhi::Texture::Builder {}
                 .setExtent(m_PendingRenderTarget.extent)
                 .setPixelFormat(format)
-                .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
+                .setNumMipLevels(1)
+                .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled |
+                               vultra::rhi::ImageUsage::eTransferSrc)
                 .build(rd);
         m_PendingRenderTarget.textureId     = imguiService->addTexture(*m_PendingRenderTarget.texture);
         m_PendingRenderTarget.frameCreated  = static_cast<uint64_t>(ImGui::GetFrameCount());
         m_PendingRenderTarget.releaseFrame  = 0;
+    }
+
+    void SceneViewWindow::ensurePickingRenderTarget(EditorContext& ctx, const uint32_t width, const uint32_t height)
+    {
+        if (!ctx.services || width == 0u || height == 0u)
+            return;
+
+        collectRetiredPickingRenderTargets();
+        if (m_PickingRenderTarget.texture && m_PickingRenderTarget.extent.width == width &&
+            m_PickingRenderTarget.extent.height == height)
+        {
+            return;
+        }
+
+        retirePickingRenderTarget(m_PickingRenderTarget);
+
+        auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>();
+        if (!backendService)
+            return;
+
+        auto& rd = backendService->renderDevice();
+        m_PickingRenderTarget.extent = {width, height};
+        m_PickingRenderTarget.texture =
+            vultra::rhi::Texture::Builder {}
+                .setExtent(m_PickingRenderTarget.extent)
+                .setPixelFormat(vultra::rhi::PixelFormat::eRGBA8_UNorm)
+                .setNumMipLevels(1)
+                .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eTransferSrc)
+                .build(rd);
+        m_PickingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
+        m_PickingRenderTarget.releaseFrame = 0;
     }
 
     void SceneViewWindow::ensureGameOverlayRenderTarget(EditorContext& ctx, const uint32_t width, const uint32_t height)
@@ -703,6 +941,7 @@ namespace vultra_app
             vultra::rhi::Texture::Builder {}
                 .setExtent(m_GameOverlayPendingRenderTarget.extent)
                 .setPixelFormat(format)
+                .setNumMipLevels(1)
                 .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
                 .build(rd);
         m_GameOverlayPendingRenderTarget.textureId = imguiService->addTexture(*m_GameOverlayPendingRenderTarget.texture);
@@ -742,6 +981,16 @@ namespace vultra_app
         slot = {};
     }
 
+    void SceneViewWindow::retirePickingRenderTarget(RenderTargetSlot& slot)
+    {
+        if (!slot.texture)
+            return;
+
+        slot.releaseFrame = static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
+        m_RetiredPickingRenderTargets.push_back(std::move(slot));
+        slot = {};
+    }
+
     void SceneViewWindow::retireGameOverlayRenderTarget(RenderTargetSlot& slot)
     {
         if (!slot.texture && !slot.textureId)
@@ -772,6 +1021,25 @@ namespace vultra_app
             }
         }
         m_RetiredRenderTargets.resize(out);
+    }
+
+    void SceneViewWindow::collectRetiredPickingRenderTargets()
+    {
+        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+
+        std::size_t out = 0;
+        for (auto& slot : m_RetiredPickingRenderTargets)
+        {
+            if (frame >= slot.releaseFrame)
+            {
+                slot.texture.reset();
+            }
+            else
+            {
+                m_RetiredPickingRenderTargets[out++] = std::move(slot);
+            }
+        }
+        m_RetiredPickingRenderTargets.resize(out);
     }
 
     void SceneViewWindow::collectRetiredGameOverlayRenderTargets(EditorContext& ctx)
@@ -818,6 +1086,12 @@ namespace vultra_app
         m_RetiredRenderTargets.clear();
     }
 
+    void SceneViewWindow::releasePickingRenderTarget()
+    {
+        m_PickingRenderTarget = {};
+        m_RetiredPickingRenderTargets.clear();
+    }
+
     void SceneViewWindow::releaseGameOverlayRenderTarget(EditorContext& ctx)
     {
         if (ctx.services)
@@ -847,8 +1121,40 @@ namespace vultra_app
 
         retireRenderTarget(m_ActiveRenderTarget);
         retireRenderTarget(m_PendingRenderTarget);
+        retirePickingRenderTarget(m_PickingRenderTarget);
         retireGameOverlayRenderTarget(m_GameOverlayActiveRenderTarget);
         retireGameOverlayRenderTarget(m_GameOverlayPendingRenderTarget);
         m_ProjectGeneration = ctx.state.projectGeneration;
+        m_CameraInitializedFromScene = false;
+    }
+
+    void SceneViewWindow::initializeCameraFromPrimaryCamera(EditorContext& ctx)
+    {
+        if (m_CameraInitializedFromScene)
+            return;
+
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return;
+
+        auto& world = worldService->world();
+        auto& reg   = world.registry();
+        const auto entity = findPrimaryCamera(world);
+        if (entity == entt::null || !reg.valid(entity) ||
+            !reg.all_of<vultra::TransformComponent, vultra::CameraComponent>(entity))
+            return;
+
+        const auto& camera = reg.get<vultra::CameraComponent>(entity);
+        const auto  worldTransform = makeWorldTransformMatrix(reg, entity);
+        const auto  rotation = glm::normalize(glm::quat_cast(worldTransform));
+
+        m_CameraPosition = glm::vec3(worldTransform[3]);
+        if (camera.projection == 0u)
+            m_CameraFovY = camera.fovYDegrees;
+
+        const auto forward = glm::normalize(rotation * glm::vec3 {0.0f, 0.0f, -1.0f});
+        m_CameraYaw        = glm::degrees(std::atan2(forward.z, forward.x));
+        m_CameraPitch      = glm::degrees(std::asin(std::clamp(forward.y, -1.0f, 1.0f)));
+        m_CameraInitializedFromScene = true;
     }
 } // namespace vultra_app

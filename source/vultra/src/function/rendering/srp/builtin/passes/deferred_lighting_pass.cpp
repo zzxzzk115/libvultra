@@ -120,17 +120,6 @@ namespace vultra
             return out;
         }
 
-        void logLightBlockCounts(const GpuLightBlock& lightBlock)
-        {
-            static glm::ivec4 lastCounts {-1};
-            if (lightBlock.counts == lastCounts)
-                return;
-            lastCounts = lightBlock.counts;
-            VULTRA_CORE_INFO("[DeferredLightingPass] Light block: point={}, area={}, spot={}",
-                             lightBlock.counts.x,
-                             lightBlock.counts.y,
-                             lightBlock.counts.z);
-        }
     }
 
     FrameGraphResource DeferredLightingPass::addPass(FrameGraphBuildContext& ctx,
@@ -145,7 +134,6 @@ namespace vultra
                                                      const RenderWorld* renderWorld)
     {
         const auto lightBlockData = makeLightBlock(renderWorld);
-        logLightBlockCounts(lightBlockData);
 
         const auto lightBlock =
             framegraph::uploadStruct(ctx.fg,
@@ -255,7 +243,8 @@ namespace vultra
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 pd.output = builder.write(pd.output,
                                           framegraph::Attachment {

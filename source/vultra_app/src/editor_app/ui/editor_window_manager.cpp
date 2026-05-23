@@ -24,6 +24,11 @@ namespace vultra_app
                 window->open() = true;
                 ctx.state.profilerWindowOpenRequested = false;
             }
+            if (ctx.state.frameDebuggerWindowOpenRequested && window->name() == "Frame Debugger")
+            {
+                window->open() = true;
+                ctx.state.frameDebuggerWindowOpenRequested = false;
+            }
             if (window->open())
             {
                 window->draw(ctx);
