@@ -16,6 +16,7 @@
 #include <vultra/function/world/world.hpp>
 
 #include <ImGuizmo/ImGuizmo.h>
+#include <imoguizmo/imoguizmo.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -35,6 +36,8 @@ namespace vultra_app
         constexpr float    kOverlayZoomMin                 = 0.5f;
         constexpr float    kOverlayZoomMax                 = 4.0f;
         constexpr float    kOverlayZoomStep                = 0.25f;
+        constexpr float    kViewManipulatorSize            = 112.0f;
+        constexpr float    kViewManipulatorMargin          = 14.0f;
         constexpr glm::vec3 kWorldUp {0.0f, 1.0f, 0.0f};
 
         glm::vec3 makeForward(const float yawDegrees, const float pitchDegrees)
@@ -207,6 +210,20 @@ namespace vultra_app
 
             state.sceneCameraAlignRequest.pending = false;
         }
+
+        void applyViewMatrixToCamera(const glm::mat4& view,
+                                     glm::vec3&       cameraPosition,
+                                     float&           cameraYaw,
+                                     float&           cameraPitch)
+        {
+            const glm::mat4 invView = glm::inverse(view);
+            const glm::vec3 forward =
+                glm::normalize(glm::vec3(invView * glm::vec4 {0.0f, 0.0f, -1.0f, 0.0f}));
+
+            cameraPosition = glm::vec3(invView[3]);
+            cameraYaw      = glm::degrees(std::atan2(forward.z, forward.x));
+            cameraPitch    = glm::degrees(std::asin(std::clamp(forward.y, -1.0f, 1.0f)));
+        }
     } // namespace
 
     SceneViewWindow::SceneViewWindow() : EditorWindow("Scene View", ICON_MDI_EYE) {}
@@ -336,6 +353,16 @@ namespace vultra_app
             ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
             ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
 
+            if (drawViewManipulator(imageMin, imageMax, editorCamera.view, editorCamera.projection))
+            {
+                applyViewMatrixToCamera(editorCamera.view, m_CameraPosition, m_CameraYaw, m_CameraPitch);
+                editorCamera =
+                    makeEditorCamera(m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget);
+                ctx.state.sceneCamera.position    = m_CameraPosition;
+                ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
+                ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
+            }
+
             if (renderTarget != nullptr)
             {
                 if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
@@ -382,6 +409,33 @@ namespace vultra_app
         drawGameViewOverlay(ctx, imageMin, imageMax);
 
         ImGui::End();
+    }
+
+    bool SceneViewWindow::drawViewManipulator(const ImVec2& viewportMin,
+                                              const ImVec2& viewportMax,
+                                              glm::mat4&    view,
+                                              const glm::mat4& projection)
+    {
+        const ImVec2 viewportSize {viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y};
+        if (viewportSize.x < kViewManipulatorSize + kViewManipulatorMargin * 2.0f ||
+            viewportSize.y < kViewManipulatorSize + kViewManipulatorMargin * 2.0f)
+            return false;
+
+        const ImVec2 position {viewportMax.x - kViewManipulatorSize - kViewManipulatorMargin,
+                               viewportMin.y + kViewManipulatorMargin};
+        const ImVec2 center {position.x + kViewManipulatorSize * 0.5f, position.y + kViewManipulatorSize * 0.5f};
+        const float  radius = kViewManipulatorSize * 0.5f;
+
+        auto* drawList = ImGui::GetWindowDrawList();
+        drawList->AddCircleFilled(center, radius, IM_COL32(16, 19, 24, 128), 48);
+        drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 32), 48, 1.0f);
+
+        ImOGuizmo::config.axisLengthScale = 0.30f;
+        ImOGuizmo::SetRect(position.x, position.y, kViewManipulatorSize);
+        ImOGuizmo::SetDrawList(drawList);
+
+        const float pivotDistance = std::max(glm::length(m_CameraPosition), 0.001f);
+        return ImOGuizmo::DrawGizmo(glm::value_ptr(view), glm::value_ptr(projection), pivotDistance);
     }
 
     void SceneViewWindow::drawToolbar(const ImVec2& viewportMin)

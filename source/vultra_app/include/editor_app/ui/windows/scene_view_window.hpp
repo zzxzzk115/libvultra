@@ -6,6 +6,7 @@
 #include <vultra/core/rhi/texture.hpp>
 #include <vultra/function/services/imgui_service.hpp>
 
+#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
 #include <optional>
@@ -43,6 +44,10 @@ namespace vultra_app
         };
 
         void drawToolbar(const ImVec2& viewportMin);
+        bool drawViewManipulator(const ImVec2& viewportMin,
+                                 const ImVec2& viewportMax,
+                                 glm::mat4&    view,
+                                 const glm::mat4& projection);
         void drawGameViewOverlay(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportMax);
         void ensureRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height);
         void ensureGameOverlayRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height);
