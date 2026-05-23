@@ -1,5 +1,7 @@
 #include "common/ui_widgets.hpp"
 
+#include <vultra/function/imgui/imgui_theme.hpp>
+
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
@@ -92,28 +94,72 @@ namespace vultra_app::ui
         const ImVec2 center {start.x + avail.x * 0.5f, start.y + avail.y * 0.5f};
 
         auto* drawList = ImGui::GetWindowDrawList();
-        drawList->AddCircleFilled(center, 38.0f, IM_COL32(255, 255, 255, 14), 48);
+        namespace theme = vultra::imgui_theme;
+        drawList->AddCircleFilled(center, 38.0f, theme::u32(theme::withAlpha(theme::accent(), 14.0f / 255.0f)), 48);
         const ImVec2 iconSize = ImGui::CalcTextSize(icon);
         drawList->AddText(ImVec2(center.x - iconSize.x * 0.5f, center.y - 43.0f),
-                          IM_COL32(205, 215, 230, 220),
+                          theme::u32(theme::withAlpha(theme::textSoft(), 220.0f / 255.0f)),
                           icon);
 
         const ImVec2 titleSize = ImGui::CalcTextSize(title);
         drawList->AddText(ImVec2(center.x - titleSize.x * 0.5f, center.y + 10.0f),
-                          IM_COL32(230, 235, 245, 240),
+                          theme::u32(theme::withAlpha(theme::text(), 240.0f / 255.0f)),
                           title);
 
         const ImVec2 msgSize = ImGui::CalcTextSize(message);
         drawList->AddText(ImVec2(center.x - msgSize.x * 0.5f, center.y + 32.0f),
-                          IM_COL32(145, 155, 170, 230),
+                          theme::u32(theme::withAlpha(theme::textMuted(), 230.0f / 255.0f)),
                           message);
     }
 
     void sectionTitle(const char* icon, const char* label)
     {
-        ImGui::TextColored(ImVec4(0.72f, 0.80f, 0.92f, 1.0f), "%s", icon);
+        ImGui::TextColored(vultra::imgui_theme::textSoft(), "%s", icon);
         ImGui::SameLine();
         ImGui::TextUnformatted(label);
         ImGui::Separator();
+    }
+
+    ScopedPopupStyle::ScopedPopupStyle()
+    {
+        namespace theme = vultra::imgui_theme;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 6.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarRounding, 4.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 4.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {14.0f, 12.0f});
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {8.0f, 5.0f});
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2 {7.0f, 6.0f});
+        m_StyleVarCount = 9;
+
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, theme::background());
+        ImGui::PushStyleColor(ImGuiCol_PopupBg, theme::background());
+        ImGui::PushStyleColor(ImGuiCol_Border, theme::border());
+        ImGui::PushStyleColor(ImGuiCol_TitleBg, theme::backgroundDeep());
+        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, theme::panel());
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, theme::frame());
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, theme::frameHovered());
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, theme::frameActive());
+        ImGui::PushStyleColor(ImGuiCol_Button, theme::button());
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme::buttonHovered());
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, theme::accentButton());
+        ImGui::PushStyleColor(ImGuiCol_Header, theme::header());
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, theme::headerHovered());
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive, theme::headerActive());
+        ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, ImVec4 {0.080f, 0.100f, 0.128f, 1.0f});
+        ImGui::PushStyleColor(ImGuiCol_TableRowBgAlt, ImVec4 {1.0f, 1.0f, 1.0f, 0.025f});
+        ImGui::PushStyleColor(ImGuiCol_CheckMark, theme::accent());
+        ImGui::PushStyleColor(ImGuiCol_SliderGrab, ImVec4 {0.320f, 0.600f, 0.880f, 1.0f});
+        ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, ImVec4 {0.110f, 0.380f, 0.660f, 0.55f});
+        m_ColorCount = 19;
+    }
+
+    ScopedPopupStyle::~ScopedPopupStyle()
+    {
+        ImGui::PopStyleColor(m_ColorCount);
+        ImGui::PopStyleVar(m_StyleVarCount);
     }
 } // namespace vultra_app::ui

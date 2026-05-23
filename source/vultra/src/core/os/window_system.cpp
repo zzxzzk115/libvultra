@@ -40,6 +40,8 @@ namespace vultra
                        .setVisible(cfg.window.visible)
                        .setPlatform(platformType)
                        .build();
+        if (m_Window && !cfg.window.fullscreen)
+            m_Window->centerOnScreen();
 #endif
 
         VULTRA_CORE_TRACE("[WindowSystem] Providing IWindowService");

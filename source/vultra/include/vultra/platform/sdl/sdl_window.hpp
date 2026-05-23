@@ -43,6 +43,7 @@ namespace vultra::platform::sdl
         os::Window& setFullscreen(bool fullscreen) override;
         os::Window& setDecorated(bool decorated) override;
         os::Window& setVisible(bool visible) override;
+        os::Window& centerOnScreen() override;
 
         [[nodiscard]] std::string_view getTitle() const override { return m_Title; }
         [[nodiscard]] Extent           getExtent() const override { return m_Extent; }

@@ -64,6 +64,9 @@ namespace vultra_app::ui
 
     bool AssetPreviewCache::hasCachedTexturePreview(EditorContext& ctx, const std::filesystem::path& path) const
     {
+        if (m_ProjectGeneration != ctx.state.projectGeneration)
+            return false;
+
         const auto uri = textureUriFor(ctx, path);
         return !uri.empty() && m_TexturePreviewIds.find(uri) != m_TexturePreviewIds.end();
     }
@@ -73,6 +76,7 @@ namespace vultra_app::ui
                                                      bool                         allowLoad)
     {
         m_LastError.clear();
+        syncProject(ctx);
 
         if (!ctx.services)
         {
@@ -147,6 +151,7 @@ namespace vultra_app::ui
     {
         (void)requestedSize;
         m_LastError.clear();
+        syncProject(ctx);
 
         if (!ctx.services)
         {
@@ -188,9 +193,15 @@ namespace vultra_app::ui
             if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
             {
                 for (auto& [uri, textureId] : m_TexturePreviewIds)
-                    imguiService->removeTexture(textureId);
+                {
+                    if (textureId)
+                        imguiService->removeTexture(textureId);
+                }
                 for (auto& [key, icon] : m_BuiltinIcons)
-                    imguiService->removeTexture(icon.textureId);
+                {
+                    if (icon.textureId)
+                        imguiService->removeTexture(icon.textureId);
+                }
             }
         }
 
@@ -199,6 +210,16 @@ namespace vultra_app::ui
         m_BuiltinIcons.clear();
         m_LruUris.clear();
         m_LastError.clear();
+        m_ProjectGeneration = ctx.state.projectGeneration;
+    }
+
+    void AssetPreviewCache::syncProject(EditorContext& ctx)
+    {
+        if (m_ProjectGeneration == ctx.state.projectGeneration)
+            return;
+
+        clear(ctx);
+        m_ProjectGeneration = ctx.state.projectGeneration;
     }
 
     void AssetPreviewCache::trim(EditorContext& ctx, const std::size_t maxPreviewCount)

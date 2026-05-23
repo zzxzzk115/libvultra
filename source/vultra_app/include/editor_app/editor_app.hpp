@@ -16,6 +16,8 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <cstdint>
+#include <limits>
 
 namespace vultra_app
 {
@@ -28,6 +30,7 @@ namespace vultra_app
         static void configureProject(vultra::Engine& engine, const std::filesystem::path& projectPath);
         static void logStartup(const LaunchOptions& options);
 
+        void tick(EditorContext& ctx);
         void draw(EditorContext& ctx);
         void shutdown(EditorContext& ctx);
 
@@ -64,9 +67,11 @@ namespace vultra_app
             std::filesystem::path projectRoot;
             float                progress {0.0f};
             std::string          message;
+            bool                 releasedEditorState {false};
         };
 
         void ensureInitialized();
+        bool isProjectLoading() const;
         bool updateProjectLoading(EditorContext& ctx);
         void startProjectLoading(const std::filesystem::path& projectRoot);
         void startAssetImportTask(const std::filesystem::path& projectRoot, const std::string& assetRoot);
@@ -85,6 +90,7 @@ namespace vultra_app
 
         EditorWindowManager m_WindowManager;
         std::filesystem::path m_SyncedProject;
+        uint64_t             m_SyncedProjectGeneration {std::numeric_limits<uint64_t>::max()};
         LoadingState        m_Loading;
         std::unique_ptr<vtask::Scheduler>   m_ImportScheduler;
         std::unique_ptr<vtask::TaskSet>     m_ImportTask;

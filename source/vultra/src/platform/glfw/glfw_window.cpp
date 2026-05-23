@@ -462,6 +462,48 @@ namespace vultra::platform::glfw
         return *this;
     }
 
+    os::Window& GLFWWindow::centerOnScreen()
+    {
+#if defined(__EMSCRIPTEN__)
+        return *this;
+#else
+        if (!m_WindowHandle)
+            return *this;
+
+        GLFWmonitor* targetMonitor = nullptr;
+        int          monitorCount  = 0;
+        GLFWmonitor** monitors     = glfwGetMonitors(&monitorCount);
+        const int windowCenterX = m_Position.x + m_Extent.x / 2;
+        const int windowCenterY = m_Position.y + m_Extent.y / 2;
+
+        for (int i = 0; monitors != nullptr && i < monitorCount; ++i)
+        {
+            int mx = 0;
+            int my = 0;
+            int mw = 0;
+            int mh = 0;
+            glfwGetMonitorWorkarea(monitors[i], &mx, &my, &mw, &mh);
+            if (windowCenterX >= mx && windowCenterX < mx + mw && windowCenterY >= my && windowCenterY < my + mh)
+            {
+                targetMonitor = monitors[i];
+                break;
+            }
+        }
+
+        if (!targetMonitor)
+            targetMonitor = glfwGetPrimaryMonitor();
+        if (!targetMonitor)
+            return *this;
+
+        int mx = 0;
+        int my = 0;
+        int mw = 0;
+        int mh = 0;
+        glfwGetMonitorWorkarea(targetMonitor, &mx, &my, &mw, &mh);
+        return setPosition({mx + (mw - m_Extent.x) / 2, my + (mh - m_Extent.y) / 2});
+#endif
+    }
+
     rhi::Rect2D GLFWWindow::getContentArea() const
     {
         return rhi::Rect2D {.offset = {0, 0},

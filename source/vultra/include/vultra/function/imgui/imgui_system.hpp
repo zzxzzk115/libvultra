@@ -45,5 +45,8 @@ namespace vultra
 
     private:
         static std::function<void(ImGuiDockNodeFlags)> s_SetDockSpace;
+        os::Window::Extent m_LastDisplayExtent {0, 0};
+        os::Window::Extent m_LastFramebufferExtent {0, 0};
+        bool               m_DisplayMetricsInitialized {false};
     };
 } // namespace vultra

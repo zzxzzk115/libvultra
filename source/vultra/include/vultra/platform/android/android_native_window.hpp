@@ -37,6 +37,7 @@ namespace vultra::platform::android
         Window& setFullscreen(bool fullscreen) override;
         Window& setDecorated(bool decorated) override;
         Window& setVisible(bool visible) override;
+        Window& centerOnScreen() override { return *this; }
 
         [[nodiscard]] std::string_view getTitle() const override { return m_Title; }
         [[nodiscard]] Extent           getExtent() const override { return m_ContentExtent; }

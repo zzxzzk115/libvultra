@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <string>
+#include <cstdint>
 
 namespace vultra_app
 {
@@ -33,13 +34,16 @@ namespace vultra_app
         std::string           currentProjectName;
         std::string           currentAssetRoot {"resources"};
         std::string           currentDefaultScene {"res://scenes/test.vscn"};
+        std::string           currentRenderPipeline {"res://render/default.vsrp.lua"};
         std::string           statusMessage;
         bool                  editorPlaying {false};
         bool                  editorPaused {false};
         bool                  editorStepRequested {false};
         bool                  codeEditorOpenRequested {false};
+        bool                  editorShutdownRequested {false};
         bool                  gameViewVisible {false};
         bool                  gameViewVisibleLastFrame {false};
+        uint64_t              projectGeneration {0};
         // Scene document state. Tool windows should mutate this, but only document tabs should display it.
         bool                  sceneDirty {false};
         SceneCameraState      sceneCamera;

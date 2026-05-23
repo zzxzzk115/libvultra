@@ -14,6 +14,7 @@
 
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/services/window_service.hpp>
+#include <vultra/function/imgui/imgui_theme.hpp>
 #include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
@@ -78,9 +79,19 @@ namespace vultra_app
         VULTRA_CLIENT_INFO("[VultraEditor] Editor active. project='{}'", options.projectPath);
     }
 
+    void EditorApp::tick(EditorContext& ctx)
+    {
+        (void)updateProjectLoading(ctx);
+    }
+
+    bool EditorApp::isProjectLoading() const
+    {
+        return m_Loading.phase != LoadingPhase::Idle;
+    }
+
     void EditorApp::draw(EditorContext& ctx)
     {
-        if (updateProjectLoading(ctx))
+        if (isProjectLoading())
         {
             drawLoadingOverlay();
             return;
@@ -120,22 +131,28 @@ namespace vultra_app
                                  topBarCtx.state.codeEditorPath.clear();
                                  topBarCtx.state.currentAssetRoot    = "resources";
                                  topBarCtx.state.currentDefaultScene = "res://scenes/test.vscn";
+                                 topBarCtx.state.currentRenderPipeline = "res://render/default.vsrp.lua";
+                                 ++topBarCtx.state.projectGeneration;
                                  topBarCtx.state.editorPlaying       = false;
                                  topBarCtx.state.editorPaused        = false;
                                  topBarCtx.state.editorStepRequested = false;
                                  topBarCtx.state.codeEditorOpenRequested = false;
+                                 topBarCtx.state.editorShutdownRequested = true;
                                  topBarCtx.state.sceneDirty          = false;
                                  topBarCtx.state.mode                = AppMode::Launcher;
                                  topBarCtx.state.statusMessage       = "Returned to Project Launcher.";
                                  m_SyncedProject.clear();
+                                 m_SyncedProjectGeneration = std::numeric_limits<uint64_t>::max();
                                  m_Loading = {};
                                  m_PlayModeSnapshot.reset();
                                  m_PlaybackWasPlaying = false;
-                                 shutdown(topBarCtx);
                              },
                              .resetLayout = [this](EditorContext&) { resetDefaultDockLayout(); },
                              .showAbout   = [this](EditorContext&) { m_ShowAboutPopup = true; },
                          });
+        if (ctx.state.mode != AppMode::Editor)
+            return;
+
         if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))
             saveCurrentScene(ctx);
         beginDockSpace();
@@ -293,6 +310,7 @@ namespace vultra_app
         m_Loading.phase       = LoadingPhase::Pending;
         m_Loading.progress    = 0.04f;
         m_Loading.message     = "Preparing editor workspace...";
+        m_SplashWindowApplied = false;
         m_EditorWindowApplied = false;
     }
 
@@ -413,6 +431,7 @@ namespace vultra_app
             .setResizable(false)
             .setDecorated(false)
             .setExtent({640, 360})
+            .centerOnScreen()
             .setVisible(true);
         m_SplashWindowApplied = true;
     }
@@ -436,6 +455,7 @@ namespace vultra_app
             .setDecorated(decorated)
             .setResizable(true)
             .setExtent({1280, 720})
+            .centerOnScreen()
             .setVisible(true);
         m_EditorWindowApplied = true;
     }
@@ -449,16 +469,19 @@ namespace vultra_app
         if (projectRoot.empty())
         {
             m_SyncedProject.clear();
+            m_SyncedProjectGeneration = std::numeric_limits<uint64_t>::max();
             m_Loading = {};
             m_PlayModeSnapshot.reset();
             m_PlaybackWasPlaying = false;
             return false;
         }
 
-        if (projectRoot != m_SyncedProject && m_Loading.phase == LoadingPhase::Idle)
+        const bool projectReloadRequested =
+            projectRoot != m_SyncedProject || ctx.state.projectGeneration != m_SyncedProjectGeneration;
+        if (projectReloadRequested && m_Loading.phase == LoadingPhase::Idle)
         {
-            // Start on a light frame so the splash can be presented before heavy loading work runs.
             startProjectLoading(projectRoot);
+            applySplashWindow(ctx);
             return true;
         }
 
@@ -468,6 +491,7 @@ namespace vultra_app
         if (projectRoot != m_Loading.projectRoot)
         {
             startProjectLoading(projectRoot);
+            applySplashWindow(ctx);
             return true;
         }
 
@@ -475,6 +499,23 @@ namespace vultra_app
         {
             case LoadingPhase::Pending:
                 applySplashWindow(ctx);
+                if (!m_Loading.releasedEditorState)
+                {
+                    if (auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>())
+                        backendService->renderDevice().waitIdle();
+                    m_WindowManager.destroy(ctx);
+                    m_Initialized        = false;
+                    m_DefaultLayoutBuilt = false;
+                    Selection::clear();
+                    if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                        worldService->world().clear();
+                    m_PlayModeSnapshot.reset();
+                    m_PlaybackWasPlaying = false;
+                    ctx.state.editorPlaying = false;
+                    ctx.state.editorPaused = false;
+                    ctx.state.editorStepRequested = false;
+                    m_Loading.releasedEditorState = true;
+                }
                 startAssetImportTask(projectRoot, ctx.state.currentAssetRoot);
                 m_Loading.phase    = LoadingPhase::ImportAssets;
                 m_Loading.progress = 0.08f;
@@ -533,12 +574,13 @@ namespace vultra_app
                 assetService->configure(desc);
 
                 m_SyncedProject         = projectRoot;
+                m_SyncedProjectGeneration = ctx.state.projectGeneration;
                 m_PlayModeSnapshot.reset();
                 m_PlaybackWasPlaying    = false;
                 ctx.state.statusMessage = "Loaded project assets: " + desc.assetRoot;
 
                 if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
-                    renderService->reloadRenderPipeline();
+                    renderService->reloadRenderPipeline(ctx.state.currentRenderPipeline, "project");
 
                 m_Loading.phase    = LoadingPhase::LoadScene;
                 m_Loading.progress = 0.90f;
@@ -600,7 +642,8 @@ namespace vultra_app
         const ImVec2 center {min.x + size.x * 0.5f, min.y + size.y * 0.5f};
         const float  progress = std::clamp(m_Loading.progress, 0.0f, 1.0f);
 
-        drawList->AddRectFilled(min, max, IM_COL32(13, 17, 22, 255));
+        namespace theme = vultra::imgui_theme;
+        drawList->AddRectFilled(min, max, theme::u32(theme::background()));
 
         // A few translucent bands give the borderless splash depth without relying on any external texture.
         for (int i = 0; i < 10; ++i)
@@ -609,7 +652,8 @@ namespace vultra_app
             const float y = min.y + size.y * t;
             drawList->AddRectFilled(ImVec2 {min.x, y},
                                     ImVec2 {max.x, y + size.y * 0.12f},
-                                    IM_COL32(26, 34, 44, static_cast<int>(18.0f * (1.0f - std::abs(t - 0.5f)))));
+                                    theme::u32(theme::backgroundTransparent(
+                                        (18.0f / 255.0f) * (1.0f - std::abs(t - 0.5f)))));
         }
 
         const ImVec2 logoCenter {center.x, min.y + size.y * 0.36f};
@@ -618,12 +662,15 @@ namespace vultra_app
         {
             drawList->AddCircle(logoCenter,
                                 logoRadius + static_cast<float>(i * 4),
-                                IM_COL32(54, 150, 220, 10),
+                                theme::u32(theme::accentTransparent(10.0f / 255.0f)),
                                 96,
                                 static_cast<float>(i));
         }
-        drawList->AddCircle(logoCenter, logoRadius, IM_COL32(54, 150, 220, 210), 96, 2.0f);
-        drawList->AddCircleFilled(logoCenter, logoRadius - 2.0f, IM_COL32(6, 10, 15, 210), 96);
+        drawList->AddCircle(logoCenter, logoRadius, theme::u32(theme::accentTransparent(210.0f / 255.0f)), 96, 2.0f);
+        drawList->AddCircleFilled(logoCenter,
+                                  logoRadius - 2.0f,
+                                  theme::u32(theme::backgroundTransparent(210.0f / 255.0f)),
+                                  96);
 
         ImFont* font = ImGui::GetFont();
         const float logoFontSize = 56.0f;
@@ -632,14 +679,14 @@ namespace vultra_app
         drawList->AddText(font,
                           logoFontSize,
                           ImVec2 {logoCenter.x - logoTextSize.x * 0.5f, logoCenter.y - logoTextSize.y * 0.52f},
-                          IM_COL32(225, 238, 250, 245),
+                          theme::u32(theme::withAlpha(theme::text(), 245.0f / 255.0f)),
                           logoText);
 
         const char* title = progress >= 1.0f ? "OPENING EDITOR..." : "LOADING ASSETS...";
         const float titleFontSize = 16.0f;
         const ImVec2 titleSize = font->CalcTextSizeA(titleFontSize, FLT_MAX, 0.0f, title);
         const ImVec2 titlePos {center.x - titleSize.x * 0.5f, logoCenter.y + logoRadius + 30.0f};
-        drawList->AddText(font, titleFontSize, titlePos, IM_COL32(184, 198, 214, 235), title);
+        drawList->AddText(font, titleFontSize, titlePos, theme::u32(theme::textSoft()), title);
 
         const float barWidth  = std::min(size.x * 0.54f, 340.0f);
         const float barHeight = 8.0f;
@@ -649,17 +696,17 @@ namespace vultra_app
 
         drawList->AddRectFilled(ImVec2 {barMin.x - 1.0f, barMin.y - 1.0f},
                                 ImVec2 {barMax.x + 1.0f, barMax.y + 1.0f},
-                                IM_COL32(38, 48, 60, 170),
+                                theme::u32(theme::withAlpha(theme::border(), 170.0f / 255.0f)),
                                 rounding + 1.0f);
-        drawList->AddRectFilled(barMin, barMax, IM_COL32(18, 24, 31, 230), rounding);
+        drawList->AddRectFilled(barMin, barMax, theme::u32(theme::backgroundDeep()), rounding);
 
         const float fillWidth = std::max(barHeight, barWidth * progress);
         const ImVec2 fillMax {barMin.x + fillWidth, barMax.y};
         drawList->AddRectFilled(ImVec2 {barMin.x - 8.0f, barMin.y - 6.0f},
                                 ImVec2 {fillMax.x + 12.0f, barMax.y + 6.0f},
-                                IM_COL32(45, 145, 230, 22),
+                                theme::u32(theme::accentTransparent(22.0f / 255.0f)),
                                 10.0f);
-        drawList->AddRectFilled(barMin, fillMax, IM_COL32(68, 160, 242, 230), rounding);
+        drawList->AddRectFilled(barMin, fillMax, theme::u32(theme::accentTransparent(230.0f / 255.0f)), rounding);
 
         char percentText[16] {};
         std::snprintf(percentText, sizeof(percentText), "%d%%", static_cast<int>(std::round(progress * 100.0f)));
@@ -668,7 +715,7 @@ namespace vultra_app
         drawList->AddText(font,
                           percentFontSize,
                           ImVec2 {center.x - percentSize.x * 0.5f, barMax.y + 18.0f},
-                          IM_COL32(126, 142, 158, 245),
+                          theme::u32(theme::withAlpha(theme::textMuted(), 245.0f / 255.0f)),
                           percentText);
 
         const std::string detail = m_Loading.message.empty() ? std::string {"Preparing..."} : m_Loading.message;
@@ -677,25 +724,39 @@ namespace vultra_app
         drawList->AddText(font,
                           detailFontSize,
                           ImVec2 {center.x - detailSize.x * 0.5f, max.y - 32.0f},
-                          IM_COL32(128, 146, 174, 185),
+                          theme::u32(theme::withAlpha(theme::textMuted(), 185.0f / 255.0f)),
                           detail.c_str());
     }
 
     void EditorApp::shutdown(EditorContext& ctx)
     {
+        waitForAssetImportTask();
+
         if (ctx.services)
         {
             if (auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>())
                 backendService->renderDevice().waitIdle();
+            if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                worldService->world().clear();
         }
 
         m_WindowManager.destroy(ctx);
         m_Initialized        = false;
         m_DefaultLayoutBuilt = false;
         m_SyncedProject.clear();
+        m_SyncedProjectGeneration = std::numeric_limits<uint64_t>::max();
         m_Loading = {};
         m_PlayModeSnapshot.reset();
         m_PlaybackWasPlaying = false;
+        m_SplashWindowApplied = false;
+        m_EditorWindowApplied = false;
+        Selection::clear();
+        ctx.state.sceneCamera.valid = false;
+        ctx.state.gameViewVisible = false;
+        ctx.state.gameViewVisibleLastFrame = false;
+        ctx.state.editorPlaying = false;
+        ctx.state.editorPaused = false;
+        ctx.state.editorShutdownRequested = false;
         ctx.state.editorStepRequested = false;
     }
 

@@ -54,6 +54,7 @@ namespace vultra_app
         void collectRetiredGameOverlayRenderTargets(EditorContext& ctx);
         void releaseRenderTarget(EditorContext& ctx);
         void releaseGameOverlayRenderTarget(EditorContext& ctx);
+        void resetRenderTargetsForProject(EditorContext& ctx);
 
         Tool m_Tool {Tool::Select};
         bool m_ShowGrid {false};
@@ -70,5 +71,6 @@ namespace vultra_app
         float     m_CameraPitch {-15.0f};
         float     m_CameraFovY {60.0f};
         float     m_GameOverlayZoom {1.0f};
+        uint64_t  m_ProjectGeneration {0};
     };
 } // namespace vultra_app

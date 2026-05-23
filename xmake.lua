@@ -38,6 +38,24 @@ option("vultra_build_tests") -- build tests?
     set_description("Enable VultraEngine tests")
 option_end()
 
+option("vultra_app_validation")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable Vulkan validation by default for vultra-app")
+option_end()
+
+option("vultra_app_debug_markers")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable GPU debug markers by default for vultra-app")
+option_end()
+
+option("vultra_app_renderdoc")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable RenderDoc integration by default for vultra-app")
+option_end()
+
 if is_plat("linux") then
     option("wayland") -- use wayland (Linux only)
         set_default(false)

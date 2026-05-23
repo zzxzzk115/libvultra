@@ -1,6 +1,7 @@
 #include "editor_app/ui/windows/inspector_window.hpp"
 
 #include "common/ui_widgets.hpp"
+#include "common/file_dialog.hpp"
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
@@ -308,6 +309,20 @@ namespace vultra_app
                    glm::scale(glm::mat4 {1.0f}, transform.scale);
         }
 
+        glm::mat4 makeWorldTransformMatrix(const entt::registry& reg, const entt::entity entity)
+        {
+            const auto* transform = reg.try_get<vultra::TransformComponent>(entity);
+            if (!transform)
+                return glm::mat4 {1.0f};
+
+            const auto local = makeTransformMatrix(*transform);
+            const auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(entity);
+            if (!hierarchy || hierarchy->parent == entt::null || !reg.valid(hierarchy->parent))
+                return local;
+
+            return makeWorldTransformMatrix(reg, hierarchy->parent) * local;
+        }
+
         bool decomposeTransformMatrix(const glm::mat4& matrix, vultra::TransformComponent& transform)
         {
             glm::vec3 skew {};
@@ -349,8 +364,8 @@ namespace vultra_app
                 desired.rotation = ctx.state.sceneCamera.rotation;
                 desired.scale    = transform.scale;
 
-                const auto& parentTransform = reg.get<vultra::TransformComponent>(hierarchy->parent);
-                const auto  targetLocal     = glm::inverse(parentTransform.worldMatrix) * makeTransformMatrix(desired);
+                const auto parentWorld = makeWorldTransformMatrix(reg, hierarchy->parent);
+                const auto targetLocal = glm::inverse(parentWorld) * makeTransformMatrix(desired);
                 if (!decomposeTransformMatrix(targetLocal, transform))
                 {
                     ctx.state.statusMessage = "Failed to align camera transform.";
@@ -645,7 +660,10 @@ namespace vultra_app
                 IGFD::FileDialogConfig config;
                 config.path  = scriptDialogStartPath(*ctx, uri).generic_string();
                 config.flags = ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
-                               ImGuiFileDialogFlags_DontShowHiddenFiles;
+                               ImGuiFileDialogFlags_HideColumnSize | ImGuiFileDialogFlags_HideColumnDate |
+                               ImGuiFileDialogFlags_DontShowHiddenFiles |
+                               ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering |
+                               ImGuiFileDialogFlags_NaturalSorting | ImGuiFileDialogFlags_DisableThumbnailMode;
                 ImGuiFileDialog::Instance()->OpenDialog(kScriptDialogKey, "Select Lua Script", ".lua", config);
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
@@ -692,7 +710,10 @@ namespace vultra_app
                     IGFD::FileDialogConfig config;
                     config.path  = scriptDialogStartPath(*ctx, uri).generic_string();
                     config.flags = ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
-                                   ImGuiFileDialogFlags_DontShowHiddenFiles;
+                                   ImGuiFileDialogFlags_HideColumnSize | ImGuiFileDialogFlags_HideColumnDate |
+                                   ImGuiFileDialogFlags_DontShowHiddenFiles |
+                                   ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering |
+                                   ImGuiFileDialogFlags_NaturalSorting | ImGuiFileDialogFlags_DisableThumbnailMode;
                     ImGuiFileDialog::Instance()->OpenDialog(kScriptDialogKey, "Select Lua Script", ".lua", config);
                 }
             }
@@ -700,9 +721,10 @@ namespace vultra_app
                 ImGui::SetTooltip("Select Lua script.");
             ImGui::PopID();
 
+            ui::ScopedPopupStyle fileDialogStyle;
             if (ctx && ImGuiFileDialog::Instance()->Display(kScriptDialogKey,
-                                                            ImGuiWindowFlags_NoCollapse,
-                                                            ImVec2(560.0f, 360.0f)))
+                                                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
+                                                            ImVec2(640.0f, 420.0f)))
             {
                 if (ImGuiFileDialog::Instance()->IsOk())
                 {
@@ -1176,7 +1198,6 @@ namespace vultra_app
             drawImagePreviewPlaceholder(path, m_PreviewCache.lastError().c_str());
             return;
         }
-
         ImGui::TextUnformatted("Preview");
         const float size = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
         ImGui::Image(previewId, ImVec2(size, size));

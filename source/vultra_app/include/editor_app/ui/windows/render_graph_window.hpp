@@ -50,6 +50,7 @@ namespace vultra_app
         void retireOverlayRenderTarget(RenderTargetSlot& slot);
         void collectRetiredOverlayRenderTargets(EditorContext& ctx);
         void releaseOverlayRenderTarget(EditorContext& ctx);
+        void resetOverlayRenderTargetForProject(EditorContext& ctx);
 
         std::unique_ptr<RuntimeGraphState> m_RuntimeGraph;
         std::unique_ptr<GraphEditorState> m_GraphEditor;
@@ -57,6 +58,7 @@ namespace vultra_app
         RenderTargetSlot              m_OverlayPendingRenderTarget;
         std::vector<RenderTargetSlot> m_OverlayRetiredRenderTargets;
         float m_OverlayZoom {1.0f};
+        uint64_t m_ProjectGeneration {0};
         Mode m_Mode {Mode::eEdit};
     };
 } // namespace vultra_app

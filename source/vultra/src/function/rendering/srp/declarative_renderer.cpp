@@ -165,7 +165,7 @@ namespace vultra
                                                                                framegraph::ClearValue::eOpaqueBlack},
                                                 });
                 },
-                [this](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+                [this](const PassData& data, FrameGraphPassResources&, void* ctxPtr) {
                     VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                     if (!m_ShaderLibrary)
                         return;
@@ -173,6 +173,12 @@ namespace vultra
                     const auto framebufferInfo = rc.framebufferInfo();
                     if (!framebufferInfo)
                         return;
+
+                    if (!data.input)
+                    {
+                        rc.cb.beginRendering(framebufferInfo.value()).endRendering();
+                        return;
+                    }
 
                     auto* pipeline = getPipeline(rc.rd, rhi::getColorFormat(framebufferInfo.value(), 0));
                     if (!pipeline)

@@ -1,6 +1,7 @@
 #include "editor_app/ui/editor_top_bar.hpp"
 
 #include <vultra/core/services/window_service.hpp>
+#include <vultra/function/imgui/imgui_theme.hpp>
 #include <vultra/function/services/frame_debugger_service.hpp>
 
 #include <IconsMaterialDesignIcons.h>
@@ -28,12 +29,16 @@ namespace vultra_app
         void drawEngineMark(const ImVec2 pos, const float radius)
         {
             auto* drawList = ImGui::GetWindowDrawList();
-            drawList->AddCircleFilled(pos, radius, IM_COL32(6, 10, 15, 255), 40);
-            drawList->AddCircle(pos, radius, IM_COL32(54, 150, 220, 210), 40, 1.5f);
+            drawList->AddCircleFilled(pos, radius, vultra::imgui_theme::u32(vultra::imgui_theme::backgroundDeep()), 40);
+            drawList->AddCircle(pos,
+                                radius,
+                                vultra::imgui_theme::u32(vultra::imgui_theme::accentTransparent(210.0f / 255.0f)),
+                                40,
+                                1.5f);
             const char* mark = "V";
             const ImVec2 textSize = ImGui::CalcTextSize(mark);
             drawList->AddText(ImVec2 {pos.x - textSize.x * 0.5f, pos.y - textSize.y * 0.5f - 1.0f},
-                              IM_COL32(225, 238, 250, 255),
+                              vultra::imgui_theme::u32(vultra::imgui_theme::text()),
                               mark);
         }
 
@@ -41,9 +46,9 @@ namespace vultra_app
         {
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {8.0f, 5.0f});
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.070f, 0.090f, 0.115f, 0.96f});
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.115f, 0.155f, 0.200f, 1.0f});
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4 {0.065f, 0.275f, 0.500f, 1.0f});
+            ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::buttonTransparent(0.96f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::buttonHovered());
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButton());
         }
 
         void popToolbarButtonStyle()
@@ -68,8 +73,9 @@ namespace vultra_app
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {8.0f, 4.0f});
             ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.0f, 0.0f, 0.0f, 0.0f});
-            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.120f, 0.150f, 0.185f, 0.95f});
-            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4 {0.075f, 0.220f, 0.390f, 1.0f});
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                                  vultra::imgui_theme::withAlpha(vultra::imgui_theme::buttonHovered(), 0.95f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButton());
             const bool pressed = ImGui::Button(label);
             const ImVec2 popupPos {menuPos.x, ImGui::GetItemRectMax().y};
             ImGui::PopStyleColor(3);
@@ -86,11 +92,11 @@ namespace vultra_app
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {9.0f, 4.0f});
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.0f, 0.0f, 0.0f, 0.0f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                                  destructive ? ImVec4 {0.570f, 0.120f, 0.120f, 1.0f} :
-                                                ImVec4 {0.135f, 0.165f, 0.200f, 1.0f});
+                                  destructive ? vultra::imgui_theme::destructiveHovered() :
+                                                vultra::imgui_theme::buttonHovered());
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                                  destructive ? ImVec4 {0.720f, 0.140f, 0.140f, 1.0f} :
-                                                ImVec4 {0.075f, 0.220f, 0.390f, 1.0f});
+                                  destructive ? vultra::imgui_theme::destructiveActive() :
+                                                vultra::imgui_theme::accentButton());
             const bool pressed = ImGui::Button(label);
             ImGui::PopStyleColor(3);
             ImGui::PopStyleVar(2);
@@ -114,15 +120,15 @@ namespace vultra_app
             const bool   held    = enabled && ImGui::IsItemActive();
 
             const ImVec4 baseColor =
-                accent ? ImVec4 {0.145f, 0.430f, 0.145f, 1.0f} :
-                active ? ImVec4 {0.055f, 0.260f, 0.470f, 1.0f} :
-                         ImVec4 {0.070f, 0.090f, 0.115f, 0.96f};
+                accent ? vultra::imgui_theme::success() :
+                active ? vultra::imgui_theme::accentButton() :
+                         vultra::imgui_theme::buttonTransparent(0.96f);
             const ImVec4 hoverColor =
-                accent ? ImVec4 {0.205f, 0.610f, 0.180f, 1.0f} :
+                accent ? vultra::imgui_theme::successHovered() :
                 active ? ImVec4 {0.075f, 0.335f, 0.600f, 1.0f} :
-                         ImVec4 {0.115f, 0.155f, 0.200f, 1.0f};
+                         vultra::imgui_theme::buttonHovered();
             const ImVec4 downColor =
-                accent ? ImVec4 {0.105f, 0.360f, 0.115f, 1.0f} : ImVec4 {0.050f, 0.220f, 0.395f, 1.0f};
+                accent ? vultra::imgui_theme::successActive() : vultra::imgui_theme::accentButton();
 
             ImVec4 fill = held ? downColor : hovered ? hoverColor : baseColor;
             ImVec4 text = accent ? ImVec4 {0.720f, 1.000f, 0.600f, 1.0f} : ImVec4 {0.820f, 0.875f, 0.925f, 1.0f};

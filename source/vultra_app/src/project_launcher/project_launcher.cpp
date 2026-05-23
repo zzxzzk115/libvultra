@@ -1,9 +1,11 @@
 #include "project_launcher/project_launcher.hpp"
 
+#include "common/ui_widgets.hpp"
 #include "vproject.hpp"
 
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/services/window_service.hpp>
+#include <vultra/function/imgui/imgui_theme.hpp>
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -14,6 +16,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace vultra_app
 {
@@ -71,11 +74,268 @@ namespace vultra_app
                    toLower(path.generic_string()).find(query) != std::string::npos;
         }
 
+        bool writeTextFile(const std::filesystem::path& path, std::string_view text, std::string& errorMessage)
+        {
+            namespace fs = std::filesystem;
+
+            std::error_code ec;
+            fs::create_directories(path.parent_path(), ec);
+            if (ec)
+            {
+                errorMessage = "failed to create directory '" + path.parent_path().generic_string() + "': " + ec.message();
+                return false;
+            }
+
+            std::ofstream file(path, std::ios::trunc);
+            if (!file)
+            {
+                errorMessage = "failed to open '" + path.generic_string() + "' for writing";
+                return false;
+            }
+
+            file << text;
+            if (!file)
+            {
+                errorMessage = "failed to write '" + path.generic_string() + "'";
+                return false;
+            }
+            return true;
+        }
+
+        bool writeDefaultProjectAssets(const std::filesystem::path& projectDir, std::string& errorMessage)
+        {
+            constexpr std::string_view kSampleScene = R"([vscn]
+version = 1
+root    = 1
+
+[node id=1 name="SceneRoot" parent=0 uuid="b32742be42ef01022fdc23bb959c74c7"]
+NameComponent/name = "SceneRoot"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+
+[node id=2 name="Sun" parent=1 uuid="206733c1f880193cbd1dd2b65e0d0ca8"]
+NameComponent/name = "Sun"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 4, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+LightComponent/kind = 0
+LightComponent/color = (1, 0.96, 0.9)
+LightComponent/intensity = 8
+LightComponent/direction = (-0.35, -0.8, -0.25)
+LightComponent/range = 100
+LightComponent/radius = 0.05
+LightComponent/width = 1
+LightComponent/height = 1
+LightComponent/innerConeDegrees = 20
+LightComponent/outerConeDegrees = 30
+LightComponent/castsShadow = false
+LightComponent/twoSided = false
+
+[node id=3 name="Camera" parent=1 uuid="d6348e9e870dff93209ad02615cfefbb"]
+NameComponent/name = "Camera"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 1.6, 4)
+TransformComponent/rotation = (-0.130526, 2.16687e-08, 2.85274e-09, 0.991445)
+TransformComponent/scale = (1, 1, 1)
+CameraComponent/primary = true
+CameraComponent/projection = 0
+CameraComponent/fovYDegrees = 60.000000
+CameraComponent/orthographicHeight = 10.000000
+CameraComponent/zNear = 0.100000
+CameraComponent/zFar = 1000.000000
+CameraComponent/clearColor = (0.02, 0.025, 0.035, 1)
+CameraComponent/priority = 0
+CameraComponent/rendererKey = "universal"
+)";
+
+            constexpr std::string_view kDefaultSrp = R"(return RenderPipelineAsset {
+    rendererKey = "universal",
+    shaderLibraries = {
+        project = "res://shaders/project.vshaderlib.lua",
+    },
+    features = {
+        "compatibility_basecolor",
+        "res://render/graphs/tonemapping.vrg.json",
+        "final_composition",
+    }
+}
+)";
+
+            constexpr std::string_view kTonemappingGraph = R"({
+  "meta": {
+    "editor": {
+      "nodes": {
+        "Tonemapping": {
+          "pos": [
+            680.0,
+            77.0
+          ]
+        },
+        "resource:final_composition_source": {
+          "pos": [
+            260.0,
+            80.0
+          ]
+        }
+      }
+    }
+  },
+  "passes": [
+    {
+      "enabled": true,
+      "id": "Tonemapping",
+      "inputs": {
+        "source": "final_composition_source"
+      },
+      "outputs": {
+        "color": "Tonemapping.color"
+      },
+      "params": {
+        "exposure": 1.0,
+        "fragment": "tonemapping.frag",
+        "library": "project",
+        "method": 0,
+        "name": "Tonemapping",
+        "publish": "final_composition_source",
+        "pushConstants": true,
+        "vertex": "fullscreen_triangle.vert"
+      },
+      "type": "FullscreenShader"
+    }
+  ],
+  "resources": [
+    "final_composition_source"
+  ]
+}
+)";
+
+            constexpr std::string_view kShaderLibrary = R"(return ShaderLibrary {
+    name = "project",
+    root = "shaders",
+    shaders = {
+        "fullscreen/*.vshader",
+    },
+}
+)";
+
+            constexpr std::string_view kFullscreenTriangle = R"([vshader]
+language = glsl
+version = 460
+
+[vert]
+layout (location = 0) out vec2 v_TexCoord;
+
+void main() {
+    v_TexCoord = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(v_TexCoord * 2.0 - 1.0, 0.0, 1.0);
+}
+)";
+
+            constexpr std::string_view kTonemappingShader = R"([vshader]
+language = glsl
+version = 460
+
+[frag]
+layout (location = 0) in vec2 v_TexCoord;
+layout (location = 0) out vec4 FragColor;
+
+// @param_enum method Khronos PBR Neutral=0, ACES=1, Reinhard=2
+layout (set = 3, binding = 0) uniform sampler2D t_0;
+
+layout (push_constant) uniform TonemappingPushConstants
+{
+    float exposure;
+    int method;
+} u_PC;
+
+vec3 toneMappingKhronosPbrNeutral(vec3 color)
+{
+    const float startCompression = 0.8 - 0.04;
+    const float desaturation = 0.15;
+
+    float x = min(color.r, min(color.g, color.b));
+    float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+    color -= offset;
+
+    float peak = max(color.r, max(color.g, color.b));
+    if (peak < startCompression)
+        return color;
+
+    const float d = 1.0 - startCompression;
+    float newPeak = 1.0 - d * d / (peak + d - startCompression);
+    color *= newPeak / peak;
+
+    float g = 1.0 - 1.0 / (desaturation * (peak - newPeak) + 1.0);
+    return mix(color, vec3(newPeak), g);
+}
+
+vec3 toneMappingACES(vec3 x)
+{
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+}
+
+vec3 toneMappingReinhard(vec3 color)
+{
+    return color / (color + vec3(1.0));
+}
+
+vec3 toneMapping(vec3 color, int method)
+{
+    if (method == 0)
+        return toneMappingKhronosPbrNeutral(color);
+    if (method == 1)
+        return toneMappingACES(color);
+    if (method == 2)
+        return toneMappingReinhard(color);
+    return toneMappingKhronosPbrNeutral(color);
+}
+
+void main() {
+    vec4 source = texture(t_0, v_TexCoord);
+    source.rgb *= max(u_PC.exposure, 0.0);
+    vec3 color = toneMapping(max(source.rgb, vec3(0.0)), u_PC.method);
+    FragColor = vec4(color, 1.0);
+}
+)";
+
+            const auto resourcesDir = projectDir / "resources";
+            return writeTextFile(resourcesDir / "scenes" / "test.vscn", kSampleScene, errorMessage) &&
+                   writeTextFile(resourcesDir / "render" / "default.vsrp.lua", kDefaultSrp, errorMessage) &&
+                   writeTextFile(resourcesDir / "render" / "graphs" / "tonemapping.vrg.json",
+                                 kTonemappingGraph,
+                                 errorMessage) &&
+                   writeTextFile(resourcesDir / "shaders" / "project.vshaderlib.lua", kShaderLibrary, errorMessage) &&
+                   writeTextFile(resourcesDir / "shaders" / "fullscreen" / "fullscreen_triangle.vert.vshader",
+                                 kFullscreenTriangle,
+                                 errorMessage) &&
+                   writeTextFile(resourcesDir / "shaders" / "fullscreen" / "tonemapping.frag.vshader",
+                                 kTonemappingShader,
+                                 errorMessage);
+        }
+
         void drawLauncherLogo(ImDrawList* drawList, ImVec2 center)
         {
-            drawList->AddCircleFilled(center, 24.0f, IM_COL32(6, 10, 15, 255), 48);
-            drawList->AddCircle(center, 24.0f, IM_COL32(54, 150, 220, 230), 48, 1.7f);
-            drawList->AddText(ImVec2(center.x - 7.0f, center.y - 11.0f), IM_COL32(220, 236, 250, 255), "V");
+            namespace theme = vultra::imgui_theme;
+            drawList->AddCircleFilled(center, 24.0f, theme::u32(theme::backgroundDeep()), 48);
+            drawList->AddCircle(center, 24.0f, theme::u32(theme::accent()), 48, 1.7f);
+            drawList->AddText(ImVec2(center.x - 7.0f, center.y - 11.0f), theme::u32(theme::text()), "V");
         }
 
         void setTooltip(const char* text)
@@ -90,11 +350,11 @@ namespace vultra_app
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {9.0f, 4.0f});
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.0f, 0.0f, 0.0f, 0.0f});
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                                  destructive ? ImVec4 {0.570f, 0.120f, 0.120f, 1.0f} :
-                                                ImVec4 {0.135f, 0.165f, 0.200f, 1.0f});
+                                  destructive ? vultra::imgui_theme::destructiveHovered() :
+                                                vultra::imgui_theme::buttonHovered());
             ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                                  destructive ? ImVec4 {0.720f, 0.140f, 0.140f, 1.0f} :
-                                                ImVec4 {0.075f, 0.220f, 0.390f, 1.0f});
+                                  destructive ? vultra::imgui_theme::destructiveActive() :
+                                                vultra::imgui_theme::accentButton());
             const bool pressed = ImGui::Button(label);
             ImGui::PopStyleColor(3);
             ImGui::PopStyleVar(2);
@@ -139,12 +399,19 @@ namespace vultra_app
 
             if (active || hovered)
             {
-                const ImU32 fill = active ? IM_COL32(33, 48, 68, 230) : IM_COL32(25, 34, 46, 210);
+                auto activeFill = vultra::imgui_theme::frameActive();
+                activeFill.w    = 0.90f;
+                auto hoverFill  = vultra::imgui_theme::frame();
+                hoverFill.w     = 0.82f;
+                const ImU32 fill =
+                    active ? vultra::imgui_theme::u32(activeFill) : vultra::imgui_theme::u32(hoverFill);
                 drawList->AddRectFilled(min, max, fill, 7.0f);
             }
 
-            const ImU32 iconColor = active ? IM_COL32(80, 170, 250, 255) : IM_COL32(176, 187, 200, 255);
-            const ImU32 textColor = active ? IM_COL32(216, 232, 246, 255) : IM_COL32(188, 196, 207, 255);
+            const ImU32 iconColor = vultra::imgui_theme::u32(active ? vultra::imgui_theme::accent() :
+                                                                      vultra::imgui_theme::textMuted());
+            const ImU32 textColor = vultra::imgui_theme::u32(active ? vultra::imgui_theme::text() :
+                                                                      vultra::imgui_theme::textMuted());
             drawList->AddText(ImVec2(min.x + 18.0f, min.y + 13.0f), iconColor, icon);
             drawList->AddText(ImVec2(min.x + 48.0f, min.y + 13.0f), textColor, label);
             return clicked;
@@ -181,8 +448,24 @@ namespace vultra_app
 
     void ProjectLauncher::draw(AppState& state, IWindowService* windowService)
     {
+        namespace theme = vultra::imgui_theme;
+
         if (!m_HasScannedProjects)
             loadKnownProjects(state);
+
+        if (windowService)
+        {
+            auto& window = windowService->window();
+            if (window.getTitle() != kWindowTitle)
+            {
+                window.setTitle(kWindowTitle)
+                    .setDecorated(false)
+                    .setResizable(true)
+                    .setExtent({1280, 720})
+                    .centerOnScreen()
+                    .setVisible(true);
+            }
+        }
 
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->WorkPos, ImGuiCond_Always);
@@ -190,7 +473,7 @@ namespace vultra_app
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.050f, 0.063f, 0.080f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, vultra::imgui_theme::background());
         ImGui::Begin("##VultraProjectLauncher",
                      nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
@@ -203,18 +486,22 @@ namespace vultra_app
         const float sidebarW = 276.0f;
         drawList->AddRectFilled(origin,
                                 ImVec2(origin.x + size.x, origin.y + size.y),
-                                IM_COL32(8, 12, 17, 255));
+                                vultra::imgui_theme::u32(vultra::imgui_theme::background()));
         drawList->AddRectFilled(origin,
                                 ImVec2(origin.x + sidebarW, origin.y + size.y),
-                                IM_COL32(13, 19, 27, 255));
+                                vultra::imgui_theme::u32(vultra::imgui_theme::backgroundDeep()));
         drawList->AddLine(ImVec2(origin.x + sidebarW, origin.y + 24.0f),
                           ImVec2(origin.x + sidebarW, origin.y + size.y - 24.0f),
-                          IM_COL32(40, 50, 64, 190),
+                          theme::u32(theme::withAlpha(theme::border(), 190.0f / 255.0f)),
                           1.0f);
 
         drawLauncherLogo(drawList, ImVec2(origin.x + 64.0f, origin.y + 78.0f));
-        drawList->AddText(ImVec2(origin.x + 104.0f, origin.y + 58.0f), IM_COL32(236, 241, 247, 255), "Vultra");
-        drawList->AddText(ImVec2(origin.x + 104.0f, origin.y + 82.0f), IM_COL32(150, 162, 176, 255), "Project Launcher");
+        drawList->AddText(ImVec2(origin.x + 104.0f, origin.y + 58.0f),
+                          vultra::imgui_theme::u32(vultra::imgui_theme::text()),
+                          "Vultra");
+        drawList->AddText(ImVec2(origin.x + 104.0f, origin.y + 82.0f),
+                          theme::u32(theme::textMuted()),
+                          "Project Launcher");
         drawWindowControls(windowService, origin, size);
 
         ImGui::SetCursorScreenPos(ImVec2(origin.x + 28.0f, origin.y + 156.0f));
@@ -233,24 +520,26 @@ namespace vultra_app
             state.selectedSourceAsset.clear();
             state.currentAssetRoot    = "resources";
             state.currentDefaultScene = "res://scenes/test.vscn";
+            state.currentRenderPipeline = "res://render/default.vsrp.lua";
+            ++state.projectGeneration;
             state.mode                = AppMode::Editor;
             state.statusMessage       = "Opened a blank editor session.";
         }
         const float contentX = origin.x + sidebarW + 40.0f;
         const float contentW = std::max(420.0f, size.x - sidebarW - 80.0f);
 
-        drawList->AddText(ImVec2(contentX, origin.y + 52.0f), IM_COL32(238, 242, 248, 255), "Projects");
+        drawList->AddText(ImVec2(contentX, origin.y + 52.0f), theme::u32(theme::text()), "Projects");
         drawList->AddText(ImVec2(contentX, origin.y + 80.0f),
-                          IM_COL32(146, 158, 172, 255),
+                          theme::u32(theme::textMuted()),
                           "Choose a workspace or create a new one.");
 
         ImGui::SetCursorScreenPos(ImVec2(contentX, origin.y + 122.0f));
         ImGui::SetNextItemWidth(std::min(460.0f, contentW - 320.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(38.0f, 10.0f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.055f, 0.070f, 0.090f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.075f, 0.095f, 0.122f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.075f, 0.100f, 0.130f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, vultra::imgui_theme::frame());
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, vultra::imgui_theme::frameHovered());
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, vultra::imgui_theme::frameActive());
         ImGui::InputTextWithHint("##project_search",
                                  ICON_MDI_MAGNIFY "  Search projects...",
                                  m_SearchQuery.data(),
@@ -262,16 +551,16 @@ namespace vultra_app
         const float buttonY = origin.y + 122.0f;
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16.0f, 10.0f));
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.105f, 0.130f, 0.165f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.150f, 0.195f, 0.250f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.100f, 0.210f, 0.360f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::button());
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::buttonHovered());
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButton());
         ImGui::SetCursorScreenPos(ImVec2(origin.x + size.x - 338.0f, buttonY));
         if (ImGui::Button(ICON_MDI_FOLDER_PLUS_OUTLINE "  Add Existing", ImVec2(142.0f, 42.0f)))
             ImGui::OpenPopup("Add Existing Vultra Project");
         ImGui::SetCursorScreenPos(ImVec2(origin.x + size.x - 184.0f, buttonY));
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.085f, 0.310f, 0.560f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.115f, 0.390f, 0.690f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.065f, 0.275f, 0.500f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::accentButton());
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, vultra::imgui_theme::accentButtonHovered());
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButtonActive());
         if (ImGui::Button(ICON_MDI_PLUS "  New Project", ImVec2(144.0f, 42.0f)))
             ImGui::OpenPopup("Create Vultra Project");
         ImGui::PopStyleColor(3);
@@ -280,9 +569,9 @@ namespace vultra_app
 
         drawList->AddLine(ImVec2(contentX, origin.y + 178.0f),
                           ImVec2(origin.x + size.x - 40.0f, origin.y + 178.0f),
-                          IM_COL32(38, 48, 61, 190),
+                          theme::u32(theme::withAlpha(theme::border(), 190.0f / 255.0f)),
                           1.0f);
-        drawList->AddText(ImVec2(contentX, origin.y + 206.0f), IM_COL32(224, 230, 238, 255), "Recent Projects");
+        drawList->AddText(ImVec2(contentX, origin.y + 206.0f), theme::u32(theme::text()), "Recent Projects");
 
         const std::string query = toLower(m_SearchQuery.data());
         float             rowY  = origin.y + 244.0f;
@@ -315,35 +604,37 @@ namespace vultra_app
                 openSelectedProject(state);
             }
 
-            const ImU32 rowFill = selected ? IM_COL32(31, 45, 63, 245) :
-                                  hovered  ? IM_COL32(24, 33, 45, 235) :
-                                             IM_COL32(17, 24, 33, 220);
-            const ImU32 rowBorder = selected ? IM_COL32(70, 145, 215, 210) : IM_COL32(42, 52, 66, 170);
+            const ImU32 rowFill =
+                selected ? theme::u32(theme::withAlpha(theme::frameActive(), 245.0f / 255.0f)) :
+                hovered  ? theme::u32(theme::withAlpha(theme::frameHovered(), 235.0f / 255.0f)) :
+                           theme::u32(theme::withAlpha(theme::frame(), 220.0f / 255.0f));
+            const ImU32 rowBorder = selected ? theme::u32(theme::accentTransparent(210.0f / 255.0f)) :
+                                               theme::u32(theme::withAlpha(theme::border(), 170.0f / 255.0f));
             drawList->AddRectFilled(rowMin, rowMax, rowFill, 7.0f);
             drawList->AddRect(rowMin, rowMax, rowBorder, 7.0f);
 
             const ImVec2 tileMin(rowMin.x + 14.0f, rowMin.y + 12.0f);
             const ImVec2 tileMax(tileMin.x + 58.0f, tileMin.y + 58.0f);
-            drawList->AddRectFilled(tileMin, tileMax, IM_COL32(8, 13, 20, 255), 6.0f);
-            drawList->AddRect(tileMin, tileMax, IM_COL32(53, 93, 128, 190), 6.0f);
-            drawList->AddText(ImVec2(tileMin.x + 19.0f, tileMin.y + 17.0f), IM_COL32(102, 180, 245, 255), "V");
+            drawList->AddRectFilled(tileMin, tileMax, theme::u32(theme::backgroundDeep()), 6.0f);
+            drawList->AddRect(tileMin, tileMax, theme::u32(theme::accentTransparent(190.0f / 255.0f)), 6.0f);
+            drawList->AddText(ImVec2(tileMin.x + 19.0f, tileMin.y + 17.0f), theme::u32(theme::accent()), "V");
 
             drawList->PushClipRect(ImVec2(rowMin.x + 90.0f, rowMin.y),
                                    ImVec2(rowMax.x - 190.0f, rowMax.y),
                                    true);
             drawList->AddText(ImVec2(rowMin.x + 92.0f, rowMin.y + 20.0f),
-                              IM_COL32(238, 242, 248, 255),
+                              theme::u32(theme::text()),
                               project.name.c_str());
             drawList->AddText(ImVec2(rowMin.x + 92.0f, rowMin.y + 46.0f),
-                              IM_COL32(154, 164, 177, 255),
+                              theme::u32(theme::textMuted()),
                               project.path.generic_string().c_str());
             drawList->PopClipRect();
 
             drawList->AddText(ImVec2(rowMax.x - 166.0f, rowMin.y + 22.0f),
-                              IM_COL32(185, 196, 208, 255),
+                              theme::u32(theme::textSoft()),
                               ".vproject");
             drawList->AddText(ImVec2(rowMax.x - 166.0f, rowMin.y + 48.0f),
-                              IM_COL32(130, 142, 156, 255),
+                              theme::u32(theme::textMuted()),
                               "Workspace");
 
             rowY += rowH + rowGap;
@@ -353,17 +644,17 @@ namespace vultra_app
         {
             drawList->AddRectFilled(ImVec2(contentX, origin.y + 244.0f),
                                     ImVec2(origin.x + size.x - 40.0f, origin.y + 338.0f),
-                                    IM_COL32(17, 24, 33, 180),
+                                    theme::u32(theme::withAlpha(theme::frame(), 180.0f / 255.0f)),
                                     7.0f);
             drawList->AddRect(ImVec2(contentX, origin.y + 244.0f),
                               ImVec2(origin.x + size.x - 40.0f, origin.y + 338.0f),
-                              IM_COL32(42, 52, 66, 150),
+                              theme::u32(theme::withAlpha(theme::border(), 150.0f / 255.0f)),
                               7.0f);
             drawList->AddText(ImVec2(contentX + 24.0f, origin.y + 274.0f),
-                              IM_COL32(216, 224, 233, 255),
+                              theme::u32(theme::text()),
                               "No projects found");
             drawList->AddText(ImVec2(contentX + 24.0f, origin.y + 300.0f),
-                              IM_COL32(142, 154, 168, 255),
+                              theme::u32(theme::textMuted()),
                               "Create a project or add an existing workspace.");
         }
 
@@ -371,7 +662,7 @@ namespace vultra_app
 
         drawList->AddLine(ImVec2(contentX, origin.y + size.y - 72.0f),
                           ImVec2(origin.x + size.x - 40.0f, origin.y + size.y - 72.0f),
-                          IM_COL32(38, 48, 61, 190),
+                          theme::u32(theme::withAlpha(theme::border(), 190.0f / 255.0f)),
                           1.0f);
 
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7.0f);
@@ -405,7 +696,7 @@ namespace vultra_app
                                    ImVec2(origin.x + size.x - 396.0f, origin.y + size.y - 18.0f),
                                    true);
             drawList->AddText(ImVec2(contentX + 160.0f, origin.y + size.y - 40.0f),
-                              IM_COL32(145, 158, 172, 255),
+                              theme::u32(theme::textMuted()),
                               state.statusMessage.c_str());
             drawList->PopClipRect();
         }
@@ -418,23 +709,33 @@ namespace vultra_app
     void ProjectLauncher::drawCreateProjectPopup(AppState& state)
     {
         bool open = true;
-        if (!ImGui::BeginPopupModal("Create Vultra Project", &open, ImGuiWindowFlags_AlwaysAutoResize))
+        ui::ScopedPopupStyle popupStyle;
+        ImGui::SetNextWindowSizeConstraints(ImVec2 {420.0f, 0.0f}, ImVec2 {620.0f, 520.0f});
+        if (!ImGui::BeginPopupModal("Create Vultra Project",
+                                    &open,
+                                    ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
             return;
 
-        ImGui::TextUnformatted("Create a .vproject in the selected project root.");
+        ui::sectionTitle(ICON_MDI_FOLDER_PLUS_OUTLINE, "New Project");
+        ImGui::TextColored(ImVec4 {0.62f, 0.70f, 0.80f, 1.0f},
+                           "Choose an empty folder. The folder name becomes the project name.");
+        ImGui::Spacing();
         ImGui::Separator();
-        ImGui::InputText("Project Name", m_NewProjectName.data(), m_NewProjectName.size());
-        m_ProjectRootDialog.draw("Project Root", m_NewProjectRoot.data(), m_NewProjectRoot.size());
+        ImGui::Spacing();
+        m_ProjectRootDialog.draw("Project Folder", m_NewProjectRoot.data(), m_NewProjectRoot.size());
 
+        ImGui::Spacing();
         ImGui::Separator();
-        if (ImGui::Button("Create"))
+        const float buttonWidth = 96.0f;
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth * 2.0f - ImGui::GetStyle().ItemSpacing.x -
+                             ImGui::GetStyle().WindowPadding.x);
+        if (ImGui::Button(ICON_MDI_PLUS "  Create", ImVec2 {buttonWidth, 0.0f}))
         {
-            createProject(state);
-            if (!m_NewProjectName[0])
+            if (createProject(state))
                 ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel"))
+        if (ImGui::Button("Cancel", ImVec2 {buttonWidth, 0.0f}))
             ImGui::CloseCurrentPopup();
 
         ImGui::EndPopup();
@@ -443,22 +744,34 @@ namespace vultra_app
     void ProjectLauncher::drawAddExistingProjectPopup(AppState& state)
     {
         bool open = true;
-        if (!ImGui::BeginPopupModal("Add Existing Vultra Project", &open, ImGuiWindowFlags_AlwaysAutoResize))
+        ui::ScopedPopupStyle popupStyle;
+        ImGui::SetNextWindowSizeConstraints(ImVec2 {420.0f, 0.0f}, ImVec2 {620.0f, 460.0f});
+        if (!ImGui::BeginPopupModal("Add Existing Vultra Project",
+                                    &open,
+                                    ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
             return;
 
-        ImGui::TextUnformatted("Select a project root containing a .vproject file.");
+        ui::sectionTitle(ICON_MDI_FOLDER_OPEN, "Existing Project");
+        ImGui::TextColored(ImVec4 {0.62f, 0.70f, 0.80f, 1.0f},
+                           "Select a project root containing a .vproject file.");
+        ImGui::Spacing();
         ImGui::Separator();
+        ImGui::Spacing();
         m_ExistingProjectDialog.draw("Project Root", m_ExistingProjectRoot.data(), m_ExistingProjectRoot.size());
 
+        ImGui::Spacing();
         ImGui::Separator();
-        if (ImGui::Button("Add"))
+        const float buttonWidth = 96.0f;
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth * 2.0f - ImGui::GetStyle().ItemSpacing.x -
+                             ImGui::GetStyle().WindowPadding.x);
+        if (ImGui::Button(ICON_MDI_PLUS "  Add", ImVec2 {buttonWidth, 0.0f}))
         {
             addExistingProject(state);
             if (state.statusMessage.rfind("Added existing project:", 0) == 0)
                 ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel"))
+        if (ImGui::Button("Cancel", ImVec2 {buttonWidth, 0.0f}))
             ImGui::CloseCurrentPopup();
 
         ImGui::EndPopup();
@@ -526,37 +839,55 @@ namespace vultra_app
         state.statusMessage = "Added project: " + project->projectDir.generic_string();
     }
 
-    void ProjectLauncher::createProject(AppState& state)
+    bool ProjectLauncher::createProject(AppState& state)
     {
         namespace fs = std::filesystem;
-
-        const std::string projectName = sanitizeProjectName(m_NewProjectName.data());
-        if (projectName.empty())
-        {
-            state.statusMessage = "Project name is empty.";
-            return;
-        }
 
         const fs::path projectDir = fs::path(m_NewProjectRoot.data()).lexically_normal();
         if (projectDir.empty())
         {
-            state.statusMessage = "Project root is empty.";
-            return;
+            state.statusMessage = "Project folder is empty.";
+            return false;
         }
 
         std::error_code ec;
+        if (!fs::exists(projectDir, ec))
+        {
+            state.statusMessage = "Project folder does not exist: " + projectDir.generic_string();
+            return false;
+        }
+        if (!fs::is_directory(projectDir, ec))
+        {
+            state.statusMessage = "Project path is not a folder: " + projectDir.generic_string();
+            return false;
+        }
+        if (!fs::is_empty(projectDir, ec) || ec)
+        {
+            state.statusMessage =
+                ec ? "Failed to inspect project folder: " + ec.message() :
+                     "Project folder must be empty: " + projectDir.generic_string();
+            return false;
+        }
+
+        const std::string projectName = sanitizeProjectName(projectDir.filename().generic_string());
+        if (projectName.empty())
+        {
+            state.statusMessage = "Project folder name is not a valid project name.";
+            return false;
+        }
+
         const fs::path projectFile = vprojectFileFor(projectDir, projectName);
         if (fs::exists(projectFile, ec))
         {
             state.statusMessage = "Project file already exists: " + projectFile.generic_string();
-            return;
+            return false;
         }
 
         fs::create_directories(projectDir / "resources" / "scenes", ec);
         if (ec)
         {
             state.statusMessage = "Failed to create project: " + ec.message();
-            return;
+            return false;
         }
 
         std::string errorMessage;
@@ -565,17 +896,31 @@ namespace vultra_app
                .name         = projectName,
                .assetRoot    = "resources",
                .defaultScene = "res://scenes/test.vscn",
+               .renderPipeline = "res://render/default.vsrp.lua",
         };
         if (!saveVProject(project, &errorMessage))
         {
             state.statusMessage = "Failed to write .vproject: " + errorMessage;
-            return;
+            return false;
+        }
+        if (!writeDefaultProjectAssets(projectDir, errorMessage))
+        {
+            state.statusMessage = "Failed to write default project assets: " + errorMessage;
+            return false;
         }
 
-        m_NewProjectName[0] = '\0';
         addKnownProject(state, projectDir);
         saveKnownProjects(state);
-        state.statusMessage = "Created project: " + projectDir.generic_string();
+        state.currentProject      = project.projectDir;
+        state.selectedSourceAsset.clear();
+        state.currentProjectName  = project.name;
+        state.currentAssetRoot    = project.assetRoot;
+        state.currentDefaultScene = project.defaultScene;
+        state.currentRenderPipeline = project.renderPipeline;
+        ++state.projectGeneration;
+        state.mode                = AppMode::Editor;
+        state.statusMessage       = "Created project: " + projectDir.generic_string();
+        return true;
     }
 
     void ProjectLauncher::addExistingProject(AppState& state)
@@ -622,6 +967,8 @@ namespace vultra_app
         state.currentProjectName  = project->name;
         state.currentAssetRoot    = project->assetRoot;
         state.currentDefaultScene = project->defaultScene;
+        state.currentRenderPipeline = project->renderPipeline;
+        ++state.projectGeneration;
         state.mode                = AppMode::Editor;
         state.statusMessage       = "Opened project: " + state.currentProject.generic_string();
     }

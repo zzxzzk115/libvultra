@@ -37,7 +37,7 @@ namespace vultra_app
         void addKnownProject(AppState& state, const std::filesystem::path& path);
         void drawCreateProjectPopup(AppState& state);
         void drawAddExistingProjectPopup(AppState& state);
-        void createProject(AppState& state);
+        bool createProject(AppState& state);
         void addExistingProject(AppState& state);
         void removeSelectedProject(AppState& state);
         void openSelectedProject(AppState& state);
@@ -45,7 +45,6 @@ namespace vultra_app
         bool                               m_HasScannedProjects {false};
         int                                m_SelectedProject {-1};
         std::array<char, 128>              m_SearchQuery {};
-        std::array<char, 128>              m_NewProjectName {};
         std::array<char, 260>              m_NewProjectRoot {"."};
         std::array<char, 260>              m_ExistingProjectRoot {};
         ui::FileDialogField                m_ProjectRootDialog {

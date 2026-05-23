@@ -38,6 +38,7 @@ namespace vultra_app
         void retireRenderTarget(RenderTargetSlot& slot);
         void collectRetiredRenderTargets(EditorContext& ctx);
         void releaseRenderTarget(EditorContext& ctx);
+        void resetRenderTargetsForProject(EditorContext& ctx);
 
         float m_UserZoom {1.0f};
         float m_MinZoom {1.0f};
@@ -47,5 +48,6 @@ namespace vultra_app
         RenderTargetSlot              m_ActiveRenderTarget;
         RenderTargetSlot              m_PendingRenderTarget;
         std::vector<RenderTargetSlot> m_RetiredRenderTargets;
+        uint64_t                      m_ProjectGeneration {0};
     };
 } // namespace vultra_app

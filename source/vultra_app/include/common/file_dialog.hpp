@@ -27,4 +27,5 @@ namespace vultra_app::ui
         std::string    m_Title;
         FileDialogMode m_Mode {FileDialogMode::Directory};
     };
+
 } // namespace vultra_app::ui

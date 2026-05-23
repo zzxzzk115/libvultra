@@ -106,6 +106,32 @@ namespace
         vultra_app::EditorApp&       m_Editor;
     };
 
+    void addShellCamera(vbase::ServiceRegistry& services)
+    {
+        auto* cameraService = services.tryGet<vultra::ICameraService>();
+        auto* windowService = services.tryGet<IWindowService>();
+        if (!cameraService || !windowService)
+            return;
+
+        const auto extent = windowService->window().getExtent();
+        const float width  = static_cast<float>(std::max(extent.x, 1));
+        const float height = static_cast<float>(std::max(extent.y, 1));
+        vultra::RenderCamera shellCamera {};
+        shellCamera.name        = "Vultra Editor UI";
+        shellCamera.priority    = 1000;
+        shellCamera.view        = glm::lookAt(glm::vec3 {0.0f, 0.0f, 1.0f},
+                                       glm::vec3 {0.0f, 0.0f, 0.0f},
+                                       glm::vec3 {0.0f, 1.0f, 0.0f});
+        shellCamera.projection  = glm::perspectiveRH_ZO(glm::radians(60.0f), width / height, 0.1f, 1000.0f);
+        shellCamera.zNear       = 0.1f;
+        shellCamera.zFar        = 1000.0f;
+        shellCamera.fovY        = glm::radians(60.0f);
+        shellCamera.clearValue  = {0.018f, 0.02f, 0.026f, 1.0f};
+        shellCamera.renderImGui = true;
+        shellCamera.rendererKey = "universal";
+        cameraService->addManualCamera(shellCamera);
+    }
+
     class VultraStandaloneApp final : public vultra::DemoAppHost
     {
     public:
@@ -124,6 +150,7 @@ namespace
                         m_State.currentProjectName  = project->name;
                         m_State.currentAssetRoot    = project->assetRoot;
                         m_State.currentDefaultScene = project->defaultScene;
+                        m_State.currentRenderPipeline = project->renderPipeline;
                     }
                 }
             }
@@ -233,6 +260,28 @@ namespace
             sceneService.instantiateScene(worldService.world(), m_Options.sceneUri);
 
             VULTRA_CLIENT_INFO("[Vultra] Loaded scene '{}' from VPK '{}'", m_Options.sceneUri, m_VpkPath->generic_string());
+        }
+
+        void onBeforeEngineTick(vultra::fsec /*dt*/) override
+        {
+            if (m_State.mode == vultra_app::AppMode::Runtime)
+                return;
+
+            vultra_app::EditorContext ctx {.state = m_State, .services = &engineCtx().services};
+            if (auto* cameraService = engineCtx().services.tryGet<vultra::ICameraService>())
+                cameraService->setWorldCamerasEnabled(false);
+
+            if (m_State.editorShutdownRequested && m_State.mode != vultra_app::AppMode::Editor)
+            {
+                m_Editor.shutdown(ctx);
+                if (auto* cameraService = engineCtx().services.tryGet<vultra::ICameraService>())
+                    cameraService->clearManualCameras();
+                addShellCamera(engineCtx().services);
+                return;
+            }
+
+            if (m_State.mode == vultra_app::AppMode::Editor)
+                m_Editor.tick(ctx);
         }
 
         void onBeforeShutdown(vultra::Engine& engine) override

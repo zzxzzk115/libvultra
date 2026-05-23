@@ -334,7 +334,7 @@ namespace vultra
 
     std::shared_ptr<const SceneDocument> SceneSystem::loadSceneSync(std::string_view uri)
     {
-        const std::string key(uri);
+        const std::string key = toPath(uri).lexically_normal().generic_string();
         if (auto it = m_Cache.find(key); it != m_Cache.end())
             return it->second;
 

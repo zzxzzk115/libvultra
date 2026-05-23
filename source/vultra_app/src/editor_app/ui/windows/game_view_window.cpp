@@ -9,6 +9,7 @@
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
+#include <vultra/function/world/components/hierarchy_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
@@ -32,6 +33,20 @@ namespace vultra_app
         {
             return glm::translate(glm::mat4 {1.0f}, transform.position) * glm::mat4_cast(transform.rotation) *
                    glm::scale(glm::mat4 {1.0f}, transform.scale);
+        }
+
+        glm::mat4 makeWorldTransformMatrix(const entt::registry& reg, const entt::entity entity)
+        {
+            const auto* transform = reg.try_get<vultra::TransformComponent>(entity);
+            if (!transform)
+                return glm::mat4 {1.0f};
+
+            const auto local = makeTransformMatrix(*transform);
+            const auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(entity);
+            if (!hierarchy || hierarchy->parent == entt::null || !reg.valid(hierarchy->parent))
+                return local;
+
+            return makeWorldTransformMatrix(reg, hierarchy->parent) * local;
         }
 
         glm::mat4 makeProjection(const vultra::CameraComponent& camera, const float aspect)
@@ -77,14 +92,13 @@ namespace vultra_app
         {
             auto& reg       = world.registry();
             auto& id        = reg.get<vultra::IDComponent>(entity);
-            auto& transform = reg.get<vultra::TransformComponent>(entity);
             auto& camera    = reg.get<vultra::CameraComponent>(entity);
 
             vultra::RenderCamera out {};
             out.uuid        = id.uuid;
             out.name        = reg.all_of<vultra::NameComponent>(entity) ? reg.get<vultra::NameComponent>(entity).name : "Game Camera";
             out.priority    = camera.priority;
-            out.view        = glm::inverse(makeTransformMatrix(transform));
+            out.view        = glm::inverse(makeWorldTransformMatrix(reg, entity));
             out.projection  = makeProjection(camera, aspect);
             out.zNear       = std::max(camera.zNear, 0.0001f);
             out.zFar        = std::max(camera.zFar, out.zNear + 0.0001f);
@@ -119,6 +133,8 @@ namespace vultra_app
 
     void GameViewWindow::draw(EditorContext& ctx)
     {
+        resetRenderTargetsForProject(ctx);
+
         const bool visible =
             ImGui::Begin(title().c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         ctx.state.gameViewVisible = visible && !ImGui::IsWindowCollapsed();
@@ -186,7 +202,7 @@ namespace vultra_app
 
         if (!hasPrimaryCamera)
         {
-            dl->AddRectFilled(min, max, IM_COL32(15, 17, 21, 210));
+            dl->AddRectFilled(min, max, IM_COL32(15, 17, 21, 255));
             ImGui::SetCursorScreenPos(min);
             ui::emptyState(ICON_MDI_CAMERA_OFF_OUTLINE,
                            "No Primary Camera",
@@ -381,5 +397,16 @@ namespace vultra_app
         m_ActiveRenderTarget  = {};
         m_PendingRenderTarget = {};
         m_RetiredRenderTargets.clear();
+    }
+
+    void GameViewWindow::resetRenderTargetsForProject(EditorContext& ctx)
+    {
+        (void)ctx;
+        if (m_ProjectGeneration == ctx.state.projectGeneration)
+            return;
+
+        retireRenderTarget(m_ActiveRenderTarget);
+        retireRenderTarget(m_PendingRenderTarget);
+        m_ProjectGeneration = ctx.state.projectGeneration;
     }
 } // namespace vultra_app

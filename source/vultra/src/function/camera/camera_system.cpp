@@ -8,6 +8,7 @@
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
+#include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
@@ -126,6 +127,20 @@ namespace vultra
                    glm::scale(glm::mat4 {1.0f}, transform.scale);
         }
 
+        glm::mat4 makeWorldTransformMatrix(const entt::registry& reg, const entt::entity entity)
+        {
+            const auto* transform = reg.try_get<TransformComponent>(entity);
+            if (!transform)
+                return glm::mat4 {1.0f};
+
+            const auto local = makeTransformMatrix(*transform);
+            const auto* hierarchy = reg.try_get<HierarchyComponent>(entity);
+            if (!hierarchy || hierarchy->parent == entt::null || !reg.valid(hierarchy->parent))
+                return local;
+
+            return makeWorldTransformMatrix(reg, hierarchy->parent) * local;
+        }
+
         glm::mat4 makeProjectionMatrix(const CameraComponent& camera, const float aspect)
         {
             const float zNear = std::max(camera.zNear, 0.0001f);
@@ -192,56 +207,58 @@ namespace vultra
             ecsCameraCount = worldService->world().registry().view<IDComponent, TransformComponent, CameraComponent>().size_hint();
         m_Cooked.reserve((ecsCameraCount + m_Manual.size()) * viewMultiplier);
 
-        if (auto* worldService = ctx().services.tryGet<IWorldService>())
+        if (m_WorldCamerasEnabled)
         {
-            auto&      world = worldService->world();
-            auto&      reg   = world.registry();
-            const auto extent = backendService ? backendService->backbuffer().getExtent() : rhi::Extent2D {1u, 1u};
-            const float aspect =
-                static_cast<float>(std::max(extent.width, 1u)) / static_cast<float>(std::max(extent.height, 1u));
-
-            auto view = reg.view<IDComponent, TransformComponent, CameraComponent>();
-            for (auto e : view)
+            if (auto* worldService = ctx().services.tryGet<IWorldService>())
             {
-                const auto& id     = view.get<IDComponent>(e);
-                const auto& tr     = view.get<TransformComponent>(e);
-                const auto& camera = view.get<CameraComponent>(e);
-                if (auto* status = reg.try_get<EntityStatusComponent>(e); status && !status->active)
-                    continue;
+                auto&      world = worldService->world();
+                auto&      reg   = world.registry();
+                const auto extent = backendService ? backendService->backbuffer().getExtent() : rhi::Extent2D {1u, 1u};
+                const float aspect =
+                    static_cast<float>(std::max(extent.width, 1u)) / static_cast<float>(std::max(extent.height, 1u));
 
-                RenderCamera cam {};
-                cam.uuid        = id.uuid;
-                cam.name        = reg.all_of<NameComponent>(e) ? reg.get<NameComponent>(e).name : "Camera";
-                cam.priority    = camera.priority;
-                cam.view        = glm::inverse(makeTransformMatrix(tr));
-                cam.projection  = makeProjectionMatrix(camera, aspect);
-                cam.zNear       = std::max(camera.zNear, 0.0001f);
-                cam.zFar        = std::max(camera.zFar, cam.zNear + 0.0001f);
-                cam.fovY        = glm::radians(camera.fovYDegrees);
-                cam.clearValue  = camera.clearColor;
-                cam.renderImGui = false;
-                cam.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
-
-                if (!xrEyeViews.empty())
+                auto view = reg.view<IDComponent, TransformComponent, CameraComponent>();
+                for (auto e : view)
                 {
-                    for (const auto& eyeView : xrEyeViews)
-                    {
-                        RenderCamera eyeCam = cam;
-                        eyeCam.view            = eyeView.view;
-                        eyeCam.projection      = eyeView.projection;
-                        eyeCam.target          = eyeView.target;
-                        eyeCam.viewIndex       = eyeView.eyeIndex;
-                        eyeCam.viewCount       = static_cast<uint32_t>(xrEyeViews.size());
-                        eyeCam.isXRView        = true;
-                        eyeCam.isXRPrimaryView = eyeView.eyeIndex == 0u;
-                        finalizeCamera(eyeCam);
-                        m_Cooked.push_back(std::move(eyeCam));
-                    }
-                    continue;
-                }
+                    const auto& id     = view.get<IDComponent>(e);
+                    const auto& camera = view.get<CameraComponent>(e);
+                    if (auto* status = reg.try_get<EntityStatusComponent>(e); status && !status->active)
+                        continue;
 
-                finalizeCamera(cam);
-                m_Cooked.push_back(std::move(cam));
+                    RenderCamera cam {};
+                    cam.uuid        = id.uuid;
+                    cam.name        = reg.all_of<NameComponent>(e) ? reg.get<NameComponent>(e).name : "Camera";
+                    cam.priority    = camera.priority;
+                    cam.view        = glm::inverse(makeWorldTransformMatrix(reg, e));
+                    cam.projection  = makeProjectionMatrix(camera, aspect);
+                    cam.zNear       = std::max(camera.zNear, 0.0001f);
+                    cam.zFar        = std::max(camera.zFar, cam.zNear + 0.0001f);
+                    cam.fovY        = glm::radians(camera.fovYDegrees);
+                    cam.clearValue  = camera.clearColor;
+                    cam.renderImGui = false;
+                    cam.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
+
+                    if (!xrEyeViews.empty())
+                    {
+                        for (const auto& eyeView : xrEyeViews)
+                        {
+                            RenderCamera eyeCam = cam;
+                            eyeCam.view            = eyeView.view;
+                            eyeCam.projection      = eyeView.projection;
+                            eyeCam.target          = eyeView.target;
+                            eyeCam.viewIndex       = eyeView.eyeIndex;
+                            eyeCam.viewCount       = static_cast<uint32_t>(xrEyeViews.size());
+                            eyeCam.isXRView        = true;
+                            eyeCam.isXRPrimaryView = eyeView.eyeIndex == 0u;
+                            finalizeCamera(eyeCam);
+                            m_Cooked.push_back(std::move(eyeCam));
+                        }
+                        continue;
+                    }
+
+                    finalizeCamera(cam);
+                    m_Cooked.push_back(std::move(cam));
+                }
             }
         }
 
@@ -279,6 +296,8 @@ namespace vultra
     }
 
     void CameraSystem::clearManualCameras() { m_Manual.clear(); }
+
+    void CameraSystem::setWorldCamerasEnabled(const bool enabled) { m_WorldCamerasEnabled = enabled; }
 
     RenderCamera& CameraSystem::addManualCamera(const RenderCamera& cam)
     {

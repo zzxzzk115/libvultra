@@ -767,11 +767,30 @@ namespace vultra
         if (m_InRenderFrame)
         {
             m_PendingRenderPipelineReload = true;
+            m_PendingRenderPipelineAsset.clear();
+            m_PendingRenderPipelineRendererKey.clear();
             VULTRA_CORE_INFO("[RenderSystem] Queued render pipeline reload for next frame");
             return true;
         }
 
         return reloadRenderPipelineNow();
+    }
+
+    bool RenderSystem::reloadRenderPipeline(std::string_view asset, std::string_view rendererKey)
+    {
+        if (asset.empty())
+            return false;
+
+        if (m_InRenderFrame)
+        {
+            m_PendingRenderPipelineReload = true;
+            m_PendingRenderPipelineAsset = std::string {asset};
+            m_PendingRenderPipelineRendererKey = rendererKey.empty() ? std::string {"project"} : std::string {rendererKey};
+            VULTRA_CORE_INFO("[RenderSystem] Queued render pipeline reload for next frame");
+            return true;
+        }
+
+        return reloadRenderPipelineNow(asset, rendererKey);
     }
 
     bool RenderSystem::reloadRenderPipelineNow()
@@ -795,6 +814,28 @@ namespace vultra
         m_DefaultRendererKey = rendererKey;
         m_PendingRenderPipelineReload = false;
         VULTRA_CORE_INFO("[RenderSystem] Reloaded render pipeline '{}'", renderConfig.renderPipelineAsset);
+        return true;
+    }
+
+    bool RenderSystem::reloadRenderPipelineNow(std::string_view asset, std::string_view rendererKey)
+    {
+        if (asset.empty())
+            return false;
+
+        if (auto* backendService = ctx().services.tryGet<IRenderBackendService>())
+            backendService->renderDevice().waitIdle();
+
+        auto key = rendererKey.empty() ? std::string {"project"} : std::string {rendererKey};
+        auto renderer = createRef<DeclarativeRenderer>(std::string {asset});
+        Services services = ctx().services;
+        renderer->setupServices(services);
+        renderer->init();
+        m_Renderers[key] = std::move(renderer);
+        m_DefaultRendererKey = std::move(key);
+        m_PendingRenderPipelineReload = false;
+        m_PendingRenderPipelineAsset.clear();
+        m_PendingRenderPipelineRendererKey.clear();
+        VULTRA_CORE_INFO("[RenderSystem] Reloaded render pipeline '{}'", asset);
         return true;
     }
 
@@ -826,7 +867,12 @@ namespace vultra
         auto& rd = backendService.renderDevice();
 
         if (m_PendingRenderPipelineReload)
-            reloadRenderPipelineNow();
+        {
+            if (m_PendingRenderPipelineAsset.empty())
+                reloadRenderPipelineNow();
+            else
+                reloadRenderPipelineNow(m_PendingRenderPipelineAsset, m_PendingRenderPipelineRendererKey);
+        }
 
         m_RuntimeProfiler.beginFrame(m_FrameCounter);
         m_LastFrameGraphSnapshot.clear();
@@ -1344,7 +1390,7 @@ namespace vultra
             HasFlagValues(rd.getFeatureReport().flags, rhi::RenderDeviceFeatureReportFlagBits::eMultiview);
         const auto xrEyeViews               = backendService.xrEyeViews();
         bool       skipRemainingStereoViews = false;
-        bool       backbufferClearedThisFrame = false;
+        std::unordered_set<rhi::Texture*> clearedTargetsThisFrame;
         m_RuntimeProfiler.setGpuScopeCpuFallback(rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU);
 
         if (isTrackyGpuProfilerEnabled())
@@ -1427,14 +1473,9 @@ namespace vultra
             if (!cam.isXRView || cam.isXRPrimaryView)
                 skipRemainingStereoViews = false;
 
-            auto renderer = resolveRenderer(cam);
-            if (!renderer)
-                continue;
-
             FrameGraph             fg {};
             FrameGraphBlackboard   bb {};
             FrameGraphDataRegistry dataRegistry {};
-            const bool             useFrameGraph = renderer->usesFrameGraph();
 
             const bool canUseXrMultiview = supportsMultiview && cam.isXRView && cam.isXRPrimaryView &&
                                            cam.viewCount == 2u && m_RenderWorldFront.instances.empty() &&
@@ -1488,19 +1529,28 @@ namespace vultra
                 .framebufferInfo = fbInfo,
             };
 
-            // Fallback clear for backbuffer cameras.
+            // Fallback clear for camera targets.
             // This guarantees a deterministic background even when renderer contributes no color pass
-            // (e.g. pure ImGui examples with no framegraph features).
-            if (isBackbufferTarget && !backbufferClearedThisFrame)
+            // (e.g. pure ImGui examples or empty editor view render targets).
+            if (clearedTargetsThisFrame.insert(target).second)
             {
                 clearColorTarget(cb,
                                  *target,
                                  renderArea,
                                  viewCamera.clearValue,
                                  canUseXrMultiview,
-                                 0x3u);
-                backbufferClearedThisFrame = true;
+                                 canUseXrMultiview ? 0x3u : 0u);
             }
+
+            auto renderer = resolveRenderer(cam);
+            if (!renderer)
+            {
+                if (static_cast<bool>(target->getUsageFlags() & rhi::ImageUsage::eSampled))
+                    rhi::prepareForReading(cb, *target);
+                continue;
+            }
+
+            const bool useFrameGraph = renderer->usesFrameGraph();
 
             {
                 ImmediateResourceUploader immediateUploader {m_FrameResources, rd};

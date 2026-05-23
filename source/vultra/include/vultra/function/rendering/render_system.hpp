@@ -49,6 +49,7 @@ namespace vultra
         void renderFrame() override;
         void onResize(uint32_t width, uint32_t height) override;
         bool reloadRenderPipeline() override;
+        bool reloadRenderPipeline(std::string_view asset, std::string_view rendererKey = "project") override;
 
         // Optional: set default renderer key used if camera.rendererKey not found
         void setDefaultRendererKey(std::string key) { m_DefaultRendererKey = std::move(key); }
@@ -69,11 +70,14 @@ namespace vultra
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
         bool          reloadRenderPipelineNow();
+        bool          reloadRenderPipelineNow(std::string_view asset, std::string_view rendererKey);
 
     private:
         bool m_SkipRender {false};
         bool m_InRenderFrame {false};
         bool m_PendingRenderPipelineReload {false};
+        std::string m_PendingRenderPipelineAsset;
+        std::string m_PendingRenderPipelineRendererKey;
 
         std::unordered_map<std::string, Ref<Renderer>> m_Renderers;
         std::string                                    m_DefaultRendererKey {"builtin"};

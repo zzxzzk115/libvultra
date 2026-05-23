@@ -10,6 +10,7 @@
 #include <imgui.h>
 
 #include <filesystem>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -42,6 +43,7 @@ namespace vultra_app::ui
         };
 
         std::string textureUriFor(EditorContext& ctx, const std::filesystem::path& path) const;
+        void        syncProject(EditorContext& ctx);
 
         std::unordered_map<std::string, vultra::AssetHandle<vasset::VTexture, vultra::resource::GpuTexture>>
             m_TextureHandles;
@@ -49,5 +51,6 @@ namespace vultra_app::ui
         std::unordered_map<std::string, BuiltinIconTexture> m_BuiltinIcons;
         std::vector<std::string>                     m_LruUris;
         std::string                                  m_LastError;
+        uint64_t                                     m_ProjectGeneration {0};
     };
 } // namespace vultra_app::ui

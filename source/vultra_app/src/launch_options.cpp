@@ -8,6 +8,16 @@ namespace vultra_app
 {
     namespace
     {
+#ifndef VULTRA_APP_DEFAULT_VALIDATION
+#define VULTRA_APP_DEFAULT_VALIDATION 0
+#endif
+#ifndef VULTRA_APP_DEFAULT_DEBUG_MARKERS
+#define VULTRA_APP_DEFAULT_DEBUG_MARKERS 0
+#endif
+#ifndef VULTRA_APP_DEFAULT_RENDERDOC
+#define VULTRA_APP_DEFAULT_RENDERDOC 0
+#endif
+
         bool isCliCommand(const std::string& arg)
         {
             return arg == "help" || arg == "version" || arg == "pack" || arg == "import" || arg == "validate-vpk";
@@ -17,6 +27,9 @@ namespace vultra_app
     LaunchOptions parseLaunchOptions(std::span<const std::string> args)
     {
         LaunchOptions options;
+        options.validation   = VULTRA_APP_DEFAULT_VALIDATION != 0;
+        options.debugMarkers = VULTRA_APP_DEFAULT_DEBUG_MARKERS != 0;
+        options.renderDoc    = VULTRA_APP_DEFAULT_RENDERDOC != 0;
         if (!args.empty() && isCliCommand(args.front()))
         {
             options.cliOnly    = true;

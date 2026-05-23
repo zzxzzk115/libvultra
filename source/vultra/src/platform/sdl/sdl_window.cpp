@@ -456,6 +456,24 @@ namespace vultra::platform::sdl
         return *this;
     }
 
+    os::Window& SDLWindow::centerOnScreen()
+    {
+        if (!m_WindowHandle)
+            return *this;
+
+        SDL_DisplayID display = SDL_GetDisplayForWindow(m_WindowHandle);
+        if (display == 0)
+            display = SDL_GetPrimaryDisplay();
+
+        SDL_Rect usableBounds {};
+        if (!SDL_GetDisplayUsableBounds(display, &usableBounds))
+            return *this;
+
+        syncWindowMetrics(m_WindowHandle, m_Extent, m_FrameBufferExtent);
+        return setPosition({usableBounds.x + (usableBounds.w - m_Extent.x) / 2,
+                            usableBounds.y + (usableBounds.h - m_Extent.y) / 2});
+    }
+
     float SDLWindow::getDisplayScale() const { return sanitizeScale(SDL_GetWindowDisplayScale(m_WindowHandle)); }
 
     bool SDLWindow::isMaximized() const

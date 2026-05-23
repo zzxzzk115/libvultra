@@ -148,6 +148,7 @@ namespace vultra
             virtual Window& setFullscreen(bool fullscreen)               = 0;
             virtual Window& setDecorated(bool decorated)                 = 0;
             virtual Window& setVisible(bool visible)                     = 0;
+            virtual Window& centerOnScreen()                             = 0;
 
             [[nodiscard]] virtual std::string_view getTitle() const             = 0;
             [[nodiscard]] virtual Extent           getExtent() const            = 0;

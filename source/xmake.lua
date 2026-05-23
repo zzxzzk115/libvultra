@@ -273,8 +273,23 @@ if not is_plat("android") and not is_plat("wasm") then
         add_files("vultra_app/src/**.cpp")
         add_deps("vultra")
         add_packages("argparse")
+        if has_config("vultra_app_validation") then
+            add_defines("VULTRA_APP_DEFAULT_VALIDATION=1")
+        else
+            add_defines("VULTRA_APP_DEFAULT_VALIDATION=0")
+        end
+        if has_config("vultra_app_debug_markers") then
+            add_defines("VULTRA_APP_DEFAULT_DEBUG_MARKERS=1")
+        else
+            add_defines("VULTRA_APP_DEFAULT_DEBUG_MARKERS=0")
+        end
+        if has_config("vultra_app_renderdoc") then
+            add_defines("VULTRA_APP_DEFAULT_RENDERDOC=1")
+        else
+            add_defines("VULTRA_APP_DEFAULT_RENDERDOC=0")
+        end
         set_rundir("$(projectdir)")
-        set_runargs("--editor", "--project", "$(projectdir)/example.vproject", "--validation", "--debug-markers", "--renderdoc")
+        set_runargs("--editor", "--project", "$(projectdir)/example.vproject")
         set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra-app")
         after_build(function (target)
             local stale_imgui_ini = path.join(target:targetdir(), "imgui.ini")

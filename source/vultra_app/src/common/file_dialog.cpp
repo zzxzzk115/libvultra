@@ -1,4 +1,5 @@
 #include "common/file_dialog.hpp"
+#include "common/ui_widgets.hpp"
 
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <imgui.h>
@@ -26,6 +27,28 @@ namespace vultra_app::ui
             return nullptr;
         }
 
+        ImGuiFileDialogFlags dialogFlags()
+        {
+            return ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
+                   ImGuiFileDialogFlags_HideColumnSize | ImGuiFileDialogFlags_HideColumnDate |
+                   ImGuiFileDialogFlags_DontShowHiddenFiles |
+                   ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering | ImGuiFileDialogFlags_NaturalSorting |
+                   ImGuiFileDialogFlags_DisableThumbnailMode;
+        }
+
+        void configureFileDialogStyles()
+        {
+            static bool configured = false;
+            if (configured)
+                return;
+
+            auto* dialog = ImGuiFileDialog::Instance();
+            dialog->SetFileStyle(IGFD_FileStyleByTypeDir, nullptr, ImVec4 {0.36f, 0.68f, 1.00f, 1.0f});
+            dialog->SetFileStyle(IGFD_FileStyleByExtention, ".lua", ImVec4 {0.52f, 0.82f, 1.00f, 1.0f});
+            dialog->SetFileStyle(IGFD_FileStyleByExtention, ".vproject", ImVec4 {0.42f, 0.88f, 0.62f, 1.0f});
+            configured = true;
+        }
+
         std::filesystem::path pathForDialogStart(const char* value)
         {
             if (value == nullptr || value[0] == '\0')
@@ -51,6 +74,7 @@ namespace vultra_app::ui
     FileDialogField::FileDialogField(std::string key, std::string title, FileDialogMode mode) :
         m_Key(std::move(key)), m_Title(std::move(title)), m_Mode(mode)
     {
+        configureFileDialogStyles();
     }
 
     bool FileDialogField::draw(const char* label, char* buffer, std::size_t bufferSize)
@@ -68,14 +92,16 @@ namespace vultra_app::ui
     {
         IGFD::FileDialogConfig config;
         config.path  = pathForDialogStart(currentValue).generic_string();
-        config.flags = ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
-                       ImGuiFileDialogFlags_DontShowHiddenFiles;
+        config.flags = dialogFlags();
         ImGuiFileDialog::Instance()->OpenDialog(m_Key, m_Title, filtersFor(m_Mode), config);
     }
 
     bool FileDialogField::display(char* buffer, std::size_t bufferSize)
     {
-        if (!ImGuiFileDialog::Instance()->Display(m_Key, ImGuiWindowFlags_NoCollapse, ImVec2(560.0f, 360.0f)))
+        ScopedPopupStyle style;
+        if (!ImGuiFileDialog::Instance()->Display(m_Key,
+                                                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
+                                                  ImVec2(640.0f, 420.0f)))
             return false;
 
         bool changed = false;
@@ -96,4 +122,5 @@ namespace vultra_app::ui
         ImGuiFileDialog::Instance()->Close();
         return changed;
     }
+
 } // namespace vultra_app::ui
