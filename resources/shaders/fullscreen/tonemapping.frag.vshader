@@ -2,11 +2,14 @@
 language = glsl
 version = 460
 
+[properties]
+exposure : float = 1.0
+method : enum(neutral=0,aces=1,reinhard=2) = neutral
+
 [frag]
 layout (location = 0) in vec2 v_TexCoord;
 layout (location = 0) out vec4 FragColor;
 
-// @param_enum method Khronos PBR Neutral=0, ACES=1, Reinhard=2
 layout (set = 3, binding = 0) uniform sampler2D t_0;
 
 layout (push_constant) uniform TonemappingPushConstants

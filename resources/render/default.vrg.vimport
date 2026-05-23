@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="render_graph_json"
+uid="ea16e70618b801aaf6cd8f73bfd5742f"
+
+[source]
+file="render/default.vrg.json"
+
+[output]
+file="imported/render_graph_json/render/default.vrg.json"
+
+[params]

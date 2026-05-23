@@ -389,7 +389,7 @@ namespace vultra_app
                                  topBarCtx.state.codeEditorPath.clear();
                                  topBarCtx.state.currentAssetRoot    = "resources";
                                  topBarCtx.state.currentDefaultScene = "res://scenes/test.vscn";
-                                 topBarCtx.state.currentRenderPipeline = "res://render/default.vsrp.lua";
+                                 topBarCtx.state.currentRenderPipeline = "res://render/default.vrg.json";
                                  ++topBarCtx.state.projectGeneration;
                                  topBarCtx.state.editorPlaying       = false;
                                  topBarCtx.state.editorPaused        = false;

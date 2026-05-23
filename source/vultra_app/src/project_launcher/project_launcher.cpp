@@ -150,32 +150,25 @@ CameraComponent/priority = 0
 CameraComponent/rendererKey = "universal"
 )";
 
-            constexpr std::string_view kDefaultSrp = R"(return RenderPipelineAsset {
-    rendererKey = "universal",
-    shaderLibraries = {
-        project = "res://shaders/project.vshaderlib.lua",
-    },
-    features = {
-        "compatibility_basecolor",
-        "res://render/graphs/tonemapping.vrg.json",
-        "final_composition",
-    }
-}
-)";
-
-            constexpr std::string_view kTonemappingGraph = R"({
+            constexpr std::string_view kDefaultRenderGraph = R"({
   "meta": {
     "editor": {
       "nodes": {
-        "Tonemapping": {
-          "pos": [
-            680.0,
-            77.0
-          ]
-        },
-        "resource:final_composition_source": {
+        "CompatibilityBaseColor": {
           "pos": [
             260.0,
+            80.0
+          ]
+        },
+        "Tonemapping": {
+          "pos": [
+            620.0,
+            80.0
+          ]
+        },
+        "FinalComposition": {
+          "pos": [
+            980.0,
             80.0
           ]
         }
@@ -185,9 +178,17 @@ CameraComponent/rendererKey = "universal"
   "passes": [
     {
       "enabled": true,
+      "id": "CompatibilityBaseColor",
+      "outputs": {
+        "color": "CompatibilityBaseColor.color"
+      },
+      "type": "CompatibilityBaseColor"
+    },
+    {
+      "enabled": true,
       "id": "Tonemapping",
       "inputs": {
-        "source": "final_composition_source"
+        "source": "CompatibilityBaseColor.color"
       },
       "outputs": {
         "color": "Tonemapping.color"
@@ -198,16 +199,24 @@ CameraComponent/rendererKey = "universal"
         "library": "project",
         "method": 0,
         "name": "Tonemapping",
-        "publish": "final_composition_source",
         "pushConstants": true,
         "vertex": "fullscreen_triangle.vert"
       },
       "type": "FullscreenShader"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "Tonemapping.color"
+      },
+      "outputs": {
+        "target": "FinalComposition.target"
+      },
+      "type": "FinalComposition"
     }
   ],
-  "resources": [
-    "final_composition_source"
-  ]
+  "resources": []
 }
 )";
 
@@ -237,11 +246,14 @@ void main() {
 language = glsl
 version = 460
 
+[properties]
+exposure : float = 1.0
+method : int = 0
+
 [frag]
 layout (location = 0) in vec2 v_TexCoord;
 layout (location = 0) out vec4 FragColor;
 
-// @param_enum method Khronos PBR Neutral=0, ACES=1, Reinhard=2
 layout (set = 3, binding = 0) uniform sampler2D t_0;
 
 layout (push_constant) uniform TonemappingPushConstants
@@ -307,10 +319,7 @@ void main() {
 
             const auto resourcesDir = projectDir / "resources";
             return writeTextFile(resourcesDir / "scenes" / "test.vscn", kSampleScene, errorMessage) &&
-                   writeTextFile(resourcesDir / "render" / "default.vsrp.lua", kDefaultSrp, errorMessage) &&
-                   writeTextFile(resourcesDir / "render" / "graphs" / "tonemapping.vrg.json",
-                                 kTonemappingGraph,
-                                 errorMessage) &&
+                   writeTextFile(resourcesDir / "render" / "default.vrg.json", kDefaultRenderGraph, errorMessage) &&
                    writeTextFile(resourcesDir / "shaders" / "project.vshaderlib.lua", kShaderLibrary, errorMessage) &&
                    writeTextFile(resourcesDir / "shaders" / "fullscreen" / "fullscreen_triangle.vert.vshader",
                                  kFullscreenTriangle,
@@ -517,7 +526,7 @@ void main() {
             state.selectedSourceAsset.clear();
             state.currentAssetRoot    = "resources";
             state.currentDefaultScene = "res://scenes/test.vscn";
-            state.currentRenderPipeline = "res://render/default.vsrp.lua";
+            state.currentRenderPipeline = "res://render/default.vrg.json";
             ++state.projectGeneration;
             state.mode                = AppMode::Editor;
             state.statusMessage       = "Opened a blank editor session.";
@@ -893,7 +902,7 @@ void main() {
                .name         = projectName,
                .assetRoot    = "resources",
                .defaultScene = "res://scenes/test.vscn",
-               .renderPipeline = "res://render/default.vsrp.lua",
+               .renderPipeline = "res://render/default.vrg.json",
         };
         if (!saveVProject(project, &errorMessage))
         {

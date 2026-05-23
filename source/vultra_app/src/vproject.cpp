@@ -125,7 +125,7 @@ namespace vultra_app
         if (project.defaultScene.empty())
             project.defaultScene = "res://scenes/test.vscn";
         if (project.renderPipeline.empty())
-            project.renderPipeline = "res://render/default.vsrp.lua";
+            project.renderPipeline = "res://render/default.vrg.json";
 
         return project;
     }
@@ -221,7 +221,7 @@ namespace vultra_app
         if (manifest.entryScene.empty())
             manifest.entryScene = "res://scenes/test.vscn";
         if (manifest.renderPipeline.empty())
-            manifest.renderPipeline = "res://render/default.vsrp.lua";
+            manifest.renderPipeline = "res://render/default.vrg.json";
         return manifest;
     }
 

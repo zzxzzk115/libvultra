@@ -14,6 +14,27 @@
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/build_indirect_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/coarse_instance_cull_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/compatibility_basecolor_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/deferred_lighting_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/depth_pre_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/direct_gbuffer_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/drawset_build_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/final_composition_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/fxaa_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_foveated_composite_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_preprocess_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_render_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/hbao_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/hzb_generate_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/meshlet_cull_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/meshlet_hiz_cull_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/shadow_map_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/thin_gbuffer_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/render_service.hpp"
@@ -29,7 +50,9 @@
 #include <cctype>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace vultra
 {
@@ -53,6 +76,32 @@ namespace vultra
             return value;
         }
 
+        struct RenderGraphResRef
+        {
+            std::string node;
+            std::string slot;
+        };
+
+        [[nodiscard]] std::optional<RenderGraphResRef> parseRenderGraphResRef(std::string_view ref)
+        {
+            if (ref.empty())
+                return std::nullopt;
+
+            const auto dot = ref.find('.');
+            if (dot == std::string_view::npos)
+                return RenderGraphResRef {std::string(ref), "out"};
+            if (dot == 0 || dot + 1 >= ref.size())
+                return std::nullopt;
+            return RenderGraphResRef {std::string(ref.substr(0, dot)), std::string(ref.substr(dot + 1))};
+        }
+
+        [[nodiscard]] std::string makeRenderGraphResRef(std::string_view node, std::string_view slot)
+        {
+            if (slot == "out")
+                return std::string(node);
+            return std::string(node) + "." + std::string(slot);
+        }
+
         [[nodiscard]] FrameGraphResourceKey resourceKeyFor(std::string_view name)
         {
             const auto normalized = normalizeId(std::string(name));
@@ -60,6 +109,24 @@ namespace vultra
                 return kResKey_FinalCompositionSource;
             if (normalized == "depth" || normalized == "depth_texture")
                 return kResKey_DepthTexture;
+            if (normalized == "gbuffer_color")
+                return kResKey_GBufferColor;
+            if (normalized == "gbuffer_normal" || normalized == "normal")
+                return kResKey_GBufferNormal;
+            if (normalized == "gbuffer_material" || normalized == "material")
+                return kResKey_GBufferMetallicRoughnessAO;
+            if (normalized == "gbuffer_entity_id" || normalized == "entity_id" || normalized == "entityid")
+                return kResKey_GBufferEntityId;
+            if (normalized == "hbao" || normalized == "ao")
+                return kResKey_HbaoTexture;
+            if (normalized == "ssr" || normalized == "reflection")
+                return kResKey_SsrTexture;
+            if (normalized == "visibility")
+                return kResKey_VisibilityBuffer;
+            if (normalized == "shadow_map" || normalized == "shadowmap")
+                return kResKey_ShadowMap;
+            if (normalized == "shadow_data" || normalized == "shadowdata")
+                return kResKey_ShadowData;
             return FrameGraphResourceKey {.id = vbase::hashString(normalized)};
         }
 
@@ -282,8 +349,18 @@ namespace vultra
             if (!m_ShaderLibrary)
                 return std::nullopt;
 
-            const auto hash = rhi::ShaderLibraryRuntime::computeVariantHash(shaderId, stage, {});
-            auto       shader = m_ShaderLibrary->load(hash, stage);
+            std::vector<std::string> shaderIds {shaderId};
+            if (shaderId.find('/') == std::string::npos && shaderId.find('\\') == std::string::npos)
+                shaderIds.push_back("fullscreen/" + shaderId);
+
+            std::optional<rhi::ShaderLibraryRuntime::LoadedShader> shader;
+            for (const auto& id : shaderIds)
+            {
+                const auto hash = rhi::ShaderLibraryRuntime::computeVariantHash(id, stage, {});
+                shader = m_ShaderLibrary->load(hash, stage);
+                if (shader)
+                    break;
+            }
             if (!shader)
                 VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to load shader '{}' for pass '{}'",
                                   shaderId,
@@ -309,13 +386,21 @@ namespace vultra
 
         void build(FrameGraphBuildContext& ctx)
         {
-            vrendergraph::RenderGraphDesc activeDesc = m_Desc;
-            activeDesc.passes.erase(std::remove_if(activeDesc.passes.begin(),
-                                                   activeDesc.passes.end(),
-                                                   [](const auto& pass) { return !pass.enabled; }),
-                                    activeDesc.passes.end());
+            vrendergraph::RenderGraphDesc activeDesc = makeActiveGraphWithPassthrough(m_Desc);
             if (activeDesc.passes.empty())
                 return;
+
+            std::string validationError;
+            if (!validateActiveGraph(activeDesc, validationError))
+            {
+                if (validationError != m_LastValidationError)
+                {
+                    VULTRA_CORE_ERROR("[DeclarativeRenderer] Invalid render graph '{}': {}", m_Uri, validationError);
+                    m_LastValidationError = validationError;
+                }
+                return;
+            }
+            m_LastValidationError.clear();
 
             vrendergraph::RenderGraph graph {
                 m_Registry,
@@ -332,6 +417,159 @@ namespace vultra
         }
 
     private:
+        vrendergraph::RenderGraphDesc makeActiveGraphWithPassthrough(const vrendergraph::RenderGraphDesc& desc) const
+        {
+            auto activeDesc = desc;
+            bool changed = true;
+            while (changed)
+            {
+                changed = false;
+                for (const auto& pass : activeDesc.passes)
+                {
+                    if (pass.enabled || !m_Registry.contains(pass.type))
+                        continue;
+
+                    const auto& def = m_Registry.get(pass.type);
+                    for (const auto& outputSlot : def.outputs)
+                    {
+                        std::string replacement;
+                        if (auto it = pass.inputs.find(outputSlot); it != pass.inputs.end() && !it->second.empty())
+                            replacement = it->second;
+                        else if (def.inputs.size() == 1)
+                        {
+                            if (auto it = pass.inputs.find(def.inputs.front()); it != pass.inputs.end() && !it->second.empty())
+                                replacement = it->second;
+                        }
+                        if (replacement.empty())
+                            continue;
+
+                        const auto disabledOutput = makeRenderGraphResRef(pass.id, outputSlot);
+                        for (auto& dst : activeDesc.passes)
+                        {
+                            for (auto& [_, ref] : dst.inputs)
+                            {
+                                static_cast<void>(_);
+                                if (ref == disabledOutput)
+                                {
+                                    ref = replacement;
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            activeDesc.passes.erase(std::remove_if(activeDesc.passes.begin(),
+                                                   activeDesc.passes.end(),
+                                                   [](const auto& pass) { return !pass.enabled; }),
+                                    activeDesc.passes.end());
+            return activeDesc;
+        }
+
+        bool validateActiveGraph(const vrendergraph::RenderGraphDesc& desc, std::string& error) const
+        {
+            std::unordered_set<std::string> resources;
+            for (const auto& resource : desc.resources)
+            {
+                if (resource.name.empty())
+                {
+                    error = "external resource has empty name";
+                    return false;
+                }
+                if (!resources.insert(resource.name).second)
+                {
+                    error = "duplicate external resource '" + resource.name + "'";
+                    return false;
+                }
+            }
+
+            std::unordered_map<std::string, const vrendergraph::PassDecl*> passes;
+            for (const auto& pass : desc.passes)
+            {
+                if (pass.id.empty())
+                {
+                    error = "pass has empty id";
+                    return false;
+                }
+                if (!passes.emplace(pass.id, &pass).second)
+                {
+                    error = "duplicate pass '" + pass.id + "'";
+                    return false;
+                }
+                if (!m_Registry.contains(pass.type))
+                {
+                    error = "pass '" + pass.id + "' has unknown type '" + pass.type + "'";
+                    return false;
+                }
+            }
+
+            for (const auto& pass : desc.passes)
+            {
+                const auto& def = m_Registry.get(pass.type);
+                const std::unordered_set<std::string> validInputs(def.inputs.begin(), def.inputs.end());
+                const std::unordered_set<std::string> validOutputs(def.outputs.begin(), def.outputs.end());
+
+                for (const auto& slot : def.inputs)
+                {
+                    const auto it = pass.inputs.find(slot);
+                    if (it == pass.inputs.end() || it->second.empty())
+                    {
+                        error = "pass '" + pass.id + "' input '" + slot + "' is not connected";
+                        return false;
+                    }
+                }
+
+                for (const auto& [slot, ref] : pass.inputs)
+                {
+                    if (!validInputs.contains(slot))
+                    {
+                        error = "pass '" + pass.id + "' has unknown input slot '" + slot + "'";
+                        return false;
+                    }
+
+                    const auto parsed = parseRenderGraphResRef(ref);
+                    if (!parsed)
+                    {
+                        error = "pass '" + pass.id + "' input '" + slot + "' has invalid ref '" + ref + "'";
+                        return false;
+                    }
+
+                    const auto srcPass = passes.find(parsed->node);
+                    if (srcPass == passes.end())
+                    {
+                        if (!resources.contains(parsed->node))
+                        {
+                            error = "pass '" + pass.id + "' input '" + slot + "' references missing node '" +
+                                    parsed->node + "'";
+                            return false;
+                        }
+                        continue;
+                    }
+
+                    const auto& srcDef = m_Registry.get(srcPass->second->type);
+                    if (std::find(srcDef.outputs.begin(), srcDef.outputs.end(), parsed->slot) == srcDef.outputs.end())
+                    {
+                        error = "pass '" + pass.id + "' input '" + slot + "' references missing output '" +
+                                parsed->slot + "' on pass '" + parsed->node + "'";
+                        return false;
+                    }
+                }
+
+                for (const auto& [slot, _] : pass.outputs)
+                {
+                    static_cast<void>(_);
+                    if (!validOutputs.contains(slot))
+                    {
+                        error = "pass '" + pass.id + "' has unknown output slot '" + slot + "'";
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
         void registerPasses()
         {
             m_Registry.registerPass(vrendergraph::PassDefinition {
@@ -390,12 +628,7 @@ namespace vultra
                         const auto input = passCtx.getInput("source");
                         const auto output = runtime->addPass(*ctx, input, {}, false);
                         if (output)
-                        {
                             passCtx.setOutput("color", output);
-                            const auto publish = params.get<std::string>("publish", {});
-                            if (!publish.empty())
-                                ctx->data.set(resourceKeyFor(publish), output);
-                        }
                     },
                 .inputs = {"source"},
                 .outputs = {"color"},
@@ -405,22 +638,420 @@ namespace vultra
                         {.name = "library", .type = vrendergraph::ParamType::eString, .defaultValue = "project"},
                         {.name = "vertex", .type = vrendergraph::ParamType::eString, .defaultValue = "fullscreen_triangle.vert"},
                         {.name = "fragment", .type = vrendergraph::ParamType::eString, .defaultValue = ""},
-                        {.name = "publish", .type = vrendergraph::ParamType::eString, .defaultValue = ""},
                         {.name = "pushConstants", .type = vrendergraph::ParamType::eBoolean, .defaultValue = false},
-                        {.name = "exposure", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f, .minValue = 0.0f, .maxValue = 16.0f},
-                        {.name = "method", .type = vrendergraph::ParamType::eInt, .defaultValue = 0, .minValue = 0, .maxValue = 2},
                     },
             });
+
+            const auto registerBuiltin = [this](std::string type,
+                                                std::vector<std::string> inputs,
+                                                std::vector<std::string> outputs,
+                                                vrendergraph::PassSetupFn setup) {
+                m_Registry.registerPass(vrendergraph::PassDefinition {
+                    .type = std::move(type),
+                    .setup = std::move(setup),
+                    .inputs = std::move(inputs),
+                    .outputs = std::move(outputs),
+                });
+            };
+
+            registerBuiltin("CompatibilityBaseColor", {}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                auto color = m_CompatibilityBaseColorPass.addPass(*ctx);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
+            registerBuiltin("DirectGBuffer", {}, {"color", "depth", "normal", "material", "entityId"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                auto color = m_DirectGBufferPass.addPass(*ctx);
+                                if (color)
+                                {
+                                    passCtx.setOutput("color", color);
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                }
+                                if (auto res = ctx->data.tryGet(kResKey_DepthTexture))
+                                    passCtx.setOutput("depth", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GBufferNormal))
+                                    passCtx.setOutput("normal", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GBufferMetallicRoughnessAO))
+                                    passCtx.setOutput("material", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GBufferEntityId))
+                                    passCtx.setOutput("entityId", res);
+                            });
+
+            registerBuiltin("DepthPre", {}, {"depth"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                m_DepthPrePass.addPass(*ctx);
+                                if (auto depth = ctx->data.tryGet(kResKey_DepthTexture))
+                                    passCtx.setOutput("depth", depth);
+                            });
+
+            registerBuiltin("ShadowMap", {}, {"shadowMap", "shadowData"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                                if (!ctx || !renderService)
+                                    return;
+                                auto settings = renderService->builtinRenderSettings().shadow;
+                                settings.enabled = params.get<bool>("enabled", settings.enabled);
+                                settings.resolution = static_cast<uint32_t>(params.get<int>("resolution", static_cast<int>(settings.resolution)));
+                                settings.cascadeCount = static_cast<uint32_t>(params.get<int>("cascadeCount", static_cast<int>(settings.cascadeCount)));
+                                settings.coverageRadius = params.get<float>("coverageRadius", settings.coverageRadius);
+                                settings.depthBias = params.get<float>("depthBias", settings.depthBias);
+                                settings.normalBias = params.get<float>("normalBias", settings.normalBias);
+                                if (ctx->view().renderWorld)
+                                {
+                                    for (const auto& light : ctx->view().renderWorld->lights)
+                                    {
+                                        if (light.kind == RenderLightKind::eDirectional && light.castsShadow)
+                                        {
+                                            settings.enabled = settings.enabled;
+                                            settings.lightDirection = light.direction;
+                                            break;
+                                        }
+                                    }
+                                }
+                                auto shadow = m_ShadowMapPass.addPass(*ctx, settings);
+                                if (shadow.shadowMap)
+                                    passCtx.setOutput("shadowMap", shadow.shadowMap);
+                                if (shadow.shadowData)
+                                    passCtx.setOutput("shadowData", shadow.shadowData);
+                            });
+
+            registerBuiltin("DeferredLighting", {"color", "normal", "material", "depth", "shadowMap", "shadowData"}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                                if (!ctx || !renderService)
+                                    return;
+                                const auto& settings = renderService->builtinRenderSettings();
+                                auto lightingSettings = settings.pbrLighting;
+                                lightingSettings.ambientIntensity = params.get<float>("ambientIntensity", lightingSettings.ambientIntensity);
+                                lightingSettings.shadowStrength = params.get<float>("shadowStrength", lightingSettings.shadowStrength);
+                                lightingSettings.iblIntensity = params.get<float>("iblIntensity", lightingSettings.iblIntensity);
+                                auto color = m_DeferredLightingPass.addPass(*ctx,
+                                                                            passCtx.getInput("color"),
+                                                                            passCtx.getInput("normal"),
+                                                                            passCtx.getInput("material"),
+                                                                            passCtx.getInput("depth"),
+                                                                            passCtx.getInput("shadowMap"),
+                                                                            passCtx.getInput("shadowData"),
+                                                                            settings.shadow,
+                                                                            lightingSettings,
+                                                                            ctx->view().renderWorld);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
+            registerBuiltin("HzbGenerate", {"depth"}, {"hzb"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                m_HzbGeneratePass.addPass(*ctx, passCtx.getInput("depth"));
+                                if (auto hzb = ctx->data.tryGet(kResKey_HzbTexture))
+                                    passCtx.setOutput("hzb", hzb);
+                            });
+
+            registerBuiltin("Hbao", {"depth", "normal"}, {"ao"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                                if (!ctx || !renderService)
+                                    return;
+                                auto settings = renderService->builtinRenderSettings().hbao;
+                                settings.enabled = params.get<bool>("enabled", settings.enabled);
+                                settings.radius = params.get<float>("radius", settings.radius);
+                                settings.bias = params.get<float>("bias", settings.bias);
+                                settings.intensity = params.get<float>("intensity", settings.intensity);
+                                settings.stepCount = params.get<int>("stepCount", settings.stepCount);
+                                settings.directionCount = params.get<int>("directionCount", settings.directionCount);
+                                auto ao = m_HbaoPass.addPass(*ctx, passCtx.getInput("depth"), passCtx.getInput("normal"), settings);
+                                if (ao)
+                                {
+                                    ctx->data.set(kResKey_HbaoTexture, ao);
+                                    passCtx.setOutput("ao", ao);
+                                }
+                            });
+
+            registerBuiltin("Ssr", {"color", "depth", "normal", "material"}, {"reflection"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                                if (!ctx || !renderService)
+                                    return;
+                                auto settings = renderService->builtinRenderSettings().ssr;
+                                settings.enabled = params.get<bool>("enabled", settings.enabled);
+                                settings.reflectionFactor = params.get<float>("reflectionFactor", settings.reflectionFactor);
+                                settings.maxSteps = params.get<int>("maxSteps", settings.maxSteps);
+                                settings.binaryRefinement = params.get<int>("binaryRefinement", settings.binaryRefinement);
+                                settings.stride = params.get<float>("stride", settings.stride);
+                                settings.thickness = params.get<float>("thickness", settings.thickness);
+                                auto reflection = m_SsrPass.addPass(*ctx,
+                                                                     passCtx.getInput("color"),
+                                                                     passCtx.getInput("depth"),
+                                                                     passCtx.getInput("normal"),
+                                                                     passCtx.getInput("material"),
+                                                                     settings);
+                                if (reflection)
+                                {
+                                    ctx->data.set(kResKey_SsrTexture, reflection);
+                                    passCtx.setOutput("reflection", reflection);
+                                }
+                            });
+
+            registerBuiltin("Fxaa", {"source"}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                if (!params.get<bool>("enabled", true))
+                                {
+                                    passCtx.setOutput("color", passCtx.getInput("source"));
+                                    return;
+                                }
+                                auto color = m_FxaaPass.addPass(*ctx, passCtx.getInput("source"));
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
+            registerBuiltin("SelectionOutline", {"source", "entityId", "depth"}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                                if (!ctx || !renderService)
+                                    return;
+                                auto settings = renderService->builtinRenderSettings().selectionOutline;
+                                settings.enabled = params.get<bool>("enabled", settings.enabled);
+                                settings.thickness = params.get<float>("thickness", settings.thickness);
+                                settings.fillOpacity = params.get<float>("fillOpacity", settings.fillOpacity);
+                                settings.edgeOpacity = params.get<float>("edgeOpacity", settings.edgeOpacity);
+                                auto color = m_SelectionOutlinePass.addPass(*ctx,
+                                                                            passCtx.getInput("source"),
+                                                                            passCtx.getInput("entityId"),
+                                                                            passCtx.getInput("depth"),
+                                                                            settings);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
+            registerBuiltin("FinalComposition", {"source"}, {"target"},
+                            [this](FrameGraph& fg, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx || !ctx->view().target)
+                                    return;
+                                ctx->data.set(kResKey_FinalCompositionSource, passCtx.getInput("source"));
+                                auto target = m_FinalCompositionPass.compose(
+                                    *ctx,
+                                    framegraph::importTexture(fg, "VRenderGraphBackbuffer", ctx->view().target));
+                                if (target)
+                                    passCtx.setOutput("target", target);
+                            });
+
+            registerBuiltin("VisibilityBuffer", {}, {"visibility"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                auto visibility = m_VisibilityBufferPass.addPass(*ctx);
+                                if (visibility)
+                                    passCtx.setOutput("visibility", visibility);
+                            });
+
+            registerBuiltin("ThinGBuffer", {"visibility"}, {"color", "normal", "material"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                auto color = m_ThinGBufferPass.addPass(*ctx, passCtx.getInput("visibility"));
+                                if (color)
+                                    passCtx.setOutput("color", color);
+                                if (auto res = ctx->data.tryGet(kResKey_GBufferNormal))
+                                    passCtx.setOutput("normal", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GBufferMetallicRoughnessAO))
+                                    passCtx.setOutput("material", res);
+                            });
+
+            registerBuiltin("CoarseInstanceCull", {}, {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                m_CoarseInstanceCullPass.addPass(*ctx);
+                                if (auto res = ctx->data.tryGet(kResKey_VisibleInstanceBuffer))
+                                    passCtx.setOutput("visibleInstance", res);
+                                if (auto res = ctx->data.tryGet(kResKey_VisibleInstanceCountBuffer))
+                                    passCtx.setOutput("visibleInstanceCount", res);
+                                if (auto res = ctx->data.tryGet(kResKey_MeshletCullDispatchArgsBuffer))
+                                    passCtx.setOutput("meshletCullDispatchArgs", res);
+                            });
+
+            registerBuiltin("MeshletCull", {}, {"visibleMeshlet", "visibleMeshletCount"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                m_MeshletCullPass.addPass(*ctx);
+                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletBuffer))
+                                    passCtx.setOutput("visibleMeshlet", res);
+                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletCountBuffer))
+                                    passCtx.setOutput("visibleMeshletCount", res);
+                            });
+
+            registerBuiltin("BuildIndirect", {},
+                            {"draw", "instance", "meshTable", "transform", "meshlets", "visibleMeshlet", "visibleMeshletCount", "materialTable"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                m_BuildIndirectPass.addPass(*ctx);
+                                if (auto res = ctx->data.tryGet(kResKey_DrawBuffer))
+                                    passCtx.setOutput("draw", res);
+                                if (auto res = ctx->data.tryGet(kResKey_InstanceBuffer))
+                                    passCtx.setOutput("instance", res);
+                                if (auto res = ctx->data.tryGet(kResKey_MeshTableBuffer))
+                                    passCtx.setOutput("meshTable", res);
+                                if (auto res = ctx->data.tryGet(kResKey_TransformBuffer))
+                                    passCtx.setOutput("transform", res);
+                                if (auto res = ctx->data.tryGet(kResKey_MeshletsBuffer))
+                                    passCtx.setOutput("meshlets", res);
+                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletBuffer))
+                                    passCtx.setOutput("visibleMeshlet", res);
+                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletCountBuffer))
+                                    passCtx.setOutput("visibleMeshletCount", res);
+                                if (auto res = ctx->data.tryGet(kResKey_MaterialTableBuffer))
+                                    passCtx.setOutput("materialTable", res);
+                            });
+
+            registerBuiltin("DrawsetBuild", {}, {"draw", "meshlets", "indirect", "drawSet"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                m_DrawsetBuildPass.addPass(*ctx);
+                                if (auto res = ctx->data.tryGet(kResKey_DrawBuffer))
+                                    passCtx.setOutput("draw", res);
+                                if (auto res = ctx->data.tryGet(kResKey_MeshletsBuffer))
+                                    passCtx.setOutput("meshlets", res);
+                                if (auto res = ctx->data.tryGet(kResKey_IndirectBuffer))
+                                    passCtx.setOutput("indirect", res);
+                                if (auto res = ctx->data.tryGet(kResKey_DrawSetBuffer))
+                                    passCtx.setOutput("drawSet", res);
+                            });
+
+            registerBuiltin("MeshletHiZCull", {}, {"visibleMeshlet", "visibleMeshletCount"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                m_MeshletHiZCullPass.addPass(*ctx);
+                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletBuffer))
+                                    passCtx.setOutput("visibleMeshlet", res);
+                                if (auto res = ctx->data.tryGet(kResKey_VisibleMeshletCountBuffer))
+                                    passCtx.setOutput("visibleMeshletCount", res);
+                            });
+
+            registerBuiltin("GeneralGaussianSplatPreprocess", {},
+                            {"draw", "packedSource", "selectedSource", "visibleSplat", "sortKey", "sortIndex", "visibleCount", "indirect", "sortStorage", "sh"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                m_GaussianPreprocessPass.addPass(*ctx);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatDrawBuffer))
+                                    passCtx.setOutput("draw", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatPackedSourceBuffer))
+                                    passCtx.setOutput("packedSource", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSelectedSourceBuffer))
+                                    passCtx.setOutput("selectedSource", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatVisibleSplatBuffer))
+                                    passCtx.setOutput("visibleSplat", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSortKeyBuffer))
+                                    passCtx.setOutput("sortKey", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSortIndexBuffer))
+                                    passCtx.setOutput("sortIndex", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatVisibleCountBuffer))
+                                    passCtx.setOutput("visibleCount", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatIndirectBuffer))
+                                    passCtx.setOutput("indirect", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatSortStorageBuffer))
+                                    passCtx.setOutput("sortStorage", res);
+                                if (auto res = ctx->data.tryGet(kResKey_GeneralGaussianSplatShBuffer))
+                                    passCtx.setOutput("sh", res);
+                            });
+
+            registerBuiltin("GeneralGaussianSplatRender", {}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                auto color = m_GaussianRenderPass.addPass(*ctx);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
+            registerBuiltin("GeneralGaussianSplatFoveatedComposite", {"fovea", "mid", "outer", "base"}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                auto color = m_GaussianFoveatedCompositePass.compose(*ctx,
+                                                                                     passCtx.getInput("fovea"),
+                                                                                     passCtx.getInput("mid"),
+                                                                                     passCtx.getInput("outer"),
+                                                                                     passCtx.getInput("base"));
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
         }
 
         void registerResources()
         {
-            m_Registry.registerResource("final_composition_source");
-            m_Registry.registerResource("color");
-            m_Registry.registerResource("camera_color");
-            m_Registry.registerResource("depth");
-            m_Registry.registerResource("backbuffer");
-            m_Registry.registerResource("target");
+            for (const char* name : {
+                     "final_composition_source",
+                     "color",
+                     "camera_color",
+                     "depth",
+                     "backbuffer",
+                     "target",
+                     "gbuffer_color",
+                     "gbuffer_normal",
+                     "gbuffer_material",
+                     "gbuffer_entity_id",
+                     "hbao",
+                     "ssr",
+                     "visibility",
+                     "shadow_map",
+                     "shadow_data",
+                 })
+                m_Registry.registerResource(name);
         }
 
     private:
@@ -429,6 +1060,28 @@ namespace vultra
         vrendergraph::RenderGraphDesc m_Desc;
         vrendergraph::RenderGraphRegistry m_Registry;
         std::unordered_map<std::string, std::unique_ptr<FullscreenPassRuntime>> m_PassRuntimes;
+        std::string m_LastValidationError;
+        CompatibilityBaseColorPass m_CompatibilityBaseColorPass;
+        DirectGBufferPass m_DirectGBufferPass;
+        DepthPrePass m_DepthPrePass;
+        ShadowMapPass m_ShadowMapPass;
+        DeferredLightingPass m_DeferredLightingPass;
+        HzbGeneratePass m_HzbGeneratePass;
+        HbaoPass m_HbaoPass;
+        SsrPass m_SsrPass;
+        FxaaPass m_FxaaPass;
+        SelectionOutlinePass m_SelectionOutlinePass;
+        FinalCompositionPass m_FinalCompositionPass;
+        VisibilityBufferPass m_VisibilityBufferPass;
+        ThinGBufferPass m_ThinGBufferPass;
+        CoarseInstanceCullPass m_CoarseInstanceCullPass;
+        MeshletCullPass m_MeshletCullPass;
+        BuildIndirectPass m_BuildIndirectPass;
+        DrawsetBuildPass m_DrawsetBuildPass;
+        MeshletHiZCullPass m_MeshletHiZCullPass;
+        GeneralGaussianSplatPreprocessPass m_GaussianPreprocessPass;
+        GeneralGaussianSplatRenderPass m_GaussianRenderPass;
+        GeneralGaussianSplatFoveatedCompositePass m_GaussianFoveatedCompositePass;
     };
 
     struct DeclarativeRenderer::RuntimeFeature
@@ -560,23 +1213,29 @@ namespace vultra
             return false;
         }
 
-        auto lua = makeAssetLuaState();
-        auto result = lua.safe_script(text.value(), &sol::script_pass_on_error);
-        if (!result.valid())
+        if (!m_PipelineUri.ends_with(".vrg.json"))
         {
-            sol::error err = result;
-            VULTRA_CORE_ERROR("[DeclarativeRenderer] Lua error in SRP asset '{}': {}", m_PipelineUri, err.what());
+            VULTRA_CORE_ERROR("[DeclarativeRenderer] Render pipeline '{}' must be a .vrg.json asset", m_PipelineUri);
             return false;
         }
 
-        sol::object obj = result;
-        if (!obj.is<sol::table>())
+        try
         {
-            VULTRA_CORE_ERROR("[DeclarativeRenderer] SRP asset '{}' must return a table", m_PipelineUri);
+            const auto json = nlohmann::json::parse(text.value());
+            static_cast<void>(vrendergraph::loadRenderGraph(json));
+            auto feature = Feature {};
+            feature.name = m_PipelineUri;
+            feature.renderGraph = m_PipelineUri;
+            m_Asset.rendererKey = "project";
+            m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
+            m_Asset.features.push_back(std::move(feature));
+            return true;
+        }
+        catch (const std::exception& e)
+        {
+            VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to parse render graph pipeline '{}': {}", m_PipelineUri, e.what());
             return false;
         }
-
-        return parsePipelineTable(obj.as<sol::table>(), m_Asset);
     }
 
     bool DeclarativeRenderer::loadFeatureAsset(std::string_view uri, Feature& outFeature)

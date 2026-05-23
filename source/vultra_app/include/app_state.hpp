@@ -50,7 +50,7 @@ namespace vultra_app
         std::string           currentProjectName;
         std::string           currentAssetRoot {"resources"};
         std::string           currentDefaultScene {"res://scenes/test.vscn"};
-        std::string           currentRenderPipeline {"res://render/default.vsrp.lua"};
+        std::string           currentRenderPipeline {"res://render/default.vrg.json"};
         std::string           statusMessage;
         bool                  editorPlaying {false};
         bool                  editorPaused {false};

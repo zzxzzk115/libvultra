@@ -2,4 +2,4 @@
 version = 1
 name = "example"
 entry_scene = "res://scenes/test.vscn"
-render_pipeline = "res://render/default.vsrp.lua"
+render_pipeline = "res://render/default.vrg.json"

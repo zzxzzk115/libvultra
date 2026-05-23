@@ -1,0 +1,134 @@
+{
+  "meta": {
+    "editor": {
+      "nodes": {
+        "DeferredLighting": {
+          "pos": [
+            920.0,
+            80.0
+          ]
+        },
+        "DirectGBuffer": {
+          "pos": [
+            260.0,
+            80.0
+          ]
+        },
+        "FinalComposition": {
+          "pos": [
+            2000.0,
+            80.0
+          ]
+        },
+        "Fxaa": {
+          "pos": [
+            1640.0,
+            80.0
+          ]
+        },
+        "ShadowMap": {
+          "pos": [
+            580.0,
+            360.0
+          ]
+        },
+        "Tonemapping": {
+          "pos": [
+            1280.0,
+            80.0
+          ]
+        }
+      }
+    }
+  },
+  "passes": [
+    {
+      "enabled": true,
+      "id": "DirectGBuffer",
+      "outputs": {
+        "color": "DirectGBuffer.color",
+        "depth": "DirectGBuffer.depth",
+        "entityId": "DirectGBuffer.entityId",
+        "material": "DirectGBuffer.material",
+        "normal": "DirectGBuffer.normal"
+      },
+      "type": "DirectGBuffer"
+    },
+    {
+      "enabled": true,
+      "id": "ShadowMap",
+      "outputs": {
+        "shadowData": "ShadowMap.shadowData",
+        "shadowMap": "ShadowMap.shadowMap"
+      },
+      "type": "ShadowMap"
+    },
+    {
+      "enabled": true,
+      "id": "DeferredLighting",
+      "inputs": {
+        "color": "DirectGBuffer.color",
+        "depth": "DirectGBuffer.depth",
+        "material": "DirectGBuffer.material",
+        "normal": "DirectGBuffer.normal",
+        "shadowData": "ShadowMap.shadowData",
+        "shadowMap": "ShadowMap.shadowMap"
+      },
+      "outputs": {
+        "color": "DeferredLighting.color"
+      },
+      "params": {
+        "ambientIntensity": 1.0,
+        "iblIntensity": 0.0,
+        "shadowStrength": 0.85
+      },
+      "type": "DeferredLighting"
+    },
+    {
+      "enabled": true,
+      "id": "Tonemapping",
+      "inputs": {
+        "source": "DeferredLighting.color"
+      },
+      "outputs": {
+        "color": "Tonemapping.color"
+      },
+      "params": {
+        "exposure": 1.0,
+        "fragment": "tonemapping.frag",
+        "library": "project",
+        "method": 0,
+        "name": "Tonemapping",
+        "pushConstants": true,
+        "vertex": "fullscreen_triangle.vert"
+      },
+      "type": "FullscreenShader"
+    },
+    {
+      "enabled": true,
+      "id": "Fxaa",
+      "inputs": {
+        "source": "Tonemapping.color"
+      },
+      "outputs": {
+        "color": "Fxaa.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "Fxaa"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "Fxaa.color"
+      },
+      "outputs": {
+        "target": "FinalComposition.target"
+      },
+      "type": "FinalComposition"
+    }
+  ],
+  "resources": []
+}
