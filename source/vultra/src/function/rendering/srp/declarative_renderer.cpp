@@ -8,12 +8,15 @@
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp"
+#include "vultra/function/rendering/srp/builtin/features/direct_gbuffer_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
 
 #include <fg/FrameGraph.hpp>
@@ -60,17 +63,22 @@ namespace vultra
             return FrameGraphResourceKey {.id = vbase::hashString(normalized)};
         }
 
-        [[nodiscard]] std::unique_ptr<RenderFeature> makeBuiltinFeature(std::string_view id)
+        [[nodiscard]] std::unique_ptr<RenderFeature> makeBuiltinFeature(std::string_view id,
+                                                                         IRenderService*  renderService)
         {
             const auto normalized = normalizeId(std::string(id));
             if (normalized == "compatibility_basecolor" || normalized == "basecolor" || normalized == "compatibility")
                 return std::make_unique<CompatibilityBaseColorFeature>();
+            if (normalized == "direct_gbuffer" || normalized == "gbuffer" || normalized == "deferred")
+                return renderService ? std::make_unique<DirectGBufferFeature>(*renderService) : nullptr;
             if (normalized == "meshlet")
                 return std::make_unique<MeshletFeature>();
             if (normalized == "mesh")
                 return std::make_unique<MeshletFeature>();
             if (normalized == "general_gaussian_splat" || normalized == "gaussian_splat")
                 return std::make_unique<GeneralGaussianSplatFeature>();
+            if (normalized == "builtin_screen_space" || normalized == "screen_space" || normalized == "postprocess")
+                return renderService ? std::make_unique<BuiltinScreenSpaceFeature>(*renderService) : nullptr;
             if (normalized == "final_composition" || normalized == "present")
                 return std::make_unique<FinalCompositionFeature>();
             return {};
@@ -458,6 +466,7 @@ namespace vultra
         auto* services = getServices();
         auto* shaderService = services ? services->tryGet<IShaderService>() : nullptr;
         auto* assetService = services ? services->tryGet<IAssetService>() : nullptr;
+        auto* renderService = services ? services->tryGet<IRenderService>() : nullptr;
         if (!shaderService)
             return false;
 
@@ -465,7 +474,7 @@ namespace vultra
         {
             if (!feature.builtin.empty())
             {
-                auto builtin = makeBuiltinFeature(feature.builtin);
+                auto builtin = makeBuiltinFeature(feature.builtin, renderService);
                 if (!builtin)
                 {
                     VULTRA_CORE_ERROR("[DeclarativeRenderer] Unknown builtin render feature '{}'", feature.builtin);

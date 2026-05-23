@@ -31,6 +31,7 @@ namespace vultra_app
         };
 
         void drawToolbar(EditorContext& ctx);
+        void drawMetricsOverlay(EditorContext& ctx, const ImVec2& imageMin, const ImVec2& imageMax);
         ImVec2 computeRenderSize(const ImVec2& avail) const;
         float  computeFitZoom(const ImVec2& avail, const ImVec2& renderSize) const;
         void ensureRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height);

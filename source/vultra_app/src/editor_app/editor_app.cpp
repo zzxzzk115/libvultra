@@ -6,6 +6,7 @@
 #include "editor_app/ui/windows/console_window.hpp"
 #include "editor_app/ui/windows/game_view_window.hpp"
 #include "editor_app/ui/windows/inspector_window.hpp"
+#include "editor_app/ui/windows/profiler_window.hpp"
 #include "editor_app/ui/windows/render_graph_window.hpp"
 #include "editor_app/ui/windows/scene_hierarchy_window.hpp"
 #include "editor_app/ui/windows/scene_view_window.hpp"
@@ -31,9 +32,28 @@
 
 #include <entt/entity/entity.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
+#include <sstream>
+#include <system_error>
+#include <vector>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <limits.h>
+#include <unistd.h>
+#else
+#include <limits.h>
+#include <unistd.h>
+#endif
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
 #include <vasset/vasset_importers.hpp>
@@ -47,6 +67,231 @@ namespace vultra_app
         ImGuiID dockSpaceId()
         {
             return ImHashStr("VultraDockSpace");
+        }
+
+        std::string quoteCommandArg(const std::string& text)
+        {
+            std::string out = "\"";
+            for (const char ch : text)
+            {
+                if (ch == '"')
+                    out += "\\\"";
+                else
+                    out += ch;
+            }
+            out += "\"";
+            return out;
+        }
+
+        std::string quoteCommandArg(const std::filesystem::path& path)
+        {
+            return quoteCommandArg(path.generic_string());
+        }
+
+        std::filesystem::path currentExecutablePath()
+        {
+#if defined(_WIN32)
+            std::wstring buffer(MAX_PATH, L'\0');
+            DWORD size = 0;
+            for (;;)
+            {
+                size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+                if (size == 0)
+                    return {};
+                if (size < buffer.size() - 1)
+                    break;
+                buffer.resize(buffer.size() * 2);
+            }
+            return std::filesystem::path(std::wstring(buffer.data(), size));
+#elif defined(__APPLE__)
+            uint32_t size = 0;
+            _NSGetExecutablePath(nullptr, &size);
+            std::vector<char> buffer(size + 1, '\0');
+            if (_NSGetExecutablePath(buffer.data(), &size) != 0)
+                return {};
+            std::error_code ec;
+            return std::filesystem::weakly_canonical(buffer.data(), ec);
+#else
+            std::vector<char> buffer(PATH_MAX, '\0');
+            const ssize_t size = readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+            if (size <= 0)
+                return {};
+            buffer[static_cast<size_t>(size)] = '\0';
+            return std::filesystem::path(buffer.data());
+#endif
+        }
+
+        std::filesystem::path findRepoRoot()
+        {
+            namespace fs = std::filesystem;
+
+            std::vector<fs::path> starts;
+            std::error_code ec;
+            starts.push_back(fs::current_path(ec));
+            if (const auto exe = currentExecutablePath(); !exe.empty())
+                starts.push_back(exe.parent_path());
+
+            for (auto start : starts)
+            {
+                if (start.empty())
+                    continue;
+
+                start = start.lexically_normal();
+                for (fs::path path = start; !path.empty(); path = path.parent_path())
+                {
+                    if (fs::exists(path / "scripts" / "pack.ps1", ec) && fs::exists(path / "source" / "xmake.lua", ec))
+                        return path;
+                    if (path == path.root_path())
+                        break;
+                }
+            }
+            return {};
+        }
+
+        int runCommand(const std::string& command)
+        {
+            return std::system(command.c_str());
+        }
+
+        void setBuildRunProgress(const std::shared_ptr<BuildRunTaskProgress>& progress,
+                                 float                                         value,
+                                 std::string                                   message)
+        {
+            if (!progress)
+                return;
+            std::scoped_lock lock(progress->mutex);
+            progress->progress = std::clamp(value, 0.0f, 1.0f);
+            progress->message  = std::move(message);
+        }
+
+        std::string makeRuntimeArguments(const std::filesystem::path& vpkPath)
+        {
+            std::ostringstream args;
+            args << " --backend vulkan --vpk " << quoteCommandArg(vpkPath);
+            return args.str();
+        }
+
+        std::optional<std::filesystem::path> findInstalledRuntime(const std::filesystem::path& repoRoot)
+        {
+            namespace fs = std::filesystem;
+
+#if defined(_WIN32)
+            constexpr const char* kExecutableName = "vultra.exe";
+#else
+            constexpr const char* kExecutableName = "vultra";
+#endif
+
+            const std::vector<fs::path> candidates {
+                repoRoot / "build" / "install" / "vultra-app" / "bin" / kExecutableName,
+                repoRoot / "build" / "install" / "bin" / kExecutableName,
+            };
+
+            std::error_code ec;
+            for (const auto& candidate : candidates)
+            {
+                if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec))
+                    return candidate.lexically_normal();
+            }
+            return std::nullopt;
+        }
+
+        std::string installedRuntimeSearchHint(const std::filesystem::path& repoRoot)
+        {
+#if defined(_WIN32)
+            constexpr const char* kExecutableName = "vultra.exe";
+#else
+            constexpr const char* kExecutableName = "vultra";
+#endif
+            std::ostringstream out;
+            out << (repoRoot / "build" / "install" / "vultra-app" / "bin" / kExecutableName).generic_string()
+                << "; "
+                << (repoRoot / "build" / "install" / "bin" / kExecutableName).generic_string();
+            return out.str();
+        }
+
+        BuildRunResult runPcVulkanBuildAndLaunch(const std::filesystem::path& projectRoot,
+                                                 const std::string&           assetRoot,
+                                                 const std::string&           projectName,
+                                                 const std::string&           sceneUri,
+                                                 const std::string&           renderPipeline,
+                                                 std::shared_ptr<BuildRunTaskProgress> progress)
+        {
+            namespace fs = std::filesystem;
+
+            setBuildRunProgress(progress, 0.08f, "Locating repository and asset root...");
+            const fs::path repoRoot = findRepoRoot();
+            if (repoRoot.empty())
+                return {.ok = false, .message = "Build & Run failed: repository root was not found."};
+
+            const fs::path assetRootPath = (projectRoot / assetRoot).lexically_normal();
+            const fs::path vpkPath       = (projectRoot / "resources.vpk").lexically_normal();
+
+            std::error_code ec;
+            if (!fs::exists(assetRootPath, ec))
+                return {.ok = false, .message = "Build & Run failed: missing asset root " + assetRootPath.generic_string()};
+
+            setBuildRunProgress(progress, 0.15f, "Writing package manifest...");
+            std::string manifestError;
+            if (!saveVPackageManifest(assetRootPath,
+                                      VPackageManifest {
+                                          .name           = projectName,
+                                          .entryScene     = sceneUri,
+                                          .renderPipeline = renderPipeline,
+                                      },
+                                      &manifestError))
+            {
+                return {.ok = false, .message = "Build & Run failed: " + manifestError};
+            }
+
+#if defined(_WIN32)
+            const fs::path packScript = repoRoot / "scripts" / "pack.ps1";
+            std::ostringstream pack;
+            pack << "powershell -ExecutionPolicy Bypass -File " << quoteCommandArg(packScript) << " "
+                 << quoteCommandArg(repoRoot) << " " << quoteCommandArg(assetRootPath) << " " << quoteCommandArg(vpkPath);
+#else
+            const fs::path packScript = repoRoot / "scripts" / "pack.sh";
+            std::ostringstream pack;
+            pack << "sh " << quoteCommandArg(packScript) << " " << quoteCommandArg(repoRoot) << " "
+                 << quoteCommandArg(assetRootPath) << " " << quoteCommandArg(vpkPath);
+#endif
+
+            setBuildRunProgress(progress, 0.25f, "Reimporting assets and packing VPK...");
+            const int packResult = runCommand(pack.str());
+            if (packResult != 0)
+                return {.ok = false, .message = "Build & Run failed: asset package step returned " + std::to_string(packResult) + "."};
+
+            setBuildRunProgress(progress, 0.86f, "Finding installed runtime...");
+            const std::string runtimeArgs = makeRuntimeArguments(vpkPath);
+
+            const auto runtimeExecutable = findInstalledRuntime(repoRoot);
+            if (!runtimeExecutable.has_value())
+            {
+                return {.ok = false,
+                        .message =
+                            "Build & Run failed: installed vultra-app runtime was not found. Run "
+                            "`xmake install -o build/install vultra-app` first. Searched: " +
+                            installedRuntimeSearchHint(repoRoot)};
+            }
+
+#if defined(_WIN32)
+            std::ostringstream launch;
+            launch << "start \"\" " << quoteCommandArg(*runtimeExecutable) << runtimeArgs;
+#else
+            std::ostringstream launch;
+            launch << quoteCommandArg(*runtimeExecutable) << runtimeArgs << " &";
+#endif
+
+            setBuildRunProgress(progress, 0.94f, "Launching installed runtime...");
+            const int launchResult = runCommand(launch.str());
+            if (launchResult != 0)
+                return {.ok = false,
+                        .message = "Build succeeded, but installed runtime launch returned " +
+                                   std::to_string(launchResult) + "."};
+
+            setBuildRunProgress(progress, 1.0f, "Build complete. Runtime launched.");
+            return {.ok = true,
+                    .message = "Build complete. Running installed runtime: " +
+                               runtimeExecutable->generic_string()};
         }
     } // namespace
 
@@ -81,6 +326,7 @@ namespace vultra_app
 
     void EditorApp::tick(EditorContext& ctx)
     {
+        updateBuildAndRun(ctx);
         (void)updateProjectLoading(ctx);
     }
 
@@ -123,6 +369,7 @@ namespace vultra_app
                                  topBarCtx.state.statusMessage = "Created an empty scene workspace.";
                              },
                              .saveScene = [this](EditorContext& topBarCtx) { saveCurrentScene(topBarCtx); },
+                             .buildAndRun = [this](EditorContext& topBarCtx) { startBuildAndRun(topBarCtx); },
                              .backToLauncher = [this](EditorContext& topBarCtx)
                              {
                                  topBarCtx.state.currentProject.clear();
@@ -155,11 +402,14 @@ namespace vultra_app
 
         if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))
             saveCurrentScene(ctx);
+        if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F5))
+            startBuildAndRun(ctx);
         beginDockSpace();
         buildDefaultDockLayout();
         m_WindowManager.draw(ctx);
         endDockSpace();
         syncPlaybackState(ctx);
+        drawBuildRunPopup();
 
         if (m_ShowAboutPopup)
         {
@@ -210,6 +460,117 @@ namespace vultra_app
         }
 
         m_PlaybackWasPlaying = ctx.state.editorPlaying;
+    }
+
+    void EditorApp::drawBuildRunPopup()
+    {
+        if (!m_BuildRunActive && !m_BuildRunCompleted.has_value())
+            return;
+
+        ImGui::OpenPopup("Build & Run");
+        if (ImGui::BeginPopupModal("Build & Run", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            float       progress = 0.0f;
+            std::string message  = "Preparing...";
+            if (m_BuildRunCompleted.has_value())
+            {
+                progress = m_BuildRunCompleted->ok ? 1.0f : 0.0f;
+                message  = m_BuildRunCompleted->message;
+            }
+            else if (m_BuildRunProgress)
+            {
+                std::scoped_lock lock(m_BuildRunProgress->mutex);
+                progress = m_BuildRunProgress->progress;
+                message  = m_BuildRunProgress->message.empty() ? message : m_BuildRunProgress->message;
+            }
+
+            ImGui::TextUnformatted("Build & Run");
+            ImGui::Spacing();
+            ImGui::ProgressBar(progress, ImVec2 {360.0f, 0.0f});
+            ImGui::Spacing();
+            if (m_BuildRunCompleted.has_value() && !m_BuildRunCompleted->ok)
+                ImGui::TextColored(ImVec4 {1.0f, 0.32f, 0.28f, 1.0f}, "%s", message.c_str());
+            else
+                ImGui::TextWrapped("%s", message.c_str());
+            if (m_BuildRunActive)
+                ImGui::TextDisabled("This can take a while when assets are reimported.");
+            else if (ImGui::Button("Close", ImVec2 {96.0f, 0.0f}))
+            {
+                m_BuildRunCompleted.reset();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+    }
+
+    void EditorApp::updateBuildAndRun(EditorContext& ctx)
+    {
+        if (!m_BuildRunActive || !m_BuildRunFuture.valid())
+            return;
+
+        if (m_BuildRunFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+            return;
+
+        const auto result = m_BuildRunFuture.get();
+        m_BuildRunActive = false;
+        m_BuildRunProgress.reset();
+        m_BuildRunCompleted = result;
+        ctx.state.statusMessage = result.message;
+    }
+
+    void EditorApp::startBuildAndRun(EditorContext& ctx)
+    {
+        if (m_BuildRunActive)
+        {
+            ctx.state.statusMessage = "Build & Run is already running.";
+            return;
+        }
+        m_BuildRunCompleted.reset();
+        if (ctx.state.currentProject.empty())
+        {
+            ctx.state.statusMessage = "Build & Run failed: no project is loaded.";
+            return;
+        }
+        if (ctx.state.currentDefaultScene.empty())
+        {
+            ctx.state.statusMessage = "Build & Run failed: no default scene is selected.";
+            return;
+        }
+        if (ctx.state.editorPlaying)
+        {
+            ctx.state.statusMessage = "Stop Play Mode before Build & Run.";
+            return;
+        }
+
+        const bool sceneWasDirty = ctx.state.sceneDirty;
+        saveCurrentScene(ctx);
+        if (sceneWasDirty && ctx.state.sceneDirty)
+        {
+            ctx.state.statusMessage = "Build & Run stopped: save the current scene first.";
+            return;
+        }
+
+        const auto projectRoot = ctx.state.currentProject.lexically_normal();
+        const auto assetRoot   = ctx.state.currentAssetRoot;
+        const auto projectName = ctx.state.currentProjectName;
+        const auto sceneUri    = ctx.state.currentDefaultScene;
+        const auto renderPipeline = ctx.state.currentRenderPipeline;
+
+        ctx.state.statusMessage = "Build & Run started: packaging runtime...";
+        m_BuildRunProgress = std::make_shared<BuildRunTaskProgress>();
+        {
+            std::scoped_lock lock(m_BuildRunProgress->mutex);
+            m_BuildRunProgress->progress = 0.02f;
+            m_BuildRunProgress->message  = "Saving scene and preparing package...";
+        }
+        m_BuildRunActive = true;
+        auto progress = m_BuildRunProgress;
+        m_BuildRunFuture = std::async(std::launch::async,
+                                      [projectRoot, assetRoot, projectName, sceneUri, renderPipeline, progress]()
+                                      {
+                                          return runPcVulkanBuildAndLaunch(
+                                              projectRoot, assetRoot, projectName, sceneUri, renderPipeline, progress);
+                                      });
     }
 
     void EditorApp::saveCurrentScene(EditorContext& ctx)
@@ -298,6 +659,7 @@ namespace vultra_app
         m_WindowManager.addWindow<CodeEditorWindow>();
         m_WindowManager.addWindow<ConsoleWindow>();
         m_WindowManager.addWindow<RenderGraphWindow>();
+        m_WindowManager.addWindow<ProfilerWindow>();
         m_WindowManager.addWindow<InspectorWindow>();
         m_Initialized = true;
     }
@@ -442,17 +804,12 @@ namespace vultra_app
             return;
 
         auto* windowService = ctx.services->tryGet<IWindowService>();
-        auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>();
         if (!windowService)
             return;
 
-        const bool decorated =
-            backendService &&
-            backendService->renderDevice().getBackendApi() == vultra::rhi::RenderBackendApi::eWebGPU;
-
         auto& window = windowService->window();
         window.setTitle(kWindowTitle)
-            .setDecorated(decorated)
+            .setDecorated(false)
             .setResizable(true)
             .setExtent({1280, 720})
             .centerOnScreen()
@@ -834,6 +1191,7 @@ namespace vultra_app
             dockWindow("Inspector", rightId);
             dockWindow("Content Browser", bottomId);
             dockWindow("Console", bottomId);
+            dockWindow("Profiler", bottomId);
             ImGui::DockBuilderFinish(id);
         }
 

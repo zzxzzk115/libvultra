@@ -19,6 +19,11 @@ namespace vultra_app
                 window->open() = true;
                 ctx.state.codeEditorOpenRequested = false;
             }
+            if (ctx.state.profilerWindowOpenRequested && window->name() == "Profiler")
+            {
+                window->open() = true;
+                ctx.state.profilerWindowOpenRequested = false;
+            }
             if (window->open())
             {
                 window->draw(ctx);

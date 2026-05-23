@@ -407,6 +407,7 @@ namespace vultra
                 }
                 if (!drawParamBytes.empty())
                     rc.cb.update(drawParamsBuffer, 0, drawParamBufferSize, drawParamBytes.data());
+                auto& retainedDrawParamsBuffer = retainDrawParamBuffer(rc.frame.frameIndex, std::move(drawParamsBuffer));
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
                 rc.cb.beginRendering(framebufferInfo);
@@ -452,7 +453,7 @@ namespace vultra
                         rc.resourceSet[1] = {
                             {0,
                              rhi::bindings::UniformBuffer {
-                                 .buffer = &drawParamsBuffer,
+                                 .buffer = &retainedDrawParamsBuffer,
                                  .offset = drawParamOffset,
                                  .range  = sizeof(DirectDrawParams),
                              }},
@@ -496,6 +497,20 @@ namespace vultra
         ctx.data.set(kResKey_GBufferNormal, data.normal);
         ctx.data.set(kResKey_GBufferMetallicRoughnessAO, data.material);
         return data.color;
+    }
+
+    rhi::UniformBuffer& DirectGBufferPass::retainDrawParamBuffer(const uint64_t frameIndex, rhi::UniformBuffer buffer)
+    {
+        if (m_DrawParamBufferFrameIndex != frameIndex)
+        {
+            m_DrawParamBufferFrameIndex = frameIndex;
+            m_DrawParamBuffers.clear();
+        }
+
+        auto retained = std::make_unique<rhi::UniformBuffer>(std::move(buffer));
+        auto* ptr     = retained.get();
+        m_DrawParamBuffers.push_back(std::move(retained));
+        return *ptr;
     }
 
     rhi::GraphicsPipeline DirectGBufferPass::createPipeline(const rhi::PixelFormat colorFormat,

@@ -372,14 +372,21 @@ void main() {
                 windowService->window().minimize();
             ImGui::SameLine(0.0f, 0.0f);
 
-            const bool maximized = windowService->window().isMaximized();
+            const bool maximized = windowService->window().isFullscreen() || windowService->window().isMaximized();
             if (windowControlButton(maximized ? ICON_MDI_WINDOW_RESTORE : ICON_MDI_WINDOW_MAXIMIZE,
                                     maximized ? "Restore" : "Maximize"))
             {
                 if (maximized)
-                    windowService->window().restore();
+                {
+                    if (windowService->window().isFullscreen())
+                        windowService->window().setFullscreen(false);
+                    else
+                        windowService->window().restore();
+                }
                 else
-                    windowService->window().maximize();
+                {
+                    windowService->window().setFullscreen(true);
+                }
             }
             ImGui::SameLine(0.0f, 0.0f);
 

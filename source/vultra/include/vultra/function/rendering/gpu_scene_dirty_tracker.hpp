@@ -14,20 +14,38 @@ namespace vultra
                                          uint64_t           resourceRevision,
                                          bool               gpuDrivenMeshletPipelineEnabled) const
         {
+            return shouldRebuildTopology(world, resourceRevision, gpuDrivenMeshletPipelineEnabled) ||
+                   shouldUpdateTransforms(world);
+        }
+
+        [[nodiscard]] bool shouldRebuildTopology(const RenderWorld& world,
+                                                 uint64_t           resourceRevision,
+                                                 bool               gpuDrivenMeshletPipelineEnabled) const
+        {
             if (!m_HasValidSnapshot)
                 return true;
 
-            const uint64_t worldSignature = hashRenderWorld(world);
-            return worldSignature != m_LastCookedWorldSignature ||
+            const uint64_t topologySignature = hashRenderWorld(world, false);
+            return topologySignature != m_LastCookedTopologySignature ||
                    resourceRevision != m_LastGpuResourceRevision ||
                    gpuDrivenMeshletPipelineEnabled != m_LastGpuDrivenMeshletPipelineEnabled;
+        }
+
+        [[nodiscard]] bool shouldUpdateTransforms(const RenderWorld& world) const
+        {
+            if (!m_HasValidSnapshot)
+                return true;
+
+            const uint64_t worldSignature = hashRenderWorld(world, true);
+            return worldSignature != m_LastCookedWorldSignature;
         }
 
         void markBuilt(const RenderWorld& world,
                        uint64_t           resourceRevision,
                        bool               gpuDrivenMeshletPipelineEnabled)
         {
-            m_LastCookedWorldSignature            = hashRenderWorld(world);
+            m_LastCookedWorldSignature            = hashRenderWorld(world, true);
+            m_LastCookedTopologySignature         = hashRenderWorld(world, false);
             m_LastGpuResourceRevision             = resourceRevision;
             m_LastGpuDrivenMeshletPipelineEnabled = gpuDrivenMeshletPipelineEnabled;
             m_HasValidSnapshot                    = true;
@@ -36,6 +54,7 @@ namespace vultra
         void reset()
         {
             m_LastCookedWorldSignature            = 0;
+            m_LastCookedTopologySignature         = 0;
             m_LastGpuResourceRevision             = 0;
             m_LastGpuDrivenMeshletPipelineEnabled = true;
             m_HasValidSnapshot                    = false;
@@ -56,7 +75,7 @@ namespace vultra
             return hash;
         }
 
-        [[nodiscard]] static uint64_t hashRenderWorld(const RenderWorld& world)
+        [[nodiscard]] static uint64_t hashRenderWorld(const RenderWorld& world, bool includeTransforms)
         {
             constexpr uint64_t kOffsetBasis = 1469598103934665603ull;
 
@@ -68,7 +87,8 @@ namespace vultra
             {
                 hash = fnv1a64(&inst.meshIndex, sizeof(inst.meshIndex), hash);
                 hash = fnv1a64(&inst.materialIndex, sizeof(inst.materialIndex), hash);
-                hash = fnv1a64(&inst.worldMatrix, sizeof(inst.worldMatrix), hash);
+                if (includeTransforms)
+                    hash = fnv1a64(&inst.worldMatrix, sizeof(inst.worldMatrix), hash);
             }
 
             const auto splatCount = static_cast<uint64_t>(world.gaussianSplats.size());
@@ -76,7 +96,8 @@ namespace vultra
             for (const auto& splat : world.gaussianSplats)
             {
                 hash = fnv1a64(&splat.splatIndex, sizeof(splat.splatIndex), hash);
-                hash = fnv1a64(&splat.worldMatrix, sizeof(splat.worldMatrix), hash);
+                if (includeTransforms)
+                    hash = fnv1a64(&splat.worldMatrix, sizeof(splat.worldMatrix), hash);
             }
 
             return hash;
@@ -84,6 +105,7 @@ namespace vultra
 
     private:
         uint64_t m_LastCookedWorldSignature {0};
+        uint64_t m_LastCookedTopologySignature {0};
         uint64_t m_LastGpuResourceRevision {0};
         bool     m_LastGpuDrivenMeshletPipelineEnabled {true};
         bool     m_HasValidSnapshot {false};

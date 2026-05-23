@@ -62,6 +62,10 @@ if (-not (Test-Path -LiteralPath $vassetCli)) {
 $oldPath = $env:PATH
 try {
     $env:PATH = (Join-Path $installRoot 'bin') + ';' + (Join-Path $installRoot 'lib') + ';' + $oldPath
+    & $vassetCli import $assetRootPath --reimport
+    if ($LASTEXITCODE -ne 0) {
+        throw "vasset-cli import failed"
+    }
     & $vassetCli pack $assetRootPath $outVpkPath --zstd 6 @ExtraArgs
     exit $LASTEXITCODE
 }

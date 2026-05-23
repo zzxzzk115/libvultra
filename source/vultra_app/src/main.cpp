@@ -9,14 +9,17 @@
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/renderer.hpp>
+#include <vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp>
 #include <vultra/function/rendering/srp/builtin/features/compatibility_basecolor_feature.hpp>
+#include <vultra/function/rendering/srp/builtin/features/direct_gbuffer_feature.hpp>
 #include <vultra/function/rendering/srp/builtin/features/final_composition_feature.hpp>
 #include <vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp>
-#include <vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
+#include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/camera_component.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -56,8 +59,10 @@ namespace
                 return;
             }
 
-            emplaceFeature<vultra::MeshletFeature>();
+            auto& renderService = services->require<vultra::IRenderService>();
+            emplaceFeature<vultra::DirectGBufferFeature>(renderService);
             emplaceFeature<vultra::GeneralGaussianSplatFeature>();
+            emplaceFeature<vultra::BuiltinScreenSpaceFeature>(renderService);
             emplaceFeature<vultra::FinalCompositionFeature>();
         }
 
@@ -235,6 +240,21 @@ namespace
                 engine.ctx().config.asset.loadFromVPK = true;
                 engine.ctx().config.asset.assetRoot   = "/";
                 engine.ctx().config.asset.vpkFile     = m_VpkPath->generic_string();
+                std::string manifestError;
+                if (auto manifest = vultra_app::loadVPackageManifestFromVpk(*m_VpkPath, &manifestError);
+                    manifest.has_value())
+                {
+                    if (!manifest->name.empty())
+                        engine.ctx().config.window.title = manifest->name;
+                    engine.ctx().config.render.renderPipelineAsset       = manifest->renderPipeline;
+                    engine.ctx().config.render.renderPipelineRendererKey = "project";
+                    if (m_Options.sceneUri.empty())
+                        m_Options.sceneUri = manifest->entryScene;
+                }
+                else
+                {
+                    VULTRA_CLIENT_WARN("[Vultra] VPK package manifest unavailable: {}", manifestError);
+                }
                 return;
             }
 
@@ -257,9 +277,30 @@ namespace
 
             auto& sceneService = engine.ctx().services.require<vultra::ISceneService>();
             auto& worldService = engine.ctx().services.require<vultra::IWorldService>();
-            sceneService.instantiateScene(worldService.world(), m_Options.sceneUri);
+            const std::string sceneUri = m_Options.sceneUri.empty() ? "res://scenes/main.vscn" : m_Options.sceneUri;
+            sceneService.instantiateScene(worldService.world(), sceneUri);
 
-            VULTRA_CLIENT_INFO("[Vultra] Loaded scene '{}' from VPK '{}'", m_Options.sceneUri, m_VpkPath->generic_string());
+            bool hasSceneCamera = false;
+            auto& world = worldService.world();
+            auto& reg   = world.registry();
+            auto  view  = reg.view<vultra::CameraComponent>();
+            for (auto entity : view)
+            {
+                hasSceneCamera = true;
+                auto& camera = view.get<vultra::CameraComponent>(entity);
+                if (!engine.ctx().config.render.renderPipelineAsset.empty() &&
+                    (camera.rendererKey.empty() || camera.rendererKey == "universal"))
+                {
+                    camera.rendererKey = "project";
+                }
+            }
+            if (hasSceneCamera)
+            {
+                if (auto* cameraService = engine.ctx().services.tryGet<vultra::ICameraService>())
+                    cameraService->clearManualCameras();
+            }
+
+            VULTRA_CLIENT_INFO("[Vultra] Loaded scene '{}' from VPK '{}'", sceneUri, m_VpkPath->generic_string());
         }
 
         void onBeforeEngineTick(vultra::fsec /*dt*/) override

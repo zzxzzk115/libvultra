@@ -13,6 +13,7 @@
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/hierarchy_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
+#include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/prefab_instance_component.hpp>
@@ -21,6 +22,7 @@
 #include <vultra/function/world/world.hpp>
 
 #include <entt/meta/meta.hpp>
+#include <glm/common.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
@@ -158,6 +160,8 @@ namespace vultra_app
                 return "Gaussian Splat";
             if (std::strcmp(metaName, "CameraComponent") == 0)
                 return "Camera";
+            if (std::strcmp(metaName, "LightComponent") == 0)
+                return "Light";
             if (std::strcmp(metaName, "ScriptComponent") == 0)
                 return "Script";
             return metaName;
@@ -197,6 +201,12 @@ namespace vultra_app
         const char* componentDisplayName<vultra::CameraComponent>()
         {
             return "Camera";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::LightComponent>()
+        {
+            return "Light";
         }
 
         template<>
@@ -340,6 +350,18 @@ namespace vultra_app
             return true;
         }
 
+        glm::quat extractRotation(const glm::mat4& matrix)
+        {
+            glm::mat3 basis {matrix};
+            for (int i = 0; i < 3; ++i)
+            {
+                const float len2 = glm::dot(basis[i], basis[i]);
+                if (len2 > 1e-8f)
+                    basis[i] *= glm::inversesqrt(len2);
+            }
+            return glm::normalize(glm::quat_cast(basis));
+        }
+
         bool alignCameraEntityToSceneView(EditorContext& ctx, vultra::World& world, entt::entity entity)
         {
             if (!ctx.state.sceneCamera.valid)
@@ -359,18 +381,12 @@ namespace vultra_app
                 hierarchy && hierarchy->parent != entt::null && reg.valid(hierarchy->parent) &&
                 reg.all_of<vultra::TransformComponent>(hierarchy->parent))
             {
-                vultra::TransformComponent desired {};
-                desired.position = ctx.state.sceneCamera.position;
-                desired.rotation = ctx.state.sceneCamera.rotation;
-                desired.scale    = transform.scale;
-
                 const auto parentWorld = makeWorldTransformMatrix(reg, hierarchy->parent);
-                const auto targetLocal = glm::inverse(parentWorld) * makeTransformMatrix(desired);
-                if (!decomposeTransformMatrix(targetLocal, transform))
-                {
-                    ctx.state.statusMessage = "Failed to align camera transform.";
-                    return false;
-                }
+                transform.position =
+                    glm::vec3(glm::inverse(parentWorld) * glm::vec4(ctx.state.sceneCamera.position, 1.0f));
+                transform.rotation =
+                    glm::normalize(glm::inverse(extractRotation(parentWorld)) * ctx.state.sceneCamera.rotation);
+                transform.dirty = true;
             }
             else
             {
@@ -382,6 +398,24 @@ namespace vultra_app
             if (camera.projection == 0u)
                 camera.fovYDegrees = ctx.state.sceneCamera.fovYDegrees;
             ctx.state.statusMessage = "Camera aligned to Scene View.";
+            return true;
+        }
+
+        bool alignSceneViewToCameraEntity(EditorContext& ctx, vultra::World& world, entt::entity entity)
+        {
+            auto& reg = world.registry();
+            if (!reg.all_of<vultra::TransformComponent, vultra::CameraComponent>(entity))
+                return false;
+
+            const auto worldTransform = makeWorldTransformMatrix(reg, entity);
+
+            const auto& camera = reg.get<vultra::CameraComponent>(entity);
+            ctx.state.sceneCameraAlignRequest.pending     = true;
+            ctx.state.sceneCameraAlignRequest.position    = glm::vec3(worldTransform[3]);
+            ctx.state.sceneCameraAlignRequest.rotation    = extractRotation(worldTransform);
+            ctx.state.sceneCameraAlignRequest.fovYDegrees = camera.projection == 0u ? camera.fovYDegrees :
+                                                                                ctx.state.sceneCamera.fovYDegrees;
+            ctx.state.statusMessage = "Scene View aligned to Camera.";
             return true;
         }
 
@@ -429,6 +463,30 @@ namespace vultra_app
                 return "priority";
             if (is("rendererKey"))
                 return "rendererKey";
+            if (is("kind"))
+                return "kind";
+            if (is("color"))
+                return "color";
+            if (is("intensity"))
+                return "intensity";
+            if (is("direction"))
+                return "direction";
+            if (is("range"))
+                return "range";
+            if (is("radius"))
+                return "radius";
+            if (is("width"))
+                return "width";
+            if (is("height"))
+                return "height";
+            if (is("innerConeDegrees"))
+                return "innerConeDegrees";
+            if (is("outerConeDegrees"))
+                return "outerConeDegrees";
+            if (is("castsShadow"))
+                return "castsShadow";
+            if (is("twoSided"))
+                return "twoSided";
             if (is("scriptUri"))
                 return "scriptUri";
             if (is("enabled"))
@@ -788,6 +846,18 @@ namespace vultra_app
                     return changed;
                 }
 
+                if (std::strcmp(fieldName, "kind") == 0)
+                {
+                    const char* lightKindLabels[] = {"Directional", "Point", "Spot", "Rectangle Area"};
+                    int         kindIndex         = static_cast<int>(std::min(*v, 3u));
+                    if (ImGui::Combo(label, &kindIndex, lightKindLabels, IM_ARRAYSIZE(lightKindLabels)))
+                    {
+                        *v      = static_cast<uint32_t>(std::clamp(kindIndex, 0, IM_ARRAYSIZE(lightKindLabels) - 1));
+                        changed = true;
+                    }
+                    return changed;
+                }
+
                 int temp = static_cast<int>(*v);
                 if (ImGui::InputInt(label, &temp))
                 {
@@ -925,6 +995,7 @@ namespace vultra_app
             static const std::vector<AddComponentDescriptor> descriptors {
                 addComponentDescriptor<vultra::TransformComponent>("Transform"),
                 addComponentDescriptor<vultra::CameraComponent>("Camera"),
+                addComponentDescriptor<vultra::LightComponent>("Light"),
                 addComponentDescriptor<vultra::MeshComponent>("Mesh"),
                 addComponentDescriptor<vultra::GaussianSplatComponent>("Gaussian Splat"),
                 addComponentDescriptor<vultra::ScriptComponent>("Script"),
@@ -1036,6 +1107,8 @@ namespace vultra_app
             world, e, &ctx, [&](vultra::MeshComponent&, const char*) { ctx.state.sceneDirty = true; });
         drawReflectedComponent<vultra::GaussianSplatComponent>(
             world, e, &ctx, [&](vultra::GaussianSplatComponent&, const char*) { ctx.state.sceneDirty = true; });
+        drawReflectedComponent<vultra::LightComponent>(
+            world, e, &ctx, [&](vultra::LightComponent&, const char*) { ctx.state.sceneDirty = true; });
 
         if (componentHeader<vultra::CameraComponent>(world, e))
         {
@@ -1047,6 +1120,13 @@ namespace vultra_app
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                 ImGui::SetTooltip("Move this Camera entity to the current Scene View camera pose.");
+            if (ImGui::Button(ICON_MDI_CROSSHAIRS_GPS "  Align Scene View With Camera",
+                              ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+            {
+                alignSceneViewToCameraEntity(ctx, world, e);
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("Move the Scene View editor camera to this Camera entity.");
             ImGui::Spacing();
 
             drawMetaFields<vultra::CameraComponent>(

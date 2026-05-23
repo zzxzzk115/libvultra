@@ -66,4 +66,5 @@ if [ -d "$install_root/lib" ]; then
 fi
 export PATH="$install_root/bin:$PATH"
 
+"$vasset_cli" import "$asset_root" --reimport
 exec "$vasset_cli" pack "$asset_root" "$out_vpk" --zstd 6 "$@"

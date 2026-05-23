@@ -42,7 +42,9 @@ namespace vultra_app
         program.add_argument("--editor").flag();
         program.add_argument("--project").default_value(std::string {});
         program.add_argument("--vpk").default_value(std::string {});
-        program.add_argument("--scene").default_value(std::string {"res://scenes/main.vscn"});
+        program.add_argument("--scene").default_value(std::string {});
+        program.add_argument("--backend", "--render-backend").default_value(std::string {});
+        program.add_argument("--render-profile").default_value(std::string {});
         program.add_argument("--validation").flag();
         program.add_argument("--no-validation").flag();
         program.add_argument("--debug-markers").flag();

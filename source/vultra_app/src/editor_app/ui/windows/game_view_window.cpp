@@ -5,8 +5,10 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <vultra/function/rendering/render_structs.hpp>
+#include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
+#include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/hierarchy_component.hpp>
@@ -21,6 +23,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <limits>
 
 namespace vultra_app
@@ -123,6 +126,25 @@ namespace vultra_app
             if (auto* id = reg.try_get<vultra::IDComponent>(e))
                 Selection::select(SelectionCategory::Entity, id->uuid);
         }
+
+        std::string formatBytes(const uint64_t bytes)
+        {
+            constexpr const char* kUnits[] = {"B", "KB", "MB", "GB"};
+            double                value    = static_cast<double>(bytes);
+            size_t                unit     = 0;
+            while (value >= 1024.0 && unit + 1 < (sizeof(kUnits) / sizeof(kUnits[0])))
+            {
+                value /= 1024.0;
+                ++unit;
+            }
+
+            char buffer[64] {};
+            if (unit == 0)
+                std::snprintf(buffer, sizeof(buffer), "%.0f %s", value, kUnits[unit]);
+            else
+                std::snprintf(buffer, sizeof(buffer), "%.1f %s", value, kUnits[unit]);
+            return buffer;
+        }
     } // namespace
 
     GameViewWindow::GameViewWindow() : EditorWindow("Game View", ICON_MDI_GAMEPAD_VARIANT) {}
@@ -221,8 +243,71 @@ namespace vultra_app
             }
         }
 
+        drawMetricsOverlay(ctx, min, max);
+
         ImGui::EndChild();
         ImGui::End();
+    }
+
+    void GameViewWindow::drawMetricsOverlay(EditorContext& ctx, const ImVec2& imageMin, const ImVec2& imageMax)
+    {
+        auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
+        auto* profiler      = renderService ? renderService->runtimeProfiler() : nullptr;
+
+        if (!ctx.state.metricsOverlayVisible)
+            return;
+
+        if (profiler && !profiler->isEnabled())
+            profiler->setEnabled(true);
+
+        const ImGuiIO& io      = ImGui::GetIO();
+        const float    fps     = io.Framerate;
+        const float    frameMs = fps > 0.0f ? 1000.0f / fps : 0.0f;
+
+        ImGui::SetNextWindowPos(ImVec2 {imageMax.x - 10.0f, imageMin.y + 10.0f}, ImGuiCond_Always, ImVec2 {1.0f, 0.0f});
+        ImGui::SetNextWindowBgAlpha(0.88f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2 {12.0f, 10.0f});
+
+        constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
+                                           ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                                           ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
+                                           ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs;
+        if (ImGui::Begin("##GameViewMetricsOverlay", nullptr, flags))
+        {
+            ImGui::TextUnformatted(ICON_MDI_CHART_LINE " Metrics");
+            ImGui::Separator();
+            ImGui::Text("FPS        %.1f", fps);
+            ImGui::Text("Frame      %.2f ms", frameMs);
+
+            const auto* selectedFrame = profiler ? profiler->selectedFrame() : nullptr;
+            if (selectedFrame)
+            {
+                ImGui::Text("CPU frame  %.2f ms", selectedFrame->cpuFrameMs);
+                if (selectedFrame->gpuFrameMs >= 0.0)
+                    ImGui::Text("GPU frame  %.2f ms", selectedFrame->gpuFrameMs);
+                ImGui::Separator();
+                ImGui::Text("Draws      %llu", static_cast<unsigned long long>(selectedFrame->drawCalls));
+                ImGui::Text("Dispatch   %llu", static_cast<unsigned long long>(selectedFrame->dispatchCalls));
+                ImGui::Text("VRAM local %s", formatBytes(selectedFrame->gpuDeviceLocalBytes).c_str());
+            }
+            else
+            {
+                ImGui::TextDisabled("Profiler warming up...");
+            }
+
+            if (renderService)
+            {
+                const auto& gaussianStats = renderService->gaussianSplatFrameStats();
+                if (gaussianStats.splatAssets > 0u || gaussianStats.totalSplats > 0u)
+                {
+                    ImGui::Separator();
+                    ImGui::Text("Splats     %u / %u", gaussianStats.preparedSplats, gaussianStats.totalSplats);
+                }
+            }
+        }
+        ImGui::End();
+        ImGui::PopStyleVar(2);
     }
 
     void GameViewWindow::drawToolbar(EditorContext& ctx)

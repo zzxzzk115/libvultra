@@ -26,6 +26,14 @@ namespace vultra_app
             float     fovYDegrees {60.0f};
         };
 
+        struct SceneCameraAlignRequest
+        {
+            bool      pending {false};
+            glm::vec3 position {0.0f, 1.6f, 4.0f};
+            glm::quat rotation {1.0f, 0.0f, 0.0f, 0.0f};
+            float     fovYDegrees {60.0f};
+        };
+
         AppMode               mode {AppMode::Launcher};
         std::filesystem::path launcherStateFile {".vultra/launcher_projects.txt"};
         std::filesystem::path currentProject;
@@ -43,9 +51,12 @@ namespace vultra_app
         bool                  editorShutdownRequested {false};
         bool                  gameViewVisible {false};
         bool                  gameViewVisibleLastFrame {false};
+        bool                  metricsOverlayVisible {false};
+        bool                  profilerWindowOpenRequested {false};
         uint64_t              projectGeneration {0};
         // Scene document state. Tool windows should mutate this, but only document tabs should display it.
         bool                  sceneDirty {false};
         SceneCameraState      sceneCamera;
+        SceneCameraAlignRequest sceneCameraAlignRequest;
     };
 } // namespace vultra_app

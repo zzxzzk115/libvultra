@@ -9,6 +9,7 @@
 #include <vultra/function/world/components/entity_status_component.hpp>
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
+#include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
@@ -40,6 +41,8 @@ namespace vultra_app
             auto& reg = world.registry();
             if (reg.all_of<vultra::CameraComponent>(entity))
                 return ICON_MDI_CAMERA;
+            if (reg.all_of<vultra::LightComponent>(entity))
+                return ICON_MDI_LIGHTBULB_ON_OUTLINE;
             if (reg.all_of<vultra::MeshComponent>(entity))
                 return ICON_MDI_CUBE;
             if (reg.all_of<vultra::GaussianSplatComponent>(entity))

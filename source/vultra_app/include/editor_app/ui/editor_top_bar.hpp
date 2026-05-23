@@ -13,6 +13,7 @@ namespace vultra_app
     {
         std::function<void(EditorContext&)> newBlankScene;
         std::function<void(EditorContext&)> saveScene;
+        std::function<void(EditorContext&)> buildAndRun;
         std::function<void(EditorContext&)> backToLauncher;
         std::function<void(EditorContext&)> resetLayout;
         std::function<void(EditorContext&)> showAbout;

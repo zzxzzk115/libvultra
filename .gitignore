@@ -62,3 +62,4 @@ tracky*.csv
 
 # Vultra
 .vultra/
+*.vpk

@@ -660,6 +660,9 @@ namespace vultra
         VULTRA_CORE_TRACE("[RenderSystem] Creating transient resources");
         m_TransientResources = createScope<framegraph::TransientResources>(backendService.renderDevice());
 
+        VULTRA_CORE_TRACE("[RenderSystem] Providing IRenderService");
+        ctx().services.provide<IRenderService>(this);
+
         if (!ctx().config.render.renderPipelineAsset.empty())
         {
             auto* assetService = ctx().services.tryGet<IAssetService>();
@@ -698,9 +701,6 @@ namespace vultra
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eLinear, .minFilter = rhi::TexelFilter::eLinear});
         m_Samplers["nearest"] = backendService.renderDevice().getSampler(
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eNearest, .minFilter = rhi::TexelFilter::eNearest});
-
-        VULTRA_CORE_TRACE("[RenderSystem] Providing IRenderService");
-        ctx().services.provide<IRenderService>(this);
 
         const auto initialExtent = backendService.swapchain().getExtent();
         if (initialExtent.width > 0u && initialExtent.height > 0u)
@@ -954,9 +954,21 @@ namespace vultra
             m_GaussianSplatSettings.baselineMode != m_AppliedGaussianSplatSettings.baselineMode;
         const bool gaussianSelectionSettingsDirty =
             gaussianSplatSelectionSettingsDirty(m_GaussianSplatSettings, m_AppliedGaussianSplatSettings);
-        const bool gpuSceneDirty =
+        bool gpuSceneTopologyDirty =
             gaussianModeSettingsDirty ||
-            m_GpuSceneDirtyTracker.shouldRebuild(m_RenderWorldBack, resourceRevision, m_EnableGpuDrivenMeshletPipeline);
+            m_GpuSceneDirtyTracker.shouldRebuildTopology(m_RenderWorldBack,
+                                                         resourceRevision,
+                                                         m_EnableGpuDrivenMeshletPipeline);
+        bool gpuSceneTransformDirty =
+            !gpuSceneTopologyDirty && m_GpuSceneDirtyTracker.shouldUpdateTransforms(m_RenderWorldBack);
+        if (gpuSceneTransformDirty &&
+            (m_GpuSceneDatabaseFront.transforms.size() != m_RenderWorldBack.instances.size() ||
+             m_GpuSceneDatabaseFront.instances.size() != m_RenderWorldBack.instances.size()))
+        {
+            gpuSceneTopologyDirty  = true;
+            gpuSceneTransformDirty = false;
+        }
+        const bool gpuSceneDirty = gpuSceneTopologyDirty || gpuSceneTransformDirty;
         const bool gaussianSelectionDirty = gaussianOrderedClodMode && gaussianSelectionSettingsDirty;
 
         // Build GPU scene database + per-view draw state.
@@ -968,7 +980,76 @@ namespace vultra
         // View layer:
         // - draw table
         // - indirect commands
-        if (gpuSceneDirty)
+        if (gpuSceneTransformDirty)
+        {
+            RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::update_transforms"};
+
+            auto& gpuSceneDatabase = m_GpuSceneDatabaseFront;
+            auto& gpuSceneView     = m_GpuSceneViewFront;
+
+            for (uint32_t instanceIndex = 0;
+                 instanceIndex < static_cast<uint32_t>(m_RenderWorldBack.instances.size());
+                 ++instanceIndex)
+            {
+                const auto& model = m_RenderWorldBack.instances[instanceIndex].worldMatrix;
+                gpuSceneDatabase.transforms[instanceIndex] = model;
+            }
+            gpuSceneDatabase.uploadTransforms(rd, cb);
+
+            if (gpuSceneView.isCpuDriven())
+            {
+                for (auto& draw : gpuSceneView.draws)
+                {
+                    if (draw.instanceIndex < m_RenderWorldBack.instances.size())
+                        draw.model = m_RenderWorldBack.instances[draw.instanceIndex].worldMatrix;
+                }
+                gpuSceneView.uploadDraws(rd, cb);
+            }
+
+            uint32_t gaussianDrawIndex = 0;
+            for (const auto& splatInst : m_RenderWorldBack.gaussianSplats)
+            {
+                if (splatInst.splatIndex >= pool.gaussianSplats.size())
+                    continue;
+
+                const auto& gpuSplat = pool.gaussianSplats[splatInst.splatIndex];
+                if (gpuSplat.pointCount == 0u)
+                    continue;
+
+                if (gaussianDrawIndex >= gpuSceneView.generalGaussianSplatDraws.size())
+                    break;
+
+                gpuSceneView.generalGaussianSplatDraws[gaussianDrawIndex].model = splatInst.worldMatrix;
+                ++gaussianDrawIndex;
+            }
+
+            if (!gpuSceneView.generalGaussianSplatDraws.empty() && gpuSceneView.generalGaussianSplatDrawBuffer)
+            {
+                cb.update(*gpuSceneView.generalGaussianSplatDrawBuffer,
+                          0,
+                          static_cast<uint64_t>(gpuSceneView.generalGaussianSplatDraws.size()) *
+                              sizeof(resource::GpuGeneralGaussianSplatDrawRecord),
+                          gpuSceneView.generalGaussianSplatDraws.data());
+            }
+
+            if (gpuSceneView.generalGaussianSplatVisibleCountBuffer)
+            {
+                const uint32_t zero = 0u;
+                cb.update(*gpuSceneView.generalGaussianSplatVisibleCountBuffer, 0, sizeof(uint32_t), &zero);
+            }
+
+            if (gpuSceneView.generalGaussianSplatDispatchArgsBuffer)
+            {
+                const uint32_t zeroArgs[4] = {0u, 1u, 1u, 0u};
+                cb.update(*gpuSceneView.generalGaussianSplatDispatchArgsBuffer, 0, sizeof(zeroArgs), zeroArgs);
+            }
+
+            resetGaussianSplatIndirectBuffers(rd, gpuSceneView);
+
+            m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseFront;
+            m_RenderWorldBack.gpuSceneView     = &m_GpuSceneViewFront;
+        }
+        else if (gpuSceneTopologyDirty)
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::rebuild"};
             auto        packGaussianCovariance = [](const glm::uvec4 packed) {
@@ -1362,7 +1443,7 @@ namespace vultra
         }
 
         std::swap(m_RenderWorldFront, m_RenderWorldBack);
-        if (gpuSceneDirty)
+        if (gpuSceneTopologyDirty)
         {
             std::swap(m_GpuSceneDatabaseFront, m_GpuSceneDatabaseBack);
             std::swap(m_GpuSceneViewFront, m_GpuSceneViewBack);

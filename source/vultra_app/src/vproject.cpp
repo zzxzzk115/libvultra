@@ -1,5 +1,7 @@
 #include "vproject.hpp"
 
+#include <vasset/vpk.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -40,6 +42,33 @@ namespace vultra_app
                 project.defaultScene = value;
             else if (key == "render_pipeline")
                 project.renderPipeline = value;
+        }
+
+        void applyKeyValue(VPackageManifest& manifest, std::string key, std::string value)
+        {
+            key   = trim(std::move(key));
+            value = unquote(std::move(value));
+
+            if (key == "name")
+                manifest.name = value;
+            else if (key == "entry_scene")
+                manifest.entryScene = value;
+            else if (key == "render_pipeline")
+                manifest.renderPipeline = value;
+        }
+
+        std::string quote(std::string_view value)
+        {
+            std::string out = "\"";
+            for (const char ch : value)
+            {
+                if (ch == '"')
+                    out += "\\\"";
+                else
+                    out += ch;
+            }
+            out += "\"";
+            return out;
         }
     } // namespace
 
@@ -129,5 +158,103 @@ namespace vultra_app
         file << "default_scene = \"" << project.defaultScene << "\"\n";
         file << "render_pipeline = \"" << project.renderPipeline << "\"\n";
         return true;
+    }
+
+    bool saveVPackageManifest(const std::filesystem::path& assetRoot,
+                              const VPackageManifest&      manifest,
+                              std::string*                 errorMessage)
+    {
+        namespace fs = std::filesystem;
+
+        std::error_code ec;
+        fs::create_directories(assetRoot, ec);
+        if (ec)
+        {
+            if (errorMessage != nullptr)
+                *errorMessage = ec.message();
+            return false;
+        }
+
+        const auto manifestPath = assetRoot / kVPackageManifestPath;
+        std::ofstream file(manifestPath, std::ios::trunc);
+        if (!file)
+        {
+            if (errorMessage != nullptr)
+                *errorMessage = "failed to open package manifest for writing: " + manifestPath.generic_string();
+            return false;
+        }
+
+        file << "[vpackage]\n";
+        file << "version = 1\n";
+        file << "name = " << quote(manifest.name) << "\n";
+        file << "entry_scene = " << quote(manifest.entryScene) << "\n";
+        file << "render_pipeline = " << quote(manifest.renderPipeline) << "\n";
+        return true;
+    }
+
+    std::optional<VPackageManifest> loadVPackageManifestText(const std::string& text)
+    {
+        VPackageManifest manifest;
+
+        size_t begin = 0;
+        while (begin <= text.size())
+        {
+            size_t end = text.find('\n', begin);
+            if (end == std::string::npos)
+                end = text.size();
+
+            std::string line = trim(text.substr(begin, end - begin));
+            if (!line.empty() && line.back() == '\r')
+                line.pop_back();
+            if (!line.empty() && line.front() != '#' && line.front() != '[')
+            {
+                const auto equalsPos = line.find('=');
+                if (equalsPos != std::string::npos)
+                    applyKeyValue(manifest, line.substr(0, equalsPos), line.substr(equalsPos + 1));
+            }
+
+            if (end == text.size())
+                break;
+            begin = end + 1;
+        }
+
+        if (manifest.entryScene.empty())
+            manifest.entryScene = "res://scenes/test.vscn";
+        if (manifest.renderPipeline.empty())
+            manifest.renderPipeline = "res://render/default.vsrp.lua";
+        return manifest;
+    }
+
+    std::optional<VPackageManifest> loadVPackageManifestFromVpk(const std::filesystem::path& vpkPath,
+                                                                std::string*                 errorMessage)
+    {
+        const auto opened = vasset::openVpk(vpkPath.generic_string());
+        if (!opened)
+        {
+            if (errorMessage != nullptr)
+                *errorMessage = "failed to open VPK";
+            return std::nullopt;
+        }
+
+        auto bytes = vasset::readVpkFile(opened.value(), vpkPath.generic_string(), kVPackageManifestPath);
+        if (!bytes)
+            bytes = vasset::readVpkFile(opened.value(), vpkPath.generic_string(), kVPackageManifestUri);
+        if (!bytes)
+        {
+            if (errorMessage != nullptr)
+                *errorMessage = "package manifest not found in VPK";
+            return std::nullopt;
+        }
+
+        std::string text;
+        text.resize(bytes.value().size());
+        std::transform(bytes.value().begin(),
+                       bytes.value().end(),
+                       text.begin(),
+                       [](std::byte b)
+                       {
+                           return static_cast<char>(b);
+                       });
+        return loadVPackageManifestText(text);
     }
 } // namespace vultra_app

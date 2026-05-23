@@ -187,6 +187,26 @@ namespace vultra_app
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                 ImGui::SetTooltip("%s", text);
         }
+
+        void applyCameraAlignRequest(AppState& state,
+                                     glm::vec3& cameraPosition,
+                                     float&     cameraYaw,
+                                     float&     cameraPitch,
+                                     float&     cameraFovY)
+        {
+            if (!state.sceneCameraAlignRequest.pending)
+                return;
+
+            const auto& request = state.sceneCameraAlignRequest;
+            cameraPosition      = request.position;
+            cameraFovY          = request.fovYDegrees;
+
+            const auto forward = glm::normalize(request.rotation * glm::vec3 {0.0f, 0.0f, -1.0f});
+            cameraYaw          = glm::degrees(std::atan2(forward.z, forward.x));
+            cameraPitch        = glm::degrees(std::asin(std::clamp(forward.y, -1.0f, 1.0f)));
+
+            state.sceneCameraAlignRequest.pending = false;
+        }
     } // namespace
 
     SceneViewWindow::SceneViewWindow() : EditorWindow("Scene View", ICON_MDI_EYE) {}
@@ -220,6 +240,7 @@ namespace vultra_app
         avail.y      = std::max(1.0f, avail.y);
 
         ensureRenderTarget(ctx, static_cast<uint32_t>(avail.x), static_cast<uint32_t>(avail.y));
+        applyCameraAlignRequest(ctx.state, m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY);
 
         const ImVec2 imagePos = ImGui::GetCursorScreenPos();
         if (m_ActiveRenderTarget.textureId)

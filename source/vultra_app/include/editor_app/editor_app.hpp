@@ -11,6 +11,7 @@
 #include <vtask/task_set.hpp>
 
 #include <atomic>
+#include <future>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -21,6 +22,19 @@
 
 namespace vultra_app
 {
+    struct BuildRunResult
+    {
+        bool        ok {false};
+        std::string message;
+    };
+
+    struct BuildRunTaskProgress
+    {
+        std::mutex mutex;
+        float       progress {0.0f};
+        std::string message;
+    };
+
     class EditorApp
     {
     public:
@@ -73,12 +87,15 @@ namespace vultra_app
         void ensureInitialized();
         bool isProjectLoading() const;
         bool updateProjectLoading(EditorContext& ctx);
+        void updateBuildAndRun(EditorContext& ctx);
+        void startBuildAndRun(EditorContext& ctx);
         void startProjectLoading(const std::filesystem::path& projectRoot);
         void startAssetImportTask(const std::filesystem::path& projectRoot, const std::string& assetRoot);
         void waitForAssetImportTask();
         void applySplashWindow(EditorContext& ctx);
         void applyEditorWindow(EditorContext& ctx);
         void drawLoadingOverlay() const;
+        void drawBuildRunPopup();
         void saveCurrentScene(EditorContext& ctx);
         void syncPlaybackState(EditorContext& ctx);
         void capturePlayModeSnapshot(EditorContext& ctx);
@@ -97,9 +114,13 @@ namespace vultra_app
         ImportTaskResult                    m_ImportResult;
         std::atomic_bool                    m_ImportTaskDone {false};
         std::shared_ptr<ImportTaskProgress> m_ImportProgress;
+        std::future<BuildRunResult>         m_BuildRunFuture;
+        std::shared_ptr<BuildRunTaskProgress> m_BuildRunProgress;
+        std::optional<BuildRunResult>       m_BuildRunCompleted;
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                m_Initialized {false};
         bool                m_DefaultLayoutBuilt {false};
+        bool                m_BuildRunActive {false};
         bool                m_ShowAboutPopup {false};
         bool                m_PlaybackWasPlaying {false};
         bool                m_SplashWindowApplied {false};

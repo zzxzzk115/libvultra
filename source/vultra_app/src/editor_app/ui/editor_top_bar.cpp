@@ -67,6 +67,23 @@ namespace vultra_app
             return pressed;
         }
 
+        bool toolbarToggleButton(const char* label,
+                                 const bool  active,
+                                 const char* tooltip = nullptr,
+                                 const ImVec2 size = ImVec2 {0.0f, 0.0f})
+        {
+            pushToolbarButtonStyle();
+            if (active)
+                ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::accentButton());
+            const bool pressed = ImGui::Button(label, size);
+            if (active)
+                ImGui::PopStyleColor();
+            popToolbarButtonStyle();
+            if (tooltip)
+                setTooltip(tooltip);
+            return pressed;
+        }
+
         bool titleMenuButton(const char* label)
         {
             const ImVec2 menuPos = ImGui::GetCursorScreenPos();
@@ -266,6 +283,8 @@ namespace vultra_app
                     actions.newBlankScene(ctx);
                 if (ImGui::MenuItem("Save Scene", "Ctrl+S") && actions.saveScene)
                     actions.saveScene(ctx);
+                if (ImGui::MenuItem("Build & Run", "F5") && actions.buildAndRun)
+                    actions.buildAndRun(ctx);
                 if (ImGui::MenuItem("Back to Launcher") && actions.backToLauncher)
                     actions.backToLauncher(ctx);
                 ImGui::EndPopup();
@@ -284,6 +303,7 @@ namespace vultra_app
             {
                 if (ImGui::MenuItem("Reset Layout") && actions.resetLayout)
                     actions.resetLayout(ctx);
+                ImGui::MenuItem("Metrics Overlay", nullptr, &ctx.state.metricsOverlayVisible);
                 ImGui::Separator();
 
                 for (const auto& window : windows)
@@ -297,6 +317,8 @@ namespace vultra_app
                 ImGui::MenuItem("Import", nullptr, false, false);
                 ImGui::MenuItem("Save All", nullptr, false, false);
                 ImGui::Separator();
+                if (ImGui::MenuItem("Profiler Window"))
+                    ctx.state.profilerWindowOpenRequested = true;
                 drawRenderDocMenu(ctx);
                 ImGui::EndPopup();
             }
@@ -315,15 +337,23 @@ namespace vultra_app
                 if (titleBarWindowButton(ICON_MDI_WINDOW_MINIMIZE, "Minimize") && windowService)
                     windowService->window().minimize();
                 ImGui::SameLine(0.0f, 0.0f);
-                const bool maximized = windowService && windowService->window().isMaximized();
+                const bool maximized =
+                    windowService && (windowService->window().isFullscreen() || windowService->window().isMaximized());
                 if (titleBarWindowButton(maximized ? ICON_MDI_WINDOW_RESTORE : ICON_MDI_WINDOW_MAXIMIZE,
                                          maximized ? "Restore" : "Maximize") &&
                     windowService)
                 {
                     if (maximized)
-                        windowService->window().restore();
+                    {
+                        if (windowService->window().isFullscreen())
+                            windowService->window().setFullscreen(false);
+                        else
+                            windowService->window().restore();
+                    }
                     else
-                        windowService->window().maximize();
+                    {
+                        windowService->window().setFullscreen(true);
+                    }
                 }
                 ImGui::SameLine(0.0f, 0.0f);
                 if (titleBarWindowButton(ICON_MDI_CLOSE, "Close", true) && windowService)
@@ -362,6 +392,22 @@ namespace vultra_app
             toolbarButton(ICON_MDI_SOURCE_BRANCH " " ICON_MDI_MENU_DOWN, "Graph tools", ImVec2 {46.0f, 0.0f});
             ImGui::SameLine(0.0f, 12.0f);
             drawPlaybackControls(ctx);
+
+            ImGui::SameLine(0.0f, 12.0f);
+            if (toolbarButton(ICON_MDI_ROCKET_LAUNCH "  Build & Run", "Package and run", ImVec2 {118.0f, 0.0f}) &&
+                actions.buildAndRun)
+            {
+                actions.buildAndRun(ctx);
+            }
+
+            ImGui::SameLine(0.0f, 8.0f);
+            if (toolbarToggleButton(ICON_MDI_CHART_LINE,
+                                    ctx.state.metricsOverlayVisible,
+                                    "Metrics overlay",
+                                    ImVec2 {34.0f, 0.0f}))
+            {
+                ctx.state.metricsOverlayVisible = !ctx.state.metricsOverlayVisible;
+            }
 
             ImGui::SameLine(0.0f, 12.0f);
             const char* platformLabel = ICON_MDI_MONITOR "  Platforms " ICON_MDI_MENU_DOWN;
