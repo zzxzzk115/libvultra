@@ -2,7 +2,23 @@
 
 #include <argparse/argparse.hpp>
 
+#include <filesystem>
 #include <iostream>
+#include <vector>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <limits.h>
+#include <unistd.h>
+#else
+#include <limits.h>
+#include <unistd.h>
+#endif
 
 namespace vultra_app
 {
@@ -21,6 +37,39 @@ namespace vultra_app
         bool isCliCommand(const std::string& arg)
         {
             return arg == "help" || arg == "version" || arg == "pack" || arg == "import" || arg == "validate-vpk";
+        }
+
+        std::filesystem::path currentExecutablePath()
+        {
+#if defined(_WIN32)
+            std::wstring buffer(MAX_PATH, L'\0');
+            DWORD size = 0;
+            for (;;)
+            {
+                size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+                if (size == 0)
+                    return {};
+                if (size < buffer.size() - 1)
+                    break;
+                buffer.resize(buffer.size() * 2);
+            }
+            return std::filesystem::path(std::wstring(buffer.data(), size));
+#elif defined(__APPLE__)
+            uint32_t size = 0;
+            _NSGetExecutablePath(nullptr, &size);
+            std::vector<char> buffer(size + 1, '\0');
+            if (_NSGetExecutablePath(buffer.data(), &size) != 0)
+                return {};
+            std::error_code ec;
+            return std::filesystem::weakly_canonical(buffer.data(), ec);
+#else
+            std::vector<char> buffer(PATH_MAX, '\0');
+            const ssize_t size = readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+            if (size <= 0)
+                return {};
+            buffer[static_cast<size_t>(size)] = '\0';
+            return std::filesystem::path(buffer.data());
+#endif
         }
     } // namespace
 
@@ -103,6 +152,9 @@ namespace vultra_app
         }
 
         std::vector<fs::path> candidates;
+        if (const auto exe = currentExecutablePath(); !exe.empty())
+            candidates.push_back(exe.parent_path() / (exe.stem().generic_string() + ".vpk"));
+
         if (!options.projectPath.empty())
         {
             const fs::path project {options.projectPath};
@@ -131,6 +183,7 @@ namespace vultra_app
                   << "  vultra --project <project-dir>\n"
                   << "  vultra help\n\n"
                   << "Notes:\n"
+                  << "  Without --vpk, Vultra first tries <executable-name>.vpk next to the executable.\n"
                   << "  Without a VPK, Vultra opens the Project Launcher.\n"
                   << "  CLI subcommands are reserved for the integrated tool workflow.\n";
     }
@@ -148,8 +201,8 @@ namespace vultra_app
             return 0;
         }
 
-        std::cerr << "CLI command '" << options.cliCommand
-                  << "' is reserved but not wired yet. Use vasset-cli for asset commands for now.\n";
+        std::cerr << "Unknown CLI command '" << options.cliCommand
+                  << "'. Use `vultra asset ...` or `vultra shader ...` for integrated tools.\n";
         return 2;
     }
 } // namespace vultra_app

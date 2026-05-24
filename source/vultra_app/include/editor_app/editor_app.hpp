@@ -1,10 +1,12 @@
 #pragma once
 
 #include "app_state.hpp"
+#include "common/file_dialog.hpp"
 #include "editor_app/editor_context.hpp"
 #include "editor_app/ui/editor_window_manager.hpp"
 #include "launch_options.hpp"
 
+#include <array>
 #include <vultra/core/engine/engine.hpp>
 #include <vultra/function/scene/vscn_document.hpp>
 #include <vtask/scheduler.hpp>
@@ -89,12 +91,14 @@ namespace vultra_app
         bool updateProjectLoading(EditorContext& ctx);
         void updateBuildAndRun(EditorContext& ctx);
         void startBuildAndRun(EditorContext& ctx);
+        void beginBuildAndRun(EditorContext& ctx, const std::filesystem::path& outputFolder);
         void startProjectLoading(const std::filesystem::path& projectRoot);
         void startAssetImportTask(const std::filesystem::path& projectRoot, const std::string& assetRoot);
         void waitForAssetImportTask();
         void applySplashWindow(EditorContext& ctx);
         void applyEditorWindow(EditorContext& ctx);
         void drawLoadingOverlay() const;
+        void drawBuildRunConfigurePopup(EditorContext& ctx);
         void drawBuildRunPopup();
         void drawEditorSettingsPopup(EditorContext& ctx);
         void saveCurrentScene(EditorContext& ctx);
@@ -118,10 +122,17 @@ namespace vultra_app
         std::future<BuildRunResult>         m_BuildRunFuture;
         std::shared_ptr<BuildRunTaskProgress> m_BuildRunProgress;
         std::optional<BuildRunResult>       m_BuildRunCompleted;
+        ui::FileDialogField                 m_BuildRunOutputDialog {
+            "BuildRunOutputFolder",
+            "Select Build Output Folder",
+            ui::FileDialogMode::Directory,
+        };
+        std::array<char, 512>               m_BuildRunOutputFolder {};
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                m_Initialized {false};
         bool                m_DefaultLayoutBuilt {false};
         bool                m_BuildRunActive {false};
+        bool                m_BuildRunConfigureOpen {false};
         bool                m_ShowAboutPopup {false};
         bool                m_PlaybackWasPlaying {false};
         bool                m_SplashWindowApplied {false};
