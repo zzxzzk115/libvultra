@@ -191,6 +191,8 @@ namespace vultra_app
             out.clearValue  = camera.clearColor;
             out.clearValue.a = 1.0f;
             out.renderImGui = false;
+            out.debugEntityIdOutput = false;
+            out.selectionOutlineEnabled = false;
             out.rendererKey = camera.rendererKey.empty() || camera.rendererKey == "universal" ? "project" : camera.rendererKey;
             return out;
         }

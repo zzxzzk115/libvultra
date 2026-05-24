@@ -227,7 +227,8 @@ namespace vultra
                             {
                                 .extent     = ctx.view().extent,
                                 .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                                .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                                .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                              rhi::ImageUsage::eTransferSrc,
                             });
                     }
 
@@ -709,8 +710,14 @@ namespace vultra
                                 settings.resolution = static_cast<uint32_t>(params.get<int>("resolution", static_cast<int>(settings.resolution)));
                                 settings.cascadeCount = static_cast<uint32_t>(params.get<int>("cascadeCount", static_cast<int>(settings.cascadeCount)));
                                 settings.coverageRadius = params.get<float>("coverageRadius", settings.coverageRadius);
+                                settings.lightDistance = params.get<float>("lightDistance", settings.lightDistance);
+                                settings.zRange = params.get<float>("zRange", settings.zRange);
+                                settings.splitLambda = params.get<float>("splitLambda", settings.splitLambda);
+                                settings.autoFitBounds = params.get<bool>("autoFitBounds", settings.autoFitBounds);
+                                settings.stableTexelSnapping = params.get<bool>("stableTexelSnapping", settings.stableTexelSnapping);
                                 settings.depthBias = params.get<float>("depthBias", settings.depthBias);
                                 settings.normalBias = params.get<float>("normalBias", settings.normalBias);
+                                settings.pcssLightRadius = params.get<float>("pcssLightRadius", settings.pcssLightRadius);
                                 if (ctx->view().renderWorld)
                                 {
                                     for (const auto& light : ctx->view().renderWorld->lights)
@@ -738,9 +745,18 @@ namespace vultra
                                     return;
                                 const auto& settings = renderService->builtinRenderSettings();
                                 auto lightingSettings = settings.pbrLighting;
+                                auto shadowSettings = settings.shadow;
                                 lightingSettings.ambientIntensity = params.get<float>("ambientIntensity", lightingSettings.ambientIntensity);
                                 lightingSettings.shadowStrength = params.get<float>("shadowStrength", lightingSettings.shadowStrength);
                                 lightingSettings.iblIntensity = params.get<float>("iblIntensity", lightingSettings.iblIntensity);
+                                shadowSettings.filterMode = static_cast<ShadowRenderSettings::FilterMode>(
+                                    std::clamp(params.get<int>("shadowFilterMode", static_cast<int>(shadowSettings.filterMode)), 0, 2));
+                                shadowSettings.debugMode = static_cast<ShadowRenderSettings::DebugMode>(
+                                    std::clamp(params.get<int>("shadowDebugMode", static_cast<int>(shadowSettings.debugMode)), 0, 5));
+                                if (params.get<bool>("debugCascades", false))
+                                    shadowSettings.debugMode = ShadowRenderSettings::DebugMode::eCascade;
+                                shadowSettings.pcssBlockerSamples = params.get<int>("pcssBlockerSamples", shadowSettings.pcssBlockerSamples);
+                                shadowSettings.pcssFilterSamples = params.get<int>("pcfRadius", shadowSettings.pcssFilterSamples);
                                 auto color = m_DeferredLightingPass.addPass(*ctx,
                                                                             passCtx.getInput("color"),
                                                                             passCtx.getInput("normal"),
@@ -748,7 +764,7 @@ namespace vultra
                                                                             passCtx.getInput("depth"),
                                                                             passCtx.getInput("shadowMap"),
                                                                             passCtx.getInput("shadowData"),
-                                                                            settings.shadow,
+                                                                            shadowSettings,
                                                                             lightingSettings,
                                                                             ctx->view().renderWorld);
                                 if (color)
@@ -844,6 +860,14 @@ namespace vultra
                                 settings.thickness = params.get<float>("thickness", settings.thickness);
                                 settings.fillOpacity = params.get<float>("fillOpacity", settings.fillOpacity);
                                 settings.edgeOpacity = params.get<float>("edgeOpacity", settings.edgeOpacity);
+                                const bool cameraAllowsOutline =
+                                    ctx->view().camera != nullptr && ctx->view().camera->selectionOutlineEnabled;
+                                if (!settings.enabled || settings.selectedEntityId == 0u || !cameraAllowsOutline ||
+                                    ctx->rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+                                {
+                                    passCtx.setOutput("color", passCtx.getInput("source"));
+                                    return;
+                                }
                                 auto color = m_SelectionOutlinePass.addPass(*ctx,
                                                                             passCtx.getInput("source"),
                                                                             passCtx.getInput("entityId"),

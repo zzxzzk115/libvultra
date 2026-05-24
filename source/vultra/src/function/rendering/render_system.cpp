@@ -71,6 +71,32 @@ namespace vultra
 #endif
         }
 
+        void expandBounds(RenderWorld& out, const glm::vec3& point)
+        {
+            if (!out.hasBounds)
+            {
+                out.hasBounds = true;
+                out.boundsMin = point;
+                out.boundsMax = point;
+                return;
+            }
+            out.boundsMin = glm::min(out.boundsMin, point);
+            out.boundsMax = glm::max(out.boundsMax, point);
+        }
+
+        void expandBounds(RenderWorld& out, const glm::mat4& model, const glm::vec3& center, const float radius)
+        {
+            const glm::vec3 worldCenter = glm::vec3(model * glm::vec4(center, 1.0f));
+            const float maxScale = std::max({
+                glm::length(glm::vec3(model[0])),
+                glm::length(glm::vec3(model[1])),
+                glm::length(glm::vec3(model[2])),
+            });
+            const glm::vec3 r(std::max(radius, 0.0f) * maxScale);
+            expandBounds(out, worldCenter - r);
+            expandBounds(out, worldCenter + r);
+        }
+
         struct FrameGraphSnapshotWriter
         {
             nlohmann::json                  snapshot;
@@ -594,6 +620,21 @@ namespace vultra
                 inst.hasBaseColorOverride = true;
             }
             out.instances.push_back(inst);
+
+            const auto& pool = gpuResources.pool();
+            if (meshIndex < pool.meshes.size())
+            {
+                const auto& gpuMesh = pool.meshes[meshIndex];
+                if (gpuMesh.meshletCount > 0 &&
+                    gpuMesh.meshletOffset + gpuMesh.meshletCount <= pool.meshlets.cpuMeshlets.size())
+                {
+                    for (uint32_t i = 0; i < gpuMesh.meshletCount; ++i)
+                    {
+                        const auto& meshlet = pool.meshlets.cpuMeshlets[gpuMesh.meshletOffset + i];
+                        expandBounds(out, tr.worldMatrix, meshlet.center, meshlet.radius);
+                    }
+                }
+            }
         }
 
         auto splatView = reg.view<IDComponent, TransformComponent, GaussianSplatComponent>();
@@ -735,6 +776,8 @@ namespace vultra
         m_Renderers.clear();
 
         m_FrameGraphTextureCaptureEnabled = false;
+        m_FrameGraphTexturePreviewPipeline.reset();
+        m_FrameGraphTexturePreviewPipelineFormat = rhi::PixelFormat::eUndefined;
         m_FrameGraphDebugTextures.clear();
         m_FrameGraphDebugTextureSlots.clear();
         m_RetiredFrameGraphDebugTextureSlots.clear();
@@ -857,7 +900,56 @@ namespace vultra
         return true;
     }
 
-    void RenderSystem::addFrameGraphTextureCapturePasses(FrameGraphBuildContext& ctx, std::string_view cameraName)
+    rhi::GraphicsPipeline*
+    RenderSystem::getFrameGraphTexturePreviewPipeline(rhi::RenderDevice&          rd,
+                                                      rhi::ShaderLibraryRuntime& shaderLib,
+                                                      const rhi::PixelFormat     colorFormat)
+    {
+        if (m_FrameGraphTexturePreviewPipeline &&
+            m_FrameGraphTexturePreviewPipelineFormat == colorFormat)
+        {
+            return &*m_FrameGraphTexturePreviewPipeline;
+        }
+
+        const auto vertexHash = rhi::ShaderLibraryRuntime::computeVariantHash(
+            "fullscreen_triangle.vert",
+            vshadersystem::ShaderStage::eVert,
+            {});
+        const auto fragmentHash = rhi::ShaderLibraryRuntime::computeVariantHash(
+            "frame_debugger_texture_preview.frag",
+            vshadersystem::ShaderStage::eFrag,
+            {});
+        auto vertexShader = shaderLib.load(vertexHash, vshadersystem::ShaderStage::eVert);
+        auto fragmentShader = shaderLib.load(fragmentHash, vshadersystem::ShaderStage::eFrag);
+        if (!vertexShader || !fragmentShader)
+        {
+            VULTRA_CORE_ERROR("[FrameDebugger] Failed to load texture preview shaders");
+            m_FrameGraphTexturePreviewPipeline.reset();
+            m_FrameGraphTexturePreviewPipelineFormat = rhi::PixelFormat::eUndefined;
+            return nullptr;
+        }
+
+        m_FrameGraphTexturePreviewPipeline =
+            rhi::GraphicsPipeline::Builder {}
+                .setColorFormats({colorFormat})
+                .setInputAssembly({})
+                .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
+                .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
+                .setDepthStencil({
+                    .depthTest  = false,
+                    .depthWrite = false,
+                })
+                .setRasterizer({
+                    .polygonMode = rhi::PolygonMode::eFill,
+                    .cullMode    = rhi::CullMode::eNone,
+                })
+                .setBlending(0, {.enabled = false})
+                .build(rd);
+        m_FrameGraphTexturePreviewPipelineFormat = colorFormat;
+        return m_FrameGraphTexturePreviewPipeline ? &*m_FrameGraphTexturePreviewPipeline : nullptr;
+    }
+
+    void RenderSystem::addFrameGraphTextureCapturePasses(FrameGraphBuildContext& ctx, const RenderCamera& camera)
     {
         if (!m_FrameGraphTextureCaptureEnabled)
             return;
@@ -866,17 +958,9 @@ namespace vultra
 
         struct CaptureCandidate
         {
-            FrameGraphResourceKey key;
-            const char*           name;
-            rhi::PixelFormat      format;
-        };
-
-        constexpr CaptureCandidate candidates[] {
-            {kResKey_GBufferColor, "GBufferColor", rhi::PixelFormat::eRGBA8_UNorm},
-            {kResKey_GBufferMetallicRoughnessAO, "GBufferMetallicRoughnessAO", rhi::PixelFormat::eRGBA8_UNorm},
-            {kResKey_GBufferEntityId, "GBufferEntityId", rhi::PixelFormat::eRGBA8_UNorm},
-            {kResKey_SelectionOutlineOutput, "SelectionOutlineOutput", rhi::PixelFormat::eRGBA8_UNorm},
-            {kResKey_FinalCompositionSource, "FinalCompositionSource", rhi::PixelFormat::eRGBA8_UNorm},
+            FrameGraphResource resource {};
+            std::string        name;
+            rhi::ImageAspect   aspect {rhi::ImageAspect::eColor};
         };
 
         struct PassData
@@ -885,17 +969,155 @@ namespace vultra
             FrameGraphResource target;
         };
 
-        const auto extent = ctx.view().extent;
-        for (const auto& candidate : candidates)
+        struct alignas(16) PreviewPushConstants
         {
-            if (!ctx.data.contains(candidate.key))
-                continue;
+            glm::ivec4 channelMask {1, 1, 1, 1};
+            int        gammaCorrect {0};
+            int        previewMode {0};
+            float      depthNear {0.1f};
+            float      depthFar {1000.0f};
+            float      clampMin {0.0f};
+            float      clampMax {1.0f};
+        };
 
-            std::string camera {cameraName.empty() ? std::string {"Camera"} : std::string {cameraName}};
-            std::string slotKey = camera + "/" + candidate.name;
-            auto&       slot = m_FrameGraphDebugTextureSlots[slotKey];
-            const bool recreate = !slot.texture || slot.extent.width != extent.width || slot.extent.height != extent.height ||
-                                  slot.format != candidate.format;
+        struct TextureResourceCollector
+        {
+            std::vector<CaptureCandidate> candidates;
+
+            static rhi::ImageAspect imageAspectFor(rhi::PixelFormat format)
+            {
+                const auto aspectMask = rhi::getAspectMask(format);
+                if (HasFlagValues(aspectMask, rhi::ImageAspectFlags::eDepth))
+                    return rhi::ImageAspect::eDepth;
+                return rhi::ImageAspect::eColor;
+            }
+
+            static bool canPreviewWithFloatSampler(rhi::PixelFormat format)
+            {
+                switch (format)
+                {
+                    using enum rhi::PixelFormat;
+
+                    case eR8UI:
+                    case eR8I:
+                    case eRG8UI:
+                    case eRG8I:
+                    case eRGBA8UI:
+                    case eRGBA8I:
+                    case eR16UI:
+                    case eR16I:
+                    case eRG16UI:
+                    case eRG16I:
+                    case eRGBA16UI:
+                    case eRGBA16I:
+                    case eR32UI:
+                    case eR32I:
+                    case eRG32UI:
+                    case eRG32I:
+                    case eRGBA32UI:
+                    case eRGBA32I:
+                    case eStencil8:
+                        return false;
+                    default:
+                        return format != eUndefined;
+                }
+            }
+
+            void operator()(const PassNode&, const std::vector<ResourceNode>&) {}
+
+            void operator()(const ResourceNode& resource, const ResourceEntry& entry, const std::vector<PassNode>&)
+            {
+                if (entry.isImported())
+                    return;
+
+                // fg has no public runtime type tag. FrameGraphTexture::toString includes usage metadata;
+                // buffer resources do not, so this keeps capture automatic without touching fg internals.
+                if (entry.toString().find("<BR/>Usage = ") == std::string::npos)
+                    return;
+
+                const auto& desc = entry.getDescriptor<framegraph::FrameGraphTexture>();
+                if (desc.format == rhi::PixelFormat::eUndefined || desc.extent.width == 0u || desc.extent.height == 0u)
+                    return;
+                if (!canPreviewWithFloatSampler(desc.format))
+                    return;
+                if (!static_cast<bool>(desc.usageFlags & rhi::ImageUsage::eSampled))
+                    return;
+
+                std::string name(resource.getName());
+                if (resource.getVersion() > ResourceEntry::kInitialVersion)
+                    name += " v" + std::to_string(resource.getVersion());
+                candidates.push_back(CaptureCandidate {
+                    .resource = static_cast<FrameGraphResource>(resource.getId()),
+                    .name = std::move(name),
+                    .aspect = imageAspectFor(desc.format),
+                });
+            }
+
+            void flush(std::ostream&) const {}
+        };
+
+        auto makePreviewExtent = [](const rhi::Extent2D sourceExtent) {
+            constexpr uint32_t kMaxPreviewDimension = 1024u;
+            rhi::Extent2D      preview = sourceExtent;
+            const uint32_t     maxDimension = std::max(preview.width, preview.height);
+            if (maxDimension > kMaxPreviewDimension)
+            {
+                preview.width =
+                    std::max(1u, static_cast<uint32_t>((static_cast<uint64_t>(preview.width) *
+                                                        kMaxPreviewDimension) /
+                                                       maxDimension));
+                preview.height =
+                    std::max(1u, static_cast<uint32_t>((static_cast<uint64_t>(preview.height) *
+                                                        kMaxPreviewDimension) /
+                                                       maxDimension));
+            }
+            return preview;
+        };
+
+        std::ostringstream         unused;
+        TextureResourceCollector   collector;
+        ctx.fg.debugOutput(unused, collector);
+
+        for (const auto& candidate : collector.candidates)
+        {
+            auto       source = candidate.resource;
+            const auto sourceDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(source);
+            if (sourceDesc.format == rhi::PixelFormat::eUndefined || sourceDesc.extent.width == 0u ||
+                sourceDesc.extent.height == 0u)
+            {
+                continue;
+            }
+
+            const auto previewExtent = makePreviewExtent(sourceDesc.extent);
+            std::string cameraName {camera.name.empty() ? std::string {"Camera"} : camera.name};
+            std::string slotKey = cameraName + "/" + candidate.name + "#" + std::to_string(candidate.resource);
+            std::string publicKey = slotKey + "@" + std::to_string(sourceDesc.extent.width) + "x" +
+                                    std::to_string(sourceDesc.extent.height) + ":" +
+                                    std::string(rhi::toString(sourceDesc.format));
+            const bool shouldPreview = m_FrameGraphTexturePreviewSettings.selectedTextureKey.empty() ?
+                                           m_FrameGraphDebugTextures.empty() :
+                                           slotKey == m_FrameGraphTexturePreviewSettings.selectedTextureKey;
+            if (!shouldPreview)
+            {
+                m_FrameGraphDebugTextures.push_back(FrameGraphDebugTexture {
+                    .camera = cameraName,
+                    .name = candidate.name,
+                    .key = publicKey,
+                    .resourceKey = slotKey,
+                    .texture = nullptr,
+                    .extent = previewExtent,
+                    .sourceExtent = sourceDesc.extent,
+                    .format = sourceDesc.format,
+                    .zNear = camera.zNear,
+                    .zFar = camera.zFar,
+                });
+                continue;
+            }
+
+            auto&       slot = m_FrameGraphDebugTextureSlots[publicKey];
+            const bool recreate = !slot.texture || slot.extent.width != previewExtent.width ||
+                                  slot.extent.height != previewExtent.height ||
+                                  slot.format != rhi::PixelFormat::eRGBA8_UNorm;
             if (recreate)
             {
                 if (slot.texture)
@@ -907,81 +1129,90 @@ namespace vultra
 
                 slot.texture =
                     rhi::Texture::Builder {}
-                        .setExtent(extent)
-                        .setPixelFormat(candidate.format)
+                        .setExtent(previewExtent)
+                        .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
                         .setNumMipLevels(1)
-                        .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst |
-                                       rhi::ImageUsage::eRenderTarget)
+                        .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eRenderTarget |
+                                       rhi::ImageUsage::eTransferSrc)
                         .build(ctx.rd);
             }
 
-            slot.camera = camera;
+            slot.camera = cameraName;
             slot.name = candidate.name;
-            slot.key = slotKey + "@" + std::to_string(extent.width) + "x" + std::to_string(extent.height) + ":" +
-                       std::string(rhi::toString(candidate.format));
-            slot.extent = extent;
-            slot.format = candidate.format;
+            slot.key = publicKey;
+            slot.extent = previewExtent;
+            slot.format = rhi::PixelFormat::eRGBA8_UNorm;
             slot.lastTouchedFrame = m_FrameCounter;
 
             if (!slot.texture)
                 continue;
 
-            auto source = ctx.data.get(candidate.key);
             auto target = framegraph::importTexture(ctx.fg, std::string {"DebugCapture/"} + slotKey, &*slot.texture);
             ctx.fg.addCallbackPass<PassData>(
                 std::string {"DebugCapture/"} + candidate.name,
-                [source, target](FrameGraph::Builder& builder, PassData& pd) {
+                [source, target, aspect = candidate.aspect](FrameGraph::Builder& builder, PassData& pd) {
                     pd.source = builder.read(source,
                                              framegraph::TextureRead {
                                                  .binding =
                                                      {
-                                                         .location      = {.set = 3, .binding = 14},
-                                                         .pipelineStage = framegraph::PipelineStage::eTransfer,
+                                                         .location      = {.set = 3, .binding = 0},
+                                                         .pipelineStage = framegraph::PipelineStage::eFragmentShader,
                                                      },
                                                  .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
-                                                 .imageAspect = rhi::ImageAspect::eColor,
+                                                 .imageAspect = aspect,
                                              });
                     pd.target = builder.write(target,
-                                              framegraph::ImageWrite {
-                                                  .binding =
-                                                      {
-                                                          .location      = {.set = 3, .binding = 63},
-                                                          .pipelineStage = framegraph::PipelineStage::eTransfer,
-                                                      },
+                                              framegraph::Attachment {
+                                                  .index       = 0,
                                                   .imageAspect = rhi::ImageAspect::eColor,
+                                                  .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                               });
                 },
-                [](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+                [this, preview = m_FrameGraphTexturePreviewSettings](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                     VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
-                    auto* sourceTexture = resources.get<framegraph::FrameGraphTexture>(pd.source).texture;
-                    auto* targetTexture = resources.get<framegraph::FrameGraphTexture>(pd.target).texture;
-                    if (!sourceTexture || !targetTexture)
+                    if (!rc.ext.builtinShaderLib)
                         return;
-                    rc.cb.getBarrierBuilder().imageBarrier(
-                        {
-                            .image            = *targetTexture,
-                            .newLayout        = rhi::ImageLayout::eTransferDst,
-                            .subresourceRange = rhi::ImageSubresourceRange {
-                                .levelCount = UINT32_MAX,
-                                .layerCount = UINT32_MAX,
-                            },
-                        },
-                        {
-                            .dstStage  = rhi::PipelineStages::eTransfer,
-                            .dstAccess = rhi::Access::eTransferWrite,
-                        });
-                    rc.cb.blit(*sourceTexture, *targetTexture, rhi::TexelFilter::eNearest);
-                    rhi::prepareForReading(rc.cb, *sourceTexture);
-                    rhi::prepareForReading(rc.cb, *targetTexture);
+                    assert(rc.framebufferInfo().has_value());
+                    const auto fb = rc.framebufferInfo().value();
+                    auto* pipeline = getFrameGraphTexturePreviewPipeline(
+                        rc.rd,
+                        *rc.ext.builtinShaderLibForProfile(rhi::ShaderProfile::eGeneral),
+                        rhi::getColorFormat(fb, 0));
+                    if (!pipeline)
+                        return;
+
+                    PreviewPushConstants pc {
+                        .channelMask = glm::ivec4(preview.channels[0] ? 1 : 0,
+                                                  preview.channels[1] ? 1 : 0,
+                                                  preview.channels[2] ? 1 : 0,
+                                                  preview.channels[3] ? 1 : 0),
+                        .gammaCorrect = preview.gammaCorrect ? 1 : 0,
+                        .previewMode = preview.previewMode,
+                        .depthNear = preview.depthNear,
+                        .depthFar = preview.depthFar,
+                        .clampMin = preview.clampMin,
+                        .clampMax = preview.clampMax,
+                    };
+
+                    if (rc.resourceSet.contains(3) && rc.resourceSet[3].contains(0) && rc.ext.samplers.contains("nearest"))
+                        rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["nearest"]);
+                    rc.cb.bindPipeline(*pipeline);
+                    rc.bindDescriptorSets(*pipeline);
+                    rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
+                    rc.cb.beginRendering(fb).drawFullScreenTriangle().endRendering();
                 });
 
             m_FrameGraphDebugTextures.push_back(FrameGraphDebugTexture {
                 .camera = slot.camera,
                 .name = slot.name,
                 .key = slot.key,
+                .resourceKey = slotKey,
                 .texture = &*slot.texture,
                 .extent = slot.extent,
-                .format = slot.format,
+                .sourceExtent = sourceDesc.extent,
+                .format = sourceDesc.format,
+                .zNear = camera.zNear,
+                .zFar = camera.zFar,
             });
         }
     }
@@ -1836,7 +2067,7 @@ namespace vultra
                 // This sets up the frame graph using a feature renderer or a custom graph-aware renderer.
                 rhi::prepareForAttachment(cb, *target, false);
                 renderer->buildFrameGraph(buildCtx);
-                addFrameGraphTextureCapturePasses(buildCtx, cam.name);
+                addFrameGraphTextureCapturePasses(buildCtx, viewCamera);
                 fg.compile();
 
                 {
@@ -1905,6 +2136,22 @@ namespace vultra
 
             if (static_cast<bool>(target->getUsageFlags() & rhi::ImageUsage::eSampled))
                 rhi::prepareForReading(cb, *target);
+        }
+
+        {
+            for (auto it = m_FrameGraphDebugTextureSlots.begin(); it != m_FrameGraphDebugTextureSlots.end();)
+            {
+                if (it->second.lastTouchedFrame != m_FrameCounter)
+                {
+                    it->second.lastTouchedFrame = m_FrameCounter;
+                    m_RetiredFrameGraphDebugTextureSlots.push_back(std::move(it->second));
+                    it = m_FrameGraphDebugTextureSlots.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
         }
 
         if (imguiService && backendService.isXREnabled() && backendService.isXRMirrorEnabled() && !xrEyeViews.empty())

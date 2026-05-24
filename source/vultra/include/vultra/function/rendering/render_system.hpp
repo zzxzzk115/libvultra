@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vultra/core/engine/engine_subsystem.hpp"
+#include "vultra/core/rhi/graphics_pipeline.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
 #include "vultra/function/rendering/gpu_scene_dirty_tracker.hpp"
 #include "vultra/function/rendering/framework/prepared_render_data.hpp"
@@ -65,6 +66,14 @@ namespace vultra
         std::string_view lastFrameGraphSnapshot() const override { return m_LastFrameGraphSnapshot; }
         void setFrameGraphTextureCaptureEnabled(bool enabled) override { m_FrameGraphTextureCaptureEnabled = enabled; }
         bool frameGraphTextureCaptureEnabled() const override { return m_FrameGraphTextureCaptureEnabled; }
+        void setFrameGraphTexturePreviewSettings(const FrameGraphTexturePreviewSettings& settings) override
+        {
+            m_FrameGraphTexturePreviewSettings = settings;
+        }
+        FrameGraphTexturePreviewSettings frameGraphTexturePreviewSettings() const override
+        {
+            return m_FrameGraphTexturePreviewSettings;
+        }
         const std::vector<FrameGraphDebugTexture>& frameGraphDebugTextures() const override
         {
             return m_FrameGraphDebugTextures;
@@ -79,7 +88,10 @@ namespace vultra
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
         bool          reloadRenderPipelineNow();
         bool          reloadRenderPipelineNow(std::string_view asset, std::string_view rendererKey);
-        void          addFrameGraphTextureCapturePasses(FrameGraphBuildContext& ctx, std::string_view cameraName);
+        void          addFrameGraphTextureCapturePasses(FrameGraphBuildContext& ctx, const RenderCamera& camera);
+        rhi::GraphicsPipeline* getFrameGraphTexturePreviewPipeline(rhi::RenderDevice& rd,
+                                                                   rhi::ShaderLibraryRuntime& shaderLib,
+                                                                   rhi::PixelFormat colorFormat);
 
     private:
         bool m_SkipRender {false};
@@ -127,6 +139,10 @@ namespace vultra
         };
         std::vector<FrameGraphDebugTextureSlot> m_RetiredFrameGraphDebugTextureSlots;
         bool                                              m_FrameGraphTextureCaptureEnabled {false};
+        FrameGraphTexturePreviewSettings                  m_FrameGraphTexturePreviewSettings;
+        std::optional<rhi::GraphicsPipeline>              m_FrameGraphTexturePreviewPipeline;
+        rhi::PixelFormat                                  m_FrameGraphTexturePreviewPipelineFormat {
+            rhi::PixelFormat::eUndefined};
         std::unordered_map<std::string, FrameGraphDebugTextureSlot> m_FrameGraphDebugTextureSlots;
         std::vector<FrameGraphDebugTexture>               m_FrameGraphDebugTextures;
         GaussianSplatRenderSettings m_GaussianSplatSettings;

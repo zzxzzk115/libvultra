@@ -260,18 +260,40 @@ namespace vultra
 
     struct ShadowRenderSettings
     {
+        enum class FilterMode : int
+        {
+            eHard = 0,
+            ePCF  = 1,
+            ePCSS = 2,
+        };
+
+        enum class DebugMode : int
+        {
+            eOff         = 0,
+            eCascade     = 1,
+            eVisibility  = 2,
+            eShadowDepth = 3,
+            eShadowCoord = 4,
+            eAtlasUV     = 5,
+        };
+
         bool      enabled {true};
         uint32_t resolution {2048};
         uint32_t cascadeCount {4};
-        float     coverageRadius {80.0f};
-        float     lightDistance {80.0f};
-        float     zRange {160.0f};
+        float     coverageRadius {75.0f};
+        float     lightDistance {120.0f};
+        float     zRange {120.0f};
+        float     splitLambda {0.60f};
+        bool      autoFitBounds {true};
         glm::vec3 lightDirection {-0.35f, -0.8f, -0.25f};
-        float     depthBias {0.0015f};
-        float     normalBias {0.02f};
-        float     pcssLightRadius {2.5f};
-        int       pcssBlockerSamples {8};
-        int       pcssFilterSamples {1};
+        float     depthBias {0.0012f};
+        float     normalBias {0.015f};
+        bool      stableTexelSnapping {true};
+        FilterMode filterMode {FilterMode::ePCF};
+        DebugMode  debugMode {DebugMode::eOff};
+        float     pcssLightRadius {1.5f};
+        int       pcssBlockerSamples {12};
+        int       pcssFilterSamples {2};
     };
 
     struct PbrLightingSettings
@@ -315,6 +337,9 @@ namespace vultra
         std::vector<RenderInstance> instances;
         std::vector<RenderGaussianSplatInstance> gaussianSplats;
         std::vector<RenderLight>    lights;
+        bool                        hasBounds {false};
+        glm::vec3                   boundsMin {0.0f};
+        glm::vec3                   boundsMax {0.0f};
 
         resource::GpuSceneDatabase* gpuSceneDatabase {nullptr};
         resource::GpuSceneView*     gpuSceneView {nullptr};
@@ -325,6 +350,9 @@ namespace vultra
             instances.clear();
             gaussianSplats.clear();
             lights.clear();
+            hasBounds = false;
+            boundsMin = glm::vec3 {0.0f};
+            boundsMax = glm::vec3 {0.0f};
         }
     };
 } // namespace vultra

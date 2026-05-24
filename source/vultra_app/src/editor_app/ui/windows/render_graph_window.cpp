@@ -786,14 +786,25 @@ namespace vultra_app
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
                      {.name = "resolution", .type = vrendergraph::ParamType::eInt, .defaultValue = 2048, .minValue = 256, .maxValue = 8192},
                      {.name = "cascadeCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4, .minValue = 1, .maxValue = 4},
-                     {.name = "coverageRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 80.0f, .minValue = 1.0f, .maxValue = 500.0f},
-                     {.name = "depthBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0015f, .minValue = 0.0f, .maxValue = 0.1f},
-                     {.name = "normalBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.02f, .minValue = 0.0f, .maxValue = 1.0f},
+                     {.name = "coverageRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 75.0f, .minValue = 1.0f, .maxValue = 500.0f},
+                     {.name = "lightDistance", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f, .minValue = 1.0f, .maxValue = 500.0f},
+                     {.name = "zRange", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f, .minValue = 1.0f, .maxValue = 800.0f},
+                     {.name = "splitLambda", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.60f, .minValue = 0.0f, .maxValue = 1.0f},
+                     {.name = "autoFitBounds", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                     {.name = "stableTexelSnapping", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                     {.name = "depthBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0012f, .minValue = 0.0f, .maxValue = 0.1f},
+                     {.name = "normalBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.015f, .minValue = 0.0f, .maxValue = 1.0f},
+                     {.name = "pcssLightRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.5f, .minValue = 0.0f, .maxValue = 16.0f},
                  });
             pass("DeferredLighting", {"color", "normal", "material", "depth", "shadowMap", "shadowData"}, {"color"},
                  {
                      {.name = "ambientIntensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f, .minValue = 0.0f, .maxValue = 8.0f},
                      {.name = "shadowStrength", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.85f, .minValue = 0.0f, .maxValue = 1.0f},
+                     {.name = "debugCascades", .type = vrendergraph::ParamType::eBoolean, .defaultValue = false},
+                     {.name = "shadowFilterMode", .type = vrendergraph::ParamType::eInt, .defaultValue = 1, .minValue = 0, .maxValue = 2},
+                     {.name = "shadowDebugMode", .type = vrendergraph::ParamType::eInt, .defaultValue = 0, .minValue = 0, .maxValue = 5},
+                     {.name = "pcfRadius", .type = vrendergraph::ParamType::eInt, .defaultValue = 2, .minValue = 0, .maxValue = 4},
+                     {.name = "pcssBlockerSamples", .type = vrendergraph::ParamType::eInt, .defaultValue = 12, .minValue = 1, .maxValue = 32},
                      {.name = "iblIntensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0f, .minValue = 0.0f, .maxValue = 8.0f},
                  });
             pass("HzbGenerate", {"depth"}, {"hzb"});
@@ -957,6 +968,25 @@ namespace vultra_app
                                                          const vrendergraph::PassDecl& pass,
                                                          std::string_view paramName)
         {
+            if (pass.type == "DeferredLighting")
+            {
+                if (paramName == "shadowFilterMode")
+                    return {
+                        {.label = "Hard", .value = 0},
+                        {.label = "PCF", .value = 1},
+                        {.label = "PCSS", .value = 2},
+                    };
+                if (paramName == "shadowDebugMode")
+                    return {
+                        {.label = "Off", .value = 0},
+                        {.label = "Cascade", .value = 1},
+                        {.label = "Visibility", .value = 2},
+                        {.label = "Shadow Depth", .value = 3},
+                        {.label = "Shadow Coord", .value = 4},
+                        {.label = "Atlas UV", .value = 5},
+                    };
+            }
+
             const auto fragment = pass.params.get<std::string>("fragment", {});
             const auto libraryName = pass.params.get<std::string>("library", "project");
             if (!fragment.empty())

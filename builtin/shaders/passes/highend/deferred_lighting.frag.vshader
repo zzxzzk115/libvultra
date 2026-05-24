@@ -70,7 +70,10 @@ layout(push_constant) uniform LightingPushConstants
     int pcssBlockerSamples;
     int pcssFilterSamples;
     int enableIBL;
+    int shadowFilterMode;
+    int shadowDebugMode;
     int pad0;
+    int pad1;
 } u_Push;
 
 layout(location = 0) in vec2 v_TexCoord;
@@ -88,14 +91,16 @@ float shadowDepth(vec2 uv)
     return texture(u_ShadowMap, uv).r;
 }
 
-float hardShadow(vec3 shadowCoord, float bias)
+vec2 atlasShadowUv(uint cascade, vec2 localUv);
+
+float hardShadow(uint cascade, vec3 shadowCoord, float bias)
 {
     if (shadowCoord.x < 0.0 || shadowCoord.x > 1.0 ||
         shadowCoord.y < 0.0 || shadowCoord.y > 1.0 ||
         shadowCoord.z < 0.0 || shadowCoord.z > 1.0)
         return 1.0;
 
-    return shadowCoord.z - bias <= shadowDepth(shadowCoord.xy) ? 1.0 : 0.0;
+    return shadowCoord.z - bias <= shadowDepth(atlasShadowUv(cascade, shadowCoord.xy)) ? 1.0 : 0.0;
 }
 
 uint selectShadowCascade(vec3 positionWS)
@@ -119,7 +124,7 @@ vec2 atlasShadowUv(uint cascade, vec2 localUv)
 
 float pcfShadow(uint cascade, vec3 shadowCoord, float bias, float radiusTexels)
 {
-    int radius = clamp(u_Push.pcssFilterSamples, 0, 2);
+    int radius = clamp(u_Push.pcssFilterSamples, 0, 4);
     vec2 texel = vec2(1.0) / vec2(max(u_Shadow.cascadeParams.y, 1.0));
     float visibility = 0.0;
     int sampleCount = 0;
@@ -187,6 +192,26 @@ float pcssShadow(uint cascade, vec3 shadowCoord, float bias)
     return pcfShadow(cascade, shadowCoord, bias, radiusTexels);
 }
 
+vec3 cascadeDebugColor(uint cascade)
+{
+    if (cascade == 0u)
+        return vec3(0.95, 0.22, 0.18);
+    if (cascade == 1u)
+        return vec3(0.20, 0.75, 0.25);
+    if (cascade == 2u)
+        return vec3(0.18, 0.45, 1.00);
+    return vec3(0.95, 0.80, 0.16);
+}
+
+float selectedShadowVisibility(uint cascade, vec3 shadowCoord, float bias)
+{
+    if (u_Push.shadowFilterMode == 0)
+        return hardShadow(cascade, shadowCoord, bias);
+    if (u_Push.shadowFilterMode == 2)
+        return pcssShadow(cascade, shadowCoord, bias);
+    return simpleShadow(cascade, shadowCoord, bias);
+}
+
 void main()
 {
     vec4 baseColor = texture(u_GBufferColor, v_TexCoord);
@@ -213,15 +238,38 @@ void main()
     vec3 lightDir = normalize(u_Push.directionalLightDirectionShadowStrength.xyz);
     float nDotL = max(dot(normalWS, -lightDir), 0.0);
     float visibility = 1.0;
+    uint cascade = 0u;
+    vec3 shadowCoord = vec3(0.0);
+    vec2 shadowAtlasUv = vec2(0.0);
+    bool hasShadowCoord = false;
     if (nDotL > 0.0 && u_Shadow.shadowParams.w >= 0.5 && u_Push.directionalLightDirectionShadowStrength.w > 0.0)
     {
-        uint cascade = selectShadowCascade(positionWS);
+        cascade = selectShadowCascade(positionWS);
         vec4 shadowClip = u_Shadow.cascades[cascade].lightViewProjection * vec4(positionWS + normalWS * u_Shadow.shadowParams.z, 1.0);
-        vec3 shadowCoord = shadowClip.xyz / max(shadowClip.w, 1e-6);
+        shadowCoord = shadowClip.xyz / max(shadowClip.w, 1e-6);
         shadowCoord.xy = shadowCoord.xy * 0.5 + 0.5;
+        shadowAtlasUv = atlasShadowUv(cascade, clamp(shadowCoord.xy, vec2(0.0), vec2(1.0)));
+        hasShadowCoord = shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 &&
+                         shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0 &&
+                         shadowCoord.z >= 0.0 && shadowCoord.z <= 1.0;
         float normalBias = u_Shadow.lightDirectionDepthBias.w * clamp(1.0 - nDotL, 0.25, 1.0);
-        visibility = simpleShadow(cascade, shadowCoord, normalBias);
+        visibility = selectedShadowVisibility(cascade, shadowCoord, normalBias);
         visibility = mix(1.0, visibility, clamp(u_Push.directionalLightDirectionShadowStrength.w, 0.0, 1.0));
+    }
+
+    if (u_Push.shadowDebugMode != 0)
+    {
+        if (u_Push.shadowDebugMode == 1)
+            FragColor = vec4(cascadeDebugColor(cascade), 1.0);
+        else if (u_Push.shadowDebugMode == 2)
+            FragColor = vec4(vec3(visibility), 1.0);
+        else if (u_Push.shadowDebugMode == 3)
+            FragColor = vec4(vec3(hasShadowCoord ? shadowDepth(shadowAtlasUv) : 1.0), 1.0);
+        else if (u_Push.shadowDebugMode == 4)
+            FragColor = vec4(hasShadowCoord ? shadowCoord : vec3(0.0), 1.0);
+        else if (u_Push.shadowDebugMode == 5)
+            FragColor = vec4(shadowAtlasUv, hasShadowCoord ? 1.0 : 0.0, 1.0);
+        return;
     }
 
     vec3 viewDir = normalize(cameraWS - positionWS);

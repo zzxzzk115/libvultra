@@ -334,7 +334,8 @@ namespace vultra
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eDepth32F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 pd.depth = builder.write(pd.depth,
                                          framegraph::Attachment {

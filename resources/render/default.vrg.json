@@ -16,7 +16,7 @@
         },
         "FinalComposition": {
           "pos": [
-            2000.0,
+            2360.0,
             80.0
           ]
         },
@@ -26,10 +26,16 @@
             80.0
           ]
         },
+        "SelectionOutline": {
+          "pos": [
+            2000.0,
+            80.0
+          ]
+        },
         "ShadowMap": {
           "pos": [
-            580.0,
-            360.0
+            499.0,
+            427.0
           ]
         },
         "Tonemapping": {
@@ -61,6 +67,20 @@
         "shadowData": "ShadowMap.shadowData",
         "shadowMap": "ShadowMap.shadowMap"
       },
+      "params": {
+        "cascadeCount": 4,
+        "autoFitBounds": true,
+        "coverageRadius": 75.0,
+        "depthBias": 0.0012,
+        "enabled": true,
+        "lightDistance": 200.0,
+        "normalBias": 0.015,
+        "pcssLightRadius": 1.5,
+        "resolution": 4096,
+        "splitLambda": 0.6,
+        "stableTexelSnapping": true,
+        "zRange": 120.0
+      },
       "type": "ShadowMap"
     },
     {
@@ -79,7 +99,12 @@
       },
       "params": {
         "ambientIntensity": 1.0,
+        "debugCascades": false,
         "iblIntensity": 0.0,
+        "pcfRadius": 2,
+        "pcssBlockerSamples": 12,
+        "shadowDebugMode": 0,
+        "shadowFilterMode": 1,
         "shadowStrength": 0.85
       },
       "type": "DeferredLighting"
@@ -120,15 +145,33 @@
     },
     {
       "enabled": true,
+      "id": "SelectionOutline",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "entityId": "DirectGBuffer.entityId",
+        "source": "Fxaa.color"
+      },
+      "outputs": {
+        "color": "SelectionOutline.color"
+      },
+      "params": {
+        "edgeOpacity": 0.35,
+        "enabled": true,
+        "fillOpacity": 0.0,
+        "thickness": 3.0
+      },
+      "type": "SelectionOutline"
+    },
+    {
+      "enabled": true,
       "id": "FinalComposition",
       "inputs": {
-        "source": "Fxaa.color"
+        "source": "SelectionOutline.color"
       },
       "outputs": {
         "target": "FinalComposition.target"
       },
       "type": "FinalComposition"
     }
-  ],
-  "resources": []
+  ]
 }

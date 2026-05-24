@@ -319,7 +319,10 @@ namespace vultra
                     int pcssBlockerSamples {8};
                     int pcssFilterSamples {16};
                     int enableIBL {0};
+                    int shadowFilterMode {1};
+                    int shadowDebugMode {0};
                     int pad0 {0};
+                    int pad1 {0};
                 } pc {
                     .directionalLightDirectionShadowStrength =
                         glm::vec4(glm::normalize(lightingSettings.directionalLightDirection),
@@ -332,6 +335,8 @@ namespace vultra
                     .pcssBlockerSamples = std::max(shadowSettings.pcssBlockerSamples, 1),
                     .pcssFilterSamples  = std::max(shadowSettings.pcssFilterSamples, 1),
                     .enableIBL = lightingSettings.enableIBL ? 1 : 0,
+                    .shadowFilterMode = static_cast<int>(shadowSettings.filterMode),
+                    .shadowDebugMode = static_cast<int>(shadowSettings.debugMode),
                 };
                 rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
                 rc.bindDescriptorSets(*pipeline);

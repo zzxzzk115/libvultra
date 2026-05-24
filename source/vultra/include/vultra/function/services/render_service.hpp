@@ -30,9 +30,25 @@ namespace vultra
         std::string      camera;
         std::string      name;
         std::string      key;
+        std::string      resourceKey;
         rhi::Texture*    texture {nullptr};
         rhi::Extent2D    extent {};
+        rhi::Extent2D    sourceExtent {};
         rhi::PixelFormat format {rhi::PixelFormat::eUndefined};
+        float            zNear {0.1f};
+        float            zFar {1000.0f};
+    };
+
+    struct FrameGraphTexturePreviewSettings
+    {
+        bool channels[4] {true, true, true, true};
+        bool gammaCorrect {false};
+        int  previewMode {0};
+        float depthNear {0.1f};
+        float depthFar {1000.0f};
+        float clampMin {0.0f};
+        float clampMax {1.0f};
+        std::string selectedTextureKey;
     };
 
     class IRenderService
@@ -57,6 +73,8 @@ namespace vultra
         virtual std::string_view lastFrameGraphSnapshot() const = 0;
         virtual void             setFrameGraphTextureCaptureEnabled(bool enabled) = 0;
         virtual bool             frameGraphTextureCaptureEnabled() const = 0;
+        virtual void             setFrameGraphTexturePreviewSettings(const FrameGraphTexturePreviewSettings& settings) = 0;
+        virtual FrameGraphTexturePreviewSettings frameGraphTexturePreviewSettings() const = 0;
         virtual const std::vector<FrameGraphDebugTexture>& frameGraphDebugTextures() const = 0;
 
         virtual GaussianSplatRenderSettings&       gaussianSplatSettings() = 0;

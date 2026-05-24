@@ -120,7 +120,23 @@ namespace vultra
             };
         }
 
-        [[nodiscard]] ShadowData makeShadowData(const RenderCamera& camera, const ShadowRenderSettings& settings)
+        [[nodiscard]] std::array<glm::vec3, 8> buildAabbCorners(const glm::vec3& min, const glm::vec3& max)
+        {
+            return {
+                glm::vec3 {min.x, min.y, min.z},
+                glm::vec3 {max.x, min.y, min.z},
+                glm::vec3 {max.x, max.y, min.z},
+                glm::vec3 {min.x, max.y, min.z},
+                glm::vec3 {min.x, min.y, max.z},
+                glm::vec3 {max.x, min.y, max.z},
+                glm::vec3 {max.x, max.y, max.z},
+                glm::vec3 {min.x, max.y, max.z},
+            };
+        }
+
+        [[nodiscard]] ShadowData makeShadowData(const RenderCamera& camera,
+                                                const ShadowRenderSettings& settings,
+                                                const RenderWorld* renderWorld)
         {
             const glm::vec3 lightDir = glm::normalize(settings.lightDirection);
 
@@ -139,7 +155,12 @@ namespace vultra
                 settings.zRange);
             const float farDepth = std::max(nearDepth + 1.0f,
                                             std::min(camera.zFar, std::max(shadowViewDistance, 1.0f)));
-            const float splitLambda = 0.55f;
+            const float splitLambda = std::clamp(settings.splitLambda, 0.0f, 1.0f);
+            const bool autoFitScene = settings.autoFitBounds && renderWorld && renderWorld->hasBounds;
+            const auto sceneCorners = autoFitScene ? buildAabbCorners(renderWorld->boundsMin, renderWorld->boundsMax) :
+                                                     std::array<glm::vec3, 8> {};
+            const float sceneDiagonal = autoFitScene ? glm::length(renderWorld->boundsMax - renderWorld->boundsMin) :
+                                                       0.0f;
 
             ShadowData out {};
             out.lightDirectionDepthBias = glm::vec4(lightDir, std::max(settings.depthBias, 0.0f));
@@ -177,6 +198,15 @@ namespace vultra
                     minLs = glm::min(minLs, ls);
                     maxLs = glm::max(maxLs, ls);
                 }
+                if (autoFitScene)
+                {
+                    for (const auto& corner : sceneCorners)
+                    {
+                        const auto ls = glm::vec3(view * glm::vec4(corner, 1.0f));
+                        minLs.z = std::min(minLs.z, ls.z);
+                        maxLs.z = std::max(maxLs.z, ls.z);
+                    }
+                }
 
                 const auto extents = maxLs - minLs;
                 const float xyPadding = std::max(std::max(extents.x, extents.y) * 0.08f, 0.25f);
@@ -185,7 +215,22 @@ namespace vultra
                 minLs.y -= xyPadding;
                 maxLs.y += xyPadding;
 
-                const float zPadding = std::max(settings.zRange * 0.15f, 10.0f);
+                if (settings.stableTexelSnapping)
+                {
+                    const float texels = static_cast<float>(std::max(resolution, 1u));
+                    const float unitsPerTexelX = (maxLs.x - minLs.x) / texels;
+                    const float unitsPerTexelY = (maxLs.y - minLs.y) / texels;
+                    if (unitsPerTexelX > 0.0f && unitsPerTexelY > 0.0f)
+                    {
+                        minLs.x = std::floor(minLs.x / unitsPerTexelX) * unitsPerTexelX;
+                        maxLs.x = std::ceil(maxLs.x / unitsPerTexelX) * unitsPerTexelX;
+                        minLs.y = std::floor(minLs.y / unitsPerTexelY) * unitsPerTexelY;
+                        maxLs.y = std::ceil(maxLs.y / unitsPerTexelY) * unitsPerTexelY;
+                    }
+                }
+
+                const float zPadding = autoFitScene ? std::max(sceneDiagonal * 0.05f, 5.0f) :
+                                                       std::max(settings.zRange * 0.15f, 10.0f);
                 const float nearPlane = std::max(0.1f, -maxLs.z - zPadding);
                 const float farPlane  = std::max(nearPlane + 1.0f, -minLs.z + zPadding);
                 auto projection = glm::ortho(minLs.x, maxLs.x, minLs.y, maxLs.y, nearPlane, farPlane);
@@ -212,7 +257,7 @@ namespace vultra
         const auto atlasExtent = makeAtlasExtent(settings);
         const auto cascadeCount = sanitizeCascadeCount(settings);
         const auto shadowData =
-            makeShadowData(ctx.view().camera ? *ctx.view().camera : RenderCamera {}, settings);
+            makeShadowData(ctx.view().camera ? *ctx.view().camera : RenderCamera {}, settings, ctx.view().renderWorld);
         result.shadowData = framegraph::uploadStruct(ctx.fg,
                                                      "UploadShadowData",
                                                      framegraph::TransientBuffer<ShadowData> {
@@ -242,7 +287,8 @@ namespace vultra
                     {
                         .extent     = atlasExtent,
                         .format     = rhi::PixelFormat::eDepth32F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 pd.shadowMap = builder.write(pd.shadowMap,
                                              framegraph::Attachment {

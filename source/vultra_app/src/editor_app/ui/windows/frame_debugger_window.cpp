@@ -7,12 +7,14 @@
 #include <vultra/function/services/render_service.hpp>
 
 #include <IconsMaterialDesignIcons.h>
+#include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <filesystem>
 #include <unordered_set>
 #include <string_view>
 #include <vector>
@@ -371,6 +373,49 @@ namespace vultra_app
                 .addressModeR = vultra::rhi::SamplerAddressMode::eClampToEdge,
             });
         }
+
+        std::filesystem::path ensurePngExtension(std::filesystem::path path)
+        {
+            if (path.extension().empty())
+                path.replace_extension(".png");
+            return path;
+        }
+
+        std::string sanitizedFileName(std::string_view name)
+        {
+            std::string out;
+            out.reserve(name.size());
+            for (const char c : name)
+            {
+                const bool invalid = c == '<' || c == '>' || c == ':' || c == '"' || c == '/' || c == '\\' ||
+                                     c == '|' || c == '?' || c == '*';
+                out.push_back(invalid ? '_' : c);
+            }
+            return out.empty() ? std::string {"frame_debugger_texture"} : out;
+        }
+
+        void normalizeClamp(float& minValue, float& maxValue)
+        {
+            minValue = std::clamp(minValue, 0.0f, 1.0f);
+            maxValue = std::clamp(maxValue, 0.0f, 1.0f);
+            if (maxValue < minValue)
+                std::swap(minValue, maxValue);
+            if (maxValue <= minValue)
+                maxValue = std::min(1.0f, minValue + 0.0001f);
+        }
+
+        bool isDepthLikeTexture(const vultra::FrameGraphDebugTexture& texture)
+        {
+            const auto aspect = vultra::rhi::getAspectMask(texture.format);
+            return HasFlagValues(aspect, vultra::rhi::ImageAspectFlags::eDepth) ||
+                   containsIgnoreCase(texture.name, "depth") || containsIgnoreCase(texture.resourceKey, "depth") ||
+                   containsIgnoreCase(texture.name, "shadow") || containsIgnoreCase(texture.resourceKey, "shadow");
+        }
+
+        bool isShadowLikeTexture(const vultra::FrameGraphDebugTexture& texture)
+        {
+            return containsIgnoreCase(texture.name, "shadow") || containsIgnoreCase(texture.resourceKey, "shadow");
+        }
     } // namespace
 
     FrameDebuggerWindow::FrameDebuggerWindow() : EditorWindow("Frame Debugger", ICON_MDI_BUG) {}
@@ -415,6 +460,7 @@ namespace vultra_app
         auto* frameDebugger = ctx.services ? ctx.services->tryGet<vultra::IFrameDebuggerService>() : nullptr;
         auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
         auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
         if (renderService)
             renderService->setFrameGraphTextureCaptureEnabled(false);
         if (imguiService)
@@ -546,6 +592,10 @@ namespace vultra_app
         ImGui::Spacing();
         drawStatusChip("GBufferEntityId", graphHasText(graph, "GBufferEntityId"));
         ImGui::SameLine();
+        drawStatusChip("DepthTexture", graphHasText(graph, "DepthTexture") || graphHasText(graph, "DirectGBufferDepth"));
+        ImGui::SameLine();
+        drawStatusChip("ShadowMap", graphHasText(graph, "ShadowMap") || graphHasText(graph, "DirectionalShadowMap"));
+        ImGui::SameLine();
         drawStatusChip("SelectionOutline", graphHasText(graph, "SelectionOutline"));
         ImGui::SameLine();
         drawStatusChip("FinalComposition", graphHasText(graph, "FinalComposition"));
@@ -565,13 +615,29 @@ namespace vultra_app
             if (ImGui::BeginTabItem(ICON_MDI_IMAGE_MULTIPLE " Textures"))
             {
                 if (renderService)
+                {
                     renderService->setFrameGraphTextureCaptureEnabled(true);
+                    vultra::FrameGraphTexturePreviewSettings previewSettings {};
+                    previewSettings.gammaCorrect = m_TexturePreviewGammaCorrect;
+                    previewSettings.previewMode = m_TexturePreviewMode;
+                    previewSettings.depthNear = m_TexturePreviewDepthNear;
+                    previewSettings.depthFar = m_TexturePreviewDepthFar;
+                    previewSettings.clampMin = m_TexturePreviewClampMin;
+                    previewSettings.clampMax = m_TexturePreviewClampMax;
+                    for (int i = 0; i < 4; ++i)
+                        previewSettings.channels[i] = m_TexturePreviewChannels[i];
+                    previewSettings.selectedTextureKey = m_SelectedTextureKey;
+                    renderService->setFrameGraphTexturePreviewSettings(previewSettings);
+                }
 
                 static const std::vector<vultra::FrameGraphDebugTexture> emptyTextures;
                 const auto& textures = renderService ? renderService->frameGraphDebugTextures() : emptyTextures;
                 std::unordered_set<std::string> liveKeys;
                 for (const auto& texture : textures)
-                    liveKeys.insert(texture.key);
+                {
+                    if (texture.texture)
+                        liveKeys.insert(texture.key);
+                }
 
                 if (imguiService)
                 {
@@ -601,10 +667,10 @@ namespace vultra_app
                 {
                     if (!containsIgnoreCase(texture.name, filter) && !containsIgnoreCase(texture.camera, filter))
                         continue;
-                    const bool selected = texture.key == m_SelectedTextureKey;
+                    const bool selected = texture.resourceKey == m_SelectedTextureKey;
                     const auto label = texture.camera + " / " + texture.name + "##" + texture.key;
                     if (ImGui::Selectable(label.c_str(), selected))
-                        m_SelectedTextureKey = texture.key;
+                        m_SelectedTextureKey = texture.resourceKey;
                     if (selected)
                         ImGui::SetItemDefaultFocus();
                 }
@@ -613,11 +679,11 @@ namespace vultra_app
                 ImGui::SameLine();
                 ImGui::BeginChild("##FrameDebuggerTexturePreview", ImVec2 {0.0f, 0.0f}, true);
                 auto selectedTextureIt = std::find_if(textures.begin(), textures.end(), [&](const auto& texture) {
-                    return texture.key == m_SelectedTextureKey;
+                    return texture.resourceKey == m_SelectedTextureKey;
                 });
                 if (selectedTextureIt == textures.end() && !textures.empty())
                 {
-                    m_SelectedTextureKey = textures.front().key;
+                    m_SelectedTextureKey = textures.front().resourceKey;
                     selectedTextureIt = textures.begin();
                 }
 
@@ -628,20 +694,245 @@ namespace vultra_app
                 else
                 {
                     const auto& texture = *selectedTextureIt;
-                    ImGui::Text("%s", texture.name.c_str());
-                    ImGui::TextDisabled("%s  %ux%u  %s",
-                                        texture.camera.c_str(),
-                                        texture.extent.width,
-                                        texture.extent.height,
-                                        std::string(vultra::rhi::toString(texture.format)).c_str());
-                    ImGui::Separator();
-
-                    if (!imguiService || !texture.texture)
+                    if (m_TexturePreviewDepthDefaultsKey != texture.resourceKey)
                     {
-                        ImGui::TextDisabled("Texture preview unavailable.");
+                        m_TexturePreviewDepthNear = std::max(texture.zNear, 0.0001f);
+                        m_TexturePreviewDepthFar = std::max(texture.zFar, m_TexturePreviewDepthNear + 0.0001f);
+                        m_TexturePreviewDepthDefaultsKey = texture.resourceKey;
+                        if (isDepthLikeTexture(texture))
+                        {
+                            m_TexturePreviewMode = isShadowLikeTexture(texture) ? 1 : 2;
+                            m_TexturePreviewClampMin = 0.0f;
+                            m_TexturePreviewClampMax = 1.0f;
+                            m_PendingTexturePreviewAutoFitKey = texture.resourceKey;
+                            m_PendingTexturePreviewAutoFitTexture = texture.texture;
+                            const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+                            m_PendingTexturePreviewAutoFitFrame = frame + 3u;
+                            m_PendingTexturePreviewAutoFitNextTryFrame = frame + 3u;
+                            m_PendingTexturePreviewAutoFitDeadlineFrame = frame + 24u;
+                        }
+                        else
+                        {
+                            m_TexturePreviewMode = 0;
+                            m_PendingTexturePreviewAutoFitKey.clear();
+                            m_PendingTexturePreviewAutoFitTexture = nullptr;
+                            m_PendingTexturePreviewAutoFitFrame = 0u;
+                            m_PendingTexturePreviewAutoFitNextTryFrame = 0u;
+                            m_PendingTexturePreviewAutoFitDeadlineFrame = 0u;
+                        }
+                    }
+                    ImGui::Text("%s", texture.name.c_str());
+                    if (texture.sourceExtent.width != texture.extent.width ||
+                        texture.sourceExtent.height != texture.extent.height)
+                    {
+                        ImGui::TextDisabled("%s  %ux%u -> %ux%u preview  %s",
+                                            texture.camera.c_str(),
+                                            texture.sourceExtent.width,
+                                            texture.sourceExtent.height,
+                                            texture.extent.width,
+                                            texture.extent.height,
+                                            std::string(vultra::rhi::toString(texture.format)).c_str());
                     }
                     else
                     {
+                        ImGui::TextDisabled("%s  %ux%u  %s",
+                                            texture.camera.c_str(),
+                                            texture.extent.width,
+                                            texture.extent.height,
+                                            std::string(vultra::rhi::toString(texture.format)).c_str());
+                    }
+                    ImGui::SetNextItemWidth(180.0f);
+                    ImGui::Combo(
+                        "Mode",
+                        &m_TexturePreviewMode,
+                        "Color\0Raw Depth\0Linear Depth\0Inverted Linear Depth\0Alpha\0");
+                    if (m_TexturePreviewMode == 2 || m_TexturePreviewMode == 3)
+                    {
+                        ImGui::TextDisabled("Camera z: %.4f - %.1f", m_TexturePreviewDepthNear, m_TexturePreviewDepthFar);
+                    }
+                    auto autoFitClamp = [&]() {
+                        if (!backendService || !texture.texture)
+                            return false;
+                        const auto pixels = backendService->renderDevice().readTextureRGBA8(*texture.texture);
+                        if (!pixels)
+                            return false;
+
+                        // The preview target is already RGBA8 after applying the current mode. Read it once,
+                        // sample sparsely on CPU, and derive the source-domain clamp range by inverting the
+                        // previous clamp.
+                        float minValue = 1.0f;
+                        float maxValue = 0.0f;
+                        bool  found = false;
+                        const auto sampleCountX = std::min<uint32_t>(64u, std::max(texture.extent.width, 1u));
+                        const auto sampleCountY = std::min<uint32_t>(64u, std::max(texture.extent.height, 1u));
+                        for (uint32_t sy = 0; sy < sampleCountY; ++sy)
+                        {
+                            const auto y = std::min(texture.extent.height - 1u,
+                                                    static_cast<uint32_t>((static_cast<uint64_t>(sy) *
+                                                                           texture.extent.height) /
+                                                                          sampleCountY));
+                            for (uint32_t sx = 0; sx < sampleCountX; ++sx)
+                            {
+                                const auto x = std::min(texture.extent.width - 1u,
+                                                        static_cast<uint32_t>((static_cast<uint64_t>(sx) *
+                                                                               texture.extent.width) /
+                                                                              sampleCountX));
+                                const auto offset = (static_cast<uint64_t>(y) * texture.extent.width + x) * 4u;
+                                if (offset + 2u >= pixels->size())
+                                    continue;
+                                const float r = static_cast<float>((*pixels)[offset + 0u]) / 255.0f;
+                                const float g = static_cast<float>((*pixels)[offset + 1u]) / 255.0f;
+                                const float b = static_cast<float>((*pixels)[offset + 2u]) / 255.0f;
+                                const float displayValue = (m_TexturePreviewMode == 0) ? ((r + g + b) / 3.0f) : r;
+                                if (displayValue <= 0.001f || displayValue >= 0.999f)
+                                    continue;
+                                minValue = std::min(minValue, displayValue);
+                                maxValue = std::max(maxValue, displayValue);
+                                found = true;
+                            }
+                        }
+
+                        if (!found)
+                            return false;
+
+                        const float oldMin = m_TexturePreviewClampMin;
+                        const float oldRange = std::max(m_TexturePreviewClampMax - m_TexturePreviewClampMin, 0.0001f);
+                        const float padding = std::max((maxValue - minValue) * 0.08f, 1.0f / 255.0f);
+                        const float low = std::max(0.0f, minValue - padding);
+                        const float high = std::min(1.0f, maxValue + padding);
+                        m_TexturePreviewClampMin = oldMin + low * oldRange;
+                        m_TexturePreviewClampMax = oldMin + high * oldRange;
+                        normalizeClamp(m_TexturePreviewClampMin, m_TexturePreviewClampMax);
+                        return true;
+                    };
+                    const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+                    const bool pendingAutoFitReady = m_PendingTexturePreviewAutoFitKey == texture.resourceKey &&
+                                                     texture.texture &&
+                                                     frame >= m_PendingTexturePreviewAutoFitNextTryFrame &&
+                                                     (texture.texture != m_PendingTexturePreviewAutoFitTexture ||
+                                                      frame >= m_PendingTexturePreviewAutoFitFrame);
+                    if (pendingAutoFitReady)
+                    {
+                        if (autoFitClamp())
+                        {
+                            m_PendingTexturePreviewAutoFitKey.clear();
+                            m_PendingTexturePreviewAutoFitTexture = nullptr;
+                            m_PendingTexturePreviewAutoFitFrame = 0u;
+                            m_PendingTexturePreviewAutoFitNextTryFrame = 0u;
+                            m_PendingTexturePreviewAutoFitDeadlineFrame = 0u;
+                        }
+                        else if (frame < m_PendingTexturePreviewAutoFitDeadlineFrame)
+                        {
+                            m_PendingTexturePreviewAutoFitNextTryFrame = frame + 6u;
+                        }
+                        else
+                        {
+                            m_PendingTexturePreviewAutoFitKey.clear();
+                            m_PendingTexturePreviewAutoFitTexture = nullptr;
+                            m_PendingTexturePreviewAutoFitFrame = 0u;
+                            m_PendingTexturePreviewAutoFitNextTryFrame = 0u;
+                            m_PendingTexturePreviewAutoFitDeadlineFrame = 0u;
+                        }
+                    }
+                    if (ImGui::SmallButton(ICON_MDI_FIT_TO_SCREEN "##FrameDebuggerClampAutoFit"))
+                    {
+                        autoFitClamp();
+                    }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Auto fit clamp from preview");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(ICON_MDI_RESTORE "##FrameDebuggerClampReset"))
+                    {
+                        m_TexturePreviewClampMin = 0.0f;
+                        m_TexturePreviewClampMax = 1.0f;
+                    }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Reset clamp to 0..1");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(120.0f);
+                    ImGui::DragFloat("Clamp Min", &m_TexturePreviewClampMin, 0.001f, 0.0f, 1.0f, "%.4f");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(120.0f);
+                    ImGui::DragFloat("Clamp Max", &m_TexturePreviewClampMax, 0.001f, 0.0f, 1.0f, "%.4f");
+                    normalizeClamp(m_TexturePreviewClampMin, m_TexturePreviewClampMax);
+                    ImGui::Checkbox("Gamma", &m_TexturePreviewGammaCorrect);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("R", &m_TexturePreviewChannels[0]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("G", &m_TexturePreviewChannels[1]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("B", &m_TexturePreviewChannels[2]);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("A", &m_TexturePreviewChannels[3]);
+                    if (renderService)
+                    {
+                        vultra::FrameGraphTexturePreviewSettings previewSettings {};
+                        previewSettings.gammaCorrect = m_TexturePreviewGammaCorrect;
+                        previewSettings.previewMode = m_TexturePreviewMode;
+                        previewSettings.depthNear = m_TexturePreviewDepthNear;
+                        previewSettings.depthFar = m_TexturePreviewDepthFar;
+                        previewSettings.clampMin = m_TexturePreviewClampMin;
+                        previewSettings.clampMax = m_TexturePreviewClampMax;
+                        for (int i = 0; i < 4; ++i)
+                            previewSettings.channels[i] = m_TexturePreviewChannels[i];
+                        previewSettings.selectedTextureKey = m_SelectedTextureKey;
+                        renderService->setFrameGraphTexturePreviewSettings(previewSettings);
+                    }
+                    const int enabledChannelCount = (m_TexturePreviewChannels[0] ? 1 : 0) +
+                                                    (m_TexturePreviewChannels[1] ? 1 : 0) +
+                                                    (m_TexturePreviewChannels[2] ? 1 : 0) +
+                                                    (m_TexturePreviewChannels[3] ? 1 : 0);
+                    if (m_TexturePreviewMode == 0 && enabledChannelCount == 0)
+                        ImGui::TextDisabled("No channels selected; preview renders black.");
+                    ImGui::Separator();
+
+                    if (!imguiService)
+                    {
+                        ImGui::TextDisabled("Texture preview unavailable.");
+                    }
+                    else if (!texture.texture)
+                    {
+                        ImGui::TextDisabled("Texture preview will update next frame.");
+                    }
+                    else
+                    {
+                        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Preview"))
+                        {
+                            IGFD::FileDialogConfig config;
+                            config.path = ".";
+                            config.fileName = sanitizedFileName(texture.name) + ".png";
+                            config.flags = ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
+                                           ImGuiFileDialogFlags_HideColumnSize | ImGuiFileDialogFlags_HideColumnDate |
+                                           ImGuiFileDialogFlags_DontShowHiddenFiles |
+                                           ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering |
+                                           ImGuiFileDialogFlags_NaturalSorting |
+                                           ImGuiFileDialogFlags_DisableThumbnailMode;
+                            ImGuiFileDialog::Instance()->OpenDialog(
+                                "FrameDebuggerSaveTexturePreview",
+                                "Save Texture Preview",
+                                ".png",
+                                config);
+                        }
+                        if (ImGuiFileDialog::Instance()->Display("FrameDebuggerSaveTexturePreview",
+                                                                 ImGuiWindowFlags_NoCollapse |
+                                                                     ImGuiWindowFlags_NoSavedSettings,
+                                                                 ImVec2 {520.0f, 360.0f}))
+                        {
+                            if (ImGuiFileDialog::Instance()->IsOk() && backendService)
+                            {
+                                const auto path = ensurePngExtension(std::filesystem::path(
+                                    ImGuiFileDialog::Instance()->GetFilePathName(IGFD_ResultMode_KeepInputFile)));
+                                const bool saved = backendService->renderDevice().saveTextureToFile(
+                                    *texture.texture,
+                                    path.generic_string(),
+                                    vultra::rhi::ImageAspect::eColor);
+                                ctx.state.statusMessage = saved ? "Saved texture preview: " + path.generic_string() :
+                                                                  "Failed to save texture preview: " +
+                                                                      path.generic_string();
+                            }
+                            ImGuiFileDialog::Instance()->Close();
+                        }
+
                         auto& cached = m_TextureCache[texture.key];
                         if (cached.texture != texture.texture)
                         {
@@ -666,7 +957,11 @@ namespace vultra_app
                             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + offsetY);
                         if (offsetX > 0.0f)
                             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offsetX);
-                        ImGui::Image(cached.textureId, imageSize, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
+                        const ImVec2 imageMin = ImGui::GetCursorScreenPos();
+                        const ImVec2 imageMax {imageMin.x + imageSize.x, imageMin.y + imageSize.y};
+                        ImGui::InvisibleButton("##FrameDebuggerTextureImage", imageSize);
+                        ImGui::GetWindowDrawList()->AddImage(
+                            cached.textureId, imageMin, imageMax, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
                     }
                 }
                 ImGui::EndChild();

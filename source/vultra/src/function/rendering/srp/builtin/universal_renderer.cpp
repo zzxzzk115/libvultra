@@ -492,10 +492,25 @@ namespace vultra
             ImGui::SliderFloat("Shadow Coverage", &settings.shadow.coverageRadius, 1.0f, 250.0f, "%.1f");
             ImGui::SliderFloat("Shadow Distance", &settings.shadow.lightDistance, 1.0f, 250.0f, "%.1f");
             ImGui::SliderFloat("Shadow Z Range", &settings.shadow.zRange, 1.0f, 500.0f, "%.1f");
+            ImGui::SliderFloat("CSM Split Lambda", &settings.shadow.splitLambda, 0.0f, 1.0f, "%.2f");
+            ImGui::Checkbox("Auto Fit Scene Bounds", &settings.shadow.autoFitBounds);
+            ImGui::Checkbox("Stable CSM Snapping", &settings.shadow.stableTexelSnapping);
             ImGui::SliderFloat("Depth Bias", &settings.shadow.depthBias, 0.0f, 0.02f, "%.5f");
             ImGui::SliderFloat("Normal Bias", &settings.shadow.normalBias, 0.0f, 0.2f, "%.4f");
             ImGui::SliderFloat("Shadow Strength", &settings.pbrLighting.shadowStrength, 0.0f, 1.0f, "%.2f");
-            ImGui::SliderInt("PCF Radius", &settings.shadow.pcssFilterSamples, 0, 2);
+            bool debugCascades = settings.shadow.debugMode == ShadowRenderSettings::DebugMode::eCascade;
+            if (ImGui::Checkbox("Debug Cascades", &debugCascades))
+                settings.shadow.debugMode = debugCascades ? ShadowRenderSettings::DebugMode::eCascade :
+                                                            ShadowRenderSettings::DebugMode::eOff;
+            int shadowFilterMode = static_cast<int>(settings.shadow.filterMode);
+            if (ImGui::Combo("Shadow Filter", &shadowFilterMode, "Hard\0PCF\0PCSS\0"))
+                settings.shadow.filterMode = static_cast<ShadowRenderSettings::FilterMode>(shadowFilterMode);
+            int shadowDebugMode = static_cast<int>(settings.shadow.debugMode);
+            if (ImGui::Combo("Shadow Debug", &shadowDebugMode, "Off\0Cascade\0Visibility\0Shadow Depth\0Shadow Coord\0Atlas UV\0"))
+                settings.shadow.debugMode = static_cast<ShadowRenderSettings::DebugMode>(shadowDebugMode);
+            ImGui::SliderInt("PCF Radius", &settings.shadow.pcssFilterSamples, 0, 4);
+            ImGui::SliderFloat("PCSS Light Radius", &settings.shadow.pcssLightRadius, 0.0f, 16.0f, "%.2f");
+            ImGui::SliderInt("PCSS Blocker Samples", &settings.shadow.pcssBlockerSamples, 1, 32);
             if (!settings.shadow.enabled)
                 ImGui::EndDisabled();
 
