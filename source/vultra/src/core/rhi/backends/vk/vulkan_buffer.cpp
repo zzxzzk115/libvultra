@@ -62,10 +62,11 @@ namespace vultra::rhi
                  "VulkanBuffer",
                  "Failed to create buffer");
 
-        m_Size = allocationInfo.size;
+        m_Size           = size;
+        m_AllocationSize = allocationInfo.size;
         if (m_RenderDevice)
         {
-            m_RenderDevice->onMemoryAllocated(m_MemoryKind, m_Size);
+            m_RenderDevice->onMemoryAllocated(m_MemoryKind, m_AllocationSize);
         }
     }
 
@@ -122,13 +123,14 @@ namespace vultra::rhi
             m_MemoryAllocator.destroyBuffer(m_Handle, m_Allocation);
             if (m_RenderDevice)
             {
-                m_RenderDevice->onMemoryFreed(m_MemoryKind, m_Size);
+                m_RenderDevice->onMemoryFreed(m_MemoryKind, m_AllocationSize);
             }
             m_MemoryAllocator = nullptr;
             m_RenderDevice    = nullptr;
             m_Allocation      = nullptr;
             m_Handle          = nullptr;
             m_Size            = 0;
+            m_AllocationSize  = 0;
             m_MappedMemory    = nullptr;
             m_LastScope       = {};
         }

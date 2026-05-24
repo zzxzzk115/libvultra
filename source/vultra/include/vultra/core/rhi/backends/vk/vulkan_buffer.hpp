@@ -52,6 +52,7 @@ namespace vultra
             vma::Allocation m_Allocation {nullptr};
             vk::Buffer      m_Handle {nullptr};
             uint64_t        m_Size {0};
+            uint64_t        m_AllocationSize {0};
             void*           m_MappedMemory {nullptr};
             BarrierScope    m_LastScope {kInitialBarrierScope};
         };

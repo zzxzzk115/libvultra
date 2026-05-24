@@ -316,7 +316,8 @@ namespace vultra
                                                                             rc.ext.samplers["linear"],
                     };
                 }
-                if (lightingSettings.enableIBL && ensureFallbackIblTextures(rc.rd, lightingSettings))
+                const bool iblDescriptorsReady = ensureFallbackIblTextures(rc.rd, lightingSettings);
+                if (iblDescriptorsReady)
                 {
                     rhi::prepareForReading(rc.cb, m_FallbackBrdfLut);
                     rhi::prepareForReading(rc.cb, m_FallbackIrradianceMap);
@@ -361,7 +362,7 @@ namespace vultra
                     .iblColorIntensity = glm::vec4(lightingSettings.iblColor, lightingSettings.iblIntensity),
                     .pcssBlockerSamples = std::max(shadowSettings.pcssBlockerSamples, 1),
                     .pcssFilterSamples  = std::max(shadowSettings.pcssFilterSamples, 1),
-                    .enableIBL = lightingSettings.enableIBL ? 1 : 0,
+                    .enableIBL = lightingSettings.enableIBL && iblDescriptorsReady ? 1 : 0,
                     .shadowFilterMode = static_cast<int>(shadowSettings.filterMode),
                     .shadowDebugMode = static_cast<int>(shadowSettings.debugMode),
                 };
@@ -448,7 +449,7 @@ namespace vultra
                           .setExtent({1u, 1u})
                           .setPixelFormat(rhi::PixelFormat::eRGBA32F)
                           .setNumMipLevels(1u)
-                          .setNumLayers(1u)
+                          .setNumLayers(std::nullopt)
                           .setCubemap(true)
                           .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst)
                           .setupOptimalSampler(true)
