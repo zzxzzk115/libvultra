@@ -4,6 +4,9 @@
 #include "project_launcher/project_launcher.hpp"
 #include "vproject.hpp"
 
+#include <vasset/tool_cli.hpp>
+#include <vshadersystem/tool_cli.hpp>
+
 #include <vultra/core/app/demo_app_host.hpp>
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/services/window_service.hpp>
@@ -28,6 +31,26 @@
 
 namespace
 {
+    bool dispatchToolCommand(int argc, char** argv, int& exitCode)
+    {
+        if (argc <= 1 || argv == nullptr || argv[1] == nullptr)
+            return false;
+
+        const std::string_view command {argv[1]};
+        if (command == "asset" || command == "vasset" || command == "vasset-cli")
+        {
+            exitCode = vasset::tool::run_vasset_cli(argc - 1, argv + 1);
+            return true;
+        }
+        if (command == "shader" || command == "vshaderc")
+        {
+            exitCode = vshadersystem::tool::run_vshaderc(argc - 1, argv + 1);
+            return true;
+        }
+
+        return false;
+    }
+
     class VultraShellRenderer final : public vultra::FeatureRenderer
     {
     public:
@@ -327,6 +350,10 @@ namespace
 
 int main(int argc, char** argv)
 {
+    int toolExitCode = 0;
+    if (dispatchToolCommand(argc, argv, toolExitCode))
+        return toolExitCode;
+
     std::vector<std::string> args;
     if (argc > 1 && argv != nullptr)
     {

@@ -276,7 +276,7 @@ if not is_plat("android") and not is_plat("wasm") then
         add_includedirs("vultra_app/include")
         add_headerfiles("vultra_app/include/(**.hpp)")
         add_files("vultra_app/src/**.cpp")
-        add_deps("vultra")
+        add_deps("vultra", "vasset-import")
         add_packages("argparse")
         if has_config("vultra_app_validation") then
             add_defines("VULTRA_APP_DEFAULT_VALIDATION=1")
