@@ -109,11 +109,13 @@ namespace vultra::resource
         bool      generalGaussianSplatDirectPrefix {false};
         bool      generalGaussianSplatFoveatedClodEnabled {false};
         bool      generalGaussianSplatFoveatedLayeredCompositeEnabled {false};
+        bool      generalGaussianSplatFoveatedCoverageCompensationEnabled {false};
+        bool      generalGaussianSplatFoveatedDebugOverlayEnabled {false};
         glm::vec2 generalGaussianSplatFoveatedGaze {0.5f, 0.5f};
-        glm::vec2 generalGaussianSplatFoveatedRingDegrees {5.0f, 15.0f};
-        glm::vec3 generalGaussianSplatFoveatedRingLevels {1.0f, 0.25f, 0.05f};
-        glm::vec3 generalGaussianSplatFoveatedResolutionScales {1.0f, 0.5f, 0.25f};
-        float     generalGaussianSplatFoveatedTransitionDegrees {2.0f};
+        glm::vec2 generalGaussianSplatFoveatedRingDegrees {8.0f, 24.0f};
+        glm::vec3 generalGaussianSplatFoveatedRingLevels {1.0f, 0.40f, 0.15f};
+        glm::vec3 generalGaussianSplatFoveatedResolutionScales {1.0f, 0.75f, 0.50f};
+        float     generalGaussianSplatFoveatedTransitionDegrees {4.0f};
 
         void clear()
         {
@@ -415,6 +417,8 @@ namespace vultra::resource
 
         void setGeneralGaussianSplatFoveatedClod(bool enabled,
                                                  bool layeredCompositeEnabled,
+                                                 bool coverageCompensationEnabled,
+                                                 bool debugOverlayEnabled,
                                                  glm::vec2 gaze,
                                                  glm::vec2 ringDegrees,
                                                  glm::vec3 ringLevels,
@@ -423,6 +427,9 @@ namespace vultra::resource
         {
             generalGaussianSplatFoveatedClodEnabled              = enabled;
             generalGaussianSplatFoveatedLayeredCompositeEnabled = layeredCompositeEnabled;
+            generalGaussianSplatFoveatedCoverageCompensationEnabled =
+                coverageCompensationEnabled;
+            generalGaussianSplatFoveatedDebugOverlayEnabled      = debugOverlayEnabled;
             generalGaussianSplatFoveatedGaze                     = gaze;
             generalGaussianSplatFoveatedRingDegrees              = ringDegrees;
             generalGaussianSplatFoveatedRingLevels               = ringLevels;
@@ -434,11 +441,13 @@ namespace vultra::resource
         {
             setGeneralGaussianSplatFoveatedClod(false,
                                                 false,
+                                                false,
+                                                false,
                                                 glm::vec2 {0.5f, 0.5f},
-                                                glm::vec2 {5.0f, 15.0f},
-                                                glm::vec3 {1.0f, 0.25f, 0.05f},
-                                                glm::vec3 {1.0f, 0.5f, 0.25f},
-                                                2.0f);
+                                                glm::vec2 {8.0f, 24.0f},
+                                                glm::vec3 {1.0f, 0.40f, 0.15f},
+                                                glm::vec3 {1.0f, 0.75f, 0.50f},
+                                                4.0f);
         }
 
         void ensureGeneralGaussianSplatBuffers(rhi::RenderDevice& rd)

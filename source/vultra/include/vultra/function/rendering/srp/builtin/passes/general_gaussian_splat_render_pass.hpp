@@ -24,8 +24,10 @@ namespace vultra
         FrameGraphResource addPass(FrameGraphBuildContext& ctx);
         FrameGraphResource addFoveatedLayerPass(FrameGraphBuildContext&           ctx,
                                                 GeneralGaussianSplatFoveatedLayer layer,
-                                                rhi::Extent2D                    resolution);
+                                                rhi::Extent2D                    resolution,
+                                                FrameGraphResource               existingColor = {});
 
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useMultiview) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat,
+                                             bool             useMultiview) const;
     };
 } // namespace vultra

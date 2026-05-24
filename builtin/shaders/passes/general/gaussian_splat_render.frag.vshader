@@ -5,6 +5,7 @@ version = 460
 [frag]
 #include "include/common/color.glsl"
 #include "include/common/gaussian_splat_foveated.glsl"
+
 const float CUTOFF = 2.3539888583335364;
 
 layout(location = 0) out vec4 outColor;
@@ -25,8 +26,14 @@ bool isInsideFoveatedLayer()
         return true;
 
     const vec2 viewportUv = (gl_FragCoord.xy - vec2(0.5)) / max(u_PC.targetSize.xy, vec2(1.0));
+    const float projectionYSign = u_PC.targetSize.z == 0.0 ? 1.0 : u_PC.targetSize.z;
     const float eccentricityDegrees =
-        gaussianFoveatedEccentricityDegreesFromUv(viewportUv, u_PC.foveatedGazeAndRings.xy, u_PC.foveatedParams.xy);
+        gaussianFoveatedEccentricityDegreesFromUv(
+            viewportUv,
+            u_PC.foveatedGazeAndRings.xy,
+            u_PC.foveatedParams.xy,
+            projectionYSign);
+
     return gaussianFoveatedLayerContains(layer - 1u,
                                          eccentricityDegrees,
                                          u_PC.foveatedGazeAndRings.zw,

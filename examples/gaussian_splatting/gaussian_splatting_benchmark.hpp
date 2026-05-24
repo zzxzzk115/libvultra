@@ -34,29 +34,37 @@ namespace vultra::gaussian_splatting_example
         uint32_t gpuScopeResolvedCount {0};
         uint32_t gpuScopeTokenCount {0};
 
-        GaussianSplatBaselineMode       baselineMode {GaussianSplatBaselineMode::eBaseline};
-        GaussianSplatFoveatedRenderMode foveatedRenderMode {GaussianSplatFoveatedRenderMode::eSinglePass};
-        bool                            lodBudgetEnabled {false};
-        bool                            foveatedClodEnabled {false};
-        bool                            foveatedLayeredCompositeEnabled {false};
-        bool                            directPrefix {false};
-        uint32_t                        lodBudget {0};
-        float                           foveaLod {1.0};
-        float                           midLod {0.25};
-        float                           outerLod {0.05};
-        float                           foveaResolutionScale {1.0};
-        float                           midResolutionScale {0.5};
-        float                           outerResolutionScale {0.25};
-        bool                            adaptiveBudgetEnabled {false};
-        float                           targetFrameMs {11.1};
-        uint32_t                        splatAssets {0};
-        uint32_t                        drawRecords {0};
-        uint32_t                        totalSplats {0};
-        uint32_t                        preparedSplats {0};
-        uint32_t                        maxVisibleSplatCap {0};
-        uint32_t                        lodSelectedRawSplats {0};
-        uint32_t                        visibleSplats {UINT32_MAX};
-        uint32_t                        drawnSplats {UINT32_MAX};
+        GaussianSplatBaselineMode           baselineMode {GaussianSplatBaselineMode::eBaseline};
+        GaussianSplatFoveatedRenderMode     foveatedRenderMode {GaussianSplatFoveatedRenderMode::eSinglePass};
+        GaussianSplatFoveatedAdaptationMode foveatedAdaptationMode {GaussianSplatFoveatedAdaptationMode::eFixed};
+        bool                                lodBudgetEnabled {false};
+        bool                                foveatedClodEnabled {false};
+        bool                                foveatedLayeredCompositeEnabled {false};
+        bool                                foveatedCoverageCompensationEnabled {false};
+        bool                                directPrefix {false};
+        uint32_t                            lodBudget {0};
+        float                               gazeX {0.5};
+        float                               gazeY {0.5};
+        float                               foveaLod {1.0};
+        float                               midLod {0.40};
+        float                               outerLod {0.15};
+        float                               foveaDegrees {8.0};
+        float                               midDegrees {24.0};
+        float                               foveaResolutionScale {1.0};
+        float                               midResolutionScale {0.75};
+        float                               outerResolutionScale {0.50};
+        float                               targetFrameMs {11.1};
+        uint32_t                            splatAssets {0};
+        uint32_t                            drawRecords {0};
+        uint32_t                            totalSplats {0};
+        uint32_t                            preparedSplats {0};
+        uint32_t                            foveaSplatBudget {0};
+        uint32_t                            midSplatBudget {0};
+        uint32_t                            outerSplatBudget {0};
+        uint32_t                            maxVisibleSplatCap {0};
+        uint32_t                            lodSelectedRawSplats {0};
+        uint32_t                            visibleSplats {UINT32_MAX};
+        uint32_t                            drawnSplats {UINT32_MAX};
 
         double cpuRenderFrameMs {-1.0};
         double cpuCookMs {-1.0};
@@ -107,6 +115,20 @@ namespace vultra::gaussian_splatting_example
         return "unknown";
     }
 
+    inline std::string_view foveatedAdaptationModeLabel(const GaussianSplatFoveatedAdaptationMode mode)
+    {
+        switch (mode)
+        {
+            case GaussianSplatFoveatedAdaptationMode::eFixed:
+                return "fixed";
+            case GaussianSplatFoveatedAdaptationMode::eDynamicBudget:
+                return "dynamic-budget";
+            case GaussianSplatFoveatedAdaptationMode::eDynamicRange:
+                return "dynamic-range";
+        }
+        return "unknown";
+    }
+
     inline double sumScopeMs(const std::vector<RuntimeProfiler::ScopeNode>& scopes,
                              const std::string_view                         needle,
                              const bool                                     useGpuMs)
@@ -151,23 +173,32 @@ namespace vultra::gaussian_splatting_example
 
         sample.baselineMode                     = gaussian.baselineMode;
         sample.foveatedRenderMode               = gaussian.foveatedRenderMode;
+        sample.foveatedAdaptationMode           = gaussian.foveatedAdaptationMode;
         sample.lodBudgetEnabled                 = gaussian.lodBudgetEnabled;
         sample.foveatedClodEnabled              = gaussian.foveatedClodEnabled;
         sample.foveatedLayeredCompositeEnabled  = gaussian.foveatedLayeredCompositeEnabled;
+        sample.foveatedCoverageCompensationEnabled =
+            gaussian.foveatedCoverageCompensationEnabled;
         sample.directPrefix                     = gaussian.directPrefix;
         sample.lodBudget                        = gaussian.lodBudget;
+        sample.gazeX                            = gaussian.foveatedGaze.x;
+        sample.gazeY                            = gaussian.foveatedGaze.y;
         sample.foveaLod                         = gaussian.foveatedRingLevels.x;
         sample.midLod                           = gaussian.foveatedRingLevels.y;
         sample.outerLod                         = gaussian.foveatedRingLevels.z;
+        sample.foveaDegrees                     = gaussian.foveatedRingDegrees.x;
+        sample.midDegrees                       = gaussian.foveatedRingDegrees.y;
         sample.foveaResolutionScale             = gaussian.foveatedResolutionScales.x;
         sample.midResolutionScale               = gaussian.foveatedResolutionScales.y;
         sample.outerResolutionScale             = gaussian.foveatedResolutionScales.z;
-        sample.adaptiveBudgetEnabled            = gaussian.foveatedBudgetControllerEnabled;
         sample.targetFrameMs                    = gaussian.foveatedTargetFrameMs;
         sample.splatAssets                      = gaussian.splatAssets;
         sample.drawRecords                      = gaussian.drawRecords;
         sample.totalSplats                      = gaussian.totalSplats;
         sample.preparedSplats                   = gaussian.preparedSplats;
+        sample.foveaSplatBudget                 = gaussian.foveaSplatBudget;
+        sample.midSplatBudget                   = gaussian.midSplatBudget;
+        sample.outerSplatBudget                 = gaussian.outerSplatBudget;
         sample.maxVisibleSplatCap               = gaussian.maxVisibleSplatCap;
         sample.lodSelectedRawSplats             = gaussian.lodSelectedRawSplats;
         sample.visibleSplats                    = gaussian.visibleSplats;
@@ -257,11 +288,12 @@ namespace vultra::gaussian_splatting_example
         }
 
         out << "sample,frame,mode,lod_budget_enabled,gaze_rendering,gaze_render_mode,layered_compositor,"
-               "direct_prefix,lod_budget,fovea_lod,mid_lod,outer_lod,fovea_res_scale,mid_res_scale,"
-               "outer_res_scale,adaptive_budget,target_frame_ms,dt_ms,cpu_frame_ms,cpu_render_ms,"
+               "coverage_compensation,direct_prefix,lod_budget,gaze_x,gaze_y,fovea_lod,mid_lod,outer_lod,fovea_deg,mid_deg,fovea_res_scale,mid_res_scale,"
+               "outer_res_scale,gaze_adaptation,target_frame_ms,dt_ms,cpu_frame_ms,cpu_render_ms,"
                "gpu_frame_ms,draw_calls,dispatch_calls,copy_ops,update_ops,gpu_scope_resolved_count,"
                "gpu_scope_token_count,splat_assets,draw_records,total_splats,prepared_splats,"
-               "max_visible_splat_cap,lod_selected_raw_splats,visible_splats,drawn_splats,"
+               "fovea_splat_budget,mid_splat_budget,outer_splat_budget,max_visible_splat_cap,"
+               "lod_selected_raw_splats,visible_splats,drawn_splats,"
                "cpu_render_frame_ms,cpu_cook_ms,cpu_gpu_scene_rebuild_ms,cpu_lod_selection_ms,"
                "cpu_clod_prefix_build_ms,cpu_raw_selection_ms,cpu_lod_upload_ms,cpu_framegraph_build_ms,"
                "cpu_framegraph_execute_ms,gpu_preprocess_pass_ms,gpu_project_cull_ms,gpu_sort_ms,"
@@ -275,15 +307,21 @@ namespace vultra::gaussian_splatting_example
                 << (sample.foveatedClodEnabled ? 1 : 0) << ','
                 << foveatedRenderModeLabel(sample.foveatedRenderMode) << ','
                 << (sample.foveatedLayeredCompositeEnabled ? 1 : 0) << ','
+                << (sample.foveatedCoverageCompensationEnabled ? 1 : 0) << ','
                 << (sample.directPrefix ? 1 : 0) << ','
-                << sample.lodBudget << ',' << sample.foveaLod << ',' << sample.midLod << ',' << sample.outerLod
-                << ',' << sample.foveaResolutionScale << ',' << sample.midResolutionScale << ','
-                << sample.outerResolutionScale << ',' << (sample.adaptiveBudgetEnabled ? 1 : 0) << ','
+                << sample.lodBudget << ',' << sample.gazeX << ',' << sample.gazeY << ','
+                << sample.foveaLod << ',' << sample.midLod << ',' << sample.outerLod
+                << ',' << sample.foveaDegrees << ',' << sample.midDegrees << ','
+                << sample.foveaResolutionScale << ',' << sample.midResolutionScale << ','
+                << sample.outerResolutionScale << ',' << foveatedAdaptationModeLabel(sample.foveatedAdaptationMode)
+                << ','
                 << sample.targetFrameMs << ',' << sample.dtMs << ',' << sample.cpuFrameMs << ',' << sample.cpuRenderMs
                 << ',' << sample.gpuFrameMs << ',' << sample.drawCalls << ',' << sample.dispatchCalls << ','
                 << sample.copyOps << ',' << sample.updateOps << ',' << sample.gpuScopeResolvedCount << ','
                 << sample.gpuScopeTokenCount << ',' << sample.splatAssets << ',' << sample.drawRecords << ','
-                << sample.totalSplats << ',' << sample.preparedSplats << ',' << sample.maxVisibleSplatCap << ','
+                << sample.totalSplats << ',' << sample.preparedSplats << ','
+                << sample.foveaSplatBudget << ',' << sample.midSplatBudget << ',' << sample.outerSplatBudget << ','
+                << sample.maxVisibleSplatCap << ','
                 << sample.lodSelectedRawSplats << ',' << csvCounter(sample.visibleSplats) << ','
                 << csvCounter(sample.drawnSplats) << ','
                 << sample.cpuRenderFrameMs << ',' << sample.cpuCookMs << ',' << sample.cpuGpuSceneRebuildMs << ','

@@ -12,7 +12,9 @@ namespace vultra
 
         void addPass(FrameGraphBuildContext& ctx);
 
-        rhi::ComputePipeline createPipeline(bool useMultiview, bool useDirectPrefix, bool useFoveatedLayerOutput) const;
+        rhi::ComputePipeline createPipeline(bool useMultiview,
+                                            bool useDirectPrefix,
+                                            bool useFoveatedLayerOutput) const;
         rhi::ComputePipeline createPipeline(uint64_t variantHash) const;
     };
 } // namespace vultra

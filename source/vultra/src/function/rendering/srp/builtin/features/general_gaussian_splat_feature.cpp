@@ -42,6 +42,16 @@ namespace vultra
         if (!gpuSceneView || !gpuSceneView->hasGeneralGaussianSplats())
             return;
 
+        auto setFinalColor = [&](FrameGraphResource color) {
+            if (gpuSceneView->generalGaussianSplatFoveatedDebugOverlayEnabled && color)
+            {
+                if (auto overlay = m_FoveatedCompositePass->debugOverlay(ctx, color))
+                    color = overlay;
+            }
+            if (color)
+                ctx.data.set(kResKey_FinalCompositionSource, color);
+        };
+
         m_PreprocessPass->addPass(ctx);
         if (gpuSceneView->generalGaussianSplatFoveatedLayeredCompositeEnabled)
         {
@@ -59,13 +69,11 @@ namespace vultra
                                                                   scaleExtent(ctx.view().extent,
                                                                               gpuSceneView->generalGaussianSplatFoveatedResolutionScales.z));
             auto color = m_FoveatedCompositePass->compose(ctx, fovea, mid, outer, baseColor);
-            if (color)
-                ctx.data.set(kResKey_FinalCompositionSource, color);
+            setFinalColor(color);
             return;
         }
 
         auto color = m_RenderPass->addPass(ctx);
-        if (color)
-            ctx.data.set(kResKey_FinalCompositionSource, color);
+        setFinalColor(color);
     }
 } // namespace vultra

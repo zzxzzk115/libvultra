@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <initializer_list>
 #include <vector>
 
@@ -21,6 +22,8 @@ namespace vultra
         constexpr auto PASS_NAME = "GeneralGaussianSplatPreprocessPass";
         constexpr auto kStereoCameraBinding = 23u;
         constexpr auto kFoveatedLayerCount = resource::kGeneralGaussianSplatFoveatedLayerCount;
+        constexpr auto kFoveatedClodEnabledFlag = 1u;
+        constexpr auto kFoveatedClodCoverageCompensationFlag = 8u;
         constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedVisibleSplatBindings {31u, 32u, 33u};
         constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedSortKeyBindings {34u, 35u, 36u};
         constexpr std::array<uint32_t, kFoveatedLayerCount> kFoveatedSortIndexBindings {37u, 38u, 39u};
@@ -33,22 +36,26 @@ namespace vultra
             uint32_t maxVisibleSplats {0};
             uint32_t rankTotalCount {0};
             uint32_t foveatedClodEnabled {0};
-            glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 5.0f, 15.0f};
-            glm::vec4 foveatedLevelsAndTransition {1.0f, 0.25f, 0.05f, 2.0f};
+            glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 8.0f, 24.0f};
+            glm::vec4 foveatedLevelsAndTransition {1.0f, 0.40f, 0.15f, 4.0f};
+            glm::uvec4 foveatedLayerParams {0u, 0u, 0u, 0u};
         };
 
         struct GeneralGaussianSplatFoveatedClodPushParams
         {
             uint32_t  enabled {0};
-            glm::vec4 gazeAndRings {0.5f, 0.5f, 5.0f, 15.0f};
-            glm::vec4 levelsAndTransition {1.0f, 0.25f, 0.05f, 2.0f};
+            glm::vec4 gazeAndRings {0.5f, 0.5f, 8.0f, 24.0f};
+            glm::vec4 levelsAndTransition {1.0f, 0.40f, 0.15f, 4.0f};
         };
 
         GeneralGaussianSplatFoveatedClodPushParams makeFoveatedClodPushParams(
             const resource::GpuSceneView& gpuSceneView)
         {
             GeneralGaussianSplatFoveatedClodPushParams params {};
-            params.enabled = gpuSceneView.generalGaussianSplatFoveatedClodEnabled ? 1u : 0u;
+            params.enabled = gpuSceneView.generalGaussianSplatFoveatedClodEnabled ? kFoveatedClodEnabledFlag : 0u;
+            if (gpuSceneView.generalGaussianSplatFoveatedClodEnabled &&
+                gpuSceneView.generalGaussianSplatFoveatedCoverageCompensationEnabled)
+                params.enabled |= kFoveatedClodCoverageCompensationFlag;
             params.gazeAndRings = glm::vec4 {gpuSceneView.generalGaussianSplatFoveatedGaze.x,
                                              gpuSceneView.generalGaussianSplatFoveatedGaze.y,
                                              gpuSceneView.generalGaussianSplatFoveatedRingDegrees.x,
@@ -78,7 +85,8 @@ namespace vultra
         const bool useMultiview =
             ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u && static_cast<bool>(stereoCameraBlock);
         const bool useDirectPrefix = gpuSceneView->generalGaussianSplatDirectPrefix;
-        const bool useFoveatedLayerOutput = gpuSceneView->generalGaussianSplatFoveatedLayeredCompositeEnabled;
+        const bool useFoveatedLayerOutput =
+            gpuSceneView->generalGaussianSplatFoveatedLayeredCompositeEnabled;
 
         if (gpuSceneView->generalGaussianSplatDrawBuffer)
         {
@@ -291,7 +299,6 @@ namespace vultra
                 hasAllFoveatedLayerResources() :
                 static_cast<bool>(visibleSplatBuffer && sortKeyBuffer && sortIndexBuffer && visibleCountBuffer &&
                                   indirectBuffer);
-
         if (!cameraBlock || !drawBuffer || !packedSourceBuffer || !hasOutputResources || !sortStorageBuffer ||
             !shBuffer || (!useDirectPrefix && !selectedSourceBuffer))
         {
@@ -535,20 +542,12 @@ namespace vultra
                             .dstAccess = rhi::Access::eShaderRead | rhi::Access::eShaderWrite,
                         });
 
-                    const auto* preprocessPipeline = getPipeline(useMultiview, useDirectPrefix, useFoveatedLayerOutput);
+                    const auto* preprocessPipeline =
+                        getPipeline(useMultiview, useDirectPrefix, useFoveatedLayerOutput);
                     if (!preprocessPipeline)
                     {
                         return;
                     }
-                    GeneralGaussianSplatPreprocessPushConstants pc {};
-                    pc.pointCount            = pointCount;
-                    pc.maxVisibleSplats      = maxVisible;
-                    pc.rankTotalCount        = rankTotalCount;
-                    pc.foveatedClodEnabled   = foveatedClodParams.enabled;
-                    pc.foveatedGazeAndRings  = foveatedClodParams.gazeAndRings;
-                    pc.foveatedLevelsAndTransition =
-                        foveatedClodParams.levelsAndTransition;
-
                     rc.cb.bindPipeline(*preprocessPipeline);
                     std::vector<uint32_t> preprocessBindings {0u, 13u, 14u, 22u};
                     if (useFoveatedLayerOutput)
@@ -570,9 +569,47 @@ namespace vultra
                         preprocessBindings.push_back(kStereoCameraBinding);
                     }
                     bindSubset(*preprocessPipeline, preprocessBindings);
-                    rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
-                    const uint32_t dispatchX = (pointCount + 255u) / 256u;
-                    rc.cb.dispatch({dispatchX, 1u, 1u});
+
+                    auto dispatchPreprocess = [&](const uint32_t dispatchPointCount,
+                                                  const uint32_t foveatedOutputLayer) {
+                        if (dispatchPointCount == 0u)
+                            return;
+
+                        GeneralGaussianSplatPreprocessPushConstants pc {};
+                        pc.pointCount            = dispatchPointCount;
+                        pc.maxVisibleSplats      = maxVisible;
+                        pc.rankTotalCount        = rankTotalCount;
+                        pc.foveatedClodEnabled   = foveatedClodParams.enabled;
+                        pc.foveatedGazeAndRings  = foveatedClodParams.gazeAndRings;
+                        pc.foveatedLevelsAndTransition =
+                            foveatedClodParams.levelsAndTransition;
+                        pc.foveatedLayerParams = glm::uvec4 {foveatedOutputLayer, 0u, 0u, 0u};
+
+                        rc.cb.pushConstants(rhi::ShaderStages::eCompute, 0, &pc);
+                        const uint32_t dispatchX = (dispatchPointCount + 255u) / 256u;
+                        rc.cb.dispatch({dispatchX, 1u, 1u});
+                    };
+
+                    if (useFoveatedLayerOutput)
+                    {
+                        const auto layerPointCount = [&](const float level) {
+                            const float clampedLevel = std::clamp(level, 0.0f, 1.0f);
+                            if (clampedLevel <= 0.0f)
+                                return 0u;
+                            const auto budget =
+                                static_cast<uint32_t>(
+                                    std::ceil(static_cast<float>(rankTotalCount) * clampedLevel));
+                            return std::min(pointCount, std::max(1u, budget));
+                        };
+
+                        dispatchPreprocess(layerPointCount(foveatedClodParams.levelsAndTransition.x), 1u);
+                        dispatchPreprocess(layerPointCount(foveatedClodParams.levelsAndTransition.y), 2u);
+                        dispatchPreprocess(layerPointCount(foveatedClodParams.levelsAndTransition.z), 3u);
+                    }
+                    else
+                    {
+                        dispatchPreprocess(pointCount, 0u);
+                    }
                     rc.cb.insertComputeUavBarrier();
                 }
 

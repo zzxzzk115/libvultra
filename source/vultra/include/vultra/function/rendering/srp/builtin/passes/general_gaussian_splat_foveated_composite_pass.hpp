@@ -19,6 +19,11 @@ namespace vultra
                                    FrameGraphResource      outerLayer,
                                    FrameGraphResource      baseColor = {});
 
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useMultiview, bool useBase) const;
+        FrameGraphResource debugOverlay(FrameGraphBuildContext& ctx, FrameGraphResource baseColor);
+
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat,
+                                             bool             useMultiview,
+                                             bool             useBase,
+                                             bool             debugOverlay) const;
     };
 } // namespace vultra

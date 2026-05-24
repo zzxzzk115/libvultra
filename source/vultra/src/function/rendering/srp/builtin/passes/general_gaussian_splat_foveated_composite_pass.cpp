@@ -19,8 +19,15 @@ namespace vultra
 
         struct GeneralGaussianSplatFoveatedCompositePushConstants
         {
-            glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 5.0f, 15.0f};
-            glm::vec4 foveatedParams {1.0f, 1.0f, 2.0f, 0.0f};
+            glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 8.0f, 24.0f};
+            glm::vec4 foveatedParams {1.0f, 1.0f, 4.0f, 1.0f};
+        };
+
+        struct GeneralGaussianSplatFoveatedDebugOverlayPushConstants
+        {
+            glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 8.0f, 24.0f};
+            glm::vec4 foveatedParams {1.0f, 1.0f, 4.0f, 1.0f};
+            glm::vec4 debugParams {1.0f, 1.0f, 0.30f, 6.0f};
         };
 
         [[nodiscard]] glm::vec2 foveatedTanHalfFov(const RenderView& view)
@@ -33,11 +40,24 @@ namespace vultra
                               1.0f / std::max(std::abs(projection[1][1]), 1e-5f)};
         }
 
+        [[nodiscard]] float foveatedProjectionYSign(const RenderView& view, const rhi::RenderBackendApi backendApi)
+        {
+            if (!view.camera)
+                return 1.0f;
+
+            float sign = view.camera->projection[1][1] < 0.0f ? -1.0f : 1.0f;
+            if (backendApi == rhi::RenderBackendApi::eVulkan)
+                sign *= -1.0f;
+            return sign;
+        }
+
         [[nodiscard]] GeneralGaussianSplatFoveatedCompositePushConstants makeCompositePushConstants(
             const RenderView&             view,
-            const resource::GpuSceneView& gpuSceneView)
+            const resource::GpuSceneView& gpuSceneView,
+            const rhi::RenderBackendApi   backendApi)
         {
             const glm::vec2 tanHalfFov = foveatedTanHalfFov(view);
+            const float projectionYSign = foveatedProjectionYSign(view, backendApi);
 
             GeneralGaussianSplatFoveatedCompositePushConstants pc {};
             pc.foveatedGazeAndRings =
@@ -49,9 +69,29 @@ namespace vultra
                 glm::vec4 {tanHalfFov.x,
                            tanHalfFov.y,
                            std::max(gpuSceneView.generalGaussianSplatFoveatedTransitionDegrees, 0.0f),
-                           0.0f};
+                           projectionYSign};
             return pc;
         }
+
+        [[nodiscard]] GeneralGaussianSplatFoveatedDebugOverlayPushConstants makeDebugOverlayPushConstants(
+            const RenderView&             view,
+            const resource::GpuSceneView& gpuSceneView,
+            const rhi::Extent2D           resolution,
+            const rhi::RenderBackendApi   backendApi)
+        {
+            const auto base = makeCompositePushConstants(view, gpuSceneView, backendApi);
+            GeneralGaussianSplatFoveatedDebugOverlayPushConstants pc {};
+            pc.foveatedGazeAndRings = base.foveatedGazeAndRings;
+            pc.foveatedParams       = base.foveatedParams;
+            pc.debugParams = glm::vec4 {
+                static_cast<float>(std::max(resolution.width, 1u)),
+                static_cast<float>(std::max(resolution.height, 1u)),
+                0.30f,
+                6.0f,
+            };
+            return pc;
+        }
+
     } // namespace
 
     GeneralGaussianSplatFoveatedCompositePass::GeneralGaussianSplatFoveatedCompositePass()
@@ -72,7 +112,7 @@ namespace vultra
         const bool useBase = static_cast<bool>(baseColor);
         const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u;
         const auto resolution = ctx.view().extent;
-        const auto pushConstants = makeCompositePushConstants(ctx.view(), *gpuSceneView);
+        const auto pushConstants = makeCompositePushConstants(ctx.view(), *gpuSceneView, ctx.rd.getBackendApi());
 
         struct PassData
         {
@@ -165,7 +205,8 @@ namespace vultra
 
                 const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0),
                                                    useMultiview,
-                                                   useBase);
+                                                   useBase,
+                                                   false);
                 if (!pipeline)
                     return;
 
@@ -191,10 +232,98 @@ namespace vultra
         return data.color;
     }
 
+    FrameGraphResource GeneralGaussianSplatFoveatedCompositePass::debugOverlay(FrameGraphBuildContext& ctx,
+                                                                               FrameGraphResource      baseColor)
+    {
+        auto* gpuSceneView = ctx.view().gpuSceneView;
+        if (!gpuSceneView || !baseColor)
+            return {};
+
+        const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u;
+        const auto resolution = ctx.view().extent;
+        const auto pushConstants =
+            makeDebugOverlayPushConstants(ctx.view(), *gpuSceneView, resolution, ctx.rd.getBackendApi());
+
+        struct PassData
+        {
+            FrameGraphResource color;
+            FrameGraphResource baseColor;
+        };
+
+        auto data = ctx.fg.addCallbackPass<PassData>(
+            "GeneralGaussianSplatFoveatedDebugOverlayPass",
+            [resolution, useMultiview, baseColor](FrameGraph::Builder& builder, PassData& data) {
+                PASS_SETUP_ZONE;
+
+                data.baseColor =
+                    builder.read(baseColor,
+                                 framegraph::TextureRead {
+                                     .binding =
+                                         {
+                                             .location      = {.set = 3, .binding = 0},
+                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                         },
+                                     .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                     .imageAspect = rhi::ImageAspect::eColor,
+                                 });
+
+                data.color = builder.create<framegraph::FrameGraphTexture>(
+                    "General Gaussian Foveated Debug Overlay Color",
+                    {
+                        .extent     = resolution,
+                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                        .layers     = useMultiview ? 2u : 0u,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                    });
+                data.color = builder.write(data.color,
+                                           framegraph::Attachment {
+                                               .index       = 0,
+                                               .imageAspect = rhi::ImageAspect::eColor,
+                                               .clearValue  = framegraph::ClearValue::eOpaqueBlack,
+                                           });
+            },
+            [this, useMultiview, pushConstants](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
+                setRenderDevice(rc.rd);
+                if (!rc.ext.builtinShaderLib)
+                    return;
+                setShaderLib(*rc.ext.builtinShaderLib);
+
+                RHI_GPU_ZONE(rc.cb, "GeneralGaussianSplatFoveatedDebugOverlayPass");
+
+                if (!rc.framebufferInfo().has_value())
+                    return;
+
+                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0),
+                                                   useMultiview,
+                                                   false,
+                                                   true);
+                if (!pipeline)
+                    return;
+
+                rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["nearest"]);
+
+                auto framebufferInfo = rc.framebufferInfo().value();
+                if (useMultiview)
+                {
+                    framebufferInfo.layers   = 2u;
+                    framebufferInfo.viewMask = 0x3u;
+                }
+
+                rc.cb.bindPipeline(*pipeline);
+                rc.bindDescriptorSets(*pipeline);
+                rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pushConstants);
+                rc.cb.beginRendering(framebufferInfo).drawFullScreenTriangle().endRendering();
+            });
+
+        return data.color;
+    }
+
     rhi::GraphicsPipeline GeneralGaussianSplatFoveatedCompositePass::createPipeline(
         const rhi::PixelFormat colorFormat,
         const bool             useMultiview,
-        const bool             useBase) const
+        const bool             useBase,
+        const bool             debugOverlay) const
     {
         auto vertexShader = loadGeneralShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -202,11 +331,12 @@ namespace vultra
 
         rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
             {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
-            {"USE_BASE", useBase ? 1u : 0u},
         };
-
+        if (!debugOverlay)
+            fragmentKeywords["USE_BASE"] = useBase ? 1u : 0u;
         auto fragmentShader =
-            loadGeneralShader("gaussian_splat_foveated_composite.frag",
+            loadGeneralShader(debugOverlay ? "gaussian_splat_foveated_debug_overlay.frag" :
+                                             "gaussian_splat_foveated_composite.frag",
                               vshadersystem::ShaderStage::eFrag,
                               fragmentKeywords);
         if (!fragmentShader)

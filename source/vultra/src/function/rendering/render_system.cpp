@@ -107,6 +107,8 @@ namespace vultra
             const auto layers = settings.foveatedLayers();
             gpuSceneView.setGeneralGaussianSplatFoveatedClod(settings.foveatedClodActive(),
                                                              settings.foveatedLayeredCompositeActive(),
+                                                             settings.foveatedCoverageCompensationEnabled,
+                                                             settings.foveatedDebugOverlayEnabled,
                                                              settings.foveatedGaze,
                                                              glm::vec2 {layers[0].eccentricityDegrees,
                                                                         layers[1].eccentricityDegrees},
@@ -125,6 +127,8 @@ namespace vultra
             return current.lodBudget != applied.lodBudget ||
                    current.clodLevel != applied.clodLevel ||
                    current.foveatedClodEnabled != applied.foveatedClodEnabled ||
+                   current.foveatedCoverageCompensationEnabled != applied.foveatedCoverageCompensationEnabled ||
+                   current.foveatedDebugOverlayEnabled != applied.foveatedDebugOverlayEnabled ||
                    current.foveatedRenderMode != applied.foveatedRenderMode ||
                    current.foveatedGaze != applied.foveatedGaze ||
                    current.foveatedRingDegrees != applied.foveatedRingDegrees ||
@@ -133,29 +137,81 @@ namespace vultra
                    current.foveatedTransitionDegrees != applied.foveatedTransitionDegrees;
         }
 
-        void updateGaussianSplatFoveatedBudgetController(GaussianSplatRenderSettings& settings,
-                                                         const double                 gpuFrameMs)
+        uint32_t gaussianSplatBudgetFromLevel(const uint32_t totalSplatCount, const float level)
         {
-            if (!settings.foveatedClodActive() || !settings.foveatedBudgetControllerEnabled || gpuFrameMs <= 0.0)
-                return;
+            if (totalSplatCount == 0u)
+                return 0u;
+            const float clamped = std::clamp(level, 0.0f, 1.0f);
+            return std::min(totalSplatCount,
+                            std::max(1u, static_cast<uint32_t>(
+                                             std::ceil(static_cast<float>(totalSplatCount) * clamped))));
+        }
+
+        bool gaussianSplatFoveatedFrameTimeFeedback(const GaussianSplatRenderSettings& settings,
+                                                    const double                       gpuFrameMs,
+                                                    float&                             error,
+                                                    float&                             step)
+        {
+            if (!settings.foveatedClodActive() || gpuFrameMs <= 0.0)
+                return false;
 
             const float targetMs = std::max(settings.foveatedTargetFrameMs, 0.1f);
             const float maxStep = std::clamp(settings.foveatedBudgetAdjustRate, 0.001f, 0.25f);
-            const float error = static_cast<float>((targetMs - gpuFrameMs) / targetMs);
+            error = static_cast<float>((targetMs - gpuFrameMs) / targetMs);
             if (std::abs(error) < 0.03f)
+                return false;
+
+            step = std::clamp(error * 0.5f, -maxStep, maxStep);
+            return true;
+        }
+
+        void updateGaussianSplatFoveatedAdaptation(GaussianSplatRenderSettings& settings, const double gpuFrameMs)
+        {
+            float error = 0.0f;
+            float step  = 0.0f;
+            if (!gaussianSplatFoveatedFrameTimeFeedback(settings, gpuFrameMs, error, step))
                 return;
 
-            const float signedStep = std::clamp(error * 0.5f, -maxStep, maxStep);
-            auto adjust = [signedStep](float value, const float floorValue) {
-                return std::clamp(value + signedStep * std::max(value, 0.1f), floorValue, 1.0f);
+            auto adjustBudget = [](float value, const float step, const float floorValue) {
+                return std::clamp(value + step * std::max(value, 0.1f), floorValue, 1.0f);
+            };
+            auto adjustRange = [](const float value, const float step, const float floorValue, const float ceilingValue) {
+                return std::clamp(value + step * std::max(value, 1.0f), floorValue, ceilingValue);
+            };
+            auto clampRings = [&settings]() {
+                settings.foveatedRingLevels.z = std::clamp(settings.foveatedRingLevels.z, 0.01f, 1.0f);
+                settings.foveatedRingLevels.y =
+                    std::clamp(settings.foveatedRingLevels.y, settings.foveatedRingLevels.z, 1.0f);
+                settings.foveatedRingLevels.x =
+                    std::clamp(settings.foveatedRingLevels.x, settings.foveatedRingLevels.y, 1.0f);
+                settings.foveatedRingDegrees.x = std::clamp(settings.foveatedRingDegrees.x, 1.0f, 45.0f);
+                settings.foveatedRingDegrees.y =
+                    std::clamp(settings.foveatedRingDegrees.y, settings.foveatedRingDegrees.x, 90.0f);
             };
 
-            settings.foveatedRingLevels.z = adjust(settings.foveatedRingLevels.z, 0.01f);
-            settings.foveatedRingLevels.y = adjust(settings.foveatedRingLevels.y, settings.foveatedRingLevels.z);
-            if (error < -0.35f)
-                settings.foveatedRingLevels.x = adjust(settings.foveatedRingLevels.x, settings.foveatedRingLevels.y);
-            else
-                settings.foveatedRingLevels.x = std::max(settings.foveatedRingLevels.x, settings.foveatedRingLevels.y);
+            switch (settings.foveatedAdaptationMode)
+            {
+                case GaussianSplatFoveatedAdaptationMode::eFixed:
+                    break;
+                case GaussianSplatFoveatedAdaptationMode::eDynamicBudget:
+                    settings.foveatedRingLevels.z = adjustBudget(settings.foveatedRingLevels.z, step, 0.01f);
+                    settings.foveatedRingLevels.y =
+                        adjustBudget(settings.foveatedRingLevels.y, step, settings.foveatedRingLevels.z);
+                    if (error < -0.35f)
+                        settings.foveatedRingLevels.x =
+                            adjustBudget(settings.foveatedRingLevels.x, step, settings.foveatedRingLevels.y);
+                    else
+                        settings.foveatedRingLevels.x =
+                            std::max(settings.foveatedRingLevels.x, settings.foveatedRingLevels.y);
+                    clampRings();
+                    break;
+                case GaussianSplatFoveatedAdaptationMode::eDynamicRange:
+                    settings.foveatedRingDegrees.x = adjustRange(settings.foveatedRingDegrees.x, step, 1.0f, 45.0f);
+                    settings.foveatedRingDegrees.y =
+                        adjustRange(settings.foveatedRingDegrees.y, step, settings.foveatedRingDegrees.x, 90.0f);
+                    clampRings();
+                    break;
+            }
         }
 
         void rebuildGaussianSplatOrderedClodPrefixSources(resource::GpuSceneView&                       gpuSceneView,
@@ -519,14 +575,28 @@ namespace vultra
         gaussianStats.lodBudgetEnabled                 = m_GaussianSplatSettings.lodBudgetEnabled();
         gaussianStats.foveatedClodEnabled              = m_GaussianSplatSettings.foveatedClodActive();
         gaussianStats.foveatedLayeredCompositeEnabled = m_GaussianSplatSettings.foveatedLayeredCompositeActive();
-        gaussianStats.foveatedBudgetControllerEnabled = m_GaussianSplatSettings.foveatedBudgetControllerEnabled;
+        gaussianStats.foveatedCoverageCompensationEnabled =
+            m_GaussianSplatSettings.foveatedCoverageCompensationEnabled;
+        gaussianStats.foveatedDebugOverlayEnabled =
+            m_GaussianSplatSettings.foveatedDebugOverlayEnabled;
+        gaussianStats.foveatedAdaptationMode           = m_GaussianSplatSettings.foveatedAdaptationMode;
         gaussianStats.lodBudget                        = m_GaussianSplatSettings.lodBudget;
         gaussianStats.foveatedRingLevels               = m_GaussianSplatSettings.foveatedRingLevels;
         gaussianStats.foveatedResolutionScales         = m_GaussianSplatSettings.foveatedResolutionScales;
+        gaussianStats.foveatedGaze                     = m_GaussianSplatSettings.foveatedGaze;
         gaussianStats.foveatedRingDegrees              = m_GaussianSplatSettings.foveatedRingDegrees;
         gaussianStats.foveatedTargetFrameMs            = m_GaussianSplatSettings.foveatedTargetFrameMs;
         gaussianStats.splatAssets                      = static_cast<uint32_t>(m_RenderWorldBack.gaussianSplats.size());
         gaussianStats.totalSplats                      = maxGeneralGaussianSplatPoints;
+        if (m_GaussianSplatSettings.foveatedClodActive())
+        {
+            gaussianStats.foveaSplatBudget =
+                gaussianSplatBudgetFromLevel(maxGeneralGaussianSplatPoints, m_GaussianSplatSettings.foveatedRingLevels.x);
+            gaussianStats.midSplatBudget =
+                gaussianSplatBudgetFromLevel(maxGeneralGaussianSplatPoints, m_GaussianSplatSettings.foveatedRingLevels.y);
+            gaussianStats.outerSplatBudget =
+                gaussianSplatBudgetFromLevel(maxGeneralGaussianSplatPoints, m_GaussianSplatSettings.foveatedRingLevels.z);
+        }
 
         const bool gaussianModeSettingsDirty =
             m_GaussianSplatSettings.baselineMode != m_AppliedGaussianSplatSettings.baselineMode;
@@ -1298,7 +1368,7 @@ namespace vultra
         m_RuntimeProfiler.setCpuRenderMs(
             std::chrono::duration<double, std::milli>(renderFrameCpuEnd - renderFrameCpuStart).count());
         m_RuntimeProfiler.endFrame();
-        updateGaussianSplatFoveatedBudgetController(m_GaussianSplatSettings, gpuFrameMs);
+        updateGaussianSplatFoveatedAdaptation(m_GaussianSplatSettings, gpuFrameMs);
         rhi::setBuiltinProfilerGpuScopeCallbacks({}, {});
         m_RuntimeProfiler.setGpuScopeCallbacks({}, {}, {});
 

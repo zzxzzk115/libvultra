@@ -1,22 +1,27 @@
-vec2 gaussianFoveatedGazeNdc(const vec2 gazeUv)
+vec2 gaussianFoveatedUvToNdc(const vec2 uv, const float projectionYSign)
 {
-    return vec2(gazeUv.x * 2.0 - 1.0, 1.0 - gazeUv.y * 2.0);
+    return vec2(uv.x * 2.0 - 1.0, projectionYSign * (1.0 - uv.y * 2.0));
 }
 
 float gaussianFoveatedEccentricityDegreesFromNdc(const vec2 centerNdc,
                                                  const vec2 gazeUv,
-                                                 const vec2 tanHalfFov)
+                                                 const vec2 tanHalfFov,
+                                                 const float projectionYSign)
 {
-    const vec2 deltaTan = (centerNdc - gaussianFoveatedGazeNdc(gazeUv)) * max(tanHalfFov, vec2(1e-5));
+    const vec2 deltaTan = (centerNdc - gaussianFoveatedUvToNdc(gazeUv, projectionYSign)) * max(tanHalfFov, vec2(1e-5));
     return degrees(atan(length(deltaTan)));
 }
 
 float gaussianFoveatedEccentricityDegreesFromUv(const vec2 viewportUv,
                                                 const vec2 gazeUv,
-                                                const vec2 tanHalfFov)
+                                                const vec2 tanHalfFov,
+                                                const float projectionYSign)
 {
-    const vec2 centerNdc = vec2(viewportUv.x * 2.0 - 1.0, 1.0 - viewportUv.y * 2.0);
-    return gaussianFoveatedEccentricityDegreesFromNdc(centerNdc, gazeUv, tanHalfFov);
+    return gaussianFoveatedEccentricityDegreesFromNdc(
+        gaussianFoveatedUvToNdc(viewportUv, projectionYSign),
+        gazeUv,
+        tanHalfFov,
+        projectionYSign);
 }
 
 vec2 gaussianFoveatedRingBlend(const float eccentricityDegrees,

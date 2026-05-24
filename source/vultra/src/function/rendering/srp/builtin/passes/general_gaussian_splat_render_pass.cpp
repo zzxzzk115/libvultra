@@ -21,8 +21,8 @@ namespace vultra
 
         struct GeneralGaussianSplatRenderPushConstants
         {
-            glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 5.0f, 15.0f};
-            glm::vec4 foveatedParams {1.0f, 1.0f, 2.0f, 0.0f};
+            glm::vec4 foveatedGazeAndRings {0.5f, 0.5f, 8.0f, 24.0f};
+            glm::vec4 foveatedParams {1.0f, 1.0f, 4.0f, 0.0f};
             glm::vec4 targetSize {1.0f, 1.0f, 0.0f, 0.0f};
         };
 
@@ -36,13 +36,28 @@ namespace vultra
                               1.0f / std::max(std::abs(projection[1][1]), 1e-5f)};
         }
 
+        [[nodiscard]] float gaussianSplatFoveatedProjectionYSign(
+            const RenderView& view,
+            const rhi::RenderBackendApi backendApi)
+        {
+            if (!view.camera)
+                return 1.0f;
+
+            float sign = view.camera->projection[1][1] < 0.0f ? -1.0f : 1.0f;
+            if (backendApi == rhi::RenderBackendApi::eVulkan)
+                sign *= -1.0f;
+            return sign;
+        }
+
         [[nodiscard]] GeneralGaussianSplatRenderPushConstants makeRenderPushConstants(
             const RenderView&                       view,
             const resource::GpuSceneView&           gpuSceneView,
             const rhi::Extent2D                     targetSize,
-            const GeneralGaussianSplatFoveatedLayer layer)
+            const GeneralGaussianSplatFoveatedLayer layer,
+            const rhi::RenderBackendApi             backendApi)
         {
             const glm::vec2 tanHalfFov = gaussianSplatFoveatedTanHalfFov(view);
+            const float projectionYSign = gaussianSplatFoveatedProjectionYSign(view, backendApi);
 
             GeneralGaussianSplatRenderPushConstants pc {};
             pc.foveatedGazeAndRings =
@@ -54,12 +69,12 @@ namespace vultra
                 tanHalfFov.x,
                 tanHalfFov.y,
                 std::max(gpuSceneView.generalGaussianSplatFoveatedTransitionDegrees, 0.0f),
-                static_cast<float>(static_cast<uint32_t>(layer)),
+                static_cast<float>(layer),
             };
             pc.targetSize = glm::vec4 {
                 static_cast<float>(std::max(targetSize.width, 1u)),
                 static_cast<float>(std::max(targetSize.height, 1u)),
-                0.0f,
+                projectionYSign,
                 0.0f,
             };
             return pc;
@@ -76,7 +91,8 @@ namespace vultra
     FrameGraphResource GeneralGaussianSplatRenderPass::addFoveatedLayerPass(
         FrameGraphBuildContext&                ctx,
         const GeneralGaussianSplatFoveatedLayer layer,
-        const rhi::Extent2D                    resolution)
+        const rhi::Extent2D                    resolution,
+        const FrameGraphResource               existingColorOverride)
     {
         auto* gpuSceneView = ctx.view().gpuSceneView;
         if (!gpuSceneView || !gpuSceneView->hasGeneralGaussianSplats())
@@ -94,7 +110,8 @@ namespace vultra
         auto indirectBuffer = useFoveatedLayerResources ?
                                   ctx.data.tryGet(kResKey_GeneralGaussianSplatFoveatedIndirectBuffers[layerIndex - 1u]) :
                                   ctx.data.tryGet(kResKey_GeneralGaussianSplatIndirectBuffer);
-        auto existingColor      = layer == GeneralGaussianSplatFoveatedLayer::eDisabled ?
+        auto existingColor = existingColorOverride ? existingColorOverride :
+                             layer == GeneralGaussianSplatFoveatedLayer::eDisabled ?
                                       ctx.data.tryGet(kResKey_FinalCompositionSource) :
                                       FrameGraphResource {};
         if (!visibleSplatBuffer || !sortIndexBuffer || !indirectBuffer)
@@ -106,7 +123,13 @@ namespace vultra
             layer == GeneralGaussianSplatFoveatedLayer::eFovea    ? "GeneralGaussianSplatFoveaLayerPass" :
             layer == GeneralGaussianSplatFoveatedLayer::eMid      ? "GeneralGaussianSplatMidLayerPass" :
                                                                     "GeneralGaussianSplatOuterLayerPass";
-        const auto pushConstants = makeRenderPushConstants(ctx.view(), *gpuSceneView, resolution, layer);
+        const auto pushConstants =
+            makeRenderPushConstants(
+                ctx.view(),
+                *gpuSceneView,
+                resolution,
+                layer,
+                ctx.rd.getBackendApi());
 
         struct PassData
         {
@@ -118,7 +141,13 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             passName,
-            [passName, resolution, useMultiview, visibleSplatBuffer, sortIndexBuffer, indirectBuffer, existingColor](
+            [passName,
+             resolution,
+             useMultiview,
+             visibleSplatBuffer,
+             sortIndexBuffer,
+             indirectBuffer,
+             existingColor](
                 FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
@@ -190,7 +219,8 @@ namespace vultra
 
                 rhi::prepareForDrawingIndirect(rc.cb, *indirectBuf);
 
-                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0), useMultiview);
+                const auto* pipeline =
+                    getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0), useMultiview);
                 if (!pipeline)
                 {
                     return;
@@ -228,7 +258,8 @@ namespace vultra
         if (!vertexShader)
             return {};
 
-        auto fragmentShader = loadGeneralShader("gaussian_splat_render.frag", vshadersystem::ShaderStage::eFrag, {});
+        auto fragmentShader =
+            loadGeneralShader("gaussian_splat_render.frag", vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
             return {};
 

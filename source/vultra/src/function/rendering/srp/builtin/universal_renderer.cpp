@@ -79,6 +79,59 @@ namespace vultra
             return "Unknown";
         }
 
+        [[nodiscard]] const char* gaussianFoveatedAdaptationModeLabel(
+            const GaussianSplatFoveatedAdaptationMode mode)
+        {
+            switch (mode)
+            {
+                case GaussianSplatFoveatedAdaptationMode::eFixed:
+                    return "Fixed";
+                case GaussianSplatFoveatedAdaptationMode::eDynamicBudget:
+                    return "Dynamic Budget";
+                case GaussianSplatFoveatedAdaptationMode::eDynamicRange:
+                    return "Dynamic Range";
+            }
+            return "Unknown";
+        }
+
+        [[nodiscard]] bool gaussianManualGazeControlActive(const GaussianSplatRenderSettings& settings)
+        {
+            return settings.foveatedClodActive() && settings.foveatedManualGazeControlEnabled;
+        }
+
+        void drawGaussianManualGazeOverlay(GaussianSplatRenderSettings& settings)
+        {
+            if (!gaussianManualGazeControlActive(settings))
+                return;
+
+            const ImGuiViewport* viewport = ImGui::GetMainViewport();
+            if (!viewport || viewport->Size.x <= 0.0f || viewport->Size.y <= 0.0f)
+                return;
+
+            auto& io = ImGui::GetIO();
+            const ImVec2 mouse = io.MousePos;
+            const ImVec2 viewMin = viewport->Pos;
+            const ImVec2 viewSize = io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f ? io.DisplaySize :
+                                                                                         viewport->Size;
+            const ImVec2 viewMax {viewMin.x + viewSize.x, viewMin.y + viewSize.y};
+            const bool   mouseInside =
+                mouse.x >= viewMin.x && mouse.x <= viewMax.x && mouse.y >= viewMin.y && mouse.y <= viewMax.y;
+
+            if (mouseInside && !io.WantCaptureMouse && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            {
+                settings.foveatedGaze.x = std::clamp((mouse.x - viewMin.x) / viewSize.x, 0.0f, 1.0f);
+                settings.foveatedGaze.y = std::clamp((mouse.y - viewMin.y) / viewSize.y, 0.0f, 1.0f);
+            }
+
+            const ImVec2 gaze {
+                viewMin.x + settings.foveatedGaze.x * viewSize.x,
+                viewMin.y + settings.foveatedGaze.y * viewSize.y,
+            };
+            ImDrawList* drawList = ImGui::GetForegroundDrawList();
+            drawList->AddCircleFilled(gaze, 5.0f, IM_COL32(255, 32, 32, 255), 24);
+            drawList->AddCircle(gaze, 8.0f, IM_COL32(255, 255, 255, 220), 24, 1.5f);
+        }
+
         [[nodiscard]] double findScopeGpuMs(const std::vector<RuntimeProfiler::ScopeNode>& nodes,
                                             const char*                                    namePart)
         {
@@ -144,16 +197,33 @@ namespace vultra
             const bool gazeControlsEnabled = orderedClodEnabled && settings.foveatedClodEnabled;
             if (!gazeControlsEnabled)
                 ImGui::BeginDisabled();
-            constexpr const char* kFoveatedModeLabels[] = {"Single Pass", "Layered Composite"};
-            int foveatedModeIndex = static_cast<int>(settings.foveatedRenderMode);
-            if (ImGui::Combo("Gaze Render Path",
-                             &foveatedModeIndex,
-                             kFoveatedModeLabels,
-                             IM_ARRAYSIZE(kFoveatedModeLabels)))
+            struct RenderPathOption
             {
-                foveatedModeIndex = std::clamp(foveatedModeIndex, 0, IM_ARRAYSIZE(kFoveatedModeLabels) - 1);
-                settings.foveatedRenderMode = static_cast<GaussianSplatFoveatedRenderMode>(foveatedModeIndex);
+                GaussianSplatFoveatedRenderMode mode;
+                const char*                     label;
+            };
+            constexpr RenderPathOption kRenderPathOptions[] = {
+                {GaussianSplatFoveatedRenderMode::eSinglePass, "Single Pass"},
+                {GaussianSplatFoveatedRenderMode::eLayeredComposite, "Layered Composite"},
+            };
+            if (ImGui::BeginCombo("Gaze Render Path",
+                                  gaussianFoveatedRenderModeLabel(settings.foveatedRenderMode)))
+            {
+                for (const auto& option : kRenderPathOptions)
+                {
+                    const bool selected = settings.foveatedRenderMode == option.mode;
+                    if (ImGui::Selectable(option.label, selected))
+                        settings.foveatedRenderMode = option.mode;
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
             }
+            if (ImGui::Button("Apply Fov-GS Baseline"))
+                applyGaussianSplatFovGsStyleBaseline(settings);
+            ImGui::Checkbox("Coverage Compensation", &settings.foveatedCoverageCompensationEnabled);
+            ImGui::Checkbox("Gaze Color Overlay", &settings.foveatedDebugOverlayEnabled);
+            ImGui::Checkbox("Manual Gaze Point", &settings.foveatedManualGazeControlEnabled);
             ImGui::SliderFloat2("Gaze UV", &settings.foveatedGaze.x, 0.0f, 1.0f, "%.2f");
             ImGui::SliderFloat("Fovea Degrees", &settings.foveatedRingDegrees.x, 0.0f, 45.0f, "%.1f");
             ImGui::SliderFloat("Mid Degrees", &settings.foveatedRingDegrees.y, 0.0f, 90.0f, "%.1f");
@@ -167,9 +237,22 @@ namespace vultra
             ImGui::SliderFloat("Mid Resolution", &settings.foveatedResolutionScales.y, 0.05f, 1.0f, "%.2f");
             ImGui::SliderFloat("Outer Resolution", &settings.foveatedResolutionScales.z, 0.05f, 1.0f, "%.2f");
             ImGui::SliderFloat("Transition Degrees", &settings.foveatedTransitionDegrees, 0.0f, 10.0f, "%.1f");
-            ImGui::Checkbox("Adaptive Budget", &settings.foveatedBudgetControllerEnabled);
+            constexpr const char* kAdaptationLabels[] = {"Fixed", "Dynamic Budget", "Dynamic Range"};
+            int adaptationIndex = static_cast<int>(settings.foveatedAdaptationMode);
+            if (ImGui::Combo("Gaze Adaptation", &adaptationIndex, kAdaptationLabels, IM_ARRAYSIZE(kAdaptationLabels)))
+            {
+                adaptationIndex = std::clamp(adaptationIndex, 0, IM_ARRAYSIZE(kAdaptationLabels) - 1);
+                settings.foveatedAdaptationMode =
+                    static_cast<GaussianSplatFoveatedAdaptationMode>(adaptationIndex);
+            }
+            const bool adaptationEnabled =
+                settings.foveatedAdaptationMode != GaussianSplatFoveatedAdaptationMode::eFixed;
+            if (!adaptationEnabled)
+                ImGui::BeginDisabled();
             ImGui::SliderFloat("Target Frame", &settings.foveatedTargetFrameMs, 1.0f, 33.3f, "%.1f ms");
-            ImGui::SliderFloat("Budget Step", &settings.foveatedBudgetAdjustRate, 0.001f, 0.25f, "%.3f");
+            ImGui::SliderFloat("Adaptation Step", &settings.foveatedBudgetAdjustRate, 0.001f, 0.25f, "%.3f");
+            if (!adaptationEnabled)
+                ImGui::EndDisabled();
             settings.foveatedGaze.x = std::clamp(settings.foveatedGaze.x, 0.0f, 1.0f);
             settings.foveatedGaze.y = std::clamp(settings.foveatedGaze.y, 0.0f, 1.0f);
             settings.foveatedRingLevels.x = std::clamp(settings.foveatedRingLevels.x, 0.0f, 1.0f);
@@ -188,9 +271,14 @@ namespace vultra
             ImGui::Text("Mode: %s", gaussianBaselineModeLabel(stats.baselineMode));
             ImGui::Text("Gaze Rendering: %s", stats.foveatedClodEnabled ? "yes" : "no");
             ImGui::Text("Gaze Render Path: %s", gaussianFoveatedRenderModeLabel(stats.foveatedRenderMode));
+            ImGui::Text("Coverage Compensation: %s",
+                        stats.foveatedCoverageCompensationEnabled ? "yes" : "no");
+            ImGui::Text("Gaze Color Overlay: %s", stats.foveatedDebugOverlayEnabled ? "yes" : "no");
+            ImGui::Text("Gaze UV: %.2f / %.2f", stats.foveatedGaze.x, stats.foveatedGaze.y);
             ImGui::Text("Layered Framebuffers: %s", stats.foveatedLayeredCompositeEnabled ? "yes" : "no");
-            ImGui::Text("Adaptive Budget: %s", stats.foveatedBudgetControllerEnabled ? "yes" : "no");
+            ImGui::Text("Gaze Adaptation: %s", gaussianFoveatedAdaptationModeLabel(stats.foveatedAdaptationMode));
             ImGui::Text("Direct Prefix: %s", stats.directPrefix ? "yes" : "no");
+            ImGui::Text("Ring Degrees: %.1f / %.1f", stats.foveatedRingDegrees.x, stats.foveatedRingDegrees.y);
             ImGui::Text("Ring LODs: %.2f / %.2f / %.2f",
                         stats.foveatedRingLevels.x,
                         stats.foveatedRingLevels.y,
@@ -201,6 +289,10 @@ namespace vultra
                         stats.foveatedResolutionScales.z);
             ImGui::Text("Total Splats: %u", stats.totalSplats);
             ImGui::Text("Prepared Splats: %u", stats.preparedSplats);
+            ImGui::Text("Ring Budgets: %u / %u / %u",
+                        stats.foveaSplatBudget,
+                        stats.midSplatBudget,
+                        stats.outerSplatBudget);
             ImGui::Text("Visible Cap: %u", stats.maxVisibleSplatCap);
             ImGui::Text("Draw Records: %u", stats.drawRecords);
             ImGui::Text("LOD Raw Splats: %u", stats.lodSelectedRawSplats);
@@ -679,7 +771,8 @@ namespace vultra
         auto& renderService  = services->require<IRenderService>();
         auto& gpuResourceSvc = services->require<IGpuResourceService>();
 
-        const bool suppressCameraInput = ImGui::GetIO().WantCaptureMouse || ImGui::IsAnyItemHovered() ||
+        const bool suppressCameraInput = gaussianManualGazeControlActive(renderService.gaussianSplatSettings()) ||
+                                         ImGui::GetIO().WantCaptureMouse || ImGui::IsAnyItemHovered() ||
                                          ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
         cameraService.setCameraControlInputSuppressed(suppressCameraInput);
 
@@ -688,6 +781,7 @@ namespace vultra
         ImGui::Begin("Universal Renderer");
 
         drawGaussianSplatBaselinePanel(renderService);
+        drawGaussianManualGazeOverlay(renderService.gaussianSplatSettings());
 
         if (backendService.isXREnabled() && backendService.isXRMirrorEnabled())
         {

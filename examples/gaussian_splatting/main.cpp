@@ -15,6 +15,7 @@
 #include "gaussian_splatting_benchmark.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <filesystem>
@@ -38,6 +39,8 @@ namespace
         std::optional<uint32_t>                        lodBudget;
         std::optional<std::string>                     splatUri;
         std::optional<bool>                            foveatedClodEnabled;
+        std::optional<bool>                            foveatedCoverageCompensationEnabled;
+        std::optional<bool>                            foveatedDebugOverlayEnabled;
         std::optional<GaussianSplatFoveatedRenderMode> foveatedRenderMode;
         std::optional<float>                           gazeX;
         std::optional<float>                           gazeY;
@@ -50,9 +53,10 @@ namespace
         std::optional<float>                           midResolutionScale;
         std::optional<float>                           outerResolutionScale;
         std::optional<float>                           transitionDegrees;
-        std::optional<bool>                            adaptiveBudgetEnabled;
+        std::optional<GaussianSplatFoveatedAdaptationMode> foveatedAdaptationMode;
         std::optional<float>                           targetFrameMs;
         std::optional<float>                           budgetAdjustRate;
+        bool                                           fovGsBaselineEnabled {false};
 
         bool                  benchmarkEnabled {false};
         uint32_t              benchmarkFrames {300};
@@ -148,6 +152,18 @@ namespace
         return std::nullopt;
     }
 
+    std::optional<GaussianSplatFoveatedAdaptationMode> parseFoveatedAdaptationMode(const std::string_view value)
+    {
+        const auto normalized = normalizeToken(value);
+        if (normalized == "fixed")
+            return GaussianSplatFoveatedAdaptationMode::eFixed;
+        if (normalized == "dynamic-budget")
+            return GaussianSplatFoveatedAdaptationMode::eDynamicBudget;
+        if (normalized == "dynamic-range")
+            return GaussianSplatFoveatedAdaptationMode::eDynamicRange;
+        return std::nullopt;
+    }
+
     std::string splatUriFromCliValue(const std::string_view value)
     {
         const auto normalized = normalizeToken(value);
@@ -155,10 +171,12 @@ namespace
             return "res://models/3dgs/hornedlizard.spz";
         if (normalized == "racoonfamily")
             return "res://models/3dgs/racoonfamily.spz";
-        if (normalized == "train" || normalized == "truck" || normalized == "drjohnson" ||
-            normalized == "playroom")
+        constexpr std::array<std::string_view, 4> kResearchScenes {"train", "truck", "drjohnson", "playroom"};
+        for (const auto scene : kResearchScenes)
         {
-            return "res://models/3dgs/" + normalized + "/" + normalized + "_clod.ply";
+            const std::string sceneName {scene};
+            if (normalized == sceneName)
+                return "res://models/3dgs/" + sceneName + "/" + sceneName + "_clod.ply";
         }
 
         const std::string text {value};
@@ -268,6 +286,36 @@ namespace
                 continue;
             }
 
+            if (arg == "--fov-gs-baseline")
+            {
+                options.fovGsBaselineEnabled = true;
+                continue;
+            }
+
+            if (arg == "--coverage-compensation")
+            {
+                options.foveatedCoverageCompensationEnabled = true;
+                continue;
+            }
+
+            if (arg == "--no-coverage-compensation")
+            {
+                options.foveatedCoverageCompensationEnabled = false;
+                continue;
+            }
+
+            if (arg == "--gaze-debug-overlay")
+            {
+                options.foveatedDebugOverlayEnabled = true;
+                continue;
+            }
+
+            if (arg == "--no-gaze-debug-overlay")
+            {
+                options.foveatedDebugOverlayEnabled = false;
+                continue;
+            }
+
             if (const auto value = takeOptionValue(args, i, "--gaze-render-mode"))
             {
                 options.foveatedRenderMode = parseFoveatedRenderMode(*value);
@@ -276,15 +324,11 @@ namespace
                 continue;
             }
 
-            if (arg == "--adaptive-gaze-budget")
+            if (const auto value = takeOptionValue(args, i, "--gaze-adaptation"))
             {
-                options.adaptiveBudgetEnabled = true;
-                continue;
-            }
-
-            if (arg == "--no-adaptive-gaze-budget")
-            {
-                options.adaptiveBudgetEnabled = false;
+                options.foveatedAdaptationMode = parseFoveatedAdaptationMode(*value);
+                if (!options.foveatedAdaptationMode)
+                    VULTRA_CLIENT_WARN("Ignoring invalid --gaze-adaptation value: {}", *value);
                 continue;
             }
 
@@ -339,8 +383,11 @@ namespace
                options.foveaLod.has_value() || options.midLod.has_value() ||
                options.outerLod.has_value() || options.foveaResolutionScale.has_value() ||
                options.midResolutionScale.has_value() || options.outerResolutionScale.has_value() ||
-               options.transitionDegrees.has_value() || options.adaptiveBudgetEnabled.has_value() ||
-               options.targetFrameMs.has_value() || options.budgetAdjustRate.has_value();
+               options.transitionDegrees.has_value() || options.foveatedAdaptationMode.has_value() ||
+               options.foveatedCoverageCompensationEnabled.has_value() ||
+               options.foveatedDebugOverlayEnabled.has_value() ||
+               options.targetFrameMs.has_value() || options.budgetAdjustRate.has_value() ||
+               options.fovGsBaselineEnabled;
     }
 
     bool hasGazeRenderingOverride(const GaussianDemoOptions& options)
@@ -360,19 +407,24 @@ namespace
         settings.baselineMode                      = GaussianSplatBaselineMode::eOrderedClod;
         settings.clodLevel                         = 1.0f;
         settings.foveatedClodEnabled               = true;
+        settings.foveatedManualGazeControlEnabled  = false;
+        settings.foveatedCoverageCompensationEnabled = true;
+        settings.foveatedDebugOverlayEnabled       = false;
         settings.foveatedRenderMode               = GaussianSplatFoveatedRenderMode::eSinglePass;
         settings.foveatedGaze                     = glm::vec2 {0.5f, 0.5f};
-        settings.foveatedRingDegrees              = glm::vec2 {5.0f, 15.0f};
-        settings.foveatedRingLevels               = glm::vec3 {1.0f, 0.25f, 0.05f};
-        settings.foveatedResolutionScales         = glm::vec3 {1.0f, 0.5f, 0.25f};
-        settings.foveatedTransitionDegrees        = 2.0f;
-        settings.foveatedBudgetControllerEnabled  = false;
+        settings.foveatedRingDegrees              = glm::vec2 {8.0f, 24.0f};
+        settings.foveatedRingLevels               = glm::vec3 {1.0f, 0.40f, 0.15f};
+        settings.foveatedResolutionScales         = glm::vec3 {1.0f, 0.75f, 0.50f};
+        settings.foveatedTransitionDegrees        = 4.0f;
+        settings.foveatedAdaptationMode           = GaussianSplatFoveatedAdaptationMode::eFixed;
         settings.foveatedTargetFrameMs            = 11.1f;
         settings.foveatedBudgetAdjustRate         = 0.05f;
     }
 
     void applyGaussianDemoOptions(const GaussianDemoOptions& options, GaussianSplatRenderSettings& settings)
     {
+        if (options.fovGsBaselineEnabled)
+            applyGaussianSplatFovGsStyleBaseline(settings);
         if (options.mode)
             settings.baselineMode = *options.mode;
         if (options.clodLevel)
@@ -384,6 +436,10 @@ namespace
             settings.foveatedClodEnabled = true;
         if (options.foveatedClodEnabled.has_value())
             settings.foveatedClodEnabled = *options.foveatedClodEnabled;
+        if (options.foveatedCoverageCompensationEnabled.has_value())
+            settings.foveatedCoverageCompensationEnabled = *options.foveatedCoverageCompensationEnabled;
+        if (options.foveatedDebugOverlayEnabled.has_value())
+            settings.foveatedDebugOverlayEnabled = *options.foveatedDebugOverlayEnabled;
         if (options.foveatedRenderMode)
             settings.foveatedRenderMode = *options.foveatedRenderMode;
         if (options.gazeX)
@@ -410,8 +466,8 @@ namespace
             settings.foveatedResolutionScales.z = std::clamp(*options.outerResolutionScale, 0.05f, 1.0f);
         if (options.transitionDegrees)
             settings.foveatedTransitionDegrees = std::max(*options.transitionDegrees, 0.0f);
-        if (options.adaptiveBudgetEnabled)
-            settings.foveatedBudgetControllerEnabled = *options.adaptiveBudgetEnabled;
+        if (options.foveatedAdaptationMode)
+            settings.foveatedAdaptationMode = *options.foveatedAdaptationMode;
         if (options.targetFrameMs)
             settings.foveatedTargetFrameMs = std::max(*options.targetFrameMs, 0.1f);
         if (options.budgetAdjustRate)
@@ -521,6 +577,7 @@ protected:
             finishBenchmark();
             m_BenchmarkExitRequested = true;
             engineCtx().services.require<IWindowService>().window().close();
+            return;
         }
     }
 
@@ -560,15 +617,20 @@ private:
                   << "  mode: " << gaussianModeLabel(last.baselineMode) << "\n"
                   << "  gaze_rendering: " << (last.foveatedClodEnabled ? "yes" : "no") << "\n"
                   << "  gaze_render_mode: " << foveatedRenderModeLabel(last.foveatedRenderMode) << "\n"
+                  << "  coverage_compensation: " << (last.foveatedCoverageCompensationEnabled ? "yes" : "no") << "\n"
+                  << "  gaze_uv: " << last.gazeX << ", " << last.gazeY << "\n"
                   << "  layered_compositor: "
                   << (last.foveatedLayeredCompositeEnabled ? "yes" : "no") << "\n"
-                  << "  adaptive_budget: " << (last.adaptiveBudgetEnabled ? "yes" : "no") << "\n"
+                  << "  gaze_adaptation: " << foveatedAdaptationModeLabel(last.foveatedAdaptationMode) << "\n"
+                  << "  ring_degrees: " << last.foveaDegrees << ", " << last.midDegrees << "\n"
                   << "  ring_lod: " << last.foveaLod << ", " << last.midLod << ", " << last.outerLod << "\n"
                   << "  ring_res: " << last.foveaResolutionScale << ", " << last.midResolutionScale << ", "
                   << last.outerResolutionScale << "\n"
                   << "  direct_prefix: " << (last.directPrefix ? "yes" : "no") << "\n"
                   << "  splats: total=" << last.totalSplats << ", prepared=" << last.preparedSplats
-                  << ", selected_raw=" << last.lodSelectedRawSplats << "\n"
+                  << ", selected_raw=" << last.lodSelectedRawSplats
+                  << ", ring_budgets=" << last.foveaSplatBudget << "/" << last.midSplatBudget << "/"
+                  << last.outerSplatBudget << "\n"
                   << "  CPU frame: " << statsText(cpuFrameStats) << "\n"
                   << "  GPU frame: " << statsText(gpuFrameStats) << "\n"
                   << "  GPU preprocess pass: " << statsText(gpuPreprocess) << "\n"

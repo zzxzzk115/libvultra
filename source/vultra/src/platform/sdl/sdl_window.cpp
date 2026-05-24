@@ -125,6 +125,8 @@ namespace vultra::platform::sdl
         }
         applyCursorVisibility();
         applyCursor();
+        SDL_GetWindowSize(m_WindowHandle, &m_Extent.x, &m_Extent.y);
+        SDL_GetWindowPosition(m_WindowHandle, &m_Position.x, &m_Position.y);
         SDL_GetWindowSizeInPixels(m_WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
 
         VULTRA_CORE_INFO(
@@ -496,14 +498,21 @@ namespace vultra::platform::sdl
                     break;
 
                 case SDL_EVENT_WINDOW_RESIZED:
-                    m_Extent = {event.window.data1, event.window.data2};
+                    SDL_GetWindowSize(m_WindowHandle, &m_Extent.x, &m_Extent.y);
+                    SDL_GetWindowSizeInPixels(m_WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
+                    generalEvent.type = event::WindowEventType::eResized;
+                    emitEvent(generalEvent);
+                    break;
+
+                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                    SDL_GetWindowSize(m_WindowHandle, &m_Extent.x, &m_Extent.y);
                     SDL_GetWindowSizeInPixels(m_WindowHandle, &m_FrameBufferExtent.x, &m_FrameBufferExtent.y);
                     generalEvent.type = event::WindowEventType::eResized;
                     emitEvent(generalEvent);
                     break;
 
                 case SDL_EVENT_WINDOW_MOVED:
-                    m_Position        = {event.window.data1, event.window.data2};
+                    SDL_GetWindowPosition(m_WindowHandle, &m_Position.x, &m_Position.y);
                     generalEvent.type = event::WindowEventType::eMoved;
                     emitEvent(generalEvent);
                     break;

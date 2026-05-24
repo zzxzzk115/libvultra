@@ -36,6 +36,11 @@ const uint SORT_ORDER_Z_DEPTH = 0u;
 const uint SORT_ORDER_DISTANCE = 1u;
 const uint SORT_ORDER_VIEW_DEPTH = 2u;
 const uint SORT_ORDER_CONSERVATIVE_DEPTH = 3u;
+const uint FOVEATED_CLOD_ENABLED_FLAG = 1u;
+const uint FOVEATED_CLOD_COVERAGE_COMPENSATION_FLAG = 8u;
+const float FOVEATED_COVERAGE_MIN_LEVEL = 0.12;
+const float FOVEATED_COVERAGE_MAX_ALPHA_BOOST = 2.0;
+const float FOVEATED_COVERAGE_MAX_RADIUS_SCALE = 1.35;
 const float SH_C1 = 0.4886025119029199;
 const float SH_C2[5] = float[5](1.0925484305920792,
                                 -1.0925484305920792,
@@ -58,6 +63,7 @@ layout(push_constant) uniform GeneralGaussianSplatPreprocessPushConstants
     uint foveatedClodEnabled;
     vec4 foveatedGazeAndRings;
     vec4 foveatedLevelsAndTransition;
+    uvec4 foveatedLayerParams;
 } u_PC;
 
 struct EyePreprocessResult
@@ -76,7 +82,12 @@ float computeFoveatedEccentricityDegrees(const vec2 centerNdc, const CameraData 
 {
     const vec2 tanHalfFov = vec2(1.0 / max(abs(camera.projection[0][0]), 1e-5),
                                  1.0 / max(abs(camera.projection[1][1]), 1e-5));
-    return gaussianFoveatedEccentricityDegreesFromNdc(centerNdc, u_PC.foveatedGazeAndRings.xy, tanHalfFov);
+    const float projectionYSign = camera.projection[1][1] < 0.0 ? -1.0 : 1.0;
+    return gaussianFoveatedEccentricityDegreesFromNdc(
+        centerNdc,
+        u_PC.foveatedGazeAndRings.xy,
+        tanHalfFov,
+        projectionYSign);
 }
 
 float foveatedClodLevelForEccentricity(const float eccentricityDegrees)
@@ -87,14 +98,18 @@ float foveatedClodLevelForEccentricity(const float eccentricityDegrees)
                                      u_PC.foveatedLevelsAndTransition.w);
 }
 
+uint foveatedClodBudget(const float level)
+{
+    const uint rankTotalCount = max(u_PC.rankTotalCount, 1u);
+    return uint(ceil(float(rankTotalCount) * clamp(level, 0.0, 1.0)));
+}
+
 bool passesFoveatedClodLevel(const uint rank, const float level)
 {
-    if (u_PC.foveatedClodEnabled == 0u)
+    if ((u_PC.foveatedClodEnabled & FOVEATED_CLOD_ENABLED_FLAG) == 0u)
         return true;
 
-    const uint rankTotalCount = max(u_PC.rankTotalCount, 1u);
-    const uint budget = uint(ceil(float(rankTotalCount) * level));
-    return rank < budget;
+    return rank < foveatedClodBudget(level);
 }
 
 bool passesFoveatedLayerClod(const uint layer, const uint rank)
@@ -102,6 +117,41 @@ bool passesFoveatedLayerClod(const uint layer, const uint rank)
     const vec3 ringLevels = clamp(u_PC.foveatedLevelsAndTransition.xyz, vec3(0.0), vec3(1.0));
     const float layerLevel = layer == 0u ? ringLevels.x : (layer == 1u ? ringLevels.y : ringLevels.z);
     return passesFoveatedClodLevel(rank, layerLevel);
+}
+
+bool isInsideFoveatedLayerEccentricity(const uint layer, const float eccentricityDegrees)
+{
+    return gaussianFoveatedLayerContains(layer,
+                                         eccentricityDegrees,
+                                         u_PC.foveatedGazeAndRings.zw,
+                                         u_PC.foveatedLevelsAndTransition.w);
+}
+
+bool foveatedCoverageCompensationEnabled()
+{
+    return (u_PC.foveatedClodEnabled & FOVEATED_CLOD_COVERAGE_COMPENSATION_FLAG) != 0u;
+}
+
+float foveatedCoverageAlphaBoost(const float level)
+{
+    if (!foveatedCoverageCompensationEnabled())
+        return 1.0;
+
+    const float safeLevel = max(clamp(level, 0.0, 1.0), FOVEATED_COVERAGE_MIN_LEVEL);
+    return clamp(sqrt(1.0 / safeLevel), 1.0, FOVEATED_COVERAGE_MAX_ALPHA_BOOST);
+}
+
+float foveatedCoverageRadiusScale(const float level)
+{
+    const float boost = foveatedCoverageAlphaBoost(level);
+    return clamp(sqrt(boost), 1.0, FOVEATED_COVERAGE_MAX_RADIUS_SCALE);
+}
+
+float foveatedCoverageCompensatedOpacity(const float opacity, const float level)
+{
+    const float alpha = clamp(opacity, 0.0, 0.999);
+    const float boost = foveatedCoverageAlphaBoost(level);
+    return 1.0 - pow(1.0 - alpha, boost);
 }
 
 mat3 buildJacobian(const vec3 camspace, const vec2 focal)
@@ -229,14 +279,23 @@ EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
         return result;
     if (posClip.x < -bounds || posClip.x > bounds || posClip.y < -bounds || posClip.y > bounds)
         return result;
-#if !USE_FOVEATED_LAYER_OUTPUT
     const float eccentricityDegrees = computeFoveatedEccentricityDegrees(centerNdc.xy, camera);
+#if !USE_FOVEATED_LAYER_OUTPUT
     if (!passesFoveatedClodLevel(rank, foveatedClodLevelForEccentricity(eccentricityDegrees)))
         return result;
     result.eccentricityDegrees = eccentricityDegrees;
 #else
-    result.eccentricityDegrees = computeFoveatedEccentricityDegrees(centerNdc.xy, camera);
+    if (u_PC.foveatedLayerParams.x != 0u &&
+        !isInsideFoveatedLayerEccentricity(u_PC.foveatedLayerParams.x - 1u, eccentricityDegrees))
+    {
+        return result;
+    }
+    result.eccentricityDegrees = eccentricityDegrees;
 #endif
+    const float foveatedCoverageLevel =
+        ((u_PC.foveatedClodEnabled & FOVEATED_CLOD_ENABLED_FLAG) != 0u) ?
+            foveatedClodLevelForEccentricity(eccentricityDegrees) :
+            1.0;
 
     const vec2 viewport = camera.resolution.xy;
     const vec2 focal =
@@ -258,6 +317,7 @@ EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
         return result;
 
     colorOpacity.a *= sqrt(det0 / (det1 + 1e-6) + 1e-6);
+    colorOpacity.a = foveatedCoverageCompensatedOpacity(colorOpacity.a, foveatedCoverageLevel);
     if (colorOpacity.a < MIN_VISIBLE_OPACITY)
         return result;
 
@@ -276,8 +336,9 @@ EyePreprocessResult preprocessEye(const GeneralGaussianSplatPackedSource src,
         diagonalVector = normalize(diagonalVector);
 
     const float cutoffScale = max(draw.params0.y, 1e-3);
-    result.v1 = sqrt(2.0 * lambda1) * diagonalVector * cutoffScale;
-    result.v2 = sqrt(2.0 * lambda2) * vec2(diagonalVector.y, -diagonalVector.x) * cutoffScale;
+    const float coverageScale = foveatedCoverageRadiusScale(foveatedCoverageLevel);
+    result.v1 = sqrt(2.0 * lambda1) * diagonalVector * cutoffScale * coverageScale;
+    result.v2 = sqrt(2.0 * lambda2) * vec2(diagonalVector.y, -diagonalVector.x) * cutoffScale * coverageScale;
 
     const vec3 cameraWorld = camera.inverseView[3].xyz;
     vec3 dirLocal;
@@ -334,14 +395,6 @@ void packEyeResult(const EyePreprocessResult eye,
                     packHalf2x16(eye.colorOpacity.ba),
                     sourceIndex,
                     drawIndex);
-}
-
-bool isInsideFoveatedLayerEccentricity(const uint layer, const float eccentricityDegrees)
-{
-    return gaussianFoveatedLayerContains(layer,
-                                         eccentricityDegrees,
-                                         u_PC.foveatedGazeAndRings.zw,
-                                         u_PC.foveatedLevelsAndTransition.w);
 }
 
 float combinedFoveatedEccentricity(const EyePreprocessResult eye0, const EyePreprocessResult eye1)
@@ -506,13 +559,21 @@ void main()
 #endif
 
 #if USE_FOVEATED_LAYER_OUTPUT
-        const float eccentricityDegrees = combinedFoveatedEccentricity(eye0, eye1);
-        if (isInsideFoveatedLayerEccentricity(0u, eccentricityDegrees))
-            writeFoveatedLayerSplat(0u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
-        if (isInsideFoveatedLayerEccentricity(1u, eccentricityDegrees))
-            writeFoveatedLayerSplat(1u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
-        if (isInsideFoveatedLayerEccentricity(2u, eccentricityDegrees))
-            writeFoveatedLayerSplat(2u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
+        const uint activeLayer = u_PC.foveatedLayerParams.x;
+        if (activeLayer >= 1u && activeLayer <= 3u)
+        {
+            writeFoveatedLayerSplat(activeLayer - 1u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
+        }
+        else
+        {
+            const float eccentricityDegrees = combinedFoveatedEccentricity(eye0, eye1);
+            if (isInsideFoveatedLayerEccentricity(0u, eccentricityDegrees))
+                writeFoveatedLayerSplat(0u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
+            if (isInsideFoveatedLayerEccentricity(1u, eccentricityDegrees))
+                writeFoveatedLayerSplat(1u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
+            if (isInsideFoveatedLayerEccentricity(2u, eccentricityDegrees))
+                writeFoveatedLayerSplat(2u, eye0, eye1, sourceIndex, drawIndex, idx, sortDepth);
+        }
 #else
         const uint visibleIndex = atomicAdd(s_GeneralGaussianSplatVisibleCount.visibleCount, 1u);
         if (visibleIndex >= u_PC.maxVisibleSplats)

@@ -73,6 +73,16 @@ vec3 overPremultiplied(const vec4 src, const vec3 dst)
     return src.rgb + dst * (1.0 - clamp(src.a, 0.0, 1.0));
 }
 
+vec2 foveatedViewportUv()
+{
+#if USE_MULTIVIEW && !PLATFORM_WEBGPU
+    const vec2 size = vec2(textureSize(t_FoveaLayer, 0).xy);
+#else
+    const vec2 size = vec2(textureSize(t_FoveaLayer, 0));
+#endif
+    return (gl_FragCoord.xy - vec2(0.5)) / max(size, vec2(1.0));
+}
+
 void main()
 {
     vec2 sampleUv = v_TexCoord;
@@ -81,7 +91,11 @@ void main()
 #endif
 
     const float eccentricityDegrees =
-        gaussianFoveatedEccentricityDegreesFromUv(sampleUv, u_PC.foveatedGazeAndRings.xy, u_PC.foveatedParams.xy);
+        gaussianFoveatedEccentricityDegreesFromUv(
+            foveatedViewportUv(),
+            u_PC.foveatedGazeAndRings.xy,
+            u_PC.foveatedParams.xy,
+            u_PC.foveatedParams.w == 0.0 ? 1.0 : u_PC.foveatedParams.w);
     const vec2 layerBlend =
         gaussianFoveatedRingBlend(eccentricityDegrees, u_PC.foveatedGazeAndRings.zw, u_PC.foveatedParams.z);
 
