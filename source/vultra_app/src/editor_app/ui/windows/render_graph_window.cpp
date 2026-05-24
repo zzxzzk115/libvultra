@@ -919,6 +919,109 @@ namespace vultra_app
                 .lexically_normal();
         }
 
+        std::vector<std::string> collectProjectRenderGraphUris(const EditorContext& ctx)
+        {
+            std::vector<std::string> uris;
+            if (ctx.state.currentProject.empty())
+                return uris;
+
+            const auto assetRoot = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+            std::error_code ec;
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(assetRoot, ec))
+            {
+                if (ec)
+                    break;
+                if (!entry.is_regular_file(ec))
+                    continue;
+
+                const auto filename = entry.path().filename().generic_string();
+                if (!filename.ends_with(".vrg.json"))
+                    continue;
+
+                const auto rel = std::filesystem::relative(entry.path().lexically_normal(), assetRoot, ec);
+                if (!ec && !rel.empty())
+                    uris.push_back("res://" + rel.generic_string());
+            }
+
+            std::sort(uris.begin(), uris.end());
+            uris.erase(std::unique(uris.begin(), uris.end()), uris.end());
+            return uris;
+        }
+
+        std::string rendererKeyFromRenderGraphUri(std::string_view uri)
+        {
+            auto filename = std::filesystem::path(std::string(uri)).filename().generic_string();
+            constexpr std::string_view suffix = ".vrg.json";
+            if (filename.ends_with(suffix))
+                filename.resize(filename.size() - suffix.size());
+            if (filename.empty())
+                filename = "custom";
+            for (auto& ch : filename)
+            {
+                if (ch == '-' || ch == ' ')
+                    ch = '_';
+                else
+                    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            }
+            return filename;
+        }
+
+        bool drawProjectRenderGraphSelector(EditorContext& ctx, std::string& status)
+        {
+            auto uris = collectProjectRenderGraphUris(ctx);
+            if (!ctx.state.currentRenderPipeline.empty() &&
+                std::find(uris.begin(), uris.end(), ctx.state.currentRenderPipeline) == uris.end())
+            {
+                uris.push_back(ctx.state.currentRenderPipeline);
+                std::sort(uris.begin(), uris.end());
+            }
+
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Graph");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(320.0f);
+
+            bool changed = false;
+            const char* preview = ctx.state.currentRenderPipeline.empty() ?
+                                      "<none>" :
+                                      ctx.state.currentRenderPipeline.c_str();
+            if (ImGui::BeginCombo("##ProjectRenderGraphAsset", preview))
+            {
+                for (const auto& uri : uris)
+                {
+                    const bool selected = uri == ctx.state.currentRenderPipeline;
+                    if (ImGui::Selectable(uri.c_str(), selected))
+                    {
+                        ctx.state.currentRenderPipeline = uri;
+                        changed                         = true;
+                    }
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            if (changed)
+            {
+                if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
+                {
+                    const auto rendererKey = rendererKeyFromRenderGraphUri(ctx.state.currentRenderPipeline);
+                    if (renderService->reloadRenderPipeline(ctx.state.currentRenderPipeline, rendererKey))
+                    {
+                        status                  = "Switched render graph";
+                        ctx.state.statusMessage = "Renderer '" + rendererKey + "': " + ctx.state.currentRenderPipeline;
+                    }
+                    else
+                    {
+                        status                  = "Failed to switch render graph";
+                        ctx.state.statusMessage = status;
+                    }
+                }
+            }
+
+            return changed;
+        }
+
         std::vector<std::filesystem::path> listProjectFilesWithSuffix(const EditorContext& ctx, std::string_view suffix)
         {
             std::vector<std::filesystem::path> out;
@@ -1302,7 +1405,7 @@ namespace vultra_app
             out.clearValue  = camera.clearColor;
             out.clearValue.a = 1.0f;
             out.renderImGui = false;
-            out.rendererKey = camera.rendererKey.empty() || camera.rendererKey == "universal" ? "project" : camera.rendererKey;
+            out.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
             return out;
         }
 
@@ -1526,7 +1629,6 @@ namespace vultra_app
 
             auto graphEntries = std::move(allGraphEntries);
 
-            int projectGraphIndex = -1;
             int gameGraphIndex = -1;
             int largestGraphIndex = -1;
             size_t largestGraphSize = 0;
@@ -1545,8 +1647,6 @@ namespace vultra_app
                 graphLabels.push_back(runtimeCameraDisplayName(cameraName) + " - " + rendererKey + " (" +
                                       std::to_string(nodeCount) + " nodes)");
 
-                if (projectGraphIndex < 0 && rendererKey == "project")
-                    projectGraphIndex = static_cast<int>(i);
                 if (gameGraphIndex < 0 &&
                     (cameraName.find("Game") != std::string::npos || cameraName.find("game") != std::string::npos))
                     gameGraphIndex = static_cast<int>(i);
@@ -1561,11 +1661,6 @@ namespace vultra_app
             if (selectedIt != graphKeys.end())
             {
                 selectedGraphIndex = static_cast<int>(std::distance(graphKeys.begin(), selectedIt));
-            }
-            else if (projectGraphIndex >= 0)
-            {
-                selectedGraphIndex = projectGraphIndex;
-                selectedGraphKey = graphKeys[static_cast<size_t>(selectedGraphIndex)];
             }
             else if (gameGraphIndex >= 0)
             {
@@ -2033,7 +2128,7 @@ namespace vultra_app
         ImGui::TextDisabled("%s",
                             m_Mode == Mode::ePreview ?
                                 "Runtime frame graph for the selected camera" :
-                                "Project render graph asset");
+                                "Render graph asset");
         ImGui::Separator();
 
         switch (m_Mode)
@@ -2167,6 +2262,20 @@ namespace vultra_app
             m_GraphEditor = std::make_unique<GraphEditorState>();
 
         auto& state = *m_GraphEditor;
+        const bool switchedGraph = drawProjectRenderGraphSelector(ctx, state.status);
+        if (switchedGraph)
+        {
+            state.loaded = false;
+            state.dirty = false;
+            state.pipelineDirty = false;
+            state.runtimeDirty = false;
+            state.path.clear();
+            state.pipelinePath.clear();
+            state.editingFeatureInternals = true;
+            state.editingFeature.clear();
+        }
+        ImGui::Separator();
+
         const auto graphPath = ctx.state.currentRenderPipeline.ends_with(".vrg.json") ?
                                    assetPathForUri(ctx, ctx.state.currentRenderPipeline) :
                                    std::filesystem::path {};
@@ -2206,7 +2315,7 @@ namespace vultra_app
             }
 
             assetService->setTextAssetOverride(uri, serializedGraph());
-            renderService->reloadRenderPipeline();
+            renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
             state.runtimeDirty = false;
             state.status = "Applied in memory";
             ctx.state.statusMessage = "Applied render graph in memory: " + uri;
@@ -2244,7 +2353,11 @@ namespace vultra_app
                     assetService->clearTextAssetOverride(uri);
             }
             if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
-                renderService->reloadRenderPipeline();
+            {
+                const auto uri = graphUri();
+                if (!uri.empty())
+                    renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
+            }
             return true;
         };
 
@@ -2310,7 +2423,7 @@ namespace vultra_app
             state.removeSelected();
 
         ImGui::TextDisabled("%s%s",
-                            state.path.empty() ? "No project graph selected" : state.path.generic_string().c_str(),
+                            state.path.empty() ? "No render graph selected" : state.path.generic_string().c_str(),
                             state.dirty ? " *" : "");
 
         std::string bannerMessage;
@@ -2371,7 +2484,7 @@ namespace vultra_app
 
         if (!state.loaded)
         {
-            ImGui::TextDisabled("Open a project with a .vrg.json render pipeline.");
+            ImGui::TextDisabled("Open a .vrg.json render graph asset.");
             return;
         }
 

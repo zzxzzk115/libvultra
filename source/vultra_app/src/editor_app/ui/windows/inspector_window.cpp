@@ -7,6 +7,8 @@
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/render_backend_service.hpp>
+#include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
@@ -814,6 +816,56 @@ namespace vultra_app
             return changed;
         }
 
+        bool drawRendererKeyCombo(EditorContext* ctx, std::string& rendererKey, const char* label)
+        {
+            auto* renderService = ctx && ctx->services ? ctx->services->tryGet<vultra::IRenderService>() : nullptr;
+            auto* renderBackend = ctx && ctx->services ? ctx->services->tryGet<vultra::IRenderBackendService>() : nullptr;
+            auto  keys          = renderService ? renderService->rendererKeys() : std::vector<std::string> {};
+
+            keys.erase(std::remove(keys.begin(), keys.end(), "editor-shell"), keys.end());
+
+            if (rendererKey.empty())
+                rendererKey = "universal";
+
+            if (std::find(keys.begin(), keys.end(), rendererKey) == keys.end())
+                keys.push_back(rendererKey);
+
+            std::sort(keys.begin(), keys.end());
+            keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+
+            bool changed = false;
+            const char* preview = rendererKey.empty() ? "<none>" : rendererKey.c_str();
+            if (ImGui::BeginCombo(label, preview))
+            {
+                const bool rayTracingAvailable =
+                    renderBackend &&
+                    HasFlagValues(renderBackend->renderDevice().getFeatureFlag(),
+                                  vultra::rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline);
+                for (const auto& key : keys)
+                {
+                    const bool selected = key == rendererKey;
+                    const bool disabled = key == "universal_rt" && !rayTracingAvailable;
+                    if (disabled)
+                        ImGui::BeginDisabled();
+                    if (ImGui::Selectable(key.c_str(), selected))
+                    {
+                        rendererKey = key;
+                        changed     = true;
+                    }
+                    if (disabled)
+                    {
+                        ImGui::EndDisabled();
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                            ImGui::SetTooltip("Ray tracing is not available on the current render device.");
+                    }
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            return changed;
+        }
+
         bool drawMetaValue(EditorContext*          ctx,
                            const entt::meta_data& field,
                            entt::meta_any&        value,
@@ -871,6 +923,8 @@ namespace vultra_app
             {
                 if (std::strcmp(fieldName, "scriptUri") == 0)
                     return drawScriptUriObjectField(ctx, *v, label);
+                if (std::strcmp(fieldName, "rendererKey") == 0)
+                    return drawRendererKeyCombo(ctx, *v, label);
 
                 std::array<char, 256> buffer {};
                 copyName(buffer, *v);

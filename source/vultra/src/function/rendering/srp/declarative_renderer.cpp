@@ -49,6 +49,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -75,6 +76,17 @@ namespace vultra
                     ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
             }
             return value;
+        }
+
+        [[nodiscard]] std::string rendererKeyFromRenderGraphUri(std::string_view uri)
+        {
+            auto filename = std::filesystem::path(std::string(uri)).filename().generic_string();
+            constexpr std::string_view suffix = ".vrg.json";
+            if (filename.ends_with(suffix))
+                filename.resize(filename.size() - suffix.size());
+            if (filename.empty())
+                filename = "custom";
+            return normalizeId(std::move(filename));
         }
 
         struct RenderGraphResRef
@@ -1151,7 +1163,9 @@ namespace vultra
         }
     };
 
-    DeclarativeRenderer::DeclarativeRenderer(std::string pipelineUri) : m_PipelineUri(std::move(pipelineUri)) {}
+    DeclarativeRenderer::DeclarativeRenderer(std::string pipelineUri, std::string rendererKey) :
+        m_PipelineUri(std::move(pipelineUri)), m_RendererKeyOverride(std::move(rendererKey))
+    {}
 
     DeclarativeRenderer::~DeclarativeRenderer() = default;
 
@@ -1276,7 +1290,9 @@ namespace vultra
             auto feature = Feature {};
             feature.name = m_PipelineUri;
             feature.renderGraph = m_PipelineUri;
-            m_Asset.rendererKey = "project";
+            m_Asset.rendererKey = m_RendererKeyOverride.empty() ?
+                                      rendererKeyFromRenderGraphUri(m_PipelineUri) :
+                                      m_RendererKeyOverride;
             m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
             m_Asset.features.push_back(std::move(feature));
             return true;

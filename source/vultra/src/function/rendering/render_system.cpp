@@ -46,6 +46,8 @@
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <cctype>
+#include <filesystem>
 #include <limits>
 #include <numeric>
 #include <optional>
@@ -69,6 +71,24 @@ namespace vultra
 #else
             return false;
 #endif
+        }
+
+        [[nodiscard]] std::string rendererKeyFromRenderGraphUri(std::string_view uri)
+        {
+            auto filename = std::filesystem::path(std::string(uri)).filename().generic_string();
+            constexpr std::string_view suffix = ".vrg.json";
+            if (filename.ends_with(suffix))
+                filename.resize(filename.size() - suffix.size());
+            if (filename.empty())
+                filename = "custom";
+            for (auto& ch : filename)
+            {
+                if (ch == '-' || ch == ' ')
+                    ch = '_';
+                else
+                    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            }
+            return filename;
         }
 
         void expandBounds(RenderWorld& out, const glm::vec3& point)
@@ -715,17 +735,18 @@ namespace vultra
                                                  vbase::Result<std::string, std::string>::err("asset service unavailable");
             if (pipelineText)
             {
-                VULTRA_CORE_INFO("[RenderSystem] Using project render pipeline '{}'",
+                VULTRA_CORE_INFO("[RenderSystem] Using render pipeline '{}'",
                                  ctx().config.render.renderPipelineAsset);
                 const auto rendererKey = ctx().config.render.renderPipelineRendererKey.empty() ?
-                                             std::string {"universal"} :
+                                             rendererKeyFromRenderGraphUri(ctx().config.render.renderPipelineAsset) :
                                              ctx().config.render.renderPipelineRendererKey;
-                m_Renderers[rendererKey] = createRef<DeclarativeRenderer>(ctx().config.render.renderPipelineAsset);
+                m_Renderers[rendererKey] =
+                    createRef<DeclarativeRenderer>(ctx().config.render.renderPipelineAsset, rendererKey);
                 m_DefaultRendererKey     = rendererKey;
             }
             else
             {
-                VULTRA_CORE_WARN("[RenderSystem] Project render pipeline '{}' is unavailable: {}. Falling back to registered renderer.",
+                VULTRA_CORE_WARN("[RenderSystem] Render pipeline '{}' is unavailable: {}. Falling back to registered renderer.",
                                  ctx().config.render.renderPipelineAsset,
                                  std::move(pipelineText).error());
             }
@@ -803,6 +824,19 @@ namespace vultra
         m_Renderers[std::string(renderer->name())] = renderer;
     }
 
+    std::vector<std::string> RenderSystem::rendererKeys() const
+    {
+        std::vector<std::string> keys;
+        keys.reserve(m_Renderers.size());
+        for (const auto& [key, renderer] : m_Renderers)
+        {
+            if (renderer)
+                keys.push_back(key);
+        }
+        std::sort(keys.begin(), keys.end());
+        return keys;
+    }
+
     Ref<Renderer> RenderSystem::resolveRenderer(const RenderCamera& cam) const
     {
         if (auto it = m_Renderers.find(cam.rendererKey); it != m_Renderers.end())
@@ -846,7 +880,9 @@ namespace vultra
         {
             m_PendingRenderPipelineReload = true;
             m_PendingRenderPipelineAsset = std::string {asset};
-            m_PendingRenderPipelineRendererKey = rendererKey.empty() ? std::string {"project"} : std::string {rendererKey};
+            m_PendingRenderPipelineRendererKey = rendererKey.empty() ?
+                                                     rendererKeyFromRenderGraphUri(asset) :
+                                                     std::string {rendererKey};
             VULTRA_CORE_INFO("[RenderSystem] Queued render pipeline reload for next frame");
             return true;
         }
@@ -864,10 +900,10 @@ namespace vultra
             backendService->renderDevice().waitIdle();
 
         const auto rendererKey = renderConfig.renderPipelineRendererKey.empty() ?
-                                     std::string {"project"} :
+                                     rendererKeyFromRenderGraphUri(renderConfig.renderPipelineAsset) :
                                      renderConfig.renderPipelineRendererKey;
 
-        auto renderer = createRef<DeclarativeRenderer>(renderConfig.renderPipelineAsset);
+        auto renderer = createRef<DeclarativeRenderer>(renderConfig.renderPipelineAsset, rendererKey);
         Services services = ctx().services;
         renderer->setupServices(services);
         renderer->init();
@@ -886,13 +922,12 @@ namespace vultra
         if (auto* backendService = ctx().services.tryGet<IRenderBackendService>())
             backendService->renderDevice().waitIdle();
 
-        auto key = rendererKey.empty() ? std::string {"project"} : std::string {rendererKey};
-        auto renderer = createRef<DeclarativeRenderer>(std::string {asset});
+        auto key = rendererKey.empty() ? rendererKeyFromRenderGraphUri(asset) : std::string {rendererKey};
+        auto renderer = createRef<DeclarativeRenderer>(std::string {asset}, key);
         Services services = ctx().services;
         renderer->setupServices(services);
         renderer->init();
         m_Renderers[key] = std::move(renderer);
-        m_DefaultRendererKey = std::move(key);
         m_PendingRenderPipelineReload = false;
         m_PendingRenderPipelineAsset.clear();
         m_PendingRenderPipelineRendererKey.clear();

@@ -18,7 +18,7 @@ namespace vultra
     class DeclarativeRenderer final : public Renderer
     {
     public:
-        explicit DeclarativeRenderer(std::string pipelineUri);
+        explicit DeclarativeRenderer(std::string pipelineUri, std::string rendererKey = {});
         ~DeclarativeRenderer() override;
 
         std::string_view name() const override { return m_RendererKey; }
@@ -73,6 +73,7 @@ namespace vultra
 
     private:
         std::string m_PipelineUri;
+        std::string m_RendererKeyOverride;
         std::string m_RendererKey {"custom"};
 
         PipelineAsset m_Asset;

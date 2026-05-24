@@ -57,6 +57,7 @@ namespace vultra
         SERVICE_REGISTER(IRenderService)
 
         virtual void registerRenderer(Ref<Renderer> renderer) = 0;
+        virtual std::vector<std::string> rendererKeys() const = 0;
 
         // Render one frame for all cooked cameras (CameraSystem output).
         virtual void renderFrame() = 0;
@@ -64,7 +65,7 @@ namespace vultra
         // Notify render service that output size changed.
         virtual void onResize(uint32_t width, uint32_t height) = 0;
         virtual bool reloadRenderPipeline() = 0;
-        virtual bool reloadRenderPipeline(std::string_view asset, std::string_view rendererKey = "project") = 0;
+        virtual bool reloadRenderPipeline(std::string_view asset, std::string_view rendererKey = {}) = 0;
 
         // Built-in runtime profiler (default disabled).
         virtual RuntimeProfiler* runtimeProfiler() = 0;

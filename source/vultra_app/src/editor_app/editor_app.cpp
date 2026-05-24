@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -69,6 +70,53 @@ namespace vultra_app
         ImGuiID dockSpaceId()
         {
             return ImHashStr("VultraDockSpace");
+        }
+
+        std::string rendererKeyFromRenderGraphUri(std::string_view uri)
+        {
+            auto filename = std::filesystem::path(std::string(uri)).filename().generic_string();
+            constexpr std::string_view suffix = ".vrg.json";
+            if (filename.ends_with(suffix))
+                filename.resize(filename.size() - suffix.size());
+            if (filename.empty())
+                filename = "custom";
+            for (auto& ch : filename)
+            {
+                if (ch == '-' || ch == ' ')
+                    ch = '_';
+                else
+                    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            }
+            return filename;
+        }
+
+        std::vector<std::string> collectProjectRenderGraphUris(const std::filesystem::path& projectRoot,
+                                                               const std::string&           assetRootName)
+        {
+            std::vector<std::string> uris;
+            if (projectRoot.empty() || assetRootName.empty())
+                return uris;
+
+            const auto assetRoot = (projectRoot / assetRootName).lexically_normal();
+            std::error_code ec;
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(assetRoot, ec))
+            {
+                if (ec)
+                    break;
+                if (!entry.is_regular_file(ec))
+                    continue;
+
+                const auto filename = entry.path().filename().generic_string();
+                if (!filename.ends_with(".vrg.json"))
+                    continue;
+
+                const auto rel = std::filesystem::relative(entry.path().lexically_normal(), assetRoot, ec);
+                if (!ec && !rel.empty())
+                    uris.push_back("res://" + rel.generic_string());
+            }
+            std::sort(uris.begin(), uris.end());
+            uris.erase(std::unique(uris.begin(), uris.end()), uris.end());
+            return uris;
         }
 
         std::string quoteCommandArg(const std::string& text)
@@ -325,7 +373,7 @@ namespace vultra_app
             engine.ctx().config.asset.assetRoot =
                 (project->projectDir / project->assetRoot).lexically_normal().generic_string();
             engine.ctx().config.render.renderPipelineAsset       = project->renderPipeline;
-            engine.ctx().config.render.renderPipelineRendererKey = "project";
+            engine.ctx().config.render.renderPipelineRendererKey.clear();
             return;
         }
 
@@ -989,7 +1037,10 @@ namespace vultra_app
                 ctx.state.statusMessage = "Loaded project assets: " + desc.assetRoot;
 
                 if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
-                    renderService->reloadRenderPipeline(ctx.state.currentRenderPipeline, "project");
+                {
+                    for (const auto& uri : collectProjectRenderGraphUris(projectRoot, ctx.state.currentAssetRoot))
+                        renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
+                }
 
                 m_Loading.phase    = LoadingPhase::LoadScene;
                 m_Loading.progress = 0.90f;

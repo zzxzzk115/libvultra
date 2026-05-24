@@ -234,7 +234,7 @@ namespace
                     if (!manifest->name.empty())
                         engine.ctx().config.window.title = manifest->name;
                     engine.ctx().config.render.renderPipelineAsset       = manifest->renderPipeline;
-                    engine.ctx().config.render.renderPipelineRendererKey = "project";
+                    engine.ctx().config.render.renderPipelineRendererKey.clear();
                     if (m_Options.sceneUri.empty())
                         m_Options.sceneUri = manifest->entryScene;
                 }
@@ -277,11 +277,8 @@ namespace
             {
                 hasSceneCamera = true;
                 auto& camera = view.get<vultra::CameraComponent>(entity);
-                if (!engine.ctx().config.render.renderPipelineAsset.empty() &&
-                    (camera.rendererKey.empty() || camera.rendererKey == "universal"))
-                {
-                    camera.rendererKey = "project";
-                }
+                if (camera.rendererKey.empty())
+                    camera.rendererKey = "universal";
             }
             if (hasSceneCamera)
             {

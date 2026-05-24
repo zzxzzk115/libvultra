@@ -73,7 +73,7 @@ namespace vultra
                 rhi::RenderDeviceFeatureFlagBits renderDeviceFeatureFlag {rhi::RenderDeviceFeatureFlagBits::eNormal};
                 BuiltinShaderLibrary            builtinShaderLibrary {BuiltinShaderLibrary::eAuto};
                 std::string                     renderPipelineAsset {};
-                std::string                     renderPipelineRendererKey {"universal"};
+                std::string                     renderPipelineRendererKey;
                 rhi::VerticalSync                vSyncConfig {rhi::VerticalSync::eDisabled};
                 rhi::SwapchainFormat             swapchainFormat {rhi::SwapchainFormat::eLinear};
                 bool                             enableValidation {rhi::defaultRenderDiagnosticsEnabled()};

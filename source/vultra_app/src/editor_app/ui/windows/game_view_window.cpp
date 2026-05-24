@@ -216,8 +216,6 @@ namespace vultra_app
                 {
                     const float aspect = outputSize.x / std::max(outputSize.y, 1.0f);
                     auto        renderCamera = makeGameCamera(world, cam, aspect, renderTarget);
-                    if (!ctx.state.currentProject.empty() && renderCamera.rendererKey == "universal")
-                        renderCamera.rendererKey = "project";
                     if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
                         cameraService->addManualCamera(renderCamera);
                 }
