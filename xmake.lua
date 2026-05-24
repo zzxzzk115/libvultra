@@ -64,6 +64,10 @@ if is_plat("linux") then
     option_end()
 end
 
+if is_plat("windows") then
+    add_requireconfs("**", {configs = {runtimes = is_mode("debug") and "MTd" or "MT"}})
+end
+
 -- if build on windows
 if is_plat("windows") then
     add_cxxflags("/Zc:__cplusplus", {tools = {"msvc", "cl"}}) -- fix __cplusplus == 199711L error
@@ -71,10 +75,9 @@ if is_plat("windows") then
     add_cxxflags("-D_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING")
     add_cxxflags("/EHsc")
     if is_mode("debug") then
-        set_runtimes("MDd")
-        add_links("ucrtd")
+        set_runtimes("MTd")
     else
-        set_runtimes("MD")
+        set_runtimes("MT")
     end
 else
     add_cxxflags("-fexceptions")

@@ -93,12 +93,17 @@ if not is_plat("wasm") then
     add_requires("vulkan-memory-allocator-hpp")
 end
 if not is_plat("android") then
-    add_requires("webgpu-sdk v0.1.1")
+    add_requires("webgpu-sdk v0.1.2", {configs = {shared = false}})
 end
 if not is_plat("wasm") then
     add_requireconfs("vulkan-memory-allocator-hpp", {configs = {use_vulkanheaders = true}})
 end
 add_requireconfs("**.vulkan-headers", {override = true, version = "1.4.309+0"}) -- unfortunately, some dependencies (e.g. vulkan-memory-allocator-hpp) still rely on older Vulkan-Headers, we need to override it to avoid version conflicts
+if is_plat("windows") then
+    add_requireconfs("**.libsdl3", {configs = {shared = false}})
+    add_requireconfs("**.openxr", {configs = {shared = false}})
+    add_requireconfs("**.webgpu-sdk", {configs = {shared = false}})
+end
 if has_config("tracy") then
     add_requires("tracy v0.12.2", {configs = {on_demand = true}})
 end
@@ -106,9 +111,9 @@ if not is_plat("android") and not is_plat("wasm") then
     add_requireconfs("imgui.libsdl3", {system = false}) -- we don't use system's SDL3 to avoid version conflicts
 end
 if not is_plat("wasm") then
-    add_requires("openxr", {configs = {shared = true, debug = is_mode("debug")}})
+    add_requires("openxr", {configs = {shared = false, debug = is_mode("debug")}})
 end
-add_requires("vrendergraph", {configs = { debug = is_mode("debug") }})
+add_requires("vrendergraph v0.2.1", {configs = { debug = is_mode("debug") }})
 
 -- target defination, name: vultra
 target("vultra")
