@@ -1,7 +1,7 @@
 #include "vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/fxaa_pass.hpp"
-#include "vultra/function/rendering/srp/builtin/passes/hbao_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ssao_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
@@ -13,7 +13,7 @@ namespace vultra
 {
     BuiltinScreenSpaceFeature::BuiltinScreenSpaceFeature(IRenderService& renderService) : m_RenderService(renderService)
     {
-        m_HbaoPass = new HbaoPass();
+        m_SsaoPass = new SsaoPass();
         m_SsrPass  = new SsrPass();
         m_SelectionOutlinePass = new SelectionOutlinePass();
         m_FxaaPass = new FxaaPass();
@@ -21,7 +21,7 @@ namespace vultra
 
     BuiltinScreenSpaceFeature::~BuiltinScreenSpaceFeature()
     {
-        delete m_HbaoPass;
+        delete m_SsaoPass;
         delete m_SsrPass;
         delete m_SelectionOutlinePass;
         delete m_FxaaPass;
@@ -38,12 +38,12 @@ namespace vultra
         const bool hasEntityId = ctx.data.contains(kResKey_GBufferEntityId);
 
         // The pass implementations are intentionally gated on SRP resources instead of legacy mesh/texture systems.
-        // HBAO requires depth + normal; SSR requires depth + normal + material MR/AO + current scene color.
-        if (settings.hbao.enabled && hasDepth && hasNormal)
+        // SSAO requires depth + normal; SSR requires depth + normal + material MR/AO + current scene color.
+        if (settings.ssao.enabled && hasDepth && hasNormal)
         {
-            auto ao = m_HbaoPass->addPass(
-                ctx, ctx.data.get(kResKey_DepthTexture), ctx.data.get(kResKey_GBufferNormal), settings.hbao);
-            ctx.data.set(kResKey_HbaoTexture, ao);
+            auto ao = m_SsaoPass->addPass(
+                ctx, ctx.data.get(kResKey_DepthTexture), ctx.data.get(kResKey_GBufferNormal), settings.ssao);
+            ctx.data.set(kResKey_SsaoTexture, ao);
         }
 
         if (settings.ssr.enabled && hasDepth && hasNormal && hasMrAo && hasColor)

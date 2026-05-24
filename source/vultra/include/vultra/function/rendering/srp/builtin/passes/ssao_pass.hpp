@@ -6,16 +6,16 @@
 
 namespace vultra
 {
-    class HbaoPass final : public rhi::RenderPass<HbaoPass>
+    class SsaoPass final : public rhi::RenderPass<SsaoPass>
     {
         friend class BasePass;
 
     public:
-        HbaoPass();
+        SsaoPass();
         FrameGraphResource addPass(FrameGraphBuildContext& ctx,
                                    FrameGraphResource      depth,
                                    FrameGraphResource      normal,
-                                   const HbaoRenderSettings& settings);
+                                   const SsaoRenderSettings& settings);
 
     private:
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat) const;

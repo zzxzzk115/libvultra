@@ -46,6 +46,8 @@ namespace vultra_app
         bool                  m_TexturePreviewGammaCorrect {false};
         bool                  m_TexturePreviewChannels[4] {true, true, true, false};
         int                   m_TexturePreviewMode {0};
+        float                 m_TexturePreviewScale {1.0f};
+        bool                  m_TexturePreviewFitToView {true};
         float                 m_TexturePreviewDepthNear {0.1f};
         float                 m_TexturePreviewDepthFar {1000.0f};
         float                 m_TexturePreviewClampMin {0.0f};

@@ -102,7 +102,8 @@ namespace vultra
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 pd.output = builder.write(pd.output,
                                           framegraph::Attachment {
@@ -126,7 +127,7 @@ namespace vultra
                     return;
 
                 SsrPushConstants pc {
-                    .reflectionFactor = settings.reflectionFactor,
+                    .reflectionFactor = settings.enabled ? settings.reflectionFactor : 0.0f,
                     .maxSteps         = settings.maxSteps,
                     .binaryRefinement = settings.binaryRefinement,
                     .stride           = settings.stride,

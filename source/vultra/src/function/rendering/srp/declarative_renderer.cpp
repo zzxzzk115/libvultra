@@ -26,13 +26,14 @@
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_foveated_composite_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_preprocess_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_render_pass.hpp"
-#include "vultra/function/rendering/srp/builtin/passes/hbao_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ssao_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/hzb_generate_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/meshlet_cull_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/meshlet_hiz_cull_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/shadow_map_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ssr_composite_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/thin_gbuffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
@@ -117,8 +118,8 @@ namespace vultra
                 return kResKey_GBufferMetallicRoughnessAO;
             if (normalized == "gbuffer_entity_id" || normalized == "entity_id" || normalized == "entityid")
                 return kResKey_GBufferEntityId;
-            if (normalized == "hbao" || normalized == "ao")
-                return kResKey_HbaoTexture;
+            if (normalized == "ssao" || normalized == "ao")
+                return kResKey_SsaoTexture;
             if (normalized == "ssr" || normalized == "reflection")
                 return kResKey_SsrTexture;
             if (normalized == "visibility")
@@ -737,7 +738,7 @@ namespace vultra
                                     passCtx.setOutput("shadowData", shadow.shadowData);
                             });
 
-            registerBuiltin("DeferredLighting", {"color", "normal", "material", "depth", "shadowMap", "shadowData"}, {"color"},
+            registerBuiltin("DeferredLighting", {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"}, {"color"},
                             [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
@@ -762,11 +763,32 @@ namespace vultra
                                                                             passCtx.getInput("normal"),
                                                                             passCtx.getInput("material"),
                                                                             passCtx.getInput("depth"),
+                                                                            passCtx.getInput("ao"),
                                                                             passCtx.getInput("shadowMap"),
                                                                             passCtx.getInput("shadowData"),
                                                                             shadowSettings,
                                                                             lightingSettings,
                                                                             ctx->view().renderWorld);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
+            registerBuiltin("SsrComposite", {"source", "reflection"}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                if (!params.get<bool>("enabled", true))
+                                {
+                                    passCtx.setOutput("color", passCtx.getInput("source"));
+                                    return;
+                                }
+                                auto color = m_SsrCompositePass.addPass(*ctx,
+                                                                        passCtx.getInput("source"),
+                                                                        passCtx.getInput("reflection"));
                                 if (color)
                                 {
                                     ctx->data.set(kResKey_FinalCompositionSource, color);
@@ -784,23 +806,24 @@ namespace vultra
                                     passCtx.setOutput("hzb", hzb);
                             });
 
-            registerBuiltin("Hbao", {"depth", "normal"}, {"ao"},
+            registerBuiltin("Ssao", {"depth", "normal"}, {"ao"},
                             [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
                                 if (!ctx || !renderService)
                                     return;
-                                auto settings = renderService->builtinRenderSettings().hbao;
+                                auto settings = renderService->builtinRenderSettings().ssao;
                                 settings.enabled = params.get<bool>("enabled", settings.enabled);
                                 settings.radius = params.get<float>("radius", settings.radius);
                                 settings.bias = params.get<float>("bias", settings.bias);
                                 settings.intensity = params.get<float>("intensity", settings.intensity);
+                                settings.maxRadiusPixels = params.get<int>("maxRadiusPixels", settings.maxRadiusPixels);
                                 settings.stepCount = params.get<int>("stepCount", settings.stepCount);
                                 settings.directionCount = params.get<int>("directionCount", settings.directionCount);
-                                auto ao = m_HbaoPass.addPass(*ctx, passCtx.getInput("depth"), passCtx.getInput("normal"), settings);
+                                auto ao = m_SsaoPass.addPass(*ctx, passCtx.getInput("depth"), passCtx.getInput("normal"), settings);
                                 if (ao)
                                 {
-                                    ctx->data.set(kResKey_HbaoTexture, ao);
+                                    ctx->data.set(kResKey_SsaoTexture, ao);
                                     passCtx.setOutput("ao", ao);
                                 }
                             });
@@ -1069,8 +1092,10 @@ namespace vultra
                      "gbuffer_normal",
                      "gbuffer_material",
                      "gbuffer_entity_id",
-                     "hbao",
+                     "ssao",
+                     "ao",
                      "ssr",
+                     "reflection",
                      "visibility",
                      "shadow_map",
                      "shadow_data",
@@ -1091,8 +1116,9 @@ namespace vultra
         ShadowMapPass m_ShadowMapPass;
         DeferredLightingPass m_DeferredLightingPass;
         HzbGeneratePass m_HzbGeneratePass;
-        HbaoPass m_HbaoPass;
+        SsaoPass m_SsaoPass;
         SsrPass m_SsrPass;
+        SsrCompositePass m_SsrCompositePass;
         FxaaPass m_FxaaPass;
         SelectionOutlinePass m_SelectionOutlinePass;
         FinalCompositionPass m_FinalCompositionPass;

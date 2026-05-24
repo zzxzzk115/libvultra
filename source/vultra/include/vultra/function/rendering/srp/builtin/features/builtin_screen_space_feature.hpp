@@ -5,7 +5,7 @@
 namespace vultra
 {
     class FxaaPass;
-    class HbaoPass;
+    class SsaoPass;
     class IRenderService;
     class SelectionOutlinePass;
     class SsrPass;
@@ -22,7 +22,7 @@ namespace vultra
 
     private:
         IRenderService& m_RenderService;
-        HbaoPass*       m_HbaoPass {nullptr};
+        SsaoPass*       m_SsaoPass {nullptr};
         SsrPass*        m_SsrPass {nullptr};
         SelectionOutlinePass* m_SelectionOutlinePass {nullptr};
         FxaaPass*       m_FxaaPass {nullptr};

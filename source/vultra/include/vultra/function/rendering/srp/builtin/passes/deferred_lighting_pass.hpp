@@ -20,6 +20,7 @@ namespace vultra
                                    FrameGraphResource      normal,
                                    FrameGraphResource      material,
                                    FrameGraphResource      depth,
+                                   FrameGraphResource      ssao,
                                    FrameGraphResource      shadowMap,
                                    FrameGraphResource      shadowData,
                                    const ShadowRenderSettings& shadowSettings,
@@ -29,6 +30,7 @@ namespace vultra
     private:
         bool ensureBuiltinLtcTextures(rhi::RenderDevice& rd);
         bool ensureFallbackIblTextures(rhi::RenderDevice& rd, const PbrLightingSettings& lightingSettings);
+        bool ensureFallbackAoTexture(rhi::RenderDevice& rd);
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat) const;
 
         rhi::Texture m_LtcMat;
@@ -36,6 +38,7 @@ namespace vultra
         rhi::Texture m_FallbackBrdfLut;
         rhi::Texture m_FallbackIrradianceMap;
         rhi::Texture m_FallbackPrefilteredEnvMap;
+        rhi::Texture m_FallbackAo;
         glm::vec3    m_FallbackIblColor {0.0f};
     };
 } // namespace vultra

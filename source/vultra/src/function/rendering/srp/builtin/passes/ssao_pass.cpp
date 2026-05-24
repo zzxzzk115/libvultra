@@ -1,4 +1,4 @@
-#include "vultra/function/rendering/srp/builtin/passes/hbao_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ssao_pass.hpp"
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
@@ -10,27 +10,27 @@
 
 namespace vultra
 {
-    HbaoPass::HbaoPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
+    SsaoPass::SsaoPass() { setShaderProfile(rhi::ShaderProfile::eHighend); }
 
     namespace
     {
-        constexpr auto PASS_NAME = "HBAOPass";
+        constexpr auto PASS_NAME = "SSAOPass";
 
-        struct HbaoPushConstants
+        struct SsaoPushConstants
         {
-            float   radius {80.0f};
-            float   bias {0.2f};
-            float   intensity {4.0f};
-            int32_t maxRadiusPixels {256};
+            float   radius {1.5f};
+            float   bias {0.05f};
+            float   intensity {1.2f};
+            int32_t maxRadiusPixels {32};
             int32_t stepCount {4};
-            int32_t directionCount {4};
+            int32_t directionCount {1};
         };
     } // namespace
 
-    FrameGraphResource HbaoPass::addPass(FrameGraphBuildContext&     ctx,
+    FrameGraphResource SsaoPass::addPass(FrameGraphBuildContext&     ctx,
                                          FrameGraphResource          depth,
                                          FrameGraphResource          normal,
-                                         const HbaoRenderSettings&   settings)
+                                         const SsaoRenderSettings&   settings)
     {
         const auto resolution  = ctx.view().extent;
         const auto cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource;
@@ -75,11 +75,12 @@ namespace vultra
                                          });
 
                 pd.output = builder.create<framegraph::FrameGraphTexture>(
-                    "HBAO",
+                    "SSAO",
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eR8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
+                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
+                                      rhi::ImageUsage::eTransferSrc,
                     });
                 pd.output = builder.write(pd.output,
                                           framegraph::Attachment {
@@ -102,10 +103,10 @@ namespace vultra
                 if (!pipeline)
                     return;
 
-                HbaoPushConstants pc {
+                SsaoPushConstants pc {
                     .radius          = settings.radius,
                     .bias            = settings.bias,
-                    .intensity       = settings.intensity,
+                    .intensity       = settings.enabled ? settings.intensity : 0.0f,
                     .maxRadiusPixels = settings.maxRadiusPixels,
                     .stepCount       = settings.stepCount,
                     .directionCount  = settings.directionCount,
@@ -122,19 +123,19 @@ namespace vultra
         return data.output;
     }
 
-    rhi::GraphicsPipeline HbaoPass::createPipeline(const rhi::PixelFormat colorFormat) const
+    rhi::GraphicsPipeline SsaoPass::createPipeline(const rhi::PixelFormat colorFormat) const
     {
         auto vertexShader = loadHighendShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
-            VULTRA_CORE_ERROR("[HBAOPass] Failed to load vertex shader");
+            VULTRA_CORE_ERROR("[SSAOPass] Failed to load vertex shader");
             return {};
         }
 
-        auto fragmentShader = loadHighendShader("hbao.frag", vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader = loadHighendShader("ssao.frag", vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
-            VULTRA_CORE_ERROR("[HBAOPass] Failed to load fragment shader");
+            VULTRA_CORE_ERROR("[SSAOPass] Failed to load fragment shader");
             return {};
         }
 

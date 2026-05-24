@@ -456,16 +456,15 @@ namespace vultra
 
             auto& settings = renderService.builtinRenderSettings();
 
-            ImGui::Checkbox("Enable HBAO", &settings.hbao.enabled);
-            if (!settings.hbao.enabled)
+            ImGui::Checkbox("Enable SSAO", &settings.ssao.enabled);
+            if (!settings.ssao.enabled)
                 ImGui::BeginDisabled();
-            ImGui::SliderFloat("HBAO Radius", &settings.hbao.radius, 0.01f, 200.0f, "%.2f");
-            ImGui::SliderFloat("HBAO Bias", &settings.hbao.bias, 0.0f, 2.0f, "%.3f");
-            ImGui::SliderFloat("HBAO Intensity", &settings.hbao.intensity, 0.0f, 8.0f, "%.2f");
-            ImGui::SliderInt("HBAO Max Pixels", &settings.hbao.maxRadiusPixels, 1, 512);
-            ImGui::SliderInt("HBAO Steps", &settings.hbao.stepCount, 1, 16);
-            ImGui::SliderInt("HBAO Directions", &settings.hbao.directionCount, 1, 16);
-            if (!settings.hbao.enabled)
+            ImGui::SliderFloat("SSAO Radius", &settings.ssao.radius, 0.01f, 10.0f, "%.2f");
+            ImGui::SliderFloat("SSAO Bias", &settings.ssao.bias, 0.0f, 1.0f, "%.3f");
+            ImGui::SliderFloat("SSAO Intensity", &settings.ssao.intensity, 0.0f, 4.0f, "%.2f");
+            ImGui::SliderInt("SSAO Max Pixels", &settings.ssao.maxRadiusPixels, 4, 128);
+            ImGui::SliderInt("SSAO Steps", &settings.ssao.stepCount, 2, 4);
+            if (!settings.ssao.enabled)
                 ImGui::EndDisabled();
 
             ImGui::Separator();

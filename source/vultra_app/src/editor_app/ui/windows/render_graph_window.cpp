@@ -753,8 +753,10 @@ namespace vultra_app
                      "gbuffer_normal",
                      "gbuffer_material",
                      "gbuffer_entity_id",
-                     "hbao",
+                     "ssao",
+                     "ao",
                      "ssr",
+                     "reflection",
                      "visibility",
                      "shadow_map",
                      "shadow_data",
@@ -796,7 +798,7 @@ namespace vultra_app
                      {.name = "normalBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.015f, .minValue = 0.0f, .maxValue = 1.0f},
                      {.name = "pcssLightRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.5f, .minValue = 0.0f, .maxValue = 16.0f},
                  });
-            pass("DeferredLighting", {"color", "normal", "material", "depth", "shadowMap", "shadowData"}, {"color"},
+            pass("DeferredLighting", {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"}, {"color"},
                  {
                      {.name = "ambientIntensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f, .minValue = 0.0f, .maxValue = 8.0f},
                      {.name = "shadowStrength", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.85f, .minValue = 0.0f, .maxValue = 1.0f},
@@ -808,24 +810,27 @@ namespace vultra_app
                      {.name = "iblIntensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0f, .minValue = 0.0f, .maxValue = 8.0f},
                  });
             pass("HzbGenerate", {"depth"}, {"hzb"});
-            pass("Hbao", {"depth", "normal"}, {"ao"},
+            pass("Ssao", {"depth", "normal"}, {"ao"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name = "radius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 80.0f, .minValue = 0.0f, .maxValue = 400.0f},
-                     {.name = "bias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.2f, .minValue = 0.0f, .maxValue = 2.0f},
-                     {.name = "intensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 4.0f, .minValue = 0.0f, .maxValue = 16.0f},
-                     {.name = "stepCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4, .minValue = 1, .maxValue = 16},
-                     {.name = "directionCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4, .minValue = 1, .maxValue = 16},
+                     {.name = "radius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.5f, .minValue = 0.0f, .maxValue = 10.0f},
+                     {.name = "bias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.05f, .minValue = 0.0f, .maxValue = 1.0f},
+                     {.name = "intensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.2f, .minValue = 0.0f, .maxValue = 4.0f},
+                     {.name = "maxRadiusPixels", .type = vrendergraph::ParamType::eInt, .defaultValue = 32, .minValue = 4, .maxValue = 128},
+                     {.name = "stepCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4, .minValue = 2, .maxValue = 4},
+                     {.name = "directionCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 1, .minValue = 1, .maxValue = 1},
                  });
             pass("Ssr", {"color", "depth", "normal", "material"}, {"reflection"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name = "reflectionFactor", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f, .minValue = 0.0f, .maxValue = 2.0f},
-                     {.name = "maxSteps", .type = vrendergraph::ParamType::eInt, .defaultValue = 32, .minValue = 1, .maxValue = 128},
-                     {.name = "binaryRefinement", .type = vrendergraph::ParamType::eInt, .defaultValue = 6, .minValue = 0, .maxValue = 16},
-                     {.name = "stride", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.1f, .minValue = 0.001f, .maxValue = 4.0f},
-                     {.name = "thickness", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f, .minValue = 0.0f, .maxValue = 10.0f},
+                     {.name = "reflectionFactor", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.7f, .minValue = 0.0f, .maxValue = 2.0f},
+                     {.name = "maxSteps", .type = vrendergraph::ParamType::eInt, .defaultValue = 16, .minValue = 4, .maxValue = 64},
+                     {.name = "binaryRefinement", .type = vrendergraph::ParamType::eInt, .defaultValue = 3, .minValue = 0, .maxValue = 8},
+                     {.name = "stride", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.35f, .minValue = 0.05f, .maxValue = 4.0f},
+                     {.name = "thickness", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.5f, .minValue = 0.0f, .maxValue = 5.0f},
                  });
+            pass("SsrComposite", {"source", "reflection"}, {"color"},
+                 {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
             pass("Fxaa", {"source"}, {"color"},
                  {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
             pass("SelectionOutline", {"source", "entityId", "depth"}, {"color"},

@@ -124,6 +124,6 @@ namespace vultra
     constexpr FrameGraphResourceKey kResKey_SelectionOutlineOutput {.id = vbase::hashLiteral("SelectionOutlineOutput")};
     constexpr FrameGraphResourceKey kResKey_ShadowMap {.id = vbase::hashLiteral("ShadowMap")};
     constexpr FrameGraphResourceKey kResKey_ShadowData {.id = vbase::hashLiteral("ShadowData")};
-    constexpr FrameGraphResourceKey kResKey_HbaoTexture {.id = vbase::hashLiteral("HBAOTexture")};
+    constexpr FrameGraphResourceKey kResKey_SsaoTexture {.id = vbase::hashLiteral("SSAOTexture")};
     constexpr FrameGraphResourceKey kResKey_SsrTexture {.id = vbase::hashLiteral("SSRTexture")};
 } // namespace vultra

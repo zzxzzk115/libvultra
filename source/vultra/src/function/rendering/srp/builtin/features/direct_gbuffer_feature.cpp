@@ -88,6 +88,7 @@ namespace vultra
                                            ctx.data.get(kResKey_GBufferNormal),
                                            ctx.data.get(kResKey_GBufferMetallicRoughnessAO),
                                            ctx.data.get(kResKey_DepthTexture),
+                                           {},
                                            shadow.shadowMap,
                                            shadow.shadowData,
                                            shadowSettings,

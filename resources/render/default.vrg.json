@@ -4,8 +4,8 @@
       "nodes": {
         "DeferredLighting": {
           "pos": [
-            920.0,
-            80.0
+            1134.0,
+            -94.0
           ]
         },
         "DirectGBuffer": {
@@ -16,19 +16,19 @@
         },
         "FinalComposition": {
           "pos": [
-            2360.0,
+            3080.0,
             80.0
           ]
         },
         "Fxaa": {
           "pos": [
-            1640.0,
+            2360.0,
             80.0
           ]
         },
         "SelectionOutline": {
           "pos": [
-            2000.0,
+            2720.0,
             80.0
           ]
         },
@@ -38,9 +38,27 @@
             427.0
           ]
         },
+        "Ssao": {
+          "pos": [
+            708.0,
+            -251.0
+          ]
+        },
+        "Ssr": {
+          "pos": [
+            1378.0,
+            532.0
+          ]
+        },
+        "SsrComposite": {
+          "pos": [
+            1688.0,
+            53.0
+          ]
+        },
         "Tonemapping": {
           "pos": [
-            1280.0,
+            2000.0,
             80.0
           ]
         }
@@ -68,8 +86,8 @@
         "shadowMap": "ShadowMap.shadowMap"
       },
       "params": {
-        "cascadeCount": 4,
         "autoFitBounds": true,
+        "cascadeCount": 4,
         "coverageRadius": 75.0,
         "depthBias": 0.0012,
         "enabled": true,
@@ -85,8 +103,30 @@
     },
     {
       "enabled": true,
+      "id": "Ssao",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "normal": "DirectGBuffer.normal"
+      },
+      "outputs": {
+        "ao": "Ssao.ao"
+      },
+      "params": {
+        "bias": 0.05,
+        "directionCount": 1,
+        "enabled": true,
+        "intensity": 1.0,
+        "maxRadiusPixels": 32,
+        "radius": 1.5,
+        "stepCount": 4
+      },
+      "type": "Ssao"
+    },
+    {
+      "enabled": true,
       "id": "DeferredLighting",
       "inputs": {
+        "ao": "Ssao.ao",
         "color": "DirectGBuffer.color",
         "depth": "DirectGBuffer.depth",
         "material": "DirectGBuffer.material",
@@ -111,9 +151,46 @@
     },
     {
       "enabled": true,
+      "id": "Ssr",
+      "inputs": {
+        "color": "DeferredLighting.color",
+        "depth": "DirectGBuffer.depth",
+        "material": "DirectGBuffer.material",
+        "normal": "DirectGBuffer.normal"
+      },
+      "outputs": {
+        "reflection": "Ssr.reflection"
+      },
+      "params": {
+        "binaryRefinement": 3,
+        "enabled": true,
+        "maxSteps": 16,
+        "reflectionFactor": 0.20000000298023224,
+        "stride": 0.35,
+        "thickness": 0.5
+      },
+      "type": "Ssr"
+    },
+    {
+      "enabled": true,
+      "id": "SsrComposite",
+      "inputs": {
+        "reflection": "Ssr.reflection",
+        "source": "DeferredLighting.color"
+      },
+      "outputs": {
+        "color": "SsrComposite.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "SsrComposite"
+    },
+    {
+      "enabled": true,
       "id": "Tonemapping",
       "inputs": {
-        "source": "DeferredLighting.color"
+        "source": "SsrComposite.color"
       },
       "outputs": {
         "color": "Tonemapping.color"

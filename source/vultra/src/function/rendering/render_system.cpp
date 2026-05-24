@@ -1056,24 +1056,6 @@ namespace vultra
             void flush(std::ostream&) const {}
         };
 
-        auto makePreviewExtent = [](const rhi::Extent2D sourceExtent) {
-            constexpr uint32_t kMaxPreviewDimension = 1024u;
-            rhi::Extent2D      preview = sourceExtent;
-            const uint32_t     maxDimension = std::max(preview.width, preview.height);
-            if (maxDimension > kMaxPreviewDimension)
-            {
-                preview.width =
-                    std::max(1u, static_cast<uint32_t>((static_cast<uint64_t>(preview.width) *
-                                                        kMaxPreviewDimension) /
-                                                       maxDimension));
-                preview.height =
-                    std::max(1u, static_cast<uint32_t>((static_cast<uint64_t>(preview.height) *
-                                                        kMaxPreviewDimension) /
-                                                       maxDimension));
-            }
-            return preview;
-        };
-
         std::ostringstream         unused;
         TextureResourceCollector   collector;
         ctx.fg.debugOutput(unused, collector);
@@ -1088,7 +1070,7 @@ namespace vultra
                 continue;
             }
 
-            const auto previewExtent = makePreviewExtent(sourceDesc.extent);
+            const auto previewExtent = sourceDesc.extent;
             std::string cameraName {camera.name.empty() ? std::string {"Camera"} : camera.name};
             std::string slotKey = cameraName + "/" + candidate.name + "#" + std::to_string(candidate.resource);
             std::string publicKey = slotKey + "@" + std::to_string(sourceDesc.extent.width) + "x" +

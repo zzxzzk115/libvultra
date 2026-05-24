@@ -52,6 +52,7 @@ layout(set = 3, binding = 6) uniform sampler2D u_LTCMag;
 layout(set = 3, binding = 7) uniform sampler2D u_BrdfLUT;
 layout(set = 3, binding = 8) uniform samplerCube u_IrradianceMap;
 layout(set = 3, binding = 9) uniform samplerCube u_PrefilteredEnvMap;
+layout(set = 3, binding = 10) uniform sampler2D u_SSAO;
 
 layout(set = 1, binding = 0, std140) uniform LightBlock
 {
@@ -275,7 +276,8 @@ void main()
     vec3 viewDir = normalize(cameraWS - positionWS);
     float metallic = clamp(mra.x, 0.0, 1.0);
     float roughness = clamp(mra.y, 0.045, 1.0);
-    float ao = clamp(mra.z, 0.0, 1.0);
+    float ssao = clamp(texture(u_SSAO, v_TexCoord).r, 0.0, 1.0);
+    float ao = clamp(mra.z * ssao, 0.0, 1.0);
     PBRMaterial material;
     material.albedo = baseColor.rgb;
     material.emissive = vec3(0.0);

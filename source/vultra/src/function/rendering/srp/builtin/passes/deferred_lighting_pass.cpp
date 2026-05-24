@@ -127,6 +127,7 @@ namespace vultra
                                                      FrameGraphResource      normal,
                                                      FrameGraphResource      material,
                                                      FrameGraphResource      depth,
+                                                     FrameGraphResource      ssao,
                                                      FrameGraphResource      shadowMap,
                                                      FrameGraphResource      shadowData,
                                                      const ShadowRenderSettings& shadowSettings,
@@ -152,6 +153,7 @@ namespace vultra
             FrameGraphResource normal;
             FrameGraphResource material;
             FrameGraphResource depth;
+            FrameGraphResource ssao;
             FrameGraphResource shadowMap;
             FrameGraphResource shadowData;
             FrameGraphResource output;
@@ -165,6 +167,7 @@ namespace vultra
              normal,
              material,
              depth,
+             ssao,
              shadowMap,
              shadowData,
              lightBlock,
@@ -217,6 +220,19 @@ namespace vultra
                                             .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
                                             .imageAspect = rhi::ImageAspect::eDepth,
                                         });
+                if (ssao)
+                {
+                    pd.ssao = builder.read(ssao,
+                                           framegraph::TextureRead {
+                                               .binding =
+                                                   {
+                                                       .location      = {.set = 3, .binding = 10},
+                                                       .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                                   },
+                                               .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                               .imageAspect = rhi::ImageAspect::eColor,
+                                           });
+                }
                 pd.shadowMap = builder.read(shadowMap,
                                             framegraph::TextureRead {
                                                 .binding =
@@ -253,7 +269,7 @@ namespace vultra
                                               .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                           });
             },
-            [this, shadowSettings, lightingSettings](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+            [this, hasSsao = static_cast<bool>(ssao), shadowSettings, lightingSettings](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -274,6 +290,17 @@ namespace vultra
                 rc.overrideSampler(rc.resourceSet[3][4], rc.ext.samplers.count("shadow_map") > 0 ?
                                                           rc.ext.samplers["shadow_map"] :
                                                           rc.ext.samplers["nearest"]);
+                if (hasSsao)
+                    rc.overrideSampler(rc.resourceSet[3][10], rc.ext.samplers["bilinear"]);
+                else if (ensureFallbackAoTexture(rc.rd))
+                {
+                    rhi::prepareForReading(rc.cb, m_FallbackAo);
+                    rc.resourceSet[3][10] = rhi::bindings::CombinedImageSampler {
+                        .texture = &m_FallbackAo,
+                        .sampler = rc.ext.samplers.count("nearest") > 0 ? rc.ext.samplers["nearest"] :
+                                                                          rc.ext.samplers["linear"],
+                    };
+                }
                 if (ensureBuiltinLtcTextures(rc.rd))
                 {
                     rhi::prepareForReading(rc.cb, m_LtcMat);
@@ -462,6 +489,27 @@ namespace vultra
         }
 
         m_FallbackIblColor = desiredColor;
+        return true;
+    }
+
+    bool DeferredLightingPass::ensureFallbackAoTexture(rhi::RenderDevice& rd)
+    {
+        if (m_FallbackAo)
+            return true;
+
+        const std::array<uint8_t, 4> pixel {255u, 255u, 255u, 255u};
+        m_FallbackAo = rhi::Texture::Builder {}
+                           .setExtent({1u, 1u})
+                           .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
+                           .setNumMipLevels(1u)
+                           .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eTransferDst)
+                           .setupOptimalSampler(true)
+                           .build(rd);
+        if (!m_FallbackAo)
+            return false;
+
+        auto staging = rd.createStagingBuffer(pixel.size(), pixel.data());
+        rhi::upload(rd, staging, {}, m_FallbackAo, false);
         return true;
     }
 

@@ -237,25 +237,25 @@ namespace vultra
         uint32_t drawnSplats {UINT32_MAX};
     };
 
-    struct HbaoRenderSettings
+    struct SsaoRenderSettings
     {
         bool  enabled {false};
-        float radius {80.0f};
-        float bias {0.2f};
-        float intensity {4.0f};
-        int   maxRadiusPixels {256};
+        float radius {1.5f};
+        float bias {0.05f};
+        float intensity {1.2f};
+        int   maxRadiusPixels {32};
         int   stepCount {4};
-        int   directionCount {4};
+        int   directionCount {1};
     };
 
     struct SsrRenderSettings
     {
         bool  enabled {false};
-        float reflectionFactor {1.0f};
-        int   maxSteps {32};
-        int   binaryRefinement {6};
-        float stride {0.1f};
-        float thickness {1.0f};
+        float reflectionFactor {0.7f};
+        int   maxSteps {16};
+        int   binaryRefinement {3};
+        float stride {0.35f};
+        float thickness {0.5f};
     };
 
     struct ShadowRenderSettings
@@ -321,7 +321,7 @@ namespace vultra
             float     edgeOpacity {0.35f};
         };
 
-        HbaoRenderSettings hbao;
+        SsaoRenderSettings ssao;
         SsrRenderSettings  ssr;
         ShadowRenderSettings shadow;
         PbrLightingSettings pbrLighting;

@@ -348,13 +348,19 @@ namespace vultra_app
             ImGui::EndChild();
         }
 
-        ImVec2 fitImageSize(const vultra::rhi::Extent2D extent, const ImVec2 available)
+        float fitImageScale(const vultra::rhi::Extent2D extent, const ImVec2 available)
         {
             const float width = static_cast<float>(std::max(extent.width, 1u));
             const float height = static_cast<float>(std::max(extent.height, 1u));
             const float availableWidth = std::max(1.0f, available.x);
             const float availableHeight = std::max(1.0f, available.y);
-            const float scale = std::min(availableWidth / width, availableHeight / height);
+            return std::min(availableWidth / width, availableHeight / height);
+        }
+
+        ImVec2 scaledImageSize(const vultra::rhi::Extent2D extent, const float scale)
+        {
+            const float width = static_cast<float>(std::max(extent.width, 1u));
+            const float height = static_cast<float>(std::max(extent.height, 1u));
             return ImVec2 {std::max(1.0f, width * scale), std::max(1.0f, height * scale)};
         }
 
@@ -406,10 +412,29 @@ namespace vultra_app
 
         bool isDepthLikeTexture(const vultra::FrameGraphDebugTexture& texture)
         {
+            if (containsIgnoreCase(texture.name, "ssao") || containsIgnoreCase(texture.resourceKey, "ssao") ||
+                containsIgnoreCase(texture.name, "ambient occlusion") ||
+                containsIgnoreCase(texture.resourceKey, "ambient occlusion"))
+            {
+                return false;
+            }
+
             const auto aspect = vultra::rhi::getAspectMask(texture.format);
             return HasFlagValues(aspect, vultra::rhi::ImageAspectFlags::eDepth) ||
                    containsIgnoreCase(texture.name, "depth") || containsIgnoreCase(texture.resourceKey, "depth") ||
                    containsIgnoreCase(texture.name, "shadow") || containsIgnoreCase(texture.resourceKey, "shadow");
+        }
+
+        bool isAutoFitClampUseful(const vultra::FrameGraphDebugTexture& texture)
+        {
+            if (containsIgnoreCase(texture.name, "ssao") || containsIgnoreCase(texture.resourceKey, "ssao") ||
+                containsIgnoreCase(texture.name, "ambient occlusion") ||
+                containsIgnoreCase(texture.resourceKey, "ambient occlusion") ||
+                containsIgnoreCase(texture.name, "shadow") || containsIgnoreCase(texture.resourceKey, "shadow"))
+            {
+                return false;
+            }
+            return isDepthLikeTexture(texture);
         }
 
         bool isShadowLikeTexture(const vultra::FrameGraphDebugTexture& texture)
@@ -698,18 +723,29 @@ namespace vultra_app
                     {
                         m_TexturePreviewDepthNear = std::max(texture.zNear, 0.0001f);
                         m_TexturePreviewDepthFar = std::max(texture.zFar, m_TexturePreviewDepthNear + 0.0001f);
+                        m_TexturePreviewClampMin = 0.0f;
+                        m_TexturePreviewClampMax = 1.0f;
                         m_TexturePreviewDepthDefaultsKey = texture.resourceKey;
                         if (isDepthLikeTexture(texture))
                         {
                             m_TexturePreviewMode = isShadowLikeTexture(texture) ? 1 : 2;
-                            m_TexturePreviewClampMin = 0.0f;
-                            m_TexturePreviewClampMax = 1.0f;
-                            m_PendingTexturePreviewAutoFitKey = texture.resourceKey;
-                            m_PendingTexturePreviewAutoFitTexture = texture.texture;
-                            const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-                            m_PendingTexturePreviewAutoFitFrame = frame + 3u;
-                            m_PendingTexturePreviewAutoFitNextTryFrame = frame + 3u;
-                            m_PendingTexturePreviewAutoFitDeadlineFrame = frame + 24u;
+                            if (isAutoFitClampUseful(texture))
+                            {
+                                m_PendingTexturePreviewAutoFitKey = texture.resourceKey;
+                                m_PendingTexturePreviewAutoFitTexture = texture.texture;
+                                const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+                                m_PendingTexturePreviewAutoFitFrame = frame + 3u;
+                                m_PendingTexturePreviewAutoFitNextTryFrame = frame + 3u;
+                                m_PendingTexturePreviewAutoFitDeadlineFrame = frame + 24u;
+                            }
+                            else
+                            {
+                                m_PendingTexturePreviewAutoFitKey.clear();
+                                m_PendingTexturePreviewAutoFitTexture = nullptr;
+                                m_PendingTexturePreviewAutoFitFrame = 0u;
+                                m_PendingTexturePreviewAutoFitNextTryFrame = 0u;
+                                m_PendingTexturePreviewAutoFitDeadlineFrame = 0u;
+                            }
                         }
                         else
                         {
@@ -834,13 +870,16 @@ namespace vultra_app
                             m_PendingTexturePreviewAutoFitDeadlineFrame = 0u;
                         }
                     }
-                    if (ImGui::SmallButton(ICON_MDI_FIT_TO_SCREEN "##FrameDebuggerClampAutoFit"))
+                    if (isAutoFitClampUseful(texture))
                     {
-                        autoFitClamp();
+                        if (ImGui::SmallButton(ICON_MDI_FIT_TO_SCREEN "##FrameDebuggerClampAutoFit"))
+                        {
+                            autoFitClamp();
+                        }
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Auto fit clamp from preview");
+                        ImGui::SameLine();
                     }
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Auto fit clamp from preview");
-                    ImGui::SameLine();
                     if (ImGui::SmallButton(ICON_MDI_RESTORE "##FrameDebuggerClampReset"))
                     {
                         m_TexturePreviewClampMin = 0.0f;
@@ -933,6 +972,33 @@ namespace vultra_app
                             ImGuiFileDialog::Instance()->Close();
                         }
 
+                        ImGui::SameLine(0.0f, 14.0f);
+                        if (ImGui::SmallButton(ICON_MDI_FIT_TO_SCREEN "##FrameDebuggerTextureFitView"))
+                            m_TexturePreviewFitToView = true;
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("Fit to view");
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("1:1##FrameDebuggerTextureOneToOne"))
+                        {
+                            m_TexturePreviewFitToView = false;
+                            m_TexturePreviewScale = 1.0f;
+                        }
+                        if (ImGui::IsItemHovered())
+                            ImGui::SetTooltip("View at native resolution");
+                        ImGui::SameLine();
+                        ImGui::TextUnformatted(ICON_MDI_MAGNIFY);
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(120.0f);
+                        if (ImGui::SliderFloat("##FrameDebuggerTextureScale",
+                                               &m_TexturePreviewScale,
+                                               0.01f,
+                                               8.0f,
+                                               "%.2fx",
+                                               ImGuiSliderFlags_Logarithmic))
+                        {
+                            m_TexturePreviewFitToView = false;
+                        }
+
                         auto& cached = m_TextureCache[texture.key];
                         if (cached.texture != texture.texture)
                         {
@@ -946,11 +1012,18 @@ namespace vultra_app
                             cached.retireFrame = 0;
                         }
 
+                        ImGui::BeginChild("##FrameDebuggerTextureImageViewport",
+                                          ImVec2 {0.0f, 0.0f},
+                                          false,
+                                          ImGuiWindowFlags_HorizontalScrollbar);
                         const ImVec2 available = ImGui::GetContentRegionAvail();
-                        const ImVec2 imageSize = fitImageSize(texture.extent, ImVec2 {
-                                                                                   available.x,
-                                                                                   available.y - ImGui::GetStyle().ItemSpacing.y,
-                                                                               });
+                        const float fitScale = std::clamp(fitImageScale(texture.extent, available), 0.01f, 8.0f);
+                        if (m_TexturePreviewFitToView)
+                            m_TexturePreviewScale = fitScale;
+                        else
+                            m_TexturePreviewScale = std::clamp(m_TexturePreviewScale, 0.01f, 8.0f);
+
+                        const ImVec2 imageSize = scaledImageSize(texture.extent, m_TexturePreviewScale);
                         const float offsetX = std::max(0.0f, (available.x - imageSize.x) * 0.5f);
                         const float offsetY = std::max(0.0f, (available.y - imageSize.y) * 0.5f);
                         if (offsetY > 0.0f)
@@ -962,6 +1035,7 @@ namespace vultra_app
                         ImGui::InvisibleButton("##FrameDebuggerTextureImage", imageSize);
                         ImGui::GetWindowDrawList()->AddImage(
                             cached.textureId, imageMin, imageMax, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
+                        ImGui::EndChild();
                     }
                 }
                 ImGui::EndChild();
