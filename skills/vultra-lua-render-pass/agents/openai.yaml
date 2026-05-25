@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vultra Lua Render Pass"
+  short_description: "Add Lua-based render graph passes and shader-backed graph nodes."
+  default_prompt: "Use this skill when adding a Lua-based render pass, project render graph pass, FullscreenShader-style pass, shader reflection path, or render graph editor/runtime integration in libvultra."

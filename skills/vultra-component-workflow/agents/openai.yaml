@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vultra Component Workflow"
+  short_description: "Add or update Vultra ECS scene components safely."
+  default_prompt: "Use this skill when adding or updating a Vultra ECS component, scene serialization, inspector UI, or render-world cooking path."
