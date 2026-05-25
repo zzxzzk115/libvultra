@@ -2,6 +2,7 @@
 
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/graphics_pipeline.hpp"
+#include "vultra/core/rhi/shader_library.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/core/rhi/vertex_buffer.hpp"
 
@@ -49,6 +50,7 @@ namespace vultra
         rhi::Texture*              m_DepthTexture {nullptr};
         bool                       m_NeedsPipelineRebuild {true};
 
+        rhi::ShaderLibraryRuntime m_ShaderLibrary;
         rhi::GraphicsPipeline m_LineGraphicsPipeline;
         rhi::VertexBuffer     m_VertexBuffer;
         rhi::CommandBuffer*   m_CurrentCommandBuffer {nullptr};
