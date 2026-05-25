@@ -144,6 +144,7 @@ CameraComponent/fovYDegrees = 60.000000
 CameraComponent/orthographicHeight = 10.000000
 CameraComponent/zNear = 0.100000
 CameraComponent/zFar = 1000.000000
+CameraComponent/clearMode = 0
 CameraComponent/clearColor = (0.02, 0.025, 0.035, 1)
 CameraComponent/priority = 0
 CameraComponent/rendererKey = "universal"
@@ -159,7 +160,7 @@ CameraComponent/rendererKey = "universal"
             80.0
           ]
         },
-        "Tonemapping": {
+        "Pixelate": {
           "pos": [
             620.0,
             80.0
@@ -185,29 +186,23 @@ CameraComponent/rendererKey = "universal"
     },
     {
       "enabled": true,
-      "id": "Tonemapping",
+      "id": "Pixelate",
       "inputs": {
         "source": "CompatibilityBaseColor.color"
       },
       "outputs": {
-        "color": "Tonemapping.color"
+        "color": "Pixelate.color"
       },
       "params": {
-        "exposure": 1.0,
-        "fragment": "tonemapping.frag",
-        "library": "project",
-        "method": 0,
-        "name": "Tonemapping",
-        "pushConstants": true,
-        "vertex": "fullscreen_triangle.vert"
+        "name": "Pixelate"
       },
-      "type": "FullscreenShader"
+      "type": "Pixelate"
     },
     {
       "enabled": true,
       "id": "FinalComposition",
       "inputs": {
-        "source": "Tonemapping.color"
+        "source": "Pixelate.color"
       },
       "outputs": {
         "target": "FinalComposition.target"
@@ -216,6 +211,16 @@ CameraComponent/rendererKey = "universal"
     }
   ],
   "resources": []
+}
+)";
+
+            constexpr std::string_view kPixelatePass = R"(return RenderGraphPass {
+    type = "Pixelate",
+    shader = {
+        library = "project",
+        vertex = "fullscreen_triangle.vert",
+        fragment = "pixelate.frag",
+    },
 }
 )";
 
@@ -241,13 +246,9 @@ void main() {
 }
 )";
 
-            constexpr std::string_view kTonemappingShader = R"([vshader]
+            constexpr std::string_view kPixelateShader = R"([vshader]
 language = glsl
 version = 460
-
-[properties]
-exposure : float = 1.0
-method : int = 0
 
 [frag]
 layout (location = 0) in vec2 v_TexCoord;
@@ -255,76 +256,25 @@ layout (location = 0) out vec4 FragColor;
 
 layout (set = 3, binding = 0) uniform sampler2D t_0;
 
-layout (push_constant) uniform TonemappingPushConstants
-{
-    float exposure;
-    int method;
-} u_PC;
-
-vec3 toneMappingKhronosPbrNeutral(vec3 color)
-{
-    const float startCompression = 0.8 - 0.04;
-    const float desaturation = 0.15;
-
-    float x = min(color.r, min(color.g, color.b));
-    float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
-    color -= offset;
-
-    float peak = max(color.r, max(color.g, color.b));
-    if (peak < startCompression)
-        return color;
-
-    const float d = 1.0 - startCompression;
-    float newPeak = 1.0 - d * d / (peak + d - startCompression);
-    color *= newPeak / peak;
-
-    float g = 1.0 - 1.0 / (desaturation * (peak - newPeak) + 1.0);
-    return mix(color, vec3(newPeak), g);
-}
-
-vec3 toneMappingACES(vec3 x)
-{
-    const float a = 2.51;
-    const float b = 0.03;
-    const float c = 2.43;
-    const float d = 0.59;
-    const float e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
-}
-
-vec3 toneMappingReinhard(vec3 color)
-{
-    return color / (color + vec3(1.0));
-}
-
-vec3 toneMapping(vec3 color, int method)
-{
-    if (method == 0)
-        return toneMappingKhronosPbrNeutral(color);
-    if (method == 1)
-        return toneMappingACES(color);
-    if (method == 2)
-        return toneMappingReinhard(color);
-    return toneMappingKhronosPbrNeutral(color);
-}
-
 void main() {
-    vec4 source = texture(t_0, v_TexCoord);
-    source.rgb *= max(u_PC.exposure, 0.0);
-    vec3 color = toneMapping(max(source.rgb, vec3(0.0)), u_PC.method);
-    FragColor = vec4(color, 1.0);
+    const float pixelSize = 8.0;
+    vec2 sourceSize = vec2(textureSize(t_0, 0));
+    vec2 pixel = floor(v_TexCoord * sourceSize / pixelSize) * pixelSize + vec2(0.5 * pixelSize);
+    vec2 uv = clamp(pixel / sourceSize, vec2(0.0), vec2(1.0));
+    FragColor = texture(t_0, uv);
 }
 )";
 
             const auto resourcesDir = projectDir / "resources";
             return writeTextFile(resourcesDir / "scenes" / "test.vscn", kSampleScene, errorMessage) &&
                    writeTextFile(resourcesDir / "render" / "default.vrg.json", kDefaultRenderGraph, errorMessage) &&
+                   writeTextFile(resourcesDir / "render" / "passes" / "pixelate.lua", kPixelatePass, errorMessage) &&
                    writeTextFile(resourcesDir / "shaders" / "project.vshaderlib.lua", kShaderLibrary, errorMessage) &&
                    writeTextFile(resourcesDir / "shaders" / "fullscreen" / "fullscreen_triangle.vert.vshader",
                                  kFullscreenTriangle,
                                  errorMessage) &&
-                   writeTextFile(resourcesDir / "shaders" / "fullscreen" / "tonemapping.frag.vshader",
-                                 kTonemappingShader,
+                   writeTextFile(resourcesDir / "shaders" / "fullscreen" / "pixelate.frag.vshader",
+                                 kPixelateShader,
                                  errorMessage);
         }
 

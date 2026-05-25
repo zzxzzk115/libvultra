@@ -1,5 +1,7 @@
 #pragma once
 
+#include "editor_app/editor_context.hpp"
+
 #include <vultra/function/services/render_service.hpp>
 
 #include <imgui.h>
@@ -15,6 +17,9 @@ namespace vultra_app::ui
     int  defaultTexturePreviewMode(const vultra::FrameGraphDebugTexture& texture);
     void normalizePreviewClamp(float& minValue, float& maxValue);
     float computeTextureFitScale(ImVec2 available, float sourceWidth, float sourceHeight, float maxScale = 8.0f);
+    bool drawSaveFrameGraphTexturePreviewButton(EditorContext&                         ctx,
+                                                const vultra::FrameGraphDebugTexture& texture,
+                                                const char*                           dialogKey);
 
     vultra::FrameGraphTexturePreviewSettings makeFrameGraphTexturePreviewSettings(
         const std::string& selectedTextureKey,

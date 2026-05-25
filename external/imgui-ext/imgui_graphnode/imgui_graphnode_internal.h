@@ -122,6 +122,9 @@ struct ImGuiGraphNodeContextCache
     ImVec2 cursor_current;
     std::string graphid_previous;
     std::string graphid_current;
+    std::string raw_dot_previous;
+    std::string raw_dot_current;
+    bool raw_dot_loaded = false;
 };
 
 struct ImGuiGraphNodeContext

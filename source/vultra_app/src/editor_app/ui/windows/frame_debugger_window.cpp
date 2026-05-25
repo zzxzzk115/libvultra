@@ -9,14 +9,11 @@
 #include <vultra/function/services/render_service.hpp>
 
 #include <IconsMaterialDesignIcons.h>
-#include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <imgui.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
-#include <filesystem>
 #include <unordered_set>
 #include <string_view>
 #include <vector>
@@ -382,26 +379,6 @@ namespace vultra_app
             });
         }
 
-        std::filesystem::path ensurePngExtension(std::filesystem::path path)
-        {
-            if (path.extension().empty())
-                path.replace_extension(".png");
-            return path;
-        }
-
-        std::string sanitizedFileName(std::string_view name)
-        {
-            std::string out;
-            out.reserve(name.size());
-            for (const char c : name)
-            {
-                const bool invalid = c == '<' || c == '>' || c == ':' || c == '"' || c == '/' || c == '\\' ||
-                                     c == '|' || c == '?' || c == '*';
-                out.push_back(invalid ? '_' : c);
-            }
-            return out.empty() ? std::string {"frame_debugger_texture"} : out;
-        }
-
         bool isAutoFitClampUseful(const vultra::FrameGraphDebugTexture& texture)
         {
             if (containsIgnoreCase(texture.name, "ssao") || containsIgnoreCase(texture.resourceKey, "ssao") ||
@@ -649,14 +626,19 @@ namespace vultra_app
 
                 const float listWidth = std::min(360.0f, ImGui::GetContentRegionAvail().x * 0.36f);
                 ImGui::BeginChild("##FrameDebuggerTextureList", ImVec2 {listWidth, 0.0f}, true);
-                ImGui::TextUnformatted("Captured Textures");
+                ImGui::TextUnformatted("Frame Graph Textures");
                 ImGui::Separator();
                 for (const auto& texture : textures)
                 {
                     if (!containsIgnoreCase(texture.name, filter) && !containsIgnoreCase(texture.camera, filter))
                         continue;
                     const bool selected = texture.resourceKey == m_SelectedTextureKey;
-                    const auto label = texture.camera + " / " + texture.name + "##" + texture.key;
+                    std::string label = texture.camera + " / " + texture.name;
+                    if (texture.imported)
+                        label += " [import]";
+                    if (!texture.capturable)
+                        label += " [no preview]";
+                    label += "##" + texture.key;
                     if (ImGui::Selectable(label.c_str(), selected))
                         m_SelectedTextureKey = texture.resourceKey;
                     if (selected)
@@ -740,6 +722,10 @@ namespace vultra_app
                                             texture.extent.height,
                                             std::string(vultra::rhi::toString(texture.format)).c_str());
                     }
+                    if (texture.imported)
+                        ImGui::TextDisabled("Imported frame graph texture");
+                    if (!texture.capturable)
+                        ImGui::TextDisabled("Preview unavailable: texture is not sampleable by the debug preview pass.");
                     ImGui::SetNextItemWidth(180.0f);
                     ImGui::Combo(
                         "Mode",
@@ -892,46 +878,13 @@ namespace vultra_app
                     }
                     else if (!texture.texture)
                     {
-                        ImGui::TextDisabled("Texture preview will update next frame.");
+                        ImGui::TextDisabled(texture.capturable ?
+                                                "Texture preview will update next frame." :
+                                                "Texture preview is unavailable for this resource.");
                     }
                     else
                     {
-                        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Preview"))
-                        {
-                            IGFD::FileDialogConfig config;
-                            config.path = ".";
-                            config.fileName = sanitizedFileName(texture.name) + ".png";
-                            config.flags = ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
-                                           ImGuiFileDialogFlags_HideColumnSize | ImGuiFileDialogFlags_HideColumnDate |
-                                           ImGuiFileDialogFlags_DontShowHiddenFiles |
-                                           ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering |
-                                           ImGuiFileDialogFlags_NaturalSorting |
-                                           ImGuiFileDialogFlags_DisableThumbnailMode;
-                            ImGuiFileDialog::Instance()->OpenDialog(
-                                "FrameDebuggerSaveTexturePreview",
-                                "Save Texture Preview",
-                                ".png",
-                                config);
-                        }
-                        if (ImGuiFileDialog::Instance()->Display("FrameDebuggerSaveTexturePreview",
-                                                                 ImGuiWindowFlags_NoCollapse |
-                                                                     ImGuiWindowFlags_NoSavedSettings,
-                                                                 ImVec2 {520.0f, 360.0f}))
-                        {
-                            if (ImGuiFileDialog::Instance()->IsOk() && backendService)
-                            {
-                                const auto path = ensurePngExtension(std::filesystem::path(
-                                    ImGuiFileDialog::Instance()->GetFilePathName(IGFD_ResultMode_KeepInputFile)));
-                                const bool saved = backendService->renderDevice().saveTextureToFile(
-                                    *texture.texture,
-                                    path.generic_string(),
-                                    vultra::rhi::ImageAspect::eColor);
-                                ctx.state.statusMessage = saved ? "Saved texture preview: " + path.generic_string() :
-                                                                  "Failed to save texture preview: " +
-                                                                      path.generic_string();
-                            }
-                            ImGuiFileDialog::Instance()->Close();
-                        }
+                        ui::drawSaveFrameGraphTexturePreviewButton(ctx, texture, "FrameDebuggerSaveTexturePreview");
 
                         ImGui::SameLine(0.0f, 14.0f);
                         if (ImGui::SmallButton(ICON_MDI_FIT_TO_SCREEN "##FrameDebuggerTextureFitView"))

@@ -29,6 +29,7 @@
 #include <imgui_graphnode/imgui_graphnode.h>
 #include <imnodes/imnodes.h>
 #include <nlohmann/json.hpp>
+#include <sol/sol.hpp>
 
 #include <entt/entity/entity.hpp>
 #include <algorithm>
@@ -388,6 +389,13 @@ namespace vultra_app
             int         value {0};
         };
 
+        struct EditorShaderRef
+        {
+            std::string library {"project"};
+            vultra::rhi::ShaderProfile profile {vultra::rhi::ShaderProfile::eGeneral};
+            std::string fragment;
+        };
+
         std::vector<ParamEnumOption> readShaderParamEnum(const EditorContext& ctx,
                                                          const vrendergraph::PassDecl& pass,
                                                          std::string_view paramName);
@@ -421,6 +429,16 @@ namespace vultra_app
             return textWidth(value.dump());
         }
 
+        void ensureParamDefaults(vrendergraph::PassDecl& pass, const vrendergraph::PassDefinition& def)
+        {
+            auto& raw = pass.params.raw();
+            for (const auto& param : def.params)
+            {
+                if (!raw.contains(param.name))
+                    raw[param.name] = param.defaultValue;
+            }
+        }
+
         void drawParamField(EditorContext&             ctx,
                             vrendergraph::PassDecl&   pass,
                             const vrendergraph::ParamDesc& param,
@@ -428,13 +446,13 @@ namespace vultra_app
                             const float               labelWidth,
                             const float               valueWidth)
         {
-            if (param.name == "name" || param.name == "library" || param.name == "vertex" || param.name == "fragment" ||
-                param.name == "pushConstants")
-                return;
-
             auto& raw = pass.params.raw();
             if (!raw.contains(param.name))
                 raw[param.name] = param.defaultValue;
+
+            if (param.name == "name" || param.name == "library" || param.name == "vertex" || param.name == "fragment" ||
+                param.name == "pushConstants")
+                return;
 
             ImGui::PushID(param.name.c_str());
             ImGui::AlignTextToFramePadding();
@@ -546,18 +564,16 @@ namespace vultra_app
                 const float value = valueIt == raw.end() ? valuePreviewWidth(param.defaultValue) : valuePreviewWidth(*valueIt);
                 width = std::max(width, textWidth(param.name) + std::clamp(value + 58.0f, 150.0f, 280.0f) + 50.0f);
             };
-            for (const auto& param : def.params)
-                measureParam(param);
-            if (pass.type == "FullscreenShader")
+            auto params = def.params;
+            for (const auto& param : readShaderParamDescs(ctx, pass))
             {
-                const std::unordered_set<std::string> builtins {
-                    "name", "library", "vertex", "fragment", "pushConstants"};
-                for (const auto& param : readShaderParamDescs(ctx, pass))
-                {
-                    if (!builtins.contains(param.name))
-                        measureParam(param);
-                }
+                if (std::find_if(params.begin(), params.end(), [&](const auto& existing) {
+                        return existing.name == param.name;
+                    }) == params.end())
+                    params.push_back(param);
             }
+            for (const auto& param : params)
+                measureParam(param);
             return std::clamp(width, 250.0f, 540.0f);
         }
 
@@ -893,45 +909,27 @@ namespace vultra_app
                  });
             pass("DeferredLighting", {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"}, {"color"},
                  {
-                     {.name = "ambientIntensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.0f, .minValue = 0.0f, .maxValue = 8.0f},
-                     {.name = "shadowStrength", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.85f, .minValue = 0.0f, .maxValue = 1.0f},
-                     {.name = "debugCascades", .type = vrendergraph::ParamType::eBoolean, .defaultValue = false},
-                     {.name = "shadowFilterMode", .type = vrendergraph::ParamType::eInt, .defaultValue = 1, .minValue = 0, .maxValue = 2},
-                     {.name = "shadowDebugMode", .type = vrendergraph::ParamType::eInt, .defaultValue = 0, .minValue = 0, .maxValue = 5},
-                     {.name = "pcfRadius", .type = vrendergraph::ParamType::eInt, .defaultValue = 2, .minValue = 0, .maxValue = 4},
-                     {.name = "pcssBlockerSamples", .type = vrendergraph::ParamType::eInt, .defaultValue = 12, .minValue = 1, .maxValue = 32},
-                     {.name = "iblIntensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0f, .minValue = 0.0f, .maxValue = 8.0f},
                  });
             pass("HzbGenerate", {"depth"}, {"hzb"});
             pass("Ssao", {"depth", "normal"}, {"ao"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name = "radius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.5f, .minValue = 0.0f, .maxValue = 10.0f},
-                     {.name = "bias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.05f, .minValue = 0.0f, .maxValue = 1.0f},
-                     {.name = "intensity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.2f, .minValue = 0.0f, .maxValue = 4.0f},
-                     {.name = "maxRadiusPixels", .type = vrendergraph::ParamType::eInt, .defaultValue = 32, .minValue = 4, .maxValue = 128},
-                     {.name = "stepCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4, .minValue = 2, .maxValue = 4},
-                     {.name = "directionCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 1, .minValue = 1, .maxValue = 1},
                  });
             pass("Ssr", {"color", "depth", "normal", "material"}, {"reflection"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name = "reflectionFactor", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.7f, .minValue = 0.0f, .maxValue = 2.0f},
-                     {.name = "maxSteps", .type = vrendergraph::ParamType::eInt, .defaultValue = 16, .minValue = 4, .maxValue = 64},
-                     {.name = "binaryRefinement", .type = vrendergraph::ParamType::eInt, .defaultValue = 3, .minValue = 0, .maxValue = 8},
-                     {.name = "stride", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.35f, .minValue = 0.05f, .maxValue = 4.0f},
-                     {.name = "thickness", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.5f, .minValue = 0.0f, .maxValue = 5.0f},
                  });
             pass("SsrComposite", {"source", "reflection"}, {"color"},
                  {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+            pass("ToneMapping", {"source"}, {"color"},
+                 {
+                     {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                 });
             pass("Fxaa", {"source"}, {"color"},
                  {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
             pass("SelectionOutline", {"source", "entityId", "depth"}, {"color"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name = "thickness", .type = vrendergraph::ParamType::eFloat, .defaultValue = 3.0f, .minValue = 0.0f, .maxValue = 16.0f},
-                     {.name = "fillOpacity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0f, .minValue = 0.0f, .maxValue = 1.0f},
-                     {.name = "edgeOpacity", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.35f, .minValue = 0.0f, .maxValue = 1.0f},
                  });
             pass("FinalComposition", {"source"}, {"target"});
             pass("RayTracingPrimary", {}, {"color"});
@@ -987,6 +985,59 @@ namespace vultra_app
                     return entry.path().lexically_normal();
             }
             return std::nullopt;
+        }
+
+        std::optional<std::filesystem::path> findBuiltinShaderSourceFile(const EditorShaderRef& shaderRef)
+        {
+            if (shaderRef.fragment.empty())
+                return std::nullopt;
+
+            const auto profileDir = [&]() -> std::string {
+                switch (shaderRef.profile)
+                {
+                    case vultra::rhi::ShaderProfile::eCompatibility:
+                        return "compatibility";
+                    case vultra::rhi::ShaderProfile::eHighend:
+                        return "highend";
+                    case vultra::rhi::ShaderProfile::eGeneral:
+                    default:
+                        return "general";
+                }
+            }();
+
+            std::vector<std::filesystem::path> roots;
+            auto cwd = std::filesystem::current_path();
+            roots.push_back(cwd);
+            roots.push_back(cwd.parent_path());
+            roots.push_back(cwd.parent_path().parent_path());
+
+            std::vector<std::filesystem::path> candidates;
+            const auto fragment = std::filesystem::path(shaderRef.fragment);
+            const auto fragmentVShader = shaderRef.fragment.ends_with(".vshader") ?
+                                             fragment :
+                                             std::filesystem::path(shaderRef.fragment + ".vshader");
+            for (const auto& root : roots)
+            {
+                candidates.push_back(root / "builtin" / "shaders" / "passes" / profileDir / fragmentVShader);
+                candidates.push_back(root / "builtin" / "shaders" / "passes" / profileDir / fragment);
+            }
+
+            std::error_code ec;
+            for (const auto& candidate : candidates)
+            {
+                if (std::filesystem::is_regular_file(candidate, ec))
+                    return candidate.lexically_normal();
+                ec.clear();
+            }
+            return std::nullopt;
+        }
+
+        std::optional<std::filesystem::path> findShaderSourceFile(const EditorContext& ctx,
+                                                                  const EditorShaderRef& shaderRef)
+        {
+            if (shaderRef.library == "builtin")
+                return findBuiltinShaderSourceFile(shaderRef);
+            return findShaderSourceFile(ctx, shaderRef.fragment);
         }
 
         std::string assetUriForPath(const EditorContext& ctx, const std::filesystem::path& path)
@@ -1125,44 +1176,480 @@ namespace vultra_app
             return out;
         }
 
+        void registerEditorProjectRenderGraphPasses(const EditorContext& ctx, vrendergraph::RenderGraphRegistry& registry)
+        {
+            const auto dir = assetPathForUri(ctx, "res://render/passes");
+            if (dir.empty())
+                return;
+
+            std::error_code ec;
+            if (!std::filesystem::is_directory(dir, ec))
+                return;
+
+            std::vector<std::filesystem::path> files;
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec))
+            {
+                if (ec)
+                    break;
+                if (!entry.is_regular_file(ec) || entry.path().extension() != ".lua")
+                    continue;
+                files.push_back(entry.path().lexically_normal());
+            }
+            std::sort(files.begin(), files.end());
+
+            const auto noop = [](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext&) {};
+            for (const auto& path : files)
+            {
+                std::ifstream file(path);
+                if (!file.is_open())
+                    continue;
+
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+
+                sol::state lua;
+                lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
+                lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
+                auto result = lua.safe_script(buffer.str(), &sol::script_pass_on_error);
+                if (!result.valid())
+                    continue;
+
+                sol::object obj = result;
+                if (!obj.is<sol::table>())
+                    continue;
+
+                sol::table passTable = obj.as<sol::table>();
+                std::string type;
+                sol::object typeObj = passTable["type"];
+                sol::object nameObj = passTable["name"];
+                if (typeObj.is<std::string>())
+                    type = typeObj.as<std::string>();
+                else if (nameObj.is<std::string>())
+                    type = nameObj.as<std::string>();
+                if (type.empty() || registry.contains(type))
+                    continue;
+
+                registry.registerPass(vrendergraph::PassDefinition {
+                    .type = type,
+                    .setup = noop,
+                    .inputs = {"source"},
+                    .outputs = {"color"},
+                    .params = {
+                        {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = type},
+                    },
+                });
+            }
+        }
+
+        std::optional<EditorShaderRef> builtinPassShaderRef(std::string_view type)
+        {
+            if (type == "DeferredLighting")
+                return EditorShaderRef {
+                    .library = "builtin",
+                    .profile = vultra::rhi::ShaderProfile::eHighend,
+                    .fragment = "deferred_lighting.frag",
+                };
+            if (type == "Ssao")
+                return EditorShaderRef {
+                    .library = "builtin",
+                    .profile = vultra::rhi::ShaderProfile::eHighend,
+                    .fragment = "ssao.frag",
+                };
+            if (type == "Ssr")
+                return EditorShaderRef {
+                    .library = "builtin",
+                    .profile = vultra::rhi::ShaderProfile::eHighend,
+                    .fragment = "ssr.frag",
+                };
+            if (type == "SelectionOutline")
+                return EditorShaderRef {
+                    .library = "builtin",
+                    .profile = vultra::rhi::ShaderProfile::eHighend,
+                    .fragment = "selection_outline.frag",
+                };
+            if (type == "ToneMapping")
+                return EditorShaderRef {.library = "builtin", .fragment = "tone_mapping.frag"};
+            return std::nullopt;
+        }
+
+        std::optional<EditorShaderRef> projectPassShaderRef(const EditorContext& ctx, std::string_view type)
+        {
+            const auto dir = assetPathForUri(ctx, "res://render/passes");
+            if (dir.empty())
+                return std::nullopt;
+
+            std::error_code ec;
+            if (!std::filesystem::is_directory(dir, ec))
+                return std::nullopt;
+
+            std::vector<std::filesystem::path> files;
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec))
+            {
+                if (ec)
+                    break;
+                if (!entry.is_regular_file(ec) || entry.path().extension() != ".lua")
+                    continue;
+                files.push_back(entry.path().lexically_normal());
+            }
+            std::sort(files.begin(), files.end());
+
+            for (const auto& path : files)
+            {
+                std::ifstream file(path);
+                if (!file.is_open())
+                    continue;
+
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+
+                sol::state lua;
+                lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
+                lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
+                auto result = lua.safe_script(buffer.str(), &sol::script_pass_on_error);
+                if (!result.valid())
+                    continue;
+
+                sol::object obj = result;
+                if (!obj.is<sol::table>())
+                    continue;
+
+                sol::table passTable = obj.as<sol::table>();
+                std::string passType;
+                sol::object typeObj = passTable["type"];
+                sol::object nameObj = passTable["name"];
+                if (typeObj.is<std::string>())
+                    passType = typeObj.as<std::string>();
+                else if (nameObj.is<std::string>())
+                    passType = nameObj.as<std::string>();
+                if (passType != type)
+                    continue;
+
+                sol::object shaderObj = passTable["shader"];
+                if (!shaderObj.is<sol::table>())
+                    return std::nullopt;
+
+                sol::table shaderTable = shaderObj.as<sol::table>();
+                EditorShaderRef ref;
+                sol::object libraryObj = shaderTable["library"];
+                sol::object fragmentObj = shaderTable["fragment"];
+                if (libraryObj.is<std::string>())
+                    ref.library = libraryObj.as<std::string>();
+                if (fragmentObj.is<std::string>())
+                    ref.fragment = fragmentObj.as<std::string>();
+                if (!ref.fragment.empty())
+                    return ref;
+            }
+
+            return std::nullopt;
+        }
+
+        std::optional<EditorShaderRef> resolvePassShaderRef(const EditorContext& ctx,
+                                                            const vrendergraph::PassDecl& pass)
+        {
+            auto fragment = pass.params.get<std::string>("fragment", {});
+            if (!fragment.empty())
+                return EditorShaderRef {
+                    .library = pass.params.get<std::string>("library", "project"),
+                    .profile = pass.params.get<std::string>("library", "project") == "builtin" ?
+                                   vultra::rhi::ShaderProfile::eGeneral :
+                                   vultra::rhi::ShaderProfile::eUnspecified,
+                    .fragment = std::move(fragment),
+                };
+
+            if (auto ref = builtinPassShaderRef(pass.type))
+                return ref;
+            return projectPassShaderRef(ctx, pass.type);
+        }
+
+        std::string prettifyEnumLabel(std::string_view label)
+        {
+            std::string out;
+            out.reserve(label.size() + 8);
+
+            auto appendSpace = [&]() {
+                if (!out.empty() && out.back() != ' ')
+                    out.push_back(' ');
+            };
+
+            for (size_t i = 0; i < label.size(); ++i)
+            {
+                const unsigned char ch = static_cast<unsigned char>(label[i]);
+                if (ch == '_' || ch == '-')
+                {
+                    appendSpace();
+                    continue;
+                }
+
+                if (i > 0 && std::isupper(ch))
+                {
+                    const unsigned char prev = static_cast<unsigned char>(label[i - 1]);
+                    const unsigned char next = i + 1 < label.size() ? static_cast<unsigned char>(label[i + 1]) : 0;
+                    const bool startsNewWord = std::islower(prev) || std::isdigit(prev);
+                    const bool endsAcronym = std::isupper(prev) && next != 0 && std::islower(next);
+                    if (startsNewWord || endsAcronym)
+                        appendSpace();
+                }
+
+                out.push_back(static_cast<char>(ch));
+            }
+
+            return out;
+        }
+
+        std::vector<ParamEnumOption> readShaderSourceEnumOptions(const EditorContext& ctx,
+                                                                 const EditorShaderRef& shaderRef,
+                                                                 std::string_view paramName)
+        {
+            const auto shaderPath = findShaderSourceFile(ctx, shaderRef);
+            if (!shaderPath)
+                return {};
+
+            std::ifstream file(*shaderPath);
+            if (!file.is_open())
+                return {};
+
+            std::string line;
+            while (std::getline(file, line))
+            {
+                auto view = std::string_view(line);
+                const auto comment = view.find("//");
+                if (comment != std::string_view::npos)
+                    view = view.substr(0, comment);
+
+                const auto strippedLine = trim(view);
+                view = strippedLine;
+                if (!view.starts_with(paramName))
+                    continue;
+
+                auto restString = trim(view.substr(paramName.size()));
+                auto rest = std::string_view(restString);
+                if (!rest.starts_with(":"))
+                    continue;
+                restString = trim(rest.substr(1));
+                rest = restString;
+                if (!rest.starts_with("enum("))
+                    continue;
+
+                const auto open = rest.find('(');
+                const auto close = rest.find(')', open + 1);
+                if (open == std::string_view::npos || close == std::string_view::npos || close <= open)
+                    continue;
+
+                std::vector<ParamEnumOption> options;
+                std::stringstream ss {std::string(rest.substr(open + 1, close - open - 1))};
+                std::string item;
+                while (std::getline(ss, item, ','))
+                {
+                    item = trim(item);
+                    if (item.empty())
+                        continue;
+
+                    const auto eq = item.rfind('=');
+                    if (eq == std::string::npos)
+                    {
+                        options.push_back(ParamEnumOption {
+                            .label = prettifyEnumLabel(item),
+                            .value = static_cast<int>(options.size()),
+                        });
+                        continue;
+                    }
+
+                    auto label = trim(std::string_view(item).substr(0, eq));
+                    auto value = trim(std::string_view(item).substr(eq + 1));
+                    try
+                    {
+                        options.push_back(ParamEnumOption {.label = prettifyEnumLabel(label), .value = std::stoi(value)});
+                    }
+                    catch (...)
+                    {}
+                }
+                return options;
+            }
+
+            return {};
+        }
+
+        std::optional<vrendergraph::ParamDesc> readShaderSourceParamDesc(std::string_view line)
+        {
+            const auto colon = line.find(':');
+            if (colon == std::string_view::npos)
+                return std::nullopt;
+
+            vrendergraph::ParamDesc desc {.name = trim(line.substr(0, colon))};
+            auto restString = trim(line.substr(colon + 1));
+            auto rest = std::string_view(restString);
+            if (desc.name.empty() || rest.empty())
+                return std::nullopt;
+
+            auto parseDefaultAndRange = [&](std::string_view afterType, auto parseValue) {
+                const auto eq = afterType.find('=');
+                if (eq != std::string_view::npos)
+                {
+                    auto value = trim(afterType.substr(eq + 1));
+                    const auto rangePos = value.find("range(");
+                    if (rangePos != std::string::npos)
+                        value = trim(std::string_view(value).substr(0, rangePos));
+                    desc.defaultValue = parseValue(value);
+                }
+
+                const auto range = afterType.find("range(");
+                if (range != std::string_view::npos)
+                {
+                    const auto open = afterType.find('(', range);
+                    const auto comma = afterType.find(',', open + 1);
+                    const auto close = afterType.find(')', comma + 1);
+                    if (open != std::string_view::npos && comma != std::string_view::npos &&
+                        close != std::string_view::npos)
+                    {
+                        desc.minValue = parseValue(trim(afterType.substr(open + 1, comma - open - 1)));
+                        desc.maxValue = parseValue(trim(afterType.substr(comma + 1, close - comma - 1)));
+                    }
+                }
+            };
+
+            if (rest.starts_with("float"))
+            {
+                desc.type = vrendergraph::ParamType::eFloat;
+                desc.defaultValue = 0.0f;
+                parseDefaultAndRange(rest.substr(5), [](std::string_view value) {
+                    return nlohmann::json(std::stof(std::string(value)));
+                });
+                return desc;
+            }
+            if (rest.starts_with("int"))
+            {
+                desc.type = vrendergraph::ParamType::eInt;
+                desc.defaultValue = 0;
+                parseDefaultAndRange(rest.substr(3), [](std::string_view value) {
+                    return nlohmann::json(std::stoi(std::string(value)));
+                });
+                return desc;
+            }
+            if (rest.starts_with("bool"))
+            {
+                desc.type = vrendergraph::ParamType::eBoolean;
+                desc.defaultValue = false;
+                parseDefaultAndRange(rest.substr(4), [](std::string_view value) {
+                    return nlohmann::json(value == "true" || value == "1");
+                });
+                return desc;
+            }
+            if (rest.starts_with("enum("))
+            {
+                desc.type = vrendergraph::ParamType::eInt;
+                desc.defaultValue = 0;
+
+                const auto close = rest.find(')');
+                if (close == std::string_view::npos)
+                    return desc;
+
+                std::vector<ParamEnumOption> options;
+                std::stringstream ss {std::string(rest.substr(5, close - 5))};
+                std::string item;
+                while (std::getline(ss, item, ','))
+                {
+                    item = trim(item);
+                    if (item.empty())
+                        continue;
+                    const auto eq = item.rfind('=');
+                    if (eq == std::string::npos)
+                    {
+                        options.push_back({.label = item, .value = static_cast<int>(options.size())});
+                    }
+                    else
+                    {
+                        auto label = trim(std::string_view(item).substr(0, eq));
+                        auto value = trim(std::string_view(item).substr(eq + 1));
+                        try
+                        {
+                            options.push_back({.label = std::move(label), .value = std::stoi(value)});
+                        }
+                        catch (...)
+                        {}
+                    }
+                }
+
+                const auto eq = rest.find('=', close + 1);
+                if (eq != std::string_view::npos)
+                {
+                    auto defaultToken = trim(rest.substr(eq + 1));
+                    const auto space = defaultToken.find_first_of(" \t");
+                    if (space != std::string::npos)
+                        defaultToken.resize(space);
+                    for (const auto& option : options)
+                    {
+                        if (option.label == defaultToken)
+                        {
+                            desc.defaultValue = option.value;
+                            break;
+                        }
+                    }
+                }
+                return desc;
+            }
+
+            return std::nullopt;
+        }
+
+        std::vector<vrendergraph::ParamDesc> readShaderSourceParamDescs(const EditorContext& ctx,
+                                                                        const EditorShaderRef& shaderRef)
+        {
+            const auto shaderPath = findShaderSourceFile(ctx, shaderRef);
+            if (!shaderPath)
+                return {};
+
+            std::ifstream file(*shaderPath);
+            if (!file.is_open())
+                return {};
+
+            std::vector<vrendergraph::ParamDesc> params;
+            bool inProperties = false;
+            std::string line;
+            while (std::getline(file, line))
+            {
+                auto view = std::string_view(line);
+                const auto comment = view.find("//");
+                if (comment != std::string_view::npos)
+                    view = view.substr(0, comment);
+                const auto stripped = trim(view);
+                if (stripped.empty())
+                    continue;
+
+                if (stripped.starts_with("["))
+                {
+                    inProperties = stripped == "[properties]";
+                    continue;
+                }
+                if (!inProperties)
+                    continue;
+
+                if (auto desc = readShaderSourceParamDesc(stripped))
+                    params.push_back(std::move(*desc));
+            }
+            return params;
+        }
+
         std::vector<ParamEnumOption> readShaderParamEnum(const EditorContext& ctx,
                                                          const vrendergraph::PassDecl& pass,
                                                          std::string_view paramName)
         {
-            if (pass.type == "DeferredLighting")
+            const auto shaderRef = resolvePassShaderRef(ctx, pass);
+            if (shaderRef && !shaderRef->fragment.empty())
             {
-                if (paramName == "shadowFilterMode")
-                    return {
-                        {.label = "Hard", .value = 0},
-                        {.label = "PCF", .value = 1},
-                        {.label = "PCSS", .value = 2},
-                    };
-                if (paramName == "shadowDebugMode")
-                    return {
-                        {.label = "Off", .value = 0},
-                        {.label = "Cascade", .value = 1},
-                        {.label = "Visibility", .value = 2},
-                        {.label = "Shadow Depth", .value = 3},
-                        {.label = "Shadow Coord", .value = 4},
-                        {.label = "Atlas UV", .value = 5},
-                    };
-            }
+                if (auto sourceOptions = readShaderSourceEnumOptions(ctx, *shaderRef, paramName); !sourceOptions.empty())
+                    return sourceOptions;
 
-            const auto fragment = pass.params.get<std::string>("fragment", {});
-            const auto libraryName = pass.params.get<std::string>("library", "project");
-            if (!fragment.empty())
-            {
                 auto* shaderService = ctx.services ? ctx.services->tryGet<vultra::IShaderService>() : nullptr;
                 vultra::rhi::ShaderLibraryRuntime* library = nullptr;
                 if (shaderService)
                 {
-                    if (libraryName == "builtin")
-                        library = &shaderService->builtinLibrary();
+                    if (shaderRef->library == "builtin")
+                        library = &shaderService->builtinLibrary(shaderRef->profile);
                     else
                     {
                         library = shaderService->findProjectLibrary("res://shaders/project.vshaderlib.lua");
                         if (!library)
-                            library = shaderService->reloadProjectLibrary("res://shaders/project.vshaderlib.lua");
+                            library = shaderService->loadProjectLibrary("res://shaders/project.vshaderlib.lua");
                     }
                 }
 
@@ -1170,9 +1657,9 @@ namespace vultra_app
                     if (!library)
                         return {};
 
-                    std::vector<std::string> shaderIds {fragment};
-                    if (fragment.find('/') == std::string::npos && fragment.find('\\') == std::string::npos)
-                        shaderIds.push_back("fullscreen/" + fragment);
+                    std::vector<std::string> shaderIds {shaderRef->fragment};
+                    if (shaderRef->fragment.find('/') == std::string::npos && shaderRef->fragment.find('\\') == std::string::npos)
+                        shaderIds.push_back("fullscreen/" + shaderRef->fragment);
 
                     for (const auto& shaderId : shaderIds)
                     {
@@ -1180,6 +1667,8 @@ namespace vultra_app
                             shaderId,
                             vshadersystem::ShaderStage::eFrag,
                             {});
+                        if (!library->hasVariant(variantHash, vshadersystem::ShaderStage::eFrag))
+                            continue;
                         auto shader = library->load(variantHash, vshadersystem::ShaderStage::eFrag);
                         if (!shader)
                             continue;
@@ -1201,16 +1690,16 @@ namespace vultra_app
                 };
 
                 auto reflectedOptions = loadEnumOptions();
-                if (reflectedOptions.empty() && libraryName != "builtin" && shaderService)
-                {
-                    library = shaderService->reloadProjectLibrary("res://shaders/project.vshaderlib.lua");
-                    reflectedOptions = loadEnumOptions();
-                }
                 if (!reflectedOptions.empty())
+                {
+                    if (auto sourceOptions = readShaderSourceEnumOptions(ctx, *shaderRef, paramName);
+                        !sourceOptions.empty() && sourceOptions.size() == reflectedOptions.size())
+                        return sourceOptions;
                     return reflectedOptions;
+                }
             }
 
-            const auto shaderPath = findShaderSourceFile(ctx, fragment);
+            const auto shaderPath = shaderRef ? findShaderSourceFile(ctx, *shaderRef) : std::optional<std::filesystem::path> {};
             if (!shaderPath)
                 return {};
 
@@ -1313,30 +1802,32 @@ namespace vultra_app
         std::vector<vrendergraph::ParamDesc> readShaderReflectedParamDescs(const EditorContext& ctx,
                                                                            const vrendergraph::PassDecl& pass)
         {
-            const auto fragment = pass.params.get<std::string>("fragment", {});
-            if (fragment.empty())
+            const auto shaderRef = resolvePassShaderRef(ctx, pass);
+            if (!shaderRef || shaderRef->fragment.empty())
                 return {};
+
+            if (auto sourceParams = readShaderSourceParamDescs(ctx, *shaderRef); !sourceParams.empty())
+                return sourceParams;
 
             auto* shaderService = ctx.services ? ctx.services->tryGet<vultra::IShaderService>() : nullptr;
             if (!shaderService)
                 return {};
 
-            const auto libraryName = pass.params.get<std::string>("library", "project");
             vultra::rhi::ShaderLibraryRuntime* library = nullptr;
-            if (libraryName == "builtin")
-                library = &shaderService->builtinLibrary();
+            if (shaderRef->library == "builtin")
+                library = &shaderService->builtinLibrary(shaderRef->profile);
             else
             {
                 library = shaderService->findProjectLibrary("res://shaders/project.vshaderlib.lua");
                 if (!library)
-                    library = shaderService->reloadProjectLibrary("res://shaders/project.vshaderlib.lua");
+                    library = shaderService->loadProjectLibrary("res://shaders/project.vshaderlib.lua");
             }
             if (!library)
                 return {};
 
-            std::vector<std::string> shaderIds {fragment};
-            if (fragment.find('/') == std::string::npos && fragment.find('\\') == std::string::npos)
-                shaderIds.push_back("fullscreen/" + fragment);
+            std::vector<std::string> shaderIds {shaderRef->fragment};
+            if (shaderRef->fragment.find('/') == std::string::npos && shaderRef->fragment.find('\\') == std::string::npos)
+                shaderIds.push_back("fullscreen/" + shaderRef->fragment);
 
             auto loadReflectedShader = [&](vultra::rhi::ShaderLibraryRuntime& shaderLibrary)
                 -> std::optional<vultra::rhi::ShaderLibraryRuntime::LoadedShader> {
@@ -1346,6 +1837,8 @@ namespace vultra_app
                         shaderId,
                         vshadersystem::ShaderStage::eFrag,
                         {});
+                    if (!shaderLibrary.hasVariant(variantHash, vshadersystem::ShaderStage::eFrag))
+                        continue;
                     auto shader = shaderLibrary.load(variantHash, vshadersystem::ShaderStage::eFrag);
                     if (shader)
                         return shader;
@@ -1354,11 +1847,6 @@ namespace vultra_app
             };
 
             auto shader = loadReflectedShader(*library);
-            if ((!shader || shader->materialDesc.params.empty()) && libraryName != "builtin")
-            {
-                if (auto* reloaded = shaderService->reloadProjectLibrary("res://shaders/project.vshaderlib.lua"))
-                    shader = loadReflectedShader(*reloaded);
-            }
             if (!shader || shader->materialDesc.params.empty())
                 return {};
 
@@ -1459,6 +1947,7 @@ namespace vultra_app
             out.target      = target;
             out.clearValue  = camera.clearColor;
             out.clearValue.a = 1.0f;
+            out.clearMode = camera.clearMode;
             out.renderImGui = false;
             out.debugEntityIdOutput = false;
             out.selectionOutlineEnabled = false;
@@ -1549,6 +2038,29 @@ namespace vultra_app
                 label.remove_prefix(renderGraphPreviewPrefix.size());
 
             return std::string {label};
+        }
+
+        bool endsWithRuntimeVersionSuffix(std::string_view label, const int version)
+        {
+            if (version <= 0)
+                return true;
+
+            const auto suffix = " v" + std::to_string(version);
+            return label.size() >= suffix.size() && label.substr(label.size() - suffix.size()) == suffix;
+        }
+
+        std::string runtimeResourceLabelWithVersion(std::string label, const int version)
+        {
+            if (version > 0 && !endsWithRuntimeVersionSuffix(label, version))
+                label += " v" + std::to_string(version);
+            return label;
+        }
+
+        std::string runtimeGraphNodeDisplayLabel(std::string label, std::string_view kind, const int version)
+        {
+            if (kind == "resource")
+                return runtimeResourceLabelWithVersion(std::move(label), version);
+            return label;
         }
 
         bool isDebugCaptureRuntimeGraphNode(std::string_view id, std::string_view label)
@@ -2253,20 +2765,6 @@ namespace vultra_app
 
             registerBuiltinRenderGraphResources(registry);
 
-            registry.registerPass(vrendergraph::PassDefinition {
-                .type = "FullscreenShader",
-                .setup = [](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext&) {},
-                .inputs = {"source"},
-                .outputs = {"color"},
-                .params =
-                    {
-                        {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = "VRenderGraphFullscreen"},
-                        {.name = "library", .type = vrendergraph::ParamType::eString, .defaultValue = "project"},
-                        {.name = "vertex", .type = vrendergraph::ParamType::eString, .defaultValue = "fullscreen_triangle.vert"},
-                        {.name = "fragment", .type = vrendergraph::ParamType::eString, .defaultValue = ""},
-                        {.name = "pushConstants", .type = vrendergraph::ParamType::eBoolean, .defaultValue = false},
-                    },
-            });
             registerEditorBuiltinRenderGraphPasses(registry);
         }
 
@@ -2738,20 +3236,20 @@ namespace vultra_app
 
             for (const auto& texture : renderService->frameGraphDebugTextures())
             {
-                if (texture.texture && rendererMatches(texture))
+                if (rendererMatches(texture))
                     addLabelKeys(texture, false);
             }
             if (!graph.textureCamera.empty())
             {
                 for (const auto& texture : renderService->frameGraphDebugTextures())
                 {
-                    if (texture.texture && rendererMatches(texture) && texture.camera == graph.textureCamera)
+                    if (rendererMatches(texture) && texture.camera == graph.textureCamera)
                         addLabelKeys(texture, true);
                 }
             }
             for (const auto& texture : renderService->frameGraphDebugTextures())
             {
-                if (!texture.texture || !rendererMatches(texture) || texture.camera != graph.camera)
+                if (!rendererMatches(texture) || texture.camera != graph.camera)
                     continue;
 
                 // Frame graph resource ids are local to each camera graph. Only the currently selected graph camera
@@ -2771,12 +3269,29 @@ namespace vultra_app
                 return nullptr;
             if (auto it = textureByExactKey.find(normalizedTextureLookupKey(node.id)); it != textureByExactKey.end())
                 return it->second;
+            if (node.id.size() > 1 && node.id.front() == 'R' &&
+                std::isdigit(static_cast<unsigned char>(node.id[1])) != 0)
+            {
+                size_t end = 1;
+                while (end < node.id.size() && std::isdigit(static_cast<unsigned char>(node.id[end])) != 0)
+                    ++end;
+                if (end > 1 && end < node.id.size() && node.id[end] == '_')
+                {
+                    const auto transientKey = "resource:" + node.id.substr(1, end - 1);
+                    if (auto it = textureByExactKey.find(normalizedTextureLookupKey(transientKey));
+                        it != textureByExactKey.end())
+                        return it->second;
+                }
+            }
             if (auto labelIt = textureByLabel.find(normalizedTextureLookupKey(node.label)); labelIt != textureByLabel.end())
                 return labelIt->second;
             return nullptr;
         };
 
         auto prepareRuntimeTexturePreview = [&](const vultra::FrameGraphDebugTexture& debugTexture) {
+            if (!debugTexture.capturable)
+                return;
+
             const auto& key = debugTexture.resourceKey;
             if (renderService && !anyPopupOpen &&
                 !m_RuntimeGraphTextureDefaultPreviewDone.contains(key) &&
@@ -2797,7 +3312,7 @@ namespace vultra_app
                 m_RuntimeGraphTextureDefaultPreviewDone.insert(key);
             }
 
-            if (renderService && backendService && !anyPopupOpen && ui::isDepthLikeTexture(debugTexture) &&
+            if (debugTexture.texture && renderService && backendService && !anyPopupOpen && ui::isDepthLikeTexture(debugTexture) &&
                 !ui::isShadowLikeTexture(debugTexture))
             {
                 const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
@@ -2904,7 +3419,7 @@ namespace vultra_app
         nodeTextures.reserve(graph.nodes.size());
         for (const auto& node : graph.nodes)
         {
-            if (auto* debugTexture = findDebugTextureForNode(node); debugTexture && debugTexture->texture && imguiService)
+            if (auto* debugTexture = findDebugTextureForNode(node); debugTexture)
                 nodeTextures.emplace(node.id, debugTexture);
         }
 
@@ -2915,10 +3430,10 @@ namespace vultra_app
 
         auto concreteRuntimeGraphNodeLabel = [&](const RuntimeGraphState::Node& node) {
             if (!isAnonymousRuntimeGraphDebugId(node.id, node.label))
-                return node.label;
+                return runtimeGraphNodeDisplayLabel(node.label, node.kind, node.version);
 
             if (auto textureIt = nodeTextures.find(node.id); textureIt != nodeTextures.end() && textureIt->second)
-                return textureIt->second->name;
+                return runtimeGraphNodeDisplayLabel(textureIt->second->name, node.kind, node.version);
 
             auto otherLabel = [&](std::string_view otherId) -> std::string {
                 const auto it = nodeById.find(std::string(otherId));
@@ -2937,7 +3452,7 @@ namespace vultra_app
                     auto writer = otherLabel(edge.from);
                     constexpr std::string_view uploadPrefix = "Upload";
                     if (writer.starts_with(uploadPrefix) && writer.size() > uploadPrefix.size())
-                        return writer.substr(uploadPrefix.size());
+                        return runtimeGraphNodeDisplayLabel(writer.substr(uploadPrefix.size()), node.kind, node.version);
                 }
             }
             else if (node.kind == "pass")
@@ -2957,7 +3472,7 @@ namespace vultra_app
                 }
             }
 
-            return node.label;
+            return runtimeGraphNodeDisplayLabel(node.label, node.kind, node.version);
         };
 
         auto copyRuntimeGraphDot = [&]() {
@@ -3074,23 +3589,27 @@ namespace vultra_app
                     {
                         const auto* debugTexture = textureIt->second;
                         prepareRuntimeTexturePreview(*debugTexture);
-                        auto& cached = m_TextureThumbnailCache[debugTexture->key];
-                        if (cached.texture != debugTexture->texture)
+                        if (debugTexture->texture && imguiService)
                         {
-                            if (cached.textureId)
+                            auto& cached = m_TextureThumbnailCache[debugTexture->key];
+                            if (cached.texture != debugTexture->texture)
                             {
-                                cached.retireFrame = static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
-                                m_RetiredTextureThumbnails.push_back(cached);
+                                if (cached.textureId)
+                                {
+                                    cached.retireFrame =
+                                        static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
+                                    m_RetiredTextureThumbnails.push_back(cached);
+                                }
+                                cached.texture = debugTexture->texture;
+                                cached.textureId = imguiService->addTexture(*debugTexture->texture, makeNearestClampSampler(ctx));
+                                cached.retireFrame = 0;
                             }
-                            cached.texture = debugTexture->texture;
-                            cached.textureId = imguiService->addTexture(*debugTexture->texture, makeNearestClampSampler(ctx));
-                            cached.retireFrame = 0;
+                            style.textureId = cached.textureId;
+                            style.hasTexture = true;
                         }
                         metadata = debugTexture->camera + " | " + std::to_string(debugTexture->sourceExtent.width) +
                                    "x" + std::to_string(debugTexture->sourceExtent.height);
                         style.metadata = metadata.c_str();
-                        style.textureId = cached.textureId;
-                        style.hasTexture = true;
                     }
                 }
                 ImGuiGraphNode::NodeGraphSetRuntimeNodeStyle(style);
@@ -3271,6 +3790,8 @@ namespace vultra_app
             ImGui::SetNextItemWidth(130.0f);
             ImGui::SliderFloat("Scale", &m_RuntimeTexturePreviewScale, 0.1f, 8.0f, "%.2fx", ImGuiSliderFlags_Logarithmic);
             ImGui::EndDisabled();
+            ImGui::SameLine();
+            ui::drawSaveFrameGraphTexturePreviewButton(ctx, *debugTexture, "RuntimeGraphSaveTexturePreview");
             ImGui::SameLine();
             static constexpr const char* kPreviewModes[] {
                 "Color", "Raw Depth", "Linear Depth", "Inverted Linear Depth", "Alpha", "Normal"};
@@ -3486,6 +4007,7 @@ namespace vultra_app
             m_GraphEditor = std::make_unique<GraphEditorState>();
 
         auto& state = *m_GraphEditor;
+        registerEditorProjectRenderGraphPasses(ctx, state.registry);
         const bool switchedGraph = drawProjectRenderGraphSelector(ctx, state.status);
         if (switchedGraph)
         {
@@ -3760,8 +4282,6 @@ namespace vultra_app
             std::sort(types.begin(), types.end());
             for (const auto& type : types)
             {
-                if (type == "FullscreenShader")
-                    continue;
                 if (!ImGui::MenuItem(type.c_str()))
                     continue;
 
@@ -3775,96 +4295,6 @@ namespace vultra_app
                 pass.id = std::move(id);
                 pass.type = type;
                 ensureSlots(pass, def);
-                state.graph.passes.push_back(std::move(pass));
-                state.markDirty();
-                state.applyPositions = true;
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndMenu();
-        }
-
-        if (state.editingFeatureInternals && ImGui::BeginMenu("Custom Pass"))
-        {
-            if (ImGui::MenuItem("Fullscreen Shader"))
-            {
-                const auto& def = state.registry.get("FullscreenShader");
-                int         suffix = 1;
-                std::string id = "CustomFullscreen";
-                while (findPass(state.graph, id))
-                    id = "CustomFullscreen_" + std::to_string(suffix++);
-
-                vrendergraph::PassDecl pass;
-                pass.id = std::move(id);
-                pass.type = "FullscreenShader";
-                ensureSlots(pass, def);
-                pass.outputs["color"] = pass.id + ".color";
-                auto& raw = pass.params.raw();
-                raw["name"] = pass.id;
-                raw["library"] = "project";
-                raw["vertex"] = "fullscreen_triangle.vert";
-                raw["fragment"] = "";
-                raw["pushConstants"] = false;
-                state.graph.passes.push_back(std::move(pass));
-                state.markDirty();
-                state.applyPositions = true;
-                ImGui::CloseCurrentPopup();
-            }
-            if (ImGui::BeginMenu("Project Fullscreen Shader"))
-            {
-                for (const auto& fragment : listProjectFullscreenShaders(ctx))
-                {
-                    if (!ImGui::MenuItem(fragment.c_str()))
-                        continue;
-
-                    const auto& def = state.registry.get("FullscreenShader");
-                    int         suffix = 1;
-                    auto        stem = std::filesystem::path(fragment).stem().generic_string();
-                    if (stem.ends_with(".frag"))
-                        stem.resize(stem.size() - 5);
-                    std::string id = stem.empty() ? "ProjectFullscreen" : stem;
-                    while (findPass(state.graph, id))
-                        id = stem + "_" + std::to_string(suffix++);
-
-                    vrendergraph::PassDecl pass;
-                    pass.id = std::move(id);
-                    pass.type = "FullscreenShader";
-                    ensureSlots(pass, def);
-                    pass.outputs["color"] = pass.id + ".color";
-                    auto& raw = pass.params.raw();
-                    raw["name"] = pass.id;
-                    raw["library"] = "project";
-                    raw["vertex"] = "fullscreen_triangle.vert";
-                    raw["fragment"] = fragment;
-                    raw["pushConstants"] = false;
-                    state.graph.passes.push_back(std::move(pass));
-                    state.markDirty();
-                    state.applyPositions = true;
-                    ImGui::CloseCurrentPopup();
-                    break;
-                }
-                ImGui::EndMenu();
-            }
-            if (ImGui::MenuItem("Tonemapping"))
-            {
-                const auto& def = state.registry.get("FullscreenShader");
-                int         suffix = 1;
-                std::string id = "CustomTonemapping";
-                while (findPass(state.graph, id))
-                    id = "CustomTonemapping_" + std::to_string(suffix++);
-
-                vrendergraph::PassDecl pass;
-                pass.id = std::move(id);
-                pass.type = "FullscreenShader";
-                ensureSlots(pass, def);
-                pass.outputs["color"] = pass.id + ".color";
-                auto& raw = pass.params.raw();
-                raw["name"] = pass.id;
-                raw["library"] = "project";
-                raw["vertex"] = "fullscreen_triangle.vert";
-                raw["fragment"] = "tonemapping.frag";
-                raw["pushConstants"] = true;
-                raw["exposure"] = 1.0f;
-                raw["method"] = 0;
                 state.graph.passes.push_back(std::move(pass));
                 state.markDirty();
                 state.applyPositions = true;
@@ -4077,6 +4507,7 @@ namespace vultra_app
 
             const auto& def = state.registry.get(pass.type);
             ensureSlots(pass, def);
+            ensureParamDefaults(pass, def);
 
             const int id = state.nodeId("pass", pass.id);
             const float nodeWidth = passNodeWidth(ctx, pass, def);
@@ -4097,32 +4528,24 @@ namespace vultra_app
                 state.markDirty();
             }
 
-            const auto fragment = pass.params.get<std::string>("fragment", {});
-            if (!fragment.empty())
-                ImGui::TextDisabled("preset: %s", fragment.c_str());
+            if (const auto shaderRef = resolvePassShaderRef(ctx, pass); shaderRef && !shaderRef->fragment.empty())
+                ImGui::TextDisabled("shader: %s", shaderRef->fragment.c_str());
 
-            for (const auto& param : def.params)
+            auto params = def.params;
+            for (const auto& param : readShaderParamDescs(ctx, pass))
+            {
+                if (std::find_if(params.begin(), params.end(), [&](const auto& existing) {
+                        return existing.name == param.name;
+                    }) == params.end())
+                    params.push_back(param);
+            }
+            for (const auto& param : params)
             {
                 bool paramDirty = false;
                 drawParamField(ctx, pass, param, paramDirty, paramLabelWidth, paramValueWidth);
                 if (paramDirty)
                     state.markDirty();
             }
-            if (pass.type == "FullscreenShader")
-            {
-                const std::unordered_set<std::string> builtins {
-                    "name", "library", "vertex", "fragment", "pushConstants"};
-                for (const auto& param : readShaderParamDescs(ctx, pass))
-                {
-                    if (builtins.contains(param.name))
-                        continue;
-                    bool paramDirty = false;
-                    drawParamField(ctx, pass, param, paramDirty, paramLabelWidth, paramValueWidth);
-                    if (paramDirty)
-                        state.markDirty();
-                }
-            }
-
             if (!def.inputs.empty())
                 ImGui::Spacing();
             for (const auto& slot : def.inputs)

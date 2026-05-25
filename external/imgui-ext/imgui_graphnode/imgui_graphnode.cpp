@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <cstdlib>
 #include <string>
 
@@ -39,6 +40,68 @@ static ImGuiID GraphvizNodeNameToImGuiID(const std::string& name)
         return static_cast<ImGuiID>(std::strtoul(name.c_str(), nullptr, 10));
     }
     return ImGui::GetID(name.c_str());
+}
+
+static void ApplyRuntimeNodeStyleToGraph(ImGuiGraphNodeContextCache& cache,
+                                         const ImGuiGraphNodeRuntimeNodeStyle& style)
+{
+    if (!g_ctx.gvgraph || !style.id)
+        return;
+
+    Agnode_t* node = agnode(g_ctx.gvgraph, const_cast<char*>(style.id), 0);
+    if (!node)
+        return;
+
+    const char* title = style.title ? style.title : style.id;
+    const float titleWidthPx = ImGui::CalcTextSize(title).x + 36.0f;
+    const float charWidthPx = ImGui::GetFontSize() * 0.62f;
+    const float nameWidthPx = static_cast<float>(std::strlen(title)) * charWidthPx + 36.0f;
+    const float minWidthPx = style.hasTexture ? 360.0f : 220.0f;
+    const float minHeightPx = style.hasTexture ? 276.0f : 36.0f;
+    const float widthIn = ImClamp(ImMax(ImMax(titleWidthPx, nameWidthPx), minWidthPx) / cache.pixel_per_unit,
+                                  1.2f,
+                                  6.5f);
+    const float heightIn = minHeightPx / cache.pixel_per_unit;
+
+    char width[32];
+    char height[32];
+    snprintf(width, sizeof(width), "%.4f", widthIn);
+    snprintf(height, sizeof(height), "%.4f", heightIn);
+    agsafeset(node, (char*)"width", width, "");
+    agsafeset(node, (char*)"height", height, "");
+    agsafeset(node, (char*)"fixedsize", (char*)"true", "");
+    agsafeset(node, (char*)"shape", (char*)"box", "");
+}
+
+static void AppendRuntimeNodeStyleGraphId(ImGuiGraphNodeContextCache& cache,
+                                          const ImGuiGraphNodeRuntimeNodeStyle& style)
+{
+    if (!style.id)
+        return;
+
+    const char* title = style.title ? style.title : style.id;
+    const float titleWidthPx = ImGui::CalcTextSize(title).x + 36.0f;
+    const float charWidthPx = ImGui::GetFontSize() * 0.62f;
+    const float nameWidthPx = static_cast<float>(std::strlen(title)) * charWidthPx + 36.0f;
+    const float minWidthPx = style.hasTexture ? 360.0f : 220.0f;
+    const float minHeightPx = style.hasTexture ? 276.0f : 36.0f;
+    const float widthIn = ImClamp(ImMax(ImMax(titleWidthPx, nameWidthPx), minWidthPx) / cache.pixel_per_unit,
+                                  1.2f,
+                                  6.5f);
+    const float heightIn = minHeightPx / cache.pixel_per_unit;
+
+    char width[32];
+    char height[32];
+    snprintf(width, sizeof(width), "%.4f", widthIn);
+    snprintf(height, sizeof(height), "%.4f", heightIn);
+    cache.graphid_current += "runtime-style:";
+    cache.graphid_current += style.id;
+    cache.graphid_current += ":";
+    cache.graphid_current += title;
+    cache.graphid_current += ":";
+    cache.graphid_current += width;
+    cache.graphid_current += "x";
+    cache.graphid_current += height;
 }
 
 static bool DrawRuntimeNodeBody(const ImGuiGraphNodeRuntimeNodeStyle& style, const ImRect& rect)
@@ -204,6 +267,8 @@ bool IMGUI_GRAPHNODE_NAMESPACE::BeginNodeGraph(char const * id, ImGuiGraphNodeLa
     cache.graphid_current.clear();
     cache.runtimeNodeStyles.clear();
     cache.runtimeTextureDoubleClicked.clear();
+    cache.raw_dot_current.clear();
+    cache.raw_dot_loaded = false;
     g_ctx.gvgraph = agopen(const_cast<char *>("g"), Agdirected, 0);
     if (g_ctx.gvgraph == nullptr)
         return false;
@@ -223,6 +288,12 @@ bool IMGUI_GRAPHNODE_NAMESPACE::NodeGraphLoadDot(char const* dot)
     if (!dot || dot[0] == '\0' || g_ctx.gvgraph == nullptr)
         return false;
 
+    cache.graphid_current += "raw-dot:";
+    cache.graphid_current += dot;
+    cache.raw_dot_current = dot;
+    if (cache.raw_dot_current == cache.raw_dot_previous && cache.graph.size.x > 0.0f && cache.graph.size.y > 0.0f)
+        return true;
+
     agclose(g_ctx.gvgraph);
     g_ctx.gvgraph = agmemread(dot);
     if (g_ctx.gvgraph == nullptr)
@@ -230,9 +301,7 @@ bool IMGUI_GRAPHNODE_NAMESPACE::NodeGraphLoadDot(char const* dot)
         g_ctx.gvgraph = agopen(const_cast<char*>("g"), Agdirected, 0);
         return false;
     }
-
-    cache.graphid_current += "raw-dot:";
-    cache.graphid_current += dot;
+    cache.raw_dot_loaded = true;
     return true;
 }
 
@@ -324,39 +393,8 @@ void IMGUI_GRAPHNODE_NAMESPACE::NodeGraphSetRuntimeNodeStyle(const ImGuiGraphNod
     state.style.outputLabel = state.outputLabel.empty() ? nullptr : state.outputLabel.c_str();
     state.style.metadata = state.metadata.empty() ? nullptr : state.metadata.c_str();
 
-    if (g_ctx.gvgraph)
-    {
-        if (Agnode_t* node = agnode(g_ctx.gvgraph, const_cast<char*>(style.id), 0))
-        {
-            const char* title = style.title ? style.title : style.id;
-            const float titleWidthPx = ImGui::CalcTextSize(title).x + 36.0f;
-            const float charWidthPx = ImGui::GetFontSize() * 0.62f;
-            const float nameWidthPx = static_cast<float>(std::strlen(title)) * charWidthPx + 36.0f;
-            const float minWidthPx = style.hasTexture ? 360.0f : 220.0f;
-            const float minHeightPx = style.hasTexture ? 276.0f : 36.0f;
-            const float widthIn = ImClamp(ImMax(ImMax(titleWidthPx, nameWidthPx), minWidthPx) / cache.pixel_per_unit,
-                                          1.2f,
-                                          6.5f);
-            const float heightIn = minHeightPx / cache.pixel_per_unit;
-
-            char width[32];
-            char height[32];
-            snprintf(width, sizeof(width), "%.4f", widthIn);
-            snprintf(height, sizeof(height), "%.4f", heightIn);
-            agsafeset(node, (char*)"width", width, "");
-            agsafeset(node, (char*)"height", height, "");
-            agsafeset(node, (char*)"fixedsize", (char*)"true", "");
-            agsafeset(node, (char*)"shape", (char*)"box", "");
-            cache.graphid_current += "runtime-style:";
-            cache.graphid_current += style.id;
-            cache.graphid_current += ":";
-            cache.graphid_current += title;
-            cache.graphid_current += ":";
-            cache.graphid_current += width;
-            cache.graphid_current += "x";
-            cache.graphid_current += height;
-        }
-    }
+    ApplyRuntimeNodeStyleToGraph(cache, style);
+    AppendRuntimeNodeStyleGraphId(cache, style);
 }
 
 void IMGUI_GRAPHNODE_NAMESPACE::NodeGraphAddEdge(char const * id, char const * node_id_a, char const * node_id_b)
@@ -548,8 +586,20 @@ void IMGUI_GRAPHNODE_NAMESPACE::EndNodeGraph()
 
     if (cache.graphid_current != cache.graphid_previous)
     {
+        if (!cache.raw_dot_current.empty() && !cache.raw_dot_loaded)
+        {
+            agclose(g_ctx.gvgraph);
+            g_ctx.gvgraph = agmemread(cache.raw_dot_current.c_str());
+            cache.raw_dot_loaded = g_ctx.gvgraph != nullptr;
+            if (!g_ctx.gvgraph)
+                g_ctx.gvgraph = agopen(const_cast<char*>("g"), Agdirected, 0);
+
+            for (auto& [_, state] : cache.runtimeNodeStyles)
+                ApplyRuntimeNodeStyleToGraph(cache, state.style);
+        }
         ImGuiGraphNodeRenderGraphLayout(cache);
         cache.graphid_previous = cache.graphid_current;
+        cache.raw_dot_previous = cache.raw_dot_current;
         cache.cursor_previous.x = cursor_pos.x - 1; // force recompute draw buffers
     }
     cache.graphid_current.clear();

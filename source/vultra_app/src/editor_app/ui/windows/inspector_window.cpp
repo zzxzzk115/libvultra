@@ -11,6 +11,7 @@
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
+#include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/hierarchy_component.hpp>
@@ -19,6 +20,7 @@
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/prefab_instance_component.hpp>
+#include <vultra/function/world/components/reflection_probe_component.hpp>
 #include <vultra/function/world/components/script_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/world.hpp>
@@ -34,6 +36,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -165,6 +168,10 @@ namespace vultra_app
                 return "Gaussian Splat";
             if (std::strcmp(metaName, "CameraComponent") == 0)
                 return "Camera";
+            if (std::strcmp(metaName, "EnvironmentComponent") == 0)
+                return "Environment";
+            if (std::strcmp(metaName, "ReflectionProbeComponent") == 0)
+                return "Reflection Probe";
             if (std::strcmp(metaName, "LightComponent") == 0)
                 return "Light";
             if (std::strcmp(metaName, "ScriptComponent") == 0)
@@ -206,6 +213,18 @@ namespace vultra_app
         const char* componentDisplayName<vultra::CameraComponent>()
         {
             return "Camera";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::EnvironmentComponent>()
+        {
+            return "Environment";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::ReflectionProbeComponent>()
+        {
+            return "Reflection Probe";
         }
 
         template<>
@@ -324,13 +343,10 @@ namespace vultra_app
             return true;
         }
 
-        bool drawTransformComponent(vultra::TransformComponent& transform,
-                                    const vultra::CoreUUID&     entityId,
-                                    const vultra::LightComponent* light = nullptr)
+        bool drawTransformComponentFields(vultra::TransformComponent& transform,
+                                          const vultra::CoreUUID&     entityId,
+                                          const vultra::LightComponent* light = nullptr)
         {
-            if (!ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
-                return false;
-
             bool changed = false;
             ImGui::Indent();
 
@@ -377,16 +393,8 @@ namespace vultra_app
             return len2 > 1e-8f ? direction * glm::inversesqrt(len2) : glm::vec3 {0.0f, -1.0f, 0.0f};
         }
 
-        bool drawLightComponent(vultra::World& world, entt::entity entity)
+        bool drawLightComponentFields(vultra::LightComponent& light)
         {
-            if (!world.registry().all_of<vultra::LightComponent>(entity))
-                return false;
-            if (!ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
-                return false;
-
-            auto& reg   = world.registry();
-            auto& light = reg.get<vultra::LightComponent>(entity);
-
             bool changed = false;
             constexpr const char* kKindLabels[] = {"Directional", "Point", "Spot", "Rectangle Area"};
             int                   kindIndex     = static_cast<int>(std::min(light.kind, 3u));
@@ -564,12 +572,36 @@ namespace vultra_app
                 return "zNear";
             if (is("zFar"))
                 return "zFar";
+            if (is("clearMode"))
+                return "clearMode";
             if (is("clearColor"))
                 return "clearColor";
             if (is("priority"))
                 return "priority";
             if (is("rendererKey"))
                 return "rendererKey";
+            if (is("skybox"))
+                return "skybox";
+            if (is("ambientColor"))
+                return "ambientColor";
+            if (is("ambientIntensity"))
+                return "ambientIntensity";
+            if (is("enableIBL"))
+                return "enableIBL";
+            if (is("iblColor"))
+                return "iblColor";
+            if (is("iblIntensity"))
+                return "iblIntensity";
+            if (is("environmentMap"))
+                return "environmentMap";
+            if (is("shape"))
+                return "shape";
+            if (is("boxSize"))
+                return "boxSize";
+            if (is("blendDistance"))
+                return "blendDistance";
+            if (is("parallaxCorrection"))
+                return "parallaxCorrection";
             if (is("kind"))
                 return "kind";
             if (is("color"))
@@ -606,6 +638,10 @@ namespace vultra_app
                 return vasset::VAssetType::eMesh;
             if (std::strcmp(fieldName, "gaussianSplat") == 0)
                 return vasset::VAssetType::eGaussianSplat;
+            if (std::strcmp(fieldName, "skybox") == 0)
+                return vasset::VAssetType::eTexture;
+            if (std::strcmp(fieldName, "environmentMap") == 0)
+                return vasset::VAssetType::eTexture;
             return vasset::VAssetType::eUnknown;
         }
 
@@ -616,6 +652,8 @@ namespace vultra_app
                 return "Mesh";
             if (type == vasset::VAssetType::eGaussianSplat)
                 return "Gaussian Splat";
+            if (type == vasset::VAssetType::eTexture)
+                return "Texture";
             return "Asset";
         }
 
@@ -1025,6 +1063,18 @@ namespace vultra_app
                     return changed;
                 }
 
+                if (std::strcmp(fieldName, "clearMode") == 0)
+                {
+                    const char* clearModeLabels[] = {"Color", "Skybox"};
+                    int         clearModeIndex    = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &clearModeIndex, clearModeLabels, IM_ARRAYSIZE(clearModeLabels)))
+                    {
+                        *v      = static_cast<uint32_t>(clearModeIndex);
+                        changed = true;
+                    }
+                    return changed;
+                }
+
                 if (std::strcmp(fieldName, "kind") == 0)
                 {
                     const char* lightKindLabels[] = {"Directional", "Point", "Spot", "Rectangle Area"};
@@ -1032,6 +1082,18 @@ namespace vultra_app
                     if (ImGui::Combo(label, &kindIndex, lightKindLabels, IM_ARRAYSIZE(lightKindLabels)))
                     {
                         *v      = static_cast<uint32_t>(std::clamp(kindIndex, 0, IM_ARRAYSIZE(lightKindLabels) - 1));
+                        changed = true;
+                    }
+                    return changed;
+                }
+
+                if (std::strcmp(fieldName, "shape") == 0)
+                {
+                    const char* shapeLabels[] = {"Box", "Sphere"};
+                    int         shapeIndex    = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &shapeIndex, shapeLabels, IM_ARRAYSIZE(shapeLabels)))
+                    {
+                        *v      = static_cast<uint32_t>(shapeIndex);
                         changed = true;
                     }
                     return changed;
@@ -1089,6 +1151,42 @@ namespace vultra_app
         }
 
         template<typename Component>
+        bool shouldDrawMetaField(const Component&, const char*)
+        {
+            return true;
+        }
+
+        template<>
+        bool shouldDrawMetaField(const vultra::CameraComponent& camera, const char* fieldName)
+        {
+            if (std::strcmp(fieldName, "clearColor") == 0)
+                return camera.clearMode == 0u;
+            return true;
+        }
+
+        template<>
+        bool shouldDrawMetaField(const vultra::EnvironmentComponent& environment, const char* fieldName)
+        {
+            if (std::strcmp(fieldName, "iblColor") == 0 || std::strcmp(fieldName, "iblIntensity") == 0)
+                return environment.enableIBL;
+            return true;
+        }
+
+        template<>
+        bool shouldDrawMetaField(const vultra::ReflectionProbeComponent& probe, const char* fieldName)
+        {
+            if (std::strcmp(fieldName, "environmentMap") == 0 ||
+                std::strcmp(fieldName, "intensity") == 0 ||
+                std::strcmp(fieldName, "parallaxCorrection") == 0)
+                return probe.enableIBL;
+            if (std::strcmp(fieldName, "boxSize") == 0)
+                return probe.shape == 0u;
+            if (std::strcmp(fieldName, "radius") == 0)
+                return probe.shape == 1u;
+            return true;
+        }
+
+        template<typename Component>
         bool drawMetaFields(EditorContext* ctx,
                             Component&     component,
                             const std::function<void(const char*)>& onChanged = {})
@@ -1096,10 +1194,13 @@ namespace vultra_app
             bool changedAny = false;
             auto instance   = entt::forward_as_meta(component);
             auto meta       = entt::resolve<Component>();
+            ImGui::PushID(static_cast<int>(meta.id()));
             for (auto [fieldId, field] : meta.data())
             {
                 const char* rawName = field.name() ? field.name() : metaFieldNameFromId(fieldId);
                 if (rawName == nullptr)
+                    continue;
+                if (!shouldDrawMetaField(component, rawName))
                     continue;
 
                 auto value = field.get(instance);
@@ -1107,6 +1208,7 @@ namespace vultra_app
                     continue;
 
                 const auto label = displayFieldName(rawName);
+                ImGui::PushID(static_cast<int>(fieldId));
                 if (drawMetaValue(ctx, field, value, rawName, label.c_str()))
                 {
                     field.set(instance, value);
@@ -1114,8 +1216,20 @@ namespace vultra_app
                     if (onChanged)
                         onChanged(rawName);
                 }
+                ImGui::PopID();
             }
+            ImGui::PopID();
             return changedAny;
+        }
+
+        template<typename Component>
+        const char* componentLabel()
+        {
+            const char* metaName = entt::resolve<Component>().name();
+            const char* label    = (metaName != nullptr) ? displayComponentName(metaName) : componentDisplayName<Component>();
+            if (std::strcmp(label, "Component") == 0)
+                label = componentDisplayName<Component>();
+            return label;
         }
 
         template<typename Component>
@@ -1123,10 +1237,7 @@ namespace vultra_app
         {
             if (!world.registry().all_of<Component>(entity))
                 return false;
-            const char* metaName = entt::resolve<Component>().name();
-            const char* label    = (metaName != nullptr) ? displayComponentName(metaName) : componentDisplayName<Component>();
-            if (std::strcmp(label, "Component") == 0)
-                label = componentDisplayName<Component>();
+            const char* label = componentLabel<Component>();
             return ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen);
         }
 
@@ -1152,15 +1263,17 @@ namespace vultra_app
 
         struct AddComponentDescriptor
         {
+            const char* key {};
             const char* label {};
             bool (*has)(entt::registry&, entt::entity) {};
             void (*add)(entt::registry&, entt::entity) {};
         };
 
         template<typename Component>
-        AddComponentDescriptor addComponentDescriptor(const char* label)
+        AddComponentDescriptor addComponentDescriptor(const char* key, const char* label)
         {
             return AddComponentDescriptor {
+                key,
                 label,
                 [](entt::registry& reg, entt::entity entity) { return reg.all_of<Component>(entity); },
                 [](entt::registry& reg, entt::entity entity)
@@ -1174,14 +1287,158 @@ namespace vultra_app
         const std::vector<AddComponentDescriptor>& addableComponents()
         {
             static const std::vector<AddComponentDescriptor> descriptors {
-                addComponentDescriptor<vultra::TransformComponent>("Transform"),
-                addComponentDescriptor<vultra::CameraComponent>("Camera"),
-                addComponentDescriptor<vultra::LightComponent>("Light"),
-                addComponentDescriptor<vultra::MeshComponent>("Mesh"),
-                addComponentDescriptor<vultra::GaussianSplatComponent>("Gaussian Splat"),
-                addComponentDescriptor<vultra::ScriptComponent>("Script"),
+                addComponentDescriptor<vultra::TransformComponent>("Transform", "Transform"),
+                addComponentDescriptor<vultra::CameraComponent>("Camera", "Camera"),
+                addComponentDescriptor<vultra::EnvironmentComponent>("Environment", "Environment"),
+                addComponentDescriptor<vultra::ReflectionProbeComponent>("ReflectionProbe", "Reflection Probe"),
+                addComponentDescriptor<vultra::LightComponent>("Light", "Light"),
+                addComponentDescriptor<vultra::MeshComponent>("Mesh", "Mesh"),
+                addComponentDescriptor<vultra::GaussianSplatComponent>("GaussianSplat", "Gaussian Splat"),
+                addComponentDescriptor<vultra::ScriptComponent>("Script", "Script"),
             };
             return descriptors;
+        }
+
+        const std::vector<const char*>& componentDefaultOrder()
+        {
+            static const std::vector<const char*> order {
+                "Transform",
+                "Mesh",
+                "GaussianSplat",
+                "Environment",
+                "ReflectionProbe",
+                "Light",
+                "Camera",
+                "Script",
+                "Prefab",
+            };
+            return order;
+        }
+
+        bool entityHasOrderedComponent(entt::registry& reg, entt::entity entity, const std::string& key)
+        {
+            if (key == "Transform")
+                return reg.all_of<vultra::TransformComponent>(entity);
+            if (key == "Mesh")
+                return reg.all_of<vultra::MeshComponent>(entity);
+            if (key == "GaussianSplat")
+                return reg.all_of<vultra::GaussianSplatComponent>(entity);
+            if (key == "Environment")
+                return reg.all_of<vultra::EnvironmentComponent>(entity);
+            if (key == "ReflectionProbe")
+                return reg.all_of<vultra::ReflectionProbeComponent>(entity);
+            if (key == "Light")
+                return reg.all_of<vultra::LightComponent>(entity);
+            if (key == "Camera")
+                return reg.all_of<vultra::CameraComponent>(entity);
+            if (key == "Script")
+                return reg.all_of<vultra::ScriptComponent>(entity);
+            if (key == "Prefab")
+                return reg.all_of<vultra::PrefabInstanceComponent>(entity);
+            return false;
+        }
+
+        void syncComponentOrder(entt::registry& reg, entt::entity entity, std::vector<std::string>& order)
+        {
+            order.erase(std::remove_if(order.begin(),
+                                       order.end(),
+                                       [&](const std::string& key) { return !entityHasOrderedComponent(reg, entity, key); }),
+                        order.end());
+
+            for (const char* key : componentDefaultOrder())
+            {
+                if (!entityHasOrderedComponent(reg, entity, key))
+                    continue;
+                if (std::find(order.begin(), order.end(), key) == order.end())
+                    order.emplace_back(key);
+            }
+        }
+
+        const char* orderedComponentLabel(const std::string& key)
+        {
+            if (key == "Transform")
+                return "Transform";
+            if (key == "Mesh")
+                return "Mesh";
+            if (key == "GaussianSplat")
+                return "Gaussian Splat";
+            if (key == "Environment")
+                return "Environment";
+            if (key == "ReflectionProbe")
+                return "Reflection Probe";
+            if (key == "Light")
+                return "Light";
+            if (key == "Camera")
+                return "Camera";
+            if (key == "Script")
+                return "Script";
+            if (key == "Prefab")
+                return "Prefab";
+            return "Component";
+        }
+
+        void removeOrderedComponent(entt::registry& reg, entt::entity entity, const std::string& key)
+        {
+            if (key == "Transform")
+                reg.remove<vultra::TransformComponent>(entity);
+            else if (key == "Mesh")
+                reg.remove<vultra::MeshComponent>(entity);
+            else if (key == "GaussianSplat")
+                reg.remove<vultra::GaussianSplatComponent>(entity);
+            else if (key == "Environment")
+                reg.remove<vultra::EnvironmentComponent>(entity);
+            else if (key == "ReflectionProbe")
+                reg.remove<vultra::ReflectionProbeComponent>(entity);
+            else if (key == "Light")
+                reg.remove<vultra::LightComponent>(entity);
+            else if (key == "Camera")
+                reg.remove<vultra::CameraComponent>(entity);
+            else if (key == "Script")
+                reg.remove<vultra::ScriptComponent>(entity);
+        }
+
+        bool orderedComponentHeader(const std::string& key,
+                                    const std::size_t  index,
+                                    const std::size_t  count,
+                                    bool&              removeRequested,
+                                    bool&              moveUpRequested,
+                                    bool&              moveDownRequested)
+        {
+            ImGui::PushID(key.c_str());
+
+            ImGui::SetNextItemAllowOverlap();
+            const bool open = ImGui::CollapsingHeader(orderedComponentLabel(key),
+                                                      ImGuiTreeNodeFlags_DefaultOpen |
+                                                          ImGuiTreeNodeFlags_AllowOverlap);
+
+            const ImGuiStyle& style = ImGui::GetStyle();
+            const float upWidth     = ImGui::CalcTextSize(ICON_MDI_ARROW_UP).x + style.FramePadding.x * 2.0f;
+            const float downWidth   = ImGui::CalcTextSize(ICON_MDI_ARROW_DOWN).x + style.FramePadding.x * 2.0f;
+            const float deleteWidth = ImGui::CalcTextSize(ICON_MDI_DELETE_OUTLINE).x + style.FramePadding.x * 2.0f;
+            const float buttonWidth = upWidth + downWidth + deleteWidth + style.ItemSpacing.x * 2.0f;
+            const float rightX      = ImGui::GetWindowContentRegionMax().x - buttonWidth;
+            ImGui::SameLine(std::max(ImGui::GetCursorPosX(), rightX));
+
+            ImGui::BeginDisabled(index == 0);
+            if (ImGui::SmallButton(ICON_MDI_ARROW_UP))
+                moveUpRequested = true;
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(index + 1 >= count);
+            if (ImGui::SmallButton(ICON_MDI_ARROW_DOWN))
+                moveDownRequested = true;
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            const bool removable = key != "Prefab";
+            ImGui::BeginDisabled(!removable);
+            if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE))
+                removeRequested = true;
+            ImGui::EndDisabled();
+            if (!removable && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("Prefab data is managed by the prefab instance.");
+
+            ImGui::PopID();
+            return open;
         }
     } // namespace
 
@@ -1263,15 +1520,6 @@ namespace vultra_app
                 ctx.state.sceneDirty = true;
         }
 
-        if (auto* transform = reg.try_get<vultra::TransformComponent>(e))
-        {
-            const auto* id = reg.try_get<vultra::IDComponent>(e);
-            if (drawTransformComponent(*transform,
-                                       id ? id->uuid : vultra::CoreUUID {},
-                                       reg.try_get<vultra::LightComponent>(e)))
-                ctx.state.sceneDirty = true;
-        }
-
         if (componentHeader<vultra::HierarchyComponent>(world, e))
         {
             const auto* h = reg.try_get<vultra::HierarchyComponent>(e);
@@ -1287,61 +1535,139 @@ namespace vultra_app
             }
         }
 
-        drawReflectedComponent<vultra::MeshComponent>(
-            world, e, &ctx, [&](vultra::MeshComponent&, const char*) { ctx.state.sceneDirty = true; });
-        drawReflectedComponent<vultra::GaussianSplatComponent>(
-            world, e, &ctx, [&](vultra::GaussianSplatComponent&, const char*) { ctx.state.sceneDirty = true; });
-        if (drawLightComponent(world, e))
-            ctx.state.sceneDirty = true;
-
-        if (componentHeader<vultra::CameraComponent>(world, e))
+        auto& componentOrder = m_ComponentOrder[Selection::lastId()];
+        syncComponentOrder(reg, e, componentOrder);
+        for (std::size_t i = 0; i < componentOrder.size(); ++i)
         {
-            auto& camera = reg.get<vultra::CameraComponent>(e);
-            if (ImGui::Button(ICON_MDI_CAMERA_SWITCH "  Align With Scene View", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
-            {
-                if (alignCameraEntityToSceneView(ctx, world, e))
-                    ctx.state.sceneDirty = true;
-            }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("Move this Camera entity to the current Scene View camera pose.");
-            if (ImGui::Button(ICON_MDI_CROSSHAIRS_GPS "  Align Scene View With Camera",
-                              ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
-            {
-                alignSceneViewToCameraEntity(ctx, world, e);
-            }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("Move the Scene View editor camera to this Camera entity.");
-            ImGui::Spacing();
+            const std::string key = componentOrder[i];
+            bool removeRequested = false;
+            bool moveUpRequested = false;
+            bool moveDownRequested = false;
+            const bool open = orderedComponentHeader(
+                key, i, componentOrder.size(), removeRequested, moveUpRequested, moveDownRequested);
 
-            drawMetaFields<vultra::CameraComponent>(
-                &ctx,
-                camera,
-                [&](const char* fieldName)
+            if (moveUpRequested && i > 0)
+            {
+                std::swap(componentOrder[i], componentOrder[i - 1]);
+                ctx.state.statusMessage = "Moved component up: " + std::string(orderedComponentLabel(key));
+                break;
+            }
+            if (moveDownRequested && i + 1 < componentOrder.size())
+            {
+                std::swap(componentOrder[i], componentOrder[i + 1]);
+                ctx.state.statusMessage = "Moved component down: " + std::string(orderedComponentLabel(key));
+                break;
+            }
+
+            if (removeRequested)
+            {
+                removeOrderedComponent(reg, e, key);
+                componentOrder.erase(componentOrder.begin() + static_cast<std::ptrdiff_t>(i));
+                ctx.state.sceneDirty = true;
+                ctx.state.statusMessage = "Removed component: " + std::string(orderedComponentLabel(key));
+                break;
+            }
+
+            if (!open)
+                continue;
+
+            if (key == "Transform")
+            {
+                if (auto* transform = reg.try_get<vultra::TransformComponent>(e))
                 {
-                    if (std::strcmp(fieldName, "primary") == 0 && camera.primary)
+                    const auto* entityId = reg.try_get<vultra::IDComponent>(e);
+                    if (drawTransformComponentFields(*transform,
+                                                     entityId ? entityId->uuid : vultra::CoreUUID {},
+                                                     reg.try_get<vultra::LightComponent>(e)))
+                        ctx.state.sceneDirty = true;
+                }
+            }
+            else if (key == "Mesh")
+            {
+                if (auto* mesh = reg.try_get<vultra::MeshComponent>(e))
+                    if (drawMetaFields(&ctx, *mesh))
+                        ctx.state.sceneDirty = true;
+            }
+            else if (key == "GaussianSplat")
+            {
+                if (auto* splat = reg.try_get<vultra::GaussianSplatComponent>(e))
+                    if (drawMetaFields(&ctx, *splat))
+                        ctx.state.sceneDirty = true;
+            }
+            else if (key == "Environment")
+            {
+                if (auto* environment = reg.try_get<vultra::EnvironmentComponent>(e))
+                    if (drawMetaFields(&ctx, *environment))
+                        ctx.state.sceneDirty = true;
+            }
+            else if (key == "ReflectionProbe")
+            {
+                if (auto* probe = reg.try_get<vultra::ReflectionProbeComponent>(e))
+                    if (drawMetaFields(&ctx, *probe))
+                        ctx.state.sceneDirty = true;
+            }
+            else if (key == "Light")
+            {
+                if (auto* light = reg.try_get<vultra::LightComponent>(e))
+                    if (drawLightComponentFields(*light))
+                        ctx.state.sceneDirty = true;
+            }
+            else if (key == "Camera")
+            {
+                if (auto* camera = reg.try_get<vultra::CameraComponent>(e))
+                {
+                    if (ImGui::Button(ICON_MDI_CAMERA_SWITCH "  Align With Scene View",
+                                      ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
                     {
-                        auto view = reg.view<vultra::CameraComponent>();
-                        for (auto other : view)
-                        {
-                            if (other != e)
-                                view.get<vultra::CameraComponent>(other).primary = false;
-                        }
+                        if (alignCameraEntityToSceneView(ctx, world, e))
+                            ctx.state.sceneDirty = true;
                     }
-                    if (camera.zFar <= camera.zNear)
-                        camera.zFar = camera.zNear + 0.001f;
-                    ctx.state.sceneDirty = true;
-                });
-        }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("Move this Camera entity to the current Scene View camera pose.");
+                    if (ImGui::Button(ICON_MDI_CROSSHAIRS_GPS "  Align Scene View With Camera",
+                                      ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+                    {
+                        alignSceneViewToCameraEntity(ctx, world, e);
+                    }
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("Move the Scene View editor camera to this Camera entity.");
+                    ImGui::Spacing();
 
-        drawReflectedComponent<vultra::ScriptComponent>(
-            world, e, &ctx, [&](vultra::ScriptComponent&, const char*) { ctx.state.sceneDirty = true; });
-
-        if (componentHeader<vultra::PrefabInstanceComponent>(world, e))
-        {
-            auto& prefab = reg.get<vultra::PrefabInstanceComponent>(e);
-            ImGui::TextWrapped("URI: %s", prefab.prefabUri.c_str());
-            if (prefab.prefabId.valid())
-                ImGui::TextWrapped("UUID: %s", prefab.prefabId.toString().c_str());
+                    drawMetaFields<vultra::CameraComponent>(
+                        &ctx,
+                        *camera,
+                        [&](const char* fieldName)
+                        {
+                            if (std::strcmp(fieldName, "primary") == 0 && camera->primary)
+                            {
+                                auto view = reg.view<vultra::CameraComponent>();
+                                for (auto other : view)
+                                {
+                                    if (other != e)
+                                        view.get<vultra::CameraComponent>(other).primary = false;
+                                }
+                            }
+                            if (camera->zFar <= camera->zNear)
+                                camera->zFar = camera->zNear + 0.001f;
+                            ctx.state.sceneDirty = true;
+                        });
+                }
+            }
+            else if (key == "Script")
+            {
+                if (auto* script = reg.try_get<vultra::ScriptComponent>(e))
+                    if (drawMetaFields(&ctx, *script))
+                        ctx.state.sceneDirty = true;
+            }
+            else if (key == "Prefab")
+            {
+                if (auto* prefab = reg.try_get<vultra::PrefabInstanceComponent>(e))
+                {
+                    ImGui::TextWrapped("URI: %s", prefab->prefabUri.c_str());
+                    if (prefab->prefabId.valid())
+                        ImGui::TextWrapped("UUID: %s", prefab->prefabId.toString().c_str());
+                }
+            }
         }
 
         ImGui::Spacing();
@@ -1368,6 +1694,9 @@ namespace vultra_app
                 if (ImGui::MenuItem(desc.label))
                 {
                     desc.add(reg, entity);
+                    auto& order = m_ComponentOrder[Selection::lastId()];
+                    if (desc.key && std::find(order.begin(), order.end(), desc.key) == order.end())
+                        order.emplace_back(desc.key);
                     ctx.state.sceneDirty = true;
                     ctx.state.statusMessage = std::string("Added component: ") + desc.label;
                     ImGui::CloseCurrentPopup();

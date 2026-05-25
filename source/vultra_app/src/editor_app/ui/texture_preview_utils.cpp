@@ -2,9 +2,14 @@
 
 #include <vultra/core/rhi/structs/image_aspect.hpp>
 #include <vultra/core/rhi/structs/pixel_format.hpp>
+#include <vultra/function/services/render_backend_service.hpp>
+
+#include <IconsMaterialDesignIcons.h>
+#include <ImGuiFileDialog/ImGuiFileDialog.h>
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 
 namespace vultra_app::ui
 {
@@ -24,6 +29,26 @@ namespace vultra_app::ui
             if (needle.empty())
                 return true;
             return lower(haystack).find(lower(needle)) != std::string::npos;
+        }
+
+        std::filesystem::path ensurePngExtension(std::filesystem::path path)
+        {
+            if (path.extension().empty())
+                path.replace_extension(".png");
+            return path;
+        }
+
+        std::string sanitizedFileName(std::string_view name)
+        {
+            std::string out;
+            out.reserve(name.size());
+            for (const char c : name)
+            {
+                const bool invalid = c == '<' || c == '>' || c == ':' || c == '"' || c == '/' || c == '\\' ||
+                                     c == '|' || c == '?' || c == '*';
+                out.push_back(invalid ? '_' : c);
+            }
+            return out.empty() ? std::string {"frame_graph_texture"} : out;
         }
     } // namespace
 
@@ -98,6 +123,46 @@ namespace vultra_app::ui
                                    available.y / std::max(sourceHeight, 1.0f)),
                           0.05f,
                           maxScale);
+    }
+
+    bool drawSaveFrameGraphTexturePreviewButton(EditorContext&                         ctx,
+                                                const vultra::FrameGraphDebugTexture& texture,
+                                                const char*                           dialogKey)
+    {
+        bool saved = false;
+        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Preview"))
+        {
+            IGFD::FileDialogConfig config;
+            config.path = ".";
+            config.fileName = sanitizedFileName(texture.name) + ".png";
+            config.flags = ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
+                           ImGuiFileDialogFlags_HideColumnSize | ImGuiFileDialogFlags_HideColumnDate |
+                           ImGuiFileDialogFlags_DontShowHiddenFiles |
+                           ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering |
+                           ImGuiFileDialogFlags_NaturalSorting |
+                           ImGuiFileDialogFlags_DisableThumbnailMode;
+            ImGuiFileDialog::Instance()->OpenDialog(dialogKey, "Save Texture Preview", ".png", config);
+        }
+
+        if (ImGuiFileDialog::Instance()->Display(dialogKey,
+                                                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
+                                                 ImVec2 {520.0f, 360.0f}))
+        {
+            if (ImGuiFileDialog::Instance()->IsOk())
+            {
+                auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+                const auto path = ensurePngExtension(std::filesystem::path(
+                    ImGuiFileDialog::Instance()->GetFilePathName(IGFD_ResultMode_KeepInputFile)));
+                saved = backendService && texture.texture &&
+                        backendService->renderDevice().saveTextureToFile(*texture.texture,
+                                                                         path.generic_string(),
+                                                                         vultra::rhi::ImageAspect::eColor);
+                ctx.state.statusMessage = saved ? "Saved texture preview: " + path.generic_string() :
+                                                  "Failed to save texture preview: " + path.generic_string();
+            }
+            ImGuiFileDialog::Instance()->Close();
+        }
+        return saved;
     }
 
     vultra::FrameGraphTexturePreviewSettings makeFrameGraphTexturePreviewSettings(

@@ -6,12 +6,14 @@
 #include <IconsMaterialDesignIcons.h>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
+#include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/reflection_probe_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/world.hpp>
 
@@ -41,6 +43,10 @@ namespace vultra_app
             auto& reg = world.registry();
             if (reg.all_of<vultra::CameraComponent>(entity))
                 return ICON_MDI_CAMERA;
+            if (reg.all_of<vultra::EnvironmentComponent>(entity))
+                return ICON_MDI_WEATHER_SUNNY;
+            if (reg.all_of<vultra::ReflectionProbeComponent>(entity))
+                return ICON_MDI_CUBE_SCAN;
             if (reg.all_of<vultra::LightComponent>(entity))
                 return ICON_MDI_LIGHTBULB_ON_OUTLINE;
             if (reg.all_of<vultra::MeshComponent>(entity))

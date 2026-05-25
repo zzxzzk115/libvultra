@@ -113,7 +113,9 @@ namespace vultra_app
                                               const float      fovY,
                                               const float      aspect,
                                               vultra::rhi::Texture* target,
-                                              std::string_view rendererKey)
+                                              std::string_view rendererKey,
+                                              const uint32_t   clearMode,
+                                              const glm::vec4& clearValue)
         {
             const auto forward = makeForward(yaw, pitch);
 
@@ -126,7 +128,8 @@ namespace vultra_app
             camera.zFar        = 2000.0f;
             camera.fovY        = glm::radians(fovY);
             camera.target      = target;
-            camera.clearValue  = {0.035f, 0.04f, 0.052f, 1.0f};
+            camera.clearValue  = clearValue;
+            camera.clearMode   = clearMode;
             camera.renderImGui = false;
             camera.rendererKey = rendererKey.empty() ? "universal" : std::string(rendererKey);
             camera.debugEntityIdOutput = false;
@@ -134,19 +137,30 @@ namespace vultra_app
             return camera;
         }
 
-        std::string editorCameraRendererKey(EditorContext& ctx)
+        struct EditorCameraSceneSettings
+        {
+            std::string rendererKey {"universal"};
+            uint32_t    clearMode {0};
+            glm::vec4   clearValue {0.035f, 0.04f, 0.052f, 1.0f};
+        };
+
+        EditorCameraSceneSettings editorCameraSceneSettings(EditorContext& ctx)
         {
             auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
             if (!worldService)
-                return "universal";
+                return {};
 
             auto& world = worldService->world();
             auto  primary = findPrimaryCamera(world);
             if (primary == entt::null)
-                return "universal";
+                return {};
 
             const auto& camera = world.registry().get<vultra::CameraComponent>(primary);
-            return camera.rendererKey.empty() ? "universal" : camera.rendererKey;
+            return {
+                .rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey,
+                .clearMode   = camera.clearMode,
+                .clearValue  = glm::vec4(camera.clearColor.r, camera.clearColor.g, camera.clearColor.b, 1.0f),
+            };
         }
 
         glm::mat4 makeTransformMatrix(const vultra::TransformComponent& transform)
@@ -205,6 +219,7 @@ namespace vultra_app
             out.target      = target;
             out.clearValue  = camera.clearColor;
             out.clearValue.a = 1.0f;
+            out.clearMode = camera.clearMode;
             out.renderImGui = false;
             out.debugEntityIdOutput = false;
             out.selectionOutlineEnabled = false;
@@ -440,10 +455,18 @@ namespace vultra_app
         auto*       renderTarget =
             m_PendingRenderTarget.texture ? &*m_PendingRenderTarget.texture :
                                             (m_ActiveRenderTarget.texture ? &*m_ActiveRenderTarget.texture : nullptr);
-        const auto editorRendererKey = editorCameraRendererKey(ctx);
+        const auto editorSettings = editorCameraSceneSettings(ctx);
         auto        editorCamera =
             makeEditorCamera(
-                m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget, editorRendererKey);
+                m_CameraPosition,
+                m_CameraYaw,
+                m_CameraPitch,
+                m_CameraFovY,
+                aspect,
+                renderTarget,
+                editorSettings.rendererKey,
+                editorSettings.clearMode,
+                editorSettings.clearValue);
         ctx.state.sceneCamera.valid       = true;
         ctx.state.sceneCamera.position    = m_CameraPosition;
         ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
@@ -537,7 +560,15 @@ namespace vultra_app
 
             editorCamera =
                 makeEditorCamera(
-                    m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget, editorRendererKey);
+                    m_CameraPosition,
+                    m_CameraYaw,
+                    m_CameraPitch,
+                    m_CameraFovY,
+                    aspect,
+                    renderTarget,
+                    editorSettings.rendererKey,
+                    editorSettings.clearMode,
+                    editorSettings.clearValue);
             ctx.state.sceneCamera.position    = m_CameraPosition;
             ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
             ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
@@ -547,7 +578,15 @@ namespace vultra_app
                 applyViewMatrixToCamera(editorCamera.view, m_CameraPosition, m_CameraYaw, m_CameraPitch);
                 editorCamera =
                     makeEditorCamera(
-                        m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY, aspect, renderTarget, editorRendererKey);
+                        m_CameraPosition,
+                        m_CameraYaw,
+                        m_CameraPitch,
+                        m_CameraFovY,
+                        aspect,
+                        renderTarget,
+                        editorSettings.rendererKey,
+                        editorSettings.clearMode,
+                        editorSettings.clearValue);
                 ctx.state.sceneCamera.position    = m_CameraPosition;
                 ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
                 ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
@@ -569,7 +608,9 @@ namespace vultra_app
                                                                   m_CameraFovY,
                                                                   aspect,
                                                                   &*m_PickingRenderTarget.texture,
-                                                                  "universal");
+                                                                  "universal",
+                                                                  0u,
+                                                                  glm::vec4 {0.035f, 0.04f, 0.052f, 1.0f});
                             pickingCamera.name = "Scene Picking";
                             pickingCamera.priority = editorCamera.priority + 1;
                             pickingCamera.debugEntityIdOutput = true;

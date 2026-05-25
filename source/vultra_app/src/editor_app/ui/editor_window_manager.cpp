@@ -1,5 +1,7 @@
 #include "editor_app/ui/editor_window_manager.hpp"
 
+#include <imgui.h>
+
 namespace vultra_app
 {
     void EditorWindowManager::draw(EditorContext& ctx)
@@ -14,23 +16,29 @@ namespace vultra_app
         for (std::size_t i = 0; i < m_Windows.size(); ++i)
         {
             auto& window = m_Windows[i];
+            bool  focusRequested = false;
             if (ctx.state.codeEditorOpenRequested && window->name() == "Code Editor")
             {
                 window->open() = true;
+                focusRequested = true;
                 ctx.state.codeEditorOpenRequested = false;
             }
             if (ctx.state.profilerWindowOpenRequested && window->name() == "Profiler")
             {
                 window->open() = true;
+                focusRequested = true;
                 ctx.state.profilerWindowOpenRequested = false;
             }
             if (ctx.state.frameDebuggerWindowOpenRequested && window->name() == "Frame Debugger")
             {
                 window->open() = true;
+                focusRequested = true;
                 ctx.state.frameDebuggerWindowOpenRequested = false;
             }
             if (window->open())
             {
+                if (focusRequested)
+                    ImGui::SetNextWindowFocus();
                 window->draw(ctx);
             }
             else if (m_WasOpen[i])

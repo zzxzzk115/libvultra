@@ -108,12 +108,6 @@ namespace vultra_app
 
     void ProfilerWindow::draw(EditorContext& ctx)
     {
-        if (ctx.state.profilerWindowOpenRequested)
-        {
-            m_Open = true;
-            ctx.state.profilerWindowOpenRequested = false;
-        }
-
         if (!ImGui::Begin(title().c_str(), &m_Open))
         {
             ImGui::End();

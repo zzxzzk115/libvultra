@@ -8,6 +8,9 @@
 #include <array>
 #include <entt/entity/fwd.hpp>
 #include <filesystem>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace vultra
 {
@@ -34,6 +37,7 @@ namespace vultra_app
 
         vultra::CoreUUID      m_NameEditEntity {};
         std::array<char, 128> m_NameBuffer {};
+        std::unordered_map<vultra::CoreUUID, std::vector<std::string>> m_ComponentOrder;
         ui::AssetPreviewCache m_PreviewCache;
     };
 } // namespace vultra_app

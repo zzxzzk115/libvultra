@@ -108,6 +108,7 @@ namespace vultra_app
             out.fovY        = glm::radians(camera.fovYDegrees);
             out.target      = target;
             out.clearValue  = camera.clearColor;
+            out.clearMode   = camera.clearMode;
             out.renderImGui = false;
             out.debugEntityIdOutput = false;
             out.selectionOutlineEnabled = false;
