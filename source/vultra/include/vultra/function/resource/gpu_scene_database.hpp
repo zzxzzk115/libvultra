@@ -39,10 +39,15 @@ namespace vultra::resource
     {
         rhi::DeviceAddress vertexBufferAddress {};
         rhi::DeviceAddress indexBufferAddress {};
+        uint32_t           vertexOffset {0};
         uint32_t           materialIndex {0};
         uint32_t           vertexStrideBytes {0};
+        uint32_t           positionOffsetBytes {0};
+        uint32_t           normalOffsetBytes {0xFFFFFFFFu};
+        uint32_t           texCoord0OffsetBytes {0xFFFFFFFFu};
+        uint32_t           tangentOffsetBytes {0xFFFFFFFFu};
     };
-    static_assert(sizeof(GpuRayTracingGeometryNode) == 24);
+    static_assert(sizeof(GpuRayTracingGeometryNode) == 48);
 
     // Persistent-ish GPU scene database.
     //
@@ -75,6 +80,11 @@ namespace vultra::resource
         Ref<rhi::StorageBuffer> meshTableBuffer {nullptr};
         Ref<rhi::StorageBuffer> rayTracingInstanceBuffer {nullptr};
         Ref<rhi::StorageBuffer> rayTracingGeometryNodeBuffer {nullptr};
+        uint64_t                instanceBufferCapacityBytes {0};
+        uint64_t                transformBufferCapacityBytes {0};
+        uint64_t                meshTableBufferCapacityBytes {0};
+        uint64_t                rayTracingInstanceBufferCapacityBytes {0};
+        uint64_t                rayTracingGeometryNodeBufferCapacityBytes {0};
 
         void clear()
         {
@@ -90,6 +100,11 @@ namespace vultra::resource
             meshTableBuffer = nullptr;
             rayTracingInstanceBuffer    = nullptr;
             rayTracingGeometryNodeBuffer = nullptr;
+            instanceBufferCapacityBytes  = 0;
+            transformBufferCapacityBytes = 0;
+            meshTableBufferCapacityBytes = 0;
+            rayTracingInstanceBufferCapacityBytes     = 0;
+            rayTracingGeometryNodeBufferCapacityBytes = 0;
         }
 
         void beginFrame(const GpuResourcePool& res)
@@ -165,8 +180,11 @@ namespace vultra::resource
             const size_t bytes = instances.size() * sizeof(GpuInstance);
             if (bytes == 0)
                 return;
-            if (!instanceBuffer || instanceBuffer->getSize() < bytes)
+            if (!instanceBuffer || instanceBufferCapacityBytes < bytes)
+            {
                 instanceBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
+                instanceBufferCapacityBytes = bytes;
+            }
         }
 
         void ensureTransformBuffer(rhi::RenderDevice& rd)
@@ -174,8 +192,11 @@ namespace vultra::resource
             const size_t bytes = transforms.size() * sizeof(glm::mat4);
             if (bytes == 0)
                 return;
-            if (!transformBuffer || transformBuffer->getSize() < bytes)
+            if (!transformBuffer || transformBufferCapacityBytes < bytes)
+            {
                 transformBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
+                transformBufferCapacityBytes = bytes;
+            }
         }
 
         void ensureMeshTableBuffer(rhi::RenderDevice& rd)
@@ -183,21 +204,30 @@ namespace vultra::resource
             const size_t bytes = meshTable.size() * sizeof(GpuMeshTableEntry);
             if (bytes == 0)
                 return;
-            if (!meshTableBuffer || meshTableBuffer->getSize() < bytes)
+            if (!meshTableBuffer || meshTableBufferCapacityBytes < bytes)
+            {
                 meshTableBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
+                meshTableBufferCapacityBytes = bytes;
+            }
         }
 
         void ensureRayTracingBuffers(rhi::RenderDevice& rd)
         {
             const size_t instanceBytes = rayTracingInstances.size() * sizeof(GpuRayTracingInstance);
             if (instanceBytes > 0 &&
-                (!rayTracingInstanceBuffer || rayTracingInstanceBuffer->getSize() < instanceBytes))
+                (!rayTracingInstanceBuffer || rayTracingInstanceBufferCapacityBytes < instanceBytes))
+            {
                 rayTracingInstanceBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(instanceBytes));
+                rayTracingInstanceBufferCapacityBytes = instanceBytes;
+            }
 
             const size_t geometryBytes = rayTracingGeometryNodes.size() * sizeof(GpuRayTracingGeometryNode);
             if (geometryBytes > 0 &&
-                (!rayTracingGeometryNodeBuffer || rayTracingGeometryNodeBuffer->getSize() < geometryBytes))
+                (!rayTracingGeometryNodeBuffer || rayTracingGeometryNodeBufferCapacityBytes < geometryBytes))
+            {
                 rayTracingGeometryNodeBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(geometryBytes));
+                rayTracingGeometryNodeBufferCapacityBytes = geometryBytes;
+            }
         }
 
         void uploadRayTracingBuffers(rhi::RenderDevice& rd)
@@ -247,15 +277,25 @@ namespace vultra::resource
                 for (const auto& sm : mesh.subMeshes)
                 {
                     GpuRayTracingGeometryNode node {};
-                    node.vertexBufferAddress.value =
-                        mesh.vertexBufferAddress ? mesh.vertexBufferAddress.value :
-                                                   rd.getBufferDeviceAddress(mesh.vertexBuffer).value;
-                    node.indexBufferAddress.value =
-                        mesh.indexBufferAddress ? mesh.indexBufferAddress.value :
-                                                  rd.getBufferDeviceAddress(mesh.indexBuffer).value;
+                    node.vertexBufferAddress.value = mesh.vertexBuffer ?
+                                                         rd.getBufferDeviceAddress(mesh.vertexBuffer).value :
+                                                         mesh.vertexBufferAddress.value + mesh.vertexByteOffset;
+                    node.indexBufferAddress.value = mesh.indexBuffer ?
+                                                        rd.getBufferDeviceAddress(mesh.indexBuffer).value :
+                                                        mesh.indexBufferAddress.value +
+                                                            static_cast<uint64_t>(mesh.indexBase) * sizeof(uint32_t);
                     node.indexBufferAddress.value += static_cast<uint64_t>(sm.indexOffset) * sizeof(uint32_t);
+                    node.vertexOffset      = sm.vertexOffset;
                     node.materialIndex      = sm.materialIndex >= mesh.materialOffset ? sm.materialIndex - mesh.materialOffset : sm.materialIndex;
                     node.vertexStrideBytes  = mesh.vertexStrideBytes;
+                    if (const auto it = mesh.vertexAttributes.find(0); it != mesh.vertexAttributes.end())
+                        node.positionOffsetBytes = it->second.offset;
+                    if (const auto it = mesh.vertexAttributes.find(1); it != mesh.vertexAttributes.end())
+                        node.normalOffsetBytes = it->second.offset;
+                    if (const auto it = mesh.vertexAttributes.find(3); it != mesh.vertexAttributes.end())
+                        node.texCoord0OffsetBytes = it->second.offset;
+                    if (const auto it = mesh.vertexAttributes.find(5); it != mesh.vertexAttributes.end())
+                        node.tangentOffsetBytes = it->second.offset;
                     rayTracingGeometryNodes.push_back(node);
                 }
 
@@ -270,6 +310,43 @@ namespace vultra::resource
             }
 
             uploadRayTracingBuffers(rd);
+
+            if (!tlasInstances.empty())
+                rayTracingTlas = rd.createBuildMultipleInstanceTLAS(tlasInstances);
+        }
+
+        void rebuildRayTracingTlas(rhi::RenderDevice& rd)
+        {
+            rayTracingTlas = {};
+
+            if (!resources || rayTracingInstances.empty())
+                return;
+
+            std::vector<rhi::RayTracingInstance> tlasInstances;
+            tlasInstances.reserve(rayTracingInstances.size());
+
+            for (uint32_t instanceIndex = 0; instanceIndex < static_cast<uint32_t>(instances.size()); ++instanceIndex)
+            {
+                const auto& inst = instances[instanceIndex];
+                if (inst.meshIndex >= resources->meshes.size() || inst.transformIndex >= transforms.size())
+                    continue;
+
+                auto& mesh = const_cast<GpuMesh&>(resources->meshes[inst.meshIndex]);
+                if (!mesh.blas || mesh.subMeshes.empty())
+                    continue;
+
+                rhi::RayTracingInstance tlasInst {};
+                tlasInst.blas       = &mesh.blas;
+                tlasInst.transform  = transforms[inst.transformIndex];
+                tlasInst.instanceID = static_cast<uint32_t>(tlasInstances.size());
+                tlasInstances.push_back(tlasInst);
+            }
+
+            if (tlasInstances.size() != rayTracingInstances.size())
+            {
+                rebuildRayTracingScene(rd);
+                return;
+            }
 
             if (!tlasInstances.empty())
                 rayTracingTlas = rd.createBuildMultipleInstanceTLAS(tlasInstances);

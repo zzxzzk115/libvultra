@@ -304,7 +304,6 @@ namespace vultra
                                                               {"kind",
                                                                "color",
                                                                "intensity",
-                                                               "direction",
                                                                "range",
                                                                "radius",
                                                                "width",

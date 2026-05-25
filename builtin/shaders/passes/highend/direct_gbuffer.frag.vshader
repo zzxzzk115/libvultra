@@ -60,7 +60,9 @@ layout(location = 3) out vec4 GBufferEntityId;
 
 vec4 sampleBindless(uint textureIndex, vec2 uv)
 {
-    return texture(u_BindlessTextures[nonuniformEXT(textureIndex)], uv);
+    vec2 duvdx = dFdx(uv);
+    vec2 duvdy = dFdy(uv);
+    return textureGrad(u_BindlessTextures[nonuniformEXT(textureIndex)], uv, duvdx, duvdy);
 }
 
 void main()

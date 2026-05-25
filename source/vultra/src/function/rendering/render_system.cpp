@@ -40,6 +40,7 @@
 
 #include <fg/Blackboard.hpp>
 #include <fg/FrameGraph.hpp>
+#include <fg/GraphvizWriter.hpp>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -91,6 +92,11 @@ namespace vultra
             return filename;
         }
 
+        [[nodiscard]] bool rendererRequiresRayTracing(std::string_view rendererKey)
+        {
+            return rendererKey == "universal_rt" || rendererKey == "default_rt";
+        }
+
         void expandBounds(RenderWorld& out, const glm::vec3& point)
         {
             if (!out.hasBounds)
@@ -123,10 +129,11 @@ namespace vultra
             std::unordered_map<std::string, size_t> emittedNodes;
             std::unordered_set<std::string> emittedEdges;
 
-            FrameGraphSnapshotWriter(std::string_view cameraName, std::string_view rendererKey)
+            FrameGraphSnapshotWriter(std::string_view cameraName, std::string_view rendererKey, std::string dot)
             {
                 snapshot["camera"] = cameraName;
                 snapshot["renderer"] = rendererKey;
+                snapshot["dot"] = std::move(dot);
                 snapshot["nodes"] = nlohmann::json::array();
                 snapshot["edges"] = nlohmann::json::array();
             }
@@ -287,12 +294,6 @@ namespace vultra
             return len2 > 1e-8f ? direction * glm::inversesqrt(len2) : fallback;
         }
 
-        [[nodiscard]] bool isIdentityRotation(const glm::quat& q)
-        {
-            return std::abs(q.w - 1.0f) < 1e-4f && std::abs(q.x) < 1e-4f &&
-                   std::abs(q.y) < 1e-4f && std::abs(q.z) < 1e-4f;
-        }
-
         void finalizeRenderCamera(RenderCamera& cam)
         {
             cam.viewProjection        = cam.projection * cam.view;
@@ -335,14 +336,9 @@ namespace vultra
             return cam;
         }
 
-        [[nodiscard]] glm::vec3 lightDirectionFromTransformNormal(const TransformComponent& transform,
-                                                                  const LightComponent&     light)
+        [[nodiscard]] glm::vec3 lightDirectionFromTransformNormal(const TransformComponent& transform)
         {
-            const glm::vec3 authored = safeNormalizeDirection(light.direction, glm::vec3 {0.0f, -1.0f, 0.0f});
-            if (isIdentityRotation(transform.rotation))
-                return authored;
-
-            return safeNormalizeDirection(-glm::vec3(transform.worldMatrix[2]), authored);
+            return safeNormalizeDirection(-glm::vec3(transform.worldMatrix[2]), glm::vec3 {0.0f, -1.0f, 0.0f});
         }
 
         float effectiveGaussianAutomaticClodLevel(const GaussianSplatRenderSettings& settings)
@@ -692,7 +688,7 @@ namespace vultra
             outLight.entity = id.uuid;
             outLight.kind = static_cast<RenderLightKind>(light.kind);
             outLight.position = glm::vec3(tr.worldMatrix[3]);
-            outLight.direction = lightDirectionFromTransformNormal(tr, light);
+            outLight.direction = lightDirectionFromTransformNormal(tr);
             outLight.color = light.color;
             outLight.intensity = light.intensity;
             outLight.range = light.range;
@@ -839,6 +835,20 @@ namespace vultra
 
     Ref<Renderer> RenderSystem::resolveRenderer(const RenderCamera& cam) const
     {
+        if (rendererRequiresRayTracing(cam.rendererKey))
+        {
+            const auto* renderBackend = ctx().services.tryGet<IRenderBackendService>();
+            const bool  rayTracingAvailable =
+                renderBackend &&
+                HasFlagValues(const_cast<IRenderBackendService*>(renderBackend)->renderDevice().getFeatureFlag(),
+                              rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline);
+            if (!rayTracingAvailable)
+            {
+                if (auto fallback = m_Renderers.find("universal"); fallback != m_Renderers.end())
+                    return fallback->second;
+            }
+        }
+
         if (auto it = m_Renderers.find(cam.rendererKey); it != m_Renderers.end())
             return it->second;
 
@@ -1107,20 +1117,30 @@ namespace vultra
 
             const auto previewExtent = sourceDesc.extent;
             std::string cameraName {camera.name.empty() ? std::string {"Camera"} : camera.name};
-            std::string slotKey = cameraName + "/" + candidate.name + "#" + std::to_string(candidate.resource);
+            std::string slotKey = cameraName + "/" + candidate.name;
+            std::string transientResourceKey = "resource:" + std::to_string(candidate.resource);
             std::string publicKey = slotKey + "@" + std::to_string(sourceDesc.extent.width) + "x" +
                                     std::to_string(sourceDesc.extent.height) + ":" +
                                     std::string(rhi::toString(sourceDesc.format));
-            const bool shouldPreview = m_FrameGraphTexturePreviewSettings.selectedTextureKey.empty() ?
+            const auto overrideIt = m_FrameGraphTexturePreviewOverrides.find(slotKey);
+            const auto previewSettings = overrideIt != m_FrameGraphTexturePreviewOverrides.end() ?
+                                             overrideIt->second :
+                                             m_FrameGraphTexturePreviewSettings;
+            const bool shouldPreview = m_FrameGraphTexturePreviewSettings.selectedTextureKey ==
+                                                FrameGraphTexturePreviewSettings::kCaptureAllTextures ?
+                                           true :
+                                       m_FrameGraphTexturePreviewSettings.selectedTextureKey.empty() ?
                                            m_FrameGraphDebugTextures.empty() :
                                            slotKey == m_FrameGraphTexturePreviewSettings.selectedTextureKey;
             if (!shouldPreview)
             {
                 m_FrameGraphDebugTextures.push_back(FrameGraphDebugTexture {
                     .camera = cameraName,
+                    .renderer = camera.rendererKey,
                     .name = candidate.name,
                     .key = publicKey,
                     .resourceKey = slotKey,
+                    .transientResourceKey = transientResourceKey,
                     .texture = nullptr,
                     .extent = previewExtent,
                     .sourceExtent = sourceDesc.extent,
@@ -1185,7 +1205,7 @@ namespace vultra
                                                   .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                               });
                 },
-                [this, preview = m_FrameGraphTexturePreviewSettings](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+                [this, preview = previewSettings](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                     VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                     if (!rc.ext.builtinShaderLib)
                         return;
@@ -1221,9 +1241,11 @@ namespace vultra
 
             m_FrameGraphDebugTextures.push_back(FrameGraphDebugTexture {
                 .camera = slot.camera,
+                .renderer = camera.rendererKey,
                 .name = slot.name,
                 .key = slot.key,
                 .resourceKey = slotKey,
+                .transientResourceKey = transientResourceKey,
                 .texture = &*slot.texture,
                 .extent = slot.extent,
                 .sourceExtent = sourceDesc.extent,
@@ -1407,6 +1429,8 @@ namespace vultra
                 gpuSceneDatabase.transforms[instanceIndex] = model;
             }
             gpuSceneDatabase.uploadTransforms(rd, cb);
+            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline))
+                gpuSceneDatabase.rebuildRayTracingTlas(rd);
 
             if (gpuSceneView.isCpuDriven())
             {
@@ -1511,7 +1535,7 @@ namespace vultra
             }
             m_GpuSceneDatabaseBack.uploadSceneTables(rd, cb);
 
-            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracing))
+            if (HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline))
                 m_GpuSceneDatabaseBack.rebuildRayTracingScene(rd);
 
             uint32_t maxMeshletDraws = 0;
@@ -2084,12 +2108,16 @@ namespace vultra
                 // This sets up the frame graph using a feature renderer or a custom graph-aware renderer.
                 rhi::prepareForAttachment(cb, *target, false);
                 renderer->buildFrameGraph(buildCtx);
+
+                std::ostringstream runtimeDot;
+                fg.debugOutput(runtimeDot, graphviz::Writer {});
+
                 addFrameGraphTextureCapturePasses(buildCtx, viewCamera);
                 fg.compile();
 
                 {
                     std::ostringstream       snapshot;
-                    FrameGraphSnapshotWriter snapshotWriter {cam.name, cam.rendererKey};
+                    FrameGraphSnapshotWriter snapshotWriter {cam.name, cam.rendererKey, runtimeDot.str()};
                     fg.debugOutput(snapshot, snapshotWriter);
                     m_LastFrameGraphSnapshot += snapshot.str();
                     m_LastFrameGraphSnapshot += "\n";

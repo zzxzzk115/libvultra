@@ -30,6 +30,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/hzb_generate_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/meshlet_cull_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/meshlet_hiz_cull_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/raytracing_primary_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/shadow_map_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
@@ -928,6 +929,19 @@ namespace vultra
                                     passCtx.setOutput("target", target);
                             });
 
+            registerBuiltin("RayTracingPrimary", {}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                auto color = m_RayTracingPrimaryPass.addPass(*ctx);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
             registerBuiltin("VisibilityBuffer", {}, {"visibility"},
                             [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
@@ -1134,6 +1148,7 @@ namespace vultra
         FxaaPass m_FxaaPass;
         SelectionOutlinePass m_SelectionOutlinePass;
         FinalCompositionPass m_FinalCompositionPass;
+        RayTracingPrimaryPass m_RayTracingPrimaryPass;
         VisibilityBufferPass m_VisibilityBufferPass;
         ThinGBufferPass m_ThinGBufferPass;
         CoarseInstanceCullPass m_CoarseInstanceCullPass;

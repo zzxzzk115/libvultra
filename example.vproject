@@ -3,4 +3,4 @@ version = 1
 name = "example"
 asset_root = "resources"
 default_scene = "res://scenes/test.vscn"
-render_pipeline = "res://render/default.vrg.json"
+editing_rendergraph = "res://render/default_rt.vrg.json"

@@ -1,0 +1,20 @@
+#pragma once
+
+#include "vultra/function/rendering/srp/builtin/passes/final_composition_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/raytracing_primary_pass.hpp"
+#include "vultra/function/rendering/srp/renderer.hpp"
+
+namespace vultra
+{
+    class UniversalRtRenderer final : public Renderer
+    {
+    public:
+        std::string_view name() const override { return "universal_rt"; }
+
+        void buildFrameGraph(FrameGraphBuildContext& ctx) override;
+
+    private:
+        RayTracingPrimaryPass m_PrimaryPass;
+        FinalCompositionPass  m_FinalCompositionPass;
+    };
+} // namespace vultra

@@ -264,13 +264,19 @@ struct MaterialParamsPBRMR
     vec4 baseColor;
     float metallicFactor;
     float roughnessFactor;
+    float alphaCutoff;
+    uint alphaMode;
     uint baseColorTex;
     uint normalTex;
     uint mrTex;
+    uint metallicTex;
+    uint roughnessTex;
     uint occlusionTex;
     uint emissiveTex;
+    uint doubleSided;
     uint pad0;
     uint pad1;
+    uint pad2;
 };
 struct MaterialParamsPBRSG
 {
@@ -338,20 +344,35 @@ MaterialParamsPBRMR get_pbrmr_params(uint materialIndex)
     // offset + 20 : float roughnessFactor
     params.roughnessFactor = _load_f32_bytes(m.blockOffsetBytes, 20u);
 
-    // offset + 24 : uint baseColorTex
-    params.baseColorTex = _load_u32(m.blockOffsetBytes, 24u);
+    // offset + 24 : float alphaCutoff
+    params.alphaCutoff = _load_f32_bytes(m.blockOffsetBytes, 24u);
 
-    // offset + 28 : uint normalTex
-    params.normalTex = _load_u32(m.blockOffsetBytes, 28u);
+    // offset + 28 : uint alphaMode
+    params.alphaMode = _load_u32(m.blockOffsetBytes, 28u);
 
-    // offset + 32 : uint mrTex
-    params.mrTex = _load_u32(m.blockOffsetBytes, 32u);
+    // offset + 32 : uint baseColorTex
+    params.baseColorTex = _load_u32(m.blockOffsetBytes, 32u);
 
-    // offset + 36 : uint occlusionTex
-    params.occlusionTex = _load_u32(m.blockOffsetBytes, 36u);
+    // offset + 36 : uint normalTex
+    params.normalTex = _load_u32(m.blockOffsetBytes, 36u);
 
-    // offset + 40 : uint emissiveTex
-    params.emissiveTex = _load_u32(m.blockOffsetBytes, 40u);
+    // offset + 40 : uint mrTex
+    params.mrTex = _load_u32(m.blockOffsetBytes, 40u);
+
+    // offset + 44 : uint metallicTex
+    params.metallicTex = _load_u32(m.blockOffsetBytes, 44u);
+
+    // offset + 48 : uint roughnessTex
+    params.roughnessTex = _load_u32(m.blockOffsetBytes, 48u);
+
+    // offset + 52 : uint occlusionTex
+    params.occlusionTex = _load_u32(m.blockOffsetBytes, 52u);
+
+    // offset + 56 : uint emissiveTex
+    params.emissiveTex = _load_u32(m.blockOffsetBytes, 56u);
+
+    // offset + 60 : uint doubleSided
+    params.doubleSided = _load_u32(m.blockOffsetBytes, 60u);
 
     return params;
 }

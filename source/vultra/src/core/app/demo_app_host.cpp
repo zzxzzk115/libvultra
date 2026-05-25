@@ -14,6 +14,7 @@
 #include "vultra/function/rendering/render_system.hpp"
 #include "vultra/function/rendering/shader_system.hpp"
 #include "vultra/function/rendering/srp/builtin/universal_renderer.hpp"
+#include "vultra/function/rendering/srp/builtin/universal_rt_renderer.hpp"
 #include "vultra/function/resource/gpu_resource_system.hpp"
 #include "vultra/function/scene/scene_system.hpp"
 #include "vultra/function/scripting/script_system.hpp"
@@ -409,6 +410,7 @@ namespace vultra
             engine.emplaceSubsystem<AssetSystem>();
             auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
             renderSystem.registerRenderer(renderer);
+            renderSystem.registerRenderer(createRef<UniversalRtRenderer>());
 
             engine.emplaceSubsystem<SceneSystem>();
             engine.emplaceSubsystem<ScriptSystem>();

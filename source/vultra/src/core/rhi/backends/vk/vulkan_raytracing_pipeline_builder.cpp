@@ -48,6 +48,39 @@ namespace vultra
                         return {};
                 }
             }
+
+            void addShaderStageToReflection(ShaderReflection& reflection, const ShaderType shaderType)
+            {
+                ShaderStages stage {ShaderStages::eNone};
+                switch (shaderType)
+                {
+                    case ShaderType::eRayGen:
+                        stage = ShaderStages::eRayGen;
+                        break;
+                    case ShaderType::eMiss:
+                        stage = ShaderStages::eMiss;
+                        break;
+                    case ShaderType::eClosestHit:
+                        stage = ShaderStages::eClosestHit;
+                        break;
+                    case ShaderType::eAnyHit:
+                        stage = ShaderStages::eAnyHit;
+                        break;
+                    case ShaderType::eIntersect:
+                        stage = ShaderStages::eIntersect;
+                        break;
+                    default:
+                        stage = ShaderStages::eNone;
+                        break;
+                }
+                for (auto& set : reflection.descriptorSets)
+                {
+                    for (auto& [_, descriptor] : set)
+                        descriptor.stageFlags |= stage;
+                }
+                for (auto& range : reflection.pushConstantRanges)
+                    range.stageFlags |= stage;
+            }
         } // namespace
 
         RayTracingPipeline RayTracingPipeline::Builder::build(RenderDevice& rd)
@@ -76,10 +109,16 @@ namespace vultra
 
             for (const auto& [shaderType, spv] : m_BuiltinShaderStages)
             {
+                ShaderReflection stageReflection {};
                 auto shaderModule =
-                    rd.createShaderModule(spv, reflection ? std::addressof(reflection.value()) : nullptr);
+                    rd.createShaderModule(spv, reflection ? std::addressof(stageReflection) : nullptr);
                 if (!shaderModule)
                     continue;
+                if (reflection)
+                {
+                    addShaderStageToReflection(stageReflection, shaderType);
+                    reflection->accumulate(stageReflection);
+                }
 
                 vk::ShaderModule shaderModuleHandle {nullptr};
                 {
@@ -104,13 +143,19 @@ namespace vultra
 
             for (const auto& [shaderType, shaderStageInfo] : m_ShaderStages)
             {
+                ShaderReflection stageReflection {};
                 auto shaderModule = rd.createShaderModule(shaderType,
                                                           shaderStageInfo.code,
                                                           shaderStageInfo.entryPointName,
                                                           shaderStageInfo.defines,
-                                                          reflection ? std::addressof(reflection.value()) : nullptr);
+                                                          reflection ? std::addressof(stageReflection) : nullptr);
                 if (!shaderModule)
                     continue;
+                if (reflection)
+                {
+                    addShaderStageToReflection(stageReflection, shaderType);
+                    reflection->accumulate(stageReflection);
+                }
 
                 vk::ShaderModule shaderModuleHandle {nullptr};
                 {
@@ -174,9 +219,10 @@ namespace vultra
             auto backend = std::make_unique<VulkanRayTracingPipeline>(
                 toBackendHandle(static_cast<VkPipeline>(result.value)),
                 rd.getRayTracingPipelineProperties());
+            const auto pipelineHandle = backend->getHandle();
 
             return RayTracingPipeline {std::move(m_PipelineLayout),
-                                       backend->getHandle(),
+                                       pipelineHandle,
                                        std::make_unique<VulkanPipeline>(VulkanRenderDeviceAccess::getDeviceHandle(rd)),
                                        std::move(m_Groups),
                                        std::move(m_RaygenGroupIndices),

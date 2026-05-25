@@ -554,6 +554,13 @@ namespace vultra
             return glm::quatLookAtRH(dir, up);
         }
 
+        [[nodiscard]] glm::vec3 lightDirectionFromTransform(const TransformComponent& transform)
+        {
+            const auto direction = transform.rotation * glm::vec3 {0.0f, 0.0f, -1.0f};
+            const auto len2      = glm::dot(direction, direction);
+            return len2 > 1e-8f ? direction * glm::inversesqrt(len2) : glm::vec3 {0.0f, -1.0f, 0.0f};
+        }
+
         void createLightEntity(World& world, const uint32_t kind, const char* name)
         {
             auto& registry = world.registry();
@@ -575,7 +582,7 @@ namespace vultra
             light.castsShadow = kind == 0;
         }
 
-        void drawLightTransformEditor(entt::registry& registry, entt::entity entity)
+        void drawLightTransformEditor(entt::registry& registry, entt::entity entity, const LightComponent& light)
         {
             auto* transform = registry.try_get<TransformComponent>(entity);
             if (!transform)
@@ -583,11 +590,28 @@ namespace vultra
 
             bool changed = false;
             changed |= ImGui::DragFloat3("Position", &transform->position.x, 0.05f, -1000.0f, 1000.0f, "%.2f");
-            glm::vec3 rotationDegrees = glm::degrees(glm::eulerAngles(transform->rotation));
-            if (ImGui::DragFloat3("Rotation", &rotationDegrees.x, 0.25f, -360.0f, 360.0f, "%.1f deg"))
+            if (light.kind == 0 || light.kind == 2)
             {
-                transform->rotation = glm::quat(glm::radians(rotationDegrees));
-                changed = true;
+                glm::vec3 direction = lightDirectionFromTransform(*transform);
+                if (ImGui::DragFloat3("Direction", &direction.x, 0.01f, -1.0f, 1.0f, "%.3f"))
+                {
+                    transform->rotation = rotationFromLightDirection(direction);
+                    changed             = true;
+                }
+                if (ImGui::Button("Reset Direction"))
+                {
+                    transform->rotation = rotationFromLightDirection(glm::vec3 {-0.35f, -0.8f, -0.25f});
+                    changed             = true;
+                }
+            }
+            else
+            {
+                glm::vec3 rotationDegrees = glm::degrees(glm::eulerAngles(transform->rotation));
+                if (ImGui::DragFloat3("Rotation", &rotationDegrees.x, 0.25f, -360.0f, 360.0f, "%.1f deg"))
+                {
+                    transform->rotation = glm::quat(glm::radians(rotationDegrees));
+                    changed = true;
+                }
             }
             changed |= ImGui::DragFloat3("Scale", &transform->scale.x, 0.01f, 0.001f, 100.0f, "%.2f");
             if (changed)
@@ -607,13 +631,6 @@ namespace vultra
 
             ImGui::ColorEdit3("Color", &light.color.x);
             ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 10000.0f, "%.2f");
-
-            if (light.kind == 0 || light.kind == 2)
-            {
-                ImGui::BeginDisabled();
-                ImGui::SliderFloat3("Fallback Direction", &light.direction.x, -1.0f, 1.0f, "%.2f");
-                ImGui::EndDisabled();
-            }
 
             if (light.kind == 1 || light.kind == 2)
             {
@@ -680,7 +697,7 @@ namespace vultra
                             editableName->name = buffer;
                     }
 
-                    drawLightTransformEditor(registry, entity);
+                    drawLightTransformEditor(registry, entity, light);
                     drawLightComponentEditor(light);
                     ImGui::TreePop();
                 }

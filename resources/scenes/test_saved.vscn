@@ -36,7 +36,6 @@ TransformComponent/scale = (1, 1, 1)
 LightComponent/kind = 0
 LightComponent/color = (1, 0.96, 0.9)
 LightComponent/intensity = 2.000000
-LightComponent/direction = (-0.35, -0.8, -0.25)
 LightComponent/range = 100.000000
 LightComponent/radius = 0.050000
 LightComponent/width = 1.000000

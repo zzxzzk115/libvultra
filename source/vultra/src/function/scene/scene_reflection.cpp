@@ -69,7 +69,6 @@ namespace vultra
             .data<&LightComponent::kind>("kind"_hs)
             .data<&LightComponent::color>("color"_hs)
             .data<&LightComponent::intensity>("intensity"_hs)
-            .data<&LightComponent::direction>("direction"_hs)
             .data<&LightComponent::range>("range"_hs)
             .data<&LightComponent::radius>("radius"_hs)
             .data<&LightComponent::width>("width"_hs)

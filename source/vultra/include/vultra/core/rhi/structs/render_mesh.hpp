@@ -28,6 +28,8 @@ namespace vultra
 
             uint32_t vertexStride {0};
             uint32_t vertexCount {0};
+            uint32_t vertexOffset {0};
+            uint32_t positionOffsetBytes {0};
 
             uint32_t  indexCount {0};
             IndexType indexType {IndexType::eUInt32};

@@ -1,0 +1,41 @@
+{
+  "meta": {
+    "editor": {
+      "nodes": {
+        "RayTracingPrimary": {
+          "pos": [
+            360.0,
+            80.0
+          ]
+        },
+        "FinalComposition": {
+          "pos": [
+            820.0,
+            80.0
+          ]
+        }
+      }
+    }
+  },
+  "passes": [
+    {
+      "enabled": true,
+      "id": "RayTracingPrimary",
+      "outputs": {
+        "color": "RayTracingPrimary.color"
+      },
+      "type": "RayTracingPrimary"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "RayTracingPrimary.color"
+      },
+      "outputs": {
+        "target": "FinalComposition.target"
+      },
+      "type": "FinalComposition"
+    }
+  ]
+}

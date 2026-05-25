@@ -20,6 +20,22 @@ namespace vultra
 {
     namespace
     {
+        [[nodiscard]] std::unique_ptr<rhi::RenderDevice>
+        createRenderDevice(rhi::RenderDeviceFeatureFlagBits        featureFlags,
+                           std::string_view                       title,
+                           std::span<const char* const>           vulkanInstanceExtensions,
+                           rhi::RenderBackendApi                  backendApi,
+                           bool                                   enableValidation,
+                           bool                                   enableDebugMarkers)
+        {
+            return std::make_unique<rhi::RenderDevice>(featureFlags,
+                                                       title,
+                                                       vulkanInstanceExtensions,
+                                                       backendApi,
+                                                       enableValidation,
+                                                       enableDebugMarkers);
+        }
+
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         void ensureXrMirrorTargets(rhi::RenderDevice&                                      rd,
                                    std::vector<rhi::Texture>&                              mirrorTargets,
@@ -101,15 +117,37 @@ namespace vultra
         {
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             case rhi::RenderBackendApi::eAuto:
-            case rhi::RenderBackendApi::eVulkan:
-                m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
-                                                                      ctx().config.window.title,
-                                                                      window.getRequiredVulkanInstanceExtensions(),
-                                                                      rhi::RenderBackendApi::eVulkan,
-                                                                      ctx().config.render.enableValidation,
-                                                                      ctx().config.render.enableDebugMarkers);
+            case rhi::RenderBackendApi::eVulkan: {
+                auto featureFlags = ctx().config.render.renderDeviceFeatureFlag;
+                try
+                {
+                    m_RenderDevice = createRenderDevice(featureFlags,
+                                                        ctx().config.window.title,
+                                                        window.getRequiredVulkanInstanceExtensions(),
+                                                        rhi::RenderBackendApi::eVulkan,
+                                                        ctx().config.render.enableValidation,
+                                                        ctx().config.render.enableDebugMarkers);
+                }
+                catch (const std::runtime_error& e)
+                {
+                    if (!HasFlagValues(featureFlags, rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline))
+                        throw;
+
+                    VULTRA_CORE_WARN(
+                        "[RenderBackendSystem] Ray tracing was requested but is unavailable ({}); falling back to normal Vulkan rendering.",
+                        e.what());
+                    featureFlags                              = rhi::RenderDeviceFeatureFlagBits::eNormal;
+                    ctx().config.render.renderDeviceFeatureFlag = featureFlags;
+                    m_RenderDevice = createRenderDevice(featureFlags,
+                                                        ctx().config.window.title,
+                                                        window.getRequiredVulkanInstanceExtensions(),
+                                                        rhi::RenderBackendApi::eVulkan,
+                                                        ctx().config.render.enableValidation,
+                                                        ctx().config.render.enableDebugMarkers);
+                }
                 m_ImGuiBackend = std::make_unique<rhi::VulkanImGui>(*m_RenderDevice);
                 break;
+            }
 #else
             case rhi::RenderBackendApi::eAuto:
             case rhi::RenderBackendApi::eVulkan:
@@ -118,12 +156,12 @@ namespace vultra
 #endif
 
             case rhi::RenderBackendApi::eWebGPU:
-                m_RenderDevice = std::make_unique<rhi::RenderDevice>(ctx().config.render.renderDeviceFeatureFlag,
-                                                                      ctx().config.window.title,
-                                                                      std::span<const char* const> {},
-                                                                      rhi::RenderBackendApi::eWebGPU,
-                                                                      ctx().config.render.enableValidation,
-                                                                      ctx().config.render.enableDebugMarkers);
+                m_RenderDevice = createRenderDevice(ctx().config.render.renderDeviceFeatureFlag,
+                                                    ctx().config.window.title,
+                                                    std::span<const char* const> {},
+                                                    rhi::RenderBackendApi::eWebGPU,
+                                                    ctx().config.render.enableValidation,
+                                                    ctx().config.render.enableDebugMarkers);
                 m_ImGuiBackend = std::make_unique<rhi::WebGPUImGui>(*m_RenderDevice);
                 break;
         }

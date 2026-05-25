@@ -4,6 +4,8 @@
 #include "project_launcher/project_launcher.hpp"
 #include "vproject.hpp"
 
+#include <vasset/vpk.hpp>
+
 #include <vasset/tool_cli.hpp>
 #include <vshadersystem/tool_cli.hpp>
 
@@ -13,6 +15,7 @@
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/renderer.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_renderer.hpp>
+#include <vultra/function/rendering/srp/builtin/universal_rt_renderer.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
@@ -51,6 +54,48 @@ namespace
         return false;
     }
 
+    std::string_view stripResScheme(std::string_view uri)
+    {
+        constexpr std::string_view kScheme = "res://";
+        if (uri.starts_with(kScheme))
+            uri.remove_prefix(kScheme.size());
+        while (!uri.empty() && uri.front() == '/')
+            uri.remove_prefix(1);
+        return uri;
+    }
+
+    std::string rendererKeyFromRenderGraphUri(std::string_view uri)
+    {
+        auto filename = std::filesystem::path(std::string(stripResScheme(uri))).filename().generic_string();
+        constexpr std::string_view suffix = ".vrg.json";
+        if (filename.ends_with(suffix))
+            filename.resize(filename.size() - suffix.size());
+        return filename.empty() ? "custom" : filename;
+    }
+
+    std::vector<std::string> renderGraphUrisFromVpkRecords(const vasset::VpkReadOnly& vpk)
+    {
+        std::vector<std::string> uris;
+        for (const auto& entry : vpk.registry)
+        {
+            if (entry.type != vasset::VAssetType::eRenderGraphJson)
+                continue;
+            if (entry.pathOffset + entry.pathSize > vpk.stringTable.size())
+                continue;
+
+            std::string logicalPath {vpk.stringTable.data() + entry.pathOffset, entry.pathSize};
+            std::replace(logicalPath.begin(), logicalPath.end(), '\\', '/');
+            if (logicalPath.starts_with("res://"))
+                uris.push_back(std::move(logicalPath));
+            else
+                uris.push_back("res://" + logicalPath);
+        }
+
+        std::sort(uris.begin(), uris.end());
+        uris.erase(std::unique(uris.begin(), uris.end()), uris.end());
+        return uris;
+    }
+
     class VultraShellRenderer final : public vultra::FeatureRenderer
     {
     public:
@@ -73,9 +118,9 @@ namespace
             {
                 auto* cameraService = services->tryGet<vultra::ICameraService>();
                 auto* windowService = services->tryGet<IWindowService>();
-                if (cameraService && windowService)
-                {
-                    cameraService->clearManualCameras();
+                auto addEditorShellCamera = [&]() {
+                    if (!cameraService || !windowService)
+                        return;
 
                     const auto extent = windowService->window().getExtent();
                     const float width  = static_cast<float>(std::max(extent.x, 1));
@@ -94,16 +139,24 @@ namespace
                     shellCamera.renderImGui = true;
                     shellCamera.rendererKey = "editor-shell";
                     cameraService->addManualCamera(shellCamera);
+                };
+
+                if (cameraService)
+                    cameraService->clearManualCameras();
+
+                if (m_State.mode == vultra_app::AppMode::Editor)
+                {
+                    vultra_app::EditorContext ctx {.state = m_State, .services = services};
+                    m_Editor.draw(ctx);
                 }
+                else
+                    m_Launcher.draw(m_State, windowService);
+
+                addEditorShellCamera();
+                return;
             }
 
-            if (m_State.mode == vultra_app::AppMode::Editor)
-            {
-                vultra_app::EditorContext ctx {.state = m_State, .services = getServices()};
-                m_Editor.draw(ctx);
-            }
-            else
-                m_Launcher.draw(m_State, getServices() ? getServices()->tryGet<IWindowService>() : nullptr);
+            m_Launcher.draw(m_State, nullptr);
         }
 
     private:
@@ -145,6 +198,7 @@ namespace
             return;
 
         renderService->registerRenderer(vultra::createRef<vultra::UniversalRenderer>());
+        renderService->registerRenderer(vultra::createRef<vultra::UniversalRtRenderer>());
     }
 
     class VultraStandaloneApp final : public vultra::DemoAppHost
@@ -165,7 +219,7 @@ namespace
                         m_State.currentProjectName  = project->name;
                         m_State.currentAssetRoot    = project->assetRoot;
                         m_State.currentDefaultScene = project->defaultScene;
-                        m_State.currentRenderPipeline = project->renderPipeline;
+                        m_State.currentEditingRenderGraph = project->editingRenderGraph;
                     }
                 }
             }
@@ -212,6 +266,12 @@ namespace
 
         void onConfigureDemo(vultra::Engine& engine) override
         {
+            if (engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eVulkan)
+            {
+                engine.ctx().config.render.renderDeviceFeatureFlag =
+                    vultra::rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline;
+            }
+
             if (m_Options.validation.has_value())
             {
                 engine.ctx().config.render.enableValidation = *m_Options.validation;
@@ -256,8 +316,6 @@ namespace
                 {
                     if (!manifest->name.empty())
                         engine.ctx().config.window.title = manifest->name;
-                    engine.ctx().config.render.renderPipelineAsset       = manifest->renderPipeline;
-                    engine.ctx().config.render.renderPipelineRendererKey.clear();
                     if (m_Options.sceneUri.empty())
                         m_Options.sceneUri = manifest->entryScene;
                 }
@@ -285,6 +343,18 @@ namespace
                 registerEditorSceneRenderer(engine.ctx().services);
                 vultra_app::ProjectLauncher::logStartup();
                 return;
+            }
+
+            auto* renderService = engine.ctx().services.tryGet<vultra::IRenderService>();
+            if (renderService)
+            {
+                if (auto opened = vasset::openVpk(m_VpkPath->generic_string()); opened)
+                {
+                    for (const auto& uri : renderGraphUrisFromVpkRecords(opened.value()))
+                    {
+                        renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
+                    }
+                }
             }
 
             auto& sceneService = engine.ctx().services.require<vultra::ISceneService>();

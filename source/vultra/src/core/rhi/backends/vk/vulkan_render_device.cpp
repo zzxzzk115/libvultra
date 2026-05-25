@@ -1691,7 +1691,7 @@ namespace vultra
             {
                 vk::AccelerationStructureGeometryTrianglesDataKHR triangles {};
                 triangles.vertexFormat                = vk::Format::eR32G32B32Sfloat;
-                triangles.vertexData.deviceAddress    = sm.vertexBufferAddress.value;
+                triangles.vertexData.deviceAddress    = sm.vertexBufferAddress.value + sm.positionOffsetBytes;
                 triangles.vertexStride                = sm.vertexStride;
                 triangles.indexType                   = toVkIndexType(sm.indexType);
                 triangles.indexData.deviceAddress     = sm.indexBufferAddress.value;
@@ -1710,7 +1710,7 @@ namespace vultra
                 vk::AccelerationStructureBuildRangeInfoKHR range {};
                 range.primitiveCount  = sm.indexCount / 3;
                 range.primitiveOffset = 0;
-                range.firstVertex     = 0;
+                range.firstVertex     = sm.vertexOffset;
                 range.transformOffset = 0;
                 buildRanges.push_back(range);
             }
