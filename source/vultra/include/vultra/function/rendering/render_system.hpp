@@ -75,6 +75,19 @@ namespace vultra
         {
             return m_FrameGraphTexturePreviewSettings;
         }
+        void setFrameGraphTexturePreviewOverride(std::string_view textureKey,
+                                                 const FrameGraphTexturePreviewSettings& settings) override
+        {
+            m_FrameGraphTexturePreviewOverrides[std::string(textureKey)] = settings;
+        }
+        void clearFrameGraphTexturePreviewOverride(std::string_view textureKey) override
+        {
+            m_FrameGraphTexturePreviewOverrides.erase(std::string(textureKey));
+        }
+        void clearFrameGraphTexturePreviewOverrides() override
+        {
+            m_FrameGraphTexturePreviewOverrides.clear();
+        }
         const std::vector<FrameGraphDebugTexture>& frameGraphDebugTextures() const override
         {
             return m_FrameGraphDebugTextures;
@@ -141,6 +154,7 @@ namespace vultra
         std::vector<FrameGraphDebugTextureSlot> m_RetiredFrameGraphDebugTextureSlots;
         bool                                              m_FrameGraphTextureCaptureEnabled {false};
         FrameGraphTexturePreviewSettings                  m_FrameGraphTexturePreviewSettings;
+        std::unordered_map<std::string, FrameGraphTexturePreviewSettings> m_FrameGraphTexturePreviewOverrides;
         std::optional<rhi::GraphicsPipeline>              m_FrameGraphTexturePreviewPipeline;
         rhi::PixelFormat                                  m_FrameGraphTexturePreviewPipelineFormat {
             rhi::PixelFormat::eUndefined};

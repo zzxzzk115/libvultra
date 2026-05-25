@@ -65,6 +65,14 @@ void main()
         FragColor = vec4(vec3(remapClamp(src.a)), 1.0);
         return;
     }
+    if (u_Push.previewMode == 5)
+    {
+        vec3 normal = src.rgb;
+        if (any(lessThan(normal, vec3(0.0))) || any(greaterThan(normal, vec3(1.0))))
+            normal = normal * 0.5 + 0.5;
+        FragColor = vec4(clamp(normal, vec3(0.0), vec3(1.0)), 1.0);
+        return;
+    }
 
     int count = u_Push.channelMask.x + u_Push.channelMask.y + u_Push.channelMask.z + u_Push.channelMask.w;
 

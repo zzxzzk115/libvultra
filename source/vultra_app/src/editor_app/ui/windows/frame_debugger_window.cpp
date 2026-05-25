@@ -1,5 +1,7 @@
 #include "editor_app/ui/windows/frame_debugger_window.hpp"
 
+#include "editor_app/ui/texture_preview_utils.hpp"
+
 #include <vultra/core/rhi/structs/pixel_format.hpp>
 #include <vultra/function/services/frame_debugger_service.hpp>
 #include <vultra/function/services/imgui_service.hpp>
@@ -400,31 +402,6 @@ namespace vultra_app
             return out.empty() ? std::string {"frame_debugger_texture"} : out;
         }
 
-        void normalizeClamp(float& minValue, float& maxValue)
-        {
-            minValue = std::clamp(minValue, 0.0f, 1.0f);
-            maxValue = std::clamp(maxValue, 0.0f, 1.0f);
-            if (maxValue < minValue)
-                std::swap(minValue, maxValue);
-            if (maxValue <= minValue)
-                maxValue = std::min(1.0f, minValue + 0.0001f);
-        }
-
-        bool isDepthLikeTexture(const vultra::FrameGraphDebugTexture& texture)
-        {
-            if (containsIgnoreCase(texture.name, "ssao") || containsIgnoreCase(texture.resourceKey, "ssao") ||
-                containsIgnoreCase(texture.name, "ambient occlusion") ||
-                containsIgnoreCase(texture.resourceKey, "ambient occlusion"))
-            {
-                return false;
-            }
-
-            const auto aspect = vultra::rhi::getAspectMask(texture.format);
-            return HasFlagValues(aspect, vultra::rhi::ImageAspectFlags::eDepth) ||
-                   containsIgnoreCase(texture.name, "depth") || containsIgnoreCase(texture.resourceKey, "depth") ||
-                   containsIgnoreCase(texture.name, "shadow") || containsIgnoreCase(texture.resourceKey, "shadow");
-        }
-
         bool isAutoFitClampUseful(const vultra::FrameGraphDebugTexture& texture)
         {
             if (containsIgnoreCase(texture.name, "ssao") || containsIgnoreCase(texture.resourceKey, "ssao") ||
@@ -434,12 +411,7 @@ namespace vultra_app
             {
                 return false;
             }
-            return isDepthLikeTexture(texture);
-        }
-
-        bool isShadowLikeTexture(const vultra::FrameGraphDebugTexture& texture)
-        {
-            return containsIgnoreCase(texture.name, "shadow") || containsIgnoreCase(texture.resourceKey, "shadow");
+            return ui::isDepthLikeTexture(texture);
         }
     } // namespace
 
@@ -447,9 +419,6 @@ namespace vultra_app
 
     void FrameDebuggerWindow::onDestroy(EditorContext& ctx)
     {
-        if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
-            renderService->setFrameGraphTextureCaptureEnabled(false);
-
         auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
         if (!imguiService)
         {
@@ -476,8 +445,6 @@ namespace vultra_app
         const bool visible = ImGui::Begin(title().c_str(), &m_Open);
         if (!visible)
         {
-            if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
-                renderService->setFrameGraphTextureCaptureEnabled(false);
             ImGui::End();
             return;
         }
@@ -486,8 +453,6 @@ namespace vultra_app
         auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
         auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
         auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
-        if (renderService)
-            renderService->setFrameGraphTextureCaptureEnabled(false);
         if (imguiService)
         {
             constexpr uint64_t kDescriptorReleaseDelayFrames = 8u;
@@ -642,16 +607,14 @@ namespace vultra_app
                 if (renderService)
                 {
                     renderService->setFrameGraphTextureCaptureEnabled(true);
-                    vultra::FrameGraphTexturePreviewSettings previewSettings {};
-                    previewSettings.gammaCorrect = m_TexturePreviewGammaCorrect;
-                    previewSettings.previewMode = m_TexturePreviewMode;
-                    previewSettings.depthNear = m_TexturePreviewDepthNear;
-                    previewSettings.depthFar = m_TexturePreviewDepthFar;
-                    previewSettings.clampMin = m_TexturePreviewClampMin;
-                    previewSettings.clampMax = m_TexturePreviewClampMax;
-                    for (int i = 0; i < 4; ++i)
-                        previewSettings.channels[i] = m_TexturePreviewChannels[i];
-                    previewSettings.selectedTextureKey = m_SelectedTextureKey;
+                    const auto previewSettings = ui::makeFrameGraphTexturePreviewSettings(m_SelectedTextureKey,
+                                                                                          m_TexturePreviewGammaCorrect,
+                                                                                          m_TexturePreviewChannels,
+                                                                                          m_TexturePreviewMode,
+                                                                                          m_TexturePreviewDepthNear,
+                                                                                          m_TexturePreviewDepthFar,
+                                                                                          m_TexturePreviewClampMin,
+                                                                                          m_TexturePreviewClampMax);
                     renderService->setFrameGraphTexturePreviewSettings(previewSettings);
                 }
 
@@ -726,9 +689,9 @@ namespace vultra_app
                         m_TexturePreviewClampMin = 0.0f;
                         m_TexturePreviewClampMax = 1.0f;
                         m_TexturePreviewDepthDefaultsKey = texture.resourceKey;
-                        if (isDepthLikeTexture(texture))
+                        if (ui::isDepthLikeTexture(texture))
                         {
-                            m_TexturePreviewMode = isShadowLikeTexture(texture) ? 1 : 2;
+                            m_TexturePreviewMode = ui::defaultTexturePreviewMode(texture);
                             if (isAutoFitClampUseful(texture))
                             {
                                 m_PendingTexturePreviewAutoFitKey = texture.resourceKey;
@@ -749,7 +712,7 @@ namespace vultra_app
                         }
                         else
                         {
-                            m_TexturePreviewMode = 0;
+                            m_TexturePreviewMode = ui::defaultTexturePreviewMode(texture);
                             m_PendingTexturePreviewAutoFitKey.clear();
                             m_PendingTexturePreviewAutoFitTexture = nullptr;
                             m_PendingTexturePreviewAutoFitFrame = 0u;
@@ -781,7 +744,7 @@ namespace vultra_app
                     ImGui::Combo(
                         "Mode",
                         &m_TexturePreviewMode,
-                        "Color\0Raw Depth\0Linear Depth\0Inverted Linear Depth\0Alpha\0");
+                        "Color\0Raw Depth\0Linear Depth\0Inverted Linear Depth\0Alpha\0Normal\0");
                     if (m_TexturePreviewMode == 2 || m_TexturePreviewMode == 3)
                     {
                         ImGui::TextDisabled("Camera z: %.4f - %.1f", m_TexturePreviewDepthNear, m_TexturePreviewDepthFar);
@@ -838,7 +801,7 @@ namespace vultra_app
                         const float high = std::min(1.0f, maxValue + padding);
                         m_TexturePreviewClampMin = oldMin + low * oldRange;
                         m_TexturePreviewClampMax = oldMin + high * oldRange;
-                        normalizeClamp(m_TexturePreviewClampMin, m_TexturePreviewClampMax);
+                        ui::normalizePreviewClamp(m_TexturePreviewClampMin, m_TexturePreviewClampMax);
                         return true;
                     };
                     const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
@@ -893,7 +856,7 @@ namespace vultra_app
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(120.0f);
                     ImGui::DragFloat("Clamp Max", &m_TexturePreviewClampMax, 0.001f, 0.0f, 1.0f, "%.4f");
-                    normalizeClamp(m_TexturePreviewClampMin, m_TexturePreviewClampMax);
+                    ui::normalizePreviewClamp(m_TexturePreviewClampMin, m_TexturePreviewClampMax);
                     ImGui::Checkbox("Gamma", &m_TexturePreviewGammaCorrect);
                     ImGui::SameLine();
                     ImGui::Checkbox("R", &m_TexturePreviewChannels[0]);
@@ -905,16 +868,14 @@ namespace vultra_app
                     ImGui::Checkbox("A", &m_TexturePreviewChannels[3]);
                     if (renderService)
                     {
-                        vultra::FrameGraphTexturePreviewSettings previewSettings {};
-                        previewSettings.gammaCorrect = m_TexturePreviewGammaCorrect;
-                        previewSettings.previewMode = m_TexturePreviewMode;
-                        previewSettings.depthNear = m_TexturePreviewDepthNear;
-                        previewSettings.depthFar = m_TexturePreviewDepthFar;
-                        previewSettings.clampMin = m_TexturePreviewClampMin;
-                        previewSettings.clampMax = m_TexturePreviewClampMax;
-                        for (int i = 0; i < 4; ++i)
-                            previewSettings.channels[i] = m_TexturePreviewChannels[i];
-                        previewSettings.selectedTextureKey = m_SelectedTextureKey;
+                        const auto previewSettings = ui::makeFrameGraphTexturePreviewSettings(m_SelectedTextureKey,
+                                                                                              m_TexturePreviewGammaCorrect,
+                                                                                              m_TexturePreviewChannels,
+                                                                                              m_TexturePreviewMode,
+                                                                                              m_TexturePreviewDepthNear,
+                                                                                              m_TexturePreviewDepthFar,
+                                                                                              m_TexturePreviewClampMin,
+                                                                                              m_TexturePreviewClampMax);
                         renderService->setFrameGraphTexturePreviewSettings(previewSettings);
                     }
                     const int enabledChannelCount = (m_TexturePreviewChannels[0] ? 1 : 0) +

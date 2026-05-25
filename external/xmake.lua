@@ -9,6 +9,8 @@ end
 
 add_requires("zlib")
 
+includes("graphviz")
+
 target("renderdoc")
     -- https://xmake.io/zh/api/description/project-target.html#headeronly
     set_kind("headeronly")
@@ -32,6 +34,10 @@ target("imgui-ext")
     add_includedirs("imgui-ext", {public = true}) -- public: let other targets to auto include
     add_defines("USE_STD_FILESYSTEM", {public = true})
     add_packages("imgui", {public = true})
+    add_deps("graphviz")
+    if is_plat("windows") then
+        add_cxflags("/utf-8")
+    end
     if is_plat("android") then
         add_cflags("-fPIC")
         add_cxflags("-fPIC")

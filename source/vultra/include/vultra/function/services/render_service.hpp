@@ -28,9 +28,11 @@ namespace vultra
     struct FrameGraphDebugTexture
     {
         std::string      camera;
+        std::string      renderer;
         std::string      name;
         std::string      key;
         std::string      resourceKey;
+        std::string      transientResourceKey;
         rhi::Texture*    texture {nullptr};
         rhi::Extent2D    extent {};
         rhi::Extent2D    sourceExtent {};
@@ -41,6 +43,8 @@ namespace vultra
 
     struct FrameGraphTexturePreviewSettings
     {
+        static constexpr std::string_view kCaptureAllTextures = "__all__";
+
         bool channels[4] {true, true, true, true};
         bool gammaCorrect {false};
         int  previewMode {0};
@@ -70,12 +74,16 @@ namespace vultra
         // Built-in runtime profiler (default disabled).
         virtual RuntimeProfiler* runtimeProfiler() = 0;
 
-        // DOT emitted by vrendergraph for the most recently compiled frame graph.
+        // JSONL debug snapshots emitted for the most recently compiled frame graphs.
         virtual std::string_view lastFrameGraphSnapshot() const = 0;
         virtual void             setFrameGraphTextureCaptureEnabled(bool enabled) = 0;
         virtual bool             frameGraphTextureCaptureEnabled() const = 0;
         virtual void             setFrameGraphTexturePreviewSettings(const FrameGraphTexturePreviewSettings& settings) = 0;
         virtual FrameGraphTexturePreviewSettings frameGraphTexturePreviewSettings() const = 0;
+        virtual void setFrameGraphTexturePreviewOverride(std::string_view textureKey,
+                                                         const FrameGraphTexturePreviewSettings& settings) = 0;
+        virtual void clearFrameGraphTexturePreviewOverride(std::string_view textureKey) = 0;
+        virtual void clearFrameGraphTexturePreviewOverrides() = 0;
         virtual const std::vector<FrameGraphDebugTexture>& frameGraphDebugTextures() const = 0;
 
         virtual GaussianSplatRenderSettings&       gaussianSplatSettings() = 0;

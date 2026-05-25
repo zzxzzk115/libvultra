@@ -26,6 +26,7 @@
 #include <ImGuiAl/fonts/RobotoRegular.inl>
 #include <ImGuizmo/ImGuizmo.h>
 #include <imgui.h>
+#include <imgui_graphnode/imgui_graphnode.h>
 #include <imgui_internal.h>
 #include <implot/implot.h>
 #include <imnodes/imnodes.h>
@@ -262,6 +263,7 @@ namespace vultra
         ImGui::CreateContext();
         ImPlot::CreateContext();
         ImNodes::CreateContext();
+        ImGuiGraphNode::CreateContext();
         ImGuiIO& io = ImGui::GetIO();
 
 #ifdef IMGUI_HAS_DOCK
@@ -368,6 +370,7 @@ namespace vultra
             ImGui::SaveIniSettingsToDisk(imguiIniPath.c_str());
         }
 
+        ImGuiGraphNode::DestroyContext();
         ImNodes::DestroyContext();
         ImPlot::DestroyContext();
         ImGui::DestroyContext();

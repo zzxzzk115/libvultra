@@ -5,10 +5,14 @@
 #include <vultra/core/rhi/structs/extent2d.hpp>
 #include <vultra/core/rhi/texture.hpp>
 #include <vultra/function/services/imgui_service.hpp>
+#include <vultra/function/services/render_service.hpp>
 
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace vultra_app
@@ -22,12 +26,6 @@ namespace vultra_app
         void draw(EditorContext& ctx) override;
 
     private:
-        enum class Mode
-        {
-            ePreview,
-            eEdit,
-        };
-
         struct GraphEditorState;
         struct RuntimeGraphState;
         struct RenderTargetSlot
@@ -38,8 +36,16 @@ namespace vultra_app
             uint64_t                            frameCreated {0};
             uint64_t                            releaseFrame {0};
         };
+        struct TextureThumbnailEntry
+        {
+            const vultra::rhi::Texture*      texture {nullptr};
+            vultra::IImGuiService::TextureID textureId {};
+            uint64_t                         retireFrame {0};
+        };
 
         void drawRuntimeGraph(EditorContext& ctx);
+        void drawRuntimeGraphPopup(EditorContext& ctx);
+        void drawRuntimeTexturePreviewWindow(EditorContext& ctx);
         void drawGraphEditor(EditorContext& ctx);
         void drawGraphEditorAddPopup(EditorContext& ctx);
         void drawGraphEditorCanvas(EditorContext& ctx);
@@ -51,6 +57,8 @@ namespace vultra_app
         void retireOverlayRenderTarget(RenderTargetSlot& slot);
         void collectRetiredOverlayRenderTargets(EditorContext& ctx);
         void releaseOverlayRenderTarget(EditorContext& ctx);
+        void collectRetiredTextureThumbnails(EditorContext& ctx);
+        void releaseTextureThumbnails(EditorContext& ctx);
         void resetOverlayRenderTargetForProject(EditorContext& ctx);
 
         std::unique_ptr<RuntimeGraphState> m_RuntimeGraph;
@@ -58,8 +66,37 @@ namespace vultra_app
         RenderTargetSlot              m_OverlayActiveRenderTarget;
         RenderTargetSlot              m_OverlayPendingRenderTarget;
         std::vector<RenderTargetSlot> m_OverlayRetiredRenderTargets;
+        std::unordered_map<std::string, TextureThumbnailEntry> m_TextureThumbnailCache;
+        std::vector<TextureThumbnailEntry> m_RetiredTextureThumbnails;
         float m_OverlayZoom {1.0f};
+        float m_RuntimeGraphPreviewScale {1.0f};
+        bool m_RuntimeGraphPreviewAutoFit {true};
+        float m_RuntimeTexturePreviewScale {1.0f};
+        bool m_RuntimeTexturePreviewAutoFit {true};
+        bool m_RuntimeTexturePreviewGammaCorrect {true};
+        bool m_RuntimeTexturePreviewChannels[4] {true, true, true, false};
+        int  m_RuntimeTexturePreviewMode {0};
+        float m_RuntimeTexturePreviewDepthNear {0.1f};
+        float m_RuntimeTexturePreviewDepthFar {1000.0f};
+        float m_RuntimeTexturePreviewClampMin {0.0f};
+        float m_RuntimeTexturePreviewClampMax {1.0f};
         uint64_t m_ProjectGeneration {0};
-        Mode m_Mode {Mode::eEdit};
+        std::string m_RuntimeTexturePreviewKey;
+        std::string m_RuntimeTexturePreviewTitle;
+        std::string m_RuntimeTexturePreviewDefaultsKey;
+        std::string m_RuntimeTexturePreviewOverrideKey;
+        std::string m_PendingRuntimeTexturePreviewAutoFitKey;
+        const vultra::rhi::Texture* m_PendingRuntimeTexturePreviewAutoFitTexture {nullptr};
+        uint64_t m_PendingRuntimeTexturePreviewAutoFitFrame {0};
+        uint64_t m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame {0};
+        uint64_t m_PendingRuntimeTexturePreviewAutoFitNextTryFrame {0};
+        std::unordered_set<std::string> m_RuntimeGraphTextureAutoFitDone;
+        std::unordered_set<std::string> m_RuntimeGraphTextureDefaultPreviewDone;
+        std::unordered_map<std::string, vultra::FrameGraphTexturePreviewSettings> m_RuntimeGraphTexturePreviewSettings;
+        std::unordered_map<std::string, uint64_t> m_RuntimeGraphTextureAutoFitNextFrame;
+        std::unordered_map<std::string, uint64_t> m_RuntimeGraphTextureAutoFitDeadlineFrame;
+        bool m_RuntimeGraphPopupOpen {false};
+        bool m_RuntimeTexturePreviewOpen {false};
+        bool m_SelectRuntimePreviewGraph {false};
     };
 } // namespace vultra_app
