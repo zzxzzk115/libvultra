@@ -509,7 +509,8 @@ namespace vultra
                                    const std::span<const char* const> requiredInstanceExtensions,
                                    const RenderBackendApi             backendApi,
                                    const bool                         enableValidation,
-                                   const bool                         enableDebugMarkers)
+                                   const bool                         enableDebugMarkers,
+                                   const bool                         enableRenderDoc)
         {
             switch (backendApi)
             {
@@ -556,6 +557,7 @@ namespace vultra
             vkBackend(m_Backend).m_AppName     = appName;
             vkBackend(m_Backend).m_EnableValidation   = enableValidation;
             vkBackend(m_Backend).m_EnableDebugMarkers = enableDebugMarkers;
+            vkBackend(m_Backend).m_EnableRenderDoc    = enableRenderDoc;
             vkBackend(m_Backend).m_RequiredInstanceExtensions.assign(requiredInstanceExtensions.begin(),
                                                                      requiredInstanceExtensions.end());
 

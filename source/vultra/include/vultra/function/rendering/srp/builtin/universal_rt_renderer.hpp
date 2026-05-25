@@ -2,6 +2,7 @@
 
 #include "vultra/function/rendering/srp/builtin/passes/final_composition_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/raytracing_primary_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
 
 namespace vultra
@@ -15,6 +16,7 @@ namespace vultra
 
     private:
         RayTracingPrimaryPass m_PrimaryPass;
+        ToneMappingPass       m_ToneMappingPass;
         FinalCompositionPass  m_FinalCompositionPass;
     };
 } // namespace vultra

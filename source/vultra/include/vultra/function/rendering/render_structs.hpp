@@ -6,14 +6,18 @@
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <glm/common.hpp>
+#include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -64,6 +68,7 @@ namespace vultra
         // Render target (nullptr => backbuffer or XR-provided target)
         rhi::Texture* target {nullptr};
         glm::vec4     clearValue {0, 0, 0, 1};
+        uint32_t      clearMode {0};
         bool          renderImGui {true};
         bool          debugEntityIdOutput {false};
         bool          selectionOutlineEnabled {false};
@@ -124,6 +129,38 @@ namespace vultra
         float           outerConeDegrees {30.0f};
         bool            castsShadow {true};
         bool            twoSided {false};
+    };
+
+    struct RenderEnvironment
+    {
+        bool      active {false};
+        glm::vec3 ambientColor {0.15f};
+        float     ambientIntensity {1.0f};
+        bool      enableIBL {false};
+        glm::vec3 iblColor {0.04f, 0.045f, 0.05f};
+        float     iblIntensity {1.0f};
+        rhi::Texture* skybox {nullptr};
+    };
+
+    enum class RenderReflectionProbeShape : uint32_t
+    {
+        eBox = 0,
+        eSphere,
+    };
+
+    struct RenderReflectionProbe
+    {
+        CoreUUID entity;
+        glm::vec3 position {0.0f};
+        glm::vec3 halfExtents {5.0f};
+        float     radius {5.0f};
+        float     blendDistance {1.0f};
+        float     intensity {1.0f};
+        int       priority {0};
+        bool      enableIBL {true};
+        bool      parallaxCorrection {true};
+        RenderReflectionProbeShape shape {RenderReflectionProbeShape::eBox};
+        rhi::Texture* environmentMap {nullptr};
     };
 
     // Gaussian splat rendering has one LOD path: imported/trained assets are
@@ -245,7 +282,7 @@ namespace vultra
         float intensity {1.2f};
         int   maxRadiusPixels {32};
         int   stepCount {4};
-        int   directionCount {1};
+        int   directionCount {8};
     };
 
     struct SsrRenderSettings
@@ -298,6 +335,17 @@ namespace vultra
 
     struct PbrLightingSettings
     {
+        enum class DebugViewMode : int
+        {
+            eLit = 0,
+            eAlbedo,
+            eNormal,
+            eMetallic,
+            eRoughness,
+            eAO,
+            eLinearDepth,
+        };
+
         glm::vec3 directionalLightDirection {-0.35f, -0.8f, -0.25f};
         float     shadowStrength {0.85f};
         glm::vec3 directionalLightColor {1.0f, 0.96f, 0.9f};
@@ -307,6 +355,9 @@ namespace vultra
         bool      enableIBL {false};
         glm::vec3 iblColor {0.04f, 0.045f, 0.05f};
         float     iblIntensity {0.0f};
+        bool      showSkybox {false};
+        rhi::Texture* environmentMap {nullptr};
+        DebugViewMode debugViewMode {DebugViewMode::eLit};
     };
 
     struct BuiltinRenderSettings
@@ -337,6 +388,8 @@ namespace vultra
         std::vector<RenderInstance> instances;
         std::vector<RenderGaussianSplatInstance> gaussianSplats;
         std::vector<RenderLight>    lights;
+        RenderEnvironment           environment;
+        std::vector<RenderReflectionProbe> reflectionProbes;
         bool                        hasBounds {false};
         glm::vec3                   boundsMin {0.0f};
         glm::vec3                   boundsMax {0.0f};
@@ -350,9 +403,64 @@ namespace vultra
             instances.clear();
             gaussianSplats.clear();
             lights.clear();
+            environment = {};
+            reflectionProbes.clear();
             hasBounds = false;
             boundsMin = glm::vec3 {0.0f};
             boundsMax = glm::vec3 {0.0f};
         }
     };
+
+    [[nodiscard]] inline glm::vec3 renderCameraPosition(const RenderCamera* camera)
+    {
+        return camera ? glm::vec3(camera->inverseView[3]) : glm::vec3 {0.0f};
+    }
+
+    [[nodiscard]] inline float reflectionProbeScore(const RenderReflectionProbe& probe, const glm::vec3 position)
+    {
+        const auto delta = position - probe.position;
+        float      distance = 0.0f;
+
+        if (probe.shape == RenderReflectionProbeShape::eSphere)
+        {
+            distance = glm::length(delta);
+            if (distance > probe.radius + probe.blendDistance)
+                return -std::numeric_limits<float>::infinity();
+        }
+        else
+        {
+            const glm::vec3 localAbs {std::abs(delta.x), std::abs(delta.y), std::abs(delta.z)};
+            const glm::vec3 outer = probe.halfExtents + glm::vec3 {probe.blendDistance};
+            if (localAbs.x > outer.x || localAbs.y > outer.y || localAbs.z > outer.z)
+                return -std::numeric_limits<float>::infinity();
+
+            const auto innerDelta = glm::max(localAbs - probe.halfExtents, glm::vec3 {0.0f});
+            distance = glm::length(innerDelta);
+        }
+
+        return static_cast<float>(probe.priority) * 100000.0f - distance;
+    }
+
+    [[nodiscard]] inline const RenderReflectionProbe* selectReflectionProbe(const RenderWorld* world,
+                                                                            const RenderCamera* camera)
+    {
+        if (!world || world->reflectionProbes.empty())
+            return nullptr;
+
+        const auto             position = renderCameraPosition(camera);
+        const RenderReflectionProbe* best = nullptr;
+        float                  bestScore = -std::numeric_limits<float>::infinity();
+        for (const auto& probe : world->reflectionProbes)
+        {
+            if (probe.enableIBL && !probe.environmentMap)
+                continue;
+            const auto score = reflectionProbeScore(probe, position);
+            if (score > bestScore)
+            {
+                best = &probe;
+                bestScore = score;
+            }
+        }
+        return best;
+    }
 } // namespace vultra

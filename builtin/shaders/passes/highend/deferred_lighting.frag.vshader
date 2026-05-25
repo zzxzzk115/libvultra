@@ -2,6 +2,16 @@
 language = glsl
 version = 460
 
+[properties]
+ambientIntensity : float = 1.0 range(0.0, 8.0)
+shadowStrength : float = 0.85 range(0.0, 1.0)
+shadowFilterMode : enum(Hard=0,PCF=1,PCSS=2) = PCF
+shadowDebugMode : enum(Off=0,Cascade=1,Visibility=2,ShadowDepth=3,ShadowCoord=4,AtlasUV=5) = Off
+debugViewMode : enum(Lit=0,Albedo=1,Normal=2,Metallic=3,Roughness=4,AO=5,LinearDepth=6) = Lit
+pcfRadius : int = 2 range(0, 4)
+pcssBlockerSamples : int = 12 range(1, 32)
+iblIntensity : float = 0.0 range(0.0, 8.0)
+
 [frag]
 #include "include/common/pbr.glsl"
 #include "include/common/ltc.glsl"
@@ -73,7 +83,7 @@ layout(push_constant) uniform LightingPushConstants
     int enableIBL;
     int shadowFilterMode;
     int shadowDebugMode;
-    int pad0;
+    int debugViewMode;
     int pad1;
 } u_Push;
 
@@ -229,6 +239,42 @@ void main()
     float unlit = mraSample.w;
     vec3 positionWS = worldPositionFromDepth(depth, v_TexCoord);
     vec3 cameraWS = u_CameraBlock.data.inverseView[3].xyz;
+
+    if (u_Push.debugViewMode == 1)
+    {
+        FragColor = vec4(baseColor.rgb, 1.0);
+        return;
+    }
+    if (u_Push.debugViewMode == 2)
+    {
+        FragColor = vec4(normalWS * 0.5 + 0.5, 1.0);
+        return;
+    }
+    if (u_Push.debugViewMode == 3)
+    {
+        FragColor = vec4(vec3(clamp(mra.x, 0.0, 1.0)), 1.0);
+        return;
+    }
+    if (u_Push.debugViewMode == 4)
+    {
+        FragColor = vec4(vec3(clamp(mra.y, 0.0, 1.0)), 1.0);
+        return;
+    }
+    if (u_Push.debugViewMode == 5)
+    {
+        FragColor = vec4(vec3(clamp(mra.z, 0.0, 1.0)), 1.0);
+        return;
+    }
+    if (u_Push.debugViewMode == 6)
+    {
+        vec4 viewPos = u_CameraBlock.data.view * vec4(positionWS, 1.0);
+        float linearDepth = clamp((-viewPos.z - u_CameraBlock.data.zNear) /
+                                  max(u_CameraBlock.data.zFar - u_CameraBlock.data.zNear, 1e-6),
+                                  0.0,
+                                  1.0);
+        FragColor = vec4(vec3(linearDepth), 1.0);
+        return;
+    }
 
     if (unlit > 0.5)
     {

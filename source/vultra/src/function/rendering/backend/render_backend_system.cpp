@@ -26,14 +26,16 @@ namespace vultra
                            std::span<const char* const>           vulkanInstanceExtensions,
                            rhi::RenderBackendApi                  backendApi,
                            bool                                   enableValidation,
-                           bool                                   enableDebugMarkers)
+                           bool                                   enableDebugMarkers,
+                           bool                                   enableRenderDoc)
         {
             return std::make_unique<rhi::RenderDevice>(featureFlags,
                                                        title,
                                                        vulkanInstanceExtensions,
                                                        backendApi,
                                                        enableValidation,
-                                                       enableDebugMarkers);
+                                                       enableDebugMarkers,
+                                                       enableRenderDoc);
         }
 
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
@@ -41,6 +43,9 @@ namespace vultra
                                    std::vector<rhi::Texture>&                              mirrorTargets,
                                    const std::span<const IRenderBackendService::XREyeView> eyeViews)
         {
+            constexpr rhi::PixelFormat kMirrorPreviewFormat = rhi::PixelFormat::eRGBA8_sRGB;
+            constexpr rhi::ImageUsage  kMirrorPreviewUsage  = rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled;
+
             if (eyeViews.empty())
             {
                 mirrorTargets.clear();
@@ -59,15 +64,11 @@ namespace vultra
                 auto&      mirrorTarget = mirrorTargets[eyeIndex];
                 const bool recreate     = !mirrorTarget || mirrorTarget.getExtent().width != eyeView.extent.width ||
                                       mirrorTarget.getExtent().height != eyeView.extent.height ||
-                                      mirrorTarget.getPixelFormat() != eyeView.target->getPixelFormat();
+                                      mirrorTarget.getPixelFormat() != kMirrorPreviewFormat;
                 if (!recreate)
                     continue;
 
-                mirrorTarget = rd.createTexture2D(eyeView.extent,
-                                                  eyeView.target->getPixelFormat(),
-                                                  1u,
-                                                  0u,
-                                                  rhi::ImageUsage::eTransferDst | rhi::ImageUsage::eSampled);
+                mirrorTarget = rd.createTexture2D(eyeView.extent, kMirrorPreviewFormat, 1u, 0u, kMirrorPreviewUsage);
                 rd.setupSampler(mirrorTarget,
                                 rhi::SamplerInfo {
                                     .magFilter    = rhi::TexelFilter::eLinear,
@@ -126,7 +127,8 @@ namespace vultra
                                                         window.getRequiredVulkanInstanceExtensions(),
                                                         rhi::RenderBackendApi::eVulkan,
                                                         ctx().config.render.enableValidation,
-                                                        ctx().config.render.enableDebugMarkers);
+                                                        ctx().config.render.enableDebugMarkers,
+                                                        ctx().config.render.enableRenderDoc);
                 }
                 catch (const std::runtime_error& e)
                 {
@@ -143,7 +145,8 @@ namespace vultra
                                                         window.getRequiredVulkanInstanceExtensions(),
                                                         rhi::RenderBackendApi::eVulkan,
                                                         ctx().config.render.enableValidation,
-                                                        ctx().config.render.enableDebugMarkers);
+                                                        ctx().config.render.enableDebugMarkers,
+                                                        ctx().config.render.enableRenderDoc);
                 }
                 m_ImGuiBackend = std::make_unique<rhi::VulkanImGui>(*m_RenderDevice);
                 break;
@@ -161,7 +164,8 @@ namespace vultra
                                                     std::span<const char* const> {},
                                                     rhi::RenderBackendApi::eWebGPU,
                                                     ctx().config.render.enableValidation,
-                                                    ctx().config.render.enableDebugMarkers);
+                                                    ctx().config.render.enableDebugMarkers,
+                                                    ctx().config.render.enableRenderDoc);
                 m_ImGuiBackend = std::make_unique<rhi::WebGPUImGui>(*m_RenderDevice);
                 break;
         }

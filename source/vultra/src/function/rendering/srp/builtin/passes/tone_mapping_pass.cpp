@@ -1,4 +1,4 @@
-#include "vultra/function/rendering/srp/builtin/passes/fxaa_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
 
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
@@ -8,27 +8,25 @@
 
 #include <fg/FrameGraph.hpp>
 
-#include <glm/ext/vector_float2.hpp>
-
 namespace vultra
 {
-    FxaaPass::FxaaPass() { setShaderProfile(rhi::ShaderProfile::eGeneral); }
+    ToneMappingPass::ToneMappingPass() { setShaderProfile(rhi::ShaderProfile::eGeneral); }
 
     namespace
     {
-        constexpr auto PASS_NAME = "FXAAPass";
+        constexpr auto PASS_NAME = "ToneMappingPass";
 
-        struct FxaaPushConstants
+        struct PushConstants
         {
-            glm::vec2 resolution {};
+            float exposure {1.0f};
+            int   method {0};
         };
     } // namespace
 
-    FrameGraphResource FxaaPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource source)
+    FrameGraphResource
+    ToneMappingPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource source, const float exposure, const int method)
     {
         const auto sourceDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(source);
-        const auto extent     = sourceDesc.extent;
-        const auto format     = sourceDesc.format;
 
         struct PassData
         {
@@ -38,7 +36,7 @@ namespace vultra
 
         const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [source, extent, format](FrameGraph::Builder& builder, PassData& pd) {
+            [source, extent = sourceDesc.extent](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.source = builder.read(source,
@@ -53,10 +51,10 @@ namespace vultra
                                          });
 
                 pd.output = builder.create<framegraph::FrameGraphTexture>(
-                    "FXAAOutput",
+                    "ToneMappingOutput",
                     {
                         .extent     = extent,
-                        .format     = format,
+                        .format     = rhi::PixelFormat::eRGBA16F,
                         .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
                                       rhi::ImageUsage::eTransferSrc,
                     });
@@ -67,12 +65,12 @@ namespace vultra
                                               .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                           });
             },
-            [this, extent](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+            [this, exposure, method](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
                     return;
-                setShaderLib(*rc.ext.builtinShaderLib);
+                setShaderLib(*rc.ext.builtinShaderLibForProfile(getShaderProfile()));
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
@@ -81,11 +79,12 @@ namespace vultra
                 if (!pipeline)
                     return;
 
-                FxaaPushConstants pc {
-                    .resolution = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height)),
+                const PushConstants pc {
+                    .exposure = exposure,
+                    .method   = method,
                 };
 
-                rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["bilinear"]);
+                rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["linear"]);
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
@@ -95,19 +94,19 @@ namespace vultra
         return data.output;
     }
 
-    rhi::GraphicsPipeline FxaaPass::createPipeline(const rhi::PixelFormat colorFormat) const
+    rhi::GraphicsPipeline ToneMappingPass::createPipeline(const rhi::PixelFormat colorFormat) const
     {
         auto vertexShader = loadGeneralShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
-            VULTRA_CORE_ERROR("[FXAAPass] Failed to load vertex shader");
+            VULTRA_CORE_ERROR("[ToneMappingPass] Failed to load vertex shader");
             return {};
         }
 
-        auto fragmentShader = loadGeneralShader("fxaa.frag", vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader = loadGeneralShader("tone_mapping.frag", vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
-            VULTRA_CORE_ERROR("[FXAAPass] Failed to load fragment shader");
+            VULTRA_CORE_ERROR("[ToneMappingPass] Failed to load fragment shader");
             return {};
         }
 

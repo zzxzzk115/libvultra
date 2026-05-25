@@ -8,6 +8,7 @@
 #include "vultra/function/scene/vscn_writer.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
+#include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
@@ -16,6 +17,7 @@
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/prefab_instance_component.hpp"
+#include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 
@@ -297,9 +299,29 @@ namespace vultra
                                                                 "orthographicHeight",
                                                                 "zNear",
                                                                 "zFar",
+                                                                "clearMode",
                                                                 "clearColor",
                                                                 "priority",
                                                                 "rendererKey"});
+        m_ComponentRegistry.registerComponent<EnvironmentComponent>("EnvironmentComponent",
+                                                                    {"active",
+                                                                     "skybox",
+                                                                     "ambientColor",
+                                                                     "ambientIntensity",
+                                                                     "enableIBL",
+                                                                     "iblColor",
+                                                                     "iblIntensity"});
+        m_ComponentRegistry.registerComponent<ReflectionProbeComponent>("ReflectionProbeComponent",
+                                                                        {"active",
+                                                                         "enableIBL",
+                                                                         "environmentMap",
+                                                                         "shape",
+                                                                         "boxSize",
+                                                                         "radius",
+                                                                         "blendDistance",
+                                                                         "intensity",
+                                                                         "priority",
+                                                                         "parallaxCorrection"});
         m_ComponentRegistry.registerComponent<LightComponent>("LightComponent",
                                                               {"kind",
                                                                "color",

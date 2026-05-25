@@ -140,12 +140,14 @@ namespace vultra
 
         std::string runtimeUri = std::string(uri);
         const auto  logicalPath = logicalPathFromUri(uri);
+        bool        hasImportedRuntimeAsset = false;
         for (const auto& [_, entry] : assetService->registry().getRegistry())
         {
             static_cast<void>(_);
             if (entry.type == vasset::VAssetType::eShaderLibrary && entry.sourcePath == logicalPath &&
                 !entry.importedPath.empty())
             {
+                hasImportedRuntimeAsset = true;
                 runtimeUri = uriFromLogicalPath(ctx().config.render.backendApi == rhi::RenderBackendApi::eWebGPU ?
                                                     webgpuLibraryPathFor(entry.importedPath) :
                                                     entry.importedPath);
@@ -154,7 +156,7 @@ namespace vultra
         }
 
         auto bytes = assetService->loadBinaryAssetSync(runtimeUri);
-        if (!bytes && runtimeUri != uri)
+        if (!bytes && runtimeUri != uri && !hasImportedRuntimeAsset)
             bytes = assetService->loadBinaryAssetSync(uri);
         if (!bytes)
         {

@@ -8,6 +8,8 @@ VTX_HAS_TANGENT : bool permute
 [frag]
 #extension GL_EXT_nonuniform_qualifier : require
 
+#include "include/common/color.glsl"
+
 #ifndef VTX_HAS_TANGENT
 #define VTX_HAS_TANGENT 0
 #endif
@@ -111,7 +113,7 @@ void main()
         mra.z *= sampleBindless(occlusionTex, v_TexCoord0).r;
     mra.y = clamp(mra.y, 0.045, 1.0);
 
-    GBufferColor = baseColor;
+    GBufferColor = vec4(sRGBToLinear(baseColor.rgb), baseColor.a);
     GBufferNormal = vec4(normalWS, 1.0);
     // Keep lit material debug previews visible in ImGui while preserving the unlit flag threshold.
     GBufferMetallicRoughnessAO = vec4(mra, max(u_Draw.materialMRA.w, 0.25));

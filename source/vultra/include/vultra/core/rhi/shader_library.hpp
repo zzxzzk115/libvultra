@@ -56,6 +56,8 @@ namespace vultra
             [[nodiscard]] bool                                     hasEngineKeywords() const;
             [[nodiscard]] const vshadersystem::EngineKeywordsFile* engineKeywords() const;
 
+            [[nodiscard]] bool hasVariant(uint64_t variantHash, vshadersystem::ShaderStage stage) const;
+
             // Fetch a shader by cooked key.
             [[nodiscard]] std::optional<LoadedShader> load(uint64_t                   variantHash,
                                                            vshadersystem::ShaderStage stage) const;

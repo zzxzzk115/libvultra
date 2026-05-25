@@ -8,9 +8,15 @@
             80.0
           ]
         },
+        "ToneMapping": {
+          "pos": [
+            620.0,
+            80.0
+          ]
+        },
         "FinalComposition": {
           "pos": [
-            820.0,
+            980.0,
             80.0
           ]
         }
@@ -28,9 +34,25 @@
     },
     {
       "enabled": true,
-      "id": "FinalComposition",
+      "id": "ToneMapping",
       "inputs": {
         "source": "RayTracingPrimary.color"
+      },
+      "outputs": {
+        "color": "ToneMapping.color"
+      },
+      "params": {
+        "enabled": true,
+        "exposure": 1.0,
+        "method": 0
+      },
+      "type": "ToneMapping"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "ToneMapping.color"
       },
       "outputs": {
         "target": "FinalComposition.target"

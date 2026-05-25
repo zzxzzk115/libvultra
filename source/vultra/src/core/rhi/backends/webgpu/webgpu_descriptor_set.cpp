@@ -286,8 +286,14 @@ namespace vultra
                         {
                             break;
                         }
-                        const auto imageView =
-                            value->texture->getImageView(toImageAspectFlags(value->imageAspect)).getHandle();
+                        const auto imageView = value->mipLevel ?
+                                                   value->texture
+                                                       ->getMipLevel(*value->mipLevel,
+                                                                     toImageAspectFlags(value->imageAspect))
+                                                       .getHandle() :
+                                                   value->texture
+                                                       ->getImageView(toImageAspectFlags(value->imageAspect))
+                                                       .getHandle();
                         if (imageView == 0)
                         {
                             break;

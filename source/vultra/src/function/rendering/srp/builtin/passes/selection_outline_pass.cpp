@@ -40,10 +40,12 @@ namespace vultra
             FrameGraphResource output;
         };
 
-        const auto resolution = ctx.view().extent;
+        const auto sourceDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(source);
+        const auto resolution = sourceDesc.extent;
+        const auto format     = sourceDesc.format;
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution, source, entityId, depth](FrameGraph::Builder& builder, PassData& pd) {
+            [resolution, format, source, entityId, depth](FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.source = builder.read(source,
@@ -81,7 +83,7 @@ namespace vultra
                     "SelectionOutlineOutput",
                     {
                         .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                        .format     = format,
                         .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
                                       rhi::ImageUsage::eTransferSrc,
                     });

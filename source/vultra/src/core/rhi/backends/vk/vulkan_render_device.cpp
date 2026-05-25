@@ -1222,9 +1222,8 @@ namespace vultra
             if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 vk12Features.bufferDeviceAddress = VK_TRUE;
-#ifdef VULTRA_ENABLE_RENDERDOC
-                vk12Features.bufferDeviceAddressCaptureReplay = VK_TRUE;
-#endif
+                if (backendOf(m_Backend).m_EnableRenderDoc)
+                    vk12Features.bufferDeviceAddressCaptureReplay = VK_TRUE;
 
                 vk12Features.scalarBlockLayout       = VK_TRUE;
                 vk12Features.storageBuffer8BitAccess = VK_TRUE;

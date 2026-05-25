@@ -16,19 +16,25 @@
         },
         "FinalComposition": {
           "pos": [
-            3080.0,
+            3800.0,
             80.0
           ]
         },
         "Fxaa": {
           "pos": [
-            2360.0,
+            2720.0,
+            80.0
+          ]
+        },
+        "Pixelate": {
+          "pos": [
+            2000.0,
             80.0
           ]
         },
         "SelectionOutline": {
           "pos": [
-            2720.0,
+            3080.0,
             80.0
           ]
         },
@@ -56,9 +62,9 @@
             53.0
           ]
         },
-        "Tonemapping": {
+        "ToneMapping": {
           "pos": [
-            2000.0,
+            2360.0,
             80.0
           ]
         }
@@ -113,7 +119,7 @@
       },
       "params": {
         "bias": 0.05,
-        "directionCount": 1,
+        "directionCount": 8,
         "enabled": true,
         "intensity": 1.0,
         "maxRadiusPixels": 32,
@@ -140,7 +146,8 @@
       "params": {
         "ambientIntensity": 1.0,
         "debugCascades": false,
-        "iblIntensity": 0.0,
+        "debugViewMode": 0,
+        "iblIntensity": 1.0,
         "pcfRadius": 2,
         "pcssBlockerSamples": 12,
         "shadowDebugMode": 0,
@@ -187,30 +194,40 @@
       "type": "SsrComposite"
     },
     {
-      "enabled": true,
-      "id": "Tonemapping",
+      "enabled": false,
+      "id": "Pixelate",
       "inputs": {
         "source": "SsrComposite.color"
       },
       "outputs": {
-        "color": "Tonemapping.color"
+        "color": "Pixelate.color"
       },
       "params": {
-        "exposure": 1.0,
-        "fragment": "tonemapping.frag",
-        "library": "project",
-        "method": 0,
-        "name": "Tonemapping",
-        "pushConstants": true,
-        "vertex": "fullscreen_triangle.vert"
+        "name": "Pixelate"
       },
-      "type": "FullscreenShader"
+      "type": "Pixelate"
+    },
+    {
+      "enabled": true,
+      "id": "ToneMapping",
+      "inputs": {
+        "source": "Pixelate.color"
+      },
+      "outputs": {
+        "color": "ToneMapping.color"
+      },
+      "params": {
+        "enabled": false,
+        "exposure": 1.0,
+        "method": 0
+      },
+      "type": "ToneMapping"
     },
     {
       "enabled": true,
       "id": "Fxaa",
       "inputs": {
-        "source": "Tonemapping.color"
+        "source": "ToneMapping.color"
       },
       "outputs": {
         "color": "Fxaa.color"

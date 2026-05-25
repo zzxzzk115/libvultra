@@ -22,7 +22,6 @@ namespace vultra
 
     RenderDocAPI::RenderDocAPI(bool enable, bool enableApiValidation) : m_EnableApiValidation(enableApiValidation)
     {
-#ifdef VULTRA_ENABLE_RENDERDOC
         VULTRA_CORE_TRACE("[Profiling] Initializing RenderDoc API...");
         if (!enable)
         {
@@ -36,7 +35,6 @@ namespace vultra
         {
             m_RenderDocAPI = getRenderDocAPI();
         }
-#endif
     }
 
     RenderDocAPI::~RenderDocAPI()

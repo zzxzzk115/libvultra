@@ -250,6 +250,7 @@ namespace vultra
                     cam.zFar        = std::max(camera.zFar, cam.zNear + 0.0001f);
                     cam.fovY        = glm::radians(camera.fovYDegrees);
                     cam.clearValue  = camera.clearColor;
+                    cam.clearMode   = camera.clearMode;
                     cam.renderImGui = false;
                     cam.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
 

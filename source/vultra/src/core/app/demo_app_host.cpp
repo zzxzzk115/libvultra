@@ -473,10 +473,6 @@ namespace vultra
         auto&     window        = engineCtx().services.require<IWindowService>().window();
         const int timeoutMillis = (!window.isReady()) ? -1 : 0;
         window.pollEvents(timeoutMillis);
-
-        auto& input = engineCtx().services.require<IInputService>();
-        if (input.getKeyDown(KeyCode::eEscape))
-            window.close();
     }
 
     bool DemoAppHost::onShouldClose() const

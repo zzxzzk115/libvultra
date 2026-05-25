@@ -890,7 +890,7 @@ namespace vultra
                                                  vkAspectMask,
                                                  0u,
                                                  m_NumMipLevels,
-                                                 0u,
+                                                 m_BaseArrayLayer,
                                                  m_LayerFaces,
                                              });
 
@@ -905,7 +905,7 @@ namespace vultra
                                                                 vkAspectMask,
                                                                 i,
                                                                 1u,
-                                                                0u,
+                                                                m_BaseArrayLayer,
                                                                 m_LayerFaces,
                                                             }));
             }
@@ -923,7 +923,7 @@ namespace vultra
                                                                  vkAspectMask,
                                                                  0u,
                                                                  1u,
-                                                                 i,
+                                                                 m_BaseArrayLayer + i,
                                                                  1u,
                     }));
                 }

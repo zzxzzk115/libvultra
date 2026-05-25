@@ -258,7 +258,7 @@ namespace vultra
                     "DeferredLightingOutput",
                     {
                         .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                        .format     = rhi::PixelFormat::eRGBA16F,
                         .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
                                       rhi::ImageUsage::eTransferSrc,
                     });
@@ -316,25 +316,26 @@ namespace vultra
                                                                             rc.ext.samplers["linear"],
                     };
                 }
-                const bool iblDescriptorsReady = ensureFallbackIblTextures(rc.rd, lightingSettings);
+                const bool iblDescriptorsReady = ensureIblTextures(rc.cb, rc.rd, lightingSettings);
                 if (iblDescriptorsReady)
                 {
-                    rhi::prepareForReading(rc.cb, m_FallbackBrdfLut);
-                    rhi::prepareForReading(rc.cb, m_FallbackIrradianceMap);
-                    rhi::prepareForReading(rc.cb, m_FallbackPrefilteredEnvMap);
-                    const auto sampler = rc.ext.samplers.count("bilinear") > 0 ? rc.ext.samplers["bilinear"] :
-                                                                              rc.ext.samplers["linear"];
+                    const bool useEnvironmentIbl = lightingSettings.environmentMap && m_EnvironmentBrdfLut &&
+                                                   m_EnvironmentIrradianceMap && m_EnvironmentPrefilteredEnvMap;
+                    auto& brdfLut           = useEnvironmentIbl ? m_EnvironmentBrdfLut : m_FallbackBrdfLut;
+                    auto& irradianceMap     = useEnvironmentIbl ? m_EnvironmentIrradianceMap : m_FallbackIrradianceMap;
+                    auto& prefilteredEnvMap = useEnvironmentIbl ? m_EnvironmentPrefilteredEnvMap :
+                                                                 m_FallbackPrefilteredEnvMap;
+                    rhi::prepareForReading(rc.cb, brdfLut);
+                    rhi::prepareForReading(rc.cb, irradianceMap);
+                    rhi::prepareForReading(rc.cb, prefilteredEnvMap);
                     rc.resourceSet[3][7] = rhi::bindings::CombinedImageSampler {
-                        .texture = &m_FallbackBrdfLut,
-                        .sampler = sampler,
+                        .texture = &brdfLut,
                     };
                     rc.resourceSet[3][8] = rhi::bindings::CombinedImageSampler {
-                        .texture = &m_FallbackIrradianceMap,
-                        .sampler = sampler,
+                        .texture = &irradianceMap,
                     };
                     rc.resourceSet[3][9] = rhi::bindings::CombinedImageSampler {
-                        .texture = &m_FallbackPrefilteredEnvMap,
-                        .sampler = sampler,
+                        .texture = &prefilteredEnvMap,
                     };
                 }
                 rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
@@ -349,7 +350,7 @@ namespace vultra
                     int enableIBL {0};
                     int shadowFilterMode {1};
                     int shadowDebugMode {0};
-                    int pad0 {0};
+                    int debugViewMode {0};
                     int pad1 {0};
                 } pc {
                     .directionalLightDirectionShadowStrength =
@@ -365,6 +366,7 @@ namespace vultra
                     .enableIBL = lightingSettings.enableIBL && iblDescriptorsReady ? 1 : 0,
                     .shadowFilterMode = static_cast<int>(shadowSettings.filterMode),
                     .shadowDebugMode = static_cast<int>(shadowSettings.debugMode),
+                    .debugViewMode = static_cast<int>(lightingSettings.debugViewMode),
                 };
                 rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
                 rc.bindDescriptorSets(*pipeline);
@@ -413,9 +415,21 @@ namespace vultra
         return m_LtcMat && m_LtcMag;
     }
 
-    bool DeferredLightingPass::ensureFallbackIblTextures(rhi::RenderDevice& rd,
+    bool DeferredLightingPass::ensureIblTextures(rhi::CommandBuffer& cb,
+                                                 rhi::RenderDevice&  rd,
+                                                 const PbrLightingSettings& lightingSettings)
+    {
+        if (lightingSettings.environmentMap)
+            return ensureEnvironmentIblTextures(cb, rd, lightingSettings);
+
+        return ensureFallbackIblTextures(cb, rd, lightingSettings);
+    }
+
+    bool DeferredLightingPass::ensureFallbackIblTextures(rhi::CommandBuffer& cb,
+                                                         rhi::RenderDevice&  rd,
                                                          const PbrLightingSettings& lightingSettings)
     {
+        (void)cb;
         const glm::vec3 desiredColor = lightingSettings.iblColor * lightingSettings.iblIntensity;
         if (m_FallbackBrdfLut && m_FallbackIrradianceMap && m_FallbackPrefilteredEnvMap &&
             m_FallbackIblColor == desiredColor)
@@ -493,6 +507,182 @@ namespace vultra
         return true;
     }
 
+    bool DeferredLightingPass::ensureEnvironmentIblTextures(rhi::CommandBuffer& cb,
+                                                            rhi::RenderDevice&  rd,
+                                                            const PbrLightingSettings& lightingSettings)
+    {
+        auto* source = lightingSettings.environmentMap;
+        if (!source)
+            return false;
+
+        if (m_EnvironmentSource == source && m_EnvironmentBrdfLut && m_EnvironmentCubemap &&
+            m_EnvironmentIrradianceMap && m_EnvironmentPrefilteredEnvMap)
+            return true;
+
+        m_EnvironmentSource              = source;
+        m_EnvironmentCubemap             = {};
+        m_EnvironmentBrdfLut             = {};
+        m_EnvironmentIrradianceMap       = {};
+        m_EnvironmentPrefilteredEnvMap   = {};
+
+        if (!m_CubemapConvertPipeline)
+            m_CubemapConvertPipeline = createComputePipeline("cubemap_convert.comp");
+        if (!m_BrdfPipeline)
+            m_BrdfPipeline = createComputePipeline("generate_brdf.comp");
+        if (!m_IrradiancePipeline)
+            m_IrradiancePipeline = createComputePipeline("generate_irradiance_map.comp");
+        if (!m_PrefilterPipeline)
+            m_PrefilterPipeline = createComputePipeline("prefilter_envmap.comp");
+
+        if (!m_CubemapConvertPipeline || !m_BrdfPipeline || !m_IrradiancePipeline || !m_PrefilterPipeline)
+            return ensureFallbackIblTextures(cb, rd, lightingSettings);
+
+        constexpr uint32_t kCubemapSize = 1024u;
+        constexpr uint32_t kIrradianceSize = 64u;
+        constexpr uint32_t kBrdfSize = 1024u;
+        constexpr uint32_t kPrefilterSize = 1024u;
+        constexpr uint32_t kPrefilterMipLevels = 5u;
+
+        m_EnvironmentCubemap = rhi::Texture::Builder {}
+                                   .setExtent({kCubemapSize, kCubemapSize})
+                                   .setPixelFormat(rhi::PixelFormat::eRGBA16F)
+                                   .setNumMipLevels(rhi::calcMipLevels({kCubemapSize, kCubemapSize}))
+                                   .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled |
+                                                  rhi::ImageUsage::eTransferSrc | rhi::ImageUsage::eTransferDst)
+                                   .setCubemap(true)
+                                   .setupOptimalSampler(true)
+                                   .build(rd);
+        m_EnvironmentBrdfLut = rhi::Texture::Builder {}
+                                   .setExtent({kBrdfSize, kBrdfSize})
+                                   .setPixelFormat(rhi::PixelFormat::eRGBA16F)
+                                   .setNumMipLevels(1u)
+                                   .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled)
+                                   .setupOptimalSampler(true)
+                                   .build(rd);
+        m_EnvironmentIrradianceMap = rhi::Texture::Builder {}
+                                         .setExtent({kIrradianceSize, kIrradianceSize})
+                                         .setPixelFormat(rhi::PixelFormat::eRGBA16F)
+                                         .setNumMipLevels(1u)
+                                         .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled)
+                                         .setCubemap(true)
+                                         .setupOptimalSampler(true)
+                                         .build(rd);
+        m_EnvironmentPrefilteredEnvMap = rhi::Texture::Builder {}
+                                             .setExtent({kPrefilterSize, kPrefilterSize})
+                                             .setPixelFormat(rhi::PixelFormat::eRGBA16F)
+                                             .setNumMipLevels(kPrefilterMipLevels)
+                                             .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eSampled)
+                                             .setCubemap(true)
+                                             .setupOptimalSampler(true)
+                                             .build(rd);
+
+        if (!m_EnvironmentCubemap || !m_EnvironmentBrdfLut || !m_EnvironmentIrradianceMap ||
+            !m_EnvironmentPrefilteredEnvMap)
+        {
+            VULTRA_CORE_ERROR("[DeferredLightingPass] Failed to create environment IBL textures");
+            return ensureFallbackIblTextures(cb, rd, lightingSettings);
+        }
+
+        rhi::prepareForReading(cb, *source);
+        rhi::prepareForComputing(cb, m_EnvironmentCubemap);
+        {
+            const auto descriptors = cb.createDescriptorSetBuilder()
+                                         .bind(0,
+                                               rhi::bindings::CombinedImageSampler {
+                                                   .texture     = source,
+                                                   .imageAspect = rhi::ImageAspect::eColor,
+                                               })
+                                         .bind(1,
+                                               rhi::bindings::StorageImage {
+                                                   .texture     = &m_EnvironmentCubemap,
+                                                   .imageAspect = rhi::ImageAspect::eColor,
+                                                   .mipLevel    = 0u,
+                                               })
+                                         .build(m_CubemapConvertPipeline.getDescriptorSetLayout(0));
+            cb.bindPipeline(m_CubemapConvertPipeline)
+                .bindDescriptorSet(0, descriptors)
+                .dispatch({(kCubemapSize + 7u) / 8u, (kCubemapSize + 7u) / 8u, 6u});
+        }
+        cb.generateMipmaps(m_EnvironmentCubemap);
+        rhi::prepareForReading(cb, m_EnvironmentCubemap);
+
+        rhi::prepareForComputing(cb, m_EnvironmentBrdfLut);
+        {
+            const auto descriptors = cb.createDescriptorSetBuilder()
+                                         .bind(0,
+                                               rhi::bindings::StorageImage {
+                                                   .texture     = &m_EnvironmentBrdfLut,
+                                                   .imageAspect = rhi::ImageAspect::eColor,
+                                               })
+                                         .build(m_BrdfPipeline.getDescriptorSetLayout(0));
+            cb.bindPipeline(m_BrdfPipeline)
+                .bindDescriptorSet(0, descriptors)
+                .dispatch({(kBrdfSize + 15u) / 16u, (kBrdfSize + 15u) / 16u, 1u});
+        }
+        rhi::prepareForReading(cb, m_EnvironmentBrdfLut);
+
+        rhi::prepareForComputing(cb, m_EnvironmentIrradianceMap);
+        {
+            const auto descriptors = cb.createDescriptorSetBuilder()
+                                         .bind(0,
+                                               rhi::bindings::CombinedImageSampler {
+                                                   .texture     = &m_EnvironmentCubemap,
+                                                   .imageAspect = rhi::ImageAspect::eColor,
+                                               })
+                                         .bind(1,
+                                               rhi::bindings::StorageImage {
+                                                   .texture     = &m_EnvironmentIrradianceMap,
+                                                   .imageAspect = rhi::ImageAspect::eColor,
+                                               })
+                                         .build(m_IrradiancePipeline.getDescriptorSetLayout(0));
+            struct PushConstants
+            {
+                float lodBias {0.0f};
+            } pc {};
+            cb.bindPipeline(m_IrradiancePipeline)
+                .bindDescriptorSet(0, descriptors)
+                .pushConstants(rhi::ShaderStages::eCompute, 0, &pc)
+                .dispatch({(kIrradianceSize + 7u) / 8u, (kIrradianceSize + 7u) / 8u, 6u});
+        }
+        rhi::prepareForReading(cb, m_EnvironmentIrradianceMap);
+
+        rhi::prepareForComputing(cb, m_EnvironmentPrefilteredEnvMap);
+        for (uint32_t level = 0u; level < kPrefilterMipLevels; ++level)
+        {
+            const uint32_t mipSize = rhi::calcMipSize(glm::uvec3 {kPrefilterSize, kPrefilterSize, 1u}, level).x;
+            const auto descriptors = cb.createDescriptorSetBuilder()
+                                         .bind(0,
+                                               rhi::bindings::CombinedImageSampler {
+                                                   .texture     = &m_EnvironmentCubemap,
+                                                   .imageAspect = rhi::ImageAspect::eColor,
+                                               })
+                                         .bind(1,
+                                               rhi::bindings::StorageImage {
+                                                   .texture     = &m_EnvironmentPrefilteredEnvMap,
+                                                   .imageAspect = rhi::ImageAspect::eColor,
+                                                   .mipLevel    = level,
+                                               })
+                                         .build(m_PrefilterPipeline.getDescriptorSetLayout(0));
+            struct PushConstants
+            {
+                uint32_t mipLevel {0u};
+                float    roughness {0.0f};
+                uint32_t sampleCount {1024u};
+            } pc {
+                .mipLevel = level,
+                .roughness = static_cast<float>(level) / static_cast<float>(kPrefilterMipLevels - 1u),
+                .sampleCount = 1024u,
+            };
+            cb.bindPipeline(m_PrefilterPipeline)
+                .bindDescriptorSet(0, descriptors)
+                .pushConstants(rhi::ShaderStages::eCompute, 0, &pc)
+                .dispatch({(mipSize + 7u) / 8u, (mipSize + 7u) / 8u, 6u});
+        }
+        rhi::prepareForReading(cb, m_EnvironmentPrefilteredEnvMap);
+
+        return true;
+    }
+
     bool DeferredLightingPass::ensureFallbackAoTexture(rhi::RenderDevice& rd)
     {
         if (m_FallbackAo)
@@ -539,5 +729,16 @@ namespace vultra
             })
             .setBlending(0, {.enabled = false})
             .build(getRenderDevice());
+    }
+
+    rhi::ComputePipeline DeferredLightingPass::createComputePipeline(const std::string_view shaderName) const
+    {
+        auto shader = loadHighendShader(shaderName, vshadersystem::ShaderStage::eComp);
+        if (!shader)
+        {
+            VULTRA_CORE_ERROR("[DeferredLightingPass] Failed to load compute shader {}", shaderName);
+            return {};
+        }
+        return getRenderDevice().createComputePipelineBuiltin(*shader);
     }
 } // namespace vultra

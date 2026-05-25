@@ -24,11 +24,13 @@
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
 #include "vultra/function/services/world_service.hpp"
+#include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
+#include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/world.hpp"
 
@@ -77,9 +79,15 @@ namespace vultra
         [[nodiscard]] std::string rendererKeyFromRenderGraphUri(std::string_view uri)
         {
             auto filename = std::filesystem::path(std::string(uri)).filename().generic_string();
-            constexpr std::string_view suffix = ".vrg.json";
-            if (filename.ends_with(suffix))
-                filename.resize(filename.size() - suffix.size());
+            constexpr std::array<std::string_view, 2> suffixes {".vrg.json", ".vrp.lua"};
+            for (const auto suffix : suffixes)
+            {
+                if (filename.ends_with(suffix))
+                {
+                    filename.resize(filename.size() - suffix.size());
+                    break;
+                }
+            }
             if (filename.empty())
                 filename = "custom";
             for (auto& ch : filename)
@@ -701,6 +709,74 @@ namespace vultra
             outLight.twoSided = light.twoSided;
             out.lights.push_back(outLight);
         }
+
+        auto environmentView = reg.view<EnvironmentComponent>();
+        for (auto e : environmentView)
+        {
+            const auto& environment = environmentView.get<EnvironmentComponent>(e);
+            if (!environment.active)
+                continue;
+            if (auto* status = reg.try_get<EntityStatusComponent>(e); status && (!status->active || !status->visible))
+                continue;
+
+            out.environment.active = true;
+            out.environment.ambientColor = environment.ambientColor;
+            out.environment.ambientIntensity = environment.ambientIntensity;
+            out.environment.enableIBL = environment.enableIBL;
+            out.environment.iblColor = environment.iblColor;
+            out.environment.iblIntensity = environment.iblIntensity;
+
+            if (environment.skybox.valid())
+            {
+                auto skybox = assets.loadTextureSync(environment.skybox);
+                const auto& pool = gpuResources.pool();
+                if (skybox.ready() && skybox.gpuIndex() < pool.textures.size())
+                    out.environment.skybox = pool.textures[skybox.gpuIndex()].texture.get();
+            }
+            break;
+        }
+
+        auto reflectionProbeView = reg.view<IDComponent, TransformComponent, ReflectionProbeComponent>();
+        out.reflectionProbes.reserve(reflectionProbeView.size_hint());
+        for (auto e : reflectionProbeView)
+        {
+            const auto& id    = reflectionProbeView.get<IDComponent>(e);
+            const auto& tr    = reflectionProbeView.get<TransformComponent>(e);
+            const auto& probe = reflectionProbeView.get<ReflectionProbeComponent>(e);
+            if (!probe.active)
+                continue;
+            if (auto* status = reg.try_get<EntityStatusComponent>(e); status && (!status->active || !status->visible))
+                continue;
+            rhi::Texture* environmentMap = nullptr;
+            if (probe.enableIBL)
+            {
+                if (!probe.environmentMap.valid())
+                    continue;
+                auto map = assets.loadTextureSync(probe.environmentMap);
+                const auto& pool = gpuResources.pool();
+                if (!map.ready() || map.gpuIndex() >= pool.textures.size())
+                    continue;
+                environmentMap = pool.textures[map.gpuIndex()].texture.get();
+            }
+
+            if (probe.enableIBL && !environmentMap)
+                continue;
+
+            RenderReflectionProbe outProbe {};
+            outProbe.entity = id.uuid;
+            outProbe.position = glm::vec3(tr.worldMatrix[3]);
+            outProbe.halfExtents = glm::max(probe.boxSize * 0.5f, glm::vec3 {0.01f});
+            outProbe.radius = std::max(probe.radius, 0.01f);
+            outProbe.blendDistance = std::max(probe.blendDistance, 0.0f);
+            outProbe.intensity = std::max(probe.intensity, 0.0f);
+            outProbe.priority = probe.priority;
+            outProbe.enableIBL = probe.enableIBL;
+            outProbe.parallaxCorrection = probe.parallaxCorrection;
+            outProbe.shape = probe.shape == 1u ? RenderReflectionProbeShape::eSphere :
+                                                 RenderReflectionProbeShape::eBox;
+            outProbe.environmentMap = environmentMap;
+            out.reflectionProbes.push_back(outProbe);
+        }
     }
 
     bool RenderSystem::onInit()
@@ -1006,6 +1082,8 @@ namespace vultra
             FrameGraphResource resource {};
             std::string        name;
             rhi::ImageAspect   aspect {rhi::ImageAspect::eColor};
+            bool               imported {false};
+            bool               capturable {false};
         };
 
         struct PassData
@@ -1072,9 +1150,6 @@ namespace vultra
 
             void operator()(const ResourceNode& resource, const ResourceEntry& entry, const std::vector<PassNode>&)
             {
-                if (entry.isImported())
-                    return;
-
                 // fg has no public runtime type tag. FrameGraphTexture::toString includes usage metadata;
                 // buffer resources do not, so this keeps capture automatic without touching fg internals.
                 if (entry.toString().find("<BR/>Usage = ") == std::string::npos)
@@ -1082,10 +1157,6 @@ namespace vultra
 
                 const auto& desc = entry.getDescriptor<framegraph::FrameGraphTexture>();
                 if (desc.format == rhi::PixelFormat::eUndefined || desc.extent.width == 0u || desc.extent.height == 0u)
-                    return;
-                if (!canPreviewWithFloatSampler(desc.format))
-                    return;
-                if (!static_cast<bool>(desc.usageFlags & rhi::ImageUsage::eSampled))
                     return;
 
                 std::string name(resource.getName());
@@ -1095,6 +1166,9 @@ namespace vultra
                     .resource = static_cast<FrameGraphResource>(resource.getId()),
                     .name = std::move(name),
                     .aspect = imageAspectFor(desc.format),
+                    .imported = entry.isImported(),
+                    .capturable = canPreviewWithFloatSampler(desc.format) &&
+                                  static_cast<bool>(desc.usageFlags & rhi::ImageUsage::eSampled),
                 });
             }
 
@@ -1132,7 +1206,7 @@ namespace vultra
                                        m_FrameGraphTexturePreviewSettings.selectedTextureKey.empty() ?
                                            m_FrameGraphDebugTextures.empty() :
                                            slotKey == m_FrameGraphTexturePreviewSettings.selectedTextureKey;
-            if (!shouldPreview)
+            if (!candidate.capturable || !shouldPreview)
             {
                 m_FrameGraphDebugTextures.push_back(FrameGraphDebugTexture {
                     .camera = cameraName,
@@ -1142,6 +1216,8 @@ namespace vultra
                     .resourceKey = slotKey,
                     .transientResourceKey = transientResourceKey,
                     .texture = nullptr,
+                    .imported = candidate.imported,
+                    .capturable = candidate.capturable,
                     .extent = previewExtent,
                     .sourceExtent = sourceDesc.extent,
                     .format = sourceDesc.format,
@@ -1247,6 +1323,8 @@ namespace vultra
                 .resourceKey = slotKey,
                 .transientResourceKey = transientResourceKey,
                 .texture = &*slot.texture,
+                .imported = candidate.imported,
+                .capturable = candidate.capturable,
                 .extent = slot.extent,
                 .sourceExtent = sourceDesc.extent,
                 .format = sourceDesc.format,
@@ -2206,8 +2284,21 @@ namespace vultra
                 if (!eyeView.target || !eyeView.mirrorTarget)
                     continue;
 
+                if (eyeView.stereoTarget)
+                {
+                    eyeView.target->setBarrierState(eyeView.stereoTarget->getLastBarrierScope(),
+                                                     eyeView.stereoTarget->getImageLayout());
+                }
+
                 rhi::prepareForReading(cb, *eyeView.target);
                 cb.blit(*eyeView.target, *eyeView.mirrorTarget, rhi::TexelFilter::eLinear);
+                rhi::prepareForReading(cb, *eyeView.target);
+
+                if (eyeView.stereoTarget)
+                {
+                    eyeView.stereoTarget->setBarrierState(eyeView.target->getLastBarrierScope(),
+                                                          eyeView.target->getImageLayout());
+                }
             }
 
             imguiService->begin();

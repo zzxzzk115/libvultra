@@ -1,9 +1,10 @@
 #include "vultra/function/rendering/srp/builtin/features/builtin_screen_space_feature.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/fxaa_pass.hpp"
-#include "vultra/function/rendering/srp/builtin/passes/ssao_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ssr_composite_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/services/render_service.hpp"
 
@@ -13,16 +14,18 @@ namespace vultra
 {
     BuiltinScreenSpaceFeature::BuiltinScreenSpaceFeature(IRenderService& renderService) : m_RenderService(renderService)
     {
-        m_SsaoPass = new SsaoPass();
         m_SsrPass  = new SsrPass();
+        m_SsrCompositePass = new SsrCompositePass();
+        m_ToneMappingPass = new ToneMappingPass();
         m_SelectionOutlinePass = new SelectionOutlinePass();
         m_FxaaPass = new FxaaPass();
     }
 
     BuiltinScreenSpaceFeature::~BuiltinScreenSpaceFeature()
     {
-        delete m_SsaoPass;
         delete m_SsrPass;
+        delete m_SsrCompositePass;
+        delete m_ToneMappingPass;
         delete m_SelectionOutlinePass;
         delete m_FxaaPass;
     }
@@ -38,14 +41,7 @@ namespace vultra
         const bool hasEntityId = ctx.data.contains(kResKey_GBufferEntityId);
 
         // The pass implementations are intentionally gated on SRP resources instead of legacy mesh/texture systems.
-        // SSAO requires depth + normal; SSR requires depth + normal + material MR/AO + current scene color.
-        if (settings.ssao.enabled && hasDepth && hasNormal)
-        {
-            auto ao = m_SsaoPass->addPass(
-                ctx, ctx.data.get(kResKey_DepthTexture), ctx.data.get(kResKey_GBufferNormal), settings.ssao);
-            ctx.data.set(kResKey_SsaoTexture, ao);
-        }
-
+        // SSR requires depth + normal + material MR/AO + current scene color.
         if (settings.ssr.enabled && hasDepth && hasNormal && hasMrAo && hasColor)
         {
             auto reflection = m_SsrPass->addPass(ctx,
@@ -55,6 +51,21 @@ namespace vultra
                                                  ctx.data.get(kResKey_GBufferMetallicRoughnessAO),
                                                  settings.ssr);
             ctx.data.set(kResKey_SsrTexture, reflection);
+            if (reflection)
+            {
+                auto composited = m_SsrCompositePass->addPass(ctx, ctx.data.get(kResKey_FinalCompositionSource), reflection);
+                if (composited)
+                    ctx.data.set(kResKey_FinalCompositionSource, composited);
+            }
+        }
+
+        const bool shouldToneMap = settings.pbrLighting.debugViewMode == PbrLightingSettings::DebugViewMode::eLit &&
+                                   settings.shadow.debugMode == ShadowRenderSettings::DebugMode::eOff;
+        if (shouldToneMap && hasColor)
+        {
+            auto toneMapped = m_ToneMappingPass->addPass(ctx, ctx.data.get(kResKey_FinalCompositionSource));
+            if (toneMapped)
+                ctx.data.set(kResKey_FinalCompositionSource, toneMapped);
         }
 
         if (settings.enableFXAA && hasColor)

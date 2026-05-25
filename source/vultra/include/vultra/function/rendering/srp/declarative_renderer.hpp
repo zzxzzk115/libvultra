@@ -39,9 +39,6 @@ namespace vultra
             ShaderRef   shader;
             std::string input {"final_composition_source"};
             std::string output {"final_composition_source"};
-            float       exposure {1.0f};
-            int         method {0};
-            bool        pushConstants {false};
         };
 
         struct Feature
@@ -52,12 +49,19 @@ namespace vultra
             std::vector<FullscreenPass> fullscreenPasses;
         };
 
+        struct ProjectGraphPass
+        {
+            std::string type;
+            FullscreenPass fullscreen;
+        };
+
         struct PipelineAsset
         {
             std::string                                   rendererKey {"custom"};
             std::unordered_map<std::string, std::string> shaderLibraries;
             std::vector<std::string>                     renderGraphs;
             std::vector<Feature>                         features;
+            std::vector<ProjectGraphPass>                 projectGraphPasses;
         };
 
         class FullscreenPassRuntime;
@@ -68,6 +72,8 @@ namespace vultra
         bool loadFeatureAsset(std::string_view uri, Feature& outFeature);
         bool parsePipelineTable(sol::table table, PipelineAsset& outAsset);
         bool parseFeatureTable(sol::table table, Feature& outFeature);
+        bool parseProjectGraphPassTable(sol::table table, ProjectGraphPass& outPass);
+        void loadProjectGraphPasses();
         bool loadShaderLibraries();
         bool buildRuntimeFeatures();
 
@@ -79,5 +85,6 @@ namespace vultra
         PipelineAsset m_Asset;
         std::vector<std::unique_ptr<RuntimeFeature>> m_RuntimeFeatures;
         FrameGraphBuildContext* m_CurrentBuildContext {nullptr};
+        bool m_CurrentFrameApplyToneMapping {true};
     };
 } // namespace vultra

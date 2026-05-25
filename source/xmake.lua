@@ -75,16 +75,6 @@ option("tracky")
     set_description("Enable tracky profiler")
 option_end()
 
-if not is_plat("linux") and not has_config("wayland") then
-    option("renderdoc")
-        set_default(true)
-        set_showmenu(true)
-        set_description("Enable renderdoc support")
-    option_end()
-else
-    set_config("renderdoc", false)
-end
-
 -- add requirements
 add_requires("fmt", { system = false })
 add_requires("spdlog", "magic_enum", "entt", "cereal", "sol2", "argparse")
@@ -244,10 +234,6 @@ target("vultra")
     else
         add_defines("NDEBUG", { public = true })
     end
-    if has_config("renderdoc") then
-        add_defines("VULTRA_ENABLE_RENDERDOC", { public = true })
-    end
-
     if is_plat("android") then
         add_defines("VULTRA_ENABLE_VULKAN=1", { public = true })
         add_defines("VULTRA_ENABLE_WEBGPU=0", { public = true })

@@ -24,6 +24,7 @@ LightContribution calIBL(
     samplerCube irradianceMap,
     samplerCube prefilteredEnvMap
 ) {
+    NdotV = clamp(NdotV, 0.0, 1.0);
     vec2 f_ab = texture(brdfLUT, clamp(vec2(NdotV, roughness), 0.0, 1.0)).rg;
     vec3 Fr = max(vec3(1.0 - roughness), F0) - F0;
     vec3 k_S = F0 + Fr * pow(1.0 - NdotV, 5.0);

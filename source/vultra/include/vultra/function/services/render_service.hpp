@@ -34,6 +34,8 @@ namespace vultra
         std::string      resourceKey;
         std::string      transientResourceKey;
         rhi::Texture*    texture {nullptr};
+        bool             imported {false};
+        bool             capturable {false};
         rhi::Extent2D    extent {};
         rhi::Extent2D    sourceExtent {};
         rhi::PixelFormat format {rhi::PixelFormat::eUndefined};

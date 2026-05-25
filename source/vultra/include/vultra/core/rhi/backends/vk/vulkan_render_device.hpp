@@ -98,6 +98,7 @@ namespace vultra
             bool                        m_UseKhrSynchronization2 {false};
             bool                        m_EnableValidation {defaultRenderDiagnosticsEnabled()};
             bool                        m_EnableDebugMarkers {defaultRenderDiagnosticsEnabled()};
+            bool                        m_EnableRenderDoc {defaultRenderDiagnosticsEnabled()};
 
             vk::Instance               m_Instance {nullptr};
             vk::DebugUtilsMessengerEXT m_DebugMessenger {nullptr};

@@ -4,8 +4,11 @@
 #include "vultra/function/rendering/srp/builtin/passes/deferred_lighting_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/direct_gbuffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/shadow_map_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ssao_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/skybox_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/services/render_service.hpp"
+#include "vultra/function/framegraph/framegraph_import.hpp"
 
 namespace vultra
 {
@@ -40,14 +43,18 @@ namespace vultra
     {
         m_GBufferPass    = new DirectGBufferPass();
         m_ShadowPass     = new ShadowMapPass();
+        m_SsaoPass       = new SsaoPass();
         m_LightingPass   = new DeferredLightingPass();
+        m_SkyboxPass     = new SkyboxPass();
     }
 
     DirectGBufferFeature::~DirectGBufferFeature()
     {
         delete m_GBufferPass;
         delete m_ShadowPass;
+        delete m_SsaoPass;
         delete m_LightingPass;
+        delete m_SkyboxPass;
     }
 
     void DirectGBufferFeature::addPasses(FrameGraphBuildContext& ctx)
@@ -64,6 +71,28 @@ namespace vultra
         const auto& settings = m_RenderService.builtinRenderSettings();
         auto shadowSettings = settings.shadow;
         auto lightingSettings = settings.pbrLighting;
+        rhi::Texture* skyboxTexture = nullptr;
+        const auto* renderEnvironment =
+            ctx.view().renderWorld && ctx.view().renderWorld->environment.active ?
+                &ctx.view().renderWorld->environment :
+                nullptr;
+        if (renderEnvironment)
+        {
+            lightingSettings.ambientColor = renderEnvironment->ambientColor;
+            lightingSettings.ambientIntensity = renderEnvironment->ambientIntensity;
+            lightingSettings.enableIBL = renderEnvironment->enableIBL;
+            lightingSettings.iblColor = renderEnvironment->iblColor;
+            lightingSettings.iblIntensity = renderEnvironment->iblIntensity;
+            lightingSettings.environmentMap = renderEnvironment->skybox;
+            skyboxTexture = renderEnvironment->skybox;
+        }
+        if (const auto* probe = selectReflectionProbe(ctx.view().renderWorld, ctx.view().camera))
+        {
+            lightingSettings.enableIBL = probe->enableIBL;
+            lightingSettings.iblIntensity = probe->intensity;
+            if (probe->enableIBL)
+                lightingSettings.environmentMap = probe->environmentMap;
+        }
         const auto* primaryDirectionalLight = findPrimaryDirectionalLight(ctx.view().renderWorld);
         const auto* shadowDirectionalLight  = findPrimaryShadowDirectionalLight(ctx.view().renderWorld);
         if (primaryDirectionalLight)
@@ -81,6 +110,17 @@ namespace vultra
         if (shadowDirectionalLight)
             shadowSettings.lightDirection = shadowDirectionalLight->direction;
 
+        FrameGraphResource ssao;
+        if (settings.ssao.enabled)
+        {
+            ssao = m_SsaoPass->addPass(ctx,
+                                       ctx.data.get(kResKey_DepthTexture),
+                                       ctx.data.get(kResKey_GBufferNormal),
+                                       settings.ssao);
+            if (ssao)
+                ctx.data.set(kResKey_SsaoTexture, ssao);
+        }
+
         auto shadow = m_ShadowPass->addPass(ctx, shadowSettings);
 
         auto lit = m_LightingPass->addPass(ctx,
@@ -88,7 +128,7 @@ namespace vultra
                                            ctx.data.get(kResKey_GBufferNormal),
                                            ctx.data.get(kResKey_GBufferMetallicRoughnessAO),
                                            ctx.data.get(kResKey_DepthTexture),
-                                           {},
+                                           ssao,
                                            shadow.shadowMap,
                                            shadow.shadowData,
                                            shadowSettings,
@@ -96,6 +136,21 @@ namespace vultra
                                            ctx.view().renderWorld);
         if (lit)
         {
+            const bool cameraWantsSkybox = ctx.view().camera && ctx.view().camera->clearMode == 1u;
+            if (cameraWantsSkybox && skyboxTexture &&
+                ctx.data.contains(kResKey_DepthTexture))
+            {
+                const auto env = framegraph::importTexture(ctx.fg,
+                                                           "Environment Map",
+                                                           skyboxTexture);
+                lit = m_SkyboxPass->addPass(ctx,
+                                            lit,
+                                            ctx.data.get(kResKey_DepthTexture),
+                                            env,
+                                            lightingSettings.environmentMap == skyboxTexture ?
+                                                m_LightingPass->environmentCubemap() :
+                                                nullptr);
+            }
             ctx.data.set(kResKey_FinalCompositionSource, lit);
         }
     }

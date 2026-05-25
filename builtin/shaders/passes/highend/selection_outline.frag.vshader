@@ -2,6 +2,11 @@
 language = glsl
 version = 460
 
+[properties]
+thickness : float = 3.0 range(0.0, 16.0)
+fillOpacity : float = 0.0 range(0.0, 1.0)
+edgeOpacity : float = 0.35 range(0.0, 1.0)
+
 [frag]
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 0) out vec4 FragColor;

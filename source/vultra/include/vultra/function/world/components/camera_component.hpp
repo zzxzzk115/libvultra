@@ -19,6 +19,8 @@ namespace vultra
         float zNear {0.1f};
         float zFar {1000.0f};
 
+        // 0 = solid color, 1 = scene environment skybox.
+        uint32_t clearMode {0};
         glm::vec4 clearColor {0.02f, 0.025f, 0.035f, 1.0f};
         int       priority {0};
 

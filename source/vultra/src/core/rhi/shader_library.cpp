@@ -3,6 +3,8 @@
 
 #include <vshadersystem/engine_keywords.hpp>
 
+#include <algorithm>
+
 namespace
 {
     template<typename ShaderBinaryLike>
@@ -82,6 +84,16 @@ namespace vultra
             if (!m_EngineKeywords)
                 return nullptr;
             return std::addressof(m_EngineKeywords.value());
+        }
+
+        bool ShaderLibraryRuntime::hasVariant(const uint64_t variantHash, const vshadersystem::ShaderStage stage) const
+        {
+            if (!m_Loaded)
+                return false;
+
+            return std::any_of(m_Lib.entries.begin(), m_Lib.entries.end(), [&](const auto& entry) {
+                return entry.keyHash == variantHash && entry.stage == stage;
+            });
         }
 
         std::optional<ShaderLibraryRuntime::LoadedShader>

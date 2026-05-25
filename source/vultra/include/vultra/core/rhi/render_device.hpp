@@ -84,7 +84,8 @@ namespace vultra
                                   std::span<const char* const> requiredInstanceExtensions = {},
                                   RenderBackendApi             backendApi                 = RenderBackendApi::eAuto,
                                   bool enableValidation = defaultRenderDiagnosticsEnabled(),
-                                  bool enableDebugMarkers = defaultRenderDiagnosticsEnabled());
+                                  bool enableDebugMarkers = defaultRenderDiagnosticsEnabled(),
+                                  bool enableRenderDoc = defaultRenderDiagnosticsEnabled());
             RenderDevice(const RenderDevice&)     = delete;
             RenderDevice(RenderDevice&&) noexcept = delete;
             ~RenderDevice();

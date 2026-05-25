@@ -80,7 +80,9 @@ namespace vultra
             m_Bindings[index] = {DescriptorType::eStorageImage, numImages, static_cast<int32_t>(m_ImageInfos.size())};
             for (uint32_t i = 0; i < numImages; ++i)
             {
-                addImage(info.texture->getMipLevel(i, toRhi(toVk(info.imageAspect))).getHandle(), ImageLayout::eGeneral);
+                const uint32_t mipLevel = info.mipLevel.value_or(i);
+                addImage(info.texture->getMipLevel(mipLevel, toRhi(toVk(info.imageAspect))).getHandle(),
+                         ImageLayout::eGeneral);
             }
         }
 

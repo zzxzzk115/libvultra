@@ -19,9 +19,7 @@
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/world.hpp"
-#ifdef VULTRA_ENABLE_RENDERDOC
 #include "vultra/function/services/frame_debugger_service.hpp"
-#endif
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -1078,13 +1076,12 @@ namespace vultra
 
         drawRuntimeProfilerPanel(renderService);
 
-#ifdef VULTRA_ENABLE_RENDERDOC
-        ImGui::Button("Capture One Frame");
-        if (ImGui::IsItemClicked())
+        if (auto* frameDebugger = getServices()->tryGet<IFrameDebuggerService>();
+            frameDebugger && frameDebugger->isAvailable())
         {
-            getServices()->require<IFrameDebuggerService>().captureSingleFrame();
+            if (ImGui::Button("Capture One Frame"))
+                frameDebugger->captureSingleFrame();
         }
-#endif
         ImGui::End();
     }
 } // namespace vultra

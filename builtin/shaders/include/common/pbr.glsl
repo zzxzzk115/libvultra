@@ -207,10 +207,10 @@ vec3 calIBLAmbient(vec3 diffuseColor,
                    samplerCube irradianceMap,
                    samplerCube prefilteredEnvMap)
 {
-    float NdotV = dot(N, V);
+    float NdotV = clamp(dot(N, V), 0.0, 1.0);
     LightContribution iblContribution =
-        calIBL(diffuseColor, F0, 0.5, material.roughness, N, V, NdotV, brdfLUT, irradianceMap, prefilteredEnvMap);
-    return (iblContribution.diffuse + iblContribution.specular) * material.ao;
+        calIBL(diffuseColor, F0, 1.0, material.roughness, N, V, NdotV, brdfLUT, irradianceMap, prefilteredEnvMap);
+    return iblContribution.diffuse * material.ao + iblContribution.specular;
 }
 
 #endif

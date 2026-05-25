@@ -23,7 +23,7 @@ namespace vultra
             float   intensity {1.2f};
             int32_t maxRadiusPixels {32};
             int32_t stepCount {4};
-            int32_t directionCount {1};
+            int32_t directionCount {8};
         };
     } // namespace
 

@@ -33,9 +33,11 @@
 #include "vultra/function/rendering/srp/builtin/passes/raytracing_primary_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/shadow_map_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/skybox_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssr_composite_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/thin_gbuffer_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/services/asset_service.hpp"
@@ -51,7 +53,9 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <optional>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -82,9 +86,15 @@ namespace vultra
         [[nodiscard]] std::string rendererKeyFromRenderGraphUri(std::string_view uri)
         {
             auto filename = std::filesystem::path(std::string(uri)).filename().generic_string();
-            constexpr std::string_view suffix = ".vrg.json";
-            if (filename.ends_with(suffix))
-                filename.resize(filename.size() - suffix.size());
+            constexpr std::array<std::string_view, 2> suffixes {".vrg.json", ".vrp.lua"};
+            for (const auto suffix : suffixes)
+            {
+                if (filename.ends_with(suffix))
+                {
+                    filename.resize(filename.size() - suffix.size());
+                    break;
+                }
+            }
             if (filename.empty())
                 filename = "custom";
             return normalizeId(std::move(filename));
@@ -171,6 +181,7 @@ namespace vultra
             lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
             lua.set_function("RenderPipelineAsset", [](sol::table t) { return t; });
             lua.set_function("RenderFeature", [](sol::table t) { return t; });
+            lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
             lua.set_function("ShaderLibrary", [](sol::table t) { return t; });
             return lua;
         }
@@ -240,7 +251,7 @@ namespace vultra
                             m_Desc.name + " Color",
                             {
                                 .extent     = ctx.view().extent,
-                                .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                                .format     = rhi::PixelFormat::eRGBA16F,
                                 .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
                                               rhi::ImageUsage::eTransferSrc,
                             });
@@ -279,18 +290,6 @@ namespace vultra
 
                     rc.cb.bindPipeline(*pipeline);
                     rc.bindDescriptorSets(*pipeline);
-                    if (m_Desc.pushConstants)
-                    {
-                        struct PushConstants
-                        {
-                            float exposure {1.0f};
-                            int   method {0};
-                        } pc {
-                            .exposure = m_Desc.exposure,
-                            .method   = m_Desc.method,
-                        };
-                        rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
-                    }
                     rc.cb.beginRendering(framebufferInfo.value()).drawFullScreenTriangle().endRendering();
                 });
 
@@ -372,6 +371,8 @@ namespace vultra
             for (const auto& id : shaderIds)
             {
                 const auto hash = rhi::ShaderLibraryRuntime::computeVariantHash(id, stage, {});
+                if (!m_ShaderLibrary->hasVariant(hash, stage))
+                    continue;
                 shader = m_ShaderLibrary->load(hash, stage);
                 if (shader)
                     break;
@@ -587,75 +588,62 @@ namespace vultra
 
         void registerPasses()
         {
-            m_Registry.registerPass(vrendergraph::PassDefinition {
-                .type = "FullscreenShader",
-                .setup =
-                    [this](FrameGraph&,
-                           FrameGraphBlackboard&,
-                           const vrendergraph::ParamBlock& params,
-                           vrendergraph::PassBuildContext& passCtx) {
-                        auto* ctx = m_Owner.m_CurrentBuildContext;
-                        if (!ctx)
-                            return;
+            for (const auto& projectPass : m_Owner.m_Asset.projectGraphPasses)
+            {
+                if (projectPass.type.empty() || projectPass.fullscreen.shader.fragment.empty())
+                    continue;
 
-                        FullscreenPass pass;
-                        pass.name = params.get<std::string>("name", "VRenderGraphFullscreen");
-                        pass.input = "source";
-                        pass.output = "color";
-                        pass.shader.library = params.get<std::string>("library", "project");
-                        pass.shader.vertex = params.get<std::string>("vertex", "fullscreen_triangle.vert");
-                        pass.shader.fragment = params.get<std::string>("fragment", {});
-                        pass.pushConstants = params.get<bool>("pushConstants", false);
-                        pass.exposure = params.get<float>("exposure", 1.0f);
-                        pass.method = params.get<int>("method", 0);
+                m_Registry.registerPass(vrendergraph::PassDefinition {
+                    .type = projectPass.type,
+                    .setup =
+                        [this, projectPass](FrameGraph&,
+                                            FrameGraphBlackboard&,
+                                            const vrendergraph::ParamBlock& params,
+                                            vrendergraph::PassBuildContext& passCtx) {
+                            auto* ctx = m_Owner.m_CurrentBuildContext;
+                            if (!ctx)
+                                return;
 
-                        if (pass.shader.fragment.empty())
-                        {
-                            VULTRA_CORE_ERROR("[DeclarativeRenderer] FullscreenShader pass '{}' has no fragment shader",
-                                              pass.name);
-                            return;
-                        }
+                            auto* shaderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IShaderService>() : nullptr;
+                            if (!shaderService)
+                                return;
 
-                        auto* shaderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IShaderService>() : nullptr;
-                        if (!shaderService)
-                            return;
+                            auto pass = projectPass.fullscreen;
+                            pass.name = params.get<std::string>("name", pass.name.empty() ? projectPass.type : pass.name);
 
-                        rhi::ShaderLibraryRuntime* library = nullptr;
-                        if (pass.shader.library == "builtin")
-                            library = &shaderService->builtinLibrary();
-                        else if (auto it = m_Owner.m_Asset.shaderLibraries.find(pass.shader.library);
-                                 it != m_Owner.m_Asset.shaderLibraries.end())
-                            library = shaderService->findProjectLibrary(it->second);
+                            rhi::ShaderLibraryRuntime* library = nullptr;
+                            if (pass.shader.library == "builtin")
+                                library = &shaderService->builtinLibrary();
+                            else if (auto it = m_Owner.m_Asset.shaderLibraries.find(pass.shader.library);
+                                     it != m_Owner.m_Asset.shaderLibraries.end())
+                                library = shaderService->findProjectLibrary(it->second);
 
-                        if (!library)
-                        {
-                            VULTRA_CORE_ERROR("[DeclarativeRenderer] Shader library '{}' is not loaded for graph pass '{}'",
-                                              pass.shader.library,
-                                              pass.name);
-                            return;
-                        }
+                            if (!library)
+                            {
+                                VULTRA_CORE_ERROR("[DeclarativeRenderer] Shader library '{}' is not loaded for project graph pass '{}'",
+                                                  pass.shader.library,
+                                                  projectPass.type);
+                                return;
+                            }
 
-                        auto& runtime = m_PassRuntimes[pass.name];
-                        if (!runtime)
-                            runtime = std::make_unique<FullscreenPassRuntime>(std::move(pass), library);
-                        else
-                            runtime->update(std::move(pass), library);
-                        const auto input = passCtx.getInput("source");
-                        const auto output = runtime->addPass(*ctx, input, {}, false);
-                        if (output)
-                            passCtx.setOutput("color", output);
+                            auto& runtime = m_ProjectPassRuntimes[pass.name];
+                            if (!runtime)
+                                runtime = std::make_unique<FullscreenPassRuntime>(pass, library);
+                            else
+                                runtime->update(pass, library);
+
+                            const auto input = passCtx.getInput("source");
+                            const auto output = runtime->addPass(*ctx, input, {}, false);
+                            if (output)
+                                passCtx.setOutput("color", output);
+                        },
+                    .inputs = {"source"},
+                    .outputs = {"color"},
+                    .params = {
+                        {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = projectPass.type},
                     },
-                .inputs = {"source"},
-                .outputs = {"color"},
-                .params =
-                    {
-                        {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = "VRenderGraphFullscreen"},
-                        {.name = "library", .type = vrendergraph::ParamType::eString, .defaultValue = "project"},
-                        {.name = "vertex", .type = vrendergraph::ParamType::eString, .defaultValue = "fullscreen_triangle.vert"},
-                        {.name = "fragment", .type = vrendergraph::ParamType::eString, .defaultValue = ""},
-                        {.name = "pushConstants", .type = vrendergraph::ParamType::eBoolean, .defaultValue = false},
-                    },
-            });
+                });
+            }
 
             const auto registerBuiltin = [this](std::string type,
                                                 std::vector<std::string> inputs,
@@ -760,15 +748,42 @@ namespace vultra
                                 const auto& settings = renderService->builtinRenderSettings();
                                 auto lightingSettings = settings.pbrLighting;
                                 auto shadowSettings = settings.shadow;
+                                rhi::Texture* skyboxTexture = nullptr;
                                 lightingSettings.ambientIntensity = params.get<float>("ambientIntensity", lightingSettings.ambientIntensity);
                                 lightingSettings.shadowStrength = params.get<float>("shadowStrength", lightingSettings.shadowStrength);
                                 lightingSettings.iblIntensity = params.get<float>("iblIntensity", lightingSettings.iblIntensity);
+                                lightingSettings.debugViewMode = static_cast<PbrLightingSettings::DebugViewMode>(
+                                    std::clamp(params.get<int>("debugViewMode", static_cast<int>(lightingSettings.debugViewMode)), 0, 6));
                                 shadowSettings.filterMode = static_cast<ShadowRenderSettings::FilterMode>(
                                     std::clamp(params.get<int>("shadowFilterMode", static_cast<int>(shadowSettings.filterMode)), 0, 2));
                                 shadowSettings.debugMode = static_cast<ShadowRenderSettings::DebugMode>(
                                     std::clamp(params.get<int>("shadowDebugMode", static_cast<int>(shadowSettings.debugMode)), 0, 5));
                                 if (params.get<bool>("debugCascades", false))
                                     shadowSettings.debugMode = ShadowRenderSettings::DebugMode::eCascade;
+                                const auto* renderEnvironment =
+                                    ctx->view().renderWorld && ctx->view().renderWorld->environment.active ?
+                                        &ctx->view().renderWorld->environment :
+                                        nullptr;
+                                if (renderEnvironment)
+                                {
+                                    lightingSettings.ambientColor = renderEnvironment->ambientColor;
+                                    lightingSettings.ambientIntensity = renderEnvironment->ambientIntensity;
+                                    lightingSettings.enableIBL = renderEnvironment->enableIBL;
+                                    lightingSettings.iblColor = renderEnvironment->iblColor;
+                                    lightingSettings.iblIntensity = renderEnvironment->iblIntensity;
+                                    lightingSettings.environmentMap = renderEnvironment->skybox;
+                                    skyboxTexture = renderEnvironment->skybox;
+                                }
+                                if (const auto* probe = selectReflectionProbe(ctx->view().renderWorld, ctx->view().camera))
+                                {
+                                    lightingSettings.enableIBL = probe->enableIBL;
+                                    lightingSettings.iblIntensity = probe->intensity;
+                                    if (probe->enableIBL)
+                                        lightingSettings.environmentMap = probe->environmentMap;
+                                }
+                                if (lightingSettings.debugViewMode != PbrLightingSettings::DebugViewMode::eLit ||
+                                    shadowSettings.debugMode != ShadowRenderSettings::DebugMode::eOff)
+                                    m_Owner.m_CurrentFrameApplyToneMapping = false;
                                 shadowSettings.pcssBlockerSamples = params.get<int>("pcssBlockerSamples", shadowSettings.pcssBlockerSamples);
                                 shadowSettings.pcssFilterSamples = params.get<int>("pcfRadius", shadowSettings.pcssFilterSamples);
                                 auto color = m_DeferredLightingPass.addPass(*ctx,
@@ -784,6 +799,21 @@ namespace vultra
                                                                             ctx->view().renderWorld);
                                 if (color)
                                 {
+                                    const bool cameraWantsSkybox = ctx->view().camera && ctx->view().camera->clearMode == 1u;
+                                    if (cameraWantsSkybox && skyboxTexture &&
+                                        ctx->data.contains(kResKey_DepthTexture))
+                                    {
+                                        const auto env = framegraph::importTexture(ctx->fg,
+                                                                                   "Environment Map",
+                                                                                   skyboxTexture);
+                                        color = m_SkyboxPass.addPass(*ctx,
+                                                                     color,
+                                                                     ctx->data.get(kResKey_DepthTexture),
+                                                                     env,
+                                                                     lightingSettings.environmentMap == skyboxTexture ?
+                                                                         m_DeferredLightingPass.environmentCubemap() :
+                                                                         nullptr);
+                                    }
                                     ctx->data.set(kResKey_FinalCompositionSource, color);
                                     passCtx.setOutput("color", color);
                                 }
@@ -878,6 +908,28 @@ namespace vultra
                                     return;
                                 }
                                 auto color = m_FxaaPass.addPass(*ctx, passCtx.getInput("source"));
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
+            registerBuiltin("ToneMapping", {"source"}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                const bool enabled = params.get<bool>("enabled", true) && m_Owner.m_CurrentFrameApplyToneMapping;
+                                if (!enabled)
+                                {
+                                    passCtx.setOutput("color", passCtx.getInput("source"));
+                                    return;
+                                }
+                                auto color = m_ToneMappingPass.addPass(*ctx,
+                                                                       passCtx.getInput("source"),
+                                                                       params.get<float>("exposure", 1.0f),
+                                                                       params.get<int>("method", 0));
                                 if (color)
                                 {
                                     ctx->data.set(kResKey_FinalCompositionSource, color);
@@ -1134,18 +1186,20 @@ namespace vultra
         std::string m_Uri;
         vrendergraph::RenderGraphDesc m_Desc;
         vrendergraph::RenderGraphRegistry m_Registry;
-        std::unordered_map<std::string, std::unique_ptr<FullscreenPassRuntime>> m_PassRuntimes;
+        std::unordered_map<std::string, std::unique_ptr<FullscreenPassRuntime>> m_ProjectPassRuntimes;
         std::string m_LastValidationError;
         CompatibilityBaseColorPass m_CompatibilityBaseColorPass;
         DirectGBufferPass m_DirectGBufferPass;
         DepthPrePass m_DepthPrePass;
         ShadowMapPass m_ShadowMapPass;
         DeferredLightingPass m_DeferredLightingPass;
+        SkyboxPass m_SkyboxPass;
         HzbGeneratePass m_HzbGeneratePass;
         SsaoPass m_SsaoPass;
         SsrPass m_SsrPass;
         SsrCompositePass m_SsrCompositePass;
         FxaaPass m_FxaaPass;
+        ToneMappingPass m_ToneMappingPass;
         SelectionOutlinePass m_SelectionOutlinePass;
         FinalCompositionPass m_FinalCompositionPass;
         RayTracingPrimaryPass m_RayTracingPrimaryPass;
@@ -1274,6 +1328,7 @@ namespace vultra
 
     void DeclarativeRenderer::buildFrameGraph(FrameGraphBuildContext& ctx)
     {
+        m_CurrentFrameApplyToneMapping = true;
         for (auto& feature : m_RuntimeFeatures)
             feature->addPasses(ctx);
     }
@@ -1292,31 +1347,54 @@ namespace vultra
             return false;
         }
 
-        if (!m_PipelineUri.ends_with(".vrg.json"))
+        if (m_PipelineUri.ends_with(".vrg.json"))
         {
-            VULTRA_CORE_ERROR("[DeclarativeRenderer] Render pipeline '{}' must be a .vrg.json asset", m_PipelineUri);
+            try
+            {
+                const auto json = nlohmann::json::parse(text.value());
+                static_cast<void>(vrendergraph::loadRenderGraph(json));
+                auto feature = Feature {};
+                feature.name = m_PipelineUri;
+                feature.renderGraph = m_PipelineUri;
+                m_Asset.rendererKey = m_RendererKeyOverride.empty() ?
+                                          rendererKeyFromRenderGraphUri(m_PipelineUri) :
+                                          m_RendererKeyOverride;
+                m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
+                loadProjectGraphPasses();
+                m_Asset.features.push_back(std::move(feature));
+                return true;
+            }
+            catch (const std::exception& e)
+            {
+                VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to parse render graph pipeline '{}': {}",
+                                  m_PipelineUri,
+                                  e.what());
+                return false;
+            }
+        }
+
+        auto lua = makeAssetLuaState();
+        auto result = lua.safe_script(text.value(), &sol::script_pass_on_error);
+        if (!result.valid())
+        {
+            sol::error err = result;
+            VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to parse render pipeline '{}': {}", m_PipelineUri, err.what());
             return false;
         }
 
-        try
+        sol::object obj = result;
+        if (!obj.is<sol::table>() || !parsePipelineTable(obj.as<sol::table>(), m_Asset))
         {
-            const auto json = nlohmann::json::parse(text.value());
-            static_cast<void>(vrendergraph::loadRenderGraph(json));
-            auto feature = Feature {};
-            feature.name = m_PipelineUri;
-            feature.renderGraph = m_PipelineUri;
-            m_Asset.rendererKey = m_RendererKeyOverride.empty() ?
-                                      rendererKeyFromRenderGraphUri(m_PipelineUri) :
-                                      m_RendererKeyOverride;
-            m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
-            m_Asset.features.push_back(std::move(feature));
-            return true;
-        }
-        catch (const std::exception& e)
-        {
-            VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to parse render graph pipeline '{}': {}", m_PipelineUri, e.what());
+            VULTRA_CORE_ERROR("[DeclarativeRenderer] Render pipeline '{}' did not return a valid RenderPipelineAsset",
+                              m_PipelineUri);
             return false;
         }
+
+        if (!m_RendererKeyOverride.empty())
+            m_Asset.rendererKey = m_RendererKeyOverride;
+        m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
+        loadProjectGraphPasses();
+        return true;
     }
 
     bool DeclarativeRenderer::loadFeatureAsset(std::string_view uri, Feature& outFeature)
@@ -1427,23 +1505,89 @@ namespace vultra
             pass.shader.fragment = getString(shaderTable, "fragment");
             pass.input = getString(passTable, "input", pass.input);
             pass.output = getString(passTable, "output", pass.output);
-            sol::object pushConstantsObj = passTable["pushConstants"];
-            if (pushConstantsObj.is<bool>())
-                pass.pushConstants = pushConstantsObj.as<bool>();
-            sol::object exposureObj = passTable["exposure"];
-            if (exposureObj.is<float>())
-                pass.exposure = exposureObj.as<float>();
-            else if (exposureObj.is<double>())
-                pass.exposure = static_cast<float>(exposureObj.as<double>());
-            sol::object methodObj = passTable["method"];
-            if (methodObj.is<int>())
-                pass.method = methodObj.as<int>();
             if (pass.shader.vertex.empty() || pass.shader.fragment.empty())
                 continue;
 
             outFeature.fullscreenPasses.push_back(std::move(pass));
         }
         return true;
+    }
+
+    bool DeclarativeRenderer::parseProjectGraphPassTable(sol::table table, ProjectGraphPass& outPass)
+    {
+        outPass.type = getString(table, "type");
+        if (outPass.type.empty())
+            outPass.type = getString(table, "name");
+        if (outPass.type.empty())
+            return false;
+
+        auto& pass = outPass.fullscreen;
+        pass.name = getString(table, "passName", outPass.type);
+        pass.input = "source";
+        pass.output = "color";
+
+        sol::object shaderObj = table["shader"];
+        if (!shaderObj.is<sol::table>())
+            return false;
+
+        sol::table shaderTable = shaderObj.as<sol::table>();
+        pass.shader.library = getString(shaderTable, "library", "project");
+        pass.shader.vertex = getString(shaderTable, "vertex", "fullscreen_triangle.vert");
+        pass.shader.fragment = getString(shaderTable, "fragment");
+        return !pass.shader.vertex.empty() && !pass.shader.fragment.empty();
+    }
+
+    void DeclarativeRenderer::loadProjectGraphPasses()
+    {
+        auto* services = getServices();
+        auto* assetService = services ? services->tryGet<IAssetService>() : nullptr;
+        if (!assetService)
+            return;
+
+        const auto passDir = std::filesystem::path(assetService->resolveUri("res://render/passes")).lexically_normal();
+        std::error_code ec;
+        if (!std::filesystem::is_directory(passDir, ec))
+            return;
+
+        std::vector<std::filesystem::path> files;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(passDir, ec))
+        {
+            if (ec)
+                break;
+            if (!entry.is_regular_file(ec) || entry.path().extension() != ".lua")
+                continue;
+            files.push_back(entry.path().lexically_normal());
+        }
+        std::sort(files.begin(), files.end());
+
+        for (const auto& file : files)
+        {
+            std::ifstream stream(file);
+            if (!stream.is_open())
+                continue;
+
+            std::stringstream buffer;
+            buffer << stream.rdbuf();
+
+            auto lua = makeAssetLuaState();
+            auto result = lua.safe_script(buffer.str(), &sol::script_pass_on_error);
+            if (!result.valid())
+            {
+                sol::error err = result;
+                VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to parse project graph pass '{}': {}",
+                                  file.generic_string(),
+                                  err.what());
+                continue;
+            }
+
+            sol::object obj = result;
+            if (!obj.is<sol::table>())
+                continue;
+
+            ProjectGraphPass pass;
+            if (parseProjectGraphPassTable(obj.as<sol::table>(), pass))
+                m_Asset.projectGraphPasses.push_back(std::move(pass));
+        }
     }
 
     bool DeclarativeRenderer::loadShaderLibraries()

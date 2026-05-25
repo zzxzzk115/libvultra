@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="script_lua"
+uid="86e3736132698a4e1b9012d6a463fd93"
+
+[source]
+file="render/passes/pixelate.lua"
+
+[output]
+file="imported/script_lua/render/passes/pixelate.lua"
+
+[params]

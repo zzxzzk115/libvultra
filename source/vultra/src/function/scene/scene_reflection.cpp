@@ -2,12 +2,14 @@
 
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
+#include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
+#include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 
@@ -60,9 +62,33 @@ namespace vultra
             .data<&CameraComponent::orthographicHeight>("orthographicHeight"_hs)
             .data<&CameraComponent::zNear>("zNear"_hs)
             .data<&CameraComponent::zFar>("zFar"_hs)
+            .data<&CameraComponent::clearMode>("clearMode"_hs)
             .data<&CameraComponent::clearColor>("clearColor"_hs)
             .data<&CameraComponent::priority>("priority"_hs)
             .data<&CameraComponent::rendererKey>("rendererKey"_hs);
+
+        entt::meta_factory<EnvironmentComponent>()
+            .type("EnvironmentComponent"_hs)
+            .data<&EnvironmentComponent::active>("active"_hs)
+            .data<&EnvironmentComponent::skybox>("skybox"_hs)
+            .data<&EnvironmentComponent::ambientColor>("ambientColor"_hs)
+            .data<&EnvironmentComponent::ambientIntensity>("ambientIntensity"_hs)
+            .data<&EnvironmentComponent::enableIBL>("enableIBL"_hs)
+            .data<&EnvironmentComponent::iblColor>("iblColor"_hs)
+            .data<&EnvironmentComponent::iblIntensity>("iblIntensity"_hs);
+
+        entt::meta_factory<ReflectionProbeComponent>()
+            .type("ReflectionProbeComponent"_hs)
+            .data<&ReflectionProbeComponent::active>("active"_hs)
+            .data<&ReflectionProbeComponent::enableIBL>("enableIBL"_hs)
+            .data<&ReflectionProbeComponent::environmentMap>("environmentMap"_hs)
+            .data<&ReflectionProbeComponent::shape>("shape"_hs)
+            .data<&ReflectionProbeComponent::boxSize>("boxSize"_hs)
+            .data<&ReflectionProbeComponent::radius>("radius"_hs)
+            .data<&ReflectionProbeComponent::blendDistance>("blendDistance"_hs)
+            .data<&ReflectionProbeComponent::intensity>("intensity"_hs)
+            .data<&ReflectionProbeComponent::priority>("priority"_hs)
+            .data<&ReflectionProbeComponent::parallaxCorrection>("parallaxCorrection"_hs);
 
         entt::meta_factory<LightComponent>()
             .type("LightComponent"_hs)

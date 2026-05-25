@@ -2,6 +2,13 @@
 language = glsl
 version = 460
 
+[properties]
+reflectionFactor : float = 0.7 range(0.0, 2.0)
+maxSteps : int = 16 range(4, 64)
+binaryRefinement : int = 3 range(0, 8)
+stride : float = 0.35 range(0.05, 4.0)
+thickness : float = 0.5 range(0.0, 5.0)
+
 [frag]
 #define VULTRA_DECLARE_CAMERA
 #include "include/common/gpu_scene.glsl"

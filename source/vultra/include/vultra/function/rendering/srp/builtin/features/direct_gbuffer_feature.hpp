@@ -8,6 +8,8 @@ namespace vultra
     class DirectGBufferPass;
     class IRenderService;
     class ShadowMapPass;
+    class SsaoPass;
+    class SkyboxPass;
 
     class DirectGBufferFeature final : public RenderFeature
     {
@@ -23,6 +25,8 @@ namespace vultra
         IRenderService&        m_RenderService;
         DirectGBufferPass*     m_GBufferPass {nullptr};
         ShadowMapPass*         m_ShadowPass {nullptr};
+        SsaoPass*              m_SsaoPass {nullptr};
         DeferredLightingPass*  m_LightingPass {nullptr};
+        SkyboxPass*            m_SkyboxPass {nullptr};
     };
 } // namespace vultra

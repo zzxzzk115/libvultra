@@ -5,10 +5,11 @@
 namespace vultra
 {
     class FxaaPass;
-    class SsaoPass;
     class IRenderService;
     class SelectionOutlinePass;
+    class SsrCompositePass;
     class SsrPass;
+    class ToneMappingPass;
 
     class BuiltinScreenSpaceFeature final : public RenderFeature
     {
@@ -22,8 +23,9 @@ namespace vultra
 
     private:
         IRenderService& m_RenderService;
-        SsaoPass*       m_SsaoPass {nullptr};
         SsrPass*        m_SsrPass {nullptr};
+        SsrCompositePass* m_SsrCompositePass {nullptr};
+        ToneMappingPass*  m_ToneMappingPass {nullptr};
         SelectionOutlinePass* m_SelectionOutlinePass {nullptr};
         FxaaPass*       m_FxaaPass {nullptr};
     };

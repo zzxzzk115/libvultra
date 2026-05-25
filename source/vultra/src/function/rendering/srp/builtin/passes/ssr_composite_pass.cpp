@@ -60,7 +60,7 @@ namespace vultra
                     "SSRCompositeOutput",
                     {
                         .extent     = extent,
-                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                        .format     = rhi::PixelFormat::eRGBA16F,
                         .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
                                       rhi::ImageUsage::eTransferSrc,
                     });

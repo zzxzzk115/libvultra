@@ -39,9 +39,10 @@ void main() {
     FragColor = texture(t_EntityId, sampleUv);
     return;
 #endif
+    vec3 color = max(source.rgb, vec3(0.0));
 #if MANUAL_SRGB_ENCODE
-    FragColor = vec4(linearTosRGB(source.rgb), 1.0);
+    FragColor = vec4(linearTosRGB(color), 1.0);
 #else
-    FragColor = vec4(source.rgb, 1.0);
+    FragColor = vec4(color, 1.0);
 #endif
 }
