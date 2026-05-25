@@ -33,8 +33,6 @@ function Find-VultraExecutable {
 
     $name = Get-VultraExecutableName
     $candidates = @(
-        (Join-Path $RepoRootPath "build/install/bin/$name"),
-        (Join-Path $RepoRootPath "build/install/vultra-app/bin/$name"),
         (Join-Path $RepoRootPath "build/windows/x64/release/vultra-app/$name"),
         (Join-Path $RepoRootPath "build/windows/x64/debug/vultra-app/$name")
     )

@@ -115,12 +115,11 @@ EntityStatusComponent/visible = true
 EntityStatusComponent/locked = false
 EntityStatusComponent/selectable = true
 TransformComponent/position = (0, 4, 0)
-TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/rotation = (-0.699544, -0.111872, 0.112315, 0.696784)
 TransformComponent/scale = (1, 1, 1)
 LightComponent/kind = 0
 LightComponent/color = (1, 0.96, 0.9)
 LightComponent/intensity = 8
-LightComponent/direction = (-0.35, -0.8, -0.25)
 LightComponent/range = 100
 LightComponent/radius = 0.05
 LightComponent/width = 1
@@ -433,7 +432,7 @@ void main() {
             {
                 engine.ctx().config.asset.assetRoot =
                     (project->projectDir / project->assetRoot).lexically_normal().generic_string();
-                engine.ctx().config.render.renderPipelineAsset = project->renderPipeline;
+                engine.ctx().config.render.renderPipelineAsset = project->editingRenderGraph;
             }
             else
                 engine.ctx().config.asset.assetRoot =
@@ -449,7 +448,7 @@ void main() {
 
     void ProjectLauncher::logStartup()
     {
-        VULTRA_CLIENT_INFO("[Vultra] No resources.vpk found. Project Launcher mode is active.");
+        VULTRA_CLIENT_INFO("[Vultra] No default VPK found. Project Launcher mode is active.");
     }
 
     void ProjectLauncher::draw(AppState& state, IWindowService* windowService)
@@ -526,7 +525,7 @@ void main() {
             state.selectedSourceAsset.clear();
             state.currentAssetRoot    = "resources";
             state.currentDefaultScene = "res://scenes/test.vscn";
-            state.currentRenderPipeline = "res://render/default.vrg.json";
+            state.currentEditingRenderGraph = "res://render/default.vrg.json";
             ++state.projectGeneration;
             state.mode                = AppMode::Editor;
             state.statusMessage       = "Opened a blank editor session.";
@@ -902,7 +901,7 @@ void main() {
                .name         = projectName,
                .assetRoot    = "resources",
                .defaultScene = "res://scenes/test.vscn",
-               .renderPipeline = "res://render/default.vrg.json",
+               .editingRenderGraph = "res://render/default.vrg.json",
         };
         if (!saveVProject(project, &errorMessage))
         {
@@ -922,7 +921,7 @@ void main() {
         state.currentProjectName  = project.name;
         state.currentAssetRoot    = project.assetRoot;
         state.currentDefaultScene = project.defaultScene;
-        state.currentRenderPipeline = project.renderPipeline;
+        state.currentEditingRenderGraph = project.editingRenderGraph;
         ++state.projectGeneration;
         state.mode                = AppMode::Editor;
         state.statusMessage       = "Created project: " + projectDir.generic_string();
@@ -973,7 +972,7 @@ void main() {
         state.currentProjectName  = project->name;
         state.currentAssetRoot    = project->assetRoot;
         state.currentDefaultScene = project->defaultScene;
-        state.currentRenderPipeline = project->renderPipeline;
+        state.currentEditingRenderGraph = project->editingRenderGraph;
         ++state.projectGeneration;
         state.mode                = AppMode::Editor;
         state.statusMessage       = "Opened project: " + state.currentProject.generic_string();

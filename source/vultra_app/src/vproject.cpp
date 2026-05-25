@@ -40,8 +40,8 @@ namespace vultra_app
                 project.assetRoot = value;
             else if (key == "default_scene")
                 project.defaultScene = value;
-            else if (key == "render_pipeline")
-                project.renderPipeline = value;
+            else if (key == "editing_rendergraph")
+                project.editingRenderGraph = value;
         }
 
         void applyKeyValue(VPackageManifest& manifest, std::string key, std::string value)
@@ -53,8 +53,6 @@ namespace vultra_app
                 manifest.name = value;
             else if (key == "entry_scene")
                 manifest.entryScene = value;
-            else if (key == "render_pipeline")
-                manifest.renderPipeline = value;
         }
 
         std::string quote(std::string_view value)
@@ -124,8 +122,8 @@ namespace vultra_app
             project.assetRoot = "resources";
         if (project.defaultScene.empty())
             project.defaultScene = "res://scenes/test.vscn";
-        if (project.renderPipeline.empty())
-            project.renderPipeline = "res://render/default.vrg.json";
+        if (project.editingRenderGraph.empty())
+            project.editingRenderGraph = "res://render/default.vrg.json";
 
         return project;
     }
@@ -156,7 +154,7 @@ namespace vultra_app
         file << "name = \"" << project.name << "\"\n";
         file << "asset_root = \"" << project.assetRoot << "\"\n";
         file << "default_scene = \"" << project.defaultScene << "\"\n";
-        file << "render_pipeline = \"" << project.renderPipeline << "\"\n";
+        file << "editing_rendergraph = \"" << project.editingRenderGraph << "\"\n";
         return true;
     }
 
@@ -188,7 +186,6 @@ namespace vultra_app
         file << "version = 1\n";
         file << "name = " << quote(manifest.name) << "\n";
         file << "entry_scene = " << quote(manifest.entryScene) << "\n";
-        file << "render_pipeline = " << quote(manifest.renderPipeline) << "\n";
         return true;
     }
 
@@ -220,8 +217,6 @@ namespace vultra_app
 
         if (manifest.entryScene.empty())
             manifest.entryScene = "res://scenes/test.vscn";
-        if (manifest.renderPipeline.empty())
-            manifest.renderPipeline = "res://render/default.vrg.json";
         return manifest;
     }
 

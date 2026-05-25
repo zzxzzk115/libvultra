@@ -153,7 +153,10 @@ namespace vultra_app
 
         std::vector<fs::path> candidates;
         if (const auto exe = currentExecutablePath(); !exe.empty())
+        {
             candidates.push_back(exe.parent_path() / (exe.stem().generic_string() + ".vpk"));
+            candidates.push_back(fs::current_path() / (exe.stem().generic_string() + ".vpk"));
+        }
 
         if (!options.projectPath.empty())
         {
@@ -167,7 +170,8 @@ namespace vultra_app
 
         for (const auto& candidate : candidates)
         {
-            if (fs::exists(candidate))
+            std::error_code ec;
+            if (fs::exists(candidate, ec) && fs::is_regular_file(candidate, ec))
                 return candidate.lexically_normal();
         }
         return std::nullopt;

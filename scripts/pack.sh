@@ -27,8 +27,6 @@ find_vultra() {
 
     name="vultra"
     for candidate in \
-        "$repo_root/build/install/bin/$name" \
-        "$repo_root/build/install/vultra-app/bin/$name" \
         "$repo_root/build/linux/x64/release/vultra-app/$name" \
         "$repo_root/build/linux/x86_64/release/vultra-app/$name" \
         "$repo_root/build/macosx/arm64/release/vultra-app/$name"
