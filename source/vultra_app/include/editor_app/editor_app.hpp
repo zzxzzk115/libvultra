@@ -91,7 +91,7 @@ namespace vultra_app
         bool updateProjectLoading(EditorContext& ctx);
         void updateBuildAndRun(EditorContext& ctx);
         void startBuildAndRun(EditorContext& ctx);
-        void beginBuildAndRun(EditorContext& ctx, const std::filesystem::path& outputFolder);
+        void beginBuildAndRun(EditorContext& ctx, const std::filesystem::path& outputFolder, bool launchRuntime = true);
         void startProjectLoading(const std::filesystem::path& projectRoot);
         void startAssetImportTask(const std::filesystem::path& projectRoot, const std::string& assetRoot);
         void waitForAssetImportTask();
@@ -100,7 +100,9 @@ namespace vultra_app
         void drawLoadingOverlay() const;
         void drawBuildRunConfigurePopup(EditorContext& ctx);
         void drawBuildRunPopup();
+        void drawProjectSettingsPopup(EditorContext& ctx);
         void drawEditorSettingsPopup(EditorContext& ctx);
+        void drawBuildSettingsPopup(EditorContext& ctx);
         void saveCurrentScene(EditorContext& ctx);
         void syncPlaybackState(EditorContext& ctx);
         void capturePlayModeSnapshot(EditorContext& ctx);
@@ -127,8 +129,38 @@ namespace vultra_app
             "Select Build Output Folder",
             ui::FileDialogMode::Directory,
         };
+        ui::FileDialogField                 m_BuildSettingsOutputDialog {
+            "BuildSettingsOutputFolder",
+            "Select Build Output Folder",
+            ui::FileDialogMode::Directory,
+        };
+        ui::FileDialogField                 m_ProjectAssetRootDialog {
+            "ProjectAssetRootFolder",
+            "Select Asset Root",
+            ui::FileDialogMode::Directory,
+        };
+        ui::FileDialogField                 m_ExportTemplateDialog {
+            "ExportTemplateExecutable",
+            "Select Export Template",
+            ui::FileDialogMode::File,
+        };
+        ui::FileDialogField                 m_ExternalEditorDialog {
+            "ExternalEditorExecutable",
+            "Select External Editor",
+            ui::FileDialogMode::File,
+        };
         std::array<char, 512>               m_BuildRunOutputFolder {};
+        std::array<char, 128>               m_ProjectNameBuffer {};
+        std::array<char, 256>               m_ProjectAssetRootBuffer {};
+        std::array<char, 256>               m_ProjectDefaultSceneBuffer {};
+        std::array<char, 256>               m_ProjectEditingRenderGraphBuffer {};
+        std::array<char, 512>               m_BuildOutputFolderBuffer {};
+        std::array<char, 128>               m_BuildProjectNameBuffer {};
+        std::array<char, 512>               m_ExportTemplateBuffer {};
+        std::array<char, 512>               m_BuildExtraArgsBuffer {};
+        std::array<char, 512>               m_ExternalEditorBuffer {};
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
+        bool                m_PlayModeSceneDirtySnapshot {false};
         bool                m_Initialized {false};
         bool                m_DefaultLayoutBuilt {false};
         bool                m_BuildRunActive {false};

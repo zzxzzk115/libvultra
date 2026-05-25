@@ -283,8 +283,10 @@ namespace vultra_app
                     actions.newBlankScene(ctx);
                 if (ImGui::MenuItem("Save Scene", "Ctrl+S") && actions.saveScene)
                     actions.saveScene(ctx);
-                if (ImGui::MenuItem("Build & Run", "F5") && actions.buildAndRun)
+                if (ImGui::MenuItem("Export & Run", "F5") && actions.buildAndRun)
                     actions.buildAndRun(ctx);
+                if (ImGui::MenuItem("Export Settings"))
+                    ctx.state.buildSettingsOpen = true;
                 if (ImGui::MenuItem("Back to Launcher") && actions.backToLauncher)
                     actions.backToLauncher(ctx);
                 ImGui::EndPopup();
@@ -293,6 +295,11 @@ namespace vultra_app
             ImGui::SameLine(0.0f, 2.0f);
             if (titleMenuButton("Edit"))
             {
+                if (ImGui::MenuItem("Project Settings"))
+                    ctx.state.projectSettingsOpen = true;
+                if (ImGui::MenuItem("Editor Settings"))
+                    ctx.state.editorSettingsOpen = true;
+                ImGui::Separator();
                 if (ImGui::MenuItem("Reset Layout") && actions.resetLayout)
                     actions.resetLayout(ctx);
                 ImGui::EndPopup();
@@ -396,7 +403,7 @@ namespace vultra_app
             drawPlaybackControls(ctx);
 
             ImGui::SameLine(0.0f, 12.0f);
-            if (toolbarButton(ICON_MDI_ROCKET_LAUNCH "  Build & Run", "Package and run", ImVec2 {118.0f, 0.0f}) &&
+            if (toolbarButton(ICON_MDI_ROCKET_LAUNCH "  Export & Run", "Export package and run", ImVec2 {126.0f, 0.0f}) &&
                 actions.buildAndRun)
             {
                 actions.buildAndRun(ctx);
@@ -423,8 +430,18 @@ namespace vultra_app
             }
             if (settingsStart > ImGui::GetCursorPosX())
                 ImGui::SetCursorPosX(settingsStart);
-            if (toolbarButton(ICON_MDI_COG "  Settings", "Editor settings", ImVec2 {settingsWidth, 0.0f}))
-                ctx.state.editorSettingsOpen = true;
+            if (toolbarButton(ICON_MDI_COG "  Settings", "Settings", ImVec2 {settingsWidth, 0.0f}))
+                ImGui::OpenPopup("SettingsMenu");
+            if (ImGui::BeginPopup("SettingsMenu"))
+            {
+                if (ImGui::MenuItem("Project Settings"))
+                    ctx.state.projectSettingsOpen = true;
+                if (ImGui::MenuItem("Editor Settings"))
+                    ctx.state.editorSettingsOpen = true;
+                if (ImGui::MenuItem("Export Settings"))
+                    ctx.state.buildSettingsOpen = true;
+                ImGui::EndPopup();
+            }
 
             ImGui::End();
         }

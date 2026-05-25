@@ -27,15 +27,18 @@
 #include <glm/common.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
 #include <imgui.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <unordered_map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -289,7 +292,41 @@ namespace vultra_app
             return changed;
         }
 
-        bool drawTransformComponent(vultra::TransformComponent& transform)
+        glm::quat rotationFromDirection(const glm::vec3& direction);
+        glm::vec3 directionFromTransform(const vultra::TransformComponent& transform);
+
+        bool drawQuaternionDeltaControl(const char* label, glm::quat& rotation, const vultra::CoreUUID& entityId)
+        {
+            static std::unordered_map<vultra::CoreUUID, glm::vec3> s_RotationEditDegrees;
+
+            auto [it, inserted] =
+                s_RotationEditDegrees.try_emplace(entityId, glm::degrees(glm::eulerAngles(rotation)));
+            auto& editDegrees = it->second;
+            glm::vec3 nextDegrees = editDegrees;
+
+            if (!drawVec3Control(label, nextDegrees, glm::vec3 {0.0f}, 0.5f))
+                return false;
+
+            const glm::vec3 deltaDegrees = nextDegrees - editDegrees;
+            editDegrees                  = nextDegrees;
+
+            if (glm::dot(deltaDegrees, deltaDegrees) <= 1e-8f)
+            {
+                rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+                return true;
+            }
+
+            const glm::vec3 deltaRadians = glm::radians(deltaDegrees);
+            const glm::quat qx           = glm::angleAxis(deltaRadians.x, glm::vec3 {1.0f, 0.0f, 0.0f});
+            const glm::quat qy           = glm::angleAxis(deltaRadians.y, glm::vec3 {0.0f, 1.0f, 0.0f});
+            const glm::quat qz           = glm::angleAxis(deltaRadians.z, glm::vec3 {0.0f, 0.0f, 1.0f});
+            rotation                     = glm::normalize(qz * qy * qx * rotation);
+            return true;
+        }
+
+        bool drawTransformComponent(vultra::TransformComponent& transform,
+                                    const vultra::CoreUUID&     entityId,
+                                    const vultra::LightComponent* light = nullptr)
         {
             if (!ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
                 return false;
@@ -299,11 +336,19 @@ namespace vultra_app
 
             changed |= drawVec3Control("Position", transform.position, glm::vec3 {0.0f}, 0.05f);
 
-            glm::vec3 rotationDeg = glm::degrees(glm::eulerAngles(transform.rotation));
-            if (drawVec3Control("Rotation", rotationDeg, glm::vec3 {0.0f}, 0.5f))
+            if (light && (light->kind == 0 || light->kind == 2))
             {
-                transform.rotation = glm::quat(glm::radians(rotationDeg));
-                changed            = true;
+                glm::vec3 direction = directionFromTransform(transform);
+                if (drawVec3Control("Direction", direction, glm::vec3 {0.0f, -1.0f, 0.0f}, 0.01f))
+                {
+                    transform.rotation = rotationFromDirection(direction);
+                    changed            = true;
+                }
+            }
+            else
+            {
+                if (drawQuaternionDeltaControl("Rotation", transform.rotation, entityId))
+                    changed            = true;
             }
 
             changed |= drawVec3Control("Scale", transform.scale, glm::vec3 {1.0f}, 0.05f);
@@ -312,6 +357,66 @@ namespace vultra_app
 
             if (changed)
                 transform.dirty = true;
+            return changed;
+        }
+
+        glm::quat rotationFromDirection(const glm::vec3& direction)
+        {
+            const float len2 = glm::dot(direction, direction);
+            const auto  dir  = len2 > 1e-8f ? direction * glm::inversesqrt(len2) : glm::vec3 {0.0f, -1.0f, 0.0f};
+            glm::vec3   up {0.0f, 1.0f, 0.0f};
+            if (std::abs(glm::dot(up, dir)) > 0.95f)
+                up = glm::vec3 {1.0f, 0.0f, 0.0f};
+            return glm::normalize(glm::quatLookAtRH(dir, up));
+        }
+
+        glm::vec3 directionFromTransform(const vultra::TransformComponent& transform)
+        {
+            const auto direction = transform.rotation * glm::vec3 {0.0f, 0.0f, -1.0f};
+            const auto len2      = glm::dot(direction, direction);
+            return len2 > 1e-8f ? direction * glm::inversesqrt(len2) : glm::vec3 {0.0f, -1.0f, 0.0f};
+        }
+
+        bool drawLightComponent(vultra::World& world, entt::entity entity)
+        {
+            if (!world.registry().all_of<vultra::LightComponent>(entity))
+                return false;
+            if (!ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
+                return false;
+
+            auto& reg   = world.registry();
+            auto& light = reg.get<vultra::LightComponent>(entity);
+
+            bool changed = false;
+            constexpr const char* kKindLabels[] = {"Directional", "Point", "Spot", "Rectangle Area"};
+            int                   kindIndex     = static_cast<int>(std::min(light.kind, 3u));
+            if (ImGui::Combo("Kind", &kindIndex, kKindLabels, IM_ARRAYSIZE(kKindLabels)))
+            {
+                light.kind = static_cast<uint32_t>(std::clamp(kindIndex, 0, IM_ARRAYSIZE(kKindLabels) - 1));
+                changed    = true;
+            }
+
+            changed |= ImGui::ColorEdit3("Color", &light.color.x);
+            changed |= ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 10000.0f, "%.2f");
+
+            if (light.kind == 1 || light.kind == 2)
+            {
+                changed |= ImGui::DragFloat("Range", &light.range, 0.05f, 0.0f, 1000.0f, "%.2f");
+                changed |= ImGui::DragFloat("Radius", &light.radius, 0.01f, 0.0f, 100.0f, "%.3f");
+            }
+            if (light.kind == 2)
+            {
+                changed |= ImGui::DragFloat("Inner Cone Degrees", &light.innerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f");
+                changed |= ImGui::DragFloat("Outer Cone Degrees", &light.outerConeDegrees, 0.25f, 0.0f, 179.0f, "%.1f");
+                light.outerConeDegrees = std::max(light.outerConeDegrees, light.innerConeDegrees);
+            }
+            if (light.kind == 3)
+            {
+                changed |= ImGui::DragFloat("Width", &light.width, 0.05f, 0.0f, 100.0f, "%.2f");
+                changed |= ImGui::DragFloat("Height", &light.height, 0.05f, 0.0f, 100.0f, "%.2f");
+            }
+            changed |= ImGui::Checkbox("Casts Shadow", &light.castsShadow);
+            changed |= ImGui::Checkbox("Two Sided", &light.twoSided);
             return changed;
         }
 
@@ -471,8 +576,6 @@ namespace vultra_app
                 return "color";
             if (is("intensity"))
                 return "intensity";
-            if (is("direction"))
-                return "direction";
             if (is("range"))
                 return "range";
             if (is("radius"))
@@ -574,6 +677,26 @@ namespace vultra_app
             return uri;
         }
 
+        bool isImportedAssetPath(const std::string& path)
+        {
+            if (path.empty())
+                return false;
+            std::filesystem::path fsPath {path};
+            return !fsPath.empty() && *fsPath.begin() == "imported";
+        }
+
+        bool isUserSelectableAssetEntry(const vasset::VAssetRegistry::AssetEntry& entry)
+        {
+            return !entry.sourcePath.empty() && !isImportedAssetPath(entry.sourcePath);
+        }
+
+        std::string entrySourceUri(const vasset::VAssetRegistry::AssetEntry& entry)
+        {
+            if (entry.sourcePath.empty())
+                return {};
+            return "res://" + std::filesystem::path(entry.sourcePath).generic_string();
+        }
+
         std::string assetDisplayName(const vasset::VAssetRegistry::AssetEntry& entry)
         {
             const auto source = std::filesystem::path(entry.sourcePath);
@@ -616,6 +739,8 @@ namespace vultra_app
                 {
                     if (entry.type != expectedType)
                         continue;
+                    if (!isUserSelectableAssetEntry(entry))
+                        continue;
 
                     vultra::CoreUUID candidate;
                     if (!tryParseUuidString(uuidText, candidate))
@@ -629,14 +754,15 @@ namespace vultra_app
                         changed = true;
                         ImGui::CloseCurrentPopup();
                     }
-                    if (!entry.sourcePath.empty())
+                    const auto sourceUri = entrySourceUri(entry);
+                    if (!sourceUri.empty())
                     {
                         ImGui::SameLine();
-                        ImGui::TextDisabled("%s", entry.sourcePath.c_str());
+                        ImGui::TextDisabled("%s", sourceUri.c_str());
                     }
                 }
                 if (!any)
-                    ImGui::TextDisabled("No imported assets of this type.");
+                    ImGui::TextDisabled("No source assets of this type.");
                 ImGui::EndPopup();
             }
             return changed;
@@ -648,7 +774,8 @@ namespace vultra_app
                                  const char*       label)
         {
             bool changed = false;
-            const auto text = uuid.valid() ? uuid.toString()
+            const auto uri = assetUuidToUri(ctx, uuid);
+            const auto text = uuid.valid() ? (!uri.empty() ? uri : uuid.toString())
                                            : std::string(ICON_MDI_BULLSEYE "  None (") +
                                                  expectedAssetLabelForField(fieldName) + ")";
             const auto dialogKey = std::string("InspectorSelectAsset_") + fieldName;
@@ -844,7 +971,7 @@ namespace vultra_app
                 for (const auto& key : keys)
                 {
                     const bool selected = key == rendererKey;
-                    const bool disabled = key == "universal_rt" && !rayTracingAvailable;
+                    const bool disabled = (key == "universal_rt" || key == "default_rt") && !rayTracingAvailable;
                     if (disabled)
                         ImGui::BeginDisabled();
                     if (ImGui::Selectable(key.c_str(), selected))
@@ -1138,7 +1265,10 @@ namespace vultra_app
 
         if (auto* transform = reg.try_get<vultra::TransformComponent>(e))
         {
-            if (drawTransformComponent(*transform))
+            const auto* id = reg.try_get<vultra::IDComponent>(e);
+            if (drawTransformComponent(*transform,
+                                       id ? id->uuid : vultra::CoreUUID {},
+                                       reg.try_get<vultra::LightComponent>(e)))
                 ctx.state.sceneDirty = true;
         }
 
@@ -1161,8 +1291,8 @@ namespace vultra_app
             world, e, &ctx, [&](vultra::MeshComponent&, const char*) { ctx.state.sceneDirty = true; });
         drawReflectedComponent<vultra::GaussianSplatComponent>(
             world, e, &ctx, [&](vultra::GaussianSplatComponent&, const char*) { ctx.state.sceneDirty = true; });
-        drawReflectedComponent<vultra::LightComponent>(
-            world, e, &ctx, [&](vultra::LightComponent&, const char*) { ctx.state.sceneDirty = true; });
+        if (drawLightComponent(world, e))
+            ctx.state.sceneDirty = true;
 
         if (componentHeader<vultra::CameraComponent>(world, e))
         {

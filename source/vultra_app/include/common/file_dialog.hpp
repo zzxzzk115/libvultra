@@ -8,6 +8,7 @@ namespace vultra_app::ui
     enum class FileDialogMode
     {
         Directory,
+        File,
         ProjectFile,
         LuaScript,
     };
@@ -18,6 +19,7 @@ namespace vultra_app::ui
         FileDialogField(std::string key, std::string title, FileDialogMode mode);
 
         bool draw(const char* label, char* buffer, std::size_t bufferSize);
+        bool drawBrowseOnly(const char* label, char* buffer, std::size_t bufferSize);
 
     private:
         void open(const char* currentValue);

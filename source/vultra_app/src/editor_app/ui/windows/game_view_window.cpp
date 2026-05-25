@@ -176,6 +176,10 @@ namespace vultra_app
         m_LastViewportAvail = avail;
 
         const ImVec2 outputSize = computeRenderSize(avail);
+        ctx.state.gameViewRenderWidth =
+            static_cast<uint32_t>(std::max(outputSize.x, 1.0f));
+        ctx.state.gameViewRenderHeight =
+            static_cast<uint32_t>(std::max(outputSize.y, 1.0f));
         ensureRenderTarget(ctx, static_cast<uint32_t>(outputSize.x), static_cast<uint32_t>(outputSize.y));
 
         m_MinZoom = m_SelectedResolution == 0 ? 1.0f : computeFitZoom(avail, outputSize);

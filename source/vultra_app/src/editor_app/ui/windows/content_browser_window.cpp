@@ -232,7 +232,7 @@ namespace vultra_app
                 ImGui::TextUnformatted(ui::sourceAssetIcon(path, false));
                 ImGui::SameLine();
                 ImGui::TextUnformatted(sourceAssetDisplayName(path, false).c_str());
-                ImGui::TextDisabled("%s", uuid.toString().c_str());
+                ImGui::TextDisabled("%s", sourceAssetUriFor(ctx, path).c_str());
                 ImGui::EndDragDropSource();
             }
         }

@@ -131,6 +131,14 @@ namespace vultra
             return attrs;
         }
 
+        [[nodiscard]] bool materialNeedsAnyHit(const vasset::VMaterial& material)
+        {
+            if (material.model != vasset::VMaterialModel::ePBRMetallicRoughness)
+                return false;
+
+            return material.core.pbrMR.alphaMode == vasset::VMaterialAlphaMode::eMask;
+        }
+
         struct PackedVertexLayout
         {
             uint32_t              stride {0};
@@ -898,7 +906,8 @@ namespace vultra
             pool.meshes[meshIndex].subMeshes.push_back(gpuSubMesh);
         }
 
-        const bool rayTracingEnabled = HasFlagValues(m_RenderDevice->getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracing);
+        const bool rayTracingEnabled =
+            HasFlagValues(m_RenderDevice->getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline);
         if (rayTracingEnabled && pool.meshes[meshIndex].vertexBuffer && pool.meshes[meshIndex].indexBuffer &&
             !pool.meshes[meshIndex].subMeshes.empty())
         {
@@ -908,6 +917,9 @@ namespace vultra
             const auto indexAddress  = m_RenderDevice->getBufferDeviceAddress(gpuMesh.indexBuffer);
             gpuMesh.vertexBufferAddress = vertexAddress;
             gpuMesh.indexBufferAddress  = indexAddress;
+            const auto positionIt = gpuMesh.vertexAttributes.find(0);
+            const uint32_t positionOffsetBytes =
+                positionIt != gpuMesh.vertexAttributes.end() ? positionIt->second.offset : 0u;
 
             std::vector<rhi::RenderSubMesh> rtSubMeshes;
             rtSubMeshes.reserve(gpuMesh.subMeshes.size());
@@ -922,10 +934,15 @@ namespace vultra
                     indexAddress.value + static_cast<uint64_t>(sm.indexOffset) * sizeof(uint32_t)};
                 rtSubMesh.vertexStride  = gpuMesh.vertexStrideBytes;
                 rtSubMesh.vertexCount   = gpuMesh.vertexCount;
+                rtSubMesh.vertexOffset  = sm.vertexOffset;
+                rtSubMesh.positionOffsetBytes = positionOffsetBytes;
                 rtSubMesh.indexCount    = sm.indexCount;
                 rtSubMesh.indexType     = rhi::IndexType::eUInt32;
                 rtSubMesh.materialIndex = sm.materialIndex;
-                rtSubMesh.opaque        = true;
+                const uint32_t localMaterialIndex =
+                    sm.materialIndex >= materialOffset ? sm.materialIndex - materialOffset : sm.materialIndex;
+                rtSubMesh.opaque = localMaterialIndex >= cpuMesh.materials.size() ||
+                                   !materialNeedsAnyHit(cpuMesh.materials[localMaterialIndex]);
                 rtSubMeshes.push_back(rtSubMesh);
             }
 

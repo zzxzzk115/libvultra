@@ -19,6 +19,8 @@ namespace vultra_app::ui
             {
             case FileDialogMode::Directory:
                 return nullptr;
+            case FileDialogMode::File:
+                return ".*";
             case FileDialogMode::ProjectFile:
                 return ".vproject";
             case FileDialogMode::LuaScript:
@@ -85,6 +87,32 @@ namespace vultra_app::ui
         if (ImGui::Button((std::string("Browse##") + m_Key).c_str()))
             open(buffer);
         changed |= display(buffer, bufferSize);
+        return changed;
+    }
+
+    bool FileDialogField::drawBrowseOnly(const char* label, char* buffer, std::size_t bufferSize)
+    {
+        bool changed = false;
+
+        ImGui::PushID(m_Key.c_str());
+        if (label && label[0] != '\0')
+        {
+            ImGui::TextUnformatted(label);
+            ImGui::SameLine(160.0f);
+        }
+
+        const auto& style       = ImGui::GetStyle();
+        const float buttonWidth = ImGui::CalcTextSize("Browse").x + style.FramePadding.x * 2.0f;
+        const float fieldWidth  = std::max(80.0f, ImGui::GetContentRegionAvail().x - buttonWidth - style.ItemSpacing.x);
+
+        ImGui::SetNextItemWidth(fieldWidth);
+        ImGui::InputText("##Value", buffer, bufferSize, ImGuiInputTextFlags_ReadOnly);
+        ImGui::SameLine();
+        if (ImGui::Button("Browse"))
+            open(buffer);
+
+        changed |= display(buffer, bufferSize);
+        ImGui::PopID();
         return changed;
     }
 
