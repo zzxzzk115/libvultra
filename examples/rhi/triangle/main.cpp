@@ -19,25 +19,11 @@ try
 {
     auto window = os::Window::Builder {}.setExtent({1024, 768}).build();
 
-    // Event callback
-    window->on<os::GeneralWindowEvent>([](const os::GeneralWindowEvent& event, os::Window& wd) {
-        if (event.type == vultra::event::WindowEventType::eKeyDown && event.key.has_value())
-        {
-            // Press ESC to close the window
-            if (event.key->key == KeyCode::eEscape)
-            {
-                wd.close();
-            }
-        }
-    });
-
     rhi::RenderDevice renderDevice(
         rhi::RenderDeviceFeatureFlagBits::eNormal, "RHI Triangle", window->getRequiredVulkanInstanceExtensions());
 
     VULTRA_CLIENT_INFO("RenderDevice Name: {}", renderDevice.getName());
     VULTRA_CLIENT_INFO("RenderDevice PhysicalDeviceInfo: {}", renderDevice.getPhysicalDeviceInfo().toString());
-
-    VULTRA_CLIENT_WARN("Press ESC to close the window");
 
     window->setTitle(std::format("RHI Triangle ({})", renderDevice.getName()));
 

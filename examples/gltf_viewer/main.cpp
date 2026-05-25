@@ -1,184 +1,145 @@
+#include <vultra/core/app/demo_app_entry.hpp>
+#include <vultra/core/app/demo_app_host.hpp>
 #include <vultra/core/base/common_context.hpp>
-#include <vultra/core/input/input.hpp>
-#include <vultra/function/app/imgui_app.hpp>
-#include <vultra/function/renderer/builtin/builtin_renderer.hpp>
-#include <vultra/function/renderer/builtin/pass_output_mode.hpp>
-#include <vultra/function/scenegraph/entity.hpp>
-#include <vultra/function/scenegraph/logic_scene.hpp>
+#include <vultra/function/camera/camera_system.hpp>
+#include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/gpu_resource_service.hpp>
+#include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/light_component.hpp>
+#include <vultra/function/world/components/mesh_component.hpp>
+#include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/world.hpp>
+
+#include "../example_renderer.hpp"
 
 #include <imgui.h>
 
-#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/vec3.hpp>
 
 using namespace vultra;
 
-const char* MODEL_ENTITY_NAME = "Damaged Helmet";
-const char* MODEL_PATH        = "resources/models/DamagedHelmet/DamagedHelmet.gltf";
-const char* ENV_MAP_PATH      = "resources/textures/environment_maps/citrus_orchard_puresky_1k.hdr";
-
-class GLTFViewerApp final : public ImGuiApp
+namespace
 {
-public:
-    explicit GLTFViewerApp(const std::span<char*>& args) :
-        ImGuiApp(args, {.title = "GLTF Viewer", .vSyncConfig = rhi::VerticalSync::eEnabled}, {.enableDocking = false}),
-        m_Renderer(*m_RenderDevice, m_Swapchain.getFormat())
+    constexpr const char* kModelUri = "res://models/DamagedHelmet/DamagedHelmet.gltf";
+    constexpr const char* kEnvironmentMapUri = "res://textures/environment_maps/citrus_orchard_puresky_1k.hdr";
+
+    void addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
     {
-        // Setup scene
+        reg.emplace<NameComponent>(entity, NameComponent {name});
+        reg.emplace<TransformComponent>(entity, transform);
+    }
+} // namespace
 
-        // Main Camera
-        auto  camera                    = m_LogicScene.createMainCamera();
-        auto& camTransform              = camera.getComponent<TransformComponent>();
-        auto& camComponent              = camera.getComponent<CameraComponent>();
-        camTransform.position           = glm::vec3(0.0f, 0.0f, 5.0f);
-        camComponent.viewPortWidth      = m_Window.getExtent().x;
-        camComponent.viewPortHeight     = m_Window.getExtent().y;
-        camComponent.clearFlags         = CameraClearFlags::eSkybox;
-        camComponent.environmentMapPath = ENV_MAP_PATH;
+class GLTFViewerApp final : public DemoAppHost
+{
+protected:
+    std::string_view demoWindowTitle() const override { return "GLTF Viewer"; }
 
-        // Directional Light
-        m_LogicScene.createDirectionalLight();
+    bool demoEnableExperimentalWebGPUContent() const override { return true; }
 
-        // Load a sample model
-        auto model = m_LogicScene.createRawMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
-
-        // Set camera far plane based on model's AABB
-        auto& rawMesh     = model.getComponent<RawMeshComponent>().mesh;
-        camComponent.zFar = rawMesh->info.aabb.getRadius() * 10.0f;
+    Ref<Renderer> makeRenderer() const override
+    {
+        return createRef<examples::ExampleUniversalRenderer>(
+            "GLTF Viewer",
+            [](Services services) {
+                ImGui::TextUnformatted("This example renders the Damaged Helmet glTF asset.");
+                examples::drawNamedLightControls(services, "Key Light");
+                examples::drawExampleRenderSettings(services);
+            });
     }
 
-    void onImGui() override
+    FPSCameraController makeFPSCameraController() const override
     {
-        ImGui::Begin("GLTF Viewer", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        m_EnableOrbitCamera = !ImGui::IsItemHovered() && !ImGui::IsAnyItemActive();
-
-        m_Renderer.onImGui();
-
-#ifdef VULTRA_ENABLE_RENDERDOC
-        ImGui::Button("Capture One Frame");
-        if (ImGui::IsItemClicked())
-        {
-            m_WantCaptureFrame = true;
-        }
-#endif
-        ImGui::End();
+        auto controller          = DemoAppHost::makeFPSCameraController();
+        controller.position      = {0.0f, 0.8f, 4.0f};
+        controller.yawDegrees    = -90.0f;
+        controller.pitchDegrees  = -8.0f;
+        controller.orbitDistance = 4.0f;
+        controller.zFar          = 100.0f;
+        return controller;
     }
 
-    void onUpdate(const fsec dt) override
+    void onPostConfigureDemo(Engine& engine) override
     {
-        // Close on Escape
-        if (Input::getKeyDown(KeyCode::eEscape))
+        auto& assetService = engine.ctx().services.require<IAssetService>();
+        auto& gpuResources = engine.ctx().services.require<IGpuResourceService>();
+        auto& renderService = engine.ctx().services.require<IRenderService>();
+        auto& world = engine.ctx().services.require<IWorldService>().world();
+        auto& reg   = world.registry();
+
+        auto mesh = assetService.loadMeshSync(kModelUri);
+        if (!mesh)
         {
-            close();
+            VULTRA_CLIENT_ERROR("[GLTFViewer] Failed to load mesh: {}", kModelUri);
+            return;
         }
 
-        // Mouse orbit camera
-        static glm::vec2 lastMousePos = Input::getMousePosition();
-
-        if (m_EnableOrbitCamera)
+        m_EnvironmentMap = assetService.loadTextureSync(kEnvironmentMapUri);
+        if (!m_EnvironmentMap)
         {
-            // Left button drag to rotate mesh
-            if (Input::getMouseButton(MouseCode::eLeft))
-            {
-                const auto mousePos = Input::getMousePosition();
-                const auto delta    = mousePos - lastMousePos;
-                lastMousePos        = mousePos;
-
-                auto& meshTransform =
-                    m_LogicScene.getEntityWithName(MODEL_ENTITY_NAME).getComponent<TransformComponent>();
-                auto euler = meshTransform.getRotationEuler();
-                euler.x += delta.y * 0.1f;
-                euler.y += delta.x * 0.1f;
-                euler.x = glm::clamp(euler.x, -89.0f, 89.0f);
-                meshTransform.setRotationEuler(euler);
-            }
-            else
-            {
-                // Reset last mouse position when not dragging
-                if (Input::getMouseButtonDown(MouseCode::eLeft))
-                {
-                    lastMousePos = Input::getMousePosition();
-                }
-            }
-
-            // Middle button drag to rotate camera
-            if (Input::getMouseButton(MouseCode::eMiddle))
-            {
-                const auto mousePos = Input::getMousePosition();
-                const auto delta    = lastMousePos - mousePos;
-                lastMousePos        = mousePos;
-
-                auto& camTransform = m_LogicScene.getMainCamera().getComponent<TransformComponent>();
-                auto  euler        = camTransform.getRotationEuler();
-                euler.x += delta.y * 0.1f;
-                euler.y += delta.x * 0.1f;
-                euler.x = glm::clamp(euler.x, -89.0f, 89.0f);
-                camTransform.setRotationEuler(euler);
-            }
-            else
-            {
-                // Reset last mouse position when not dragging
-                if (Input::getMouseButtonDown(MouseCode::eMiddle))
-                {
-                    lastMousePos = Input::getMousePosition();
-                }
-            }
-
-            // Right button drag to zoom in/out
-            static bool wasPressed = false;
-            if (Input::getMouseButton(MouseCode::eRight))
-            {
-                const auto mousePos = Input::getMousePosition();
-                const auto delta    = lastMousePos - mousePos;
-                lastMousePos        = mousePos;
-
-                auto& camTransform = m_LogicScene.getMainCamera().getComponent<TransformComponent>();
-                camTransform.position += camTransform.forward() * (delta.y * 0.01f);
-            }
-            else
-            {
-                // Reset last mouse position when not dragging
-                if (wasPressed)
-                {
-                    wasPressed = false;
-                }
-                else
-                {
-                    lastMousePos = Input::getMousePosition();
-                }
-            }
-        }
-        else
-        {
-            // Sync mouse position when not orbiting
-            lastMousePos = Input::getMousePosition();
+            VULTRA_CLIENT_ERROR("[GLTFViewer] Failed to load environment map: {}", kEnvironmentMapUri);
         }
 
-        m_Renderer.setScene(&m_LogicScene);
+        auto model = world.createEntity();
+        addNamedTransform(reg,
+                          model,
+                          "Damaged Helmet",
+                          TransformComponent {
+                              .position = {0.0f, 0.0f, 0.0f},
+                              .rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f},
+                              .scale    = {1.0f, 1.0f, 1.0f},
+                          });
+        reg.emplace<MeshComponent>(model, MeshComponent {.mesh = mesh.uuid()});
 
-        ImGuiApp::onUpdate(dt);
-    }
+        auto sun = world.createEntity();
+        addNamedTransform(reg,
+                          sun,
+                          "Key Light",
+                          TransformComponent {
+                              .position = {0.0f, 3.0f, 3.0f},
+                              .rotation = glm::quat {-0.702802f, 0.0788313f, -0.0751287f, 0.703001f},
+                              .scale    = {1.0f, 1.0f, 1.0f},
+                          });
+        reg.emplace<LightComponent>(sun,
+                                    LightComponent {
+                                        .kind        = 0u,
+                                        .color       = {1.0f, 0.96f, 0.9f},
+                                        .intensity   = 4.0f,
+                                        .range       = 100.0f,
+                                        .castsShadow = true,
+                                    });
 
-    void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
-    {
-        auto& backBuffer = m_Swapchain.getCurrentBuffer();
-        m_Renderer.render(cb, &backBuffer, dt);
-        ImGuiApp::onRender(cb, rtv, dt);
-    }
-
-    void onResize(uint32_t width, uint32_t height) override
-    {
-        auto& camComponent          = m_LogicScene.getMainCamera().getComponent<CameraComponent>();
-        camComponent.viewPortWidth  = width;
-        camComponent.viewPortHeight = height;
-
-        ImGuiApp::onResize(width, height);
+        auto& settings = renderService.builtinRenderSettings();
+        settings.pbrLighting.enableIBL        = true;
+        settings.pbrLighting.iblColor         = {1.0f, 1.0f, 1.0f};
+        settings.pbrLighting.iblIntensity     = 1.0f;
+        settings.pbrLighting.ambientIntensity = 0.2f;
+        settings.pbrLighting.showSkybox       = m_EnvironmentMap.valid();
+        if (m_EnvironmentMap.valid() && m_EnvironmentMap.gpuIndex() < gpuResources.pool().textures.size())
+        {
+            settings.pbrLighting.environmentMap =
+                gpuResources.pool().textures[m_EnvironmentMap.gpuIndex()].texture.get();
+        }
+        settings.ssr.enabled          = true;
+        settings.ssr.reflectionFactor = 0.6f;
+        settings.ssr.maxSteps         = 48;
+        settings.ssr.binaryRefinement = 5;
+        settings.ssr.stride           = 0.12f;
+        settings.ssr.thickness        = 0.35f;
+        settings.ssao.enabled         = true;
+        settings.ssao.radius          = 1.2f;
+        settings.ssao.bias            = 0.04f;
+        settings.ssao.intensity       = 1.2f;
+        settings.ssao.stepCount       = 4;
+        settings.ssao.directionCount  = 8;
+        settings.shadow.coverageRadius = 20.0f;
     }
 
 private:
-    gfx::BuiltinRenderer m_Renderer;
-    LogicScene           m_LogicScene {"GLTF Viewer Scene"};
-
-    bool m_EnableOrbitCamera {true};
+    AssetHandle<vasset::VTexture, resource::GpuTexture> m_EnvironmentMap;
 };
 
-CONFIG_MAIN(GLTFViewerApp)
+VULTRA_DEMO_APP_MAIN(GLTFViewerApp)

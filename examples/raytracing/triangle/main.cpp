@@ -1,11 +1,13 @@
 #include <vultra/core/base/common_context.hpp>
-#include <vultra/core/input/input.hpp>
+#include <vultra/core/os/window.hpp>
+#include <vultra/core/rhi/frame_controller.hpp>
 #include <vultra/core/rhi/raytracing_pipeline.hpp>
-#include <vultra/function/app/imgui_app.hpp>
-
-#include <imgui.h>
+#include <vultra/core/rhi/render_device.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
+
+#include <array>
+#include <cstring>
 
 using namespace vultra;
 
@@ -14,23 +16,14 @@ struct SimpleVertex
     glm::vec3 position;
 };
 
-// Triangle in NDC for simplicity.
 constexpr auto kTriangle = std::array {
-    // clang-format off
-    //                    position
-    SimpleVertex{ {  0.0f, -0.5f, 0.0f } }, // top
-    SimpleVertex{ { -0.5f,  0.5f, 0.0f } }, // left
-    SimpleVertex{ {  0.5f,  0.5f, 0.0f } }, // right
-    // clang-format on
+    SimpleVertex {{0.0f, -0.5f, 0.0f}},
+    SimpleVertex {{-0.5f, 0.5f, 0.0f}},
+    SimpleVertex {{0.5f, 0.5f, 0.0f}},
 };
 
-constexpr auto kIndices = std::array {
-    0u,
-    1u,
-    2u,
-};
-
-constexpr glm::mat4 kTransform = glm::mat4(1.0f);
+constexpr auto kIndices = std::array {0u, 1u, 2u};
+constexpr glm::mat4 kTransform {1.0f};
 
 const char* const raygenCode = R"(
 #version 460
@@ -87,188 +80,107 @@ void main()
 }
 )";
 
-class RaytracingTriangleApp final : public ImGuiApp
+int main()
+try
 {
-public:
-    explicit RaytracingTriangleApp(const std::span<char*>& args) :
-        ImGuiApp(args,
-                 {.title                   = "Raytracing Triangle Example",
-                  .renderDeviceFeatureFlag = rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline,
-                  .vSyncConfig             = rhi::VerticalSync::eEnabled},
-                 {.enableDocking = false})
+    auto window = os::Window::Builder {}.setExtent({1024, 768}).setTitle("Raytracing Triangle Example").build();
+
+    rhi::RenderDevice renderDevice(
+        rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline,
+        "Raytracing Triangle Example",
+        window->getRequiredVulkanInstanceExtensions());
+
+    VULTRA_CLIENT_INFO("RenderDevice Name: {}", renderDevice.getName());
+    window->setTitle(std::format("Raytracing Triangle ({})", renderDevice.getName()));
+
+    auto swapchain = renderDevice.createSwapchain(*window, rhi::SwapchainFormat::esRGB, rhi::VerticalSync::eEnabled);
+    rhi::FrameController frameController {renderDevice, swapchain, 3};
+
+    auto vertexBuffer = renderDevice.createVertexBuffer(sizeof(SimpleVertex), kTriangle.size());
+    renderDevice.uploadS(vertexBuffer, 0, sizeof(SimpleVertex) * kTriangle.size(), kTriangle.data());
+    const auto vertexBufferAddress = renderDevice.getBufferDeviceAddress(vertexBuffer);
+
+    auto indexBuffer = renderDevice.createIndexBuffer(rhi::IndexType::eUInt32, kIndices.size());
+    renderDevice.uploadS(indexBuffer, 0, sizeof(uint32_t) * kIndices.size(), kIndices.data());
+    const auto indexBufferAddress = renderDevice.getBufferDeviceAddress(indexBuffer);
+
+    auto transformBuffer = renderDevice.createTransformBuffer();
+    auto rowMajor = glm::transpose(kTransform);
+    void* mapped = transformBuffer.map();
+    std::memcpy(mapped, &rowMajor, sizeof(rowMajor));
+    transformBuffer.unmap();
+    const auto transformBufferAddress = renderDevice.getBufferDeviceAddress(transformBuffer);
+
+    auto blas = renderDevice.createBuildSingleGeometryBLAS(vertexBufferAddress,
+                                                           indexBufferAddress,
+                                                           transformBufferAddress,
+                                                           sizeof(SimpleVertex),
+                                                           static_cast<uint32_t>(kTriangle.size()),
+                                                           static_cast<uint32_t>(kIndices.size()));
+    auto tlas = renderDevice.createBuildSingleInstanceTLAS(blas, kTransform);
+
+    auto pipeline = rhi::RayTracingPipeline::Builder {}
+                        .setMaxRecursionDepth(1)
+                        .addShader(rhi::ShaderType::eRayGen, {.code = raygenCode})
+                        .addShader(rhi::ShaderType::eMiss, {.code = missCode})
+                        .addShader(rhi::ShaderType::eClosestHit, {.code = closestHitCode})
+                        .addRaygenGroup(0)
+                        .addMissGroup(1)
+                        .addHitGroup(2)
+                        .build(renderDevice);
+
+    auto sbt = renderDevice.createShaderBindingTable(pipeline);
+
+    auto createOutputImage = [&renderDevice](const rhi::Extent2D extent) {
+        return rhi::Texture::Builder {}
+            .setExtent(extent)
+            .setPixelFormat(rhi::PixelFormat::eRGBA16F)
+            .setNumMipLevels(1)
+            .setNumLayers(std::nullopt)
+            .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eTransferSrc)
+            .setupOptimalSampler(false)
+            .build(renderDevice);
+    };
+
+    auto outputImage = createOutputImage(swapchain.getCurrentBuffer().getExtent());
+
+    while (!window->shouldClose())
     {
-        // Create vertex buffer
-        m_VertexBuffer =
-            std::move(m_RenderDevice->createVertexBuffer(sizeof(SimpleVertex), 3, rhi::AllocationHints::eNone));
+        window->pollEvents();
 
-        // Upload vertex buffer
-        {
-            constexpr auto kVerticesSize       = sizeof(SimpleVertex) * kTriangle.size();
-            auto           stagingVertexBuffer = m_RenderDevice->createStagingBuffer(kVerticesSize, kTriangle.data());
+        if (!swapchain || !frameController.acquireNextFrame())
+            continue;
 
-            m_RenderDevice->execute(
-                [&](auto& cb) {
-                    cb.copyBuffer(stagingVertexBuffer, m_VertexBuffer, rhi::BufferCopy {0, 0, kVerticesSize});
-                },
-                true);
-        }
-        const auto vertexBufferAddress = m_RenderDevice->getBufferDeviceAddress(m_VertexBuffer);
+        auto& backBuffer = swapchain.getCurrentBuffer();
+        if (outputImage.getExtent() != backBuffer.getExtent())
+            outputImage = createOutputImage(backBuffer.getExtent());
 
-        // Create index buffer
-        {
-            m_IndexBuffer =
-                std::move(m_RenderDevice->createIndexBuffer(rhi::IndexType::eUInt32, 3, rhi::AllocationHints::eNone));
+        auto& cb = frameController.beginFrame();
 
-            // Upload index buffer
-            constexpr auto kIndicesSize       = sizeof(uint32_t) * kIndices.size();
-            auto           stagingIndexBuffer = m_RenderDevice->createStagingBuffer(kIndicesSize, kIndices.data());
-
-            m_RenderDevice->execute(
-                [&](auto& cb) {
-                    cb.copyBuffer(stagingIndexBuffer, m_IndexBuffer, rhi::BufferCopy {0, 0, kIndicesSize});
-                },
-                true);
-        }
-        const auto indexBufferAddress = m_RenderDevice->getBufferDeviceAddress(m_IndexBuffer);
-
-        // Create transform buffer
-        {
-            m_TransformBuffer = std::move(m_RenderDevice->createTransformBuffer());
-
-            // Convert to row-major
-            glm::mat4 rowMajor = glm::transpose(kTransform);
-
-            // Host visible & coherent memory, so we can directly map and copy
-            void* mapped = m_TransformBuffer.map();
-            memcpy(mapped, &rowMajor, sizeof(vk::TransformMatrixKHR));
-            m_TransformBuffer.unmap();
-        }
-        const auto transformBufferAddress = m_RenderDevice->getBufferDeviceAddress(m_TransformBuffer);
-
-        // Create and build BLAS
-        m_BLAS = m_RenderDevice->createBuildSingleGeometryBLAS(vertexBufferAddress,
-                                                               indexBufferAddress,
-                                                               transformBufferAddress,
-                                                               sizeof(SimpleVertex),
-                                                               kTriangle.size(),
-                                                               kIndices.size());
-
-        // Create and build TLAS
-        m_TLAS = m_RenderDevice->createBuildSingleInstanceTLAS(m_BLAS, kTransform);
-
-        // Create raytracing pipeline
-        m_Pipeline = rhi::RayTracingPipeline::Builder {}
-                         .setMaxRecursionDepth(1)
-                         .addShader(rhi::ShaderType::eRayGen, {.code = raygenCode})
-                         .addShader(rhi::ShaderType::eMiss, {.code = missCode})
-                         .addShader(rhi::ShaderType::eClosestHit, {.code = closestHitCode})
-                         .addRaygenGroup(0)
-                         .addMissGroup(1)
-                         .addHitGroup(2)
-                         .build(*m_RenderDevice);
-
-        // Create SBT
-        m_SBT = m_RenderDevice->createShaderBindingTable(m_Pipeline);
-
-        // Create output image
-        rhi::Extent2D extent {static_cast<uint32_t>(m_Window.getFrameBufferExtent().x),
-                              static_cast<uint32_t>(m_Window.getFrameBufferExtent().y)};
-        m_OutputImage = rhi::Texture::Builder {}
-                            .setExtent(extent)
-                            .setPixelFormat(rhi::PixelFormat::eRGBA16F)
-                            .setNumMipLevels(1)
-                            .setNumLayers(std::nullopt)
-                            .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eTransferSrc)
-                            .setupOptimalSampler(false)
-                            .build(*m_RenderDevice);
-    }
-
-    void onImGui() override
-    {
-        ImGui::Begin("Raytracing Triangle Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        ImGui::Text("This is a simple raytracing example rendering a triangle.");
-#ifdef VULTRA_ENABLE_RENDERDOC
-        ImGui::Button("Capture One Frame");
-        if (ImGui::IsItemClicked())
-        {
-            m_WantCaptureFrame = true;
-        }
-#endif
-        ImGui::End();
-    }
-
-    void onUpdate(const fsec dt) override
-    {
-        // Close on Escape
-        if (Input::getKeyDown(KeyCode::eEscape))
-        {
-            close();
-        }
-
-        ImGuiApp::onUpdate(dt);
-    }
-
-    void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
-    {
-        auto& backBuffer = m_Swapchain.getCurrentBuffer();
-
-        // Skip rendering if resizing is not finished
-        if (backBuffer.getExtent() != m_OutputImage.getExtent())
-        {
-            VULTRA_CLIENT_TRACE("RTV size ({}, {}) != Output Image size ({}, {}), skipping rendering this frame",
-                                backBuffer.getExtent().width,
-                                backBuffer.getExtent().height,
-                                m_OutputImage.getExtent().width,
-                                m_OutputImage.getExtent().height);
-            ImGuiApp::onRender(cb, rtv, dt);
-            return;
-        }
-
-        // Record raytracing commands
-        rhi::prepareForRaytracing(cb, m_OutputImage);
-
+        rhi::prepareForRaytracing(cb, outputImage);
         auto descriptorSet =
             cb.createDescriptorSetBuilder()
-                .bind(0, rhi::bindings::AccelerationStructureKHR {.as = &m_TLAS})
-                .bind(1,
-                      rhi::bindings::StorageImage {.texture = &m_OutputImage, .imageAspect = rhi::ImageAspect::eColor})
-                .build(m_Pipeline.getDescriptorSetLayout(0));
+                .bind(0, rhi::bindings::AccelerationStructureKHR {.as = &tlas})
+                .bind(1, rhi::bindings::StorageImage {.texture = &outputImage, .imageAspect = rhi::ImageAspect::eColor})
+                .build(pipeline.getDescriptorSetLayout(0));
 
-        const glm::vec4 missColor = glm::vec4(0.2f, 0.3f, 0.3f, 1.0f);
-
-        cb.bindPipeline(m_Pipeline)
+        const glm::vec4 missColor {0.2f, 0.3f, 0.3f, 1.0f};
+        cb.bindPipeline(pipeline)
             .bindDescriptorSet(0, descriptorSet)
             .pushConstants(rhi::ShaderStages::eMiss, 0, &missColor)
-            .traceRays(m_SBT, {m_Window.getFrameBufferExtent(), 1});
+            .traceRays(sbt, {window->getFrameBufferExtent(), 1});
 
-        cb.blit(m_OutputImage, backBuffer, TexelFilter::eLinear);
+        cb.blit(outputImage, backBuffer, rhi::TexelFilter::eLinear);
 
-        ImGuiApp::onRender(cb, rtv, dt);
+        frameController.endFrame();
+        frameController.present();
     }
 
-    void onResize(uint32_t width, uint32_t height) override
-    {
-        // Recreate output image on resize
-        m_OutputImage = rhi::Texture::Builder {}
-                            .setExtent({width, height})
-                            .setPixelFormat(rhi::PixelFormat::eRGBA16F)
-                            .setNumMipLevels(1)
-                            .setNumLayers(std::nullopt)
-                            .setUsageFlags(rhi::ImageUsage::eStorage | rhi::ImageUsage::eTransferSrc)
-                            .setupOptimalSampler(false)
-                            .build(*m_RenderDevice);
-
-        ImGuiApp::onResize(width, height);
-    }
-
-private:
-    rhi::VertexBuffer          m_VertexBuffer;
-    rhi::IndexBuffer           m_IndexBuffer;
-    rhi::Buffer                m_TransformBuffer;
-    rhi::AccelerationStructure m_BLAS, m_TLAS;
-    rhi::RayTracingPipeline    m_Pipeline;
-    rhi::ShaderBindingTable    m_SBT;
-    rhi::Texture               m_OutputImage;
-};
-
-CONFIG_MAIN(RaytracingTriangleApp)
+    renderDevice.waitIdle();
+    return 0;
+}
+catch (const std::exception& e)
+{
+    VULTRA_CLIENT_CRITICAL("Exception: {}", e.what());
+    return 1;
+}

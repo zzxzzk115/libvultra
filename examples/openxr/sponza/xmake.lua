@@ -1,11 +1,11 @@
 target("example-openxr-sponza")
     set_kind("binary")
-    add_files("main.cpp", "imgui.ini")
+    add_files("main.cpp")
     add_deps("vultra")
 
-	set_values("resource_files", "resources/models/Sponza/**", "resources/textures/environment_maps/**")
+    add_files("imgui.ini")
 
-    add_rules("copy_resources")
+    set_rundir(get_config("project_dir") or path.join(os.scriptdir(), "..", "..", ".."))
 
     -- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/example-openxr-sponza")

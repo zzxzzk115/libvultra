@@ -1,152 +1,121 @@
+#include <vultra/core/app/demo_app_entry.hpp>
+#include <vultra/core/app/demo_app_host.hpp>
 #include <vultra/core/base/common_context.hpp>
-#include <vultra/core/input/input.hpp>
-#include <vultra/function/app/imgui_app.hpp>
-#include <vultra/function/camera/fps_camera.hpp>
-#include <vultra/function/renderer/builtin/builtin_renderer.hpp>
-#include <vultra/function/renderer/builtin/pass_output_mode.hpp>
-#include <vultra/function/renderer/imgui_renderer.hpp>
-#include <vultra/function/scenegraph/entity.hpp>
-#include <vultra/function/scenegraph/logic_scene.hpp>
+#include <vultra/core/rhi/structs/render_device_structs.hpp>
+#include <vultra/function/camera/camera_system.hpp>
+#include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/light_component.hpp>
+#include <vultra/function/world/components/mesh_component.hpp>
+#include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/world.hpp>
+
+#include "../example_renderer.hpp"
 
 #include <imgui.h>
 
-#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/vec3.hpp>
 
 using namespace vultra;
 
-const char* MODEL_ENTITY_NAME = "Sponza";
-const char* MODEL_PATH        = "resources/models/Sponza/Sponza.gltf";
-const char* ENV_MAP_PATH      = "resources/textures/environment_maps/citrus_orchard_puresky_1k.hdr";
-
-class SponzaApp final : public ImGuiApp
+namespace
 {
-public:
-    explicit SponzaApp(const std::span<char*>& args) :
-        ImGuiApp(args,
-                 {.title = "Sponza",
-                  .renderDeviceFeatureFlag =
-                      rhi::RenderDeviceFeatureFlagBits::eRayTracing | rhi::RenderDeviceFeatureFlagBits::eMeshShader},
-                 {.enableDocking = false}),
-        m_Renderer(*m_RenderDevice, m_Swapchain.getFormat())
+    constexpr const char* kModelUri = "res://models/Sponza/Sponza.gltf";
+
+    void addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
     {
-        // Render Settings
-        // As the Sponza scene is in-door, we disable IBL by default
-        m_Renderer.getSettings().enableIBL = false;
+        reg.emplace<NameComponent>(entity, NameComponent {name});
+        reg.emplace<TransformComponent>(entity, transform);
+    }
+} // namespace
 
-        // Setup scene
+class SponzaApp final : public DemoAppHost
+{
+protected:
+    std::string_view demoWindowTitle() const override { return "Sponza"; }
 
-        // Main Camera
-        auto  camera          = m_LogicScene.createMainCamera();
-        auto& camTransform    = camera.getComponent<TransformComponent>();
-        auto& camComponent    = camera.getComponent<CameraComponent>();
-        camTransform.position = glm::vec3(8.0f, 1.5f, -0.5f);
-        camTransform.setRotationEuler({0.0f, 90.0f, 0.0f});
-        camComponent.viewPortWidth      = m_Window.getExtent().x;
-        camComponent.viewPortHeight     = m_Window.getExtent().y;
-        camComponent.clearFlags         = CameraClearFlags::eSkybox;
-        camComponent.environmentMapPath = ENV_MAP_PATH;
+    bool demoEnableExperimentalWebGPUContent() const override { return true; }
 
-        // First Person Shooter Camera Controller
-        m_FPSCamera = createScope<FirstPersonShooterCamera>(&camTransform);
-
-        // Point Light
-        auto  pointLight              = m_LogicScene.createPointLight();
-        auto& pointLightTransform     = pointLight.getComponent<TransformComponent>();
-        pointLightTransform.position  = glm::vec3(-8.0f, 2.0f, -0.5f);
-        auto& pointLightComponent     = pointLight.getComponent<PointLightComponent>();
-        pointLightComponent.radius    = 5.0f;
-        pointLightComponent.intensity = 50.0f;
-        pointLightComponent.color     = glm::vec3(0.9f, 0.9f, 0.1f);
-
-        // Area Light (RED)
-        auto  areaLightRed              = m_LogicScene.createAreaLight();
-        auto& areaRedLightTransform     = areaLightRed.getComponent<TransformComponent>();
-        areaRedLightTransform.position  = glm::vec3(-2.0f, 1.0f, 0.8f);
-        auto& areaRedLightComponent     = areaLightRed.getComponent<AreaLightComponent>();
-        areaRedLightComponent.color     = glm::vec3(0.9f, 0.1f, 0.1f);
-        areaRedLightComponent.intensity = 10.0f;
-
-        // Area Light (GREEN)
-        auto  areaLightGreen              = m_LogicScene.createAreaLight();
-        auto& areaGreenLightTransform     = areaLightGreen.getComponent<TransformComponent>();
-        areaGreenLightTransform.position  = glm::vec3(0.0f, 1.0f, 0.8f);
-        auto& areaGreenLightComponent     = areaLightGreen.getComponent<AreaLightComponent>();
-        areaGreenLightComponent.color     = glm::vec3(0.1f, 0.9f, 0.1f);
-        areaGreenLightComponent.intensity = 10.0f;
-
-        // Area Light (BLUE)
-        auto  areaLightBlue              = m_LogicScene.createAreaLight();
-        auto& areaBlueLightTransform     = areaLightBlue.getComponent<TransformComponent>();
-        areaBlueLightTransform.position  = glm::vec3(-4.0f, 1.0f, 0.8f);
-        auto& areaBlueLightComponent     = areaLightBlue.getComponent<AreaLightComponent>();
-        areaBlueLightComponent.color     = glm::vec3(0.1f, 0.1f, 0.9f);
-        areaBlueLightComponent.intensity = 10.0f;
-
-        // Load a sample model
-        auto model = m_LogicScene.createRawMeshEntity(MODEL_ENTITY_NAME, MODEL_PATH);
-
-        // Set camera far plane based on model's AABB
-        auto& rawMesh     = model.getComponent<RawMeshComponent>().mesh;
-        camComponent.zFar = rawMesh->info.aabb.getRadius() * 2.0f;
+    rhi::RenderDeviceFeatureFlagBits demoRenderDeviceFeatureFlag() const override
+    {
+        return rhi::RenderDeviceFeatureFlagBits::eRayTracing | rhi::RenderDeviceFeatureFlagBits::eMeshShader;
     }
 
-    void onImGui() override
+    Ref<Renderer> makeRenderer() const override
     {
-        ImGui::Begin("Sponza Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        m_FPSCamera->enableCameraControl(!ImGui::IsWindowHovered());
-
-        ImGuiExt::Combo("Renderer Type", m_Renderer.getSettings().rendererType);
-
-        m_Renderer.onImGui();
-
-        m_FPSCamera->onImGui();
-
-#ifdef VULTRA_ENABLE_RENDERDOC
-        ImGui::Button("Capture One Frame");
-        if (ImGui::IsItemClicked())
-        {
-            m_WantCaptureFrame = true;
-        }
-#endif
-        ImGui::End();
+        return createRef<examples::ExampleUniversalRenderer>(
+            "Sponza Example",
+            [](Services services) {
+                ImGui::TextUnformatted("This example renders the Sponza scene with the SRP renderer.");
+                examples::drawNamedLightControls(services, "Warm Point Light");
+                examples::drawExampleRenderSettings(services);
+            });
     }
 
-    void onUpdate(const fsec dt) override
+    FPSCameraController makeFPSCameraController() const override
     {
-        // Close on Escape
-        if (Input::getKeyDown(KeyCode::eEscape))
+        auto controller          = DemoAppHost::makeFPSCameraController();
+        controller.position      = {8.0f, 1.5f, -0.5f};
+        controller.yawDegrees    = 180.0f;
+        controller.pitchDegrees  = 0.0f;
+        controller.orbitDistance = 8.0f;
+        controller.moveSpeed     = 6.0f;
+        controller.zFar          = 500.0f;
+        return controller;
+    }
+
+    void onPostConfigureDemo(Engine& engine) override
+    {
+        auto& assetService = engine.ctx().services.require<IAssetService>();
+        auto& renderService = engine.ctx().services.require<IRenderService>();
+        auto& world = engine.ctx().services.require<IWorldService>().world();
+        auto& reg   = world.registry();
+
+        auto mesh = assetService.loadMeshSync(kModelUri);
+        if (!mesh)
         {
-            close();
+            VULTRA_CLIENT_ERROR("[Sponza] Failed to load mesh: {}", kModelUri);
+            return;
         }
 
-        m_FPSCamera->onUpdate(dt);
+        auto model = world.createEntity();
+        addNamedTransform(reg,
+                          model,
+                          "Sponza",
+                          TransformComponent {
+                              .position = {0.0f, 0.0f, 0.0f},
+                              .rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f},
+                              .scale    = {1.0f, 1.0f, 1.0f},
+                          });
+        reg.emplace<MeshComponent>(model, MeshComponent {.mesh = mesh.uuid()});
 
-        m_Renderer.setScene(&m_LogicScene);
+        auto pointLight = world.createEntity();
+        addNamedTransform(reg,
+                          pointLight,
+                          "Warm Point Light",
+                          TransformComponent {
+                              .position = {-8.0f, 2.0f, -0.5f},
+                              .rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f},
+                              .scale    = {1.0f, 1.0f, 1.0f},
+                          });
+        reg.emplace<LightComponent>(pointLight,
+                                    LightComponent {
+                                        .kind      = 1u,
+                                        .color     = {0.9f, 0.85f, 0.45f},
+                                        .intensity = 50.0f,
+                                        .range     = 5.0f,
+                                    });
 
-        ImGuiApp::onUpdate(dt);
+        auto& settings = renderService.builtinRenderSettings();
+        settings.pbrLighting.enableIBL        = false;
+        settings.pbrLighting.ambientIntensity = 0.35f;
+        settings.shadow.coverageRadius        = 35.0f;
+        settings.shadow.lightDistance         = 80.0f;
+        settings.shadow.zRange                = 80.0f;
     }
-
-    void onRender(rhi::CommandBuffer& cb, const rhi::RenderTargetView rtv, const fsec dt) override
-    {
-        auto& backBuffer = m_Swapchain.getCurrentBuffer();
-        m_Renderer.render(cb, &backBuffer, dt);
-        ImGuiApp::onRender(cb, rtv, dt);
-    }
-
-    void onResize(uint32_t width, uint32_t height) override
-    {
-        auto& camComponent          = m_LogicScene.getMainCamera().getComponent<CameraComponent>();
-        camComponent.viewPortWidth  = width;
-        camComponent.viewPortHeight = height;
-
-        ImGuiApp::onResize(width, height);
-    }
-
-private:
-    gfx::BuiltinRenderer m_Renderer;
-    LogicScene           m_LogicScene {"Sponza Scene"};
-
-    Scope<FirstPersonShooterCamera> m_FPSCamera {nullptr};
 };
 
-CONFIG_MAIN(SponzaApp)
+VULTRA_DEMO_APP_MAIN(SponzaApp)

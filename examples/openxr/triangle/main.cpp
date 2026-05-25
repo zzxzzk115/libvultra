@@ -7,6 +7,8 @@
 #include <vultra/function/services/frame_debugger_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 
+#include "../../example_renderer.hpp"
+
 #include <imgui.h>
 
 using namespace vultra;
@@ -73,8 +75,9 @@ public:
             });
         }
 
-        auto createPipelineForFormat = [&](const rhi::PixelFormat colorFormat) {
+        auto createPipelineForFormat = [&](const rhi::PixelFormat colorFormat, const uint32_t viewMask = 0u) {
             return rhi::GraphicsPipeline::Builder {}
+                .setViewMask(viewMask)
                 .setColorFormats({colorFormat})
                 .setInputAssembly({
                     {0, {.type = rhi::VertexAttribute::Type::eFloat3, .offset = 0}},
@@ -95,9 +98,10 @@ public:
                 .build(renderDevice);
         };
 
-        m_XrGraphicsPipeline   = createPipelineForFormat(rhi::PixelFormat::eRGBA8_sRGB);
-        m_SwapchainPipeline    = createPipelineForFormat(rhi::PixelFormat::eBGRA8_sRGB);
-        m_FallbackSrgbPipeline = createPipelineForFormat(rhi::PixelFormat::eRGBA8_sRGB);
+        m_XrGraphicsPipeline          = createPipelineForFormat(rhi::PixelFormat::eRGBA8_sRGB);
+        m_XrMultiviewGraphicsPipeline = createPipelineForFormat(rhi::PixelFormat::eRGBA8_sRGB, 0x3u);
+        m_SwapchainPipeline           = createPipelineForFormat(rhi::PixelFormat::eBGRA8_sRGB);
+        m_FallbackSrgbPipeline        = createPipelineForFormat(rhi::PixelFormat::eRGBA8_sRGB);
     }
 
     void render(ImmediateRenderContext& ctx) override
@@ -107,16 +111,19 @@ public:
         if (!target)
             return;
 
-        const rhi::GraphicsPipeline* pipeline = &m_FallbackSrgbPipeline;
-        if (target->getPixelFormat() == rhi::PixelFormat::eBGRA8_sRGB)
+        const rhi::GraphicsPipeline* pipeline = ctx.view().enableMultiview ? &m_XrMultiviewGraphicsPipeline :
+                                                                          &m_FallbackSrgbPipeline;
+        if (!ctx.view().enableMultiview && target->getPixelFormat() == rhi::PixelFormat::eBGRA8_sRGB)
             pipeline = &m_SwapchainPipeline;
-        else if (target->getPixelFormat() == rhi::PixelFormat::eRGBA8_sRGB)
+        else if (!ctx.view().enableMultiview && target->getPixelFormat() == rhi::PixelFormat::eRGBA8_sRGB)
             pipeline = &m_XrGraphicsPipeline;
 
         rhi::prepareForAttachment(cb, *target, false);
         RHI_GPU_ZONE(cb, "OpenXR Triangle");
         cb.beginRendering({
                               .area = {.extent = target->getExtent()},
+                              .layers = ctx.view().enableMultiview ? 2u : 1u,
+                              .viewMask = ctx.view().enableMultiview ? 0x3u : 0u,
                               .colorAttachments =
                                   {
                                       {
@@ -135,10 +142,13 @@ public:
 
     void onImGui() override
     {
+        Services services = *getServices();
+        examples::suppressCameraWhenUsingImGui(services);
+
         ImGui::Begin("OpenXR Triangle Example", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::Text("DemoAppHost + OpenXR render backend");
 
-        auto& backendService = getServices()->require<IRenderBackendService>();
+        auto& backendService = services.require<IRenderBackendService>();
         ImGui::Text("XR Enabled : %s", backendService.isXREnabled() ? "Yes" : "No");
         ImGui::Text("XR Mirror Mode Enabled : %s", backendService.isXRMirrorEnabled() ? "Yes" : "No");
 
@@ -153,22 +163,23 @@ public:
                         XR_VERSION_PATCH(xrInstanceProperties.runtimeVersion));
         }
 
-#ifdef VULTRA_ENABLE_RENDERDOC
-        ImGui::Button("Capture One Frame");
-        if (ImGui::IsItemClicked())
+        if (auto* frameDebugger = services.tryGet<IFrameDebuggerService>(); frameDebugger && frameDebugger->isAvailable())
         {
-            getServices()->require<IFrameDebuggerService>().captureSingleFrame();
+            if (ImGui::Button("Capture One Frame"))
+                frameDebugger->captureSingleFrame();
         }
-#endif
 
+        m_XrMirror.draw(services);
         ImGui::End();
     }
 
 private:
     rhi::VertexBuffer     m_VertexBuffer;
     rhi::GraphicsPipeline m_XrGraphicsPipeline;
+    rhi::GraphicsPipeline m_XrMultiviewGraphicsPipeline;
     rhi::GraphicsPipeline m_SwapchainPipeline;
     rhi::GraphicsPipeline m_FallbackSrgbPipeline;
+    examples::ExampleXrMirrorPanel m_XrMirror;
 };
 
 class OpenXRExampleApp final : public DemoAppHost

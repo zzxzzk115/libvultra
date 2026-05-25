@@ -17,13 +17,12 @@ public:
         ImGui::Text("Hello, world!");
         ImGui::Text("This example runs with DemoAppHost + FeatureRenderer.");
 
-#ifdef VULTRA_ENABLE_RENDERDOC
-        if (ImGui::Button("Capture One Frame"))
+        if (auto* frameDebuggerService = getServices()->tryGet<IFrameDebuggerService>();
+            frameDebuggerService && frameDebuggerService->isAvailable())
         {
-            if (auto* frameDebuggerService = getServices()->tryGet<IFrameDebuggerService>(); frameDebuggerService)
+            if (ImGui::Button("Capture One Frame"))
                 frameDebuggerService->captureSingleFrame();
         }
-#endif
         ImGui::End();
     }
 };

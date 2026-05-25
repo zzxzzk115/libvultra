@@ -60,13 +60,6 @@ public:
 
         m_FPSCamera->onImGui();
 
-#ifdef VULTRA_ENABLE_RENDERDOC
-        ImGui::Button("Capture One Frame");
-        if (ImGui::IsItemClicked())
-        {
-            m_WantCaptureFrame = true;
-        }
-#endif
         ImGui::End();
 
         auto         model    = m_LogicScene.getEntityWithName(MODEL_ENTITY_NAME);
@@ -82,12 +75,6 @@ public:
 
     void onUpdate(const fsec dt) override
     {
-        // Close on Escape
-        if (Input::getKeyDown(KeyCode::eEscape))
-        {
-            close();
-        }
-
         m_FPSCamera->onUpdate(dt);
 
         // VULTRA_CLIENT_INFO("Camera Position: {}, {}, {}",
