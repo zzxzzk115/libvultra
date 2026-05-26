@@ -134,6 +134,23 @@ namespace vultra
             };
         }
 
+        [[nodiscard]] glm::vec3 snapCenterToLightTexels(const glm::vec3& center,
+                                                        const glm::vec3& lightDir,
+                                                        const glm::vec3& up,
+                                                        const float      worldUnitsPerTexel)
+        {
+            if (worldUnitsPerTexel <= 0.0f)
+                return center;
+
+            const glm::vec3 lightRight = glm::normalize(glm::cross(lightDir, up));
+            const glm::vec3 lightUp    = glm::normalize(glm::cross(lightRight, lightDir));
+            const float     centerX    = glm::dot(center, lightRight);
+            const float     centerY    = glm::dot(center, lightUp);
+            const float     snappedX   = std::round(centerX / worldUnitsPerTexel) * worldUnitsPerTexel;
+            const float     snappedY   = std::round(centerY / worldUnitsPerTexel) * worldUnitsPerTexel;
+            return center + lightRight * (snappedX - centerX) + lightUp * (snappedY - centerY);
+        }
+
         [[nodiscard]] ShadowData makeShadowData(const RenderCamera& camera,
                                                 const ShadowRenderSettings& settings,
                                                 const RenderWorld* renderWorld)
@@ -188,7 +205,18 @@ namespace vultra
                 center /= static_cast<float>(corners.size());
 
                 const float lightDistance = std::max(settings.lightDistance, shadowViewDistance);
-                const auto  view          = glm::lookAt(center - lightDir * lightDistance, center, up);
+                float stableHalfExtent = 0.0f;
+                if (settings.stableTexelSnapping)
+                {
+                    for (const auto& corner : corners)
+                        stableHalfExtent = std::max(stableHalfExtent, glm::length(corner - center));
+                    stableHalfExtent = std::max(stableHalfExtent * 1.08f, 0.25f);
+                    const float unitsPerTexel = (stableHalfExtent * 2.0f) /
+                                                static_cast<float>(std::max(resolution, 1u));
+                    center = snapCenterToLightTexels(center, lightDir, up, unitsPerTexel);
+                }
+
+                const auto  view = glm::lookAt(center - lightDir * lightDistance, center, up);
 
                 glm::vec3 minLs {std::numeric_limits<float>::max()};
                 glm::vec3 maxLs {std::numeric_limits<float>::lowest()};
@@ -208,25 +236,21 @@ namespace vultra
                     }
                 }
 
-                const auto extents = maxLs - minLs;
-                const float xyPadding = std::max(std::max(extents.x, extents.y) * 0.08f, 0.25f);
-                minLs.x -= xyPadding;
-                maxLs.x += xyPadding;
-                minLs.y -= xyPadding;
-                maxLs.y += xyPadding;
-
                 if (settings.stableTexelSnapping)
                 {
-                    const float texels = static_cast<float>(std::max(resolution, 1u));
-                    const float unitsPerTexelX = (maxLs.x - minLs.x) / texels;
-                    const float unitsPerTexelY = (maxLs.y - minLs.y) / texels;
-                    if (unitsPerTexelX > 0.0f && unitsPerTexelY > 0.0f)
-                    {
-                        minLs.x = std::floor(minLs.x / unitsPerTexelX) * unitsPerTexelX;
-                        maxLs.x = std::ceil(maxLs.x / unitsPerTexelX) * unitsPerTexelX;
-                        minLs.y = std::floor(minLs.y / unitsPerTexelY) * unitsPerTexelY;
-                        maxLs.y = std::ceil(maxLs.y / unitsPerTexelY) * unitsPerTexelY;
-                    }
+                    minLs.x = -stableHalfExtent;
+                    maxLs.x = stableHalfExtent;
+                    minLs.y = -stableHalfExtent;
+                    maxLs.y = stableHalfExtent;
+                }
+                else
+                {
+                    const auto extents = maxLs - minLs;
+                    const float xyPadding = std::max(std::max(extents.x, extents.y) * 0.08f, 0.25f);
+                    minLs.x -= xyPadding;
+                    maxLs.x += xyPadding;
+                    minLs.y -= xyPadding;
+                    maxLs.y += xyPadding;
                 }
 
                 const float zPadding = autoFitScene ? std::max(sceneDiagonal * 0.05f, 5.0f) :
