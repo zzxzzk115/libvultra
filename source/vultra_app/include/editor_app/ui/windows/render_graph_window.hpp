@@ -51,7 +51,7 @@ namespace vultra_app
         void drawGraphEditorCanvas(EditorContext& ctx);
         void drawPipelineEditorCanvas(EditorContext& ctx);
         void onDestroy(EditorContext& ctx) override;
-        void drawGameViewOverlay(EditorContext& ctx);
+        void drawGameViewOverlay(EditorContext& ctx, ImVec2 childMin, ImVec2 childMax);
         void ensureOverlayRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height);
         void promotePendingOverlayRenderTarget(EditorContext& ctx);
         void retireOverlayRenderTarget(RenderTargetSlot& slot);

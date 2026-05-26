@@ -1988,17 +1988,6 @@ namespace vultra_app
             return out;
         }
 
-        vultra::RenderCamera makeGameOverlayCamera(vultra::World&        world,
-                                                   const entt::entity    entity,
-                                                   const float           aspect,
-                                                   vultra::rhi::Texture* target)
-        {
-            auto& reg = world.registry();
-            auto name = reg.all_of<vultra::NameComponent>(entity) ? reg.get<vultra::NameComponent>(entity).name :
-                                                                    std::string {"Game View"};
-            return makeRenderGraphCamera(world, entity, aspect, target, std::move(name), {});
-        }
-
         vultra::RenderCamera makeRenderGraphPreviewCamera(vultra::World&        world,
                                                           const entt::entity    entity,
                                                           const float           aspect,
@@ -4519,8 +4508,10 @@ namespace vultra_app
 
         drawGraphEditorAddPopup(ctx);
 
+        const ImVec2 childPos = ImGui::GetWindowPos();
+        const ImVec2 childSize = ImGui::GetWindowSize();
         ImGui::EndChild();
-        drawGameViewOverlay(ctx);
+        drawGameViewOverlay(ctx, childPos, ImVec2 {childPos.x + childSize.x, childPos.y + childSize.y});
     }
 
     void RenderGraphWindow::drawGraphEditorCanvas(EditorContext& ctx)
@@ -4730,19 +4721,20 @@ namespace vultra_app
 
         drawGraphEditorAddPopup(ctx);
 
+        const ImVec2 childPos = ImGui::GetWindowPos();
+        const ImVec2 childSize = ImGui::GetWindowSize();
         ImGui::EndChild();
-        drawGameViewOverlay(ctx);
+        drawGameViewOverlay(ctx, childPos, ImVec2 {childPos.x + childSize.x, childPos.y + childSize.y});
     }
 
-    void RenderGraphWindow::drawGameViewOverlay(EditorContext& ctx)
+    void RenderGraphWindow::drawGameViewOverlay(EditorContext& ctx,
+                                                const ImVec2    childMin,
+                                                const ImVec2    childMax)
     {
         if (ctx.state.gameViewVisibleLastFrame)
             return;
-        if (ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
-            return;
+        const bool anyPopupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
 
-        const ImVec2 childMin = ImGui::GetItemRectMin();
-        const ImVec2 childMax = ImGui::GetItemRectMax();
         const ImVec2 childSize {childMax.x - childMin.x, childMax.y - childMin.y};
         if (childSize.x < 220.0f || childSize.y < 160.0f)
             return;
@@ -4773,7 +4765,12 @@ namespace vultra_app
                 {
                     if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
                     {
-                        cameraService->addManualCamera(makeGameOverlayCamera(world, camera, aspect, renderTarget));
+                        cameraService->addManualCamera(makeRenderGraphPreviewCamera(
+                            world,
+                            camera,
+                            aspect,
+                            renderTarget,
+                            rendererKeyFromRenderGraphUri(ctx.state.currentEditingRenderGraph)));
                     }
                 }
             }
@@ -4800,7 +4797,7 @@ namespace vultra_app
 
         const bool minusHovered = contains(minusMin, minusMax);
         const bool plusHovered  = contains(plusMin, plusMax);
-        if ((minusHovered || plusHovered) && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        if (!anyPopupOpen && (minusHovered || plusHovered) && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {
             if (minusHovered)
                 m_OverlayZoom = std::clamp(m_OverlayZoom - kOverlayZoomStep, kOverlayZoomMin, kOverlayZoomMax);
@@ -4809,9 +4806,9 @@ namespace vultra_app
             ImGui::SetNextFrameWantCaptureMouse(true);
         }
 
-        // ImNodes owns the editor child draw channels, so the preview is drawn in the foreground
-        // and clipped back to the graph canvas. Hit testing stays manual to avoid child-window focus conflicts.
-        ImDrawList* drawList = ImGui::GetForegroundDrawList(ImGui::GetWindowViewport());
+        ImDrawList* drawList = anyPopupOpen ?
+                                   ImGui::GetWindowDrawList() :
+                                   ImGui::GetForegroundDrawList(ImGui::GetWindowViewport());
         drawList->PushClipRect(childMin, childMax, true);
         drawList->AddRectFilled(panelMin, panelMax, IM_COL32(10, 14, 18, 255), 7.0f);
         drawList->AddRect(panelMin, panelMax, IM_COL32(68, 86, 105, 255), 7.0f);
