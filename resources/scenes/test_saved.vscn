@@ -1,41 +1,56 @@
 [vscn]
 version = 1
-root    = 1
+root    = 0
 
-[node id=1 name="Root" parent=0 uuid="adb61cc6f7f9572932aef9b35e93caae"]
-NameComponent/name = "Root"
+[node id=1 name="Environment" parent=0 uuid="8f7da3bd773fffb059ee2c3e5eb2f8c7"]
+NameComponent/name = "Environment"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
 TransformComponent/position = (0, 0, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (1, 1, 1)
+EnvironmentComponent/active = true
+EnvironmentComponent/skybox = "9a5cf6f3664c0e0b07179f44e84101cc"
+EnvironmentComponent/ambientColor = (0.15, 0.15, 0.15)
+EnvironmentComponent/ambientIntensity = 1.000000
+EnvironmentComponent/enableIBL = false
+EnvironmentComponent/iblColor = (0.04, 0.045, 0.05)
+EnvironmentComponent/iblIntensity = 1.000000
 
-[node id=2 name="Sponza" parent=1 uuid="adb619c6f7f9521032aefcb35e93c5d1"]
-NameComponent/name = "Sponza"
-TransformComponent/position = (0, 0, 0)
-TransformComponent/rotation = (0, 0, 0, 1)
+[node id=2 name="Camera" parent=0 uuid="d6348e9e870dff93209ad02615cfefbb"]
+NameComponent/name = "Camera"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-8.87204, 0.473077, 0.516401)
+TransformComponent/rotation = (0.122464, -0.489618, 0.069683, 0.860477)
 TransformComponent/scale = (1, 1, 1)
-MeshComponent/mesh = "b51e0d7c911e053929d6e8fdc7af78be"
-MeshComponent/builtinGeometry = 4294967295
-MeshComponent/materialColor = (1, 1, 1, 1)
+CameraComponent/primary = true
+CameraComponent/projection = 0
+CameraComponent/fovYDegrees = 60.000000
+CameraComponent/orthographicHeight = 10.000000
+CameraComponent/zNear = 0.100000
+CameraComponent/zFar = 1000.000000
+CameraComponent/clearMode = 1
+CameraComponent/clearColor = (0.02, 0.025, 0.035, 1)
+CameraComponent/priority = 0
+CameraComponent/rendererKey = "default"
 
-[node id=3 name="DamagedHelmet" parent=1 uuid="adb61fc6f7f95c4232aec6b35e93cf87"]
-NameComponent/name = "DamagedHelmet"
-TransformComponent/position = (0, 1, 0)
-TransformComponent/rotation = (0, 0, 0, 1)
-TransformComponent/scale = (0.3, 0.3, 0.3)
-MeshComponent/mesh = "206733c1f880193cbd1dd2b65e0d0cbd"
-MeshComponent/builtinGeometry = 4294967295
-MeshComponent/materialColor = (1, 1, 1, 1)
-ScriptComponent/scriptUri = "res://scripts/test_move.lua"
-ScriptComponent/enabled = true
-
-[node id=4 name="Sun" parent=1 uuid="adb620c6f7f95df532aec5b35e93d1fa"]
+[node id=3 name="Sun" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0ca8"]
 NameComponent/name = "Sun"
-TransformComponent/position = (0, 4, 0)
-TransformComponent/rotation = (-0.702802, 0.0788313, -0.0751287, 0.703001)
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0.479269, 0.472498, 0.526066, -0.519905)
 TransformComponent/scale = (1, 1, 1)
 LightComponent/kind = 0
 LightComponent/color = (1, 0.96, 0.9)
-LightComponent/intensity = 2.000000
+LightComponent/intensity = 1.000000
 LightComponent/range = 100.000000
 LightComponent/radius = 0.050000
 LightComponent/width = 1.000000
@@ -44,4 +59,1507 @@ LightComponent/innerConeDegrees = 20.000000
 LightComponent/outerConeDegrees = 30.000000
 LightComponent/castsShadow = true
 LightComponent/twoSided = false
+
+[node id=4 name="LizardSplat" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0caa"]
+NameComponent/name = "LizardSplat"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = false
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 1.52067, -1)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+GaussianSplatComponent/gaussianSplat = "3acfb36237062821a78452d799871ba6"
+ScriptComponent/scriptUri = "res://scripts/test_move.lua"
+ScriptComponent/enabled = true
+
+[node id=5 name="BindingProbe" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0ca9"]
+NameComponent/name = "BindingProbe"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, -0.185904, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+ScriptComponent/scriptUri = "res://scripts/binding_probe.lua"
+ScriptComponent/enabled = true
+
+[node id=6 name="DamagedHelmet" parent=0 uuid="568100f9ffd6e92a4b73e57e56f45caf"]
+NameComponent/name = "DamagedHelmet"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-6, 1, -1)
+TransformComponent/rotation = (0, 0.707107, 0, -0.707107)
+TransformComponent/scale = (0.3, 0.3, 0.3)
+ScriptComponent/scriptUri = "res://scripts/test_move.lua"
+ScriptComponent/enabled = true
+
+[node id=7 name="mesh_helmet_LP_13930damagedHelmet" parent=6 uuid="222ac3215357aa18bed9a31685759dd9"]
+NameComponent/name = "mesh_helmet_LP_13930damagedHelmet"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0.707107, 0, 0, 0.707107)
+TransformComponent/scale = (1, 0.999995, 0.999995)
+MeshComponent/mesh = "715f93b4fa201d106e1472855cad10d1"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=8 name="Sponza" parent=0 uuid="8f8e4a7ad73c61e70c452bff794ed5e8"]
+NameComponent/name = "Sponza"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+
+[node id=9 name="meshes[0]-0" parent=8 uuid="0a0ac4f75a20600196f9a140fcaad3c6"]
+NameComponent/name = "meshes[0]-0"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (3.96224, 1.18526, 1.58795)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "e3ad50e8109c0f3bf8a63550463102bc"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=10 name="meshes[0]-1" parent=8 uuid="9ce737492246d599019ddf2eb444485e"]
+NameComponent/name = "meshes[0]-1"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-1.94594, 0.47682, -1.76817)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "c14fe6400981d5abde0480384f0b482c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=11 name="meshes[0]-2" parent=8 uuid="741ebe99d919617968d5a79e7fb3d47e"]
+NameComponent/name = "meshes[0]-2"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-1.96231, 0.224238, -1.79826)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "c0ffff024516cb23ddf4e7778bb4bea4"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=12 name="meshes[0]-3" parent=8 uuid="ca08b2c393f980a9d6fb53b43a93f32e"]
+NameComponent/name = "meshes[0]-3"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-11.3054, 5.0064, -0.310726)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "2d47757ba824c51bb23c10fc2ea6b8dc"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=13 name="meshes[0]-4" parent=8 uuid="12f4e8186bcd81c18fef8e61e2fff406"]
+NameComponent/name = "meshes[0]-4"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.523761, 2.86871, -0.28582)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "8b3549b7884ad88b102e2c80ce404b4c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=14 name="meshes[0]-5" parent=8 uuid="c9f401f91ecc2099d6e0e47eb1c1135e"]
+NameComponent/name = "meshes[0]-5"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.522497, 4.00317, -0.298192)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "7d514e4884a102fb62022831ca2a76fc"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=15 name="meshes[0]-6" parent=8 uuid="72d60b8153dc85a96f8eeaf6faeef82e"]
+NameComponent/name = "meshes[0]-6"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.509003, 2.39917, -0.280982)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "a129ef0bf23307a33dda976c64587a24"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=16 name="meshes[0]-7" parent=8 uuid="b5565960efb992192a0d3cd966d385de"]
+NameComponent/name = "meshes[0]-7"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.518615, 0.874146, -0.289196)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "3d690e4de7a6771ba21be82a6924eadc"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=17 name="meshes[0]-8" parent=8 uuid="c4b4df9cfc6df431d9af869d521f67b6"]
+NameComponent/name = "meshes[0]-8"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.513524, 2.4872, -0.288846)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "28c9f81a33f5e61bb5ba9e1f9a9759dc"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=18 name="meshes[0]-9" parent=8 uuid="db88b16304db99b9c07b54d74bf18c3e"]
+NameComponent/name = "meshes[0]-9"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.520014, 3.32424, -0.284983)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "9549df1a5d1538cb0a3a871ff3b62b0c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=19 name="meshes[0]-10" parent=8 uuid="d3b70d57968a61b1c8ade9203800d436"]
+NameComponent/name = "meshes[0]-10"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.509003, 6.22848, -0.280982)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "2bace14048dae003b0a785398ff053c4"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=20 name="meshes[0]-11" parent=8 uuid="5fb4683400922dab7caf0e04563b202c"]
+NameComponent/name = "meshes[0]-11"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.527733, 6.06348, -0.278657)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "0be8d47d554772c5909bb1fafb45e50a"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=21 name="meshes[0]-12" parent=8 uuid="5a6589220dee8039471e6d16409cf3be"]
+NameComponent/name = "meshes[0]-12"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.515158, 4.80985, -0.28839)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "cf37fc537bd0303bcc2c9a24d2fd23bc"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=22 name="meshes[0]-13" parent=8 uuid="2298a4a1bb6ce8efbf4b41961d1e5cf0"]
+NameComponent/name = "meshes[0]-13"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.534865, 6.46198, -0.293434)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "7ce3ee70a63a7801619097c92850ebc6"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=23 name="meshes[0]-14" parent=8 uuid="599449b2fe6572f9464f2c875067e6fe"]
+NameComponent/name = "meshes[0]-14"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.51964, 6.46198, -0.280795)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "4559fb1c20ae58db5a0a9b1db7dccb1c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=24 name="meshes[0]-15" parent=8 uuid="dc7771156ca8cbb3c16c1562e222be34"]
+NameComponent/name = "meshes[0]-15"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.535129, 8.87376, -0.289)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "a8b6a1b2b25ef95535ad4487246c6c9a"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=25 name="meshes[0]-16" parent=8 uuid="7988f0266a24b311667b9613eca6a6d6"]
+NameComponent/name = "meshes[0]-16"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (4.05782, 9.95756, -2.02703)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "1620d19e0bd5fbc38ad3b49a42f76e04"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=26 name="meshes[0]-17" parent=8 uuid="8d163fb3766f053f11cd2684d81c7880"]
+NameComponent/name = "meshes[0]-17"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (4.05782, 9.95756, -2.10973)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "737e8590c04f4c09687560e9167c3fce"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=27 name="meshes[0]-18" parent=8 uuid="bbacfa353da14b0120a79c02932a3ec6"]
+NameComponent/name = "meshes[0]-18"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (1.09681, 9.95756, -2.02703)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "e7f87116bde5a6c3f4eb156310e79904"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=28 name="meshes[0]-19" parent=8 uuid="df00424cb2c8fe3bc3f3242d25c271bc"]
+NameComponent/name = "meshes[0]-19"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (1.09681, 9.95756, -2.10973)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "a7d3135ae49979253481f2df6a33ecaa"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=29 name="meshes[0]-20" parent=8 uuid="bd1721eeaf95a37f21cdc44b21379640"]
+NameComponent/name = "meshes[0]-20"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-2.11679, 9.95756, -2.02703)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "02c06174aa5af8d19fb304c52c706b16"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=30 name="meshes[0]-21" parent=8 uuid="fb0c085d6e38ed59e7f8eddae052609e"]
+NameComponent/name = "meshes[0]-21"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-2.11679, 9.95756, -2.10973)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "ff98e330516b7b039c4b83098761eec4"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=31 name="meshes[0]-22" parent=8 uuid="1522d9ddda5bdaef89d1bc5a7c714ef0"]
+NameComponent/name = "meshes[0]-22"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-5.0786, 9.95756, -2.02703)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "736ad4fd1924c6b16819b17abfa6b936"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=32 name="meshes[0]-23" parent=8 uuid="155e9840b12e610d8a157e39275cd4d2"]
+NameComponent/name = "meshes[0]-23"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-5.0786, 9.95756, -2.10973)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "0acf3539dc822bff9785d13e720b1fc0"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=33 name="meshes[0]-24" parent=8 uuid="3094cc0655508d17ad4faa73fb7a80d8"]
+NameComponent/name = "meshes[0]-24"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-8.01889, 9.96975, -0.279772)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "57f8e2d49e30148944eb83a5305d074e"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=34 name="meshes[0]-25" parent=8 uuid="c7f9284318adeb99d4ebce34bfdf5e5e"]
+NameComponent/name = "meshes[0]-25"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-8.10158, 9.96975, -0.279773)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "58349d37750293db452f7900db88861c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=35 name="meshes[0]-26" parent=8 uuid="bfea587de686bf37dc993dfa6804b2b8"]
+NameComponent/name = "meshes[0]-26"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (4.05782, 9.95756, 1.43746)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "ffed2ae57369dd199ce7cb52e56350de"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=36 name="meshes[0]-27" parent=8 uuid="bcc2de398d97483521b1b83ec3343bba"]
+NameComponent/name = "meshes[0]-27"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (4.05782, 9.95756, 1.52016)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "3de21554320d2dbfa292f125a4be2000"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=37 name="meshes[0]-28" parent=8 uuid="d8043c3739888f0fc4f0da009f0282d0"]
+NameComponent/name = "meshes[0]-28"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (1.09681, 9.95756, 1.43746)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "07c410530f0d28f194b0f62741be1cf6"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=38 name="meshes[0]-29" parent=8 uuid="12848658ec6347a98f7f602162683a2e"]
+NameComponent/name = "meshes[0]-29"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (1.09681, 9.95756, 1.52016)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "03a2486cebe17cf398512dcd62ebf0f4"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=39 name="meshes[0]-30" parent=8 uuid="491139ec21d417a955c3dc4db4f90a2e"]
+NameComponent/name = "meshes[0]-30"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-2.11679, 9.95756, 1.43746)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "7fd747edb2d826cb1c8c2e4a25f5190c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=40 name="meshes[0]-31" parent=8 uuid="334e0a8fc7e3870ba806ebe80ee9facc"]
+NameComponent/name = "meshes[0]-31"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-2.11679, 9.95756, 1.52016)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "f5cd65d62913bd85ea8600a3afb9b04a"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=41 name="meshes[0]-32" parent=8 uuid="3d013ef6ef03ed31a1f22743618960b6"]
+NameComponent/name = "meshes[0]-32"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-5.0786, 9.95756, 1.43746)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "8be742e2e5a85143109c23576b22c484"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=42 name="meshes[0]-33" parent=8 uuid="b2f758df653f7d1f2fec3d58eb4df0a0"]
+NameComponent/name = "meshes[0]-33"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-5.0786, 9.95756, 1.52016)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "762417868bb7c7716ad0fef3c2d5ba76"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=43 name="meshes[0]-34" parent=8 uuid="bd2a495e842aa14121d92cdbcaa09486"]
+NameComponent/name = "meshes[0]-34"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-1.23294, 7.7448, -0.287962)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "f888c3c5051ed7b3e57ba2b54bac4a34"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=44 name="meshes[0]-35" parent=8 uuid="13f131ead733168388e3d44f79580944"]
+NameComponent/name = "meshes[0]-35"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.355307, 8.88894, -0.356984)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "429d215f968377455f57c4d83809ea8a"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=45 name="meshes[0]-36" parent=8 uuid="b5b2bace414a9e192aa15bab974091de"]
+NameComponent/name = "meshes[0]-36"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.522497, 7.38287, -0.298192)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "0000525547fedadb9cf334228e8c4d1c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=46 name="meshes[0]-37" parent=8 uuid="ffc71468d2af36df9cbdf1d105dc2ae0"]
+NameComponent/name = "meshes[0]-37"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.515917, 3.45907, -0.278421)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "56c73ee19b0756e94bbc27563d85caee"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=47 name="meshes[0]-38" parent=8 uuid="387612e31eed7019a56ef354b19fe3de"]
+NameComponent/name = "meshes[0]-38"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-1.87429, 1.14873, 4.63713)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "0bf80898329c53cb90ecede1a42ec60c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=48 name="meshes[0]-39" parent=8 uuid="2b2fb1810eddb22bb02454f941efa5ac"]
+NameComponent/name = "meshes[0]-39"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-3.46724, 1.63649, 4.6271)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "2d2f22d300f896f5b225c3a757928afa"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=49 name="meshes[0]-40" parent=8 uuid="baed31f29f9d61f327e7d447312fd5f4"]
+NameComponent/name = "meshes[0]-40"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (2.46275, 1.63649, 4.65143)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "d20945bedf0a6e35cefa20bb7180e1ba"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=50 name="meshes[0]-41" parent=8 uuid="6f90b64f032665856c43502b55a4d84a"]
+NameComponent/name = "meshes[0]-41"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (2.46275, 1.63649, 4.6271)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "2456cda1b49ad70fb90da8961a304ad0"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=51 name="meshes[0]-42" parent=8 uuid="9caebc5a9c82a3f301a559df320897f4"]
+NameComponent/name = "meshes[0]-42"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (4.70031, 2.85854, -2.43579)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "610e2fcb8e176fc57dc6d6acc0b5e20a"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=52 name="meshes[0]-43" parent=8 uuid="a5e2bc89c483e9993a9159ee0a095c5e"]
+NameComponent/name = "meshes[0]-43"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.518832, 3.35971, -0.265208)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "80cb4e8e81a4dceb1db837ebd72650ec"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=53 name="meshes[0]-44" parent=8 uuid="6fba660d2fdfeb4b6ca9006aa6ed5e8c"]
+NameComponent/name = "meshes[0]-44"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.508133, 3.5119, -0.28497)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "c888f4def908a34dd57b915b5f829692"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=54 name="meshes[0]-45" parent=8 uuid="459e64e927bd73d55a55014eaecfe61a"]
+NameComponent/name = "meshes[0]-45"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.505317, 0.0089828, -0.281127)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "6b243aec44892a2777d0db4d8a021da8"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=55 name="meshes[0]-46" parent=8 uuid="58cf20720422171b4585c5c64aab0adc"]
+NameComponent/name = "meshes[0]-46"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.505317, -0.0200496, -0.281127)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "fdc10d00eb1849cde2b3e9796db53c12"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=56 name="meshes[0]-47" parent=8 uuid="d573f4b7e458bd81ca6091806a72b046"]
+NameComponent/name = "meshes[0]-47"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.526466, 0.874146, -0.281017)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "9a5d586a596172db07163dcfff6be51c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=57 name="meshes[0]-48" parent=8 uuid="2115a738461360c3bdce4f0188b9d304"]
+NameComponent/name = "meshes[0]-48"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.523761, 4.94902, -0.28582)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "30267e90dee375f5acdd67e971e9e9fa"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=58 name="meshes[0]-49" parent=8 uuid="13c3d74c5936e83588b0bf2dff545bba"]
+NameComponent/name = "meshes[0]-49"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.520979, 4.82498, -0.299728)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "064d8d2060ae888f9b066919f7dcfb50"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=59 name="meshes[0]-50" parent=8 uuid="500f65aba6ec07594cc4008c29e17a9e"]
+NameComponent/name = "meshes[0]-50"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.510681, 2.41971, 4.57665)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "5d55e9f78e3c2edb420e8c40c051211c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=60 name="meshes[0]-51" parent=8 uuid="1213f53ce84367538ec0913d6e49da94"]
+NameComponent/name = "meshes[0]-51"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.355307, 8.95405, -0.356984)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "a8ab7b9b2aad31fd35581a9cadde25c2"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=61 name="meshes[0]-52" parent=8 uuid="6a6f6d8ee9ecd151776408eb6c9e4496"]
+NameComponent/name = "meshes[0]-52"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.50182, 6.8598, -0.285759)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "93a7ec324f99ac23085c8a0781339fa4"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=62 name="meshes[0]-53" parent=8 uuid="6a2d452c13152b677726210c45b61e68"]
+NameComponent/name = "meshes[0]-53"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.516151, 0.78821, -0.298776)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "8a6d6a0327931de917660c74a93811ee"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=63 name="meshes[0]-54" parent=8 uuid="1d1815915178c20181ccf0e68712b5c6"]
+NameComponent/name = "meshes[0]-54"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-4.95063, 3.44015, 1.6378)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "33639091b2d32f93a81075e625f82254"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=64 name="meshes[0]-55" parent=8 uuid="85aca7548e15263b1aa74f25c0b619bc"]
+NameComponent/name = "meshes[0]-55"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-2.00178, 3.44015, 1.6378)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "5d7917b5baf06c0d426bfe821d9adfd2"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=65 name="meshes[0]-56" parent=8 uuid="11eebb87c66c8dc98ee55af0081e800e"]
+NameComponent/name = "meshes[0]-56"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0.947073, 3.44015, 1.6378)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "c338a4606f6da68bd82b41d9e11f994c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=66 name="meshes[0]-57" parent=8 uuid="150fb3cc1f56bc3789c452adb174afb8"]
+NameComponent/name = "meshes[0]-57"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (3.89592, 3.44015, 1.6378)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "468d4e1a8f31b7915b46281fc15baa56"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=67 name="meshes[0]-58" parent=8 uuid="6787e3a7251661a9747c8290abb4d42e"]
+NameComponent/name = "meshes[0]-58"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (3.87109, 3.44015, -2.21572)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "0188faf4e44c965b9e7b9b456a7e899c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=68 name="meshes[0]-59" parent=8 uuid="2d008f8572357963b1f376f2e457ec64"]
+NameComponent/name = "meshes[0]-59"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0.922237, 3.44015, -2.21572)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "0ed3e0e0d123159d9380855907a80822"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=69 name="meshes[0]-60" parent=8 uuid="081cb42d9e0f7a1f94d7520a30bdeda0"]
+NameComponent/name = "meshes[0]-60"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-2.02661, 3.44015, -2.21572)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "001c4af8233ca5699cd72b41b54e986e"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=70 name="meshes[0]-61" parent=8 uuid="92200c4527ce8d390ed4ea32aefc80be"]
+NameComponent/name = "meshes[0]-61"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-4.97546, 3.44015, -2.21572)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "afd9d609dbba9b5b2c8ab06e72d08e9c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=71 name="meshes[0]-62" parent=8 uuid="887361de00b37d3f1560045a57d9f080"]
+NameComponent/name = "meshes[0]-62"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.513616, 2.27629, -0.322354)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "87bc9c69d542d57914b779ce7b48487e"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=72 name="meshes[0]-63" parent=8 uuid="9e2fab3a5a9e1b5d03244b3ffc2f0e62"]
+NameComponent/name = "meshes[0]-63"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.49031, 1.13258, 1.60954)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "8736b297e3ab02e7142d53e0752076e8"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=73 name="meshes[0]-64" parent=8 uuid="54d0ffb70b67add74983e6834d65a018"]
+NameComponent/name = "meshes[0]-64"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-3.47279, 1.13349, 1.56447)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "c32b29c60b820ac1dfd9ccb24d0b7d06"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=74 name="meshes[0]-65" parent=8 uuid="0ab6181c79fdb81997aefe1ddc8fabde"]
+NameComponent/name = "meshes[0]-65"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-6.42071, 1.13258, 1.60954)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "d06af1281b8c5753cd199511bd3eca94"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=75 name="meshes[0]-66" parent=8 uuid="68fb21390feb944775e9c50146e18788"]
+NameComponent/name = "meshes[0]-66"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-6.42071, 1.13258, -2.21573)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "8254822139c89ac11f0f64169cc28d06"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=76 name="meshes[0]-67" parent=8 uuid="122d92acbcdd99458f26738d13ef8c8a"]
+NameComponent/name = "meshes[0]-67"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (2.4361, 1.13349, 1.56447)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "6116f1e66b6723677dcd9453ed641668"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=77 name="meshes[0]-68" parent=8 uuid="3f7e712a75f4538f5c75150fd896c650"]
+NameComponent/name = "meshes[0]-68"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (5.4122, 1.13258, 1.60954)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "abd1222fd3bfc0493083c4087acdb38e"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=78 name="meshes[0]-69" parent=8 uuid="1e40dcefa792d5698333b9482938486e"]
+NameComponent/name = "meshes[0]-69"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-3.47279, 1.13349, -2.2608)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "55039fa380b1d9ab49f04694d7db4c2c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=79 name="meshes[0]-70" parent=8 uuid="e17cce16b02b3981fe77a86326a02c46"]
+NameComponent/name = "meshes[0]-70"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.49031, 1.13258, -2.21573)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "bbd1a594eef3f293208240e561996554"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=80 name="meshes[0]-71" parent=8 uuid="3fd56735fcaa76635c8e0f025220e964"]
+NameComponent/name = "meshes[0]-71"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (2.4361, 1.13349, -2.2608)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "1637037e3bc565ad8b2de2fb92c7d832"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=81 name="meshes[0]-72" parent=8 uuid="78fb9c9e2b1fb8f965e8799badadacfe"]
+NameComponent/name = "meshes[0]-72"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (5.4122, 1.13258, -2.21573)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "2452d70d73ff731bb901bf6ada8de6dc"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=82 name="meshes[0]-73" parent=8 uuid="d360f68777f12547c8139ff0de9a1888"]
+NameComponent/name = "meshes[0]-73"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (3.90084, 1.3923, -1.7576)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "82ab742cc07eb6c91f58120d160ca90e"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=83 name="meshes[0]-74" parent=8 uuid="7556095d869903f96a0eecdac83277fe"]
+NameComponent/name = "meshes[0]-74"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (3.90105, 1.2625, -1.76464)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "640ca12a29c3829b78c7450facc9f55c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=84 name="meshes[0]-75" parent=8 uuid="71bbfd3dfff022fb6ea8993a569d16fc"]
+NameComponent/name = "meshes[0]-75"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-4.95385, 1.3923, -1.7576)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "8309bf458b32902d1ffaa732cd5883b2"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=85 name="meshes[0]-76" parent=8 uuid="2136983365ef4901be2d7e04e89c3cc6"]
+NameComponent/name = "meshes[0]-76"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-4.95363, 1.2625, -1.76464)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "b82c12544a6d3d9324d8f4258c1e3054"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=86 name="meshes[0]-77" parent=8 uuid="4033b24ec75e4fc75d20542b096cc208"]
+NameComponent/name = "meshes[0]-77"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-4.95341, 1.3923, 1.14673)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "b4920a34c3c463612942ec050ac6d666"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=87 name="meshes[0]-78" parent=8 uuid="0a83d76c899091119770becdcf3a84d6"]
+NameComponent/name = "meshes[0]-78"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-4.95363, 1.2625, 1.15377)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "345affd958783ef3a909e65efe1532f4"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=88 name="meshes[0]-79" parent=8 uuid="6e6af9d45e81d3c373199ca5f00b4604"]
+NameComponent/name = "meshes[0]-79"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (3.90128, 1.3923, 1.14673)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "5dcc7b8e6139ab9d42871aebf7539e22"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=89 name="meshes[0]-80" parent=8 uuid="de28af418f138a0bc2db5736c1b9fdcc"]
+NameComponent/name = "meshes[0]-80"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (3.90106, 1.2625, 1.15377)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "dfadd1516079f705fca6b526f6136aca"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=90 name="meshes[0]-81" parent=8 uuid="f41b749de92c8a4de8c8119a6f5efd92"]
+NameComponent/name = "meshes[0]-81"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-7.68786, 0.47682, -1.82179)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "e8e1cd80887b35dff592a8f9ce1029e0"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=91 name="meshes[0]-82" parent=8 uuid="5dfa85912c91b94b42e960e6a23bac8c"]
+NameComponent/name = "meshes[0]-82"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-7.71796, 0.224238, -1.80542)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "fdb5c6e963664c15e2aeaf4ef5673fda"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=92 name="meshes[0]-83" parent=8 uuid="e7fde1a8b650d331f4f68491187a46b6"]
+NameComponent/name = "meshes[0]-83"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-7.68786, 0.446721, 1.19336)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "b28f4745c71cd84b2f442f3209ae4b8c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=93 name="meshes[0]-84" parent=8 uuid="becbd69c9e63198323b8bf9d30680c44"]
+NameComponent/name = "meshes[0]-84"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-7.71796, 0.194138, 1.20973)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "9bb2ad68c801bb5d00a148d10e8bae62"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=94 name="meshes[0]-85" parent=8 uuid="68346c104b82eb1d752f0a698d085ea2"]
+NameComponent/name = "meshes[0]-85"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-1.94594, 0.446721, 1.24699)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "18577daea8385af7850c188b2e52cef8"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=95 name="meshes[0]-86" parent=8 uuid="aaca391a9a01657337badd1f3c8bd874"]
+NameComponent/name = "meshes[0]-86"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-1.96231, 0.194138, 1.2169)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "b267f303f392001d2f1c9374653b73a2"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=96 name="meshes[0]-87" parent=8 uuid="60af5d80089784197da438f84e35f7de"]
+NameComponent/name = "meshes[0]-87"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0.956566, 0.44376, 1.23797)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "8881fddfeb9d2c7b157298586d2e1f7c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=97 name="meshes[0]-88" parent=8 uuid="d640d632d63c1e1bcb33b007785111dc"]
+NameComponent/name = "meshes[0]-88"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0.949997, 0.193113, 1.22676)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "2cf2e7bf144da1e5b1e18eb8ba7f95ea"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=98 name="meshes[0]-89" parent=8 uuid="e34a3d94e618381df83ad8e568b52ba2"]
+NameComponent/name = "meshes[0]-89"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (6.67298, 0.448174, 1.23797)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "e8b5b51bdab4dcbff5ae511c7dd64f00"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=99 name="meshes[0]-90" parent=8 uuid="d35162796a480831c80203feec457bb6"]
+NameComponent/name = "meshes[0]-90"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (6.66641, 0.197526, 1.22676)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "54d2407e8a4c2473498125fbcc411774"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=100 name="meshes[0]-91" parent=8 uuid="dd2c358b82ee9a6bc1d8d0ecd59c8d6c"]
+NameComponent/name = "meshes[0]-91"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (6.67298, 0.474884, -1.77719)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "57bcb4c2e307e32544b751b7758556aa"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=101 name="meshes[0]-92" parent=8 uuid="18bbb4990c250af985a851e142a67efe"]
+NameComponent/name = "meshes[0]-92"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (6.66641, 0.224238, -1.78839)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "5ffb9a88155858ab7ce87bf1bb72cb2c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=102 name="meshes[0]-93" parent=8 uuid="bdcf2b7a4ae40edf2285caff8de902e0"]
+NameComponent/name = "meshes[0]-93"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0.956566, 0.474884, -1.77719)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "c890304b51f4c3b1d544d62c8496b636"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=103 name="meshes[0]-94" parent=8 uuid="477e3c46233dd1595476da33b54f449e"]
+NameComponent/name = "meshes[0]-94"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0.949997, 0.224238, -1.78839)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "ad6dfa85ade33d4b32669bf220e8308c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=104 name="meshes[0]-95" parent=8 uuid="70efa7fb2bff22d36de44e7ca28c1514"]
+NameComponent/name = "meshes[0]-95"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.330011, 0.529294, -0.180951)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "acf5be22d6dde5f531ee581779ef59fa"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=105 name="meshes[0]-96" parent=8 uuid="608aa8d01835d5517d794da9be574896"]
+NameComponent/name = "meshes[0]-96"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (10.0923, 1.37866, -0.292896)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "930e72a26ae34cd30fc51397ede83f14"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=106 name="meshes[0]-97" parent=8 uuid="c43b3f37ecf89aafd928270063928d30"]
+NameComponent/name = "meshes[0]-97"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (10.3076, 1.38857, -0.287354)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "55128633ac39da1949c1600422534dde"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=107 name="meshes[0]-98" parent=8 uuid="76de5596f443d6c16b9530e35a494906"]
+NameComponent/name = "meshes[0]-98"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-11.1196, 1.37866, -0.281809)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "58a5a5bb249496f3455e40bcaa368af4"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=108 name="meshes[0]-99" parent=8 uuid="95db6bb255b2d6bb0a880a87f8d8493c"]
+NameComponent/name = "meshes[0]-99"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-11.3348, 1.38857, -0.287351)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "5cf6f3a147e8976541ed92968ee28a6a"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=109 name="meshes[0]-100" parent=8 uuid="bd2254ecbcb32bb921d1314d13d81e3e"]
+NameComponent/name = "meshes[0]-100"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.48116, 4.88301, -0.397277)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "a4142b965693468b38c0cae3f838394c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=110 name="meshes[0]-101" parent=8 uuid="6a6cd7e08a878dc97767be59cc05800e"]
+NameComponent/name = "meshes[0]-101"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.484151, 10.8398, -0.309524)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "63f07e00fee175c378e3187951ebe804"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+
+[node id=111 name="meshes[0]-102" parent=8 uuid="7e8e01e3dd98a7996346e45473329a5e"]
+NameComponent/name = "meshes[0]-102"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.495459, 4.62023, -0.431054)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (0.008, 0.008, 0.008)
+MeshComponent/mesh = "ec2f5632d084f98bf124300706066c4c"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
 

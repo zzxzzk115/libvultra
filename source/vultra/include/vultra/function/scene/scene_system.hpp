@@ -57,6 +57,8 @@ namespace vultra
                      const SceneNode& node,
                      const std::unordered_map<std::string, std::string>& assets);
 
+        void applyMeshDefaultTransformIfNeeded(entt::registry& reg, entt::entity e, const SceneNode& node);
+
         entt::meta_any parseValueToAny(entt::meta_type expected,
                            std::string_view raw,
                            const std::unordered_map<std::string, std::string>& assets) const;

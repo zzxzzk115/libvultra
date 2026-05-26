@@ -7,6 +7,7 @@
 #include "vultra/function/services/render_backend_service.hpp"
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
+#include <builtin_shaders.hpp>
 #include <vasset/editor_filesystem.hpp>
 #include <vasset/vasset_importers.hpp>
 #endif
@@ -21,6 +22,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -75,6 +77,23 @@ namespace vultra
             uint32_t  pad2 {0};
         };
         static_assert(sizeof(MaterialParamsUnlit) % 16 == 0);
+
+#ifdef VULTRA_HAS_VASSET_IMPORT
+        vasset::VAssetImporter::ImportOptions makeAssetImportOptions()
+        {
+            vasset::VAssetImporter::ImportOptions options;
+            options.shaderVirtualIncludes.reserve(builtin_shader_include_sources_count);
+            for (size_t i = 0; i < builtin_shader_include_sources_count; ++i)
+            {
+                const auto& source = builtin_shader_include_sources[i];
+                options.shaderVirtualIncludes.push_back({
+                    .virtualPath = source.path,
+                    .sourceText  = std::string(reinterpret_cast<const char*>(source.data), source.size),
+                });
+            }
+            return options;
+        }
+#endif
 
         struct alignas(16) MaterialParamsPhong
         {
@@ -507,6 +526,7 @@ namespace vultra
                 }
 #ifdef VULTRA_HAS_VASSET_IMPORT
                 vasset::VAssetImporter importer {m_Registry};
+                importer.setOptions(makeAssetImportOptions());
                 importer.importOrReimportAssetFolder(m_Desc.assetRoot);
                 m_Registry.save(registryPath);
 #else
@@ -531,6 +551,7 @@ namespace vultra
             if (m_Desc.enableImportScan)
             {
                 vasset::VAssetImporter importer {m_Registry};
+                importer.setOptions(makeAssetImportOptions());
                 auto                   importResult = importer.importOrReimportAssetFolder(m_Desc.assetRoot, false);
                 if (!importResult)
                 {
@@ -1392,6 +1413,7 @@ namespace vultra
 
         const auto physicalPath = std::filesystem::path(resolveUri(uri)).lexically_normal();
         vasset::VAssetImporter importer {m_Registry};
+        importer.setOptions(makeAssetImportOptions());
         auto result = importer.importOrReimportAsset(physicalPath.generic_string(), forceReimport);
         if (!result)
         {

@@ -7,6 +7,7 @@
 #include "editor_app/ui/windows/frame_debugger_window.hpp"
 #include "editor_app/ui/windows/game_view_window.hpp"
 #include "editor_app/ui/windows/inspector_window.hpp"
+#include "editor_app/ui/windows/material_graph_window.hpp"
 #include "editor_app/ui/windows/profiler_window.hpp"
 #include "editor_app/ui/windows/render_graph_window.hpp"
 #include "editor_app/ui/windows/scene_hierarchy_window.hpp"
@@ -31,6 +32,10 @@
 #include <vultra/function/world/components/name_component.hpp>
 
 #include <IconsMaterialDesignIcons.h>
+#ifdef VULTRA_HAS_VASSET_IMPORT
+#include <builtin_shaders.hpp>
+#include <vasset/vasset_importers.hpp>
+#endif
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -39,6 +44,7 @@
 #include <chrono>
 #include <cmath>
 #include <cctype>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -46,6 +52,26 @@
 #include <sstream>
 #include <system_error>
 #include <vector>
+
+#ifdef VULTRA_HAS_VASSET_IMPORT
+namespace
+{
+    vasset::VAssetImporter::ImportOptions makeEditorAssetImportOptions()
+    {
+        vasset::VAssetImporter::ImportOptions options;
+        options.shaderVirtualIncludes.reserve(builtin_shader_include_sources_count);
+        for (size_t i = 0; i < builtin_shader_include_sources_count; ++i)
+        {
+            const auto& source = builtin_shader_include_sources[i];
+            options.shaderVirtualIncludes.push_back({
+                .virtualPath = source.path,
+                .sourceText  = std::string(reinterpret_cast<const char*>(source.data), source.size),
+            });
+        }
+        return options;
+    }
+} // namespace
+#endif
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -257,7 +283,7 @@ namespace vultra_app
             argv.reserve(args.size());
             for (auto& arg : args)
                 argv.push_back(arg.data());
-            return vasset::tool::run_vasset_cli(static_cast<int>(argv.size()), argv.data());
+            return vasset::tool::run_vasset_cli(static_cast<int>(argv.size()), argv.data(), makeEditorAssetImportOptions());
         }
 #endif
 
@@ -998,6 +1024,7 @@ namespace vultra_app
         m_WindowManager.addWindow<CodeEditorWindow>();
         m_WindowManager.addWindow<ConsoleWindow>();
         m_WindowManager.addWindow<RenderGraphWindow>();
+        m_WindowManager.addWindow<MaterialGraphWindow>();
         m_WindowManager.addWindow<FrameDebuggerWindow>();
         m_WindowManager.addWindow<ProfilerWindow>();
         m_WindowManager.addWindow<InspectorWindow>();
@@ -1051,7 +1078,7 @@ namespace vultra_app
                                           registry.load(result.registryPath);
 
                                       vasset::VAssetImporter importer {registry};
-                                      vasset::VAssetImporter::ImportOptions options;
+                                      auto options = makeEditorAssetImportOptions();
                                       options.progress = [progress](const vasset::VAssetImporter::ImportProgress& p) {
                                           std::scoped_lock lock(progress->mutex);
                                           switch (p.phase)
@@ -1559,6 +1586,7 @@ namespace vultra_app
             dockWindow("Game View", mainId);
             dockWindow("Code Editor", mainId);
             dockWindow("Render Graph", mainId);
+            dockWindow("Material Graph", mainId);
             dockWindow("Inspector", rightId);
             dockWindow("Content Browser", bottomId);
             dockWindow("Console", bottomId);

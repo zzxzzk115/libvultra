@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <filesystem>
 #include <charconv>
 #include <sstream>
@@ -519,6 +520,52 @@ namespace vultra
         }
     }
 
+    void SceneSystem::applyMeshDefaultTransformIfNeeded(entt::registry& reg, entt::entity e, const SceneNode& node)
+    {
+        const bool hasExplicitTransform = std::ranges::any_of(node.properties, [](const SceneProperty& prop) {
+            return prop.component == "TransformComponent";
+        });
+        if (hasExplicitTransform || !m_AssetService || !reg.all_of<MeshComponent>(e))
+            return;
+
+        const auto& mesh = reg.get<MeshComponent>(e);
+        if (!mesh.mesh.valid())
+            return;
+
+        auto handle = m_AssetService->loadMeshSync(mesh.mesh);
+        if (!handle.ready())
+            return;
+
+        vasset::VMesh  metadataMesh {};
+        const auto*    cpuMesh = handle.cpu();
+        if (!cpuMesh)
+        {
+            const auto entry = m_AssetService->registry().lookup(mesh.mesh);
+            if (entry.type == vasset::VAssetType::eUnknown || entry.importedPath.empty())
+                return;
+
+            auto bytes = m_AssetService->loadBinaryAssetSync("res://" + entry.importedPath);
+            if (!bytes)
+                return;
+
+            std::vector<std::byte> meshBytes(bytes.value().size());
+            std::memcpy(meshBytes.data(), bytes.value().data(), bytes.value().size());
+            auto parseResult = vasset::loadMeshFromMemory(meshBytes, metadataMesh);
+            if (!parseResult)
+                return;
+            cpuMesh = &metadataMesh;
+        }
+
+        if (!cpuMesh->hasDefaultTransform)
+            return;
+
+        auto& transform = reg.get_or_emplace<TransformComponent>(e);
+        transform.position = cpuMesh->defaultPosition;
+        transform.rotation = cpuMesh->defaultRotation;
+        transform.scale    = cpuMesh->defaultScale;
+        transform.dirty    = true;
+    }
+
     SceneSystem::InstantiateNodeResult
     SceneSystem::instantiateNodeR(World&                                              world,
                                   const SceneNode&                                    node,
@@ -532,9 +579,6 @@ namespace vultra
         // Prefab: instantiate referenced scene and apply overrides.
         if (!node.prefabUri.empty())
         {
-            if (!allowPrefab)
-                return InstantiateNodeResult::err("Scene instantiate: prefab is not allowed in .vmanifest scenes");
-
             std::filesystem::path prefabPath = node.prefabUri;
             if (node.prefabUri.find("://") == std::string::npos && prefabPath.is_relative() && !baseDir.empty())
                 prefabPath = baseDir / prefabPath;
@@ -575,6 +619,7 @@ namespace vultra
 
             // Apply overrides on the root entity.
             applyProperties(reg, rootEnt, node, assets);
+            applyMeshDefaultTransformIfNeeded(reg, rootEnt, node);
 
             // Instantiate extra children under prefab root.
             for (const auto& ch : node.children)
@@ -603,6 +648,7 @@ namespace vultra
 
         // Apply properties
         applyProperties(reg, e, node, assets);
+        applyMeshDefaultTransformIfNeeded(reg, e, node);
 
         // Ensure name if provided by header but not via property
         if (!node.name.empty())

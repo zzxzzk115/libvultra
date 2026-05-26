@@ -4,9 +4,11 @@
 #include "project_launcher/project_launcher.hpp"
 #include "vproject.hpp"
 
+#include <builtin_shaders.hpp>
 #include <vasset/vpk.hpp>
 
 #include <vasset/tool_cli.hpp>
+#include <vasset/vasset_importers.hpp>
 #include <vshadersystem/tool_cli.hpp>
 
 #include <vultra/core/app/demo_app_host.hpp>
@@ -28,12 +30,28 @@
 
 #include <filesystem>
 #include <algorithm>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace
 {
+    vasset::VAssetImporter::ImportOptions makeToolAssetImportOptions()
+    {
+        vasset::VAssetImporter::ImportOptions options;
+        options.shaderVirtualIncludes.reserve(builtin_shader_include_sources_count);
+        for (size_t i = 0; i < builtin_shader_include_sources_count; ++i)
+        {
+            const auto& source = builtin_shader_include_sources[i];
+            options.shaderVirtualIncludes.push_back({
+                .virtualPath = source.path,
+                .sourceText  = std::string(reinterpret_cast<const char*>(source.data), source.size),
+            });
+        }
+        return options;
+    }
+
     bool dispatchToolCommand(int argc, char** argv, int& exitCode)
     {
         if (argc <= 1 || argv == nullptr || argv[1] == nullptr)
@@ -42,7 +60,7 @@ namespace
         const std::string_view command {argv[1]};
         if (command == "asset" || command == "vasset" || command == "vasset-cli")
         {
-            exitCode = vasset::tool::run_vasset_cli(argc - 1, argv + 1);
+            exitCode = vasset::tool::run_vasset_cli(argc - 1, argv + 1, makeToolAssetImportOptions());
             return true;
         }
         if (command == "shader" || command == "vshaderc")

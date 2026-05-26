@@ -10,6 +10,13 @@
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/gpu_resource_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
+#include <vultra/function/services/scene_service.hpp>
+#include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/hierarchy_component.hpp>
+#include <vultra/function/world/components/mesh_component.hpp>
+#include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/world.hpp>
 
 #include "../example_renderer.hpp"
 
@@ -17,15 +24,16 @@
 #include <vasset/vmesh.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <limits>
+#include <vector>
 
 using namespace vultra;
 
 namespace
 {
-    constexpr const char* kModelUri = "res://models/raytracing_shadow/raytracing_shadow.gltf";
-    constexpr glm::mat4  kTransform {1.0f};
+    constexpr const char* kSceneUri = "res://models/raytracing_shadow/raytracing_shadow.gltf";
 
     const char* const vertexCode = R"(
 #version 460 core
@@ -124,66 +132,19 @@ public:
 
     void init() override
     {
-        auto& services       = *getServices();
-        auto& assetService   = services.require<IAssetService>();
-        auto& gpuResources   = services.require<IGpuResourceService>();
-        auto& backendService = services.require<IRenderBackendService>();
-        auto& rd             = backendService.renderDevice();
-
-        m_MeshHandle = assetService.loadMeshSync(kModelUri);
-        const auto meshIndex = m_MeshHandle.gpuIndex();
-        auto&      pool      = gpuResources.pool();
-        if (!m_MeshHandle.ready() || meshIndex == std::numeric_limits<uint32_t>::max() || meshIndex >= pool.meshes.size())
-        {
-            VULTRA_CLIENT_ERROR("[RayQuery] Failed to load GPU mesh: {}", kModelUri);
-            return;
-        }
-
-        m_GpuMesh = &pool.meshes[meshIndex];
-        if (!m_GpuMesh->vertexBuffer || !m_GpuMesh->indexBuffer || m_GpuMesh->indexCount == 0)
-        {
-            VULTRA_CLIENT_ERROR("[RayQuery] Mesh has no drawable GPU buffers: {}", kModelUri);
-            m_GpuMesh = nullptr;
-            return;
-        }
-
-        const auto positionIt = m_GpuMesh->vertexAttributes.find(0);
-        const auto normalIt   = m_GpuMesh->vertexAttributes.find(1);
-        if (positionIt == m_GpuMesh->vertexAttributes.end() || normalIt == m_GpuMesh->vertexAttributes.end())
-        {
-            VULTRA_CLIENT_ERROR("[RayQuery] Mesh is missing position/normal attributes: {}", kModelUri);
-            m_GpuMesh = nullptr;
-            return;
-        }
-
-        if (!m_GpuMesh->blas)
-        {
-            VULTRA_CLIENT_ERROR("[RayQuery] Mesh has no BLAS; ray tracing features are required for {}", kModelUri);
-            m_GpuMesh = nullptr;
-            return;
-        }
-
-        m_TLAS = rd.createBuildSingleInstanceTLAS(m_GpuMesh->blas, kTransform);
-
-        m_Pipeline =
-            rhi::GraphicsPipeline::Builder {}
-                .setDepthFormat(rhi::PixelFormat::eDepth24_Stencil8)
-                .setColorFormats({backendService.swapchain().getPixelFormat()})
-                .setDepthStencil({.depthTest = true, .depthWrite = true, .depthCompareOp = rhi::CompareOp::eLess})
-                .setInputAssembly(m_GpuMesh->vertexAttributes)
-                .setVertexStride(m_GpuMesh->vertexStrideBytes)
-                .setBlending(0, {.enabled = false})
-                .setTopology(rhi::PrimitiveTopology::eTriangleList)
-                .addShader(rhi::ShaderType::eVertex, {.code = vertexCode})
-                .addShader(rhi::ShaderType::eFragment, {.code = fragmentCode})
-                .build(rd);
+        // Scene meshes are instantiated by the app after renderer registration, so the ray-query resources are built
+        // lazily on the first frame.
     }
 
     void render(ImmediateRenderContext& ctx) override
     {
         auto* target = ctx.view().target;
         auto* camera = ctx.view().camera;
-        if (!target || !camera || !m_Pipeline || !m_TLAS || !m_GpuMesh)
+        if (!target || !camera)
+            return;
+        if (!m_SceneResourcesReady)
+            rebuildSceneResources(ctx.rd);
+        if (!m_TLAS || m_DrawMeshes.empty())
             return;
 
         if (!m_DepthTexture || m_DepthTexture.getExtent() != target->getExtent())
@@ -202,10 +163,6 @@ public:
         rhi::prepareForAttachment(cb, *target, false);
         rhi::prepareForAttachment(cb, m_DepthTexture, false);
 
-        auto descriptorSet = cb.createDescriptorSetBuilder()
-                                 .bind(0, rhi::bindings::AccelerationStructureKHR {.as = &m_TLAS})
-                                 .build(m_Pipeline.getDescriptorSetLayout(0));
-
         struct GlobalPushConstants
         {
             glm::mat4 model;
@@ -222,7 +179,7 @@ public:
             projection[1][1] *= -1.0f;
 
         GlobalPushConstants pushConstants {
-            .model          = kTransform,
+            .model          = glm::mat4 {1.0f},
             .viewProjection = projection * camera->view,
             .lightPos       = glm::vec4 {m_LightPos, 1.0f},
             .cameraPos      = glm::vec4 {glm::vec3(camera->inverseView[3]), 1.0f},
@@ -232,26 +189,42 @@ public:
         };
 
         RHI_GPU_ZONE(cb, "RayQuery");
-        cb.bindPipeline(m_Pipeline)
-            .bindDescriptorSet(0, descriptorSet)
-            .beginRendering({
+        cb.beginRendering({
                 .area = {.extent = target->getExtent()},
                 .colorAttachments =
                     {rhi::AttachmentInfo {.target = target, .clearValue = glm::vec4 {0.08f, 0.09f, 0.11f, 1.0f}}},
                 .depthAttachment = rhi::AttachmentInfo {.target = &m_DepthTexture, .clearValue = 1.0f},
-            })
-            .pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pushConstants);
-
-        for (const auto& subMesh : m_GpuMesh->subMeshes)
-        {
-            cb.draw(rhi::GeometryInfo {
-                .vertexBuffer = &m_GpuMesh->vertexBuffer,
-                .vertexOffset = subMesh.vertexOffset,
-                .numVertices  = subMesh.vertexCount,
-                .indexBuffer  = &m_GpuMesh->indexBuffer,
-                .indexOffset  = subMesh.indexOffset,
-                .numIndices   = subMesh.indexCount,
             });
+
+        for (const auto& drawMesh : m_DrawMeshes)
+        {
+            if (!drawMesh.mesh)
+                continue;
+
+            auto* pipeline = pipelineForMesh(ctx.rd, *drawMesh.mesh);
+            if (!pipeline)
+                continue;
+
+            auto descriptorSet = cb.createDescriptorSetBuilder()
+                                     .bind(0, rhi::bindings::AccelerationStructureKHR {.as = &m_TLAS})
+                                     .build(pipeline->getDescriptorSetLayout(0));
+
+            pushConstants.model = drawMesh.transform;
+            cb.bindPipeline(*pipeline)
+                .bindDescriptorSet(0, descriptorSet)
+                .pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pushConstants);
+
+            for (const auto& subMesh : drawMesh.mesh->subMeshes)
+            {
+                cb.draw(rhi::GeometryInfo {
+                    .vertexBuffer = &drawMesh.mesh->vertexBuffer,
+                    .vertexOffset = subMesh.vertexOffset,
+                    .numVertices  = subMesh.vertexCount,
+                    .indexBuffer  = &drawMesh.mesh->indexBuffer,
+                    .indexOffset  = subMesh.indexOffset,
+                    .numIndices   = subMesh.indexCount,
+                });
+            }
         }
 
         cb.endRendering();
@@ -279,11 +252,156 @@ public:
     }
 
 private:
-    AssetHandle<vasset::VMesh, resource::GpuMesh> m_MeshHandle;
-    const resource::GpuMesh*                      m_GpuMesh {nullptr};
+    struct DrawMesh
+    {
+        resource::GpuMesh* mesh {nullptr};
+        glm::mat4          transform {1.0f};
+    };
+
+    struct PipelineVariant
+    {
+        rhi::VertexAttributes attributes;
+        uint32_t              strideBytes {0};
+        rhi::GraphicsPipeline pipeline;
+    };
+
+    static bool vertexAttributesEqual(const rhi::VertexAttributes& lhs, const rhi::VertexAttributes& rhs)
+    {
+        if (lhs.size() != rhs.size())
+            return false;
+
+        auto lit = lhs.begin();
+        auto rit = rhs.begin();
+        for (; lit != lhs.end(); ++lit, ++rit)
+        {
+            if (lit->first != rit->first)
+                return false;
+            const auto& la = lit->second;
+            const auto& ra = rit->second;
+            if (la.location != ra.location || la.type != ra.type || la.offset != ra.offset)
+                return false;
+        }
+
+        return true;
+    }
+
+    static glm::mat4 localMatrix(const TransformComponent& transform)
+    {
+        return glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) *
+               glm::scale(glm::mat4(1.0f), transform.scale);
+    }
+
+    static glm::mat4 worldMatrixForEntity(entt::registry& reg, entt::entity entity)
+    {
+        const auto* transform = reg.try_get<TransformComponent>(entity);
+        const auto  local     = transform ? localMatrix(*transform) : glm::mat4(1.0f);
+
+        const auto* hierarchy = reg.try_get<HierarchyComponent>(entity);
+        if (!hierarchy || hierarchy->parent == entt::null || !reg.valid(hierarchy->parent))
+            return local;
+
+        return worldMatrixForEntity(reg, hierarchy->parent) * local;
+    }
+
+    rhi::GraphicsPipeline* pipelineForMesh(rhi::RenderDevice& rd, const resource::GpuMesh& mesh)
+    {
+        for (auto& variant : m_Pipelines)
+        {
+            if (variant.strideBytes == mesh.vertexStrideBytes &&
+                vertexAttributesEqual(variant.attributes, mesh.vertexAttributes))
+                return &variant.pipeline;
+        }
+
+        auto& backendService = getServices()->require<IRenderBackendService>();
+        PipelineVariant variant {
+            .attributes  = mesh.vertexAttributes,
+            .strideBytes = mesh.vertexStrideBytes,
+            .pipeline =
+                rhi::GraphicsPipeline::Builder {}
+                    .setDepthFormat(rhi::PixelFormat::eDepth24_Stencil8)
+                    .setColorFormats({backendService.swapchain().getPixelFormat()})
+                    .setDepthStencil({.depthTest = true, .depthWrite = true, .depthCompareOp = rhi::CompareOp::eLess})
+                    .setInputAssembly(mesh.vertexAttributes)
+                    .setVertexStride(mesh.vertexStrideBytes)
+                    .setBlending(0, {.enabled = false})
+                    .setTopology(rhi::PrimitiveTopology::eTriangleList)
+                    .addShader(rhi::ShaderType::eVertex, {.code = vertexCode})
+                    .addShader(rhi::ShaderType::eFragment, {.code = fragmentCode})
+                    .build(rd),
+        };
+
+        m_Pipelines.push_back(std::move(variant));
+        return &m_Pipelines.back().pipeline;
+    }
+
+    void rebuildSceneResources(rhi::RenderDevice& rd)
+    {
+        m_SceneResourcesReady = true;
+        m_DrawMeshes.clear();
+        m_MeshHandles.clear();
+        m_Pipelines.clear();
+        m_TLAS = {};
+
+        auto& services     = *getServices();
+        auto& assetService = services.require<IAssetService>();
+        auto& gpuResources = services.require<IGpuResourceService>();
+        auto* worldService = services.tryGet<IWorldService>();
+        if (!worldService)
+            return;
+
+        auto& world = worldService->world();
+        auto& reg   = world.registry();
+        auto& pool  = gpuResources.pool();
+
+        std::vector<rhi::RayTracingInstance> tlasInstances;
+        auto view = reg.view<TransformComponent, MeshComponent>();
+        for (auto entity : view)
+        {
+            const auto& transform = view.get<TransformComponent>(entity);
+            const auto& meshComp  = view.get<MeshComponent>(entity);
+            if (!meshComp.mesh.valid())
+                continue;
+
+            auto handle = assetService.loadMeshSync(meshComp.mesh);
+            const auto meshIndex = handle.gpuIndex();
+            if (!handle.ready() || meshIndex == std::numeric_limits<uint32_t>::max() || meshIndex >= pool.meshes.size())
+                continue;
+
+            auto& gpuMesh = pool.meshes[meshIndex];
+            if (!gpuMesh.vertexBuffer || !gpuMesh.indexBuffer || gpuMesh.indexCount == 0 || !gpuMesh.blas)
+                continue;
+            if (!gpuMesh.vertexAttributes.contains(0) || !gpuMesh.vertexAttributes.contains(1))
+                continue;
+
+            const glm::mat4 worldMatrix = worldMatrixForEntity(reg, entity);
+            const uint32_t  instanceID  = static_cast<uint32_t>(m_DrawMeshes.size());
+            m_MeshHandles.push_back(std::move(handle));
+            m_DrawMeshes.push_back(DrawMesh {
+                .mesh      = &gpuMesh,
+                .transform = worldMatrix,
+            });
+            tlasInstances.push_back(rhi::RayTracingInstance {
+                .blas       = &gpuMesh.blas,
+                .transform  = worldMatrix,
+                .instanceID = instanceID,
+            });
+        }
+
+        if (tlasInstances.empty())
+        {
+            VULTRA_CLIENT_ERROR("[RayQuery] No scene mesh with BLAS found. Scene: {}", kSceneUri);
+            return;
+        }
+
+        m_TLAS = rd.createBuildMultipleInstanceTLAS(tlasInstances);
+    }
+
+    std::vector<AssetHandle<vasset::VMesh, resource::GpuMesh>> m_MeshHandles;
+    std::vector<DrawMesh>                                      m_DrawMeshes;
+    std::vector<PipelineVariant>                               m_Pipelines;
+    bool                                                       m_SceneResourcesReady {false};
 
     rhi::AccelerationStructure m_TLAS;
-    rhi::GraphicsPipeline      m_Pipeline;
     rhi::Texture               m_DepthTexture;
 
     glm::vec3 m_LightPos {-5.0f, 5.0f, -5.0f};
@@ -317,6 +435,23 @@ protected:
         controller.moveSpeed     = 5.0f;
         controller.zFar          = 100.0f;
         return controller;
+    }
+
+    void onPostConfigureDemo(Engine& engine) override
+    {
+        auto& sceneService = engine.ctx().services.require<ISceneService>();
+        auto& world        = engine.ctx().services.require<IWorldService>().world();
+        auto& reg          = world.registry();
+
+        auto root = sceneService.instantiateScene(world, kSceneUri);
+        if (root == entt::null)
+        {
+            VULTRA_CLIENT_ERROR("[RayQuery] Failed to instantiate scene: {}", kSceneUri);
+            return;
+        }
+
+        if (auto* name = reg.try_get<NameComponent>(root))
+            name->name = "Ray Query Scene";
     }
 };
 

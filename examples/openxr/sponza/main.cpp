@@ -3,18 +3,14 @@
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/rhi/structs/render_device_structs.hpp>
 #include <vultra/function/camera/camera_system.hpp>
-#include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/world.hpp>
-
-#include "../../example_renderer.hpp"
-
-#include <imgui.h>
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -41,18 +37,6 @@ protected:
         return rhi::RenderDeviceFeatureFlagBits::eXR;
     }
 
-    Ref<Renderer> makeRenderer() const override
-    {
-        return createRef<examples::ExampleUniversalRenderer>(
-            "OpenXR Sponza Example",
-            [](Services services) {
-                ImGui::TextUnformatted("This example renders Sponza through the OpenXR backend.");
-                examples::drawNamedLightControls(services, "XR Key Light");
-                examples::drawExampleRenderSettings(services);
-            },
-            true);
-    }
-
     FPSCameraController makeFPSCameraController() const override
     {
         auto controller          = DemoAppHost::makeFPSCameraController();
@@ -66,28 +50,19 @@ protected:
 
     void onPostConfigureDemo(Engine& engine) override
     {
-        auto& assetService = engine.ctx().services.require<IAssetService>();
         auto& renderService = engine.ctx().services.require<IRenderService>();
+        auto& sceneService = engine.ctx().services.require<ISceneService>();
         auto& world = engine.ctx().services.require<IWorldService>().world();
         auto& reg   = world.registry();
 
-        auto mesh = assetService.loadMeshSync(kSponzaUri);
-        if (!mesh)
+        auto model = sceneService.instantiateScene(world, kSponzaUri);
+        if (model == entt::null)
         {
-            VULTRA_CLIENT_ERROR("[OpenXRSponza] Failed to load mesh: {}", kSponzaUri);
+            VULTRA_CLIENT_ERROR("[OpenXRSponza] Failed to instantiate scene: {}", kSponzaUri);
             return;
         }
-
-        auto model = world.createEntity();
-        addNamedTransform(reg,
-                          model,
-                          "Sponza",
-                          TransformComponent {
-                              .position = {0.0f, 0.0f, 0.0f},
-                              .rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f},
-                              .scale    = {1.0f, 1.0f, 1.0f},
-                          });
-        reg.emplace<MeshComponent>(model, MeshComponent {.mesh = mesh.uuid()});
+        if (auto* name = reg.try_get<NameComponent>(model))
+            name->name = "Sponza";
 
         auto light = world.createEntity();
         addNamedTransform(reg,

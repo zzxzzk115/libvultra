@@ -3,8 +3,8 @@
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/rhi/structs/render_device_structs.hpp>
 #include <vultra/function/camera/camera_system.hpp>
-#include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
@@ -69,28 +69,19 @@ protected:
 
     void onPostConfigureDemo(Engine& engine) override
     {
-        auto& assetService = engine.ctx().services.require<IAssetService>();
         auto& renderService = engine.ctx().services.require<IRenderService>();
+        auto& sceneService = engine.ctx().services.require<ISceneService>();
         auto& world = engine.ctx().services.require<IWorldService>().world();
         auto& reg   = world.registry();
 
-        auto mesh = assetService.loadMeshSync(kModelUri);
-        if (!mesh)
+        auto model = sceneService.instantiateScene(world, kModelUri);
+        if (model == entt::null)
         {
-            VULTRA_CLIENT_ERROR("[Sponza] Failed to load mesh: {}", kModelUri);
+            VULTRA_CLIENT_ERROR("[Sponza] Failed to instantiate scene: {}", kModelUri);
             return;
         }
-
-        auto model = world.createEntity();
-        addNamedTransform(reg,
-                          model,
-                          "Sponza",
-                          TransformComponent {
-                              .position = {0.0f, 0.0f, 0.0f},
-                              .rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f},
-                              .scale    = {1.0f, 1.0f, 1.0f},
-                          });
-        reg.emplace<MeshComponent>(model, MeshComponent {.mesh = mesh.uuid()});
+        if (auto* name = reg.try_get<NameComponent>(model))
+            name->name = "Sponza";
 
         auto pointLight = world.createEntity();
         addNamedTransform(reg,

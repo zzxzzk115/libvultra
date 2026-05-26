@@ -19,18 +19,13 @@
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/world.hpp>
 
-#include <glm/gtc/quaternion.hpp>
 #include <imgui.h>
 
-#include <cstring>
 #include <algorithm>
-#include <cctype>
+#include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <optional>
-#include <sstream>
 #include <string>
-#include <vector>
 
 namespace vultra_app
 {
@@ -131,135 +126,32 @@ namespace vultra_app
             return importedName.empty() ? "Asset" : importedName;
         }
 
-        std::string trim(std::string text)
-        {
-            const auto first = std::find_if_not(text.begin(), text.end(), [](unsigned char ch) {
-                return std::isspace(ch) != 0;
-            });
-            const auto last = std::find_if_not(text.rbegin(), text.rend(), [](unsigned char ch) {
-                return std::isspace(ch) != 0;
-            }).base();
-            if (first >= last)
-                return {};
-            return std::string(first, last);
-        }
-
-        std::string unquote(std::string text)
-        {
-            text = trim(std::move(text));
-            if (text.size() >= 2 && text.front() == '"' && text.back() == '"')
-                return text.substr(1, text.size() - 2);
-            return text;
-        }
-
-        bool parseFloatTuple(std::string text, std::vector<float>& out)
-        {
-            out.clear();
-            text = trim(std::move(text));
-            if (text.size() < 2 || text.front() != '(' || text.back() != ')')
-                return false;
-            text = text.substr(1, text.size() - 2);
-
-            std::stringstream ss(text);
-            std::string       part;
-            while (std::getline(ss, part, ','))
-            {
-                try
-                {
-                    out.push_back(std::stof(trim(part)));
-                }
-                catch (...)
-                {
-                    out.clear();
-                    return false;
-                }
-            }
-            return !out.empty();
-        }
-
         struct MeshSubAssetPlacement
         {
             std::string                name;
             vultra::TransformComponent transform;
         };
 
-        std::optional<MeshSubAssetPlacement> findMeshSubAssetPlacement(EditorContext& ctx, const std::string& meshImportedPath)
+        std::optional<MeshSubAssetPlacement> findMeshSubAssetPlacement(EditorContext& ctx, const vultra::CoreUUID& meshUuid)
         {
-            if (!ctx.services || meshImportedPath.empty())
+            if (!ctx.services || !meshUuid.valid())
                 return std::nullopt;
 
             auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
             if (!assetService)
                 return std::nullopt;
 
-            const auto assetRoot = std::filesystem::path(assetService->registry().getAssetRootPath());
-            const auto meshUri   = "res://" + meshImportedPath;
+            auto handle = assetService->loadMeshSync(meshUuid);
+            if (!handle.ready() || !handle.cpu() || !handle.cpu()->hasDefaultTransform)
+                return std::nullopt;
 
-            for (const auto& [uuid, manifestEntry] : assetService->registry().getRegistry())
-            {
-                (void)uuid;
-                if (manifestEntry.type != vasset::VAssetType::eSceneManifest || manifestEntry.importedPath.empty())
-                    continue;
-
-                std::ifstream in(assetRoot / std::filesystem::path(manifestEntry.importedPath));
-                if (!in)
-                    continue;
-
-                MeshSubAssetPlacement current {};
-                bool                  inNode = false;
-                std::string           line;
-                while (std::getline(in, line))
-                {
-                    line = trim(line);
-                    if (line.empty())
-                        continue;
-
-                    if (line.starts_with("[node "))
-                    {
-                        current = MeshSubAssetPlacement {};
-                        inNode  = true;
-                        const auto namePos = line.find(" name=\"");
-                        if (namePos != std::string::npos)
-                        {
-                            const auto nameBegin = namePos + std::string_view(" name=\"").size();
-                            const auto nameEnd   = line.find('"', nameBegin);
-                            if (nameEnd != std::string::npos)
-                                current.name = line.substr(nameBegin, nameEnd - nameBegin);
-                        }
-                        continue;
-                    }
-
-                    if (!inNode)
-                        continue;
-
-                    const auto equals = line.find('=');
-                    if (equals == std::string::npos)
-                        continue;
-
-                    const auto key   = trim(line.substr(0, equals));
-                    const auto value = trim(line.substr(equals + 1));
-                    std::vector<float> tuple;
-                    if (key == "TransformComponent/position" && parseFloatTuple(value, tuple) && tuple.size() == 3)
-                    {
-                        current.transform.position = glm::vec3 {tuple[0], tuple[1], tuple[2]};
-                    }
-                    else if (key == "TransformComponent/rotation" && parseFloatTuple(value, tuple) && tuple.size() == 4)
-                    {
-                        current.transform.rotation = glm::normalize(glm::quat {tuple[3], tuple[0], tuple[1], tuple[2]});
-                    }
-                    else if (key == "TransformComponent/scale" && parseFloatTuple(value, tuple) && tuple.size() == 3)
-                    {
-                        current.transform.scale = glm::vec3 {tuple[0], tuple[1], tuple[2]};
-                    }
-                    else if (key == "MeshComponent/mesh" && unquote(value) == meshUri)
-                    {
-                        current.transform.dirty = true;
-                        return current;
-                    }
-                }
-            }
-
-            return std::nullopt;
+            MeshSubAssetPlacement placement {};
+            placement.name = handle.cpu()->name;
+            placement.transform.position = handle.cpu()->defaultPosition;
+            placement.transform.rotation = handle.cpu()->defaultRotation;
+            placement.transform.scale    = handle.cpu()->defaultScale;
+            placement.transform.dirty    = true;
+            return placement;
         }
 
         entt::entity instantiateDroppedAsset(EditorContext& ctx,
@@ -305,7 +197,7 @@ namespace vultra_app
                 auto& reg = world.registry();
                 auto  entity = parent == entt::null ? world.createEntity() : world.createChild(parent);
                 const auto placement =
-                    entry.type == vasset::VAssetType::eMesh ? findMeshSubAssetPlacement(ctx, entry.importedPath) :
+                    entry.type == vasset::VAssetType::eMesh ? findMeshSubAssetPlacement(ctx, uuid) :
                                                                std::optional<MeshSubAssetPlacement> {};
                 const auto name = placement && !placement->name.empty() ? placement->name : assetNameFromEntry(entry);
                 reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {name});

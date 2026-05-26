@@ -9,6 +9,7 @@
 #include <vultra/function/resource/gpu_scene_database.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
@@ -217,8 +218,11 @@ void main()
     vec3 n2 = loadVec3(node.vertexBufferAddress, i2, node.vertexStrideBytes, node.normalOffsetBytes, vec3(0.0, 1.0, 0.0));
 
     vec3 bary = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
-    vec3 worldPos = p0 * bary.x + p1 * bary.y + p2 * bary.z;
-    vec3 normal = normalize(n0 * bary.x + n1 * bary.y + n2 * bary.z);
+    vec3 localPos = p0 * bary.x + p1 * bary.y + p2 * bary.z;
+    vec3 worldPos = vec3(gl_ObjectToWorldEXT * vec4(localPos, 1.0));
+    vec3 localGeometricNormal = normalize(cross(p1 - p0, p2 - p0));
+    vec3 normal = normalize(mat3(gl_ObjectToWorldEXT) * localGeometricNormal);
+    normal = faceforward(normal, gl_WorldRayDirectionEXT, normal);
 
     uint materialIndex = instance.materialOffset + node.materialIndex;
     vec3 baseColor = materialBaseColor(materialIndex);
@@ -229,7 +233,14 @@ void main()
     vec3 l3 = lightVertices[3].xyz;
     vec3 samplePos = 0.25 * (l0 + l1 + l2 + l3);
 
-    if (worldPos.y > samplePos.y - 0.05 && length(worldPos.xz - samplePos.xz) < 0.8)
+    vec3 lightU = l1 - l0;
+    vec3 lightV = l3 - l0;
+    vec3 lightRel = worldPos - samplePos;
+    float lightPlaneDistance = abs(dot(lightRel, normalize(cross(lightU, lightV))));
+    float lightUCoord = dot(lightRel, lightU) / max(dot(lightU, lightU), 1e-4);
+    float lightVCoord = dot(lightRel, lightV) / max(dot(lightV, lightV), 1e-4);
+    bool hitLightSurface = lightPlaneDistance < 0.03 && abs(lightUCoord) <= 0.55 && abs(lightVCoord) <= 0.55;
+    if (hitLightSurface)
     {
         hitValue = linearTosRGB(toneMappingKhronosPbrNeutral(lightColorIntensity.rgb * lightColorIntensity.a));
         return;
@@ -238,22 +249,22 @@ void main()
     vec3 toLight = samplePos - worldPos;
     float dist = length(toLight);
     vec3 lightDir = normalize(toLight);
-    vec3 origin = worldPos + normal * 1e-4;
+    vec3 origin = worldPos + normal * 1e-3;
 
     shadowed = true;
     traceRayEXT(topLevelAS,
                 gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT,
                 0xff, 0, 0, 1,
-                origin, 1e-4, lightDir, dist - 1e-3, 1);
+                origin, 1e-4, lightDir, max(dist - 0.05, 1e-4), 1);
 
-    vec3 directLighting = vec3(0.0);
+    vec3 directLighting = vec3(0.06);
     if (!shadowed)
     {
-        vec3 lightNormal = normalize(cross(l1 - l0, l3 - l0));
+        vec3 lightNormal = normalize(cross(lightU, lightV));
         float nDotL = max(dot(normal, lightDir), 0.0);
         float cosThetaL = max(dot(lightNormal, -lightDir), 0.0);
-        float area = length(cross(l1 - l0, l3 - l0));
-        directLighting = lightColorIntensity.rgb * lightColorIntensity.a * nDotL * cosThetaL * area / max(dist * dist, 1e-4);
+        float area = length(cross(lightU, lightV));
+        directLighting += lightColorIntensity.rgb * lightColorIntensity.a * nDotL * cosThetaL * area / max(dist * dist, 1e-4);
     }
 
     hitValue = linearTosRGB(toneMappingKhronosPbrNeutral(baseColor * directLighting));
@@ -273,6 +284,7 @@ public:
     std::string_view name() const override { return "cornell_box_rt"; }
 
     bool usesFrameGraph() const override { return false; }
+    bool requiresRayTracingScene() const override { return true; }
 
     void render(ImmediateRenderContext& ctx) override
     {
@@ -351,8 +363,14 @@ public:
 
     void onImGui() override
     {
+        if (auto* services = getServices())
+            examples::suppressCameraWhenUsingImGui(*services);
+
+        ImGui::Begin("Raytracing Cornell Box", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         ImGui::TextUnformatted("This is a simple raytracing example rendering the Cornell Box scene.");
         examples::drawNamedLightControls(*getServices(), "Ceiling Light");
+        examples::drawRenderDocCaptureButton(*getServices());
+        ImGui::End();
     }
 
     void onResize(uint32_t width, uint32_t height) override
@@ -398,11 +416,11 @@ private:
 
     void fillLightConstants(glm::vec4& colorIntensity, glm::vec4 (&vertices)[4])
     {
-        glm::vec3 pos {0.0f, 1.95f, 0.0f};
+        glm::vec3 pos {-0.005f, 1.98f, -0.03f};
         glm::vec3 color {1.0f, 0.95f, 0.85f};
-        float intensity = 20.0f;
-        float width = 1.0f;
-        float height = 1.0f;
+        float intensity = 12.0f;
+        float width = 0.47f;
+        float height = 0.38f;
 
         if (auto* services = getServices())
         {
@@ -470,35 +488,26 @@ protected:
 
     void onPostConfigureDemo(Engine& engine) override
     {
-        auto& assetService = engine.ctx().services.require<IAssetService>();
         auto& renderService = engine.ctx().services.require<IRenderService>();
+        auto& sceneService = engine.ctx().services.require<ISceneService>();
         auto& world = engine.ctx().services.require<IWorldService>().world();
         auto& reg   = world.registry();
 
-        auto mesh = assetService.loadMeshSync(kCornellBoxUri);
-        if (!mesh)
+        auto box = sceneService.instantiateScene(world, kCornellBoxUri);
+        if (box == entt::null)
         {
-            VULTRA_CLIENT_ERROR("[RaytracingCornellBox] Failed to load mesh: {}", kCornellBoxUri);
+            VULTRA_CLIENT_ERROR("[RaytracingCornellBox] Failed to instantiate scene: {}", kCornellBoxUri);
             return;
         }
-
-        auto box = world.createEntity();
-        addNamedTransform(reg,
-                          box,
-                          "Cornell Box",
-                          TransformComponent {
-                              .position = {0.0f, 0.0f, 0.0f},
-                              .rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f},
-                              .scale    = {1.0f, 1.0f, 1.0f},
-                          });
-        reg.emplace<MeshComponent>(box, MeshComponent {.mesh = mesh.uuid()});
+        if (auto* name = reg.try_get<NameComponent>(box))
+            name->name = "Cornell Box";
 
         auto light = world.createEntity();
         addNamedTransform(reg,
                           light,
                           "Ceiling Light",
-                          TransformComponent {
-                              .position = {0.0f, 1.95f, 0.0f},
+                              TransformComponent {
+                              .position = {-0.005f, 1.98f, -0.03f},
                               .rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f},
                               .scale    = {1.0f, 1.0f, 1.0f},
                           });
@@ -506,10 +515,10 @@ protected:
                                     LightComponent {
                                         .kind      = 3u,
                                         .color     = {1.0f, 0.95f, 0.85f},
-                                        .intensity = 20.0f,
+                                        .intensity = 12.0f,
                                         .range     = 10.0f,
-                                        .width     = 1.0f,
-                                        .height    = 1.0f,
+                                        .width     = 0.47f,
+                                        .height    = 0.38f,
                                     });
 
         auto& settings = renderService.builtinRenderSettings();

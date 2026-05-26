@@ -18,7 +18,6 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -277,128 +276,6 @@ namespace vultra_app::ui
             return true;
         }
 
-        std::string trim(std::string text)
-        {
-            const auto first = std::find_if_not(text.begin(), text.end(), [](unsigned char ch) {
-                return std::isspace(ch) != 0;
-            });
-            const auto last = std::find_if_not(text.rbegin(), text.rend(), [](unsigned char ch) {
-                return std::isspace(ch) != 0;
-            }).base();
-            if (first >= last)
-                return {};
-            return std::string(first, last);
-        }
-
-        std::string unquote(std::string text)
-        {
-            text = trim(std::move(text));
-            if (text.size() >= 2 && text.front() == '"' && text.back() == '"')
-                return text.substr(1, text.size() - 2);
-            return text;
-        }
-
-        bool parseFloatTuple(std::string text, std::vector<float>& out)
-        {
-            out.clear();
-            text = trim(std::move(text));
-            if (text.size() < 2 || text.front() != '(' || text.back() != ')')
-                return false;
-
-            std::stringstream ss(text.substr(1, text.size() - 2));
-            std::string       part;
-            while (std::getline(ss, part, ','))
-            {
-                try
-                {
-                    out.push_back(std::stof(trim(part)));
-                }
-                catch (...)
-                {
-                    out.clear();
-                    return false;
-                }
-            }
-            return !out.empty();
-        }
-
-        struct MeshSubAssetPlacement
-        {
-            vultra::TransformComponent transform;
-            std::filesystem::path      manifestPath;
-        };
-
-        std::optional<MeshSubAssetPlacement>
-        findMeshSubAssetPlacement(const vasset::VAssetRegistry& registry,
-                                  const std::filesystem::path&  assetRoot,
-                                  const std::string&            meshImportedPath)
-        {
-            if (meshImportedPath.empty())
-                return std::nullopt;
-
-            const auto meshUri = "res://" + meshImportedPath;
-            for (const auto& [uuid, entry] : registry.getRegistry())
-            {
-                (void)uuid;
-                if (entry.type != vasset::VAssetType::eSceneManifest || entry.importedPath.empty())
-                    continue;
-
-                const auto manifestPath = assetRoot / std::filesystem::path(entry.importedPath);
-                std::ifstream in(manifestPath);
-                if (!in)
-                    continue;
-
-                MeshSubAssetPlacement current {};
-                current.manifestPath = manifestPath;
-
-                bool        inNode = false;
-                std::string line;
-                while (std::getline(in, line))
-                {
-                    line = trim(line);
-                    if (line.empty())
-                        continue;
-
-                    if (line.starts_with("[node "))
-                    {
-                        current = MeshSubAssetPlacement {};
-                        current.manifestPath = manifestPath;
-                        inNode               = true;
-                        continue;
-                    }
-
-                    if (!inNode)
-                        continue;
-
-                    const auto equals = line.find('=');
-                    if (equals == std::string::npos)
-                        continue;
-
-                    const auto key   = trim(line.substr(0, equals));
-                    const auto value = trim(line.substr(equals + 1));
-                    std::vector<float> tuple;
-                    if (key == "TransformComponent/position" && parseFloatTuple(value, tuple) && tuple.size() == 3)
-                    {
-                        current.transform.position = glm::vec3 {tuple[0], tuple[1], tuple[2]};
-                    }
-                    else if (key == "TransformComponent/rotation" && parseFloatTuple(value, tuple) && tuple.size() == 4)
-                    {
-                        current.transform.rotation = glm::normalize(glm::quat {tuple[3], tuple[0], tuple[1], tuple[2]});
-                    }
-                    else if (key == "TransformComponent/scale" && parseFloatTuple(value, tuple) && tuple.size() == 3)
-                    {
-                        current.transform.scale = glm::vec3 {tuple[0], tuple[1], tuple[2]};
-                    }
-                    else if (key == "MeshComponent/mesh" && unquote(value) == meshUri)
-                    {
-                        current.transform.dirty = true;
-                        return current;
-                    }
-                }
-            }
-
-            return std::nullopt;
-        }
     } // namespace
 
     void AssetThumbnailService::syncProject(EditorContext& ctx)
@@ -513,18 +390,8 @@ namespace vultra_app::ui
         request.sourcePath   = projectAssetRoot(ctx) / std::filesystem::path(request.importedPath);
         request.sourceUri    = request.importedPath.empty() ? std::string {} : "res://" + request.importedPath;
 
-        uint64_t placementStamp = 0;
-        if (ctx.services)
-        {
-            if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
-            {
-                if (auto placement = findMeshSubAssetPlacement(assetService->registry(), projectAssetRoot(ctx), request.importedPath))
-                    placementStamp = fileWriteStamp(placement->manifestPath);
-            }
-        }
-
         request.key = "mesh:" + std::string(kThumbnailCacheVersion) + ":" + request.uuid + ":" + request.importedPath + ":" +
-                      std::to_string(fileWriteStamp(request.sourcePath)) + ":" + std::to_string(placementStamp);
+                      std::to_string(fileWriteStamp(request.sourcePath));
         request.outputPath = thumbnailPathFor(request.key);
         request.status     = statusFor(request.outputPath);
         if (request.status == AssetThumbnailStatus::Missing)
@@ -837,8 +704,15 @@ namespace vultra_app::ui
             auto meshEntity = world.createEntity();
             auto& reg = world.registry();
             reg.emplace<vultra::NameComponent>(meshEntity, vultra::NameComponent {"Thumbnail Mesh"});
-            if (auto placement = findMeshSubAssetPlacement(assetService->registry(), projectAssetRoot(ctx), request.importedPath))
-                reg.get<vultra::TransformComponent>(meshEntity) = placement->transform;
+            auto meshHandle = assetService->loadMeshSync(meshUuid);
+            if (meshHandle.ready() && meshHandle.cpu() && meshHandle.cpu()->hasDefaultTransform)
+            {
+                auto& transform = reg.get<vultra::TransformComponent>(meshEntity);
+                transform.position = meshHandle.cpu()->defaultPosition;
+                transform.rotation = meshHandle.cpu()->defaultRotation;
+                transform.scale    = meshHandle.cpu()->defaultScale;
+                transform.dirty    = true;
+            }
             reg.emplace<vultra::MeshComponent>(meshEntity, vultra::MeshComponent {.mesh = meshUuid});
         }
 

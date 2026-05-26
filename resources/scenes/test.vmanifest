@@ -3,10 +3,9 @@ version = 1
 root = 1
 
 [assets]
-mesh.Sponza = "res://models/Sponza/Sponza.gltf"
-mesh.DamagedHelmet = "res://models/DamagedHelmet/DamagedHelmet.gltf"
 gaussian_splat.Lizard = "res://models/3dgs/hornedlizard.spz"
 script.test_move = "res://scripts/test_move.lua"
+texture.CitrusOrchardSky = "res://textures/environment_maps/citrus_orchard_puresky_1k.hdr"
 
 [node id=1 name="Root" parent=0]
 NameComponent/name = "Root"
@@ -14,11 +13,10 @@ TransformComponent/position = (0, 0, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale    = (1, 1, 1)
 
-[node id=2 name="Sponza" parent=1]
+[node id=2 name="Sponza" parent=1 prefab="res://models/Sponza/Sponza.gltf"]
 NameComponent/name = "Sponza"
 TransformComponent/position = (0, 0, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
-MeshComponent/mesh = @mesh.Sponza
 
 ; [node id=3 name="LizardSplat" parent=1]
 ; NameComponent/name = "LizardSplat"
@@ -26,12 +24,11 @@ MeshComponent/mesh = @mesh.Sponza
 ; TransformComponent/rotation = (0, 0, 0, 1)
 ; GaussianSplatComponent/gaussianSplat = @gaussian_splat.Lizard
 
-[node id=4 name="DamagedHelmet" parent=1]
+[node id=4 name="DamagedHelmet" parent=1 prefab="res://models/DamagedHelmet/DamagedHelmet.gltf"]
 NameComponent/name = "DamagedHelmet"
 TransformComponent/position = (0, 1, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (0.3, 0.3, 0.3)
-MeshComponent/mesh = @mesh.DamagedHelmet
 ScriptComponent/scriptUri = @script.test_move
 ScriptComponent/enabled = true
 
@@ -42,7 +39,7 @@ TransformComponent/rotation = (-0.702802, 0.0788313, -0.0751287, 0.703001)
 TransformComponent/scale = (1, 1, 1)
 LightComponent/kind = 0
 LightComponent/color = (1, 0.96, 0.9)
-LightComponent/intensity = 2.000000
+LightComponent/intensity = 1.000000
 LightComponent/direction = (-0.35, -0.8, -0.25)
 LightComponent/range = 100.000000
 LightComponent/radius = 0.050000
@@ -52,3 +49,16 @@ LightComponent/innerConeDegrees = 20.000000
 LightComponent/outerConeDegrees = 30.000000
 LightComponent/castsShadow = true
 LightComponent/twoSided = false
+
+[node id=6 name="Environment" parent=1]
+NameComponent/name = "Environment"
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+EnvironmentComponent/active = true
+EnvironmentComponent/skybox = @texture.CitrusOrchardSky
+EnvironmentComponent/ambientColor = (0.15, 0.15, 0.15)
+EnvironmentComponent/ambientIntensity = 1.000000
+EnvironmentComponent/enableIBL = false
+EnvironmentComponent/iblColor = (0.04, 0.045, 0.05)
+EnvironmentComponent/iblIntensity = 1.000000

@@ -14,6 +14,7 @@
 #include <vultra/function/services/imgui_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
@@ -175,6 +176,7 @@ namespace vultra::examples
                 ImGui::TextUnformatted("Render backend service unavailable.");
                 return;
             }
+            auto* renderService = services.tryGet<IRenderService>();
 
             ImGui::Text("XR Enabled: %s", backendService->isXREnabled() ? "Yes" : "No");
             ImGui::Text("Mirror Enabled: %s", backendService->isXRMirrorEnabled() ? "Yes" : "No");
@@ -216,6 +218,11 @@ namespace vultra::examples
             }
             ImGui::SameLine();
             ImGui::Checkbox("Single Eye", &m_SingleEye);
+            if (renderService)
+            {
+                ImGui::SameLine();
+                ImGui::Checkbox("Gamma", &renderService->builtinRenderSettings().xrMirrorGammaCorrect);
+            }
             if (m_SingleEye)
                 ImGui::SliderInt("Eye", &m_EyeIndex, 0, static_cast<int>(count - 1));
             if (!m_FitToPanel)

@@ -266,6 +266,108 @@ void main() {
 }
 )";
 
+            constexpr std::string_view kProjectAiReadme = R"(# Vultra Project AI Workspace
+
+This directory is the tracked AI collaboration layer for this Vultra game
+project. Keep game-specific intent here, not in the engine repository Harness.
+
+## Directories
+
+- `game.md` stores the game brief and creative constraints.
+- `specs/` stores feature, content, level, UI, and rendering specs.
+- `tasks/` stores task-centered creation plans.
+- `workspace/` stores journals, handoff notes, playtest notes, and verification logs.
+- `knowledge/` stores project-specific facts such as naming, lore, resource paths, and conventions.
+- `agents/` stores project agent roles and handoff rules.
+- `generated/` indexes AI-generated content and provenance records.
+
+Project agents may edit project content through controlled tools, but they must
+not directly edit Vultra engine source. If a game task needs new engine behavior,
+create an engine task in the Vultra engine Harness.
+)";
+
+            constexpr std::string_view kProjectGameBrief = R"(# Game Brief
+
+## Identity
+
+- Title: Untitled Vultra Project
+- Genre:
+- Camera / View:
+- Target Platform:
+
+## Core Loop
+
+Describe the repeatable player loop here.
+
+## Creative Direction
+
+- Visual Style:
+- Audio Mood:
+- Reference Constraints:
+
+## Technical Boundaries
+
+- Default Scene: `res://scenes/test.vscn`
+- Editing Render Graph: `res://render/default.vrg.json`
+- Runtime Asset Root: `resources`
+
+## Current Priorities
+
+1. Establish the first playable scene.
+2. Define the first gameplay system spec.
+3. Record playtest notes in `ai/workspace/`.
+)";
+
+            constexpr std::string_view kProjectSpecsReadme = R"(# Project Specs
+
+Use this directory for game-specific specs such as gameplay systems, levels,
+characters, UI flows, camera behavior, and render style.
+
+Specs should define intent, constraints, content touchpoints, and acceptance
+criteria before tasks start.
+)";
+
+            constexpr std::string_view kProjectTasksReadme = R"(# Project Tasks
+
+Use this directory for task-centered game creation work.
+
+Each task should include the linked spec, project files to touch, dry-run patch
+expectations, verification steps, and handoff notes.
+)";
+
+            constexpr std::string_view kProjectWorkspaceReadme = R"(# Project Workspace
+
+Use this directory for journals, handoffs, playtest notes, verification logs,
+and short-lived planning artifacts.
+)";
+
+            constexpr std::string_view kProjectKnowledgeReadme = R"(# Project Knowledge
+
+Use this directory for stable game-specific facts: naming conventions, resource
+paths, story rules, character definitions, and project-only workflow decisions.
+)";
+
+            constexpr std::string_view kProjectAgentsReadme = R"(# Project Agent Roles
+
+Suggested project roles:
+
+- `designer`: turns creative goals into specs and tasks.
+- `level-builder`: edits scenes and level content.
+- `script-writer`: edits gameplay scripts.
+- `asset-curator`: plans imports and tracks generated assets.
+- `render-tuner`: adjusts render graphs, shaders, and visual settings.
+
+Agents should hand off through project tasks and workspace journals.
+)";
+
+            constexpr std::string_view kProjectGeneratedReadme = R"(# Generated Content Index
+
+Use this directory to record AI-generated content, source prompts, provenance,
+review status, and where accepted assets were placed under `resources/`.
+
+This directory is an index, not the runtime asset root.
+)";
+
             const auto resourcesDir = projectDir / "resources";
             return writeTextFile(resourcesDir / "scenes" / "test.vscn", kSampleScene, errorMessage) &&
                    writeTextFile(resourcesDir / "render" / "default.vrg.json", kDefaultRenderGraph, errorMessage) &&
@@ -276,7 +378,15 @@ void main() {
                                  errorMessage) &&
                    writeTextFile(resourcesDir / "shaders" / "fullscreen" / "pixelate.frag.vshader",
                                  kPixelateShader,
-                                 errorMessage);
+                                 errorMessage) &&
+                   writeTextFile(projectDir / "ai" / "README.md", kProjectAiReadme, errorMessage) &&
+                   writeTextFile(projectDir / "ai" / "game.md", kProjectGameBrief, errorMessage) &&
+                   writeTextFile(projectDir / "ai" / "specs" / "README.md", kProjectSpecsReadme, errorMessage) &&
+                   writeTextFile(projectDir / "ai" / "tasks" / "README.md", kProjectTasksReadme, errorMessage) &&
+                   writeTextFile(projectDir / "ai" / "workspace" / "README.md", kProjectWorkspaceReadme, errorMessage) &&
+                   writeTextFile(projectDir / "ai" / "knowledge" / "README.md", kProjectKnowledgeReadme, errorMessage) &&
+                   writeTextFile(projectDir / "ai" / "agents" / "README.md", kProjectAgentsReadme, errorMessage) &&
+                   writeTextFile(projectDir / "ai" / "generated" / "README.md", kProjectGeneratedReadme, errorMessage);
         }
 
         void drawLauncherLogo(ImDrawList* drawList, ImVec2 center)
