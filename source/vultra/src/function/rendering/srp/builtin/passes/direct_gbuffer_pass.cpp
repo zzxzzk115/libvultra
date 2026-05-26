@@ -90,6 +90,18 @@ namespace vultra
             uint32_t  pad2 {0};
         };
 
+        struct alignas(16) MaterialParamsGraph
+        {
+            glm::vec4 baseColor {1.0f};
+            glm::vec4 emissiveAlpha {0.0f, 0.0f, 0.0f, 1.0f};
+            glm::vec4 metallicRoughnessAoCutoff {0.0f, 1.0f, 1.0f, 0.5f};
+            glm::uvec4 textureInfo {0u};
+            uint32_t   graphId {0};
+            uint32_t   alphaMode {0};
+            uint32_t   shadingModel {0};
+            uint32_t   flags {0};
+        };
+
         template<typename T>
         [[nodiscard]] T loadMaterialParams(const resource::MaterialBuffer& materialBuffer, const uint32_t byteOffset)
         {
@@ -98,6 +110,36 @@ namespace vultra
                 return out;
             std::memcpy(&out, materialBuffer.cpu.data() + byteOffset, sizeof(T));
             return out;
+        }
+
+        [[nodiscard]] float materialModelCode(const resource::GpuMaterialModel model)
+        {
+            return static_cast<float>(static_cast<uint32_t>(model));
+        }
+
+        [[nodiscard]] float graphShadingModelCode(const uint32_t shadingModel)
+        {
+            // Material graph shading model enum:
+            // 0=PBR_MR, 1=Unlit, 2=ToonLike, 3=PBR_SpecGloss, 4=Phong.
+            switch (shadingModel)
+            {
+                case 1u:
+                    return materialModelCode(resource::GpuMaterialModel::eUnlit);
+                case 2u:
+                    return 6.0f;
+                case 3u:
+                    return materialModelCode(resource::GpuMaterialModel::ePBRSpecularGlossiness);
+                case 4u:
+                    return materialModelCode(resource::GpuMaterialModel::ePhong);
+                case 0u:
+                default:
+                    return materialModelCode(resource::GpuMaterialModel::ePBRMetallicRoughness);
+            }
+        }
+
+        [[nodiscard]] float luminance(const glm::vec3& value)
+        {
+            return glm::dot(value, glm::vec3 {0.2126f, 0.7152f, 0.0722f});
         }
 
         [[nodiscard]] DirectDrawParams makeDrawParams(const resource::GpuResourcePool& resources,
@@ -112,6 +154,12 @@ namespace vultra
             if (materialIndex >= resources.materials.size())
                 return out;
 
+            const auto validTexture = [&resources](const uint32_t index) -> uint32_t {
+                if (index == 0u || index >= resources.textures.size())
+                    return 0u;
+                return resources.textures[index].texture ? index : 0u;
+            };
+
             const auto& material = resources.materials[materialIndex];
             out.materialTextureInfo1.y = static_cast<uint32_t>(material.model);
             switch (material.model)
@@ -121,13 +169,16 @@ namespace vultra
                     const auto p = loadMaterialParams<MaterialParamsPBRMR>(resources.materialParams,
                                                                            material.blockOffsetBytes);
                     out.baseColorFactor = p.baseColor;
-                    out.materialMRA     = glm::vec4(p.metallicFactor, p.roughnessFactor, 1.0f, 0.0f);
-                    out.materialTextureInfo0.y = p.baseColorTex;
-                    out.materialTextureInfo0.z = p.normalTex;
-                    out.materialTextureInfo0.w = p.mrTex;
-                    out.materialTextureInfo1.x = p.occlusionTex;
-                    out.materialTextureInfo1.z = p.metallicTex;
-                    out.materialTextureInfo1.w = p.roughnessTex;
+                    out.materialMRA     = glm::vec4(p.metallicFactor,
+                                                p.roughnessFactor,
+                                                1.0f,
+                                                materialModelCode(material.model));
+                    out.materialTextureInfo0.y = validTexture(p.baseColorTex);
+                    out.materialTextureInfo0.z = validTexture(p.normalTex);
+                    out.materialTextureInfo0.w = validTexture(p.mrTex);
+                    out.materialTextureInfo1.x = validTexture(p.occlusionTex);
+                    out.materialTextureInfo1.z = validTexture(p.metallicTex);
+                    out.materialTextureInfo1.w = validTexture(p.roughnessTex);
                     out.entityInfo.y = p.alphaMode;
                     out.entityInfo.z = static_cast<uint32_t>(glm::clamp(p.alphaCutoff, 0.0f, 1.0f) * 255.0f);
                     break;
@@ -137,8 +188,11 @@ namespace vultra
                     const auto p = loadMaterialParams<MaterialParamsPBRSG>(resources.materialParams,
                                                                            material.blockOffsetBytes);
                     out.baseColorFactor = p.diffuseColor;
-                    out.materialMRA     = glm::vec4(0.0f, glm::clamp(1.0f - p.glossinessFactor, 0.02f, 1.0f), 1.0f, 0.0f);
-                    out.materialTextureInfo0.y = p.diffuseColorTex;
+                    out.materialMRA     = glm::vec4(glm::clamp(luminance(p.specularFactor), 0.0f, 1.0f),
+                                                glm::clamp(1.0f - p.glossinessFactor, 0.02f, 1.0f),
+                                                1.0f,
+                                                materialModelCode(material.model));
+                    out.materialTextureInfo0.y = validTexture(p.diffuseColorTex);
                     break;
                 }
                 case resource::GpuMaterialModel::eUnlit:
@@ -146,8 +200,8 @@ namespace vultra
                     const auto p = loadMaterialParams<MaterialParamsUnlit>(resources.materialParams,
                                                                            material.blockOffsetBytes);
                     out.baseColorFactor = p.color;
-                    out.materialMRA     = glm::vec4(0.0f, 1.0f, 1.0f, 1.0f);
-                    out.materialTextureInfo0.y = p.colorTex;
+                    out.materialMRA     = glm::vec4(0.0f, 1.0f, 1.0f, materialModelCode(material.model));
+                    out.materialTextureInfo0.y = validTexture(p.colorTex);
                     break;
                 }
                 case resource::GpuMaterialModel::ePhong:
@@ -155,13 +209,28 @@ namespace vultra
                     const auto p = loadMaterialParams<MaterialParamsPhong>(resources.materialParams,
                                                                            material.blockOffsetBytes);
                     out.baseColorFactor = p.diffuse;
-                    out.materialMRA     = glm::vec4(0.0f,
+                    out.materialMRA     = glm::vec4(glm::clamp(luminance(glm::vec3(p.specularShininess)), 0.0f, 1.0f),
                                                 glm::clamp(1.0f / glm::sqrt(glm::max(p.specularShininess.w, 1.0f)),
                                                            0.02f,
                                                            1.0f),
                                                 1.0f,
-                                                0.0f);
-                    out.materialTextureInfo0.y = p.diffuseTex;
+                                                materialModelCode(material.model));
+                    out.materialTextureInfo0.y = validTexture(p.diffuseTex);
+                    break;
+                }
+                case resource::GpuMaterialModel::eMaterialGraph:
+                {
+                    const auto p = loadMaterialParams<MaterialParamsGraph>(resources.materialParams,
+                                                                           material.blockOffsetBytes);
+                    out.baseColorFactor = glm::vec4(glm::vec3(p.baseColor) + glm::vec3(p.emissiveAlpha),
+                                                    p.baseColor.a * p.emissiveAlpha.a);
+                    out.materialTextureInfo0.y = validTexture(p.textureInfo.x);
+                    out.materialMRA = glm::vec4(p.metallicRoughnessAoCutoff.x,
+                                                p.metallicRoughnessAoCutoff.y,
+                                                p.metallicRoughnessAoCutoff.z,
+                                                graphShadingModelCode(p.shadingModel));
+                    out.entityInfo.y = p.alphaMode;
+                    out.entityInfo.z = static_cast<uint32_t>(glm::clamp(p.metallicRoughnessAoCutoff.w, 0.0f, 1.0f) * 255.0f);
                     break;
                 }
                 case resource::GpuMaterialModel::eInvalid:
@@ -171,6 +240,21 @@ namespace vultra
             return out;
         }
 
+        [[nodiscard]] uint32_t remapMaterialIndex(const RenderInstance& instance,
+                                                  const resource::GpuMesh& mesh,
+                                                  const uint32_t materialIndex)
+        {
+            if (materialIndex < mesh.materialOffset)
+                return materialIndex;
+            const uint32_t localSlot = materialIndex - mesh.materialOffset;
+            if (localSlot >= mesh.materialCount)
+                return materialIndex;
+            for (const auto& override : instance.materialOverrides)
+                if (override.slot == localSlot)
+                    return override.materialIndex;
+            return materialIndex;
+        }
+
         [[nodiscard]] bool isMaterialDoubleSided(const resource::GpuResourcePool& resources,
                                                  const uint32_t                   materialIndex)
         {
@@ -178,8 +262,16 @@ namespace vultra
                 return false;
 
             const auto& material = resources.materials[materialIndex];
+            // Legacy/DCC material models often do not carry a reliable two-sided flag.
+            // Treat them as double-sided in the direct raster path so OBJ/FBX/DAE
+            // interiors such as Cornell Box do not disappear while RT still works.
+            if (material.model == resource::GpuMaterialModel::ePhong ||
+                material.model == resource::GpuMaterialModel::ePBRSpecularGlossiness ||
+                material.model == resource::GpuMaterialModel::eUnlit)
+                return true;
+
             if (material.model != resource::GpuMaterialModel::ePBRMetallicRoughness)
-                return false;
+                return true;
 
             const auto p = loadMaterialParams<MaterialParamsPBRMR>(resources.materialParams,
                                                                    material.blockOffsetBytes);
@@ -423,7 +515,8 @@ namespace vultra
                         if (preparedDrawParamIndex >= drawCallCount)
                             return;
 
-                        auto drawParams = makeDrawParams(*gpuSceneDatabase->resources, subMesh.materialIndex, instance.worldMatrix);
+                        const uint32_t materialIndex = remapMaterialIndex(instance, mesh, subMesh.materialIndex);
+                        auto drawParams = makeDrawParams(*gpuSceneDatabase->resources, materialIndex, instance.worldMatrix);
                         drawParams.entityInfo.x = makeEntityPickingId(instance.entity);
                         if (instance.hasBaseColorOverride)
                         {

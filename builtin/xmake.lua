@@ -342,8 +342,20 @@ task("shader_task")
 
         local rebuild_header = true
 
-        local newest_lib_mtime =
-            math.max(os.mtime(vshlib_highend), os.mtime(vshlib_compatibility), os.mtime(vshweblib_compatibility))
+        local header_inputs = {
+            vshlib_highend,
+            vshlib_compatibility,
+            vshweblib_compatibility,
+            build_script,
+        }
+        table.join2(header_inputs, os.files(path.join(shader_root_common, "include/**.glsl")))
+
+        local newest_lib_mtime = 0
+        for _, input in ipairs(header_inputs) do
+            if os.exists(input) then
+                newest_lib_mtime = math.max(newest_lib_mtime, os.mtime(input))
+            end
+        end
         if os.exists(header)
         and os.mtime(header) >= newest_lib_mtime
         then
@@ -363,6 +375,7 @@ task("shader_task")
 
             f:write("// auto-generated\n")
             f:write("#pragma once\n\n")
+            f:write("#include <cstddef>\n")
             f:write("#include <cstdint>\n\n")
 
             local function write_embedded_blob(symbol_name, data)
@@ -386,9 +399,40 @@ task("shader_task")
                 f:write(string.format("inline constexpr size_t %s_size = %d;\n\n", symbol_name, #data))
             end
 
+            local function sanitize_symbol_name(value)
+                local out = value:gsub("[^%w_]", "_")
+                if out:match("^[0-9]") then
+                    out = "_" .. out
+                end
+                return out
+            end
+
             write_embedded_blob("builtin_shaders_highend_vshlib", data_vshlib_highend)
             write_embedded_blob("builtin_shaders_compatibility_vshlib", data_vshlib_compatibility)
             write_embedded_blob("builtin_shaders_compatibility_web_vshweblib", data_vshweblib_compatibility)
+
+            local include_files = os.files(path.join(shader_root_common, "include/**.glsl"))
+            table.sort(include_files)
+            local include_records = {}
+            for _, include_file in ipairs(include_files) do
+                local rel = path.relative(include_file, shader_root_common):gsub("\\", "/")
+                local symbol = "builtin_shader_include_" .. sanitize_symbol_name(rel)
+                local data = io.readfile(include_file, {encoding="binary"})
+                write_embedded_blob(symbol, data)
+                table.insert(include_records, {path = rel, symbol = symbol})
+            end
+
+            f:write("struct BuiltinShaderIncludeSource {\n")
+            f:write("    const char* path;\n")
+            f:write("    const uint8_t* data;\n")
+            f:write("    size_t size;\n")
+            f:write("};\n\n")
+            f:write("inline constexpr BuiltinShaderIncludeSource builtin_shader_include_sources[] = {\n")
+            for _, record in ipairs(include_records) do
+                f:write(string.format("    {\"%s\", %s, %s_size},\n", record.path, record.symbol, record.symbol))
+            end
+            f:write("};\n")
+            f:write(string.format("inline constexpr size_t builtin_shader_include_sources_count = %d;\n\n", #include_records))
 
             f:close()
         end
@@ -571,8 +615,8 @@ if is_plat("android") then
     add_requires("vshadersystem v0.6.2", { configs = vshadersystem_configs })
     add_requires("vshadersystem~host v0.6.2", { host = true, kind = "binary", configs = vshadersystem_configs })
 else
-    add_requires("vshadersystem v0.9.3", { configs = vshadersystem_configs })
-    add_requires("vshadersystem~host v0.9.3", { host = true, kind = "binary", configs = vshadersystem_configs })
+    add_requires("vshadersystem v0.10.0", { configs = vshadersystem_configs })
+    add_requires("vshadersystem~host v0.10.0", { host = true, kind = "binary", configs = vshadersystem_configs })
 end
 
 target("vultra_builtin_assets")

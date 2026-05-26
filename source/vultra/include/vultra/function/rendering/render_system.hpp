@@ -101,8 +101,10 @@ namespace vultra
 
     private:
         Ref<Renderer> resolveRenderer(const RenderCamera& cam) const;
+        bool          rendererRequiresRayTracingScene(std::string_view rendererKey) const;
         bool          reloadRenderPipelineNow();
         bool          reloadRenderPipelineNow(std::string_view asset, std::string_view rendererKey);
+        void          clearFrameGraphDebugState();
         void          addFrameGraphTextureCapturePasses(FrameGraphBuildContext& ctx, const RenderCamera& camera);
         rhi::GraphicsPipeline* getFrameGraphTexturePreviewPipeline(rhi::RenderDevice& rd,
                                                                    rhi::ShaderLibraryRuntime& shaderLib,

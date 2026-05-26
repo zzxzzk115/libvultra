@@ -115,8 +115,7 @@ void main()
 
     GBufferColor = vec4(sRGBToLinear(baseColor.rgb), baseColor.a);
     GBufferNormal = vec4(normalWS, 1.0);
-    // Keep lit material debug previews visible in ImGui while preserving the unlit flag threshold.
-    GBufferMetallicRoughnessAO = vec4(mra, max(u_Draw.materialMRA.w, 0.25));
+    GBufferMetallicRoughnessAO = vec4(mra, u_Draw.materialMRA.w);
 
     uint id = u_Draw.entityInfo.x;
     GBufferEntityId = vec4(float(id & 0xFFu),

@@ -30,6 +30,7 @@ namespace vultra
         virtual void buildFrameGraph(FrameGraphBuildContext& ctx) {}
 
         [[nodiscard]] virtual bool usesFrameGraph() const { return true; }
+        [[nodiscard]] virtual bool requiresRayTracingScene() const { return false; }
 
         virtual void onImGui() {}
 

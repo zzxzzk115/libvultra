@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor_app/ui/editor_window.hpp"
+#include "editor_app/ui/texture_selector.hpp"
 #include "common/asset_preview_cache.hpp"
 
 #include <vultra/core/base/uuid.hpp>
@@ -59,6 +60,7 @@ namespace vultra_app
         std::array<char, 128> m_NameBuffer {};
         std::unordered_map<vultra::CoreUUID, std::vector<std::string>> m_ComponentOrder;
         ui::AssetPreviewCache m_PreviewCache;
+        ui::TextureSelectorState m_TextureSelector;
 
         struct RenderTargetSlot
         {

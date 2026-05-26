@@ -131,9 +131,13 @@ namespace vultra::material_graph
                 return "Unlit";
             case ShadingModel::eToonLike:
                 return "ToonLike";
-            case ShadingModel::eLit:
+            case ShadingModel::ePBRSpecularGlossiness:
+                return "PBR_SpecGloss";
+            case ShadingModel::ePhong:
+                return "Phong";
+            case ShadingModel::ePBRMetallicRoughness:
             default:
-                return "Lit";
+                return "PBR_MR";
         }
     }
 
@@ -187,7 +191,12 @@ namespace vultra::material_graph
             return ShadingModel::eUnlit;
         if (value == "ToonLike" || value == "toon_like" || value == "toon")
             return ShadingModel::eToonLike;
-        return ShadingModel::eLit;
+        if (value == "PBR_SpecGloss" || value == "pbr_spec_gloss" || value == "PBRSpecularGlossiness" ||
+            value == "specular_glossiness" || value == "SpecularGlossiness")
+            return ShadingModel::ePBRSpecularGlossiness;
+        if (value == "Phong" || value == "phong")
+            return ShadingModel::ePhong;
+        return ShadingModel::ePBRMetallicRoughness;
     }
 
     AlphaMode alphaModeFromString(const std::string_view value)

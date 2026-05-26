@@ -328,14 +328,19 @@ namespace vultra
                     rhi::prepareForReading(rc.cb, brdfLut);
                     rhi::prepareForReading(rc.cb, irradianceMap);
                     rhi::prepareForReading(rc.cb, prefilteredEnvMap);
+                    const auto linearSampler = rc.ext.samplers.count("linear") > 0 ? rc.ext.samplers["linear"] :
+                                                                                     rc.ext.samplers["bilinear"];
                     rc.resourceSet[3][7] = rhi::bindings::CombinedImageSampler {
                         .texture = &brdfLut,
+                        .sampler = linearSampler,
                     };
                     rc.resourceSet[3][8] = rhi::bindings::CombinedImageSampler {
                         .texture = &irradianceMap,
+                        .sampler = linearSampler,
                     };
                     rc.resourceSet[3][9] = rhi::bindings::CombinedImageSampler {
                         .texture = &prefilteredEnvMap,
+                        .sampler = linearSampler,
                     };
                 }
                 rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);

@@ -1244,6 +1244,69 @@ namespace vultra_app
             return changed;
         }
 
+        std::vector<std::string> collectMaterialGraphUris(EditorContext& ctx)
+        {
+            std::vector<std::string> out;
+            const auto root = editorAssetRoot(ctx);
+            if (root.empty() || !std::filesystem::exists(root))
+                return out;
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
+            {
+                if (!entry.is_regular_file())
+                    continue;
+                const auto path = entry.path();
+                const auto name = path.filename().generic_string();
+                const auto ext = path.extension().generic_string();
+                if (ext != ".vmatgraph" && name.find(".vmatgraph.json") == std::string::npos)
+                    continue;
+                std::error_code ec;
+                const auto rel = std::filesystem::relative(path, root, ec);
+                if (!ec && !rel.empty() && isImportedAssetPath(rel.generic_string()))
+                    continue;
+                if (auto uri = pathToResUri(ctx, path); !uri.empty())
+                    out.push_back(std::move(uri));
+            }
+            std::sort(out.begin(), out.end());
+            return out;
+        }
+
+        bool drawMaterialGraphUriField(EditorContext* ctx, std::string& uri, const char* label)
+        {
+            bool changed = false;
+            ImGui::TextUnformatted(label);
+            ImGui::PushID(label);
+            const auto preview = uri.empty() ? "<none>" : uri.c_str();
+            ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x));
+            if (ImGui::BeginCombo("##MaterialGraphUri", preview))
+            {
+                if (ImGui::Selectable("<none>", uri.empty()))
+                {
+                    uri.clear();
+                    changed = true;
+                }
+                if (ctx)
+                {
+                    for (const auto& candidate : collectMaterialGraphUris(*ctx))
+                    {
+                        if (ImGui::Selectable(candidate.c_str(), candidate == uri))
+                        {
+                            uri = candidate;
+                            changed = true;
+                        }
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(ICON_MDI_CLOSE) && !uri.empty())
+            {
+                uri.clear();
+                changed = true;
+            }
+            ImGui::PopID();
+            return changed;
+        }
+
         bool drawRendererKeyCombo(EditorContext* ctx, std::string& rendererKey, const char* label)
         {
             auto* renderService = ctx && ctx->services ? ctx->services->tryGet<vultra::IRenderService>() : nullptr;
@@ -1295,6 +1358,7 @@ namespace vultra_app
         }
 
         bool drawMetaValue(EditorContext*          ctx,
+                           ui::TextureSelectorState* textureSelector,
                            const entt::meta_data& field,
                            entt::meta_any&        value,
                            const char*            fieldName,
@@ -1406,7 +1470,11 @@ namespace vultra_app
             }
 
             if (auto* v = value.try_cast<vultra::CoreUUID>())
+            {
+                if (ctx && textureSelector && expectedAssetTypeForField(fieldName) == vasset::VAssetType::eTexture)
+                    return ui::drawTextureUuidField(*ctx, label, *v, *textureSelector);
                 return drawUuidObjectField(ctx, *v, fieldName, label);
+            }
 
             const auto typeName = field.type() ? field.type().name() : "<unknown>";
             ImGui::TextDisabled("%s: <%s>", label, typeName ? typeName : "unregistered");
@@ -1425,6 +1493,12 @@ namespace vultra_app
             if (std::strcmp(fieldName, "clearColor") == 0)
                 return camera.clearMode == 0u;
             return true;
+        }
+
+        template<>
+        bool shouldDrawMetaField(const vultra::MeshComponent&, const char* fieldName)
+        {
+            return std::strcmp(fieldName, "materialOverrides") != 0;
         }
 
         template<>
@@ -1451,6 +1525,7 @@ namespace vultra_app
 
         template<typename Component>
         bool drawMetaFields(EditorContext* ctx,
+                            ui::TextureSelectorState* textureSelector,
                             Component&     component,
                             const std::function<void(const char*)>& onChanged = {})
         {
@@ -1472,7 +1547,7 @@ namespace vultra_app
 
                 const auto label = displayFieldName(rawName);
                 ImGui::PushID(static_cast<int>(fieldId));
-                if (drawMetaValue(ctx, field, value, rawName, label.c_str()))
+                if (drawMetaValue(ctx, textureSelector, field, value, rawName, label.c_str()))
                 {
                     field.set(instance, value);
                     changedAny = true;
@@ -1483,6 +1558,45 @@ namespace vultra_app
             }
             ImGui::PopID();
             return changedAny;
+        }
+
+        bool drawMeshComponentFields(EditorContext* ctx, ui::TextureSelectorState* textureSelector, vultra::MeshComponent& mesh)
+        {
+            bool changed = drawMetaFields(ctx, textureSelector, mesh);
+            ImGui::Spacing();
+            if (ImGui::CollapsingHeader("Material Overrides", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                int removeIndex = -1;
+                for (int i = 0; i < static_cast<int>(mesh.materialOverrides.size()); ++i)
+                {
+                    auto& override = mesh.materialOverrides[static_cast<size_t>(i)];
+                    ImGui::PushID(i);
+                    ImGui::SetNextItemWidth(72.0f);
+                    int slot = static_cast<int>(override.slot);
+                    if (ImGui::InputInt("Slot", &slot))
+                    {
+                        override.slot = static_cast<uint32_t>(std::max(slot, 0));
+                        changed = true;
+                    }
+                    if (drawMaterialGraphUriField(ctx, override.materialGraph, "Graph"))
+                        changed = true;
+                    if (ImGui::SmallButton(ICON_MDI_DELETE " Remove"))
+                        removeIndex = i;
+                    ImGui::Separator();
+                    ImGui::PopID();
+                }
+                if (removeIndex >= 0)
+                {
+                    mesh.materialOverrides.erase(mesh.materialOverrides.begin() + removeIndex);
+                    changed = true;
+                }
+                if (ImGui::Button(ICON_MDI_PLUS " Add Material Override", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+                {
+                    mesh.materialOverrides.push_back({});
+                    changed = true;
+                }
+            }
+            return changed;
         }
 
         template<typename Component>
@@ -1827,7 +1941,7 @@ namespace vultra_app
         auto& status = reg.get_or_emplace<vultra::EntityStatusComponent>(e);
         if (ImGui::CollapsingHeader("Status", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            if (drawMetaFields(&ctx, status))
+            if (drawMetaFields(&ctx, &m_TextureSelector, status))
                 ctx.state.sceneDirty = true;
         }
 
@@ -1896,25 +2010,25 @@ namespace vultra_app
             else if (key == "Mesh")
             {
                 if (auto* mesh = reg.try_get<vultra::MeshComponent>(e))
-                    if (drawMetaFields(&ctx, *mesh))
+                    if (drawMeshComponentFields(&ctx, &m_TextureSelector, *mesh))
                         ctx.state.sceneDirty = true;
             }
             else if (key == "GaussianSplat")
             {
                 if (auto* splat = reg.try_get<vultra::GaussianSplatComponent>(e))
-                    if (drawMetaFields(&ctx, *splat))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *splat))
                         ctx.state.sceneDirty = true;
             }
             else if (key == "Environment")
             {
                 if (auto* environment = reg.try_get<vultra::EnvironmentComponent>(e))
-                    if (drawMetaFields(&ctx, *environment))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *environment))
                         ctx.state.sceneDirty = true;
             }
             else if (key == "ReflectionProbe")
             {
                 if (auto* probe = reg.try_get<vultra::ReflectionProbeComponent>(e))
-                    if (drawMetaFields(&ctx, *probe))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *probe))
                         ctx.state.sceneDirty = true;
             }
             else if (key == "Light")
@@ -1946,6 +2060,7 @@ namespace vultra_app
 
                     drawMetaFields<vultra::CameraComponent>(
                         &ctx,
+                        &m_TextureSelector,
                         *camera,
                         [&](const char* fieldName)
                         {
@@ -1967,7 +2082,7 @@ namespace vultra_app
             else if (key == "Script")
             {
                 if (auto* script = reg.try_get<vultra::ScriptComponent>(e))
-                    if (drawMetaFields(&ctx, *script))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *script))
                         ctx.state.sceneDirty = true;
             }
             else if (key == "Prefab")

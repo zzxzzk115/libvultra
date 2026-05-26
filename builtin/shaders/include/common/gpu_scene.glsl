@@ -308,6 +308,17 @@ struct MaterialParamsPhong
     uint pad1;
     uint pad2;
 };
+struct MaterialParamsGraph
+{
+    vec4 baseColor;
+    vec4 emissiveAlpha;
+    vec4 metallicRoughnessAoCutoff;
+    uvec4 textureInfo; // x = baseColorTex
+    uint graphId;
+    uint alphaMode;
+    uint shadingModel;
+    uint flags;
+};
 
 // --------------------------------------------------------------------------
 // Material access helpers
@@ -436,6 +447,27 @@ MaterialParamsPhong get_phong_params(uint materialIndex)
     // offset + 32 : uint diffuseTex
     params.diffuseTex = _load_u32(m.blockOffsetBytes, 32u);
 
+    return params;
+}
+
+MaterialParamsGraph get_graph_params(uint materialIndex)
+{
+    MaterialEntry m = s_Materials.materials[materialIndex];
+
+    MaterialParamsGraph params;
+    params.baseColor = load_vec4_bytes(m.blockOffsetBytes, 0u);
+    params.emissiveAlpha = load_vec4_bytes(m.blockOffsetBytes, 16u);
+    params.metallicRoughnessAoCutoff = load_vec4_bytes(m.blockOffsetBytes, 32u);
+    params.textureInfo = uvec4(
+        _load_u32(m.blockOffsetBytes, 48u),
+        _load_u32(m.blockOffsetBytes, 52u),
+        _load_u32(m.blockOffsetBytes, 56u),
+        _load_u32(m.blockOffsetBytes, 60u)
+    );
+    params.graphId = _load_u32(m.blockOffsetBytes, 64u);
+    params.alphaMode = _load_u32(m.blockOffsetBytes, 68u);
+    params.shadingModel = _load_u32(m.blockOffsetBytes, 72u);
+    params.flags = _load_u32(m.blockOffsetBytes, 76u);
     return params;
 }
 

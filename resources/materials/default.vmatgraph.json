@@ -1,0 +1,631 @@
+{
+    "domain": "surface",
+    "links": [
+        {
+            "from": {
+                "node": "BaseTexture",
+                "pin": "texture"
+            },
+            "to": {
+                "node": "SampleBase",
+                "pin": "texture"
+            }
+        },
+        {
+            "from": {
+                "node": "UV0",
+                "pin": "uv"
+            },
+            "to": {
+                "node": "SampleBase",
+                "pin": "uv"
+            }
+        },
+        {
+            "from": {
+                "node": "SampleBase",
+                "pin": "rgba"
+            },
+            "to": {
+                "node": "BaseMix",
+                "pin": "a"
+            }
+        },
+        {
+            "from": {
+                "node": "WarmTint",
+                "pin": "value"
+            },
+            "to": {
+                "node": "BaseMix",
+                "pin": "b"
+            }
+        },
+        {
+            "from": {
+                "node": "WorldNormal",
+                "pin": "normal"
+            },
+            "to": {
+                "node": "Fresnel",
+                "pin": "normalWS"
+            }
+        },
+        {
+            "from": {
+                "node": "ViewDirection",
+                "pin": "direction"
+            },
+            "to": {
+                "node": "Fresnel",
+                "pin": "viewDirWS"
+            }
+        },
+        {
+            "from": {
+                "node": "FresnelPower",
+                "pin": "value"
+            },
+            "to": {
+                "node": "Fresnel",
+                "pin": "power"
+            }
+        },
+        {
+            "from": {
+                "node": "Fresnel",
+                "pin": "factor"
+            },
+            "to": {
+                "node": "FresnelMask",
+                "pin": "v"
+            }
+        },
+        {
+            "from": {
+                "node": "FresnelMask",
+                "pin": "out"
+            },
+            "to": {
+                "node": "BaseMix",
+                "pin": "t"
+            }
+        },
+        {
+            "from": {
+                "node": "BaseMix",
+                "pin": "out"
+            },
+            "to": {
+                "node": "Surface",
+                "pin": "baseColor"
+            }
+        },
+        {
+            "from": {
+                "node": "Roughness",
+                "pin": "value"
+            },
+            "to": {
+                "node": "Surface",
+                "pin": "roughness"
+            }
+        },
+        {
+            "from": {
+                "node": "Metallic",
+                "pin": "value"
+            },
+            "to": {
+                "node": "Surface",
+                "pin": "metallic"
+            }
+        },
+        {
+            "from": {
+                "node": "AO",
+                "pin": "value"
+            },
+            "to": {
+                "node": "Surface",
+                "pin": "ao"
+            }
+        },
+        {
+            "from": {
+                "node": "RimEmissive",
+                "pin": "value"
+            },
+            "to": {
+                "node": "Surface",
+                "pin": "emissive"
+            }
+        },
+        {
+            "from": {
+                "node": "Alpha",
+                "pin": "value"
+            },
+            "to": {
+                "node": "Surface",
+                "pin": "alpha"
+            }
+        }
+    ],
+    "metadata": {
+        "description": "Default complex material graph exercising texture sampling, vertex inputs, utility nodes and PBR surface fields."
+    },
+    "name": "Default Material Graph",
+    "nodes": [
+        {
+            "displayName": "Texture2D",
+            "editor": {
+                "pos": [
+                    -740.0,
+                    -140.0
+                ]
+            },
+            "id": "BaseTexture",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "texture",
+                    "type": "texture2d"
+                }
+            ],
+            "params": {
+                "texture": "res://models/Sponza/11474523244911310074.jpg"
+            },
+            "type": "vultra.param.texture2d"
+        },
+        {
+            "displayName": "UV0",
+            "editor": {
+                "pos": [
+                    -740.0,
+                    40.0
+                ]
+            },
+            "id": "UV0",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "uv",
+                    "type": "vec2"
+                }
+            ],
+            "params": {},
+            "type": "vultra.input.uv0"
+        },
+        {
+            "displayName": "Sample Texture2D",
+            "editor": {
+                "pos": [
+                    -500.0,
+                    -80.0
+                ]
+            },
+            "id": "SampleBase",
+            "inputs": [
+                {
+                    "name": "texture",
+                    "type": "texture2d"
+                },
+                {
+                    "default": [
+                        0.0,
+                        0.0
+                    ],
+                    "name": "uv",
+                    "type": "vec2"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "rgba",
+                    "type": "vec4"
+                },
+                {
+                    "name": "rgb",
+                    "type": "vec3"
+                },
+                {
+                    "name": "a",
+                    "type": "float"
+                }
+            ],
+            "params": {},
+            "type": "vultra.texture.sample2d"
+        },
+        {
+            "displayName": "Warm Tint",
+            "editor": {
+                "pos": [
+                    -500.0,
+                    120.0
+                ]
+            },
+            "id": "WarmTint",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "color"
+                }
+            ],
+            "params": {
+                "value": [
+                    0.95,
+                    0.58,
+                    0.28,
+                    1.0
+                ]
+            },
+            "type": "vultra.param.color"
+        },
+        {
+            "displayName": "World Normal",
+            "editor": {
+                "pos": [
+                    -500.0,
+                    300.0
+                ]
+            },
+            "id": "WorldNormal",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "normal",
+                    "type": "vec3"
+                }
+            ],
+            "params": {},
+            "type": "vultra.input.world_normal"
+        },
+        {
+            "displayName": "View Direction",
+            "editor": {
+                "pos": [
+                    -500.0,
+                    420.0
+                ]
+            },
+            "id": "ViewDirection",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "direction",
+                    "type": "vec3"
+                }
+            ],
+            "params": {},
+            "type": "vultra.input.view_direction"
+        },
+        {
+            "displayName": "Fresnel Power",
+            "editor": {
+                "pos": [
+                    -500.0,
+                    540.0
+                ]
+            },
+            "id": "FresnelPower",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 4.0
+            },
+            "type": "vultra.param.float"
+        },
+        {
+            "displayName": "Fresnel",
+            "editor": {
+                "pos": [
+                    -250.0,
+                    380.0
+                ]
+            },
+            "id": "Fresnel",
+            "inputs": [
+                {
+                    "default": [
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "name": "normalWS",
+                    "type": "vec3"
+                },
+                {
+                    "default": [
+                        0.0,
+                        0.0,
+                        1.0
+                    ],
+                    "name": "viewDirWS",
+                    "type": "vec3"
+                },
+                {
+                    "default": 5.0,
+                    "name": "power",
+                    "type": "float"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "factor",
+                    "type": "float"
+                }
+            ],
+            "params": {},
+            "type": "vultra.utility.fresnel"
+        },
+        {
+            "displayName": "Saturate",
+            "editor": {
+                "pos": [
+                    -40.0,
+                    390.0
+                ]
+            },
+            "id": "FresnelMask",
+            "inputs": [
+                {
+                    "default": 0.0,
+                    "name": "v",
+                    "type": "float"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "out",
+                    "type": "float"
+                }
+            ],
+            "params": {},
+            "type": "vultra.math.saturate"
+        },
+        {
+            "displayName": "Mix",
+            "editor": {
+                "pos": [
+                    -120.0,
+                    -20.0
+                ]
+            },
+            "id": "BaseMix",
+            "inputs": [
+                {
+                    "default": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0
+                    ],
+                    "name": "a",
+                    "type": "vec4"
+                },
+                {
+                    "default": [
+                        1.0,
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "name": "b",
+                    "type": "vec4"
+                },
+                {
+                    "default": 0.5,
+                    "name": "t",
+                    "type": "float"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "out",
+                    "type": "vec4"
+                }
+            ],
+            "params": {},
+            "type": "vultra.math.mix"
+        },
+        {
+            "displayName": "Roughness",
+            "editor": {
+                "pos": [
+                    -120.0,
+                    180.0
+                ]
+            },
+            "id": "Roughness",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 0.42
+            },
+            "type": "vultra.param.float"
+        },
+        {
+            "displayName": "Metallic",
+            "editor": {
+                "pos": [
+                    -120.0,
+                    290.0
+                ]
+            },
+            "id": "Metallic",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 0.08
+            },
+            "type": "vultra.param.float"
+        },
+        {
+            "displayName": "AO",
+            "editor": {
+                "pos": [
+                    -120.0,
+                    520.0
+                ]
+            },
+            "id": "AO",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 1.0
+            },
+            "type": "vultra.param.float"
+        },
+        {
+            "displayName": "Rim Emissive",
+            "editor": {
+                "pos": [
+                    -120.0,
+                    640.0
+                ]
+            },
+            "id": "RimEmissive",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "vec3"
+                }
+            ],
+            "params": {
+                "value": [
+                    0.025,
+                    0.012,
+                    0.004
+                ]
+            },
+            "type": "vultra.param.vec3"
+        },
+        {
+            "displayName": "Alpha",
+            "editor": {
+                "pos": [
+                    -120.0,
+                    760.0
+                ]
+            },
+            "id": "Alpha",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 1.0
+            },
+            "type": "vultra.param.float"
+        },
+        {
+            "displayName": "Surface Output",
+            "editor": {
+                "pos": [
+                    240.0,
+                    60.0
+                ]
+            },
+            "id": "Surface",
+            "inputs": [
+                {
+                    "default": [
+                        1.0,
+                        1.0,
+                        1.0,
+                        1.0
+                    ],
+                    "name": "baseColor",
+                    "type": "color"
+                },
+                {
+                    "name": "normal",
+                    "type": "vec3"
+                },
+                {
+                    "default": 0.0,
+                    "name": "metallic",
+                    "type": "float"
+                },
+                {
+                    "default": 1.0,
+                    "name": "roughness",
+                    "type": "float"
+                },
+                {
+                    "default": 1.0,
+                    "name": "ao",
+                    "type": "float"
+                },
+                {
+                    "default": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "name": "emissive",
+                    "type": "vec3"
+                },
+                {
+                    "default": 1.0,
+                    "name": "alpha",
+                    "type": "float"
+                },
+                {
+                    "default": 0.5,
+                    "name": "alphaCutoff",
+                    "type": "float"
+                }
+            ],
+            "outputs": [],
+            "params": {
+                "alpha": 1.0,
+                "alphaCutoff": 0.5,
+                "alphaMode": "Opaque",
+                "ao": 1.0,
+                "baseColor": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0
+                ],
+                "emissive": [
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "metallic": 0.0,
+                "roughness": 1.0,
+                "shadingModel": "PBR_MR"
+            },
+            "type": "vultra.output.surface"
+        }
+    ],
+    "version": 1
+}

@@ -32,9 +32,11 @@ namespace vultra::material_graph
 
     enum class ShadingModel : uint8_t
     {
-        eLit,
+        ePBRMetallicRoughness,
         eUnlit,
         eToonLike,
+        ePBRSpecularGlossiness,
+        ePhong,
     };
 
     enum class AlphaMode : uint8_t

@@ -90,6 +90,12 @@ layout(push_constant) uniform LightingPushConstants
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 0) out vec4 FragColor;
 
+const uint VULTRA_MAT_PBRMR = 1u;
+const uint VULTRA_MAT_PBRSG = 2u;
+const uint VULTRA_MAT_UNLIT = 3u;
+const uint VULTRA_MAT_PHONG = 4u;
+const uint VULTRA_MAT_TOONLIKE = 6u;
+
 vec3 worldPositionFromDepth(float depth, vec2 uv)
 {
     vec4 clip = vec4(uv * 2.0 - 1.0, depth, 1.0);
@@ -223,6 +229,78 @@ float selectedShadowVisibility(uint cascade, vec3 shadowCoord, float bias)
     return simpleShadow(cascade, shadowCoord, bias);
 }
 
+float phongShininessFromRoughness(float roughness)
+{
+    return clamp(1.0 / max(roughness * roughness, 1e-4), 1.0, 512.0);
+}
+
+vec3 phongBrdf(vec3 albedo, float specularIntensity, float shininess, vec3 N, vec3 V, vec3 L, vec3 radiance)
+{
+    float NdotL = max(dot(N, L), 0.0);
+    vec3 R = reflect(-L, N);
+    float spec = pow(max(dot(R, V), 0.0), shininess) * specularIntensity;
+    return (albedo + vec3(spec)) * radiance * NdotL;
+}
+
+vec3 calPhongDirectionalLight(DirectionalLight light, vec3 albedo, float specularIntensity, float shininess, vec3 N, vec3 V)
+{
+    vec3 L = normalize(-light.direction);
+    return phongBrdf(albedo, specularIntensity, shininess, N, V, L, light.color * light.intensity);
+}
+
+vec3 calPhongPointLight(PointLight pointLight, vec3 albedo, float specularIntensity, float shininess, vec3 N, vec3 V, vec3 fragPos)
+{
+    vec3 Lvec = pointLight.posIntensity.xyz - fragPos;
+    float disSqr = dot(Lvec, Lvec);
+    float dis = sqrt(max(disSqr, 1e-8));
+    vec3 L = Lvec / dis;
+    float radius = max(pointLight.colorRadius.a, 1e-3);
+    float normDist = clamp(dis / radius, 0.0, 1.0);
+    float attenuation = pow(1.0 - normDist, 2.0) / max(disSqr, 1e-4);
+    vec3 radiance = pointLight.colorRadius.rgb * pointLight.posIntensity.w * attenuation;
+    return phongBrdf(albedo, specularIntensity, shininess, N, V, L, radiance);
+}
+
+vec3 calPhongSpotLight(SpotLight spotLight, vec3 albedo, float specularIntensity, float shininess, vec3 N, vec3 V, vec3 fragPos)
+{
+    vec3 Lvec = spotLight.posIntensity.xyz - fragPos;
+    float disSqr = dot(Lvec, Lvec);
+    float dis = sqrt(max(disSqr, 1e-8));
+    vec3 L = Lvec / dis;
+    float range = max(spotLight.directionRange.w, 1e-3);
+    float normDist = clamp(dis / range, 0.0, 1.0);
+    float smoothFalloff = pow(1.0 - normDist, 2.0);
+    vec3 spotDirection = normalize(spotLight.directionRange.xyz);
+    float cosTheta = dot(-L, spotDirection);
+    float cone = clamp((cosTheta - spotLight.coneCosines.y) / max(spotLight.coneCosines.x - spotLight.coneCosines.y, 1e-4), 0.0, 1.0);
+    float attenuation = smoothFalloff * cone * cone / max(disSqr, 1e-4);
+    vec3 radiance = spotLight.color.rgb * spotLight.posIntensity.w * attenuation;
+    return phongBrdf(albedo, specularIntensity, shininess, N, V, L, radiance);
+}
+
+vec3 calPhongAreaLightApprox(AreaLight areaLight, vec3 albedo, float specularIntensity, float shininess, vec3 N, vec3 V, vec3 fragPos)
+{
+    vec3 center = areaLight.posIntensity.xyz;
+    vec3 U = areaLight.uTwoSided.xyz;
+    vec3 W = areaLight.vPadding.xyz;
+    vec3 Lvec = center - fragPos;
+    float disSqr = dot(Lvec, Lvec);
+    float dis = sqrt(max(disSqr, 1e-8));
+    vec3 L = Lvec / dis;
+    vec3 lightNormal = normalize(cross(U, W));
+    bool twoSided = areaLight.uTwoSided.w > 0.5;
+    float facing = twoSided ? abs(dot(-L, lightNormal)) : max(dot(-L, lightNormal), 0.0);
+    float area = max(length(cross(U * 2.0, W * 2.0)), 1e-4);
+    float attenuation = facing * area / max(disSqr, 1e-4);
+    vec3 radiance = areaLight.color.rgb * areaLight.posIntensity.w * attenuation;
+    return phongBrdf(albedo, specularIntensity, shininess, N, V, L, radiance);
+}
+
+vec3 quantizeToon(vec3 color)
+{
+    return floor(color * 3.0 + 0.5) / 3.0;
+}
+
 void main()
 {
     vec4 baseColor = texture(u_GBufferColor, v_TexCoord);
@@ -236,7 +314,7 @@ void main()
     vec3 normalWS = normalize(texture(u_GBufferNormal, v_TexCoord).xyz);
     vec4 mraSample = texture(u_GBufferMetallicRoughnessAO, v_TexCoord);
     vec3 mra = mraSample.xyz;
-    float unlit = mraSample.w;
+    uint materialModel = uint(round(mraSample.w));
     vec3 positionWS = worldPositionFromDepth(depth, v_TexCoord);
     vec3 cameraWS = u_CameraBlock.data.inverseView[3].xyz;
 
@@ -276,7 +354,7 @@ void main()
         return;
     }
 
-    if (unlit > 0.5)
+    if (materialModel == VULTRA_MAT_UNLIT)
     {
         FragColor = baseColor;
         return;
@@ -324,20 +402,37 @@ void main()
     float roughness = clamp(mra.y, 0.045, 1.0);
     float ssao = clamp(texture(u_SSAO, v_TexCoord).r, 0.0, 1.0);
     float ao = clamp(mra.z * ssao, 0.0, 1.0);
-    PBRMaterial material;
-    material.albedo = baseColor.rgb;
-    material.emissive = vec3(0.0);
-    material.metallic = metallic;
-    material.roughness = roughness;
-    material.ao = ao;
-    material.opacity = baseColor.a;
 
     DirectionalLight light;
     light.direction = lightDir;
     light.color = u_Push.directionalLightColorIntensity.rgb;
     light.intensity = u_Push.directionalLightColorIntensity.a;
 
-    vec3 F0 = vec3(0.04);
+    if (materialModel == VULTRA_MAT_PHONG)
+    {
+        float specularIntensity = clamp(mra.x, 0.0, 1.0);
+        float shininess = phongShininessFromRoughness(roughness);
+        vec3 direct = calPhongDirectionalLight(light, baseColor.rgb, specularIntensity, shininess, normalWS, viewDir) * visibility;
+        for (int i = 0; i < u_Lights.counts.x; ++i)
+            direct += calPhongPointLight(u_Lights.pointLights[i], baseColor.rgb, specularIntensity, shininess, normalWS, viewDir, positionWS);
+        for (int i = 0; i < u_Lights.counts.y; ++i)
+            direct += calPhongAreaLightApprox(u_Lights.areaLights[i], baseColor.rgb, specularIntensity, shininess, normalWS, viewDir, positionWS);
+        for (int i = 0; i < u_Lights.counts.z; ++i)
+            direct += calPhongSpotLight(u_Lights.spotLights[i], baseColor.rgb, specularIntensity, shininess, normalWS, viewDir, positionWS);
+        vec3 ambient = baseColor.rgb * u_Push.ambientColorIntensity.rgb * u_Push.ambientColorIntensity.a * ao;
+        FragColor = vec4(ambient + direct, baseColor.a);
+        return;
+    }
+
+    PBRMaterial material;
+    material.albedo = baseColor.rgb;
+    material.emissive = vec3(0.0);
+    material.metallic = materialModel == VULTRA_MAT_PBRSG ? 0.0 : metallic;
+    material.roughness = roughness;
+    material.ao = ao;
+    material.opacity = baseColor.a;
+
+    vec3 F0 = materialModel == VULTRA_MAT_PBRSG ? vec3(clamp(mra.x, 0.0, 1.0)) : vec3(0.04);
     F0 = mix(F0, material.albedo, material.metallic);
     vec3 diffuseColor = material.albedo * (1.0 - material.metallic);
     vec3 direct = calDirectionalLight(light, F0, normalWS, viewDir, material) * visibility;
@@ -373,6 +468,8 @@ void main()
     }
     for (int i = 0; i < u_Lights.counts.z; ++i)
         direct += calSpotLight(u_Lights.spotLights[i], F0, normalWS, viewDir, material, positionWS);
+    if (materialModel == VULTRA_MAT_TOONLIKE)
+        direct = quantizeToon(direct);
     vec3 ambient = baseColor.rgb * u_Push.ambientColorIntensity.rgb * u_Push.ambientColorIntensity.a * ao;
     if (u_Push.enableIBL != 0)
     {

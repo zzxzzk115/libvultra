@@ -63,6 +63,16 @@ namespace vultra::material_graph
                 case ValueType::eVec4:
                     return vectorLiteral(v, "vec4", 4, 1.0f);
                 case ValueType::eTexture2D:
+                    if (v.is_number_unsigned())
+                        return std::to_string(v.get<uint64_t>()) + "u";
+                    if (v.is_number_integer() && v.get<int64_t>() >= 0)
+                        return std::to_string(v.get<int64_t>()) + "u";
+                    if (v.is_string())
+                    {
+                        const auto text = v.get<std::string>();
+                        if (!text.empty() && std::ranges::all_of(text, [](const unsigned char c) { return std::isdigit(c); }))
+                            return text + "u";
+                    }
                     return "0u";
                 case ValueType::eString:
                 case ValueType::eUnknown:
@@ -160,7 +170,7 @@ namespace vultra::material_graph
                     return paramValue(node, "value", ValueType::eVec4, nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}));
                 if (type == "vultra.param.bool")
                     return paramValue(node, "value", ValueType::eBool, false);
-                if (type == "vultra.param.int")
+                if (type == "vultra.param.int" || type == "vultra.param.enum")
                     return paramValue(node, "value", ValueType::eInt, 0);
                 if (type == "vultra.param.texture2d")
                     return paramValue(node, "texture", ValueType::eTexture2D, 0);
@@ -173,6 +183,14 @@ namespace vultra::material_graph
                     return "(" + inputExpr(node, "a") + " * " + inputExpr(node, "b") + ")";
                 if (type == "vultra.math.divide")
                     return "(" + inputExpr(node, "a") + " / max(" + inputExpr(node, "b") + ", 1e-6))";
+                if (type == "vultra.math.one_minus")
+                    return "(1.0 - " + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.power")
+                    return "pow(max(" + inputExpr(node, "base") + ", 0.0), " + inputExpr(node, "exponent") + ")";
+                if (type == "vultra.math.min")
+                    return "min(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ")";
+                if (type == "vultra.math.max")
+                    return "max(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ")";
                 if (type == "vultra.math.dot")
                     return "dot(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ")";
                 if (type == "vultra.math.normalize")
@@ -214,7 +232,7 @@ namespace vultra::material_graph
 
         std::string shadingModelCode(const Node& output)
         {
-            return std::to_string(static_cast<uint32_t>(shadingModelFromString(output.params.value("shadingModel", std::string {"Lit"}))));
+            return std::to_string(static_cast<uint32_t>(shadingModelFromString(output.params.value("shadingModel", std::string {"PBR_MR"}))));
         }
     } // namespace
 
@@ -281,6 +299,15 @@ namespace vultra::material_graph
         src << "    surface.alphaCutoff = clamp(" << alphaCutoff << ", 0.0, 1.0);\n";
         src << "    surface.alphaMode = " << alphaModeCode(*output) << "u;\n";
         src << "    surface.shadingModel = " << shadingModelCode(*output) << "u;\n";
+        src << "    if (surface.shadingModel == 3u)\n";
+        src << "    {\n";
+        src << "        surface.metallic = 0.0;\n";
+        src << "    }\n";
+        src << "    if (surface.shadingModel == 4u)\n";
+        src << "    {\n";
+        src << "        surface.metallic = 0.0;\n";
+        src << "        surface.roughness = clamp(surface.roughness, 0.25, 1.0);\n";
+        src << "    }\n";
         src << "    if (surface.shadingModel == 1u)\n";
         src << "    {\n";
         src << "        surface.metallic = 0.0;\n";

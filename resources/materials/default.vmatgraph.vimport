@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="material_graph_json"
+uid="180771dd2805de9c84fc145aae87515d"
+
+[source]
+file="materials/default.vmatgraph.json"
+
+[output]
+file="imported/material_graph_json/materials/default.vmatgraph.json"
+
+[params]

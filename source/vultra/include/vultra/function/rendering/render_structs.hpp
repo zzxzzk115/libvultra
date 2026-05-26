@@ -285,10 +285,10 @@ namespace vultra
 
     struct SsaoRenderSettings
     {
-        bool  enabled {false};
+        bool  enabled {true};
         float radius {1.5f};
         float bias {0.05f};
-        float intensity {1.2f};
+        float intensity {1.0f};
         int   maxRadiusPixels {32};
         int   stepCount {4};
         int   directionCount {8};
@@ -296,12 +296,19 @@ namespace vultra
 
     struct SsrRenderSettings
     {
-        bool  enabled {false};
-        float reflectionFactor {0.7f};
+        bool  enabled {true};
+        float reflectionFactor {0.2f};
         int   maxSteps {16};
         int   binaryRefinement {3};
         float stride {0.35f};
         float thickness {0.5f};
+    };
+
+    struct ToneMappingRenderSettings
+    {
+        bool  enabled {false};
+        float exposure {1.0f};
+        int   method {0};
     };
 
     struct ShadowRenderSettings
@@ -324,10 +331,10 @@ namespace vultra
         };
 
         bool      enabled {true};
-        uint32_t resolution {2048};
+        uint32_t resolution {4096};
         uint32_t cascadeCount {4};
         float     coverageRadius {75.0f};
-        float     lightDistance {120.0f};
+        float     lightDistance {200.0f};
         float     zRange {120.0f};
         float     splitLambda {0.60f};
         bool      autoFitBounds {true};
@@ -363,8 +370,8 @@ namespace vultra
         float     ambientIntensity {1.0f};
         bool      enableIBL {false};
         glm::vec3 iblColor {0.04f, 0.045f, 0.05f};
-        float     iblIntensity {0.0f};
-        bool      showSkybox {false};
+        float     iblIntensity {1.0f};
+        bool      showSkybox {true};
         rhi::Texture* environmentMap {nullptr};
         DebugViewMode debugViewMode {DebugViewMode::eLit};
     };
@@ -383,9 +390,11 @@ namespace vultra
 
         SsaoRenderSettings ssao;
         SsrRenderSettings  ssr;
+        ToneMappingRenderSettings toneMapping;
         ShadowRenderSettings shadow;
         PbrLightingSettings pbrLighting;
         SelectionOutlineSettings selectionOutline;
+        bool               xrMirrorGammaCorrect {false};
         bool               enableFXAA {true};
     };
 

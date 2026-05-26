@@ -66,7 +66,259 @@ namespace vultra
 {
     namespace
     {
-        [[nodiscard]] uint32_t ensureMaterialGraphGpuMaterial(IGpuResourceService& gpuResources,
+        struct alignas(16) MaterialGraphSurfaceParams
+        {
+            glm::vec4 baseColor {1.0f};
+            glm::vec4 emissiveAlpha {0.0f, 0.0f, 0.0f, 1.0f};
+            glm::vec4 metallicRoughnessAoCutoff {0.0f, 1.0f, 1.0f, 0.5f};
+            glm::uvec4 textureInfo {0u};
+            uint32_t   graphId {0};
+            uint32_t   alphaMode {0};
+            uint32_t   shadingModel {0};
+            uint32_t   flags {0};
+        };
+
+        static_assert(sizeof(MaterialGraphSurfaceParams) % 16 == 0);
+
+        [[nodiscard]] glm::vec4 jsonVec4(const nlohmann::json& value, const glm::vec4 fallback)
+        {
+            if (!value.is_array())
+                return fallback;
+            glm::vec4 out = fallback;
+            for (int i = 0; i < 4 && i < static_cast<int>(value.size()); ++i)
+                if (value[i].is_number())
+                    out[i] = value[i].get<float>();
+            return out;
+        }
+
+        [[nodiscard]] glm::vec3 jsonVec3(const nlohmann::json& value, const glm::vec3 fallback)
+        {
+            const auto v = jsonVec4(value, glm::vec4(fallback, 0.0f));
+            return glm::vec3(v);
+        }
+
+        [[nodiscard]] float jsonFloat(const nlohmann::json& value, const float fallback)
+        {
+            return value.is_number() ? value.get<float>() : fallback;
+        }
+
+        [[nodiscard]] nlohmann::json jsonVec4Value(const glm::vec4& value)
+        {
+            return nlohmann::json::array({value.x, value.y, value.z, value.w});
+        }
+
+        [[nodiscard]] const material_graph::Node*
+        linkedNode(const material_graph::Graph& graph,
+                   const material_graph::Node&  node,
+                   std::string_view             pin)
+        {
+            const auto* link = material_graph::findInputLink(graph, node.id, pin);
+            return link ? material_graph::findNode(graph, link->from.nodeId) : nullptr;
+        }
+
+        [[nodiscard]] const material_graph::Link*
+        linkedInput(const material_graph::Graph& graph,
+                    const material_graph::Node&  node,
+                    std::string_view             pin)
+        {
+            return material_graph::findInputLink(graph, node.id, pin);
+        }
+
+        [[nodiscard]] nlohmann::json constantNodeValue(const material_graph::Graph& graph,
+                                                       const material_graph::Node&  node,
+                                                       std::string_view             outputPin,
+                                                       const nlohmann::json&        fallback)
+        {
+            if (node.typeId == "vultra.param.float" || node.typeId == "vultra.param.vec2" ||
+                node.typeId == "vultra.param.vec3" || node.typeId == "vultra.param.vec4" ||
+                node.typeId == "vultra.param.color" || node.typeId == "vultra.param.bool" ||
+                node.typeId == "vultra.param.int" || node.typeId == "vultra.param.enum")
+                return node.params.value("value", fallback);
+
+            if ((node.typeId == "vultra.math.add" || node.typeId == "vultra.math.subtract" ||
+                 node.typeId == "vultra.math.multiply" || node.typeId == "vultra.math.divide" ||
+                 node.typeId == "vultra.math.min" || node.typeId == "vultra.math.max") &&
+                outputPin == "out")
+            {
+                const auto* aNode = linkedNode(graph, node, "a");
+                const auto* bNode = linkedNode(graph, node, "b");
+                const float a = aNode ? jsonFloat(constantNodeValue(graph, *aNode, "value", 0.0f), 0.0f) : 0.0f;
+                const float b = bNode ? jsonFloat(constantNodeValue(graph, *bNode, "value", 0.0f), 0.0f) : 0.0f;
+                if (node.typeId == "vultra.math.add")
+                    return a + b;
+                if (node.typeId == "vultra.math.subtract")
+                    return a - b;
+                if (node.typeId == "vultra.math.multiply")
+                    return a * b;
+                if (node.typeId == "vultra.math.divide")
+                    return b == 0.0f ? 0.0f : a / b;
+                if (node.typeId == "vultra.math.min")
+                    return std::min(a, b);
+                return std::max(a, b);
+            }
+
+            if ((node.typeId == "vultra.math.one_minus" || node.typeId == "vultra.math.power") && outputPin == "out")
+            {
+                if (node.typeId == "vultra.math.one_minus")
+                {
+                    const auto* vNode = linkedNode(graph, node, "v");
+                    const float v = vNode ? jsonFloat(constantNodeValue(graph, *vNode, "value", 0.0f), 0.0f) : 0.0f;
+                    return 1.0f - v;
+                }
+                const auto* baseNode = linkedNode(graph, node, "base");
+                const auto* exponentNode = linkedNode(graph, node, "exponent");
+                const float base = baseNode ? jsonFloat(constantNodeValue(graph, *baseNode, "value", 1.0f), 1.0f) : 1.0f;
+                const float exponent = exponentNode ? jsonFloat(constantNodeValue(graph, *exponentNode, "value", 1.0f), 1.0f) : 1.0f;
+                return std::pow(std::max(base, 0.0f), exponent);
+            }
+
+            if (node.typeId == "vultra.math.saturate" && outputPin == "out")
+            {
+                const auto* vNode = linkedNode(graph, node, "v");
+                const float v = vNode ? jsonFloat(constantNodeValue(graph, *vNode, "value", 0.0f), 0.0f) : 0.0f;
+                return glm::clamp(v, 0.0f, 1.0f);
+            }
+
+            if (node.typeId == "vultra.math.mix" && outputPin == "out")
+            {
+                auto inputValue = [&](std::string_view pin, const nlohmann::json& inputFallback) {
+                    const auto* inputLink = linkedInput(graph, node, pin);
+                    const auto* inputNode = inputLink ? material_graph::findNode(graph, inputLink->from.nodeId) : nullptr;
+                    return inputNode ? constantNodeValue(graph, *inputNode, inputLink->from.pin, inputFallback) : inputFallback;
+                };
+                const auto a = jsonVec4(inputValue("a", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})), glm::vec4(1.0f));
+                const auto b = jsonVec4(inputValue("b", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})), glm::vec4(1.0f));
+                const auto t = glm::clamp(jsonFloat(inputValue("t", 0.0f), 0.0f), 0.0f, 1.0f);
+                return jsonVec4Value(glm::mix(a, b, t));
+            }
+
+            return fallback;
+        }
+
+        [[nodiscard]] nlohmann::json surfaceInputValue(const material_graph::Graph& graph,
+                                                       const material_graph::Node&  output,
+                                                       std::string_view             pin,
+                                                       const nlohmann::json&        fallback)
+        {
+            if (const auto* link = linkedInput(graph, output, pin))
+            {
+                if (const auto* source = material_graph::findNode(graph, link->from.nodeId))
+                    return constantNodeValue(graph, *source, link->from.pin, fallback);
+            }
+            return output.params.value(std::string(pin), fallback);
+        }
+
+        [[nodiscard]] uint32_t materialGraphTextureIndex(IAssetService&              assets,
+                                                         const material_graph::Graph& graph,
+                                                         const material_graph::Node&  output,
+                                                         std::string_view             pin)
+        {
+            const auto* link = linkedInput(graph, output, pin);
+            if (!link)
+                return 0u;
+
+            const auto* source = material_graph::findNode(graph, link->from.nodeId);
+            if (!source)
+                return 0u;
+
+            std::unordered_set<std::string> visited;
+            const auto findTexture = [&](const material_graph::Node& node,
+                                         auto&&                     findTextureRef) -> uint32_t {
+                if (!visited.insert(node.id).second)
+                    return 0u;
+
+                if (node.typeId == "vultra.param.texture2d")
+                {
+                    const auto uri = node.params.value("texture", std::string {});
+                    if (uri.empty())
+                        return 0u;
+
+                    auto texture = assets.loadTextureSync(uri);
+                    return texture.ready() ? texture.gpuIndex() : 0u;
+                }
+
+                for (const auto& upstream : graph.links)
+                {
+                    if (upstream.to.nodeId != node.id)
+                        continue;
+                    const auto* upstreamNode = material_graph::findNode(graph, upstream.from.nodeId);
+                    if (!upstreamNode)
+                        continue;
+                    if (const auto textureIndex = findTextureRef(*upstreamNode, findTextureRef); textureIndex != 0u)
+                        return textureIndex;
+                }
+                return 0u;
+            };
+
+            return findTexture(*source, findTexture);
+        }
+
+        [[nodiscard]] MaterialGraphSurfaceParams
+        materialGraphSurfaceParams(IAssetService& assets, std::string_view materialGraphUri, const uint32_t graphId)
+        {
+            MaterialGraphSurfaceParams params {};
+            params.graphId = graphId;
+
+            std::vector<material_graph::Diagnostic> diagnostics;
+            auto text = assets.loadTextAssetSync(materialGraphUri);
+            if (!text)
+                return params;
+
+            auto graph = material_graph::loadGraphFromText(text.value(), &diagnostics);
+            if (!graph)
+                return params;
+
+            const auto output = std::find_if(graph->nodes.begin(), graph->nodes.end(), [](const material_graph::Node& node) {
+                return node.typeId == "vultra.output.surface";
+            });
+            if (output == graph->nodes.end())
+                return params;
+
+            params.baseColor =
+                jsonVec4(surfaceInputValue(*graph, *output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})),
+                         glm::vec4(1.0f));
+            const glm::vec3 emissive =
+                jsonVec3(surfaceInputValue(*graph, *output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f})),
+                         glm::vec3(0.0f));
+            params.emissiveAlpha = glm::vec4(
+                emissive,
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "alpha", 1.0f), 1.0f), 0.0f, 1.0f));
+            params.metallicRoughnessAoCutoff = glm::vec4(
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "metallic", 0.0f), 0.0f), 0.0f, 1.0f),
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "roughness", 1.0f), 1.0f), 0.045f, 1.0f),
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "ao", 1.0f), 1.0f), 0.0f, 1.0f),
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "alphaCutoff", 0.5f), 0.5f), 0.0f, 1.0f));
+            params.textureInfo.x = materialGraphTextureIndex(assets, *graph, *output, "baseColor");
+            params.alphaMode = static_cast<uint32_t>(
+                material_graph::alphaModeFromString(output->params.value("alphaMode", std::string {"Opaque"})));
+            params.shadingModel = static_cast<uint32_t>(
+                material_graph::shadingModelFromString(output->params.value("shadingModel", std::string {"PBR_MR"})));
+            if (params.shadingModel == static_cast<uint32_t>(material_graph::ShadingModel::ePBRSpecularGlossiness) ||
+                params.shadingModel == static_cast<uint32_t>(material_graph::ShadingModel::ePhong))
+                params.metallicRoughnessAoCutoff.x = 0.0f;
+            return params;
+        }
+
+        void uploadMaterialGraphParams(resource::GpuResourcePool& pool,
+                                       rhi::RenderDevice&         rd,
+                                       resource::GpuMaterial&     material,
+                                       const MaterialGraphSurfaceParams& params)
+        {
+            if (material.blockOffsetBytes + sizeof(params) <= pool.materialParams.cpu.size())
+            {
+                std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, &params, sizeof(params));
+                if (pool.materialParams.gpu)
+                    rd.uploadS(*pool.materialParams.gpu, 0, static_cast<uint64_t>(pool.materialParams.cpu.size()), pool.materialParams.cpu.data());
+            }
+            else
+            {
+                material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &params, sizeof(params));
+                pool.materialTableDirty = true;
+            }
+        }
+
+        [[nodiscard]] uint32_t ensureMaterialGraphGpuMaterial(IAssetService&       assets,
+                                                              IGpuResourceService& gpuResources,
                                                               rhi::RenderDevice&   rd,
                                                               std::string_view     materialGraphUri)
         {
@@ -75,22 +327,17 @@ namespace vultra
 
             auto&          pool = gpuResources.pool();
             const uint32_t graphId = material_graph::stableGraphId(materialGraphUri);
+            const auto     params = materialGraphSurfaceParams(assets, materialGraphUri, graphId);
             for (uint32_t i = 0; i < static_cast<uint32_t>(pool.materials.size()); ++i)
             {
-                const auto& material = pool.materials[i];
+                auto& material = pool.materials[i];
                 if (material.model == resource::GpuMaterialModel::eMaterialGraph && material.tableIndex == graphId)
+                {
+                    uploadMaterialGraphParams(pool, rd, material, params);
                     return i;
+                }
             }
 
-            struct EmptyGraphParams
-            {
-                uint32_t graphId {0};
-                uint32_t reserved0 {0};
-                uint32_t reserved1 {0};
-                uint32_t reserved2 {0};
-            };
-
-            const EmptyGraphParams params {.graphId = graphId};
             resource::GpuMaterial  material;
             material.model            = resource::GpuMaterialModel::eMaterialGraph;
             material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &params, sizeof(params));
@@ -251,7 +498,7 @@ namespace vultra
             return filename;
         }
 
-        [[nodiscard]] bool rendererRequiresRayTracing(std::string_view rendererKey)
+        [[nodiscard]] bool rendererKeyRequiresRayTracingScene(std::string_view rendererKey)
         {
             return rendererKey == "universal_rt" || rendererKey == "default_rt";
         }
@@ -793,7 +1040,7 @@ namespace vultra
             for (const auto& materialOverride : mesh.materialOverrides)
             {
                 const uint32_t graphMaterialIndex =
-                    ensureMaterialGraphGpuMaterial(gpuResources, rd, materialOverride.materialGraph);
+                    ensureMaterialGraphGpuMaterial(assets, gpuResources, rd, materialOverride.materialGraph);
                 if (graphMaterialIndex != std::numeric_limits<uint32_t>::max())
                 {
                     inst.materialOverrides.push_back(RenderInstance::MaterialOverride {
@@ -802,7 +1049,7 @@ namespace vultra
                     });
                 }
             }
-            if (mesh.builtinGeometry != UINT32_MAX)
+            if (mesh.builtinGeometry != UINT32_MAX && inst.materialOverrides.empty())
             {
                 inst.baseColorOverride    = mesh.materialColor;
                 inst.hasBaseColorOverride = true;
@@ -1033,11 +1280,7 @@ namespace vultra
         m_Renderers.clear();
 
         m_FrameGraphTextureCaptureEnabled = false;
-        m_FrameGraphTexturePreviewPipeline.reset();
-        m_FrameGraphTexturePreviewPipelineFormat = rhi::PixelFormat::eUndefined;
-        m_FrameGraphDebugTextures.clear();
-        m_FrameGraphDebugTextureSlots.clear();
-        m_RetiredFrameGraphDebugTextureSlots.clear();
+        clearFrameGraphDebugState();
 
         m_TransientResources.reset();
 
@@ -1075,7 +1318,7 @@ namespace vultra
 
     Ref<Renderer> RenderSystem::resolveRenderer(const RenderCamera& cam) const
     {
-        if (rendererRequiresRayTracing(cam.rendererKey))
+        if (rendererRequiresRayTracingScene(cam.rendererKey))
         {
             const auto* renderBackend = ctx().services.tryGet<IRenderBackendService>();
             const bool  rayTracingAvailable =
@@ -1096,6 +1339,17 @@ namespace vultra
             return it2->second;
 
         return nullptr;
+    }
+
+    bool RenderSystem::rendererRequiresRayTracingScene(std::string_view rendererKey) const
+    {
+        if (rendererKeyRequiresRayTracingScene(rendererKey))
+            return true;
+
+        if (auto it = m_Renderers.find(std::string(rendererKey)); it != m_Renderers.end())
+            return it->second && it->second->requiresRayTracingScene();
+
+        return false;
     }
 
     void RenderSystem::onResize(uint32_t width, uint32_t height)
@@ -1148,6 +1402,7 @@ namespace vultra
 
         if (auto* backendService = ctx().services.tryGet<IRenderBackendService>())
             backendService->renderDevice().waitIdle();
+        clearFrameGraphDebugState();
 
         const auto rendererKey = renderConfig.renderPipelineRendererKey.empty() ?
                                      rendererKeyFromRenderGraphUri(renderConfig.renderPipelineAsset) :
@@ -1171,6 +1426,7 @@ namespace vultra
 
         if (auto* backendService = ctx().services.tryGet<IRenderBackendService>())
             backendService->renderDevice().waitIdle();
+        clearFrameGraphDebugState();
 
         auto key = rendererKey.empty() ? rendererKeyFromRenderGraphUri(asset) : std::string {rendererKey};
         auto renderer = createRef<DeclarativeRenderer>(std::string {asset}, key);
@@ -1183,6 +1439,18 @@ namespace vultra
         m_PendingRenderPipelineRendererKey.clear();
         VULTRA_CORE_INFO("[RenderSystem] Reloaded render pipeline '{}'", asset);
         return true;
+    }
+
+    void RenderSystem::clearFrameGraphDebugState()
+    {
+        m_FrameGraphTexturePreviewPipeline.reset();
+        m_FrameGraphTexturePreviewPipelineFormat = rhi::PixelFormat::eUndefined;
+        m_FrameGraphDebugTextures.clear();
+        m_FrameGraphDebugTextureSlots.clear();
+        m_RetiredFrameGraphDebugTextureSlots.clear();
+        m_FrameGraphTexturePreviewOverrides.clear();
+        m_FrameGraphTexturePreviewSettings = {};
+        m_LastFrameGraphSnapshot.clear();
     }
 
     void RenderSystem::releaseOverrideRenderWorld(World* world)
@@ -1596,8 +1864,8 @@ namespace vultra
         const auto cookedCameras = camService.cameras();
         const std::span<const RenderCamera> cams = cookedCameras;
         const bool rayTracingSceneRequired =
-            std::any_of(cams.begin(), cams.end(), [](const RenderCamera& cam) {
-                return rendererRequiresRayTracing(cam.rendererKey);
+            std::any_of(cams.begin(), cams.end(), [this](const RenderCamera& cam) {
+                return rendererRequiresRayTracingScene(cam.rendererKey);
             });
         const bool rayTracingAvailable =
             rayTracingSceneRequired &&
@@ -2528,6 +2796,17 @@ namespace vultra
 
         if (imguiService && backendService.isXREnabled() && backendService.isXRMirrorEnabled() && !xrEyeViews.empty())
         {
+            struct alignas(16) MirrorPreviewPushConstants
+            {
+                glm::ivec4 channelMask {1, 1, 1, 1};
+                int        gammaCorrect {0};
+                int        previewMode {0};
+                float      depthNear {0.1f};
+                float      depthFar {1000.0f};
+                float      clampMin {0.0f};
+                float      clampMax {1.0f};
+            };
+
             for (const auto& eyeView : xrEyeViews)
             {
                 if (!eyeView.target || !eyeView.mirrorTarget)
@@ -2540,7 +2819,51 @@ namespace vultra
                 }
 
                 rhi::prepareForReading(cb, *eyeView.target);
-                cb.blit(*eyeView.target, *eyeView.mirrorTarget, rhi::TexelFilter::eLinear);
+                if (m_BuiltinRenderSettings.xrMirrorGammaCorrect)
+                {
+                    auto* pipeline = getFrameGraphTexturePreviewPipeline(
+                        rd,
+                        shaderService.builtinLibrary(rhi::ShaderProfile::eGeneral),
+                        eyeView.mirrorTarget->getPixelFormat());
+                    if (pipeline)
+                    {
+                        const auto descriptorSet =
+                            cb.createDescriptorSetBuilder()
+                                .bind(0,
+                                      rhi::bindings::CombinedImageSampler {
+                                          .texture     = eyeView.target,
+                                          .imageAspect = rhi::ImageAspect::eColor,
+                                      })
+                                .build(pipeline->getDescriptorSetLayout(3));
+                        const MirrorPreviewPushConstants pc {
+                            .channelMask = glm::ivec4(1, 1, 1, 0),
+                            .gammaCorrect = 1,
+                            .previewMode = 0,
+                            .depthNear = 0.1f,
+                            .depthFar = 1000.0f,
+                            .clampMin = 0.0f,
+                            .clampMax = 1.0f,
+                        };
+                        rhi::prepareForAttachment(cb, *eyeView.mirrorTarget, false);
+                        cb.bindPipeline(*pipeline)
+                            .bindDescriptorSet(3, descriptorSet)
+                            .pushConstants(rhi::ShaderStages::eFragment, 0, &pc)
+                            .beginRendering({
+                                .area = {.extent = eyeView.mirrorTarget->getExtent()},
+                                .colorAttachments = {rhi::AttachmentInfo {.target = eyeView.mirrorTarget}},
+                            })
+                            .drawFullScreenTriangle()
+                            .endRendering();
+                    }
+                    else
+                    {
+                        cb.blit(*eyeView.target, *eyeView.mirrorTarget, rhi::TexelFilter::eLinear);
+                    }
+                }
+                else
+                {
+                    cb.blit(*eyeView.target, *eyeView.mirrorTarget, rhi::TexelFilter::eLinear);
+                }
                 rhi::prepareForReading(cb, *eyeView.target);
 
                 if (eyeView.stereoTarget)

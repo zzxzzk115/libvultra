@@ -82,18 +82,32 @@ namespace vultra::material_graph
         add(desc("vultra.param.color", "Color", {}, {pin("value", ValueType::eColor)}, {{"value", {1.0f, 1.0f, 1.0f, 1.0f}}}));
         add(desc("vultra.param.bool", "Bool", {}, {pin("value", ValueType::eBool)}, {{"value", false}}));
         add(desc("vultra.param.int", "Int", {}, {pin("value", ValueType::eInt)}, {{"value", 0}}));
+        add(desc("vultra.param.enum", "Enum", {}, {pin("value", ValueType::eInt)}, {{"value", 0}}));
         add(desc("vultra.param.texture2d", "Texture2D", {}, {pin("texture", ValueType::eTexture2D)}, {{"texture", ""}}));
 
-        const auto number = std::vector {pin("a", ValueType::eFloat), pin("b", ValueType::eFloat)};
+        const auto number = std::vector {pin("a", ValueType::eFloat, 0.0f), pin("b", ValueType::eFloat, 0.0f)};
         add(desc("vultra.math.add", "Add", number, {pin("out", ValueType::eFloat)}));
         add(desc("vultra.math.subtract", "Subtract", number, {pin("out", ValueType::eFloat)}));
         add(desc("vultra.math.multiply", "Multiply", number, {pin("out", ValueType::eFloat)}));
         add(desc("vultra.math.divide", "Divide", number, {pin("out", ValueType::eFloat)}));
-        add(desc("vultra.math.dot", "Dot", {pin("a", ValueType::eVec3), pin("b", ValueType::eVec3)}, {pin("out", ValueType::eFloat)}));
-        add(desc("vultra.math.normalize", "Normalize", {pin("v", ValueType::eVec3)}, {pin("out", ValueType::eVec3)}));
-        add(desc("vultra.math.clamp", "Clamp", {pin("v", ValueType::eFloat), pin("min", ValueType::eFloat), pin("max", ValueType::eFloat)}, {pin("out", ValueType::eFloat)}));
-        add(desc("vultra.math.saturate", "Saturate", {pin("v", ValueType::eFloat)}, {pin("out", ValueType::eFloat)}));
-        add(desc("vultra.math.mix", "Mix", {pin("a", ValueType::eVec4), pin("b", ValueType::eVec4), pin("t", ValueType::eFloat)}, {pin("out", ValueType::eVec4)}));
+        add(desc("vultra.math.one_minus", "One Minus", {pin("v", ValueType::eFloat, 0.0f)}, {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.power", "Power", {pin("base", ValueType::eFloat, 1.0f), pin("exponent", ValueType::eFloat, 1.0f)}, {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.min", "Min", number, {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.max", "Max", number, {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.dot",
+                 "Dot",
+                 {pin("a", ValueType::eVec3, nlohmann::json::array({0.0f, 0.0f, 0.0f})),
+                  pin("b", ValueType::eVec3, nlohmann::json::array({0.0f, 1.0f, 0.0f}))},
+                 {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.normalize", "Normalize", {pin("v", ValueType::eVec3, nlohmann::json::array({0.0f, 1.0f, 0.0f}))}, {pin("out", ValueType::eVec3)}));
+        add(desc("vultra.math.clamp", "Clamp", {pin("v", ValueType::eFloat, 0.0f), pin("min", ValueType::eFloat, 0.0f), pin("max", ValueType::eFloat, 1.0f)}, {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.saturate", "Saturate", {pin("v", ValueType::eFloat, 0.0f)}, {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.mix",
+                 "Mix",
+                 {pin("a", ValueType::eVec4, nlohmann::json::array({0.0f, 0.0f, 0.0f, 1.0f})),
+                  pin("b", ValueType::eVec4, nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})),
+                  pin("t", ValueType::eFloat, 0.5f)},
+                 {pin("out", ValueType::eVec4)}));
 
         add(desc("vultra.texture.sample2d", "Sample Texture2D", {pin("texture", ValueType::eTexture2D), pin("uv", ValueType::eVec2)}, {pin("rgba", ValueType::eVec4), pin("rgb", ValueType::eVec3), pin("a", ValueType::eFloat)}));
         add(desc("vultra.utility.normal_map", "Normal Map", {pin("sample", ValueType::eVec3), pin("normalWS", ValueType::eVec3)}, {pin("normal", ValueType::eVec3)}));
@@ -102,7 +116,7 @@ namespace vultra::material_graph
         add(desc("vultra.output.surface",
                                    "Surface Output",
                                    {
-                                       pin("baseColor", ValueType::eVec4, nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})),
+                                       pin("baseColor", ValueType::eColor, nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})),
                                        pin("normal", ValueType::eVec3),
                                        pin("metallic", ValueType::eFloat, 0.0f),
                                        pin("roughness", ValueType::eFloat, 1.0f),
@@ -112,7 +126,17 @@ namespace vultra::material_graph
                                        pin("alphaCutoff", ValueType::eFloat, 0.5f),
                                    },
                                    {},
-                                   {{"shadingModel", "Lit"}, {"alphaMode", "Opaque"}}));
+                                   {
+                                       {"baseColor", {1.0f, 1.0f, 1.0f, 1.0f}},
+                                       {"metallic", 0.0f},
+                                       {"roughness", 1.0f},
+                                       {"ao", 1.0f},
+                                       {"emissive", {0.0f, 0.0f, 0.0f}},
+                                       {"alpha", 1.0f},
+                                       {"alphaCutoff", 0.5f},
+                                       {"shadingModel", "PBR_MR"},
+                                       {"alphaMode", "Opaque"},
+                                   }));
 
         return registry;
     }
