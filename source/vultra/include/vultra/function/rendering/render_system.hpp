@@ -54,6 +54,7 @@ namespace vultra
         void onResize(uint32_t width, uint32_t height) override;
         bool reloadRenderPipeline() override;
         bool reloadRenderPipeline(std::string_view asset, std::string_view rendererKey = {}) override;
+        void releaseOverrideRenderWorld(World* world) override;
 
         // Optional: set default renderer key used if camera.rendererKey not found
         void setDefaultRendererKey(std::string key) { m_DefaultRendererKey = std::move(key); }
@@ -165,6 +166,16 @@ namespace vultra
         GaussianSplatFrameStats     m_GaussianSplatStats;
         BuiltinRenderSettings       m_BuiltinRenderSettings;
         GeometryFactory             m_GeometryFactory;
+
+        struct OverrideRenderWorldSlot
+        {
+            World*                       world {nullptr};
+            RenderWorld                  renderWorld;
+            resource::GpuSceneDatabase   gpuSceneDatabase;
+            resource::GpuSceneView       gpuSceneView;
+            uint64_t                     lastTouchedFrame {0};
+        };
+        std::vector<OverrideRenderWorldSlot> m_OverrideRenderWorlds;
     };
 
     // Cook World into RenderWorld.

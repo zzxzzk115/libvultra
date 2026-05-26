@@ -11,6 +11,7 @@ namespace vultra::resource
         ePBRSpecularGlossiness,
         eUnlit,
         ePhong,
+        eMaterialGraph,
     };
 
     struct GpuMaterial

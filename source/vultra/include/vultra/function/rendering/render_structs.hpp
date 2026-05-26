@@ -27,6 +27,7 @@ namespace vultra
     {
         class Texture;
     }
+    class World;
 
     // A cooked camera used by the renderer (SRP-style).
     // ECS CameraComponent should be cooked into this struct by CameraSystem.
@@ -67,6 +68,7 @@ namespace vultra
 
         // Render target (nullptr => backbuffer or XR-provided target)
         rhi::Texture* target {nullptr};
+        World*        worldOverride {nullptr};
         glm::vec4     clearValue {0, 0, 0, 1};
         uint32_t      clearMode {0};
         bool          renderImGui {true};
@@ -82,12 +84,19 @@ namespace vultra
     // Renderer consumes RenderWorld only.
     struct RenderInstance
     {
+        struct MaterialOverride
+        {
+            uint32_t slot {0};
+            uint32_t materialIndex {0};
+        };
+
         CoreUUID  entity;
         uint32_t  meshIndex {0};
         uint32_t  materialIndex {0};
         glm::mat4 worldMatrix {1.0f};
         glm::vec4 baseColorOverride {1.0f};
         bool      hasBaseColorOverride {false};
+        std::vector<MaterialOverride> materialOverrides;
     };
 
     struct RenderGaussianSplatInstance

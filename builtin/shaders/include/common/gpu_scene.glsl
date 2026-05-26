@@ -147,6 +147,7 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_HZB_STORAGE_BINDING, r32f) unifo
 #define VULTRA_MAT_PBRSG   2u
 #define VULTRA_MAT_UNLIT   3u
 #define VULTRA_MAT_PHONG   4u
+#define VULTRA_MAT_GRAPH   5u
 
 // Render queue IDs shared between GPU build passes and CPU-side inspection.
 #define VULTRA_RENDER_QUEUE_OPAQUE      0u

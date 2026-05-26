@@ -3,10 +3,12 @@
 #include "vultra/core/base/base.hpp"
 #include "vultra/core/rhi/structs/extent2d.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
+#include "vultra/function/rendering/render_structs.hpp"
 
 #include <vbase/service/service_registry.hpp>
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,7 +21,6 @@ namespace vultra
     struct GaussianSplatFrameStats;
     struct GaussianSplatRenderSettings;
     struct BuiltinRenderSettings;
-    struct RenderCamera;
     namespace rhi
     {
         class Texture;
@@ -72,6 +73,7 @@ namespace vultra
         virtual void onResize(uint32_t width, uint32_t height) = 0;
         virtual bool reloadRenderPipeline() = 0;
         virtual bool reloadRenderPipeline(std::string_view asset, std::string_view rendererKey = {}) = 0;
+        virtual void releaseOverrideRenderWorld(World* world) = 0;
 
         // Built-in runtime profiler (default disabled).
         virtual RuntimeProfiler* runtimeProfiler() = 0;
