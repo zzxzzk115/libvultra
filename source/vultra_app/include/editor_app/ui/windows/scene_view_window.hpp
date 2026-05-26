@@ -65,6 +65,8 @@ namespace vultra_app
         void releaseGameOverlayRenderTarget(EditorContext& ctx);
         void resetRenderTargetsForProject(EditorContext& ctx);
         void initializeCameraFromPrimaryCamera(EditorContext& ctx);
+        void updateFocusAnimation();
+        bool focusSelection(EditorContext& ctx, float aspect);
 
         Tool m_Tool {Tool::Select};
         bool m_ShowGrid {false};
@@ -82,8 +84,13 @@ namespace vultra_app
         float     m_CameraYaw {-90.0f};
         float     m_CameraPitch {-15.0f};
         float     m_CameraFovY {60.0f};
+        glm::vec3 m_FocusStartPosition {0.0f};
+        glm::vec3 m_FocusTargetPosition {0.0f};
+        float     m_FocusElapsed {0.0f};
+        float     m_FocusDuration {0.35f};
         float     m_GameOverlayZoom {1.0f};
         uint64_t  m_ProjectGeneration {0};
         bool      m_CameraInitializedFromScene {false};
+        bool      m_FocusActive {false};
     };
 } // namespace vultra_app

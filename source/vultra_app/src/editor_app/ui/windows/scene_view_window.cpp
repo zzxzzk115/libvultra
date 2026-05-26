@@ -5,12 +5,14 @@
 #include <IconsMaterialDesignIcons.h>
 #include <vultra/core/services/input_service.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
+#include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/hierarchy_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
+#include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/world.hpp>
@@ -40,6 +42,23 @@ namespace vultra_app
         constexpr float    kViewManipulatorSize            = 112.0f;
         constexpr float    kViewManipulatorMargin          = 14.0f;
         constexpr glm::vec3 kWorldUp {0.0f, 1.0f, 0.0f};
+
+        struct Bounds
+        {
+            glm::vec3 min {std::numeric_limits<float>::max()};
+            glm::vec3 max {std::numeric_limits<float>::lowest()};
+            bool      valid {false};
+
+            void include(const glm::vec3& p)
+            {
+                min = valid ? glm::min(min, p) : p;
+                max = valid ? glm::max(max, p) : p;
+                valid = true;
+            }
+
+            [[nodiscard]] glm::vec3 center() const { return (min + max) * 0.5f; }
+            [[nodiscard]] float radius() const { return valid ? glm::length((max - min) * 0.5f) : 0.0f; }
+        };
 
         glm::vec3 makeForward(const float yawDegrees, const float pitchDegrees)
         {
@@ -181,6 +200,59 @@ namespace vultra_app
                 return local;
 
             return makeWorldTransformMatrix(reg, hierarchy->parent) * local;
+        }
+
+        bool isDescendantOrSelf(const vultra::World& world, entt::entity entity, entt::entity root)
+        {
+            for (auto e = entity; e != entt::null; e = world.parent(e))
+            {
+                if (e == root)
+                    return true;
+            }
+            return false;
+        }
+
+        Bounds computeEntityFocusBounds(vultra::World& world, vultra::IAssetService& assets, entt::entity root)
+        {
+            Bounds bounds;
+            if (root == entt::null)
+                return bounds;
+
+            auto& reg = world.registry();
+            auto  meshView = reg.view<vultra::TransformComponent, vultra::MeshComponent>();
+            for (auto e : meshView)
+            {
+                if (!isDescendantOrSelf(world, e, root))
+                    continue;
+
+                const auto& meshComponent = meshView.get<vultra::MeshComponent>(e);
+                if (!meshComponent.mesh.valid())
+                    continue;
+
+                auto mesh = assets.loadMeshSync(meshComponent.mesh);
+                if (!mesh.ready() || !mesh.cpu())
+                    continue;
+
+                const auto worldMatrix = makeWorldTransformMatrix(reg, e);
+                for (const auto& p : mesh.cpu()->positions)
+                    bounds.include(glm::vec3(worldMatrix * glm::vec4(glm::vec3 {p.x, p.y, p.z}, 1.0f)));
+            }
+
+            if (!bounds.valid)
+            {
+                if (const auto* transform = reg.try_get<vultra::TransformComponent>(root))
+                {
+                    const auto worldMatrix = makeWorldTransformMatrix(reg, root);
+                    const auto point = glm::vec3(worldMatrix * glm::vec4 {0.0f, 0.0f, 0.0f, 1.0f});
+                    bounds.include(point);
+
+                    const glm::vec3 extent = glm::max(glm::abs(transform->scale), glm::vec3 {0.5f});
+                    bounds.include(point - extent);
+                    bounds.include(point + extent);
+                }
+            }
+
+            return bounds;
         }
 
         glm::mat4 makeGameProjection(const vultra::CameraComponent& camera, const float aspect)
@@ -376,6 +448,60 @@ namespace vultra_app
         releaseGameOverlayRenderTarget(ctx);
     }
 
+    void SceneViewWindow::updateFocusAnimation()
+    {
+        if (!m_FocusActive)
+            return;
+
+        const float dt = std::max(ImGui::GetIO().DeltaTime, 0.0f);
+        m_FocusElapsed = std::min(m_FocusElapsed + dt, m_FocusDuration);
+        const float t = m_FocusDuration > 0.0f ? std::clamp(m_FocusElapsed / m_FocusDuration, 0.0f, 1.0f) : 1.0f;
+        const float eased = 1.0f - std::pow(1.0f - t, 3.0f);
+        m_CameraPosition = glm::mix(m_FocusStartPosition, m_FocusTargetPosition, eased);
+
+        if (t >= 1.0f)
+            m_FocusActive = false;
+    }
+
+    bool SceneViewWindow::focusSelection(EditorContext& ctx, const float aspect)
+    {
+        if (!ctx.services || Selection::lastCategory() != SelectionCategory::Entity)
+            return false;
+
+        auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
+        auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+        if (!worldService || !assetService)
+            return false;
+
+        auto& world = worldService->world();
+        auto& reg = world.registry();
+        auto  entity = findEntityByUUID(world, Selection::lastId());
+        if (entity == entt::null || !reg.valid(entity))
+            return false;
+
+        const auto bounds = computeEntityFocusBounds(world, *assetService, entity);
+        if (!bounds.valid)
+            return false;
+
+        const glm::vec3 center = bounds.center();
+        const float radius = std::max(bounds.radius(), 0.25f);
+        const float fovY = glm::radians(std::clamp(m_CameraFovY, 5.0f, 160.0f));
+        const float safeAspect = std::max(aspect, 0.0001f);
+        const float tanY = std::tan(fovY * 0.5f);
+        const float tanX = tanY * safeAspect;
+        const float fitDistance = radius / std::max(std::min(tanX, tanY), 0.0001f);
+        const glm::vec3 forward = makeForward(m_CameraYaw, m_CameraPitch);
+
+        m_FocusStartPosition = m_CameraPosition;
+        m_FocusTargetPosition = center - forward * std::max(fitDistance * 1.35f, radius + 0.5f);
+        m_FocusElapsed = 0.0f;
+        m_FocusDuration = 0.35f;
+        m_FocusActive = glm::length(m_FocusTargetPosition - m_FocusStartPosition) > 0.0001f;
+        if (!m_FocusActive)
+            m_CameraPosition = m_FocusTargetPosition;
+        return true;
+    }
+
     void SceneViewWindow::draw(EditorContext& ctx)
     {
         resetRenderTargetsForProject(ctx);
@@ -395,6 +521,7 @@ namespace vultra_app
         ensureRenderTarget(ctx, static_cast<uint32_t>(avail.x), static_cast<uint32_t>(avail.y));
         initializeCameraFromPrimaryCamera(ctx);
         applyCameraAlignRequest(ctx.state, m_CameraPosition, m_CameraYaw, m_CameraPitch, m_CameraFovY);
+        updateFocusAnimation();
 
         const ImVec2 imagePos = ImGui::GetCursorScreenPos();
         if (m_ActiveRenderTarget.textureId)
@@ -488,6 +615,8 @@ namespace vultra_app
                 m_Tool = Tool::Rotate;
             if (ImGui::IsKeyPressed(ImGuiKey_R))
                 m_Tool = Tool::Scale;
+            if (ImGui::IsKeyPressed(ImGuiKey_F))
+                focusSelection(ctx, avail.x / std::max(avail.y, 1.0f));
         }
 
         if (ctx.services)
@@ -496,6 +625,7 @@ namespace vultra_app
             {
                 if (flyActive)
                 {
+                    m_FocusActive = false;
                     const ImVec2 delta = ImGui::GetIO().MouseDelta;
                     m_CameraYaw += delta.x * 0.12f;
                     m_CameraPitch = std::clamp(m_CameraPitch - delta.y * 0.12f, -89.0f, 89.0f);
@@ -544,6 +674,7 @@ namespace vultra_app
                         const ImVec2 delta = ImGui::GetIO().MouseDelta;
                         if (delta.x != 0.0f || delta.y != 0.0f)
                         {
+                            m_FocusActive = false;
                             const auto forward = makeForward(m_CameraYaw, m_CameraPitch);
                             const auto right   = glm::normalize(glm::cross(forward, kWorldUp));
                             const auto up      = glm::normalize(glm::cross(right, forward));
@@ -554,7 +685,10 @@ namespace vultra_app
 
                     const float wheel = input->getMouseScrollDelta().y;
                     if (std::abs(wheel) > 0.0f)
+                    {
+                        m_FocusActive = false;
                         m_CameraPosition += makeForward(m_CameraYaw, m_CameraPitch) * (wheel * 0.45f);
+                    }
                 }
             }
 
