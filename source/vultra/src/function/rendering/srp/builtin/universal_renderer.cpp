@@ -478,6 +478,16 @@ namespace vultra
                 ImGui::EndDisabled();
 
             ImGui::Separator();
+            ImGui::Checkbox("Enable Tone Mapping", &settings.toneMapping.enabled);
+            if (!settings.toneMapping.enabled)
+                ImGui::BeginDisabled();
+            ImGui::SliderFloat("Exposure", &settings.toneMapping.exposure, 0.0f, 8.0f, "%.2f");
+            ImGui::Combo("Tone Mapping", &settings.toneMapping.method, "Khronos PBR Neutral\0ACES\0Reinhard\0");
+            settings.toneMapping.method = std::clamp(settings.toneMapping.method, 0, 2);
+            if (!settings.toneMapping.enabled)
+                ImGui::EndDisabled();
+
+            ImGui::Separator();
             ImGui::Checkbox("Enable Shadows", &settings.shadow.enabled);
             if (!settings.shadow.enabled)
                 ImGui::BeginDisabled();
@@ -516,6 +526,7 @@ namespace vultra
             ImGui::SliderFloat("Light Intensity", &settings.pbrLighting.directionalLightIntensity, 0.0f, 20.0f, "%.2f");
             ImGui::ColorEdit3("Ambient Color", &settings.pbrLighting.ambientColor.x);
             ImGui::SliderFloat("Ambient Intensity", &settings.pbrLighting.ambientIntensity, 0.0f, 5.0f, "%.2f");
+            ImGui::Checkbox("Show Skybox", &settings.pbrLighting.showSkybox);
             ImGui::Checkbox("Enable IBL", &settings.pbrLighting.enableIBL);
             if (!settings.pbrLighting.enableIBL)
                 ImGui::BeginDisabled();
@@ -832,7 +843,8 @@ namespace vultra
                                   bool&  swapEyes,
                                   bool&  singleEye,
                                   int&   eyeIndex,
-                                  int    maxEyeIndex)
+                                  int    maxEyeIndex,
+                                  bool&  gammaCorrect)
         {
             if (ImGui::Button("Fit"))
                 fitToPanel = true;
@@ -849,6 +861,9 @@ namespace vultra
 
             ImGui::SameLine();
             ImGui::Checkbox("Single Eye", &singleEye);
+
+            ImGui::SameLine();
+            ImGui::Checkbox("Gamma", &gammaCorrect);
 
             if (!fitToPanel)
                 ImGui::SliderFloat("Scale", &manualScale, 0.1f, 2.0f, "%.2fx");
@@ -998,7 +1013,13 @@ namespace vultra
             {
                 const auto eyeViews    = backendService.xrEyeViews();
                 const int  maxEyeIndex = static_cast<int>(eyeViews.empty() ? 0u : (eyeViews.size() - 1u));
-                drawXrMirrorControls(fitToPanel, manualScale, swapEyes, singleEye, singleEyeIndex, maxEyeIndex);
+                drawXrMirrorControls(fitToPanel,
+                                      manualScale,
+                                      swapEyes,
+                                      singleEye,
+                                      singleEyeIndex,
+                                      maxEyeIndex,
+                                      renderService.builtinRenderSettings().xrMirrorGammaCorrect);
 
                 const size_t mirrorCount = std::min<std::size_t>(eyeViews.size(), m_XRMirrorTextureIds.size());
                 for (size_t eyeIndex = 0; eyeIndex < mirrorCount; ++eyeIndex)

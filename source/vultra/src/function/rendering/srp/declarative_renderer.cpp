@@ -780,7 +780,7 @@ namespace vultra
                                 const auto& settings = renderService->builtinRenderSettings();
                                 auto lightingSettings = settings.pbrLighting;
                                 auto shadowSettings = settings.shadow;
-                                rhi::Texture* skyboxTexture = nullptr;
+                                rhi::Texture* skyboxTexture = settings.pbrLighting.showSkybox ? settings.pbrLighting.environmentMap : nullptr;
                                 lightingSettings.ambientIntensity = params.get<float>("ambientIntensity", lightingSettings.ambientIntensity);
                                 lightingSettings.shadowStrength = params.get<float>("shadowStrength", lightingSettings.shadowStrength);
                                 lightingSettings.iblIntensity = params.get<float>("iblIntensity", lightingSettings.iblIntensity);
@@ -831,7 +831,9 @@ namespace vultra
                                                                             ctx->view().renderWorld);
                                 if (color)
                                 {
-                                    const bool cameraWantsSkybox = ctx->view().camera && ctx->view().camera->clearMode == 1u;
+                                    const bool cameraWantsSkybox =
+                                        (ctx->view().camera && ctx->view().camera->clearMode == 1u) ||
+                                        settings.pbrLighting.showSkybox;
                                     if (cameraWantsSkybox && skyboxTexture &&
                                         ctx->data.contains(kResKey_DepthTexture))
                                     {

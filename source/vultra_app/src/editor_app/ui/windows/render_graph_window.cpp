@@ -4033,6 +4033,30 @@ namespace vultra_app
         const bool switchedGraph = drawProjectRenderGraphSelector(ctx, state.status);
         if (switchedGraph)
         {
+            if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
+            {
+                renderService->setFrameGraphTextureCaptureEnabled(false);
+                renderService->clearFrameGraphTexturePreviewOverrides();
+            }
+            m_RuntimeGraph.reset();
+            m_RuntimeGraphPopupOpen = false;
+            m_RuntimeTexturePreviewOpen = false;
+            m_RuntimeTexturePreviewKey.clear();
+            m_RuntimeTexturePreviewTitle.clear();
+            m_RuntimeTexturePreviewDefaultsKey.clear();
+            m_RuntimeTexturePreviewOverrideKey.clear();
+            m_PendingRuntimeTexturePreviewAutoFitKey.clear();
+            m_PendingRuntimeTexturePreviewAutoFitTexture = nullptr;
+            m_PendingRuntimeTexturePreviewAutoFitFrame = 0u;
+            m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame = 0u;
+            m_PendingRuntimeTexturePreviewAutoFitNextTryFrame = 0u;
+            m_RuntimeGraphTextureAutoFitDone.clear();
+            m_RuntimeGraphTextureDefaultPreviewDone.clear();
+            m_RuntimeGraphTexturePreviewSettings.clear();
+            m_RuntimeGraphTextureAutoFitNextFrame.clear();
+            m_RuntimeGraphTextureAutoFitDeadlineFrame.clear();
+            releaseOverlayRenderTarget(ctx);
+
             state.loaded = false;
             state.dirty = false;
             state.pipelineDirty = false;

@@ -61,9 +61,12 @@ namespace vultra
 
         const bool shouldToneMap = settings.pbrLighting.debugViewMode == PbrLightingSettings::DebugViewMode::eLit &&
                                    settings.shadow.debugMode == ShadowRenderSettings::DebugMode::eOff;
-        if (shouldToneMap && hasColor)
+        if (settings.toneMapping.enabled && shouldToneMap && hasColor)
         {
-            auto toneMapped = m_ToneMappingPass->addPass(ctx, ctx.data.get(kResKey_FinalCompositionSource));
+            auto toneMapped = m_ToneMappingPass->addPass(ctx,
+                                                         ctx.data.get(kResKey_FinalCompositionSource),
+                                                         settings.toneMapping.exposure,
+                                                         settings.toneMapping.method);
             if (toneMapped)
                 ctx.data.set(kResKey_FinalCompositionSource, toneMapped);
         }

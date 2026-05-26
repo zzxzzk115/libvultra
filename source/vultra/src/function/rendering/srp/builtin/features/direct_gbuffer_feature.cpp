@@ -71,7 +71,7 @@ namespace vultra
         const auto& settings = m_RenderService.builtinRenderSettings();
         auto shadowSettings = settings.shadow;
         auto lightingSettings = settings.pbrLighting;
-        rhi::Texture* skyboxTexture = nullptr;
+        rhi::Texture* skyboxTexture = settings.pbrLighting.showSkybox ? settings.pbrLighting.environmentMap : nullptr;
         const auto* renderEnvironment =
             ctx.view().renderWorld && ctx.view().renderWorld->environment.active ?
                 &ctx.view().renderWorld->environment :
@@ -110,7 +110,7 @@ namespace vultra
         if (shadowDirectionalLight)
             shadowSettings.lightDirection = shadowDirectionalLight->direction;
 
-        FrameGraphResource ssao;
+        FrameGraphResource ssao = 0;
         if (settings.ssao.enabled)
         {
             ssao = m_SsaoPass->addPass(ctx,
@@ -136,7 +136,9 @@ namespace vultra
                                            ctx.view().renderWorld);
         if (lit)
         {
-            const bool cameraWantsSkybox = ctx.view().camera && ctx.view().camera->clearMode == 1u;
+            const bool cameraWantsSkybox =
+                (ctx.view().camera && ctx.view().camera->clearMode == 1u) ||
+                settings.pbrLighting.showSkybox;
             if (cameraWantsSkybox && skyboxTexture &&
                 ctx.data.contains(kResKey_DepthTexture))
             {
