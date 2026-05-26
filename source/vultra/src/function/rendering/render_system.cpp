@@ -1599,6 +1599,9 @@ namespace vultra
             std::any_of(cams.begin(), cams.end(), [](const RenderCamera& cam) {
                 return rendererRequiresRayTracing(cam.rendererKey);
             });
+        const bool rayTracingAvailable =
+            rayTracingSceneRequired &&
+            HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline);
 
         // Asset upload/update stage (main thread)
         {
@@ -1663,6 +1666,13 @@ namespace vultra
             gpuSceneTopologyDirty  = true;
             gpuSceneTransformDirty = false;
         }
+        if (!gpuSceneTopologyDirty && !gpuSceneTransformDirty && rayTracingAvailable &&
+            !m_RenderWorldBack.instances.empty() &&
+            (!m_GpuSceneDatabaseFront.rayTracingTlas || !m_GpuSceneDatabaseFront.rayTracingInstanceBuffer ||
+             !m_GpuSceneDatabaseFront.rayTracingGeometryNodeBuffer))
+        {
+            gpuSceneTopologyDirty = true;
+        }
         const bool gpuSceneDirty = gpuSceneTopologyDirty || gpuSceneTransformDirty;
         const bool gaussianSelectionDirty = gaussianOrderedClodMode && gaussianSelectionSettingsDirty;
 
@@ -1690,9 +1700,13 @@ namespace vultra
                 gpuSceneDatabase.transforms[instanceIndex] = model;
             }
             gpuSceneDatabase.uploadTransforms(rd, cb);
-            if (rayTracingSceneRequired &&
-                HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline))
-                gpuSceneDatabase.rebuildRayTracingTlas(rd);
+            if (rayTracingAvailable)
+            {
+                if (gpuSceneDatabase.rayTracingInstances.empty() && !gpuSceneDatabase.instances.empty())
+                    gpuSceneDatabase.rebuildRayTracingScene(rd);
+                else
+                    gpuSceneDatabase.rebuildRayTracingTlas(rd);
+            }
 
             if (gpuSceneView.isCpuDriven())
             {
@@ -1797,8 +1811,7 @@ namespace vultra
             }
             m_GpuSceneDatabaseBack.uploadSceneTables(rd, cb);
 
-            if (rayTracingSceneRequired &&
-                HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline))
+            if (rayTracingAvailable)
                 m_GpuSceneDatabaseBack.rebuildRayTracingScene(rd);
 
             uint32_t maxMeshletDraws = 0;

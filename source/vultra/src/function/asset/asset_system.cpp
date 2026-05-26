@@ -912,7 +912,7 @@ namespace vultra
         pool.meshes[meshIndex].materialOffset = materialOffset;
         pool.meshes[meshIndex].materialCount  = static_cast<uint32_t>(cpuMesh.materials.size());
         pool.meshes[meshIndex].subMeshes.clear();
-        pool.meshes[meshIndex].subMeshes.reserve(cpuMesh.subMeshes.size());
+        pool.meshes[meshIndex].subMeshes.reserve(std::max<size_t>(cpuMesh.subMeshes.size(), 1u));
         for (const auto& subMesh : cpuMesh.subMeshes)
         {
             resource::GpuSubMesh gpuSubMesh {};
@@ -922,6 +922,16 @@ namespace vultra
             gpuSubMesh.indexCount    = subMesh.indexCount;
             gpuSubMesh.materialIndex = materialOffset + subMesh.materialIndex;
             pool.meshes[meshIndex].subMeshes.push_back(gpuSubMesh);
+        }
+        if (pool.meshes[meshIndex].subMeshes.empty() && cpuMesh.vertexCount > 0 && !cpuMesh.indices.empty())
+        {
+            pool.meshes[meshIndex].subMeshes.push_back(resource::GpuSubMesh {
+                .vertexOffset  = 0u,
+                .vertexCount   = cpuMesh.vertexCount,
+                .indexOffset   = 0u,
+                .indexCount    = static_cast<uint32_t>(cpuMesh.indices.size()),
+                .materialIndex = materialOffset,
+            });
         }
 
         const bool rayTracingEnabled =
