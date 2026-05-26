@@ -6,6 +6,8 @@
 #include "vultra/function/camera/camera_system.hpp"
 #include "vultra/function/rendering/srp/renderer.hpp"
 
+#include <chrono>
+#include <cstdint>
 #include <string_view>
 
 #if defined(__ANDROID__)
@@ -49,6 +51,7 @@ namespace vultra
         virtual Ref<Renderer>       makeRenderer() const;
 
         virtual void onWindowEvent(const os::GeneralWindowEvent& e);
+        void         applyPendingResize();
 
         // WebGPU path is still under active bring-up. Demo apps can opt-in to full scene/render content explicitly.
         virtual bool demoEnableExperimentalWebGPUContent() const { return false; }
@@ -60,5 +63,10 @@ namespace vultra
     private:
         std::optional<platform::android::AndroidAppRuntimeContext> m_AndroidRuntimeContext;
 #endif
+    private:
+        bool     m_PendingResize {false};
+        uint32_t m_PendingResizeWidth {0};
+        uint32_t m_PendingResizeHeight {0};
+        std::chrono::steady_clock::time_point m_LastResizeEventTime {};
     };
 } // namespace vultra

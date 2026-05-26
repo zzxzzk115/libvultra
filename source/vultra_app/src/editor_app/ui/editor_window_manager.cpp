@@ -4,6 +4,15 @@
 
 namespace vultra_app
 {
+    void EditorWindowManager::tick(EditorContext& ctx)
+    {
+        for (auto& window : m_Windows)
+        {
+            if (window->open())
+                window->tick(ctx);
+        }
+    }
+
     void EditorWindowManager::draw(EditorContext& ctx)
     {
         if (m_WasOpen.size() != m_Windows.size())

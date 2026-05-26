@@ -1415,25 +1415,26 @@ namespace vultra
 
         void RenderDevice::createDefaultDescriptorPool()
         {
+            constexpr uint32_t kDefaultDescriptorPoolSets = 4096;
             std::vector<vk::DescriptorPoolSize> poolSizes {
-                {vk::DescriptorType::eSampler, 100},
-                {vk::DescriptorType::eCombinedImageSampler, 100},
-                {vk::DescriptorType::eSampledImage, 100},
-                {vk::DescriptorType::eStorageImage, 100},
-                {vk::DescriptorType::eUniformBuffer, 100},
-                {vk::DescriptorType::eStorageBuffer, 100},
-                {vk::DescriptorType::eInputAttachment, 100},
+                {vk::DescriptorType::eSampler, kDefaultDescriptorPoolSets},
+                {vk::DescriptorType::eCombinedImageSampler, kDefaultDescriptorPoolSets},
+                {vk::DescriptorType::eSampledImage, kDefaultDescriptorPoolSets},
+                {vk::DescriptorType::eStorageImage, kDefaultDescriptorPoolSets},
+                {vk::DescriptorType::eUniformBuffer, kDefaultDescriptorPoolSets},
+                {vk::DescriptorType::eStorageBuffer, kDefaultDescriptorPoolSets},
+                {vk::DescriptorType::eInputAttachment, kDefaultDescriptorPoolSets},
             };
 
             if (isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag))
             {
-                poolSizes.emplace_back(vk::DescriptorType::eStorageBufferDynamic, 100);
-                poolSizes.emplace_back(vk::DescriptorType::eAccelerationStructureKHR, 100);
+                poolSizes.emplace_back(vk::DescriptorType::eStorageBufferDynamic, kDefaultDescriptorPoolSets);
+                poolSizes.emplace_back(vk::DescriptorType::eAccelerationStructureKHR, kDefaultDescriptorPoolSets);
             }
 
             vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
             descriptorPoolCreateInfo.setPoolSizes(poolSizes);
-            descriptorPoolCreateInfo.setMaxSets(100);
+            descriptorPoolCreateInfo.setMaxSets(kDefaultDescriptorPoolSets);
             descriptorPoolCreateInfo.setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
             backendOf(m_Backend).m_DefaultDescriptorPool = backendOf(m_Backend).m_Device.createDescriptorPool(descriptorPoolCreateInfo);
         }

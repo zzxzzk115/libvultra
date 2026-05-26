@@ -22,6 +22,7 @@ namespace vultra_app
         }
 
         void draw(EditorContext& ctx);
+        void tick(EditorContext& ctx);
         void destroy(EditorContext& ctx);
 
         [[nodiscard]] const std::vector<std::unique_ptr<EditorWindow>>& windows() const { return m_Windows; }

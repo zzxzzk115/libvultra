@@ -20,6 +20,7 @@ namespace vultra_app
         }
         virtual ~EditorWindow() = default;
 
+        virtual void tick(EditorContext& /*ctx*/) {}
         virtual void draw(EditorContext& ctx) = 0;
         virtual void onClosed(EditorContext& /*ctx*/) {}
         virtual void onDestroy(EditorContext& /*ctx*/) {}

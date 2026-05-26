@@ -3043,6 +3043,7 @@ namespace vultra_app
         const bool visible = ImGui::Begin(title().c_str(), &m_Open, windowFlags);
         if (!visible)
         {
+            releaseOverlayRenderTarget(ctx);
             ImGui::End();
             return;
         }

@@ -452,20 +452,42 @@ namespace vultra
                 return;
             }
 
-            const auto swapchainExtent = backendService->swapchain().getExtent();
-            if (swapchainExtent.width == framebufferWidth && swapchainExtent.height == framebufferHeight)
-            {
-                return;
-            }
-
-            backendService->renderDevice().waitIdle();
-            backendService->frameController().recreate();
-
-            if (auto* renderService = engineCtx().services.tryGet<IRenderService>(); renderService != nullptr)
-            {
-                renderService->onResize(framebufferWidth, framebufferHeight);
-            }
+            m_PendingResize = true;
+            m_PendingResizeWidth = framebufferWidth;
+            m_PendingResizeHeight = framebufferHeight;
+            m_LastResizeEventTime = std::chrono::steady_clock::now();
         }
+    }
+
+    void DemoAppHost::applyPendingResize()
+    {
+        if (!m_PendingResize || m_PendingResizeWidth == 0u || m_PendingResizeHeight == 0u)
+            return;
+
+        constexpr auto kResizeSettleDelay = std::chrono::milliseconds(120);
+        if (std::chrono::steady_clock::now() - m_LastResizeEventTime < kResizeSettleDelay)
+            return;
+
+        auto* backendService = engineCtx().services.tryGet<IRenderBackendService>();
+        if (backendService == nullptr)
+            return;
+
+        const auto swapchainExtent = backendService->swapchain().getExtent();
+        if (swapchainExtent.width == m_PendingResizeWidth && swapchainExtent.height == m_PendingResizeHeight)
+        {
+            m_PendingResize = false;
+            return;
+        }
+
+        const uint32_t framebufferWidth = m_PendingResizeWidth;
+        const uint32_t framebufferHeight = m_PendingResizeHeight;
+        m_PendingResize = false;
+
+        backendService->renderDevice().waitIdle();
+        backendService->frameController().recreate();
+
+        if (auto* renderService = engineCtx().services.tryGet<IRenderService>(); renderService != nullptr)
+            renderService->onResize(framebufferWidth, framebufferHeight);
     }
 
     void DemoAppHost::onPollEvents()
@@ -473,6 +495,7 @@ namespace vultra
         auto&     window        = engineCtx().services.require<IWindowService>().window();
         const int timeoutMillis = (!window.isReady()) ? -1 : 0;
         window.pollEvents(timeoutMillis);
+        applyPendingResize();
     }
 
     bool DemoAppHost::onShouldClose() const
