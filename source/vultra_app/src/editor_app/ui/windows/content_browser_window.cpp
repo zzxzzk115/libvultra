@@ -234,6 +234,17 @@ namespace vultra_app
             return ext == ".gltf" || ext == ".glb" || ext == ".obj" || ext == ".fbx" || ext == ".dae";
         }
 
+        bool isCookableTextureThumbnailSource(const std::filesystem::path& path)
+        {
+            auto ext = path.extension().generic_string();
+            std::transform(ext.begin(),
+                           ext.end(),
+                           ext.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga" ||
+                   ext == ".hdr";
+        }
+
         bool setUuidDragPayload(const std::string& uuidText)
         {
             vbase::UUID parsed {};
@@ -887,11 +898,26 @@ namespace vultra_app
         }
         else if (ui::isTextureSourceAsset(path))
         {
-            const bool cached    = m_PreviewCache.hasCachedTexturePreview(ctx, path);
-            const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
-            previewId            = m_PreviewCache.getTexturePreview(ctx, path, allowLoad);
-            if (!cached && allowLoad)
-                --m_RemainingThumbnailLoads;
+            if (ctx.thumbnails && isCookableTextureThumbnailSource(path))
+            {
+                const auto thumbnail = ctx.thumbnails->requestTexture(ctx, path);
+                if (thumbnail.status == ui::AssetThumbnailStatus::Ready)
+                {
+                    const bool cached    = m_PreviewCache.hasCachedImageFilePreview(ctx, thumbnail.outputPath);
+                    const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
+                    previewId = m_PreviewCache.getImageFilePreview(ctx, thumbnail.outputPath, allowLoad);
+                    if (!cached && allowLoad)
+                        --m_RemainingThumbnailLoads;
+                }
+            }
+            else
+            {
+                const bool cached    = m_PreviewCache.hasCachedTexturePreview(ctx, path);
+                const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
+                previewId = m_PreviewCache.getTexturePreview(ctx, path, allowLoad);
+                if (!cached && allowLoad)
+                    --m_RemainingThumbnailLoads;
+            }
         }
         else if (isModel && ctx.thumbnails)
         {

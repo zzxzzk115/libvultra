@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -29,11 +30,17 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/geometric.hpp>
 
+#include <stb_image.h>
+#include <stb_image_resize2.h>
+#include <stb_image_write.h>
+
 namespace vultra_app::ui
 {
     namespace
     {
         constexpr std::string_view kThumbnailCacheVersion = "lighting-v2";
+        constexpr std::string_view kTextureThumbnailCacheVersion = "texture-v1";
+        constexpr int              kTextureThumbnailSize = 128;
 
         std::string fnv1a64Hex(std::string_view text)
         {
@@ -73,6 +80,17 @@ namespace vultra_app::ui
                            ext.begin(),
                            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
             return ext == ".gltf" || ext == ".glb" || ext == ".obj" || ext == ".fbx" || ext == ".dae";
+        }
+
+        bool isTextureSourcePath(const std::string& path)
+        {
+            auto ext = std::filesystem::path(path).extension().generic_string();
+            std::transform(ext.begin(),
+                           ext.end(),
+                           ext.begin(),
+                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga" ||
+                   ext == ".hdr";
         }
 
         glm::mat4 localMatrix(const vultra::TransformComponent& t)
@@ -399,6 +417,7 @@ namespace vultra_app::ui
         m_StatusCache.clear();
         m_ModelRootRequestCache.clear();
         m_MeshRequestCache.clear();
+        m_TextureRequestCache.clear();
         m_QueuedRequests.clear();
         m_ActiveRenderJob.reset();
         m_TotalQueuedThisPass = 0;
@@ -413,6 +432,7 @@ namespace vultra_app::ui
         m_StatusCache.clear();
         m_ModelRootRequestCache.clear();
         m_MeshRequestCache.clear();
+        m_TextureRequestCache.clear();
         m_QueuedRequests.clear();
         m_ActiveRenderJob.reset();
         m_TotalQueuedThisPass = 0;
@@ -513,6 +533,36 @@ namespace vultra_app::ui
         return request;
     }
 
+    AssetThumbnailRequest AssetThumbnailService::requestTexture(EditorContext& ctx,
+                                                                const std::filesystem::path& sourcePath)
+    {
+        syncProject(ctx);
+
+        const std::string cacheKey = sourcePath.lexically_normal().generic_string();
+        if (auto cachedIt = m_TextureRequestCache.find(cacheKey); cachedIt != m_TextureRequestCache.end())
+        {
+            auto request = cachedIt->second;
+            if (auto statusIt = m_StatusCache.find(request.key); statusIt != m_StatusCache.end())
+                request.status = statusIt->second;
+            return request;
+        }
+
+        AssetThumbnailRequest request;
+        request.kind       = AssetThumbnailKind::Texture;
+        request.sourcePath = sourcePath.lexically_normal();
+        request.sourceUri  = sourceUriFor(ctx, request.sourcePath);
+
+        const auto rel = request.sourceUri.empty() ? normalizedGeneric(request.sourcePath) : request.sourceUri;
+        request.key = "texture:" + std::string(kTextureThumbnailCacheVersion) + ":" + rel + ":" +
+                      std::to_string(fileWriteStamp(request.sourcePath));
+        request.outputPath = thumbnailPathFor(request.key);
+        request.status     = statusFor(request.outputPath);
+        if (request.status == AssetThumbnailStatus::Missing)
+            queueMissing(request);
+        m_TextureRequestCache[cacheKey] = request;
+        return request;
+    }
+
     std::filesystem::path AssetThumbnailService::projectAssetRoot(EditorContext& ctx) const
     {
         return (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
@@ -558,7 +608,105 @@ namespace vultra_app::ui
         m_TotalQueuedThisPass = std::max(m_TotalQueuedThisPass, m_QueuedRequests.size());
     }
 
+    bool AssetThumbnailService::cookTextureThumbnail(const AssetThumbnailRequest& request)
+    {
+        if (request.sourcePath.empty() || request.outputPath.empty())
+            return false;
+
+        std::error_code ec;
+        std::filesystem::create_directories(request.outputPath.parent_path(), ec);
+        if (ec)
+            return false;
+
+        stbi_set_flip_vertically_on_load(false);
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+
+        if (stbi_is_hdr(request.sourcePath.string().c_str()))
+        {
+            float* pixels = stbi_loadf(request.sourcePath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+            if (!pixels || width <= 0 || height <= 0)
+            {
+                if (pixels)
+                    stbi_image_free(pixels);
+                return false;
+            }
+
+            std::vector<float> resized(static_cast<std::size_t>(kTextureThumbnailSize) *
+                                       static_cast<std::size_t>(kTextureThumbnailSize) * 4u);
+            const bool resizedOk = stbir_resize_float_linear(pixels,
+                                                             width,
+                                                             height,
+                                                             0,
+                                                             resized.data(),
+                                                             kTextureThumbnailSize,
+                                                             kTextureThumbnailSize,
+                                                             0,
+                                                             STBIR_RGBA);
+            stbi_image_free(pixels);
+            if (!resizedOk)
+                return false;
+
+            std::vector<unsigned char> ldr(resized.size());
+            for (std::size_t i = 0; i < resized.size(); i += 4)
+            {
+                for (std::size_t c = 0; c < 3; ++c)
+                {
+                    const float mapped = resized[i + c] / (1.0f + std::max(0.0f, resized[i + c]));
+                    ldr[i + c] = static_cast<unsigned char>(std::clamp(std::pow(mapped, 1.0f / 2.2f) * 255.0f,
+                                                                       0.0f,
+                                                                       255.0f));
+                }
+                ldr[i + 3] = static_cast<unsigned char>(std::clamp(resized[i + 3] * 255.0f, 0.0f, 255.0f));
+            }
+
+            return stbi_write_png(request.outputPath.string().c_str(),
+                                  kTextureThumbnailSize,
+                                  kTextureThumbnailSize,
+                                  4,
+                                  ldr.data(),
+                                  kTextureThumbnailSize * 4) != 0;
+        }
+
+        unsigned char* pixels =
+            stbi_load(request.sourcePath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+        if (!pixels || width <= 0 || height <= 0)
+        {
+            if (pixels)
+                stbi_image_free(pixels);
+            return false;
+        }
+
+        std::vector<unsigned char> resized(static_cast<std::size_t>(kTextureThumbnailSize) *
+                                           static_cast<std::size_t>(kTextureThumbnailSize) * 4u);
+        const bool resizedOk = stbir_resize_uint8_srgb(pixels,
+                                                       width,
+                                                       height,
+                                                       0,
+                                                       resized.data(),
+                                                       kTextureThumbnailSize,
+                                                       kTextureThumbnailSize,
+                                                       0,
+                                                       STBIR_RGBA);
+        stbi_image_free(pixels);
+        if (!resizedOk)
+            return false;
+
+        return stbi_write_png(request.outputPath.string().c_str(),
+                              kTextureThumbnailSize,
+                              kTextureThumbnailSize,
+                              4,
+                              resized.data(),
+                              kTextureThumbnailSize * 4) != 0;
+    }
+
     void AssetThumbnailService::prewarmProjectModelThumbnails(EditorContext& ctx)
+    {
+        prewarmProjectThumbnails(ctx);
+    }
+
+    void AssetThumbnailService::prewarmProjectThumbnails(EditorContext& ctx)
     {
         syncProject(ctx);
         if (!ctx.services)
@@ -578,6 +726,10 @@ namespace vultra_app::ui
             else if (entry.type == vasset::VAssetType::eMesh && !entry.importedPath.empty())
             {
                 requestMesh(ctx, uuid, entry.importedPath);
+            }
+            else if (entry.type == vasset::VAssetType::eTexture && isTextureSourcePath(entry.sourcePath))
+            {
+                requestTexture(ctx, assetRoot / std::filesystem::path(entry.sourcePath));
             }
         }
         m_TotalQueuedThisPass = std::max(m_TotalQueuedThisPass, m_QueuedRequests.size());
@@ -615,6 +767,18 @@ namespace vultra_app::ui
                           std::to_string(totalJobs) + "...";
                 return true;
             }
+
+            if (request.kind == AssetThumbnailKind::Texture)
+            {
+                const bool cooked = cookTextureThumbnail(request);
+                m_StatusCache[request.key] = cooked ? AssetThumbnailStatus::Ready : AssetThumbnailStatus::Failed;
+                const auto doneJobs = totalJobs - std::min(totalJobs, m_QueuedRequests.size());
+                progress = std::clamp(static_cast<float>(doneJobs) / static_cast<float>(totalJobs), 0.0f, 1.0f);
+                message = "Cooking texture thumbnail " + std::to_string(doneJobs) + " / " +
+                          std::to_string(totalJobs) + "...";
+                return true;
+            }
+
             if (beginRenderJob(ctx, request))
             {
                 const auto doneJobs = totalJobs - std::min(totalJobs, m_QueuedRequests.size() + 1);

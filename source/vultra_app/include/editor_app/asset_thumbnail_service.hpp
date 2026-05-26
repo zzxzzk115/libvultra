@@ -17,6 +17,7 @@ namespace vultra_app::ui
     {
         ModelRoot,
         Mesh,
+        Texture,
     };
 
     enum class AssetThumbnailStatus
@@ -49,8 +50,10 @@ namespace vultra_app::ui
         AssetThumbnailRequest requestMesh(EditorContext&         ctx,
                                           std::string_view       uuid,
                                           std::string_view       importedPath);
+        AssetThumbnailRequest requestTexture(EditorContext& ctx, const std::filesystem::path& sourcePath);
 
         void prewarmProjectModelThumbnails(EditorContext& ctx);
+        void prewarmProjectThumbnails(EditorContext& ctx);
         bool processLoadingThumbnail(EditorContext& ctx, float& progress, std::string& message);
 
         const std::vector<AssetThumbnailRequest>& queuedRequests() const { return m_QueuedRequests; }
@@ -62,6 +65,7 @@ namespace vultra_app::ui
         AssetThumbnailStatus  statusFor(const std::filesystem::path& path) const;
         std::string           sourceUriFor(EditorContext& ctx, const std::filesystem::path& sourcePath) const;
         void                  queueMissing(AssetThumbnailRequest request);
+        bool                  cookTextureThumbnail(const AssetThumbnailRequest& request);
         bool                  beginRenderJob(EditorContext& ctx, const AssetThumbnailRequest& request);
         bool                  finishRenderJob(EditorContext& ctx);
 
@@ -72,6 +76,7 @@ namespace vultra_app::ui
         std::unordered_map<std::string, AssetThumbnailStatus> m_StatusCache;
         std::unordered_map<std::string, AssetThumbnailRequest> m_ModelRootRequestCache;
         std::unordered_map<std::string, AssetThumbnailRequest> m_MeshRequestCache;
+        std::unordered_map<std::string, AssetThumbnailRequest> m_TextureRequestCache;
         std::vector<AssetThumbnailRequest>                    m_QueuedRequests;
 
         struct ActiveRenderJob

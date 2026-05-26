@@ -1276,7 +1276,7 @@ namespace vultra_app
                         renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
                 }
 
-                m_ThumbnailService.prewarmProjectModelThumbnails(ctx);
+                m_ThumbnailService.prewarmProjectThumbnails(ctx);
 
                 m_Loading.phase    = LoadingPhase::GenerateThumbnails;
                 m_Loading.progress = 0.86f;
