@@ -872,6 +872,20 @@ namespace vultra_app
 
         ImGui::PushID(path.generic_string().c_str());
         ImGui::BeginGroup();
+        const ImVec2 itemMin = ImGui::GetCursorScreenPos();
+        const ImVec2 itemMax {itemMin.x + iconSize + 10.0f,
+                              itemMin.y + iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + 8.0f};
+        const bool itemVisible = ImGui::IsRectVisible(itemMin, itemMax);
+
+        if (!itemVisible)
+        {
+            ImGui::Dummy(ImVec2(iconSize + 10.0f,
+                                iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + 8.0f));
+            ImGui::EndGroup();
+            ImGui::NextColumn();
+            ImGui::PopID();
+            return;
+        }
 
         const bool selected = isPathSelected(path);
 
@@ -892,7 +906,13 @@ namespace vultra_app
         {
             const auto thumbnail = ctx.thumbnails->requestModelRoot(ctx, path);
             if (thumbnail.status == ui::AssetThumbnailStatus::Ready)
-                previewId = m_PreviewCache.getImageFilePreview(ctx, thumbnail.outputPath, true);
+            {
+                const bool cached    = m_PreviewCache.hasCachedImageFilePreview(ctx, thumbnail.outputPath);
+                const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
+                previewId            = m_PreviewCache.getImageFilePreview(ctx, thumbnail.outputPath, allowLoad);
+                if (!cached && allowLoad)
+                    --m_RemainingThumbnailLoads;
+            }
         }
         if (previewId)
         {
@@ -1058,12 +1078,28 @@ namespace vultra_app
         const ImVec2 itemMax {itemMin.x + iconSize + 10.0f,
                               itemMin.y + iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + 8.0f};
         const bool   itemVisible = ImGui::IsRectVisible(itemMin, itemMax);
+        if (!itemVisible)
+        {
+            ImGui::Dummy(ImVec2(iconSize + 10.0f,
+                                iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + 8.0f));
+            ImGui::EndGroup();
+            ImGui::NextColumn();
+            ImGui::PopID();
+            return;
+        }
+
         ImTextureID previewId {};
-        if (itemVisible && ctx.thumbnails)
+        if (ctx.thumbnails)
         {
             const auto thumbnail = ctx.thumbnails->requestMesh(ctx, uuid, importedPath);
             if (thumbnail.status == ui::AssetThumbnailStatus::Ready)
-                previewId = m_PreviewCache.getImageFilePreview(ctx, thumbnail.outputPath, true);
+            {
+                const bool cached    = m_PreviewCache.hasCachedImageFilePreview(ctx, thumbnail.outputPath);
+                const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
+                previewId            = m_PreviewCache.getImageFilePreview(ctx, thumbnail.outputPath, allowLoad);
+                if (!cached && allowLoad)
+                    --m_RemainingThumbnailLoads;
+            }
         }
 
         if (previewId)

@@ -397,6 +397,8 @@ namespace vultra_app::ui
         m_ProjectGeneration  = ctx.state.projectGeneration;
         m_CacheRoot          = m_ProjectRoot.empty() ? std::filesystem::path {} : m_ProjectRoot / ".vultra" / "thumbs";
         m_StatusCache.clear();
+        m_ModelRootRequestCache.clear();
+        m_MeshRequestCache.clear();
         m_QueuedRequests.clear();
         m_ActiveRenderJob.reset();
         m_TotalQueuedThisPass = 0;
@@ -409,6 +411,8 @@ namespace vultra_app::ui
         m_CacheRoot.clear();
         m_ProjectGeneration = 0;
         m_StatusCache.clear();
+        m_ModelRootRequestCache.clear();
+        m_MeshRequestCache.clear();
         m_QueuedRequests.clear();
         m_ActiveRenderJob.reset();
         m_TotalQueuedThisPass = 0;
@@ -419,6 +423,15 @@ namespace vultra_app::ui
                                                                   const std::filesystem::path& sourcePath)
     {
         syncProject(ctx);
+
+        const std::string cacheKey = sourcePath.lexically_normal().generic_string();
+        if (auto cachedIt = m_ModelRootRequestCache.find(cacheKey); cachedIt != m_ModelRootRequestCache.end())
+        {
+            auto request = cachedIt->second;
+            if (auto statusIt = m_StatusCache.find(request.key); statusIt != m_StatusCache.end())
+                request.status = statusIt->second;
+            return request;
+        }
 
         AssetThumbnailRequest request;
         request.kind       = AssetThumbnailKind::ModelRoot;
@@ -454,6 +467,7 @@ namespace vultra_app::ui
         request.status     = statusFor(request.outputPath);
         if (request.status == AssetThumbnailStatus::Missing)
             queueMissing(request);
+        m_ModelRootRequestCache[cacheKey] = request;
         return request;
     }
 
@@ -462,6 +476,15 @@ namespace vultra_app::ui
                                                              std::string_view importedPath)
     {
         syncProject(ctx);
+
+        const std::string cacheKey = std::string(uuid) + ":" + std::string(importedPath);
+        if (auto cachedIt = m_MeshRequestCache.find(cacheKey); cachedIt != m_MeshRequestCache.end())
+        {
+            auto request = cachedIt->second;
+            if (auto statusIt = m_StatusCache.find(request.key); statusIt != m_StatusCache.end())
+                request.status = statusIt->second;
+            return request;
+        }
 
         AssetThumbnailRequest request;
         request.kind         = AssetThumbnailKind::Mesh;
@@ -486,6 +509,7 @@ namespace vultra_app::ui
         request.status     = statusFor(request.outputPath);
         if (request.status == AssetThumbnailStatus::Missing)
             queueMissing(request);
+        m_MeshRequestCache[cacheKey] = request;
         return request;
     }
 

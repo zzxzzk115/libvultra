@@ -70,6 +70,8 @@ namespace vultra_app::ui
         std::filesystem::path m_CacheRoot;
         uint64_t              m_ProjectGeneration {0};
         std::unordered_map<std::string, AssetThumbnailStatus> m_StatusCache;
+        std::unordered_map<std::string, AssetThumbnailRequest> m_ModelRootRequestCache;
+        std::unordered_map<std::string, AssetThumbnailRequest> m_MeshRequestCache;
         std::vector<AssetThumbnailRequest>                    m_QueuedRequests;
 
         struct ActiveRenderJob

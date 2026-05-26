@@ -205,8 +205,11 @@ namespace vultra_app::ui
     {
         if (m_ProjectGeneration != ctx.state.projectGeneration)
             return false;
-        return !path.empty() &&
-               m_ImageFilePreviews.find(path.lexically_normal().generic_string()) != m_ImageFilePreviews.end();
+        if (path.empty())
+            return false;
+
+        const auto it = m_ImageFilePreviews.find(path.lexically_normal().generic_string());
+        return it != m_ImageFilePreviews.end() && it->second.textureId;
     }
 
     ImTextureID AssetPreviewCache::getImageFilePreview(EditorContext&            ctx,
