@@ -528,6 +528,13 @@ namespace vultra_app
     void EditorApp::tick(EditorContext& ctx)
     {
         ctx.thumbnails = &m_ThumbnailService;
+        const auto assetRoot = ctx.state.currentProject.empty()
+                                   ? std::filesystem::path {}
+                                   : (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+        m_FileWatcher.setRoot(assetRoot);
+        if (m_FileWatcher.consumeChanged())
+            ++ctx.state.assetFileGeneration;
+
         syncPlaybackState(ctx);
         updateBuildAndRun(ctx);
         (void)updateProjectLoading(ctx);
@@ -1451,6 +1458,7 @@ namespace vultra_app
 
         m_WindowManager.destroy(ctx);
         m_ThumbnailService.clear();
+        m_FileWatcher.stop();
         m_Initialized        = false;
         m_DefaultLayoutBuilt = false;
         m_SyncedProject.clear();

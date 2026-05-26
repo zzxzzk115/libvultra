@@ -634,27 +634,27 @@ namespace vultra_app
         const auto assetRoot =
             state.currentProject.empty() ? std::filesystem::path {} : state.currentProject / state.currentAssetRoot;
         if (assetRoot == m_AssetRoot)
+        {
+            if (m_ObservedAssetFileGeneration != state.assetFileGeneration)
+            {
+                m_ObservedAssetFileGeneration = state.assetFileGeneration;
+                invalidateEntryCache();
+            }
             return;
+        }
 
         m_PreviewCache.clear(ctx);
         m_AssetRoot    = assetRoot.lexically_normal();
         m_CurrentDir   = m_AssetRoot;
+        m_ObservedAssetFileGeneration = state.assetFileGeneration;
         m_SelectedPath.clear();
         invalidateEntryCache();
     }
 
     void ContentBrowserWindow::drawDirectoryTree(const std::filesystem::path& path)
     {
-        for (const auto& entry : sortedEntries(path))
+        for (const auto& dir : directoryChildrenFor(path))
         {
-            std::error_code ec;
-            if (!entry.is_directory(ec))
-                continue;
-
-            const auto dir = entry.path();
-            if (!isEditorVisibleSourceAsset(m_AssetRoot, dir))
-                continue;
-
             ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
             if (dir == m_CurrentDir)
                 flags |= ImGuiTreeNodeFlags_Selected;
@@ -663,16 +663,7 @@ namespace vultra_app
             auto       leafIt   = m_VisibleChildDirectoryCache.find(cacheKey);
             if (leafIt == m_VisibleChildDirectoryCache.end())
             {
-                bool hasChild = false;
-                std::error_code childEc;
-                for (const auto& child : std::filesystem::directory_iterator(dir, childEc))
-                {
-                    if (child.is_directory(childEc) && isEditorVisibleSourceAsset(m_AssetRoot, child.path()))
-                    {
-                        hasChild = true;
-                        break;
-                    }
-                }
+                const bool hasChild = !directoryChildrenFor(dir).empty();
                 leafIt = m_VisibleChildDirectoryCache.emplace(cacheKey, hasChild).first;
             }
 
@@ -1254,6 +1245,7 @@ namespace vultra_app
         m_CachedFilter.clear();
         m_CachedEntries.clear();
         m_CachedFilteredEntries.clear();
+        m_DirectoryChildCache.clear();
         m_VisibleChildDirectoryCache.clear();
         m_ModelSubAssetCache.clear();
     }
@@ -1446,6 +1438,35 @@ namespace vultra_app
                 m_CachedFilteredEntries.push_back(path);
         }
         return m_CachedFilteredEntries;
+    }
+
+    const std::vector<std::filesystem::path>& ContentBrowserWindow::directoryChildrenFor(const std::filesystem::path& path)
+    {
+        const auto key = path.lexically_normal().generic_string();
+        auto       it  = m_DirectoryChildCache.find(key);
+        if (it != m_DirectoryChildCache.end())
+            return it->second;
+
+        std::vector<std::filesystem::path> children;
+        std::error_code                    ec;
+        for (const auto& entry : std::filesystem::directory_iterator(path, ec))
+        {
+            if (ec)
+                break;
+
+            std::error_code entryEc;
+            if (!entry.is_directory(entryEc) || entryEc)
+                continue;
+
+            const auto dir = entry.path();
+            if (isEditorVisibleSourceAsset(m_AssetRoot, dir))
+                children.push_back(dir.lexically_normal());
+        }
+
+        std::sort(children.begin(), children.end(), [](const auto& a, const auto& b) {
+            return a.generic_string() < b.generic_string();
+        });
+        return m_DirectoryChildCache.emplace(key, std::move(children)).first->second;
     }
 
     const std::vector<ModelSubAssetEntry>& ContentBrowserWindow::modelSubAssetsFor(EditorContext& ctx,

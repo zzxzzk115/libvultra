@@ -4,6 +4,7 @@
 #include "common/file_dialog.hpp"
 #include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/editor_context.hpp"
+#include "editor_app/project_file_watcher.hpp"
 #include "editor_app/ui/editor_window_manager.hpp"
 #include "launch_options.hpp"
 
@@ -116,6 +117,7 @@ namespace vultra_app
 
         EditorWindowManager m_WindowManager;
         ui::AssetThumbnailService m_ThumbnailService;
+        ProjectFileWatcher m_FileWatcher;
         std::filesystem::path m_SyncedProject;
         uint64_t             m_SyncedProjectGeneration {std::numeric_limits<uint64_t>::max()};
         LoadingState        m_Loading;

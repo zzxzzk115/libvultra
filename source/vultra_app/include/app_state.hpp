@@ -100,6 +100,7 @@ namespace vultra_app
         bool                  profilerWindowOpenRequested {false};
         bool                  frameDebuggerWindowOpenRequested {false};
         uint64_t              projectGeneration {0};
+        uint64_t              assetFileGeneration {0};
         EditorSettings        editorSettings;
         BuildSettings         buildSettings;
         // Scene document state. Tool windows should mutate this, but only document tabs should display it.

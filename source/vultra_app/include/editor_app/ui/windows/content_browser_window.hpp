@@ -58,6 +58,7 @@ namespace vultra_app
         void drawPendingPopups(EditorContext& ctx);
         const std::vector<std::filesystem::path>& entriesForCurrentDir();
         const std::vector<std::filesystem::path>& filteredEntriesForCurrentDir();
+        const std::vector<std::filesystem::path>& directoryChildrenFor(const std::filesystem::path& path);
         const std::vector<ModelSubAssetEntry>& modelSubAssetsFor(EditorContext& ctx, const std::filesystem::path& path);
 
         std::filesystem::path m_AssetRoot;
@@ -79,9 +80,11 @@ namespace vultra_app
         std::string           m_CachedFilter;
         std::vector<std::filesystem::path> m_CachedEntries;
         std::vector<std::filesystem::path> m_CachedFilteredEntries;
+        std::unordered_map<std::string, std::vector<std::filesystem::path>> m_DirectoryChildCache;
         std::unordered_map<std::string, bool> m_VisibleChildDirectoryCache;
         std::unordered_map<std::string, std::vector<ModelSubAssetEntry>> m_ModelSubAssetCache;
         uint64_t m_ModelSubAssetCacheGeneration {0};
+        uint64_t m_ObservedAssetFileGeneration {0};
         std::unordered_set<std::string> m_ExpandedModelAssets;
         int m_RemainingThumbnailLoads {0};
         bool m_PendingSelectDragging {false};
