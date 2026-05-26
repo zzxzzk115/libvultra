@@ -46,11 +46,13 @@ namespace vultra_app
 
         void startLocked(const std::filesystem::path& assetRoot);
         void workerMain(std::filesystem::path assetRoot);
+        void workerMainPolling(std::filesystem::path assetRoot);
 
         mutable std::mutex      m_Mutex;
         std::condition_variable m_Cv;
         std::thread             m_Worker;
         std::filesystem::path   m_Root;
+        void*                   m_NativeHandle {nullptr};
         std::atomic_bool        m_StopRequested {false};
         std::atomic_bool        m_Changed {false};
         std::atomic_uint64_t    m_Generation {0};

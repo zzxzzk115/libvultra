@@ -2144,6 +2144,12 @@ namespace vultra_app
         const float height = std::clamp(width * 0.62f, 140.0f, 260.0f);
         const uint32_t targetWidth = quantizePreviewExtent(width);
         const uint32_t targetHeight = quantizePreviewExtent(height);
+        if (targetWidth != m_ModelPreviewLastWidth || targetHeight != m_ModelPreviewLastHeight)
+        {
+            m_ModelPreviewLastWidth  = targetWidth;
+            m_ModelPreviewLastHeight = targetHeight;
+            m_ModelPreviewDirty      = true;
+        }
         const glm::vec3 cameraOrbitDirection = glm::normalize(glm::vec3 {0.5f, 0.32f, 0.62f});
         const glm::vec3 viewForward = -cameraOrbitDirection;
         glm::vec3       viewRight = glm::cross(viewForward, glm::vec3 {0.0f, 1.0f, 0.0f});
@@ -2196,15 +2202,25 @@ namespace vultra_app
             m_ModelPreviewRotation = glm::normalize(arcballDelta(m_ModelPreviewArcballVector, next) *
                                                     m_ModelPreviewRotation);
             m_ModelPreviewArcballVector = next;
+            m_ModelPreviewDirty = true;
         }
         if (hovered)
         {
             const float wheel = ImGui::GetIO().MouseWheel;
             if (std::abs(wheel) > 0.0f)
+            {
                 m_ModelPreviewDistanceScale = std::clamp(m_ModelPreviewDistanceScale * std::exp(-wheel * 0.16f),
                                                          0.12f,
                                                          12.0f);
+                m_ModelPreviewDirty = true;
+            }
         }
+
+        auto* drawList = ImGui::GetWindowDrawList();
+        drawList->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(72, 150, 225, 180), 4.0f);
+
+        if (!m_ModelPreviewDirty)
+            return;
 
         if (m_ModelPreviewRoot != entt::null && m_ModelPreviewWorld.registry().valid(m_ModelPreviewRoot))
         {
@@ -2215,12 +2231,10 @@ namespace vultra_app
         updateWorldTransforms(m_ModelPreviewWorld);
         const auto rotatedBounds = computeWorldMeshBounds(m_ModelPreviewWorld, *assetService);
 
-        auto* drawList = ImGui::GetWindowDrawList();
-        drawList->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(72, 150, 225, 180), 4.0f);
-
         if (!rotatedBounds.valid)
         {
             ImGui::TextDisabled("Preview scene is empty.");
+            m_ModelPreviewDirty = false;
             return;
         }
 
@@ -2257,6 +2271,7 @@ namespace vultra_app
         camera.selectionOutlineEnabled = false;
         camera.worldOverride = &m_ModelPreviewWorld;
         cameraService->addManualCamera(camera);
+        m_ModelPreviewDirty = false;
     }
 
     void InspectorWindow::ensureModelPreviewRenderTarget(EditorContext& ctx, const uint32_t width, const uint32_t height)
@@ -2316,6 +2331,7 @@ namespace vultra_app
                 .build(rd);
         if (m_ModelPreviewTarget.texture)
             m_ModelPreviewTarget.textureId = imguiService->addTexture(*m_ModelPreviewTarget.texture);
+        m_ModelPreviewDirty = true;
     }
 
     void InspectorWindow::releaseModelPreviewRenderTarget(EditorContext& ctx)
@@ -2337,6 +2353,9 @@ namespace vultra_app
         }
         m_ModelPreviewTarget = {};
         m_RetiredModelPreviewTargets.clear();
+        m_ModelPreviewDirty = true;
+        m_ModelPreviewLastWidth = 0;
+        m_ModelPreviewLastHeight = 0;
     }
 
     void InspectorWindow::rebuildModelPreviewWorldForSource(EditorContext& ctx, const std::filesystem::path& path)
@@ -2354,6 +2373,7 @@ namespace vultra_app
         m_ModelPreviewRotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
         m_ModelPreviewArcballVector = glm::vec3 {0.0f, 0.0f, 1.0f};
         m_ModelPreviewArcballActive = false;
+        m_ModelPreviewDirty = true;
         m_ModelPreviewDistanceScale = 1.0f;
 
         addPreviewLighting(m_ModelPreviewWorld);
@@ -2415,6 +2435,7 @@ namespace vultra_app
         m_ModelPreviewRotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
         m_ModelPreviewArcballVector = glm::vec3 {0.0f, 0.0f, 1.0f};
         m_ModelPreviewArcballActive = false;
+        m_ModelPreviewDirty = true;
         m_ModelPreviewDistanceScale = 1.0f;
 
         addPreviewLighting(m_ModelPreviewWorld);

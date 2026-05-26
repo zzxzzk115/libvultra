@@ -1,6 +1,12 @@
 #include "editor_app/project_file_watcher.hpp"
 
 #include <algorithm>
+#include <vector>
+
+#if defined(_WIN32)
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 namespace vultra_app
 {
@@ -48,6 +54,10 @@ namespace vultra_app
         {
             std::scoped_lock lock(m_Mutex);
             m_StopRequested.store(true, std::memory_order_release);
+#if defined(_WIN32)
+            if (m_NativeHandle)
+                CancelIoEx(static_cast<HANDLE>(m_NativeHandle), nullptr);
+#endif
             m_Root.clear();
         }
         m_Cv.notify_all();
@@ -67,6 +77,80 @@ namespace vultra_app
     }
 
     void ProjectFileWatcher::workerMain(std::filesystem::path assetRoot)
+    {
+#if defined(_WIN32)
+        auto handle = CreateFileW(assetRoot.wstring().c_str(),
+                                  FILE_LIST_DIRECTORY,
+                                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                  nullptr,
+                                  OPEN_EXISTING,
+                                  FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+                                  nullptr);
+        if (handle != INVALID_HANDLE_VALUE)
+        {
+            {
+                std::scoped_lock lock(m_Mutex);
+                m_NativeHandle = handle;
+            }
+
+            std::vector<unsigned char> buffer(64 * 1024);
+            OVERLAPPED overlapped {};
+            overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            if (overlapped.hEvent)
+            {
+                while (!m_StopRequested.load(std::memory_order_acquire))
+                {
+                    ResetEvent(overlapped.hEvent);
+                    DWORD bytesReturned = 0;
+                    const BOOL ok = ReadDirectoryChangesW(handle,
+                                                          buffer.data(),
+                                                          static_cast<DWORD>(buffer.size()),
+                                                          TRUE,
+                                                          FILE_NOTIFY_CHANGE_FILE_NAME |
+                                                              FILE_NOTIFY_CHANGE_DIR_NAME |
+                                                              FILE_NOTIFY_CHANGE_SIZE |
+                                                              FILE_NOTIFY_CHANGE_LAST_WRITE,
+                                                          nullptr,
+                                                          &overlapped,
+                                                          nullptr);
+                    if (!ok)
+                        break;
+
+                    const DWORD waitResult = WaitForSingleObject(overlapped.hEvent, INFINITE);
+                    if (m_StopRequested.load(std::memory_order_acquire))
+                    {
+                        CancelIoEx(handle, &overlapped);
+                        break;
+                    }
+                    if (waitResult != WAIT_OBJECT_0)
+                    {
+                        CancelIoEx(handle, &overlapped);
+                        break;
+                    }
+
+                    if (GetOverlappedResult(handle, &overlapped, &bytesReturned, FALSE) && bytesReturned > 0)
+                    {
+                        m_Changed.store(true, std::memory_order_release);
+                        m_Generation.fetch_add(1, std::memory_order_acq_rel);
+                    }
+                }
+                CloseHandle(overlapped.hEvent);
+            }
+
+            {
+                std::scoped_lock lock(m_Mutex);
+                if (m_NativeHandle == handle)
+                    m_NativeHandle = nullptr;
+            }
+            CloseHandle(handle);
+            return;
+        }
+#endif
+
+        workerMainPolling(std::move(assetRoot));
+    }
+
+    void ProjectFileWatcher::workerMainPolling(std::filesystem::path assetRoot)
     {
         Snapshot previous = scanRoot(assetRoot);
 
