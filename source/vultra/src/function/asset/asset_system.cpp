@@ -477,8 +477,11 @@ namespace vultra
                     inferredType = vasset::VAssetType::eTexture;
                 else if (ext == ".ply" || ext == ".spz" || ext == ".splat" || ext == ".ksplat")
                     inferredType = vasset::VAssetType::eGaussianSplat;
+                else if (logicalPath.rfind(m_Desc.importedFolder + "/mesh/", 0) == 0)
+                    inferredType = vasset::VAssetType::eMesh;
 
-                m_Registry.registerAsset(entry.uuid, logicalPath, logicalPath, inferredType);
+                const auto registryType = entry.type == vasset::VAssetType::eUnknown ? inferredType : entry.type;
+                m_Registry.registerAsset(entry.uuid, logicalPath, logicalPath, registryType);
             }
 
             m_Resolver.loadFromVPK(vpk);

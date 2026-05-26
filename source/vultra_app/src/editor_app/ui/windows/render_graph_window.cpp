@@ -103,6 +103,38 @@ namespace vultra_app
             return std::string(node) + "." + std::string(slot);
         }
 
+        struct PassPorts
+        {
+            std::vector<std::string> inputs;
+            std::vector<std::string> outputs;
+        };
+
+        PassPorts collectPassPorts(const vrendergraph::RenderGraphRegistry& registry,
+                                   const vrendergraph::PassDecl&            pass)
+        {
+            if (registry.contains(pass.type))
+            {
+                const auto& def = registry.get(pass.type);
+                return {.inputs = def.inputs, .outputs = def.outputs};
+            }
+
+            PassPorts ports;
+            ports.inputs.reserve(pass.inputs.size());
+            for (const auto& [slot, _] : pass.inputs)
+            {
+                static_cast<void>(_);
+                ports.inputs.push_back(slot);
+            }
+
+            ports.outputs.reserve(pass.outputs.size());
+            for (const auto& [slot, _] : pass.outputs)
+            {
+                static_cast<void>(_);
+                ports.outputs.push_back(slot);
+            }
+            return ports;
+        }
+
         vrendergraph::PassDecl* findPass(vrendergraph::RenderGraphDesc& graph, std::string_view id)
         {
             for (auto& pass : graph.passes)
@@ -213,18 +245,18 @@ namespace vultra_app
                 changed = false;
                 for (const auto& pass : activeGraph.passes)
                 {
-                    if (pass.enabled || !registry.contains(pass.type))
+                    if (pass.enabled)
                         continue;
 
-                    const auto& def = registry.get(pass.type);
-                    for (const auto& outputSlot : def.outputs)
+                    const auto ports = collectPassPorts(registry, pass);
+                    for (const auto& outputSlot : ports.outputs)
                     {
                         std::string replacement;
                         if (auto it = pass.inputs.find(outputSlot); it != pass.inputs.end() && !it->second.empty())
                             replacement = it->second;
-                        else if (def.inputs.size() == 1)
+                        else if (ports.inputs.size() == 1)
                         {
-                            if (auto it = pass.inputs.find(def.inputs.front()); it != pass.inputs.end() && !it->second.empty())
+                            if (auto it = pass.inputs.find(ports.inputs.front()); it != pass.inputs.end() && !it->second.empty())
                                 replacement = it->second;
                         }
                         if (replacement.empty())

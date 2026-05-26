@@ -333,17 +333,22 @@ namespace vultra_app
             return true;
         }
 
-        int launchPackagedRuntime(const std::filesystem::path& packageExecutable)
+        int launchPackagedRuntime(const std::filesystem::path& packageExecutable,
+                                  const std::filesystem::path& packageVpk,
+                                  const std::string&           sceneUri)
         {
             const auto workingDir = packageExecutable.parent_path();
 #if defined(_WIN32)
             std::ostringstream launch;
             launch << "start \"\" /D " << quoteCommandArg(workingDir) << " "
-                   << quoteCommandArg(packageExecutable.filename());
+                   << quoteCommandArg(packageExecutable.filename()) << " --vpk "
+                   << quoteCommandArg(packageVpk.filename()) << " --scene " << quoteCommandArg(sceneUri);
 #else
             std::ostringstream launch;
             launch << "cd " << quoteCommandArg(workingDir) << " && "
-                   << quoteCommandArg(std::string {"./"} + packageExecutable.filename().generic_string()) << " &";
+                   << quoteCommandArg(std::string {"./"} + packageExecutable.filename().generic_string()) << " --vpk "
+                   << quoteCommandArg(std::string {"./"} + packageVpk.filename().generic_string()) << " --scene "
+                   << quoteCommandArg(sceneUri) << " &";
 #endif
             return runCommand(launch.str());
         }
@@ -398,20 +403,38 @@ namespace vultra_app
                 return {.ok = false, .message = "Export failed: " + manifestError};
             }
 
+            auto packCurrentAssets = [&]() -> std::optional<BuildRunResult> {
+                setBuildRunProgress(progress, 0.25f, "Reimporting assets and packing VPK...");
+#ifdef VULTRA_HAS_VASSET_IMPORT
+                const int importResult = runAssetTool({"vultra asset", "import", assetRootPath.generic_string()});
+                if (importResult != 0)
+                    return BuildRunResult {
+                        .ok = false,
+                        .message = "Export failed: asset import step returned " + std::to_string(importResult) + ".",
+                    };
+
+                const int packResult = runAssetTool(
+                    {"vultra asset", "pack", assetRootPath.generic_string(), vpkPath.generic_string(), "--zstd", "6"});
+                if (packResult != 0)
+                    return BuildRunResult {
+                        .ok = false,
+                        .message = "Export failed: asset package step returned " + std::to_string(packResult) + ".",
+                    };
+                return std::nullopt;
+#else
+                return BuildRunResult {
+                    .ok = false,
+                    .message = "Export failed: vasset import support is not available in this build.",
+                };
+#endif
+            };
+
             if (auto publishedRuntime = findPublishedRuntimeNextToEditor(); publishedRuntime.has_value())
             {
-                const fs::path existingVpk = (projectRoot / "resources.vpk").lexically_normal();
-                if (!fs::exists(existingVpk, ec) || !fs::is_regular_file(existingVpk, ec))
-                {
-                    return {.ok = false,
-                            .message = "Export failed: packaged VPK was not found: " +
-                                       existingVpk.generic_string()};
-                }
+                if (auto packError = packCurrentAssets(); packError.has_value())
+                    return *packError;
 
-                setBuildRunProgress(progress, 0.55f, "Copying package files...");
-                fs::copy_file(existingVpk, vpkPath, fs::copy_options::overwrite_existing, ec);
-                if (ec)
-                    return {.ok = false, .message = "Export failed: cannot copy VPK: " + ec.message()};
+                setBuildRunProgress(progress, 0.55f, "Copying runtime executable...");
 
                 std::string copyError;
                 if (!copyRuntimeToPackage(*publishedRuntime, packageExecutable, copyError))
@@ -420,7 +443,7 @@ namespace vultra_app
                 if (launchRuntime)
                 {
                     setBuildRunProgress(progress, 0.94f, "Launching published runtime...");
-                    const int launchResult = launchPackagedRuntime(packageExecutable);
+                    const int launchResult = launchPackagedRuntime(packageExecutable, vpkPath, sceneUri);
                     if (launchResult != 0)
                         return {.ok = false,
                                 .message = "Export failed: published runtime launch returned " +
@@ -433,22 +456,8 @@ namespace vultra_app
                                                    "Export complete: " + packageExecutable.generic_string()};
             }
 
-            setBuildRunProgress(progress, 0.25f, "Reimporting assets and packing VPK...");
-#ifdef VULTRA_HAS_VASSET_IMPORT
-            const int importResult =
-                runAssetTool({"vultra asset", "import", assetRootPath.generic_string(), "--reimport"});
-            if (importResult != 0)
-                return {.ok = false,
-                        .message = "Export failed: asset import step returned " + std::to_string(importResult) + "."};
-
-            const int packResult =
-                runAssetTool({"vultra asset", "pack", assetRootPath.generic_string(), vpkPath.generic_string(), "--zstd", "6"});
-            if (packResult != 0)
-                return {.ok = false,
-                        .message = "Export failed: asset package step returned " + std::to_string(packResult) + "."};
-#else
-            return {.ok = false, .message = "Export failed: vasset import support is not available in this build."};
-#endif
+            if (auto packError = packCurrentAssets(); packError.has_value())
+                return *packError;
 
             if (launchRuntime && targetPlatform != currentHostPlatform())
             {
@@ -482,7 +491,7 @@ namespace vultra_app
             if (launchRuntime)
             {
                 setBuildRunProgress(progress, 0.94f, "Launching runtime...");
-                const int launchResult = launchPackagedRuntime(packageExecutable);
+                const int launchResult = launchPackagedRuntime(packageExecutable, vpkPath, sceneUri);
                 if (launchResult != 0)
                     return {.ok = false,
                             .message = "Export succeeded, but runtime launch returned " +
