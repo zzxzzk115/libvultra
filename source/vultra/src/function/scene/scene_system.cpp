@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <charconv>
 #include <sstream>
 #include <unordered_set>
 #include <vector>
@@ -112,6 +113,87 @@ namespace vultra
         return {};
     }
 
+    static std::string escape_scene_string(std::string_view s)
+    {
+        std::string out;
+        out.reserve(s.size());
+        for (const char c : s)
+        {
+            if (c == '"' || c == '\\')
+                out.push_back('\\');
+            out.push_back(c);
+        }
+        return out;
+    }
+
+    static std::string unescape_scene_string(std::string_view s)
+    {
+        std::string out;
+        out.reserve(s.size());
+        bool escaped = false;
+        for (const char c : s)
+        {
+            if (escaped)
+            {
+                out.push_back(c);
+                escaped = false;
+                continue;
+            }
+            if (c == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+            out.push_back(c);
+        }
+        return out;
+    }
+
+    static std::vector<MaterialSlotOverride> parse_material_overrides(std::string_view raw)
+    {
+        std::string t = strip_quotes_copy(std::string(raw));
+        t = unescape_scene_string(t);
+
+        std::vector<MaterialSlotOverride> out;
+        std::stringstream ss(t);
+        std::string item;
+        while (std::getline(ss, item, ';'))
+        {
+            item = trim_copy(item);
+            if (item.empty())
+                continue;
+
+            const auto sep = item.find('=');
+            if (sep == std::string::npos)
+                continue;
+
+            const auto slotText = trim_copy(std::string_view(item).substr(0, sep));
+            const auto uri      = trim_copy(std::string_view(item).substr(sep + 1));
+            uint32_t slot = 0;
+            const auto [ptr, ec] = std::from_chars(slotText.data(), slotText.data() + slotText.size(), slot);
+            if (ec != std::errc {} || ptr != slotText.data() + slotText.size() || uri.empty())
+                continue;
+            out.push_back(MaterialSlotOverride {.slot = slot, .materialGraph = uri});
+        }
+        return out;
+    }
+
+    static std::string material_overrides_to_text(const std::vector<MaterialSlotOverride>& overrides)
+    {
+        std::ostringstream oss;
+        bool first = true;
+        for (const auto& override : overrides)
+        {
+            if (override.materialGraph.empty())
+                continue;
+            if (!first)
+                oss << ";";
+            first = false;
+            oss << override.slot << "=" << override.materialGraph;
+        }
+        return std::string("\"") + escape_scene_string(oss.str()) + "\"";
+    }
+
     bool try_resolve_asset_ref_to_uuid(IAssetService*                                      assetService,
                                        const std::unordered_map<std::string, std::string>& assets,
                                        std::string_view                                    raw,
@@ -194,6 +276,11 @@ namespace vultra
                 return entt::meta_any {glm::quat {v[3], v[0], v[1], v[2]}};
         }
 
+        if (expected == entt::resolve<std::vector<MaterialSlotOverride>>())
+        {
+            return entt::meta_any {parse_material_overrides(t)};
+        }
+
         if (expected == entt::resolve<CoreUUID>())
         {
             CoreUUID id;
@@ -271,6 +358,11 @@ namespace vultra
             return std::string("\"") + id.toString() + "\"";
         }
 
+        if (t == entt::resolve<std::vector<MaterialSlotOverride>>())
+        {
+            return material_overrides_to_text(v.cast<const std::vector<MaterialSlotOverride>&>());
+        }
+
         // Fallback
         return "\"<unsupported>\"";
     }
@@ -290,7 +382,7 @@ namespace vultra
         m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent",
                                                                   {"position", "rotation", "scale"});
         m_ComponentRegistry.registerComponent<MeshComponent>("MeshComponent",
-                                                             {"mesh", "builtinGeometry", "materialColor"});
+                                                             {"mesh", "builtinGeometry", "materialColor", "materialOverrides"});
         m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});
         m_ComponentRegistry.registerComponent<CameraComponent>("CameraComponent",
                                                                {"primary",

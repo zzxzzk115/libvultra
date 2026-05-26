@@ -6,9 +6,15 @@
 
 namespace vultra_app
 {
+    namespace ui
+    {
+        class AssetThumbnailService;
+    }
+
     struct EditorContext
     {
         AppState&               state;
         vbase::ServiceRegistry* services {nullptr};
+        ui::AssetThumbnailService* thumbnails {nullptr};
     };
 } // namespace vultra_app

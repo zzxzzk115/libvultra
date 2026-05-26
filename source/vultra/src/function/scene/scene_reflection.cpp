@@ -16,6 +16,8 @@
 #include <entt/entt.hpp>
 #include <entt/meta/factory.hpp>
 
+#include <vector>
+
 namespace vultra
 {
     void registerSceneMeta()
@@ -27,6 +29,11 @@ namespace vultra
         entt::meta_factory<glm::vec3>().type("glm::vec3"_hs);
         entt::meta_factory<glm::vec4>().type("glm::vec4"_hs);
         entt::meta_factory<glm::quat>().type("glm::quat"_hs);
+        entt::meta_factory<MaterialSlotOverride>()
+            .type("MaterialSlotOverride"_hs)
+            .data<&MaterialSlotOverride::slot>("slot"_hs)
+            .data<&MaterialSlotOverride::materialGraph>("materialGraph"_hs);
+        entt::meta_factory<std::vector<MaterialSlotOverride>>().type("MaterialSlotOverrideVector"_hs);
 
         entt::meta_factory<IDComponent>().type("IDComponent"_hs).data<&IDComponent::uuid>("uuid"_hs);
 
@@ -49,7 +56,8 @@ namespace vultra
             .type("MeshComponent"_hs)
             .data<&MeshComponent::mesh>("mesh"_hs)
             .data<&MeshComponent::builtinGeometry>("builtinGeometry"_hs)
-            .data<&MeshComponent::materialColor>("materialColor"_hs);
+            .data<&MeshComponent::materialColor>("materialColor"_hs)
+            .data<&MeshComponent::materialOverrides>("materialOverrides"_hs);
         entt::meta_factory<GaussianSplatComponent>()
             .type("GaussianSplatComponent"_hs)
             .data<&GaussianSplatComponent::gaussianSplat>("gaussianSplat"_hs);

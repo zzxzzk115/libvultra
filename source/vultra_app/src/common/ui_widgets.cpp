@@ -39,7 +39,7 @@ namespace vultra_app::ui
             return ICON_MDI_IMAGE;
         if (hasExtension(path, {".vscn"}))
             return ICON_MDI_FILE_TREE;
-        if (hasExtension(path, {".gltf", ".glb", ".obj", ".fbx", ".ply", ".spz"}))
+        if (hasExtension(path, {".gltf", ".glb", ".obj", ".fbx", ".dae", ".ply", ".spz"}))
             return ICON_MDI_CUBE_OUTLINE;
         if (hasExtension(path, {".lua"}))
             return ICON_MDI_LANGUAGE_LUA;

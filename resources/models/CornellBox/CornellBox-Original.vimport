@@ -1,12 +1,12 @@
 [vimport]
 version=1
-importer="mesh"
-uid="23d29e295e4ac658b881780ef040b999"
+importer="scene_manifest"
+uid="a3b0fca7c79f331d38a39990092c26a2"
 
 [source]
 file="models/CornellBox/CornellBox-Original.obj"
 
 [output]
-file="imported/mesh/CornellBox-Original"
+file="imported/scene_manifest/CornellBox-Original"
 
 [params]

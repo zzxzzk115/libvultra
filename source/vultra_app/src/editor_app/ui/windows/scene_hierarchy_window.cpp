@@ -4,6 +4,8 @@
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
+#include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
@@ -17,17 +19,25 @@
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/world.hpp>
 
+#include <glm/gtc/quaternion.hpp>
 #include <imgui.h>
 
 #include <cstring>
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <vector>
 
 namespace vultra_app
 {
     namespace
     {
+        constexpr const char* kAssetUuidPayload = "VULTRA_ASSET_UUID";
+
         bool isDescendantOf(vultra::World& world, entt::entity entity, entt::entity possibleAncestor)
         {
             for (auto parent = world.parent(entity); parent != entt::null; parent = world.parent(parent))
@@ -104,6 +114,257 @@ namespace vultra_app
             const float x1 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - 2.0f;
             drawList->AddLine(ImVec2(x0, y), ImVec2(x1, y), accent, 2.0f);
             drawList->AddCircleFilled(ImVec2(x0, y), 3.0f, accent);
+        }
+
+        bool isDraggingPayload(const char* type)
+        {
+            const ImGuiPayload* payload = ImGui::GetDragDropPayload();
+            return payload && payload->IsDataType(type);
+        }
+
+        std::string assetNameFromEntry(const vasset::VAssetRegistry::AssetEntry& entry)
+        {
+            const auto sourceName = std::filesystem::path(entry.sourcePath).stem().generic_string();
+            if (!sourceName.empty())
+                return sourceName;
+            const auto importedName = std::filesystem::path(entry.importedPath).stem().generic_string();
+            return importedName.empty() ? "Asset" : importedName;
+        }
+
+        std::string trim(std::string text)
+        {
+            const auto first = std::find_if_not(text.begin(), text.end(), [](unsigned char ch) {
+                return std::isspace(ch) != 0;
+            });
+            const auto last = std::find_if_not(text.rbegin(), text.rend(), [](unsigned char ch) {
+                return std::isspace(ch) != 0;
+            }).base();
+            if (first >= last)
+                return {};
+            return std::string(first, last);
+        }
+
+        std::string unquote(std::string text)
+        {
+            text = trim(std::move(text));
+            if (text.size() >= 2 && text.front() == '"' && text.back() == '"')
+                return text.substr(1, text.size() - 2);
+            return text;
+        }
+
+        bool parseFloatTuple(std::string text, std::vector<float>& out)
+        {
+            out.clear();
+            text = trim(std::move(text));
+            if (text.size() < 2 || text.front() != '(' || text.back() != ')')
+                return false;
+            text = text.substr(1, text.size() - 2);
+
+            std::stringstream ss(text);
+            std::string       part;
+            while (std::getline(ss, part, ','))
+            {
+                try
+                {
+                    out.push_back(std::stof(trim(part)));
+                }
+                catch (...)
+                {
+                    out.clear();
+                    return false;
+                }
+            }
+            return !out.empty();
+        }
+
+        struct MeshSubAssetPlacement
+        {
+            std::string                name;
+            vultra::TransformComponent transform;
+        };
+
+        std::optional<MeshSubAssetPlacement> findMeshSubAssetPlacement(EditorContext& ctx, const std::string& meshImportedPath)
+        {
+            if (!ctx.services || meshImportedPath.empty())
+                return std::nullopt;
+
+            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+            if (!assetService)
+                return std::nullopt;
+
+            const auto assetRoot = std::filesystem::path(assetService->registry().getAssetRootPath());
+            const auto meshUri   = "res://" + meshImportedPath;
+
+            for (const auto& [uuid, manifestEntry] : assetService->registry().getRegistry())
+            {
+                (void)uuid;
+                if (manifestEntry.type != vasset::VAssetType::eSceneManifest || manifestEntry.importedPath.empty())
+                    continue;
+
+                std::ifstream in(assetRoot / std::filesystem::path(manifestEntry.importedPath));
+                if (!in)
+                    continue;
+
+                MeshSubAssetPlacement current {};
+                bool                  inNode = false;
+                std::string           line;
+                while (std::getline(in, line))
+                {
+                    line = trim(line);
+                    if (line.empty())
+                        continue;
+
+                    if (line.starts_with("[node "))
+                    {
+                        current = MeshSubAssetPlacement {};
+                        inNode  = true;
+                        const auto namePos = line.find(" name=\"");
+                        if (namePos != std::string::npos)
+                        {
+                            const auto nameBegin = namePos + std::string_view(" name=\"").size();
+                            const auto nameEnd   = line.find('"', nameBegin);
+                            if (nameEnd != std::string::npos)
+                                current.name = line.substr(nameBegin, nameEnd - nameBegin);
+                        }
+                        continue;
+                    }
+
+                    if (!inNode)
+                        continue;
+
+                    const auto equals = line.find('=');
+                    if (equals == std::string::npos)
+                        continue;
+
+                    const auto key   = trim(line.substr(0, equals));
+                    const auto value = trim(line.substr(equals + 1));
+                    std::vector<float> tuple;
+                    if (key == "TransformComponent/position" && parseFloatTuple(value, tuple) && tuple.size() == 3)
+                    {
+                        current.transform.position = glm::vec3 {tuple[0], tuple[1], tuple[2]};
+                    }
+                    else if (key == "TransformComponent/rotation" && parseFloatTuple(value, tuple) && tuple.size() == 4)
+                    {
+                        current.transform.rotation = glm::normalize(glm::quat {tuple[3], tuple[0], tuple[1], tuple[2]});
+                    }
+                    else if (key == "TransformComponent/scale" && parseFloatTuple(value, tuple) && tuple.size() == 3)
+                    {
+                        current.transform.scale = glm::vec3 {tuple[0], tuple[1], tuple[2]};
+                    }
+                    else if (key == "MeshComponent/mesh" && unquote(value) == meshUri)
+                    {
+                        current.transform.dirty = true;
+                        return current;
+                    }
+                }
+            }
+
+            return std::nullopt;
+        }
+
+        entt::entity instantiateDroppedAsset(EditorContext& ctx,
+                                             vultra::World& world,
+                                             const vultra::CoreUUID& uuid,
+                                             entt::entity parent)
+        {
+            if (!uuid.valid() || !ctx.services)
+                return entt::null;
+
+            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+            if (!assetService)
+                return entt::null;
+
+            const auto entry = assetService->registry().lookup(uuid.native());
+            if (entry.type == vasset::VAssetType::eUnknown)
+            {
+                ctx.state.statusMessage = "Dropped asset is not registered.";
+                return entt::null;
+            }
+
+            if (entry.type == vasset::VAssetType::eScene || entry.type == vasset::VAssetType::eSceneManifest)
+            {
+                auto* sceneService = ctx.services->tryGet<vultra::ISceneService>();
+                if (!sceneService)
+                    return entt::null;
+
+                std::string uri;
+                if (!assetService->resolver().resolve(uuid.native(), uri))
+                {
+                    ctx.state.statusMessage = "Could not resolve scene asset URI.";
+                    return entt::null;
+                }
+
+                const auto root = sceneService->instantiateScene(world, uri, parent, false);
+                if (root != entt::null)
+                    ctx.state.statusMessage = "Instantiated prefab: " + assetNameFromEntry(entry);
+                return root;
+            }
+
+            if (entry.type == vasset::VAssetType::eMesh || entry.type == vasset::VAssetType::eGaussianSplat)
+            {
+                auto& reg = world.registry();
+                auto  entity = parent == entt::null ? world.createEntity() : world.createChild(parent);
+                const auto placement =
+                    entry.type == vasset::VAssetType::eMesh ? findMeshSubAssetPlacement(ctx, entry.importedPath) :
+                                                               std::optional<MeshSubAssetPlacement> {};
+                const auto name = placement && !placement->name.empty() ? placement->name : assetNameFromEntry(entry);
+                reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {name});
+                auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
+                if (placement)
+                    transform = placement->transform;
+
+                if (entry.type == vasset::VAssetType::eMesh)
+                {
+                    reg.emplace<vultra::MeshComponent>(entity, vultra::MeshComponent {.mesh = uuid});
+                    ctx.state.statusMessage = "Created mesh entity: " + name;
+                }
+                else
+                {
+                    reg.emplace<vultra::GaussianSplatComponent>(
+                        entity, vultra::GaussianSplatComponent {.gaussianSplat = uuid});
+                    ctx.state.statusMessage = "Created gaussian splat entity: " + name;
+                }
+                return entity;
+            }
+
+            ctx.state.statusMessage = "Dropped asset type cannot be instantiated in the scene.";
+            return entt::null;
+        }
+
+        void selectEntityIfPossible(vultra::World& world, entt::entity entity)
+        {
+            if (entity == entt::null)
+                return;
+            if (auto* id = world.registry().try_get<vultra::IDComponent>(entity))
+                Selection::select(SelectionCategory::Entity, id->uuid);
+        }
+
+        bool acceptAssetDrop(EditorContext& ctx,
+                             vultra::World& world,
+                             entt::entity parent,
+                             entt::entity beforeSibling = entt::null,
+                             entt::entity afterSibling = entt::null)
+        {
+            const ImGuiPayload* payload =
+                ImGui::AcceptDragDropPayload(kAssetUuidPayload, ImGuiDragDropFlags_AcceptNoDrawDefaultRect);
+            if (!payload || payload->DataSize != sizeof(vultra::CoreUUID))
+                return false;
+
+            vultra::CoreUUID uuid;
+            std::memcpy(&uuid, payload->Data, sizeof(uuid));
+
+            const auto entity = instantiateDroppedAsset(ctx, world, uuid, parent);
+            if (entity == entt::null)
+                return false;
+
+            if (beforeSibling != entt::null)
+                world.insertBefore(entity, beforeSibling);
+            else if (afterSibling != entt::null)
+                world.insertAfter(entity, afterSibling);
+
+            selectEntityIfPossible(world, entity);
+            ctx.state.sceneDirty = true;
+            return true;
         }
     } // namespace
 
@@ -198,7 +459,8 @@ namespace vultra_app
                                    ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y));
             if (ImGui::BeginDragDropTarget())
             {
-                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("VULTRA_ENTITY"))
+                if (const ImGuiPayload* payload =
+                        ImGui::AcceptDragDropPayload("VULTRA_ENTITY", ImGuiDragDropFlags_AcceptNoDrawDefaultRect))
                 {
                     if (payload->DataSize == sizeof(entt::entity))
                     {
@@ -217,6 +479,7 @@ namespace vultra_app
                         }
                     }
                 }
+                acceptAssetDrop(ctx, world, entt::null);
                 ImGui::EndDragDropTarget();
             }
 
@@ -272,7 +535,7 @@ namespace vultra_app
             flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
         if (Selection::isSelected(SelectionCategory::Entity, id->uuid))
             flags |= ImGuiTreeNodeFlags_Selected;
-        if (world.parent(entity) == entt::null || (filter != nullptr && filter[0] != '\0'))
+        if (filter != nullptr && filter[0] != '\0')
             flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
         ImGui::PushID(static_cast<int>(entt::to_integral(entity)));
@@ -304,7 +567,9 @@ namespace vultra_app
         if (ImGui::BeginDragDropTarget())
         {
             const EntityDropMode dropMode = dropModeForItem(itemMin, itemMax);
-            drawDropIndicator(itemMin, itemMax, dropMode);
+            const bool acceptsScenePayload = isDraggingPayload("VULTRA_ENTITY") || isDraggingPayload(kAssetUuidPayload);
+            if (acceptsScenePayload)
+                drawDropIndicator(itemMin, itemMax, dropMode);
 
             if (const ImGuiPayload* payload =
                     ImGui::AcceptDragDropPayload("VULTRA_ENTITY", ImGuiDragDropFlags_AcceptNoDrawDefaultRect))
@@ -347,6 +612,16 @@ namespace vultra_app
                     }
                 }
             }
+
+            const entt::entity targetParent = world.parent(entity);
+            if (dropMode == EntityDropMode::Before)
+                acceptAssetDrop(ctx, world, targetParent, entity, entt::null);
+            else if (dropMode == EntityDropMode::After)
+                acceptAssetDrop(ctx, world, targetParent, entt::null, entity);
+            else if (!status.locked)
+                acceptAssetDrop(ctx, world, entity);
+            else
+                (void)ImGui::AcceptDragDropPayload(kAssetUuidPayload, ImGuiDragDropFlags_AcceptNoDrawDefaultRect);
             ImGui::EndDragDropTarget();
         }
 

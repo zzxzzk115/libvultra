@@ -30,6 +30,10 @@ namespace vultra_app::ui
     public:
         bool        hasCachedTexturePreview(EditorContext& ctx, const std::filesystem::path& path) const;
         ImTextureID getTexturePreview(EditorContext& ctx, const std::filesystem::path& path, bool allowLoad = true);
+        bool        hasCachedTexturePreview(EditorContext& ctx, std::string_view uri) const;
+        ImTextureID getTexturePreview(EditorContext& ctx, std::string_view uri, bool allowLoad = true);
+        bool        hasCachedImageFilePreview(EditorContext& ctx, const std::filesystem::path& path) const;
+        ImTextureID getImageFilePreview(EditorContext& ctx, const std::filesystem::path& path, bool allowLoad = true);
         ImTextureID getBuiltinIcon(EditorContext& ctx, BuiltinAssetIcon icon, float requestedSize);
         void        clear(EditorContext& ctx);
         void        trim(EditorContext& ctx, std::size_t maxPreviewCount);
@@ -48,6 +52,7 @@ namespace vultra_app::ui
         std::unordered_map<std::string, vultra::AssetHandle<vasset::VTexture, vultra::resource::GpuTexture>>
             m_TextureHandles;
         std::unordered_map<std::string, ImTextureID> m_TexturePreviewIds;
+        std::unordered_map<std::string, BuiltinIconTexture> m_ImageFilePreviews;
         std::unordered_map<std::string, BuiltinIconTexture> m_BuiltinIcons;
         std::vector<std::string>                     m_LruUris;
         std::string                                  m_LastError;

@@ -7,9 +7,13 @@
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/camera_service.hpp>
+#include <vultra/function/services/imgui_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
@@ -28,6 +32,7 @@
 #include <entt/meta/meta.hpp>
 #include <glm/common.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/matrix_decompose.hpp>
@@ -41,6 +46,7 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <unordered_map>
 #include <string>
 #include <string_view>
@@ -50,6 +56,8 @@ namespace vultra_app
 {
     namespace
     {
+        constexpr uint64_t kModelPreviewTargetReleaseDelayFrames = 3;
+
         entt::entity findEntityByUUID(vultra::World& world, const vultra::CoreUUID& uuid)
         {
             auto& reg  = world.registry();
@@ -81,6 +89,11 @@ namespace vultra_app
                            ext.begin(),
                            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
             return std::any_of(exts.begin(), exts.end(), [&](const char* candidate) { return ext == candidate; });
+        }
+
+        bool isModelSourceAsset(const std::filesystem::path& path)
+        {
+            return sourceAssetHasExtension(path, {".gltf", ".glb", ".obj", ".fbx", ".dae"});
         }
 
         bool isEditableSourceText(const std::filesystem::path& path)
@@ -266,6 +279,14 @@ namespace vultra_app
         bool drawVec3Control(const char* label, glm::vec3& value, const glm::vec3& resetValue, const float speed = 0.05f)
         {
             bool changed = false;
+            const auto cleanDisplayValue = [](float& v)
+            {
+                if (std::abs(v) < 0.0005f)
+                    v = 0.0f;
+            };
+            cleanDisplayValue(value.x);
+            cleanDisplayValue(value.y);
+            cleanDisplayValue(value.z);
 
             ImGui::PushID(label);
             ImGui::Columns(2, nullptr, false);
@@ -446,6 +467,248 @@ namespace vultra_app
                 return local;
 
             return makeWorldTransformMatrix(reg, hierarchy->parent) * local;
+        }
+
+        struct Bounds
+        {
+            glm::vec3 min {std::numeric_limits<float>::max()};
+            glm::vec3 max {std::numeric_limits<float>::lowest()};
+            bool      valid {false};
+
+            void include(const glm::vec3& p)
+            {
+                min = valid ? glm::min(min, p) : p;
+                max = valid ? glm::max(max, p) : p;
+                valid = true;
+            }
+        };
+
+        entt::entity findNamedEntity(vultra::World& world, const std::string& name)
+        {
+            auto& reg = world.registry();
+            auto  view = reg.view<vultra::NameComponent>();
+            for (auto e : view)
+            {
+                if (view.get<vultra::NameComponent>(e).name == name)
+                    return e;
+            }
+            return entt::null;
+        }
+
+        bool isDescendantOrSelf(const vultra::World& world, entt::entity entity, entt::entity root)
+        {
+            for (auto e = entity; e != entt::null; e = world.parent(e))
+            {
+                if (e == root)
+                    return true;
+            }
+            return false;
+        }
+
+        Bounds computeEntitySubtreeMeshBounds(vultra::World& world,
+                                              vultra::IAssetService& assets,
+                                              entt::entity root)
+        {
+            Bounds bounds;
+            if (root == entt::null)
+                return bounds;
+
+            auto& reg = world.registry();
+            auto  view = reg.view<vultra::TransformComponent, vultra::MeshComponent>();
+            for (auto e : view)
+            {
+                if (!isDescendantOrSelf(world, e, root))
+                    continue;
+
+                const auto& meshComponent = view.get<vultra::MeshComponent>(e);
+                if (!meshComponent.mesh.valid())
+                    continue;
+
+                auto mesh = assets.loadMeshSync(meshComponent.mesh);
+                if (!mesh.ready() || !mesh.cpu())
+                    continue;
+
+                const auto worldMatrix = makeWorldTransformMatrix(reg, e);
+                for (const auto& p : mesh.cpu()->positions)
+                    bounds.include(glm::vec3(worldMatrix * glm::vec4(glm::vec3 {p.x, p.y, p.z}, 1.0f)));
+            }
+            return bounds;
+        }
+
+        Bounds computeWorldMeshBounds(vultra::World& world, vultra::IAssetService& assets)
+        {
+            Bounds bounds;
+            auto&  reg = world.registry();
+            auto   view = reg.view<vultra::TransformComponent, vultra::MeshComponent>();
+            for (auto e : view)
+            {
+                const auto& meshComponent = view.get<vultra::MeshComponent>(e);
+                if (!meshComponent.mesh.valid())
+                    continue;
+                auto mesh = assets.loadMeshSync(meshComponent.mesh);
+                if (!mesh.ready() || !mesh.cpu())
+                    continue;
+                const auto worldMatrix = makeWorldTransformMatrix(reg, e);
+                for (const auto& p : mesh.cpu()->positions)
+                    bounds.include(glm::vec3(worldMatrix * glm::vec4(glm::vec3 {p.x, p.y, p.z}, 1.0f)));
+            }
+            return bounds;
+        }
+
+        void updateWorldTransforms(vultra::World& world)
+        {
+            auto& reg = world.registry();
+            std::vector<entt::entity> roots;
+            auto view = reg.view<vultra::TransformComponent, vultra::HierarchyComponent>();
+            roots.reserve(view.size_hint());
+            for (auto e = world.firstChild(entt::null); e != entt::null; e = world.nextSibling(e))
+            {
+                if (reg.all_of<vultra::TransformComponent, vultra::HierarchyComponent>(e))
+                    roots.push_back(e);
+            }
+
+            struct StackItem
+            {
+                entt::entity e {entt::null};
+                glm::mat4    parentWorld {1.0f};
+                bool         parentDirty {false};
+            };
+            std::vector<StackItem> stack;
+            for (auto root : roots)
+                stack.push_back({root, glm::mat4 {1.0f}, true});
+            while (!stack.empty())
+            {
+                const auto item = stack.back();
+                stack.pop_back();
+                auto* t = reg.try_get<vultra::TransformComponent>(item.e);
+                auto* h = reg.try_get<vultra::HierarchyComponent>(item.e);
+                if (!t || !h)
+                    continue;
+                const bool dirty = t->dirty || item.parentDirty;
+                if (dirty)
+                {
+                    t->worldMatrix = item.parentWorld * makeTransformMatrix(*t);
+                    t->dirty = false;
+                }
+                for (auto child = h->firstChild; child != entt::null; child = world.nextSibling(child))
+                    stack.push_back({child, t->worldMatrix, dirty});
+            }
+        }
+
+        void addPreviewLighting(vultra::World& world)
+        {
+            auto& reg = world.registry();
+            auto keyLight = world.createEntity();
+            reg.emplace<vultra::NameComponent>(keyLight, vultra::NameComponent {"Preview Key Light"});
+            reg.emplace<vultra::LightComponent>(keyLight,
+                                                vultra::LightComponent {
+                                                    .kind = 0u,
+                                                    .color = glm::vec3 {1.0f},
+                                                    .intensity = 6.0f,
+                                                    .castsShadow = false,
+                                                });
+
+            auto env = world.createEntity();
+            reg.emplace<vultra::NameComponent>(env, vultra::NameComponent {"Preview Environment"});
+            reg.emplace<vultra::EnvironmentComponent>(env,
+                                                      vultra::EnvironmentComponent {
+                                                          .ambientColor = glm::vec3 {0.28f, 0.30f, 0.34f},
+                                                          .ambientIntensity = 1.4f,
+                                                          .enableIBL = false,
+                                                      });
+        }
+
+        entt::entity findNamedEntity(vultra::World& world, const char* name)
+        {
+            auto& reg = world.registry();
+            auto  view = reg.view<vultra::NameComponent>();
+            for (auto e : view)
+            {
+                if (view.get<vultra::NameComponent>(e).name == name)
+                    return e;
+            }
+            return entt::null;
+        }
+
+        void setPreviewDirectionalLight(vultra::World& world,
+                                        const char*    name,
+                                        glm::vec3      direction,
+                                        const glm::vec3& fallback)
+        {
+            auto& reg = world.registry();
+            const auto entity = findNamedEntity(world, name);
+            if (entity == entt::null || !reg.valid(entity) || !reg.all_of<vultra::TransformComponent>(entity))
+                return;
+
+            const float len2 = glm::dot(direction, direction);
+            if (len2 <= 1e-8f)
+                direction = fallback;
+            else
+                direction *= glm::inversesqrt(len2);
+
+            glm::vec3 up {0.0f, 1.0f, 0.0f};
+            if (std::abs(glm::dot(up, direction)) > 0.95f)
+                up = glm::vec3 {1.0f, 0.0f, 0.0f};
+
+            auto& transform = reg.get<vultra::TransformComponent>(entity);
+            transform.rotation = glm::normalize(glm::quatLookAtRH(direction, up));
+            transform.dirty = true;
+        }
+
+        void centerPreviewContent(vultra::World&              world,
+                                  vultra::IAssetService&      assets,
+                                  const entt::entity          contentRoot)
+        {
+            auto& reg = world.registry();
+            if (contentRoot == entt::null || !reg.valid(contentRoot) ||
+                !reg.all_of<vultra::TransformComponent>(contentRoot))
+            {
+                return;
+            }
+
+            updateWorldTransforms(world);
+            const auto bounds = computeWorldMeshBounds(world, assets);
+            if (!bounds.valid)
+                return;
+
+            auto& transform = reg.get<vultra::TransformComponent>(contentRoot);
+            transform.position -= (bounds.min + bounds.max) * 0.5f;
+            transform.dirty = true;
+            updateWorldTransforms(world);
+        }
+
+        glm::vec3 mapPreviewArcballPoint(const ImVec2& mouse, const ImVec2& min, const ImVec2& max)
+        {
+            const float width = std::max(1.0f, max.x - min.x);
+            const float height = std::max(1.0f, max.y - min.y);
+            const float diameter = std::max(1.0f, std::min(width, height));
+            const float x = (2.0f * (mouse.x - (min.x + width * 0.5f))) / diameter;
+            const float y = (-2.0f * (mouse.y - (min.y + height * 0.5f))) / diameter;
+            const float len2 = x * x + y * y;
+
+            if (len2 <= 1.0f)
+                return glm::normalize(glm::vec3 {x, y, std::sqrt(std::max(0.0f, 1.0f - len2))});
+
+            const float invLen = 1.0f / std::sqrt(len2);
+            return glm::vec3 {x * invLen, y * invLen, 0.0f};
+        }
+
+        glm::quat arcballDelta(const glm::vec3& from, const glm::vec3& to)
+        {
+            const glm::vec3 axis = glm::cross(from, to);
+            const float     axisLen2 = glm::dot(axis, axis);
+            if (axisLen2 <= 1e-8f)
+                return glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+
+            const float dot = std::clamp(glm::dot(from, to), -1.0f, 1.0f);
+            return glm::normalize(glm::angleAxis(std::acos(dot), axis * glm::inversesqrt(axisLen2)));
+        }
+
+        uint32_t quantizePreviewExtent(const float size)
+        {
+            constexpr uint32_t kStep = 32u;
+            const auto pixels = static_cast<uint32_t>(std::ceil(std::max(1.0f, size)));
+            return std::max(kStep, ((pixels + kStep - 1u) / kStep) * kStep);
         }
 
         bool decomposeTransformMatrix(const glm::mat4& matrix, vultra::TransformComponent& transform)
@@ -1444,13 +1707,61 @@ namespace vultra_app
 
     InspectorWindow::InspectorWindow() : EditorWindow("Inspector", ICON_MDI_TUNE) {}
 
-    void InspectorWindow::onClosed(EditorContext& ctx) { m_PreviewCache.clear(ctx); }
+    void InspectorWindow::onClosed(EditorContext& ctx)
+    {
+        m_PreviewCache.clear(ctx);
+        releaseModelPreviewRenderTarget(ctx);
+        m_ModelPreviewWorld.clear();
+        m_ModelPreviewRoot = entt::null;
+        m_ModelPreviewContentRoot = entt::null;
+        m_ModelPreviewKey.clear();
+    }
 
-    void InspectorWindow::onDestroy(EditorContext& ctx) { m_PreviewCache.clear(ctx); }
+    void InspectorWindow::onDestroy(EditorContext& ctx)
+    {
+        m_PreviewCache.clear(ctx);
+        releaseModelPreviewRenderTarget(ctx);
+        m_ModelPreviewWorld.clear();
+        m_ModelPreviewRoot = entt::null;
+        m_ModelPreviewContentRoot = entt::null;
+        m_ModelPreviewKey.clear();
+    }
 
     void InspectorWindow::draw(EditorContext& ctx)
     {
-        ImGui::Begin(title().c_str(), &m_Open);
+        const bool visible = ImGui::Begin(title().c_str(), &m_Open);
+        if (!visible)
+        {
+            releaseModelPreviewRenderTarget(ctx);
+            ImGui::End();
+            return;
+        }
+
+        bool keepModelPreview = false;
+        if (Selection::lastCategory() == SelectionCategory::Asset && ctx.services)
+        {
+            if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
+            {
+                const auto entry = assetService->registry().lookup(Selection::lastId().native());
+                keepModelPreview = entry.type == vasset::VAssetType::eMesh;
+            }
+        }
+        else if (Selection::lastCategory() != SelectionCategory::Entity && !ctx.state.selectedSourceAsset.empty())
+        {
+            std::error_code ec;
+            keepModelPreview = std::filesystem::is_regular_file(ctx.state.selectedSourceAsset, ec) &&
+                               isModelSourceAsset(ctx.state.selectedSourceAsset);
+        }
+
+        if (!keepModelPreview && (!m_ModelPreviewKey.empty() || m_ModelPreviewTarget.texture ||
+                                  m_ModelPreviewTarget.textureId || !m_RetiredModelPreviewTargets.empty()))
+        {
+            releaseModelPreviewRenderTarget(ctx);
+            m_ModelPreviewWorld.clear();
+            m_ModelPreviewRoot = entt::null;
+            m_ModelPreviewContentRoot = entt::null;
+            m_ModelPreviewKey.clear();
+        }
 
         if (Selection::lastCategory() == SelectionCategory::Entity)
             drawEntityInspector(ctx);
@@ -1733,6 +2044,12 @@ namespace vultra_app
         ImGui::TextWrapped("Type: %s", vasset::toString(entry.type).c_str());
         ImGui::TextWrapped("Source: %s", entry.sourcePath.c_str());
         ImGui::TextWrapped("Imported: %s", entry.importedPath.c_str());
+
+        if (entry.type == vasset::VAssetType::eMesh)
+        {
+            ImGui::Spacing();
+            drawMeshAssetPreview(ctx, uuid, std::filesystem::path(entry.importedPath).filename().generic_string(), entry.importedPath);
+        }
     }
 
     void InspectorWindow::drawSourceAssetInspector(EditorContext& ctx)
@@ -1765,6 +2082,11 @@ namespace vultra_app
             ImGui::Spacing();
             drawSourceTexturePreview(ctx, path);
         }
+        else if (!isDir && isModelSourceAsset(path))
+        {
+            ImGui::Spacing();
+            drawSourceModelPreview(ctx, path);
+        }
         else if (sourceAssetHasExtension(path, {".vscn"}))
         {
             ImGui::Spacing();
@@ -1794,5 +2116,322 @@ namespace vultra_app
         ImGui::TextUnformatted("Preview");
         const float size = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
         ImGui::Image(previewId, ImVec2(size, size));
+    }
+
+    void InspectorWindow::drawSourceModelPreview(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        const auto key = "source:" + path.lexically_normal().generic_string();
+        if (m_ModelPreviewKey != key)
+            rebuildModelPreviewWorldForSource(ctx, path);
+        drawModelPreviewViewport(ctx, key);
+    }
+
+    void InspectorWindow::drawMeshAssetPreview(EditorContext& ctx,
+                                               const vultra::CoreUUID& uuid,
+                                               const std::string& name,
+                                               const std::string& importedPath)
+    {
+        const auto key = "mesh:" + uuid.toString() + ":" + importedPath;
+        if (m_ModelPreviewKey != key)
+            rebuildModelPreviewWorldForMesh(ctx, uuid, name, importedPath);
+        drawModelPreviewViewport(ctx, key);
+    }
+
+    void InspectorWindow::drawModelPreviewViewport(EditorContext& ctx, const std::string& key)
+    {
+        ImGui::TextUnformatted("Preview");
+        const float width = std::max(160.0f, ImGui::GetContentRegionAvail().x);
+        const float height = std::clamp(width * 0.62f, 140.0f, 260.0f);
+        const uint32_t targetWidth = quantizePreviewExtent(width);
+        const uint32_t targetHeight = quantizePreviewExtent(height);
+        const glm::vec3 cameraOrbitDirection = glm::normalize(glm::vec3 {0.5f, 0.32f, 0.62f});
+        const glm::vec3 viewForward = -cameraOrbitDirection;
+        glm::vec3       viewRight = glm::cross(viewForward, glm::vec3 {0.0f, 1.0f, 0.0f});
+        if (glm::dot(viewRight, viewRight) <= 1e-8f)
+            viewRight = glm::vec3 {1.0f, 0.0f, 0.0f};
+        else
+            viewRight = glm::normalize(viewRight);
+        const glm::vec3 viewUp = glm::normalize(glm::cross(viewRight, viewForward));
+        const auto mapArcballWorld = [&](const ImVec2& mouse, const ImVec2& min, const ImVec2& max)
+        {
+            const glm::vec3 v = mapPreviewArcballPoint(mouse, min, max);
+            return glm::normalize(v.x * viewRight + v.y * viewUp + v.z * cameraOrbitDirection);
+        };
+        ensureModelPreviewRenderTarget(ctx, targetWidth, targetHeight);
+
+        if (!ctx.services || !m_ModelPreviewTarget.texture || !m_ModelPreviewTarget.textureId)
+        {
+            ImGui::BeginDisabled();
+            ImGui::Button(ICON_MDI_CUBE_SCAN, ImVec2(width, height));
+            ImGui::EndDisabled();
+            return;
+        }
+
+        auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
+        auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+        auto* cameraService = ctx.services->tryGet<vultra::ICameraService>();
+        if (!worldService || !assetService || !cameraService)
+        {
+            ImGui::TextDisabled("Preview services are unavailable.");
+            return;
+        }
+
+        (void)worldService;
+
+        ImGui::Image(m_ModelPreviewTarget.textureId, ImVec2(width, height));
+        const bool hovered = ImGui::IsItemHovered();
+        const ImVec2 imageMin = ImGui::GetItemRectMin();
+        const ImVec2 imageMax = ImGui::GetItemRectMax();
+
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            m_ModelPreviewArcballActive = true;
+            m_ModelPreviewArcballVector = mapArcballWorld(ImGui::GetIO().MousePos, imageMin, imageMax);
+        }
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            m_ModelPreviewArcballActive = false;
+        if (m_ModelPreviewArcballActive && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
+        {
+            const glm::vec3 next = mapArcballWorld(ImGui::GetIO().MousePos, imageMin, imageMax);
+            m_ModelPreviewRotation = glm::normalize(arcballDelta(m_ModelPreviewArcballVector, next) *
+                                                    m_ModelPreviewRotation);
+            m_ModelPreviewArcballVector = next;
+        }
+        if (hovered)
+        {
+            const float wheel = ImGui::GetIO().MouseWheel;
+            if (std::abs(wheel) > 0.0f)
+                m_ModelPreviewDistanceScale = std::clamp(m_ModelPreviewDistanceScale * std::exp(-wheel * 0.16f),
+                                                         0.12f,
+                                                         12.0f);
+        }
+
+        if (m_ModelPreviewRoot != entt::null && m_ModelPreviewWorld.registry().valid(m_ModelPreviewRoot))
+        {
+            auto& transform = m_ModelPreviewWorld.registry().get<vultra::TransformComponent>(m_ModelPreviewRoot);
+            transform.rotation = m_ModelPreviewRotation;
+            transform.dirty = true;
+        }
+        updateWorldTransforms(m_ModelPreviewWorld);
+        const auto rotatedBounds = computeWorldMeshBounds(m_ModelPreviewWorld, *assetService);
+
+        auto* drawList = ImGui::GetWindowDrawList();
+        drawList->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(72, 150, 225, 180), 4.0f);
+
+        if (!rotatedBounds.valid)
+        {
+            ImGui::TextDisabled("Preview scene is empty.");
+            return;
+        }
+
+        const glm::vec3 center = (rotatedBounds.min + rotatedBounds.max) * 0.5f;
+        const glm::vec3 size = rotatedBounds.max - rotatedBounds.min;
+        const float maxDimension = std::max({size.x, size.y, size.z, 1.0f});
+        const float fovY = glm::radians(45.0f);
+        const float baseDistance = std::max(maxDimension * 1.6f, (maxDimension * 0.65f) / std::tan(fovY * 0.5f));
+        const glm::vec3 cameraPosition = center + cameraOrbitDirection * baseDistance * m_ModelPreviewDistanceScale;
+        const glm::vec3 keyLightDirection = glm::normalize(center - cameraPosition);
+        setPreviewDirectionalLight(m_ModelPreviewWorld,
+                                   "Preview Key Light",
+                                   keyLightDirection,
+                                   glm::vec3 {0.0f, -1.0f, 0.0f});
+        updateWorldTransforms(m_ModelPreviewWorld);
+
+        vultra::RenderCamera camera {};
+        camera.name = "Inspector Model Preview";
+        camera.priority = 80;
+        camera.view = glm::lookAt(cameraPosition, center, glm::vec3 {0.0f, 1.0f, 0.0f});
+        camera.projection = glm::perspectiveRH_ZO(fovY,
+                                                  static_cast<float>(targetWidth) /
+                                                      static_cast<float>(std::max(targetHeight, 1u)),
+                                                  std::max(0.01f, baseDistance - maxDimension * 1.5f),
+                                                  std::max(1000.0f, baseDistance * 8.0f));
+        camera.zNear = std::max(0.01f, baseDistance - maxDimension * 1.5f);
+        camera.zFar = std::max(1000.0f, baseDistance * 8.0f);
+        camera.fovY = fovY;
+        camera.target = &*m_ModelPreviewTarget.texture;
+        camera.clearValue = glm::vec4 {0.06f, 0.07f, 0.08f, 1.0f};
+        camera.clearMode = 0u;
+        camera.renderImGui = false;
+        camera.rendererKey = "universal";
+        camera.selectionOutlineEnabled = false;
+        camera.worldOverride = &m_ModelPreviewWorld;
+        cameraService->addManualCamera(camera);
+    }
+
+    void InspectorWindow::ensureModelPreviewRenderTarget(EditorContext& ctx, const uint32_t width, const uint32_t height)
+    {
+        if (!ctx.services || width == 0u || height == 0u)
+            return;
+
+        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+        auto*      imguiServiceForCleanup = ctx.services->tryGet<vultra::IImGuiService>();
+        std::size_t out = 0;
+        for (auto& slot : m_RetiredModelPreviewTargets)
+        {
+            if (frame >= slot.releaseFrame)
+            {
+                if (imguiServiceForCleanup && slot.textureId)
+                    imguiServiceForCleanup->removeTexture(slot.textureId);
+                slot.texture.reset();
+            }
+            else
+            {
+                m_RetiredModelPreviewTargets[out++] = std::move(slot);
+            }
+        }
+        m_RetiredModelPreviewTargets.resize(out);
+
+        if (m_ModelPreviewTarget.texture && m_ModelPreviewTarget.extent.width == width &&
+            m_ModelPreviewTarget.extent.height == height && m_ModelPreviewTarget.textureId)
+        {
+            return;
+        }
+
+        if (m_ModelPreviewTarget.texture || m_ModelPreviewTarget.textureId)
+        {
+            m_ModelPreviewTarget.releaseFrame = frame + kModelPreviewTargetReleaseDelayFrames;
+            m_RetiredModelPreviewTargets.push_back(std::move(m_ModelPreviewTarget));
+            m_ModelPreviewTarget = {};
+        }
+
+        auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>();
+        auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>();
+        if (!backendService || !imguiService)
+            return;
+
+        auto& rd = backendService->renderDevice();
+        auto format = backendService->backbuffer().getPixelFormat();
+        if (format == vultra::rhi::PixelFormat::eUndefined)
+            format = vultra::rhi::PixelFormat::eRGBA8_UNorm;
+
+        m_ModelPreviewTarget.extent = {width, height};
+        m_ModelPreviewTarget.texture =
+            vultra::rhi::Texture::Builder {}
+                .setExtent(m_ModelPreviewTarget.extent)
+                .setPixelFormat(format)
+                .setNumMipLevels(1)
+                .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled |
+                               vultra::rhi::ImageUsage::eTransferSrc)
+                .build(rd);
+        if (m_ModelPreviewTarget.texture)
+            m_ModelPreviewTarget.textureId = imguiService->addTexture(*m_ModelPreviewTarget.texture);
+    }
+
+    void InspectorWindow::releaseModelPreviewRenderTarget(EditorContext& ctx)
+    {
+        if (ctx.services)
+        {
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+                renderService->releaseOverrideRenderWorld(&m_ModelPreviewWorld);
+            if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
+            {
+                if (m_ModelPreviewTarget.textureId)
+                    imguiService->removeTexture(m_ModelPreviewTarget.textureId);
+                for (auto& slot : m_RetiredModelPreviewTargets)
+                {
+                    if (slot.textureId)
+                        imguiService->removeTexture(slot.textureId);
+                }
+            }
+        }
+        m_ModelPreviewTarget = {};
+        m_RetiredModelPreviewTargets.clear();
+    }
+
+    void InspectorWindow::rebuildModelPreviewWorldForSource(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        if (ctx.services)
+        {
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+                renderService->releaseOverrideRenderWorld(&m_ModelPreviewWorld);
+        }
+        m_ModelPreviewWorld.clear();
+        m_ModelPreviewRoot = entt::null;
+        m_ModelPreviewContentRoot = entt::null;
+        m_ModelPreviewKey = "source:" + path.lexically_normal().generic_string();
+        m_ModelPreviewPath = path.lexically_normal();
+        m_ModelPreviewRotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+        m_ModelPreviewArcballVector = glm::vec3 {0.0f, 0.0f, 1.0f};
+        m_ModelPreviewArcballActive = false;
+        m_ModelPreviewDistanceScale = 1.0f;
+
+        addPreviewLighting(m_ModelPreviewWorld);
+        m_ModelPreviewRoot = m_ModelPreviewWorld.createEntity();
+        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(
+            m_ModelPreviewRoot, vultra::NameComponent {"Preview Model Pivot"});
+        m_ModelPreviewContentRoot = m_ModelPreviewWorld.createChild(m_ModelPreviewRoot);
+        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(
+            m_ModelPreviewContentRoot, vultra::NameComponent {"Preview Model Content"});
+        if (!ctx.services)
+            return;
+
+        auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+        auto* sceneService = ctx.services->tryGet<vultra::ISceneService>();
+        if (!assetService || !sceneService)
+            return;
+
+        const auto assetRoot = ctx.state.currentProject / ctx.state.currentAssetRoot;
+        std::error_code ec;
+        const auto rel = std::filesystem::relative(path, assetRoot, ec);
+        if (ec || rel.empty())
+            return;
+
+        const auto relText = rel.generic_string();
+        std::string manifestUri;
+        for (const auto& [uuid, entry] : assetService->registry().getRegistry())
+        {
+            (void)uuid;
+            if (entry.type == vasset::VAssetType::eSceneManifest && entry.sourcePath == relText &&
+                !entry.importedPath.empty())
+            {
+                manifestUri = "res://" + entry.importedPath;
+                break;
+            }
+        }
+
+        if (!manifestUri.empty())
+        {
+            (void)sceneService->instantiateScene(m_ModelPreviewWorld, manifestUri, m_ModelPreviewContentRoot, false);
+            centerPreviewContent(m_ModelPreviewWorld, *assetService, m_ModelPreviewContentRoot);
+        }
+    }
+
+    void InspectorWindow::rebuildModelPreviewWorldForMesh(EditorContext& ctx,
+                                                          const vultra::CoreUUID& uuid,
+                                                          const std::string& name,
+                                                          const std::string& importedPath)
+    {
+        if (ctx.services)
+        {
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+                renderService->releaseOverrideRenderWorld(&m_ModelPreviewWorld);
+        }
+        m_ModelPreviewWorld.clear();
+        m_ModelPreviewRoot = entt::null;
+        m_ModelPreviewContentRoot = entt::null;
+        m_ModelPreviewKey = "mesh:" + uuid.toString() + ":" + importedPath;
+        m_ModelPreviewPath.clear();
+        m_ModelPreviewRotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+        m_ModelPreviewArcballVector = glm::vec3 {0.0f, 0.0f, 1.0f};
+        m_ModelPreviewArcballActive = false;
+        m_ModelPreviewDistanceScale = 1.0f;
+
+        addPreviewLighting(m_ModelPreviewWorld);
+        m_ModelPreviewRoot = m_ModelPreviewWorld.createEntity();
+        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(
+            m_ModelPreviewRoot, vultra::NameComponent {"Preview Mesh Pivot"});
+        m_ModelPreviewContentRoot = m_ModelPreviewWorld.createChild(m_ModelPreviewRoot);
+        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(
+            m_ModelPreviewContentRoot, vultra::NameComponent {"Preview Mesh Content"});
+        auto entity = m_ModelPreviewWorld.createChild(m_ModelPreviewContentRoot);
+        auto& reg = m_ModelPreviewWorld.registry();
+        reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {name.empty() ? "Mesh Preview" : name});
+        reg.emplace<vultra::MeshComponent>(entity, vultra::MeshComponent {.mesh = uuid});
+        if (ctx.services)
+        {
+            if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
+                centerPreviewContent(m_ModelPreviewWorld, *assetService, m_ModelPreviewContentRoot);
+        }
     }
 } // namespace vultra_app

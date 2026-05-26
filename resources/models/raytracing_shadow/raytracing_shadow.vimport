@@ -1,12 +1,12 @@
 [vimport]
 version=1
-importer="mesh"
-uid="2f4eac020826e9fdac054a764ea45dc2"
+importer="scene_manifest"
+uid="22237cb2ec5dcbf4bed01987626fbff5"
 
 [source]
 file="models/raytracing_shadow/raytracing_shadow.gltf"
 
 [output]
-file="imported/mesh/raytracing_shadow"
+file="imported/scene_manifest/raytracing_shadow"
 
 [params]

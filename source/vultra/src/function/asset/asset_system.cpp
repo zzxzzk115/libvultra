@@ -19,6 +19,7 @@
 #include <glm/gtx/quaternion.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -304,6 +305,20 @@ namespace vultra
 
             return glm::normalize(q);
         }
+
+        bool shouldReadPhysicalTextSourceDirectly(const std::filesystem::path& path)
+        {
+            auto ext = path.extension().generic_string();
+            std::ranges::transform(ext, ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+
+            const auto filename = path.filename().generic_string();
+            return ext == ".vscn" || ext == ".vmanifest" || ext == ".lua" || ext == ".vmatgraph" ||
+                   filename.ends_with(".vrg.json") || filename.ends_with(".vmatgraph.json") ||
+                   filename.ends_with(".vshaderlib.lua") || filename.ends_with(".vso.lua") ||
+                   filename.ends_with(".vsrp.lua") || filename.ends_with(".vfeature.lua");
+        }
     } // namespace
 
     bool AssetSystem::onInit()
@@ -451,7 +466,8 @@ namespace vultra
                 vasset::VAssetType inferredType = vasset::VAssetType::eUnknown;
                 if (ext == ".vscn")
                     inferredType = vasset::VAssetType::eScene;
-                else if (ext == ".vmanifest")
+                else if (ext == ".vmanifest" || ext == ".gltf" || ext == ".glb" || ext == ".fbx" || ext == ".obj" ||
+                         ext == ".dae")
                     inferredType = vasset::VAssetType::eSceneManifest;
                 else if (ext == ".lua")
                     inferredType = vasset::VAssetType::eScriptLua;
@@ -459,8 +475,6 @@ namespace vultra
                          ext == ".gif" || ext == ".psd" || ext == ".pic" || ext == ".hdr" || ext == ".ktx" ||
                          ext == ".dds" || ext == ".ktx2")
                     inferredType = vasset::VAssetType::eTexture;
-                else if (ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".dae")
-                    inferredType = vasset::VAssetType::eMesh;
                 else if (ext == ".ply" || ext == ".spz" || ext == ".splat" || ext == ".ksplat")
                     inferredType = vasset::VAssetType::eGaussianSplat;
 
@@ -686,9 +700,10 @@ namespace vultra
         if (entry.type == vasset::VAssetType::eUnknown)
             return false;
 
-        // Prefer the source path so runtime can read from VPK source-URI mounts or from the physical source tree.
-        // Fall back to importedPath only if an entry is incomplete.
-        const std::string& path = !entry.sourcePath.empty() ? entry.sourcePath : entry.importedPath;
+        const bool         cookedOnly = entry.type == vasset::VAssetType::eMesh;
+        const std::string& path       = cookedOnly && !entry.importedPath.empty() ? entry.importedPath :
+                                        !entry.sourcePath.empty()                 ? entry.sourcePath :
+                                                                                   entry.importedPath;
         outUri                  = m_Desc.scheme + "://" + path;
         return true;
     }
@@ -1396,7 +1411,7 @@ namespace vultra
         {
             const auto sourcePath = std::filesystem::path(resolveUri(uri)).lexically_normal();
             std::error_code ec;
-            if (std::filesystem::is_regular_file(sourcePath, ec))
+            if (shouldReadPhysicalTextSourceDirectly(sourcePath) && std::filesystem::is_regular_file(sourcePath, ec))
             {
                 std::ifstream file(sourcePath, std::ios::binary | std::ios::ate);
                 if (file)

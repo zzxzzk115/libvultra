@@ -527,9 +527,15 @@ namespace vultra_app
 
     void EditorApp::tick(EditorContext& ctx)
     {
+        ctx.thumbnails = &m_ThumbnailService;
         syncPlaybackState(ctx);
         updateBuildAndRun(ctx);
         (void)updateProjectLoading(ctx);
+        if (ctx.state.mode == AppMode::Editor && !isProjectLoading())
+        {
+            ensureInitialized();
+            m_WindowManager.tick(ctx);
+        }
     }
 
     bool EditorApp::isProjectLoading() const
@@ -539,6 +545,7 @@ namespace vultra_app
 
     void EditorApp::draw(EditorContext& ctx)
     {
+        ctx.thumbnails = &m_ThumbnailService;
         ui::applyEditorSettingsRuntime(ctx.state.editorSettings);
         if (isProjectLoading())
         {
@@ -605,6 +612,9 @@ namespace vultra_app
             saveCurrentScene(ctx);
         if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F5))
             startBuildAndRun(ctx);
+
+        if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
+            renderService->setFrameGraphTextureCaptureEnabled(false);
 
         beginDockSpace();
         buildDefaultDockLayout();
@@ -1259,8 +1269,30 @@ namespace vultra_app
                         renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
                 }
 
+                m_ThumbnailService.prewarmProjectModelThumbnails(ctx);
+
+                m_Loading.phase    = LoadingPhase::GenerateThumbnails;
+                m_Loading.progress = 0.86f;
+                m_Loading.message  = "Preparing asset thumbnails...";
+                return true;
+            }
+
+            case LoadingPhase::GenerateThumbnails:
+            {
+                float thumbnailProgress = 1.0f;
+                std::string thumbnailMessage;
+                if (m_ThumbnailService.processLoadingThumbnail(ctx, thumbnailProgress, thumbnailMessage))
+                {
+                    m_Loading.progress = 0.86f + thumbnailProgress * 0.08f;
+                    m_Loading.message  = thumbnailMessage.empty() ? "Rendering asset thumbnails..." : thumbnailMessage;
+                    return true;
+                }
+
+                if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                    worldService->world().clear();
+
                 m_Loading.phase    = LoadingPhase::LoadScene;
-                m_Loading.progress = 0.90f;
+                m_Loading.progress = 0.94f;
                 m_Loading.message  = ctx.state.currentDefaultScene.empty()
                                          ? "Preparing editor windows..."
                                          : "Loading scene " + ctx.state.currentDefaultScene + "...";
@@ -1283,7 +1315,7 @@ namespace vultra_app
                 }
 
                 m_Loading.phase    = LoadingPhase::Finalize;
-                m_Loading.progress = 0.88f;
+                m_Loading.progress = 0.98f;
                 m_Loading.message  = "Opening editor...";
                 return true;
             }
@@ -1418,6 +1450,7 @@ namespace vultra_app
         }
 
         m_WindowManager.destroy(ctx);
+        m_ThumbnailService.clear();
         m_Initialized        = false;
         m_DefaultLayoutBuilt = false;
         m_SyncedProject.clear();

@@ -6,16 +6,26 @@
 #include <imgui.h>
 #include <array>
 #include <filesystem>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace vultra_app
 {
+    struct ModelSubAssetEntry
+    {
+        std::string uuid;
+        std::string name;
+        std::string importedPath;
+    };
+
     class ContentBrowserWindow final : public EditorWindow
     {
     public:
         ContentBrowserWindow();
 
+        void tick(EditorContext& ctx) override;
         void draw(EditorContext& ctx) override;
         void onClosed(EditorContext& ctx) override;
         void onDestroy(EditorContext& ctx) override;
@@ -26,6 +36,17 @@ namespace vultra_app
         void drawContentPanel(EditorContext& ctx);
         void drawListItem(EditorContext& ctx, const std::filesystem::path& path);
         void drawGridItem(EditorContext& ctx, const std::filesystem::path& path, float iconSize);
+        void drawListSubAsset(EditorContext&                ctx,
+                              const std::filesystem::path& ownerPath,
+                              const std::string&           uuid,
+                              const std::string&           name,
+                              const std::string&           importedPath);
+        void drawGridSubAsset(EditorContext&                ctx,
+                              const std::filesystem::path& ownerPath,
+                              const std::string&           uuid,
+                              const std::string&           name,
+                              const std::string&           importedPath,
+                              float                        iconSize);
         void handleDeferredSelection(EditorContext& ctx, const std::filesystem::path& path, bool hovered);
         void selectPath(EditorContext& ctx, const std::filesystem::path& path);
         void openPath(EditorContext& ctx, const std::filesystem::path& path);
@@ -37,6 +58,7 @@ namespace vultra_app
         void drawPendingPopups(EditorContext& ctx);
         const std::vector<std::filesystem::path>& entriesForCurrentDir();
         const std::vector<std::filesystem::path>& filteredEntriesForCurrentDir();
+        const std::vector<ModelSubAssetEntry>& modelSubAssetsFor(EditorContext& ctx, const std::filesystem::path& path);
 
         std::filesystem::path m_AssetRoot;
         std::filesystem::path m_CurrentDir;
@@ -58,6 +80,9 @@ namespace vultra_app
         std::vector<std::filesystem::path> m_CachedEntries;
         std::vector<std::filesystem::path> m_CachedFilteredEntries;
         std::unordered_map<std::string, bool> m_VisibleChildDirectoryCache;
+        std::unordered_map<std::string, std::vector<ModelSubAssetEntry>> m_ModelSubAssetCache;
+        uint64_t m_ModelSubAssetCacheGeneration {0};
+        std::unordered_set<std::string> m_ExpandedModelAssets;
         int m_RemainingThumbnailLoads {0};
         bool m_PendingSelectDragging {false};
         bool m_BoxSelecting {false};

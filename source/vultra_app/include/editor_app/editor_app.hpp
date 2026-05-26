@@ -2,6 +2,7 @@
 
 #include "app_state.hpp"
 #include "common/file_dialog.hpp"
+#include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/editor_context.hpp"
 #include "editor_app/ui/editor_window_manager.hpp"
 #include "launch_options.hpp"
@@ -57,6 +58,7 @@ namespace vultra_app
             Pending,
             ImportAssets,
             ConfigureAssets,
+            GenerateThumbnails,
             LoadScene,
             Finalize,
             Complete,
@@ -113,6 +115,7 @@ namespace vultra_app
         void resetDefaultDockLayout();
 
         EditorWindowManager m_WindowManager;
+        ui::AssetThumbnailService m_ThumbnailService;
         std::filesystem::path m_SyncedProject;
         uint64_t             m_SyncedProjectGeneration {std::numeric_limits<uint64_t>::max()};
         LoadingState        m_Loading;
