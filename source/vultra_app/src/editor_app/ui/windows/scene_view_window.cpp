@@ -202,6 +202,57 @@ namespace vultra_app
             return makeWorldTransformMatrix(reg, hierarchy->parent) * local;
         }
 
+        glm::mat4 makeParentWorldTransformMatrix(const entt::registry& reg, const entt::entity entity)
+        {
+            const auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(entity);
+            if (!hierarchy || hierarchy->parent == entt::null || !reg.valid(hierarchy->parent))
+                return glm::mat4 {1.0f};
+            return makeWorldTransformMatrix(reg, hierarchy->parent);
+        }
+
+        vultra::TransformComponent decomposeTransformMatrix(const glm::mat4& matrix,
+                                                            const vultra::TransformComponent& fallback)
+        {
+            float translation[3] {};
+            float rotation[3] {};
+            float scale[3] {};
+            ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), translation, rotation, scale);
+
+            auto out = fallback;
+            out.position = {translation[0], translation[1], translation[2]};
+            out.rotation = glm::normalize(glm::quat(glm::radians(glm::vec3 {rotation[0], rotation[1], rotation[2]})));
+            out.scale    = {scale[0], scale[1], scale[2]};
+            return out;
+        }
+
+        bool setLocalTransformFromGizmoMatrix(entt::registry&                  reg,
+                                              const entt::entity               entity,
+                                              vultra::TransformComponent&      transform,
+                                              const glm::mat4&                 worldMatrix,
+                                              const SceneViewWindow::Tool      tool)
+        {
+            const auto parentWorld = makeParentWorldTransformMatrix(reg, entity);
+            const auto parentInverse = glm::inverse(parentWorld);
+            switch (tool)
+            {
+            case SceneViewWindow::Tool::Move:
+                transform.position =
+                    glm::vec3(parentInverse * glm::vec4(glm::vec3(worldMatrix[3]), 1.0f));
+                break;
+            case SceneViewWindow::Tool::Rotate:
+                transform.rotation = decomposeTransformMatrix(parentInverse * worldMatrix, transform).rotation;
+                break;
+            case SceneViewWindow::Tool::Scale:
+                transform.scale = decomposeTransformMatrix(parentInverse * worldMatrix, transform).scale;
+                break;
+            case SceneViewWindow::Tool::Select:
+                return false;
+            }
+
+            transform.dirty = true;
+            return true;
+        }
+
         bool isDescendantOrSelf(const vultra::World& world, entt::entity entity, entt::entity root)
         {
             for (auto e = entity; e != entt::null; e = world.parent(e))
@@ -765,7 +816,7 @@ namespace vultra_app
                     if (e != entt::null && reg.valid(e) && reg.all_of<vultra::TransformComponent>(e))
                     {
                         auto& transform = reg.get<vultra::TransformComponent>(e);
-                        auto  matrix    = makeTransformMatrix(transform);
+                        auto  matrix    = makeWorldTransformMatrix(reg, e);
 
                         ImGuizmo::SetOrthographic(false);
                         ImGuizmo::SetDrawlist();
@@ -776,16 +827,8 @@ namespace vultra_app
                                                  ImGuizmo::LOCAL,
                                                  glm::value_ptr(matrix)))
                         {
-                            float translation[3] {};
-                            float rotation[3] {};
-                            float scale[3] {};
-                            ImGuizmo::DecomposeMatrixToComponents(
-                                glm::value_ptr(matrix), translation, rotation, scale);
-                            transform.position = {translation[0], translation[1], translation[2]};
-                            transform.rotation = glm::quat(glm::radians(glm::vec3 {rotation[0], rotation[1], rotation[2]}));
-                            transform.scale    = {scale[0], scale[1], scale[2]};
-                            transform.dirty    = true;
-                            ctx.state.sceneDirty = true;
+                            if (setLocalTransformFromGizmoMatrix(reg, e, transform, matrix, m_Tool))
+                                ctx.state.sceneDirty = true;
                         }
                     }
                 }

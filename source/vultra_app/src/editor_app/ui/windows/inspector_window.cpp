@@ -346,11 +346,31 @@ namespace vultra_app
 
         bool drawQuaternionDeltaControl(const char* label, glm::quat& rotation, const vultra::CoreUUID& entityId)
         {
-            static std::unordered_map<vultra::CoreUUID, glm::vec3> s_RotationEditDegrees;
+            struct RotationEditState
+            {
+                glm::vec3 degrees {};
+                glm::quat source {1.0f, 0.0f, 0.0f, 0.0f};
+            };
+            static std::unordered_map<vultra::CoreUUID, RotationEditState> s_RotationEditState;
+
+            const auto quaternionChanged = [](const glm::quat& a, const glm::quat& b)
+            {
+                return std::abs(glm::dot(glm::normalize(a), glm::normalize(b))) < 0.99999f;
+            };
 
             auto [it, inserted] =
-                s_RotationEditDegrees.try_emplace(entityId, glm::degrees(glm::eulerAngles(rotation)));
-            auto& editDegrees = it->second;
+                s_RotationEditState.try_emplace(entityId,
+                                                RotationEditState {
+                                                    .degrees = glm::degrees(glm::eulerAngles(rotation)),
+                                                    .source  = glm::normalize(rotation),
+                                                });
+            auto& editState = it->second;
+            if (!inserted && quaternionChanged(editState.source, rotation))
+            {
+                editState.degrees = glm::degrees(glm::eulerAngles(rotation));
+                editState.source  = glm::normalize(rotation);
+            }
+            auto& editDegrees = editState.degrees;
             glm::vec3 nextDegrees = editDegrees;
 
             if (!drawVec3Control(label, nextDegrees, glm::vec3 {0.0f}, 0.5f))
@@ -370,6 +390,7 @@ namespace vultra_app
             const glm::quat qy           = glm::angleAxis(deltaRadians.y, glm::vec3 {0.0f, 1.0f, 0.0f});
             const glm::quat qz           = glm::angleAxis(deltaRadians.z, glm::vec3 {0.0f, 0.0f, 1.0f});
             rotation                     = glm::normalize(qz * qy * qx * rotation);
+            editState.source             = rotation;
             return true;
         }
 
