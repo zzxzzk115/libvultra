@@ -431,6 +431,23 @@ namespace
             VULTRA_CLIENT_INFO("[Vultra] Loaded scene '{}' from VPK '{}'", sceneUri, m_VpkPath->generic_string());
         }
 
+        void onWindowEvent(const vultra::os::GeneralWindowEvent& e) override
+        {
+            vultra::DemoAppHost::onWindowEvent(e);
+
+            if (m_State.mode != vultra_app::AppMode::Editor || e.type != vultra::event::WindowEventType::eFileDrop ||
+                !e.fileDrop)
+            {
+                return;
+            }
+
+            for (const auto& path : e.fileDrop->paths)
+            {
+                if (!path.empty())
+                    m_State.pendingExternalAssetDrops.emplace_back(std::filesystem::path(path).lexically_normal());
+            }
+        }
+
         void onBeforeEngineTick(vultra::fsec /*dt*/) override
         {
             if (m_State.mode == vultra_app::AppMode::Runtime)

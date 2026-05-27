@@ -5,6 +5,7 @@
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
+#include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 #include <imgui.h>
@@ -15,6 +16,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <system_error>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -355,7 +357,9 @@ namespace vultra_app
                 if (entry.type != vasset::VAssetType::eMesh || !entry.importedPath.starts_with(meshPrefix))
                     continue;
 
-                auto nameIt = names.find(entry.importedPath);
+                auto nameIt = names.find(entry.sourcePath);
+                if (nameIt == names.end())
+                    nameIt = names.find(entry.importedPath);
                 if (nameIt == names.end())
                     continue;
 
@@ -564,6 +568,126 @@ namespace vultra_app
 
             return "Source";
         }
+
+        ImGuiFileDialogFlags importDialogFlags()
+        {
+            return ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
+                   ImGuiFileDialogFlags_HideColumnSize | ImGuiFileDialogFlags_HideColumnDate |
+                   ImGuiFileDialogFlags_DontShowHiddenFiles |
+                   ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering | ImGuiFileDialogFlags_NaturalSorting |
+                   ImGuiFileDialogFlags_DisableThumbnailMode;
+        }
+
+        std::filesystem::path uniqueImportDestination(const std::filesystem::path& dir,
+                                                      const std::filesystem::path& source)
+        {
+            auto dst = dir / source.filename();
+            if (!std::filesystem::exists(dst))
+                return dst;
+
+            const auto stem = source.stem().generic_string();
+            const auto ext  = source.extension().generic_string();
+            for (uint32_t i = 1; i < 10000; ++i)
+            {
+                dst = dir / (stem + "_" + std::to_string(i) + ext);
+                if (!std::filesystem::exists(dst))
+                    return dst;
+            }
+            return dir / (source.filename().generic_string() + "_copy");
+        }
+
+        bool copyExternalAssetIntoDirectory(const std::filesystem::path& source,
+                                            const std::filesystem::path& targetDir,
+                                            std::filesystem::path&       outPath,
+                                            std::string&                 error)
+        {
+            std::error_code ec;
+            const auto normalizedSource = source.lexically_normal();
+            const auto normalizedTarget = targetDir.lexically_normal();
+            if (!std::filesystem::exists(normalizedSource, ec))
+            {
+                error = "source does not exist";
+                return false;
+            }
+
+            std::filesystem::create_directories(normalizedTarget, ec);
+            if (ec)
+            {
+                error = ec.message();
+                return false;
+            }
+
+            if (std::filesystem::equivalent(normalizedSource.parent_path(), normalizedTarget, ec))
+            {
+                outPath = normalizedSource;
+                return true;
+            }
+
+            const auto dst = uniqueImportDestination(normalizedTarget, normalizedSource);
+            if (std::filesystem::is_directory(normalizedSource, ec))
+            {
+                std::filesystem::copy(normalizedSource,
+                                      dst,
+                                      std::filesystem::copy_options::recursive |
+                                          std::filesystem::copy_options::overwrite_existing,
+                                      ec);
+            }
+            else
+            {
+                std::filesystem::copy_file(normalizedSource,
+                                           dst,
+                                           std::filesystem::copy_options::overwrite_existing,
+                                           ec);
+            }
+            if (ec)
+            {
+                error = ec.message();
+                return false;
+            }
+
+            outPath = dst.lexically_normal();
+            return true;
+        }
+
+        bool importCopiedAssetPath(EditorContext& ctx, const std::filesystem::path& path, uint32_t& importedCount)
+        {
+            if (!ctx.services)
+                return false;
+
+            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+            if (!assetService)
+                return false;
+
+            bool ok = false;
+            std::error_code ec;
+            if (std::filesystem::is_directory(path, ec))
+            {
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(path, ec))
+                {
+                    if (ec)
+                        break;
+                    std::error_code entryEc;
+                    if (!entry.is_regular_file(entryEc) || entryEc)
+                        continue;
+                    const auto uri = pathToResUri(ctx, entry.path());
+                    if (uri.empty())
+                        continue;
+                    const bool imported = assetService->reimportAsset(uri, false);
+                    ok = imported || ok;
+                    if (imported)
+                        ++importedCount;
+                }
+                return ok;
+            }
+
+            const auto uri = pathToResUri(ctx, path);
+            if (uri.empty())
+                return false;
+            const bool imported = assetService->reimportAsset(uri, false);
+            if (imported)
+                ++importedCount;
+            return imported;
+        }
     } // namespace
 
     ContentBrowserWindow::ContentBrowserWindow() : EditorWindow("Content Browser", ICON_MDI_FOLDER_MULTIPLE_IMAGE) {}
@@ -695,6 +819,15 @@ namespace vultra_app
 
     void ContentBrowserWindow::drawContentPanel(EditorContext& ctx)
     {
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
+            !ctx.state.pendingExternalAssetDrops.empty())
+        {
+            auto dropped = std::move(ctx.state.pendingExternalAssetDrops);
+            ctx.state.pendingExternalAssetDrops.clear();
+            for (const auto& path : dropped)
+                importExternalPath(ctx, path);
+        }
+
         ImGui::TextUnformatted(ICON_MDI_MAGNIFY);
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);
@@ -739,6 +872,11 @@ namespace vultra_app
         if (ImGui::BeginPopupContextWindow("AssetBrowserEmptyContext",
                                            ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
         {
+            if (ImGui::MenuItem(ICON_MDI_FILE_IMPORT "  Import File"))
+                openImportDialog(m_CurrentDir, false);
+            if (ImGui::MenuItem(ICON_MDI_FOLDER_UPLOAD "  Import Folder"))
+                openImportDialog(m_CurrentDir, true);
+            ImGui::Separator();
             if (ImGui::MenuItem(ICON_MDI_FOLDER_PLUS "  Create Folder"))
             {
                 std::memset(m_NewFolderBuffer.data(), 0, m_NewFolderBuffer.size());
@@ -1310,6 +1448,11 @@ namespace vultra_app
             ctx.state.statusMessage = refreshed ? "Reimported source asset." : "Failed to reimport source asset.";
         }
         ImGui::Separator();
+        if (ImGui::MenuItem(ICON_MDI_FILE_IMPORT "  Import File"))
+            openImportDialog(isDirectory ? path : path.parent_path(), false);
+        if (ImGui::MenuItem(ICON_MDI_FOLDER_UPLOAD "  Import Folder"))
+            openImportDialog(isDirectory ? path : path.parent_path(), true);
+        ImGui::Separator();
         if (ImGui::MenuItem(ICON_MDI_FOLDER_PLUS "  Create Folder"))
         {
             m_CurrentDir = isDirectory ? path : path.parent_path();
@@ -1412,6 +1555,76 @@ namespace vultra_app
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
+
+        drawImportDialogs(ctx);
+    }
+
+    void ContentBrowserWindow::openImportDialog(const std::filesystem::path& targetDir, const bool directory)
+    {
+        m_ImportTargetDir = targetDir.empty() ? m_CurrentDir : targetDir;
+
+        IGFD::FileDialogConfig config;
+        config.path  = m_ImportTargetDir.empty() ? "." : m_ImportTargetDir.generic_string();
+        config.flags = importDialogFlags();
+        ImGuiFileDialog::Instance()->OpenDialog(directory ? "ContentBrowserImportFolder" : "ContentBrowserImportFile",
+                                                directory ? "Import Folder" : "Import File",
+                                                directory ? nullptr : ".*",
+                                                config);
+    }
+
+    void ContentBrowserWindow::drawImportDialogs(EditorContext& ctx)
+    {
+        ui::ScopedPopupStyle style;
+        constexpr ImVec2 dialogSize {640.0f, 420.0f};
+
+        if (ImGuiFileDialog::Instance()->Display("ContentBrowserImportFile",
+                                                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
+                                                 dialogSize))
+        {
+            if (ImGuiFileDialog::Instance()->IsOk())
+                importExternalPath(ctx,
+                                   std::filesystem::path(ImGuiFileDialog::Instance()->GetFilePathName(
+                                       IGFD_ResultMode_KeepInputFile)));
+            ImGuiFileDialog::Instance()->Close();
+        }
+
+        if (ImGuiFileDialog::Instance()->Display("ContentBrowserImportFolder",
+                                                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
+                                                 dialogSize))
+        {
+            if (ImGuiFileDialog::Instance()->IsOk())
+            {
+                auto selected = std::filesystem::path(
+                    ImGuiFileDialog::Instance()->GetFilePathName(IGFD_ResultMode_KeepInputFile));
+                if (selected.empty())
+                    selected = std::filesystem::path(ImGuiFileDialog::Instance()->GetCurrentPath());
+                importExternalPath(ctx, selected);
+            }
+            ImGuiFileDialog::Instance()->Close();
+        }
+    }
+
+    void ContentBrowserWindow::importExternalPath(EditorContext& ctx, const std::filesystem::path& source)
+    {
+        if (source.empty())
+            return;
+
+        std::filesystem::path copiedPath;
+        std::string           error;
+        if (!copyExternalAssetIntoDirectory(source, m_ImportTargetDir.empty() ? m_CurrentDir : m_ImportTargetDir, copiedPath, error))
+        {
+            ctx.state.statusMessage = "Import failed: " + error;
+            return;
+        }
+
+        uint32_t importedCount = 0;
+        const bool imported = importCopiedAssetPath(ctx, copiedPath, importedCount);
+        ctx.state.statusMessage =
+            imported ? "Imported " + std::to_string(importedCount) + " asset(s)." : "Copied asset, but no importer accepted it.";
+        invalidateEntryCache();
+        m_CurrentDir = (m_ImportTargetDir.empty() ? m_CurrentDir : m_ImportTargetDir).lexically_normal();
+        m_SelectedPath = copiedPath;
+        ctx.state.selectedSourceAsset = copiedPath;
     }
 
     const std::vector<std::filesystem::path>& ContentBrowserWindow::entriesForCurrentDir()

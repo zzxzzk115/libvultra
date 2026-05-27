@@ -189,6 +189,7 @@ namespace vultra::platform::glfw
         glfwSetMouseButtonCallback(m_WindowHandle, &GLFWWindow::onMouseButton);
         glfwSetCursorPosCallback(m_WindowHandle, &GLFWWindow::onCursorPos);
         glfwSetScrollCallback(m_WindowHandle, &GLFWWindow::onScroll);
+        glfwSetDropCallback(m_WindowHandle, &GLFWWindow::onDrop);
 #if defined(__EMSCRIPTEN__)
         setDocumentAppTitle(m_Title.c_str());
 #endif
@@ -1047,6 +1048,30 @@ namespace vultra::platform::glfw
         generalEvent.mouseWheel = event::MouseWheelEvent {
             .delta = {static_cast<float>(xoffset), static_cast<float>(yoffset)},
         };
+        self->emitEvent(generalEvent);
+    }
+
+    void GLFWWindow::onDrop(GLFWwindow* windowHandle, int count, const char** paths)
+    {
+        auto* self = fromHandle(windowHandle);
+        if (!self || count <= 0 || paths == nullptr)
+        {
+            return;
+        }
+
+        event::FileDropEvent drop {};
+        drop.paths.reserve(static_cast<size_t>(count));
+        for (int i = 0; i < count; ++i)
+        {
+            if (paths[i] != nullptr && paths[i][0] != '\0')
+                drop.paths.emplace_back(paths[i]);
+        }
+        if (drop.paths.empty())
+            return;
+
+        os::GeneralWindowEvent generalEvent {};
+        generalEvent.type     = event::WindowEventType::eFileDrop;
+        generalEvent.fileDrop = std::move(drop);
         self->emitEvent(generalEvent);
     }
 } // namespace vultra::platform::glfw

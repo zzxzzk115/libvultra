@@ -15,6 +15,7 @@
 #endif
 
 #include <cstring>
+#include <string>
 
 namespace vultra::platform::sdl
 {
@@ -700,6 +701,18 @@ namespace vultra::platform::sdl
                     generalEvent.type       = event::WindowEventType::eMouseWheel;
                     generalEvent.mouseWheel = event::MouseWheelEvent {.delta = {event.wheel.x, event.wheel.y}};
                     emitEvent(generalEvent);
+                    break;
+
+                case SDL_EVENT_DROP_FILE:
+                    if (event.drop.windowID == SDL_GetWindowID(m_WindowHandle) && event.drop.data != nullptr)
+                    {
+                        generalEvent.type = event::WindowEventType::eFileDrop;
+                        generalEvent.fileDrop = event::FileDropEvent {
+                            .paths = {std::string {event.drop.data}},
+                        };
+                        emitEvent(generalEvent);
+                    }
+                    SDL_free(const_cast<char*>(event.drop.data));
                     break;
 
                 default:

@@ -88,6 +88,7 @@ namespace vultra::platform::glfw
         static void        onMouseButton(GLFWwindow* windowHandle, int button, int action, int mods);
         static void        onCursorPos(GLFWwindow* windowHandle, double xpos, double ypos);
         static void        onScroll(GLFWwindow* windowHandle, double xoffset, double yoffset);
+        static void        onDrop(GLFWwindow* windowHandle, int count, const char** paths);
 
         std::string m_Title;
         Extent      m_Extent {};

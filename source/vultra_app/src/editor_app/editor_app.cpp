@@ -1224,6 +1224,13 @@ namespace vultra_app
         {
             case LoadingPhase::Pending:
                 applySplashWindow(ctx);
+                m_Loading.phase    = LoadingPhase::ShowSplash;
+                m_Loading.progress = 0.06f;
+                m_Loading.message  = "Preparing project assets...";
+                return true;
+
+            case LoadingPhase::ShowSplash:
+                applySplashWindow(ctx);
                 if (!m_Loading.releasedEditorState)
                 {
                     if (auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>())
@@ -1607,5 +1614,4 @@ namespace vultra_app
 #endif
     }
 } // namespace vultra_app
-
 

@@ -57,6 +57,7 @@ namespace vultra_app
         {
             Idle,
             Pending,
+            ShowSplash,
             ImportAssets,
             ConfigureAssets,
             GenerateThumbnails,

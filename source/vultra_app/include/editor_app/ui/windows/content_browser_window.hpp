@@ -56,6 +56,9 @@ namespace vultra_app
         void invalidateEntryCache();
         void drawContextMenu(EditorContext& ctx, const std::filesystem::path& path, bool isDirectory);
         void drawPendingPopups(EditorContext& ctx);
+        void openImportDialog(const std::filesystem::path& targetDir, bool directory);
+        void drawImportDialogs(EditorContext& ctx);
+        void importExternalPath(EditorContext& ctx, const std::filesystem::path& source);
         const std::vector<std::filesystem::path>& entriesForCurrentDir();
         const std::vector<std::filesystem::path>& filteredEntriesForCurrentDir();
         const std::vector<std::filesystem::path>& directoryChildrenFor(const std::filesystem::path& path);
@@ -66,6 +69,7 @@ namespace vultra_app
         std::filesystem::path m_SelectedPath;
         std::filesystem::path m_RenamingPath;
         std::filesystem::path m_DeletePath;
+        std::filesystem::path m_ImportTargetDir;
         std::filesystem::path m_PendingSelectPath;
         std::array<char, 128> m_Filter {};
         std::array<char, 128> m_RenameBuffer {};

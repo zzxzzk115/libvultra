@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 #include <cstdint>
 
 namespace vultra_app
@@ -117,6 +118,7 @@ namespace vultra_app
         bool                  frameDebuggerWindowOpenRequested {false};
         uint64_t              projectGeneration {0};
         uint64_t              assetFileGeneration {0};
+        std::vector<std::filesystem::path> pendingExternalAssetDrops;
         EditorSettings        editorSettings;
         BuildSettings         buildSettings;
         // Scene document state. Tool windows should mutate this, but only document tabs should display it.

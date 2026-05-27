@@ -37,9 +37,10 @@ namespace vultra_app::ui
 {
     namespace
     {
-        constexpr std::string_view kThumbnailCacheVersion = "lighting-v2";
+        constexpr std::string_view kThumbnailCacheVersion = "lighting-v3";
         constexpr std::string_view kTextureThumbnailCacheVersion = "texture-v1";
         constexpr int              kTextureThumbnailSize = 128;
+        constexpr uint64_t         kRenderThumbnailWarmupFrames = 4;
 
         std::string fnv1a64Hex(std::string_view text)
         {
@@ -610,7 +611,7 @@ namespace vultra_app::ui
 
         if (m_ActiveRenderJob)
         {
-            if (m_FrameCounter <= m_ActiveRenderJob->frameSubmitted + 1)
+            if (m_FrameCounter <= m_ActiveRenderJob->frameSubmitted + kRenderThumbnailWarmupFrames)
             {
                 const auto doneJobs = totalJobs - std::min(totalJobs, m_QueuedRequests.size() + 1);
                 progress = std::clamp(static_cast<float>(doneJobs) / static_cast<float>(totalJobs), 0.0f, 1.0f);
