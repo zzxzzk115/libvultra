@@ -608,7 +608,7 @@ task_end()
 
 local vshadersystem_configs = { debug = is_mode("debug") }
 if is_host("windows") then
-    vshadersystem_configs.runtimes = is_mode("debug") and "MDd" or "MD"
+    vshadersystem_configs.runtimes = is_mode("debug") and "MTd" or "MT"
 end
 
 if is_plat("android") then

@@ -79,9 +79,10 @@ namespace vultra
         static_assert(sizeof(MaterialParamsUnlit) % 16 == 0);
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
-        vasset::VAssetImporter::ImportOptions makeAssetImportOptions()
+        vasset::VAssetImporter::ImportOptions makeAssetImportOptions(const bool importShaderLibraries = true)
         {
             vasset::VAssetImporter::ImportOptions options;
+            options.importShaderLibraries = importShaderLibraries;
             options.shaderVirtualIncludes.reserve(builtin_shader_include_sources_count);
             for (size_t i = 0; i < builtin_shader_include_sources_count; ++i)
             {
@@ -526,7 +527,7 @@ namespace vultra
                 }
 #ifdef VULTRA_HAS_VASSET_IMPORT
                 vasset::VAssetImporter importer {m_Registry};
-                importer.setOptions(makeAssetImportOptions());
+                importer.setOptions(makeAssetImportOptions(false));
                 importer.importOrReimportAssetFolder(m_Desc.assetRoot);
                 m_Registry.save(registryPath);
 #else
@@ -551,7 +552,7 @@ namespace vultra
             if (m_Desc.enableImportScan)
             {
                 vasset::VAssetImporter importer {m_Registry};
-                importer.setOptions(makeAssetImportOptions());
+                importer.setOptions(makeAssetImportOptions(false));
                 auto                   importResult = importer.importOrReimportAssetFolder(m_Desc.assetRoot, false);
                 if (!importResult)
                 {

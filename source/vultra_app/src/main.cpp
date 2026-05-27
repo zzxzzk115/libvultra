@@ -351,7 +351,6 @@ namespace
             if (m_Options.editorMode)
             {
                 vultra_app::EditorApp::configureProject(engine, m_Options);
-                engine.ctx().config.asset.enableImportScan = false;
                 return;
             }
 
