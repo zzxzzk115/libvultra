@@ -175,6 +175,7 @@ namespace vultra_app
         bool                m_Initialized {false};
         bool                m_DefaultLayoutBuilt {false};
         bool                m_BuildRunActive {false};
+        bool                m_BuildRunPopupPendingOpen {false};
         bool                m_BuildRunConfigureOpen {false};
         bool                m_ShowAboutPopup {false};
         bool                m_PlaybackWasPlaying {false};

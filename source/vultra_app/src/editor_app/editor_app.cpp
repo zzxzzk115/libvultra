@@ -730,13 +730,27 @@ namespace vultra_app
         if (!m_BuildRunActive && !m_BuildRunCompleted.has_value())
             return;
 
-        ImGui::OpenPopup("Export & Run");
+        if (m_BuildRunPopupPendingOpen)
+        {
+            if (!ImGui::IsPopupOpen("Export & Run"))
+                ImGui::OpenPopup("Export & Run");
+            m_BuildRunPopupPendingOpen = false;
+        }
+
         ui::centerNextModalInCurrentWindow();
         bool popupOpen = true;
         if (ImGui::BeginPopupModal("Export & Run", &popupOpen, ImGuiWindowFlags_AlwaysAutoResize))
         {
+            const auto closeCompletedPopup = [&]() {
+                m_BuildRunPopupPendingOpen = false;
+                if (!m_BuildRunActive)
+                    m_BuildRunCompleted.reset();
+                ImGui::CloseCurrentPopup();
+            };
+
             if (!popupOpen)
             {
+                closeCompletedPopup();
                 ImGui::EndPopup();
                 return;
             }
@@ -766,10 +780,7 @@ namespace vultra_app
             if (m_BuildRunActive)
                 ImGui::TextDisabled("This can take a while when assets are reimported.");
             else if (ImGui::Button("Close", ImVec2 {96.0f, 0.0f}))
-            {
-                m_BuildRunCompleted.reset();
-                ImGui::CloseCurrentPopup();
-            }
+                closeCompletedPopup();
             ImGui::EndPopup();
         }
     }
@@ -827,6 +838,7 @@ namespace vultra_app
         m_BuildRunActive = false;
         m_BuildRunProgress.reset();
         m_BuildRunCompleted = result;
+        m_BuildRunPopupPendingOpen = true;
         ctx.state.statusMessage = result.message;
         ctx.state.buildSettings.lastBuildStatus = result.ok ? "Succeeded" : "Failed";
         ctx.state.buildSettings.lastBuildTime = "This session";
@@ -903,6 +915,7 @@ namespace vultra_app
         ctx.state.statusMessage = launchRuntime ? "Export & Run started: packaging runtime..." :
                                                   "Export started: packaging runtime...";
         m_BuildRunProgress = std::make_shared<BuildRunTaskProgress>();
+        m_BuildRunPopupPendingOpen = true;
         {
             std::scoped_lock lock(m_BuildRunProgress->mutex);
             m_BuildRunProgress->progress = 0.02f;
@@ -1614,4 +1627,3 @@ namespace vultra_app
 #endif
     }
 } // namespace vultra_app
-
