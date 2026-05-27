@@ -722,6 +722,13 @@ namespace vultra_app
                                             texture.extent.height,
                                             std::string(vultra::rhi::toString(texture.format)).c_str());
                     }
+                    if (texture.layerCount > 1u)
+                    {
+                        const char* eye = texture.layer == 0u ? "Left Eye" :
+                                          texture.layer == 1u ? "Right Eye" :
+                                                                "Array Layer";
+                        ImGui::TextDisabled("%s  layer %u / %u", eye, texture.layer, texture.layerCount);
+                    }
                     if (texture.imported)
                         ImGui::TextDisabled("Imported frame graph texture");
                     if (!texture.capturable)

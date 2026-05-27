@@ -710,7 +710,10 @@ namespace vultra
                                                                const uint32_t         viewMask) const
     {
         auto vertexShader = loadHighendShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
-        auto fragmentShader = loadHighendShader("deferred_lighting.frag", vshadersystem::ShaderStage::eFrag);
+        rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
+            {"USE_MULTIVIEW", viewMask != 0u ? 1u : 0u},
+        };
+        auto fragmentShader = loadHighendShader("deferred_lighting.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
         if (!vertexShader || !fragmentShader)
         {
             VULTRA_CORE_ERROR("[DeferredLightingPass] Failed to load shaders");

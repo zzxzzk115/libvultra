@@ -101,7 +101,10 @@ namespace vultra
             return {};
         }
 
-        auto fragmentShader = loadGeneralShader("fxaa.frag", vshadersystem::ShaderStage::eFrag);
+        rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
+            {"USE_MULTIVIEW", viewMask != 0u ? 1u : 0u},
+        };
+        auto fragmentShader = loadGeneralShader("fxaa.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[FXAAPass] Failed to load fragment shader");

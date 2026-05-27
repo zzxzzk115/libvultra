@@ -220,8 +220,10 @@ namespace vultra
                         {
                             break;
                         }
-                        const auto imageView =
-                            value->texture->getImageView(toImageAspectFlags(value->imageAspect)).getHandle();
+                        const auto aspect = toImageAspectFlags(value->imageAspect);
+                        const auto imageView = value->layer ?
+                            value->texture->getLayer(*value->layer, std::nullopt, aspect).getHandle() :
+                            value->texture->getImageView(aspect).getHandle();
                         if (imageView == 0)
                         {
                             break;
@@ -251,8 +253,10 @@ namespace vultra
                         {
                             break;
                         }
-                        const auto imageView =
-                            value->texture->getImageView(toImageAspectFlags(value->imageAspect)).getHandle();
+                        const auto aspect = toImageAspectFlags(value->imageAspect);
+                        const auto imageView = value->layer ?
+                            value->texture->getLayer(*value->layer, std::nullopt, aspect).getHandle() :
+                            value->texture->getImageView(aspect).getHandle();
                         if (imageView == 0)
                         {
                             break;

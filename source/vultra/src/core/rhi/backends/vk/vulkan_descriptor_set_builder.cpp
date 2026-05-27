@@ -48,8 +48,11 @@ namespace vultra
             // Descriptor image layouts describe how the shader will access the image, not the texture's current
             // tracked transition state. This matters for backbuffer-derived views whose current layout may become
             // Present after a previous frame while the next use is still a sampled read.
-            addCombinedImageSampler(
-                info.texture->getImageView(toRhi(toVk(info.imageAspect))).getHandle(), ImageLayout::eReadOnly, sampler);
+            const auto aspect = toRhi(toVk(info.imageAspect));
+            const auto view = info.layer ?
+                info.texture->getLayer(*info.layer, std::nullopt, aspect) :
+                info.texture->getImageView(aspect);
+            addCombinedImageSampler(view.getHandle(), ImageLayout::eReadOnly, sampler);
         }
 
         void VulkanDescriptorSetBuilder::bind(const BindingIndex index, const bindings::CombinedImageSamplerArray& info)
@@ -70,8 +73,11 @@ namespace vultra
         void VulkanDescriptorSetBuilder::bind(const BindingIndex index, const bindings::SampledImage& info)
         {
             m_Bindings[index] = {DescriptorType::eSampledImage, 1, static_cast<int32_t>(m_ImageInfos.size())};
-            addImage(info.texture->getImageView(toRhi(toVk(info.imageAspect))).getHandle(),
-                     ImageLayout::eReadOnly);
+            const auto aspect = toRhi(toVk(info.imageAspect));
+            const auto view = info.layer ?
+                info.texture->getLayer(*info.layer, std::nullopt, aspect) :
+                info.texture->getImageView(aspect);
+            addImage(view.getHandle(), ImageLayout::eReadOnly);
         }
 
         void VulkanDescriptorSetBuilder::bind(const BindingIndex index, const bindings::StorageImage& info)

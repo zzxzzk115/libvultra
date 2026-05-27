@@ -1051,6 +1051,17 @@ namespace vultra_app
                  });
             pass("Fxaa", {"source"}, {"color"},
                  {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+            pass("XrViewSynthesis", {"source", "depth"}, {"color"},
+                 {
+                     {.name = "warpingBackend", .type = vrendergraph::ParamType::eString, .defaultValue = "adaptive_mesh_graphics"},
+                     {.name = "inpaintingBackend", .type = vrendergraph::ParamType::eString, .defaultValue = "pull_push"},
+                     {.name = "sourceView", .type = vrendergraph::ParamType::eString, .defaultValue = "left"},
+                     {.name = "targetView", .type = vrendergraph::ParamType::eString, .defaultValue = "right"},
+                     {.name = "baseGridSize", .type = vrendergraph::ParamType::eInt, .defaultValue = 16, .minValue = 1, .maxValue = 128},
+                     {.name = "maxSubdivision", .type = vrendergraph::ParamType::eInt, .defaultValue = 2, .minValue = 0, .maxValue = 3},
+                     {.name = "sideLengthThreshold", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.12f, .minValue = 0.0f, .maxValue = 2.0f},
+                     {.name = "depthThreshold", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.02f, .minValue = 0.0f, .maxValue = 1.0f},
+                 });
             pass("SelectionOutline", {"source", "entityId", "depth"}, {"color"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},

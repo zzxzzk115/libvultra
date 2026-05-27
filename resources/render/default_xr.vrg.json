@@ -1,0 +1,236 @@
+{
+  "version": 3,
+  "meta": {
+    "editor": {
+      "nodes": {
+        "DirectGBuffer": { "pos": [260.0, 80.0] },
+        "ShadowMap": { "pos": [500.0, 430.0] },
+        "Ssao": { "pos": [710.0, -250.0] },
+        "DeferredLighting": { "pos": [1135.0, -95.0] },
+        "Ssr": { "pos": [1380.0, 530.0] },
+        "SsrComposite": { "pos": [1690.0, 55.0] },
+        "ToneMapping": { "pos": [2000.0, 80.0] },
+        "Fxaa": { "pos": [2360.0, 80.0] },
+        "XrViewSynthesis": { "pos": [2720.0, 80.0] },
+        "SelectionOutline": { "pos": [3080.0, 80.0] },
+        "FinalComposition": { "pos": [3800.0, 80.0] }
+      }
+    }
+  },
+  "passes": [
+    {
+      "enabled": true,
+      "id": "DirectGBuffer",
+      "outputs": {
+        "color": "DirectGBuffer.color",
+        "depth": "DirectGBuffer.depth",
+        "entityId": "DirectGBuffer.entityId",
+        "material": "DirectGBuffer.material",
+        "normal": "DirectGBuffer.normal"
+      },
+      "type": "DirectGBuffer",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "ShadowMap",
+      "outputs": {
+        "shadowData": "ShadowMap.shadowData",
+        "shadowMap": "ShadowMap.shadowMap"
+      },
+      "params": {
+        "autoFitBounds": true,
+        "cascadeCount": 4,
+        "coverageRadius": 75.0,
+        "depthBias": 0.0012,
+        "enabled": true,
+        "lightDistance": 200.0,
+        "normalBias": 0.015,
+        "pcssLightRadius": 1.5,
+        "resolution": 4096,
+        "splitLambda": 0.6,
+        "stableTexelSnapping": true,
+        "zRange": 120.0
+      },
+      "type": "ShadowMap",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "Ssao",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "normal": "DirectGBuffer.normal"
+      },
+      "outputs": {
+        "ao": "Ssao.ao"
+      },
+      "params": {
+        "bias": 0.05,
+        "directionCount": 8,
+        "enabled": true,
+        "intensity": 1.0,
+        "maxRadiusPixels": 32,
+        "radius": 1.5,
+        "stepCount": 4
+      },
+      "type": "Ssao",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "DeferredLighting",
+      "inputs": {
+        "ao": "Ssao.ao",
+        "color": "DirectGBuffer.color",
+        "depth": "DirectGBuffer.depth",
+        "material": "DirectGBuffer.material",
+        "normal": "DirectGBuffer.normal",
+        "shadowData": "ShadowMap.shadowData",
+        "shadowMap": "ShadowMap.shadowMap"
+      },
+      "outputs": {
+        "color": "DeferredLighting.color"
+      },
+      "params": {
+        "ambientIntensity": 1.0,
+        "debugCascades": false,
+        "debugViewMode": 0,
+        "iblIntensity": 1.0,
+        "pcfRadius": 2,
+        "pcssBlockerSamples": 12,
+        "shadowDebugMode": 0,
+        "shadowFilterMode": 1,
+        "shadowStrength": 0.85
+      },
+      "type": "DeferredLighting",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "Ssr",
+      "inputs": {
+        "color": "DeferredLighting.color",
+        "depth": "DirectGBuffer.depth",
+        "material": "DirectGBuffer.material",
+        "normal": "DirectGBuffer.normal"
+      },
+      "outputs": {
+        "reflection": "Ssr.reflection"
+      },
+      "params": {
+        "binaryRefinement": 3,
+        "enabled": true,
+        "maxSteps": 16,
+        "reflectionFactor": 0.2,
+        "stride": 0.35,
+        "thickness": 0.5
+      },
+      "type": "Ssr",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "SsrComposite",
+      "inputs": {
+        "reflection": "Ssr.reflection",
+        "source": "DeferredLighting.color"
+      },
+      "outputs": {
+        "color": "SsrComposite.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "SsrComposite",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "ToneMapping",
+      "inputs": {
+        "source": "SsrComposite.color"
+      },
+      "outputs": {
+        "color": "ToneMapping.color"
+      },
+      "params": {
+        "enabled": false,
+        "exposure": 1.0,
+        "method": 0
+      },
+      "type": "ToneMapping",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "Fxaa",
+      "inputs": {
+        "source": "ToneMapping.color"
+      },
+      "outputs": {
+        "color": "Fxaa.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "Fxaa",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": false,
+      "id": "XrViewSynthesis",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "source": "Fxaa.color"
+      },
+      "outputs": {
+        "color": "XrViewSynthesis.color"
+      },
+      "params": {
+        "baseGridSize": 16,
+        "depthThreshold": 0.02,
+        "inpaintingBackend": "pull_push",
+        "maxSubdivision": 2,
+        "sideLengthThreshold": 0.12,
+        "sourceView": "left",
+        "targetView": "right",
+        "warpingBackend": "adaptive_mesh_graphics"
+      },
+      "type": "XrViewSynthesis",
+      "viewMode": "stereo"
+    },
+    {
+      "enabled": true,
+      "id": "SelectionOutline",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "entityId": "DirectGBuffer.entityId",
+        "source": "Fxaa.color"
+      },
+      "outputs": {
+        "color": "SelectionOutline.color"
+      },
+      "params": {
+        "edgeOpacity": 0.35,
+        "enabled": true,
+        "fillOpacity": 0.0,
+        "thickness": 3.0
+      },
+      "type": "SelectionOutline",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "SelectionOutline.color"
+      },
+      "outputs": {
+        "target": "FinalComposition.target"
+      },
+      "type": "FinalComposition",
+      "viewMode": "inherit"
+    }
+  ]
+}

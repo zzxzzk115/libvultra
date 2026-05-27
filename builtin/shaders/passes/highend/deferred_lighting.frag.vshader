@@ -12,9 +12,21 @@ pcfRadius : int = 2 range(0, 4)
 pcssBlockerSamples : int = 12 range(1, 32)
 iblIntensity : float = 0.0 range(0.0, 8.0)
 
+[keywords]
+USE_MULTIVIEW : bool permute
+
 [frag]
 #include "include/common/pbr.glsl"
 #include "include/common/ltc.glsl"
+
+#if USE_MULTIVIEW && !PLATFORM_WEBGPU
+#extension GL_EXT_multiview : require
+#define VULTRA_GBUFFER_TEXTURE sampler2DArray
+#define VULTRA_GBUFFER_SAMPLE(tex, uv) texture(tex, vec3((uv), float(gl_ViewIndex)))
+#else
+#define VULTRA_GBUFFER_TEXTURE sampler2D
+#define VULTRA_GBUFFER_SAMPLE(tex, uv) texture(tex, uv)
+#endif
 
 struct CameraData
 {
@@ -52,17 +64,17 @@ layout(set = 2, binding = 0) uniform ShadowData
     vec4 cascadeParams;
 } u_Shadow;
 
-layout(set = 3, binding = 0) uniform sampler2D u_GBufferColor;
-layout(set = 3, binding = 1) uniform sampler2D u_GBufferNormal;
-layout(set = 3, binding = 2) uniform sampler2D u_GBufferMetallicRoughnessAO;
-layout(set = 3, binding = 3) uniform sampler2D u_Depth;
+layout(set = 3, binding = 0) uniform VULTRA_GBUFFER_TEXTURE u_GBufferColor;
+layout(set = 3, binding = 1) uniform VULTRA_GBUFFER_TEXTURE u_GBufferNormal;
+layout(set = 3, binding = 2) uniform VULTRA_GBUFFER_TEXTURE u_GBufferMetallicRoughnessAO;
+layout(set = 3, binding = 3) uniform VULTRA_GBUFFER_TEXTURE u_Depth;
 layout(set = 3, binding = 4) uniform sampler2D u_ShadowMap;
 layout(set = 3, binding = 5) uniform sampler2D u_LTCMat;
 layout(set = 3, binding = 6) uniform sampler2D u_LTCMag;
 layout(set = 3, binding = 7) uniform sampler2D u_BrdfLUT;
 layout(set = 3, binding = 8) uniform samplerCube u_IrradianceMap;
 layout(set = 3, binding = 9) uniform samplerCube u_PrefilteredEnvMap;
-layout(set = 3, binding = 10) uniform sampler2D u_SSAO;
+layout(set = 3, binding = 10) uniform VULTRA_GBUFFER_TEXTURE u_SSAO;
 
 layout(set = 1, binding = 0, std140) uniform LightBlock
 {
@@ -303,16 +315,16 @@ vec3 quantizeToon(vec3 color)
 
 void main()
 {
-    vec4 baseColor = texture(u_GBufferColor, v_TexCoord);
-    float depth = texture(u_Depth, v_TexCoord).r;
+    vec4 baseColor = VULTRA_GBUFFER_SAMPLE(u_GBufferColor, v_TexCoord);
+    float depth = VULTRA_GBUFFER_SAMPLE(u_Depth, v_TexCoord).r;
     if (depth >= 1.0)
     {
         FragColor = vec4(baseColor.rgb, baseColor.a);
         return;
     }
 
-    vec3 normalWS = normalize(texture(u_GBufferNormal, v_TexCoord).xyz);
-    vec4 mraSample = texture(u_GBufferMetallicRoughnessAO, v_TexCoord);
+    vec3 normalWS = normalize(VULTRA_GBUFFER_SAMPLE(u_GBufferNormal, v_TexCoord).xyz);
+    vec4 mraSample = VULTRA_GBUFFER_SAMPLE(u_GBufferMetallicRoughnessAO, v_TexCoord);
     vec3 mra = mraSample.xyz;
     uint materialModel = uint(round(mraSample.w));
     vec3 positionWS = worldPositionFromDepth(depth, v_TexCoord);
@@ -400,7 +412,7 @@ void main()
     vec3 viewDir = normalize(cameraWS - positionWS);
     float metallic = clamp(mra.x, 0.0, 1.0);
     float roughness = clamp(mra.y, 0.045, 1.0);
-    float ssao = clamp(texture(u_SSAO, v_TexCoord).r, 0.0, 1.0);
+    float ssao = clamp(VULTRA_GBUFFER_SAMPLE(u_SSAO, v_TexCoord).r, 0.0, 1.0);
     float ao = clamp(mra.z * ssao, 0.0, 1.0);
 
     DirectionalLight light;

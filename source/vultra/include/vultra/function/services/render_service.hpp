@@ -35,6 +35,8 @@ namespace vultra
         std::string      resourceKey;
         std::string      transientResourceKey;
         rhi::Texture*    texture {nullptr};
+        uint32_t         layer {0};
+        uint32_t         layerCount {1};
         bool             imported {false};
         bool             capturable {false};
         rhi::Extent2D    extent {};

@@ -135,7 +135,10 @@ namespace vultra
     rhi::GraphicsPipeline SelectionOutlinePass::createPipeline(const rhi::PixelFormat colorFormat, const uint32_t viewMask) const
     {
         auto vertexShader = loadHighendShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
-        auto fragmentShader = loadHighendShader("selection_outline.frag", vshadersystem::ShaderStage::eFrag);
+        rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
+            {"USE_MULTIVIEW", viewMask != 0u ? 1u : 0u},
+        };
+        auto fragmentShader = loadHighendShader("selection_outline.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
         if (!vertexShader || !fragmentShader)
         {
             VULTRA_CORE_ERROR("[SelectionOutlinePass] Failed to load shaders");

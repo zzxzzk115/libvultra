@@ -1583,6 +1583,8 @@ namespace vultra
             FrameGraphResource resource {};
             std::string        name;
             rhi::ImageAspect   aspect {rhi::ImageAspect::eColor};
+            uint32_t           layer {0};
+            uint32_t           layerCount {1};
             bool               imported {false};
             bool               capturable {false};
         };
@@ -1663,14 +1665,26 @@ namespace vultra
                 std::string name(resource.getName());
                 if (resource.getVersion() > ResourceEntry::kInitialVersion)
                     name += " v" + std::to_string(resource.getVersion());
-                candidates.push_back(CaptureCandidate {
-                    .resource = static_cast<FrameGraphResource>(resource.getId()),
-                    .name = std::move(name),
-                    .aspect = imageAspectFor(desc.format),
-                    .imported = entry.isImported(),
-                    .capturable = canPreviewWithFloatSampler(desc.format) &&
-                                  static_cast<bool>(desc.usageFlags & rhi::ImageUsage::eSampled),
-                });
+                const auto layerCount = std::max(desc.layers, 1u);
+                const bool capturable = canPreviewWithFloatSampler(desc.format) &&
+                                        static_cast<bool>(desc.usageFlags & rhi::ImageUsage::eSampled);
+                for (uint32_t layer = 0u; layer < layerCount; ++layer)
+                {
+                    auto layerName = name;
+                    if (layerCount > 1u)
+                        layerName += layer == 0u ? " [Left Eye]" :
+                                     layer == 1u ? " [Right Eye]" :
+                                                   " [Layer " + std::to_string(layer) + "]";
+                    candidates.push_back(CaptureCandidate {
+                        .resource = static_cast<FrameGraphResource>(resource.getId()),
+                        .name = std::move(layerName),
+                        .aspect = imageAspectFor(desc.format),
+                        .layer = layer,
+                        .layerCount = layerCount,
+                        .imported = entry.isImported(),
+                        .capturable = capturable,
+                    });
+                }
             }
 
             void flush(std::ostream&) const {}
@@ -1692,8 +1706,9 @@ namespace vultra
 
             const auto previewExtent = sourceDesc.extent;
             std::string cameraName {camera.name.empty() ? std::string {"Camera"} : camera.name};
-            std::string slotKey = cameraName + "/" + candidate.name;
-            std::string transientResourceKey = "resource:" + std::to_string(candidate.resource);
+            std::string slotKey = cameraName + "/" + candidate.name + "/layer:" + std::to_string(candidate.layer);
+            std::string transientResourceKey =
+                "resource:" + std::to_string(candidate.resource) + "/layer:" + std::to_string(candidate.layer);
             std::string publicKey = slotKey + "@" + std::to_string(sourceDesc.extent.width) + "x" +
                                     std::to_string(sourceDesc.extent.height) + ":" +
                                     std::string(rhi::toString(sourceDesc.format));
@@ -1701,8 +1716,9 @@ namespace vultra
             const auto previewSettings = overrideIt != m_FrameGraphTexturePreviewOverrides.end() ?
                                              overrideIt->second :
                                              m_FrameGraphTexturePreviewSettings;
-            const bool shouldPreview = m_FrameGraphTexturePreviewSettings.selectedTextureKey ==
-                                                FrameGraphTexturePreviewSettings::kCaptureAllTextures ?
+            const bool captureAllRequested = m_FrameGraphTexturePreviewSettings.selectedTextureKey ==
+                                             FrameGraphTexturePreviewSettings::kCaptureAllTextures;
+            const bool shouldPreview = captureAllRequested ?
                                            true :
                                        m_FrameGraphTexturePreviewSettings.selectedTextureKey.empty() ?
                                            m_FrameGraphDebugTextures.empty() :
@@ -1717,6 +1733,8 @@ namespace vultra
                     .resourceKey = slotKey,
                     .transientResourceKey = transientResourceKey,
                     .texture = nullptr,
+                    .layer = candidate.layer,
+                    .layerCount = candidate.layerCount,
                     .imported = candidate.imported,
                     .capturable = candidate.capturable,
                     .extent = previewExtent,
@@ -1782,7 +1800,8 @@ namespace vultra
                                                   .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                               });
                 },
-                [this, preview = previewSettings](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+                [this, preview = previewSettings, sourceLayer = candidate.layer, sourceAspect = candidate.aspect](
+                    const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
                     VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                     if (!rc.ext.builtinShaderLib)
                         return;
@@ -1808,8 +1827,17 @@ namespace vultra
                         .clampMax = preview.clampMax,
                     };
 
-                    if (rc.resourceSet.contains(3) && rc.resourceSet[3].contains(0) && rc.ext.samplers.contains("nearest"))
-                        rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["nearest"]);
+                    auto* sourceTexture = resources.get<framegraph::FrameGraphTexture>(data.source).texture;
+                    const auto samplerIt = rc.ext.samplers.find("nearest");
+                    if (sourceTexture && samplerIt != rc.ext.samplers.end())
+                    {
+                        rc.resourceSet[3][0] = rhi::bindings::CombinedImageSampler {
+                            .texture = sourceTexture,
+                            .imageAspect = sourceAspect,
+                            .sampler = samplerIt->second,
+                            .layer = sourceTexture->getNumLayers() > 1u ? std::optional {sourceLayer} : std::nullopt,
+                        };
+                    }
                     rc.cb.bindPipeline(*pipeline);
                     rc.bindDescriptorSets(*pipeline);
                     rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
@@ -1824,6 +1852,8 @@ namespace vultra
                 .resourceKey = slotKey,
                 .transientResourceKey = transientResourceKey,
                 .texture = &*slot.texture,
+                .layer = candidate.layer,
+                .layerCount = candidate.layerCount,
                 .imported = candidate.imported,
                 .capturable = candidate.capturable,
                 .extent = slot.extent,
@@ -2642,8 +2672,7 @@ namespace vultra
             FrameGraphDataRegistry dataRegistry {};
 
             const bool canUseXrMultiview = supportsMultiview && cam.isXRView && cam.isXRPrimaryView &&
-                                           cam.viewCount == 2u && m_RenderWorldFront.instances.empty() &&
-                                           !xrEyeViews.empty() && xrEyeViews[0].stereoTarget;
+                                           cam.viewCount == 2u && !xrEyeViews.empty() && xrEyeViews[0].stereoTarget;
 
             rhi::Texture* target =
                 canUseXrMultiview ? xrEyeViews[0].stereoTarget : (cam.target ? cam.target : &defaultTarget);
@@ -2895,7 +2924,8 @@ namespace vultra
                         rd,
                         shaderService.builtinLibrary(rhi::ShaderProfile::eGeneral),
                         eyeView.mirrorTarget->getPixelFormat());
-                    if (pipeline)
+                    const auto samplerIt = m_Samplers.find("linear");
+                    if (pipeline && samplerIt != m_Samplers.end())
                     {
                         const auto descriptorSet =
                             cb.createDescriptorSetBuilder()
@@ -2903,6 +2933,7 @@ namespace vultra
                                       rhi::bindings::CombinedImageSampler {
                                           .texture     = eyeView.target,
                                           .imageAspect = rhi::ImageAspect::eColor,
+                                          .sampler     = samplerIt->second,
                                       })
                                 .build(pipeline->getDescriptorSetLayout(3));
                         const MirrorPreviewPushConstants pc {

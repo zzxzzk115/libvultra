@@ -27,6 +27,7 @@ namespace vultra
                 const Texture*         texture {nullptr};
                 ImageAspect            imageAspect {ImageAspect::eNone};
                 std::optional<Sampler> sampler;
+                std::optional<uint32_t> layer;
             };
             struct CombinedImageSamplerArray
             {
@@ -36,8 +37,9 @@ namespace vultra
             };
             struct SampledImage
             {
-                const Texture* texture {nullptr};
-                ImageAspect    imageAspect {ImageAspect::eNone};
+                const Texture*          texture {nullptr};
+                ImageAspect             imageAspect {ImageAspect::eNone};
+                std::optional<uint32_t> layer;
             };
             struct StorageImage
             {

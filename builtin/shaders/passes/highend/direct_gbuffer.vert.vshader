@@ -5,8 +5,17 @@ version = 460
 [keywords]
 VTX_HAS_UV0 : bool permute
 VTX_HAS_TANGENT : bool permute
+USE_MULTIVIEW : bool permute
 
 [vert]
+#if USE_MULTIVIEW && !PLATFORM_WEBGPU
+#extension GL_EXT_multiview : require
+#define VULTRA_MULTIVIEW 1
+#define VULTRA_VIEW_COUNT 2
+#define VULTRA_DECLARE_STEREO_CAMERA
+#include "include/common/gpu_scene.glsl"
+#endif
+
 #ifndef VTX_HAS_UV0
 #define VTX_HAS_UV0 0
 #endif
@@ -15,6 +24,7 @@ VTX_HAS_TANGENT : bool permute
 #define VTX_HAS_TANGENT 0
 #endif
 
+#if !USE_MULTIVIEW || PLATFORM_WEBGPU
 struct CameraData
 {
     mat4 projection;
@@ -35,6 +45,7 @@ layout(set = 0, binding = 0) uniform Camera
 {
     CameraData data;
 } u_CameraBlock;
+#endif
 
 layout(set = 1, binding = 0) uniform DrawParams
 {
@@ -76,5 +87,9 @@ void main()
 #if VTX_HAS_TANGENT
     v_TangentWS = vec4(normalize((u_Draw.model * vec4(a_Tangent.xyz, 0.0)).xyz), a_Tangent.w);
 #endif
+#if USE_MULTIVIEW && !PLATFORM_WEBGPU
+    gl_Position = u_StereoCameraBlock.cameras[vultra_eye_index()].viewProjection * worldPos;
+#else
     gl_Position = u_CameraBlock.data.viewProjection * worldPos;
+#endif
 }

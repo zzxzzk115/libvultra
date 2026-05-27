@@ -10,12 +10,26 @@ maxRadiusPixels : int = 32 range(4, 128)
 stepCount : int = 4 range(2, 8)
 directionCount : int = 8 range(1, 16)
 
+[keywords]
+USE_MULTIVIEW : bool permute
+
 [frag]
+#if USE_MULTIVIEW && !PLATFORM_WEBGPU
+#extension GL_EXT_multiview : require
+#define VULTRA_SOURCE_TEXTURE sampler2DArray
+#define VULTRA_SAMPLE(tex, uv) texture(tex, vec3((uv), float(gl_ViewIndex)))
+#define VULTRA_FETCH(tex, pixel, lod) texelFetch(tex, ivec3((pixel), int(gl_ViewIndex)), lod)
+#else
+#define VULTRA_SOURCE_TEXTURE sampler2D
+#define VULTRA_SAMPLE(tex, uv) texture(tex, uv)
+#define VULTRA_FETCH(tex, pixel, lod) texelFetch(tex, pixel, lod)
+#endif
+
 #define VULTRA_DECLARE_CAMERA
 #include "include/common/gpu_scene.glsl"
 
-layout(set = 3, binding = 0) uniform sampler2D u_Depth;
-layout(set = 3, binding = 1) uniform sampler2D u_Normal;
+layout(set = 3, binding = 0) uniform VULTRA_SOURCE_TEXTURE u_Depth;
+layout(set = 3, binding = 1) uniform VULTRA_SOURCE_TEXTURE u_Normal;
 
 layout(push_constant) uniform PushConstants
 {
@@ -58,7 +72,7 @@ void main()
 {
     vec2 resolution = u_Camera.resolution.xy;
     vec2 uv = gl_FragCoord.xy / resolution;
-    float depth = texelFetch(u_Depth, ivec2(gl_FragCoord.xy), 0).r;
+    float depth = VULTRA_FETCH(u_Depth, ivec2(gl_FragCoord.xy), 0).r;
 
     if (depth >= 1.0)
     {
@@ -67,7 +81,7 @@ void main()
     }
 
     vec3 p = reconstruct_view_pos(uv, depth);
-    vec3 normalWS = normalize(texelFetch(u_Normal, ivec2(gl_FragCoord.xy), 0).xyz);
+    vec3 normalWS = normalize(VULTRA_FETCH(u_Normal, ivec2(gl_FragCoord.xy), 0).xyz);
     vec3 normalVS = normalize(mat3(u_Camera.view) * normalWS);
     float centerDepth = max(-p.z, 0.0);
 
@@ -93,7 +107,7 @@ void main()
             if (any(lessThan(sampleUv, vec2(0.0))) || any(greaterThan(sampleUv, vec2(1.0))))
                 continue;
 
-            float sampleDepthRaw = texture(u_Depth, sampleUv).r;
+            float sampleDepthRaw = VULTRA_SAMPLE(u_Depth, sampleUv).r;
             if (sampleDepthRaw >= 1.0)
                 continue;
 

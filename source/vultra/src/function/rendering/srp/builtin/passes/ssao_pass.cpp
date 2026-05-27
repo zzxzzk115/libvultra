@@ -131,7 +131,10 @@ namespace vultra
             return {};
         }
 
-        auto fragmentShader = loadHighendShader("ssao.frag", vshadersystem::ShaderStage::eFrag);
+        rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
+            {"USE_MULTIVIEW", viewMask != 0u ? 1u : 0u},
+        };
+        auto fragmentShader = loadHighendShader("ssao.frag", vshadersystem::ShaderStage::eFrag, fragmentKeywords);
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[SSAOPass] Failed to load fragment shader");

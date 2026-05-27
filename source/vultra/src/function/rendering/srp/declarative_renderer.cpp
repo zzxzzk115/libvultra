@@ -39,6 +39,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/thin_gbuffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/xr_view_synthesis_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/services/asset_service.hpp"
@@ -1109,6 +1110,37 @@ namespace vultra
                                 }
                             });
 
+            registerBuiltin("XrViewSynthesis", {"source", "depth"}, {"color"},
+                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+
+                                XrViewSynthesisSettings settings {};
+                                settings.warpingBackend = params.get<std::string>("warpingBackend", settings.warpingBackend);
+                                settings.inpaintingBackend =
+                                    params.get<std::string>("inpaintingBackend", settings.inpaintingBackend);
+                                settings.sourceView = params.get<std::string>("sourceView", settings.sourceView);
+                                settings.targetView = params.get<std::string>("targetView", settings.targetView);
+                                settings.baseGridSize =
+                                    static_cast<uint32_t>(std::max(1, params.get<int>("baseGridSize", 16)));
+                                settings.maxSubdivision =
+                                    static_cast<uint32_t>(std::max(0, params.get<int>("maxSubdivision", 2)));
+                                settings.sideLengthThreshold =
+                                    std::max(0.0f, params.get<float>("sideLengthThreshold", settings.sideLengthThreshold));
+                                settings.depthThreshold = std::max(0.0f, params.get<float>("depthThreshold", settings.depthThreshold));
+
+                                auto color = m_XrViewSynthesisPass.addPass(*ctx,
+                                                                           passCtx.getInput("source"),
+                                                                           passCtx.getInput("depth"),
+                                                                           settings);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                            });
+
             registerBuiltin("FinalComposition", {"source"}, {"target"},
                             [this](FrameGraph& fg, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
@@ -1353,6 +1385,7 @@ namespace vultra
         FxaaPass m_FxaaPass;
         ToneMappingPass m_ToneMappingPass;
         SelectionOutlinePass m_SelectionOutlinePass;
+        XrViewSynthesisPass m_XrViewSynthesisPass;
         FinalCompositionPass m_FinalCompositionPass;
         RayTracingPrimaryPass m_RayTracingPrimaryPass;
         VisibilityBufferPass m_VisibilityBufferPass;

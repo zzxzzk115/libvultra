@@ -9,14 +9,28 @@ binaryRefinement : int = 3 range(0, 8)
 stride : float = 0.35 range(0.05, 4.0)
 thickness : float = 0.5 range(0.0, 5.0)
 
+[keywords]
+USE_MULTIVIEW : bool permute
+
 [frag]
+#if USE_MULTIVIEW && !PLATFORM_WEBGPU
+#extension GL_EXT_multiview : require
+#define VULTRA_SOURCE_TEXTURE sampler2DArray
+#define VULTRA_SAMPLE(tex, uv) texture(tex, vec3((uv), float(gl_ViewIndex)))
+#define VULTRA_FETCH(tex, pixel, lod) texelFetch(tex, ivec3((pixel), int(gl_ViewIndex)), lod)
+#else
+#define VULTRA_SOURCE_TEXTURE sampler2D
+#define VULTRA_SAMPLE(tex, uv) texture(tex, uv)
+#define VULTRA_FETCH(tex, pixel, lod) texelFetch(tex, pixel, lod)
+#endif
+
 #define VULTRA_DECLARE_CAMERA
 #include "include/common/gpu_scene.glsl"
 
-layout(set = 3, binding = 0) uniform sampler2D u_Color;
-layout(set = 3, binding = 1) uniform sampler2D u_Depth;
-layout(set = 3, binding = 2) uniform sampler2D u_Normal;
-layout(set = 3, binding = 3) uniform sampler2D u_Material;
+layout(set = 3, binding = 0) uniform VULTRA_SOURCE_TEXTURE u_Color;
+layout(set = 3, binding = 1) uniform VULTRA_SOURCE_TEXTURE u_Depth;
+layout(set = 3, binding = 2) uniform VULTRA_SOURCE_TEXTURE u_Normal;
+layout(set = 3, binding = 3) uniform VULTRA_SOURCE_TEXTURE u_Material;
 
 layout(push_constant) uniform PushConstants
 {
@@ -64,7 +78,7 @@ float linear_view_depth(vec3 viewPos)
 
 float depth_delta_at(vec3 rayPos, vec2 uv)
 {
-    float sceneDepth = texture(u_Depth, uv).r;
+    float sceneDepth = VULTRA_SAMPLE(u_Depth, uv).r;
     if (sceneDepth >= 1.0)
         return -1e20;
 
@@ -77,19 +91,19 @@ void main()
     vec2 resolution = u_Camera.resolution.xy;
     vec2 uv = gl_FragCoord.xy / resolution;
 
-    float depth = texelFetch(u_Depth, ivec2(gl_FragCoord.xy), 0).r;
+    float depth = VULTRA_FETCH(u_Depth, ivec2(gl_FragCoord.xy), 0).r;
     if (depth >= 1.0)
     {
         FragColor = vec4(0.0);
         return;
     }
 
-    vec4 material = texture(u_Material, uv);
+    vec4 material = VULTRA_SAMPLE(u_Material, uv);
     float metallic = material.r;
     float roughness = material.g;
     float roughnessFade = 1.0 - smoothstep(0.35, 0.85, roughness);
     vec3 p = reconstruct_view_pos(uv, depth);
-    vec3 normalWS = texture(u_Normal, uv).xyz;
+    vec3 normalWS = VULTRA_SAMPLE(u_Normal, uv).xyz;
     vec3 n = normalize(mat3(u_Camera.view) * normalWS);
     vec3 viewDir = normalize(-p);
     float nDotV = clamp(dot(n, viewDir), 0.0, 1.0);
@@ -159,7 +173,7 @@ void main()
 
     vec2 edge = smoothstep(vec2(0.0), vec2(0.08), hitUv) * smoothstep(vec2(0.0), vec2(0.08), 1.0 - hitUv);
     float edgeFade = edge.x * edge.y;
-    vec3 reflectedColor = texture(u_Color, hitUv).rgb;
+    vec3 reflectedColor = VULTRA_SAMPLE(u_Color, hitUv).rgb;
     float alpha = reflectance * hitConfidence * edgeFade;
     FragColor = vec4(reflectedColor * alpha, alpha);
 }

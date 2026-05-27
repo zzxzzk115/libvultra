@@ -19,27 +19,6 @@ VTX_HAS_TANGENT : bool permute
 #define VTX_HAS_TANGENT 0
 #endif
 
-struct CameraData
-{
-    mat4 projection;
-    mat4 inverseProjection;
-    mat4 view;
-    mat4 inverseView;
-    mat4 viewProjection;
-    mat4 inverseViewProjection;
-    vec4 resolution;
-    float zNear;
-    float zFar;
-    float fovY;
-    float _padding;
-    vec4 frustumPlanes[6];
-};
-
-layout(set = 0, binding = 0) uniform Camera
-{
-    CameraData data;
-} u_CameraBlock;
-
 layout(set = 1, binding = 0) uniform DrawParams
 {
     mat4 model;

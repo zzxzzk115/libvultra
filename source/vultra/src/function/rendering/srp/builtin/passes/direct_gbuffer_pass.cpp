@@ -316,6 +316,7 @@ namespace vultra
         struct PassData
         {
             FrameGraphResource camera;
+            FrameGraphResource stereoCamera;
             FrameGraphResource color;
             FrameGraphResource normal;
             FrameGraphResource material;
@@ -331,17 +332,34 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [colorDesc, normalDesc, materialDesc, entityIdDesc, depthDesc,
-             cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource](
+            [colorDesc,
+             normalDesc,
+             materialDesc,
+             entityIdDesc,
+             depthDesc,
+             useMultiview = ctx.view().usesSingleGraphStereo(),
+             cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource,
+             stereoCameraBlock = ctx.bb.get<CameraData>().stereoCameraBlock.fgResource](
                 FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
-                pd.camera = builder.read(cameraBlock,
-                                         framegraph::BindingInfo {
-                                             .location      = {.set = 0, .binding = 0},
-                                             .pipelineStage = framegraph::PipelineStage::eVertexShader |
-                                                              framegraph::PipelineStage::eFragmentShader,
-                                         });
+                if (useMultiview && stereoCameraBlock)
+                {
+                    pd.stereoCamera =
+                        builder.read(stereoCameraBlock,
+                                     framegraph::BindingInfo {
+                                         .location      = {.set = 0, .binding = 23},
+                                         .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                     });
+                }
+                else
+                {
+                    pd.camera = builder.read(cameraBlock,
+                                             framegraph::BindingInfo {
+                                                 .location      = {.set = 0, .binding = 0},
+                                                 .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                             });
+                }
 
                 pd.color = builder.create<framegraph::FrameGraphTexture>(
                     "DirectGBufferColor",
@@ -631,7 +649,8 @@ namespace vultra
         auto vertexShader = loadHighendShader("direct_gbuffer.vert",
                                               vshadersystem::ShaderStage::eVert,
                                               {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},
-                                               {"VTX_HAS_TANGENT", layout.hasTangent() ? 1 : 0}});
+                                               {"VTX_HAS_TANGENT", layout.hasTangent() ? 1 : 0},
+                                               {"USE_MULTIVIEW", viewMask != 0u ? 1 : 0}});
         auto fragmentShader = loadHighendShader("direct_gbuffer.frag",
                                                 vshadersystem::ShaderStage::eFrag,
                                                 {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},
