@@ -5,6 +5,8 @@
 
 #include <vultra/core/base/uuid.hpp>
 
+#include <imgui.h>
+
 #include <array>
 #include <filesystem>
 #include <optional>
@@ -36,6 +38,12 @@ namespace vultra_app::ui
                                   TextureSelectorState&  state,
                                   std::string_view       selectedUri,
                                   TextureSelection*      selected);
+
+    bool drawTextureUriSelector(EditorContext&        ctx,
+                                const char*           popupId,
+                                std::string&          uri,
+                                TextureSelectorState& state,
+                                ImVec2                size);
 
     bool drawTextureUriField(EditorContext&        ctx,
                              const char*           label,

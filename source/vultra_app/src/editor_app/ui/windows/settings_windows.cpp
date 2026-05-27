@@ -1,5 +1,6 @@
 #include "editor_app/editor_app.hpp"
 
+#include "editor_app/editor_settings_persistence.hpp"
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
 #include "vproject.hpp"
@@ -341,6 +342,11 @@ namespace vultra_app
         if (ctx.state.editorSettingsOpen)
         {
             setBuffer(m_ExternalEditorBuffer, ctx.state.editorSettings.externalEditor);
+            setBuffer(m_AgentMcpServerNameBuffer, ctx.state.editorSettings.mcpServerName);
+            setBuffer(m_AgentMcpCommandBuffer, ctx.state.editorSettings.mcpCommand);
+            setBuffer(m_AgentMcpArgumentsBuffer, ctx.state.editorSettings.mcpArguments);
+            setBuffer(m_AgentEndpointBuffer, ctx.state.editorSettings.agentEndpoint);
+            setBuffer(m_AgentModelBuffer, ctx.state.editorSettings.agentModel);
             ImGui::OpenPopup("Editor Settings");
             ctx.state.editorSettingsOpen = false;
         }
@@ -369,6 +375,8 @@ namespace vultra_app
             selectedPage = 1;
         if (ui::settingsNavItem("External Editor", selectedPage == 2))
             selectedPage = 2;
+        if (ui::settingsNavItem("AI Agent", selectedPage == 3))
+            selectedPage = 3;
         ImGui::Spacing();
         ImGui::TextUnformatted("Advanced");
         ImGui::BeginDisabled();
@@ -384,11 +392,38 @@ namespace vultra_app
         if (selectedPage == 0)
         {
             ui::drawSettingsSectionHeader("Appearance");
-            const char* themes[] = {"Dark"};
+            const char* themes[] = {"Dark", "Graphite", "Light", "Custom"};
             int themeIndex = 0;
+            for (int i = 0; i < IM_ARRAYSIZE(themes); ++i)
+            {
+                if (settings.theme == themes[i])
+                {
+                    themeIndex = i;
+                    break;
+                }
+            }
             ui::beginSettingsRow("Color Theme");
-            ImGui::Combo("##ColorTheme", &themeIndex, themes, IM_ARRAYSIZE(themes));
+            if (ImGui::Combo("##ColorTheme", &themeIndex, themes, IM_ARRAYSIZE(themes)))
+            {
+                settings.theme = themes[themeIndex];
+                ctx.state.statusMessage = "Editor theme changed: " + settings.theme;
+            }
             ui::endSettingsRow();
+            if (settings.theme == "Custom")
+            {
+                ui::beginSettingsRow("Background");
+                ImGui::ColorEdit3("##CustomThemeBackground", &settings.customThemeBackground.x);
+                ui::endSettingsRow();
+                ui::beginSettingsRow("Panel");
+                ImGui::ColorEdit3("##CustomThemePanel", &settings.customThemePanel.x);
+                ui::endSettingsRow();
+                ui::beginSettingsRow("Text");
+                ImGui::ColorEdit3("##CustomThemeText", &settings.customThemeText.x);
+                ui::endSettingsRow();
+                ui::beginSettingsRow("Accent");
+                ImGui::ColorEdit3("##CustomThemeAccent", &settings.customThemeAccent.x);
+                ui::endSettingsRow();
+            }
             ui::beginSettingsRow("Application Scale");
             ImGui::SliderFloat("##ApplicationScale", &settings.applicationScale, 0.75f, 2.0f, "%.2fx");
             ui::endSettingsRow();
@@ -415,7 +450,7 @@ namespace vultra_app
             ui::endSettingsRow();
             ImGui::Checkbox("Use System Fonts", &settings.useSystemFonts);
         }
-        else
+        else if (selectedPage == 2)
         {
             ui::drawSettingsSectionHeader("External Editor");
             ui::beginSettingsRow("Executable");
@@ -426,19 +461,67 @@ namespace vultra_app
             ui::endSettingsRow();
             ui::drawInfoRegion("Used by source asset actions when an external editor command is available.");
         }
+        else
+        {
+            ui::drawSettingsSectionHeader("AI Agent");
+            ImGui::Checkbox("Enable Agent Panel", &settings.enableAgent);
+            ImGui::Checkbox("Auto-start MCP Server", &settings.autoStartMcp);
+            ui::beginSettingsRow("MCP Server Name");
+            if (ImGui::InputText("##McpServerName", m_AgentMcpServerNameBuffer.data(), m_AgentMcpServerNameBuffer.size()))
+                settings.mcpServerName = bufferString(m_AgentMcpServerNameBuffer);
+            ui::endSettingsRow();
+            ui::beginSettingsRow("MCP Command");
+            if (ImGui::InputText("##McpCommand", m_AgentMcpCommandBuffer.data(), m_AgentMcpCommandBuffer.size()))
+                settings.mcpCommand = bufferString(m_AgentMcpCommandBuffer);
+            ui::endSettingsRow();
+            ui::beginSettingsRow("MCP Arguments");
+            if (ImGui::InputText("##McpArguments", m_AgentMcpArgumentsBuffer.data(), m_AgentMcpArgumentsBuffer.size()))
+                settings.mcpArguments = bufferString(m_AgentMcpArgumentsBuffer);
+            ui::endSettingsRow();
+            ImGui::Spacing();
+            ui::drawSettingsSectionHeader("Agent Client");
+            ui::beginSettingsRow("Endpoint");
+            if (ImGui::InputText("##AgentEndpoint", m_AgentEndpointBuffer.data(), m_AgentEndpointBuffer.size()))
+                settings.agentEndpoint = bufferString(m_AgentEndpointBuffer);
+            ui::endSettingsRow();
+            ui::beginSettingsRow("Model");
+            if (ImGui::InputText("##AgentModel", m_AgentModelBuffer.data(), m_AgentModelBuffer.size()))
+                settings.agentModel = bufferString(m_AgentModelBuffer);
+            ui::endSettingsRow();
+            ImGui::Spacing();
+            ui::drawSettingsSectionHeader("Operation Guardrails");
+            ImGui::Checkbox("Allow Project Operations", &settings.allowAgentProjectOperations);
+            ImGui::Checkbox("Allow Engine Operations", &settings.allowAgentEngineOperations);
+            ImGui::Checkbox("Require Confirmation Before Writes", &settings.requireAgentConfirmation);
+            ui::drawInfoRegion("This page only stores agent and MCP preferences. Runtime startup, chat, tool calls, and editor operations should live in a dedicated agent service.");
+        }
         ImGui::EndChild();
 
         if (ImGui::Button("Reset to Defaults", ImVec2 {132.0f, 0.0f}))
         {
             ctx.state.editorSettings = AppState::EditorSettings {};
             setBuffer(m_ExternalEditorBuffer, {});
+            setBuffer(m_AgentMcpServerNameBuffer, ctx.state.editorSettings.mcpServerName);
+            setBuffer(m_AgentMcpCommandBuffer, ctx.state.editorSettings.mcpCommand);
+            setBuffer(m_AgentMcpArgumentsBuffer, ctx.state.editorSettings.mcpArguments);
+            setBuffer(m_AgentEndpointBuffer, {});
+            setBuffer(m_AgentModelBuffer, {});
             ctx.state.statusMessage = "Editor settings reset.";
         }
         ui::alignSettingsButtonGroup(2);
         if (ImGui::Button("Save", ImVec2 {82.0f, 0.0f}))
         {
             ctx.state.editorSettings.externalEditor = bufferString(m_ExternalEditorBuffer);
-            ctx.state.statusMessage = "Editor settings are active for this session.";
+            ctx.state.editorSettings.mcpServerName = bufferString(m_AgentMcpServerNameBuffer);
+            ctx.state.editorSettings.mcpCommand = bufferString(m_AgentMcpCommandBuffer);
+            ctx.state.editorSettings.mcpArguments = bufferString(m_AgentMcpArgumentsBuffer);
+            ctx.state.editorSettings.agentEndpoint = bufferString(m_AgentEndpointBuffer);
+            ctx.state.editorSettings.agentModel = bufferString(m_AgentModelBuffer);
+            std::string error;
+            if (saveEditorSettings(ctx.state.editorSettingsFile, ctx.state.editorSettings, &error))
+                ctx.state.statusMessage = "Saved editor settings.";
+            else
+                ctx.state.statusMessage = "Editor settings save failed: " + error;
         }
         ImGui::SameLine();
         if (ImGui::Button("Close", ImVec2 {82.0f, 0.0f}))

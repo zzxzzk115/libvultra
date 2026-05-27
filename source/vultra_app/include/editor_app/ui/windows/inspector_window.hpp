@@ -1,6 +1,7 @@
 #pragma once
 
 #include "editor_app/ui/editor_window.hpp"
+#include "editor_app/ui/mesh_selector.hpp"
 #include "editor_app/ui/texture_selector.hpp"
 #include "common/asset_preview_cache.hpp"
 
@@ -61,6 +62,7 @@ namespace vultra_app
         std::unordered_map<vultra::CoreUUID, std::vector<std::string>> m_ComponentOrder;
         ui::AssetPreviewCache m_PreviewCache;
         ui::TextureSelectorState m_TextureSelector;
+        ui::MeshSelectorState m_MeshSelector;
 
         struct RenderTargetSlot
         {

@@ -1,4 +1,5 @@
 #include "app_state.hpp"
+#include "editor_app/editor_settings_persistence.hpp"
 #include "editor_app/editor_app.hpp"
 #include "launch_options.hpp"
 #include "project_launcher/project_launcher.hpp"
@@ -224,6 +225,10 @@ namespace
     public:
         explicit VultraStandaloneApp(vultra_app::LaunchOptions options) : m_Options(std::move(options))
         {
+            std::string settingsError;
+            if (!vultra_app::loadEditorSettings(m_State.editorSettingsFile, m_State.editorSettings, &settingsError))
+                m_State.statusMessage = "Editor settings load failed: " + settingsError;
+
             m_VpkPath = vultra_app::findDefaultVpk(m_Options);
             if (m_Options.editorMode)
             {

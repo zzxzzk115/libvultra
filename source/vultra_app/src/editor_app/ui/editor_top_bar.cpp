@@ -121,6 +121,17 @@ namespace vultra_app
             return pressed;
         }
 
+        float relativeLuminance(const ImVec4& color)
+        {
+            return color.x * 0.299f + color.y * 0.587f + color.z * 0.114f;
+        }
+
+        ImVec4 contrastTextFor(const ImVec4& fill)
+        {
+            return relativeLuminance(fill) > 0.56f ? ImVec4 {0.055f, 0.070f, 0.090f, 1.0f} :
+                                                     ImVec4 {0.960f, 0.980f, 1.000f, 1.0f};
+        }
+
         bool playbackButton(const char* label,
                             const char* tooltip,
                             const bool  enabled,
@@ -142,23 +153,30 @@ namespace vultra_app
                          vultra::imgui_theme::buttonTransparent(0.96f);
             const ImVec4 hoverColor =
                 accent ? vultra::imgui_theme::successHovered() :
-                active ? ImVec4 {0.075f, 0.335f, 0.600f, 1.0f} :
+                active ? vultra::imgui_theme::accentButtonHovered() :
                          vultra::imgui_theme::buttonHovered();
             const ImVec4 downColor =
-                accent ? vultra::imgui_theme::successActive() : vultra::imgui_theme::accentButton();
+                accent ? vultra::imgui_theme::successActive() :
+                active ? vultra::imgui_theme::accentButtonActive() :
+                         vultra::imgui_theme::accentButton();
 
             ImVec4 fill = held ? downColor : hovered ? hoverColor : baseColor;
-            ImVec4 text = accent ? ImVec4 {0.720f, 1.000f, 0.600f, 1.0f} : ImVec4 {0.820f, 0.875f, 0.925f, 1.0f};
+            ImVec4 text = (accent || active) ? contrastTextFor(fill) : vultra::imgui_theme::text();
             if (!enabled)
             {
                 fill.w *= 0.48f;
-                text.w *= 0.38f;
+                text = vultra::imgui_theme::textMuted();
+                text.w *= 0.42f;
             }
 
             auto*       drawList = ImGui::GetWindowDrawList();
             const ImVec2 max {pos.x + buttonSize.x, pos.y + buttonSize.y};
             drawList->AddRectFilled(pos, max, ImGui::GetColorU32(fill), 4.0f);
-            drawList->AddRect(pos, max, IM_COL32(38, 48, 60, enabled ? 180 : 90), 4.0f);
+            drawList->AddRect(pos,
+                              max,
+                              ImGui::GetColorU32(vultra::imgui_theme::withAlpha(vultra::imgui_theme::border(),
+                                                                                 enabled ? 0.82f : 0.38f)),
+                              4.0f);
 
             ImFont*      font      = ImGui::GetFont();
             const float  iconSize  = ImGui::GetFontSize() * 1.18f;

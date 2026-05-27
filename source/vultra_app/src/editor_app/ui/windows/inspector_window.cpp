@@ -1359,6 +1359,7 @@ namespace vultra_app
 
         bool drawMetaValue(EditorContext*          ctx,
                            ui::TextureSelectorState* textureSelector,
+                           ui::MeshSelectorState* meshSelector,
                            const entt::meta_data& field,
                            entt::meta_any&        value,
                            const char*            fieldName,
@@ -1473,6 +1474,8 @@ namespace vultra_app
             {
                 if (ctx && textureSelector && expectedAssetTypeForField(fieldName) == vasset::VAssetType::eTexture)
                     return ui::drawTextureUuidField(*ctx, label, *v, *textureSelector);
+                if (ctx && meshSelector && expectedAssetTypeForField(fieldName) == vasset::VAssetType::eMesh)
+                    return ui::drawMeshUuidField(*ctx, label, *v, *meshSelector);
                 return drawUuidObjectField(ctx, *v, fieldName, label);
             }
 
@@ -1523,11 +1526,118 @@ namespace vultra_app
             return true;
         }
 
+        struct MaterialSlotChoice
+        {
+            uint32_t    slot {0};
+            std::string label;
+            std::string detail;
+        };
+
+        std::vector<MaterialSlotChoice> collectMaterialSlotChoices(EditorContext* ctx, const vultra::MeshComponent& mesh)
+        {
+            std::vector<MaterialSlotChoice> choices;
+
+            if (!ctx || !ctx->services || !mesh.mesh.valid())
+            {
+                choices.push_back({.slot = 0u, .label = "Slot 0 - Default Material"});
+                return choices;
+            }
+
+            auto* assets = ctx->services->tryGet<vultra::IAssetService>();
+            if (!assets)
+            {
+                choices.push_back({.slot = 0u, .label = "Slot 0 - Default Material"});
+                return choices;
+            }
+
+            const auto handle = assets->loadMeshSync(mesh.mesh);
+            const auto* cpuMesh = handle.ready() ? handle.cpu() : nullptr;
+            if (!cpuMesh)
+            {
+                choices.push_back({.slot = 0u, .label = "Slot 0 - Loading Mesh Materials"});
+                return choices;
+            }
+
+            uint32_t slotCount = static_cast<uint32_t>(cpuMesh->materials.size());
+            for (const auto& subMesh : cpuMesh->subMeshes)
+                slotCount = std::max(slotCount, subMesh.materialIndex + 1u);
+            slotCount = std::max(slotCount, 1u);
+
+            choices.reserve(slotCount);
+            for (uint32_t slot = 0; slot < slotCount; ++slot)
+            {
+                std::string materialName;
+                if (slot < cpuMesh->materials.size())
+                    materialName = cpuMesh->materials[slot].name;
+                if (materialName.empty())
+                    materialName = "Material " + std::to_string(slot);
+
+                std::string subMeshName;
+                for (const auto& subMesh : cpuMesh->subMeshes)
+                {
+                    if (subMesh.materialIndex == slot && !subMesh.name.empty())
+                    {
+                        subMeshName = subMesh.name;
+                        break;
+                    }
+                }
+
+                MaterialSlotChoice choice;
+                choice.slot = slot;
+                choice.label = "Slot " + std::to_string(slot) + " - " + materialName;
+                choice.detail = subMeshName.empty() ? std::string {} : "Used by submesh: " + subMeshName;
+                choices.push_back(std::move(choice));
+            }
+            return choices;
+        }
+
+        bool drawMaterialSlotCombo(EditorContext* ctx, const vultra::MeshComponent& mesh, uint32_t& slot)
+        {
+            auto choices = collectMaterialSlotChoices(ctx, mesh);
+            const auto selectedIt = std::find_if(choices.begin(),
+                                                 choices.end(),
+                                                 [&](const MaterialSlotChoice& choice) { return choice.slot == slot; });
+            std::string selectedLabel = selectedIt != choices.end() ?
+                                            selectedIt->label :
+                                            "Slot " + std::to_string(slot) + " - Unknown Material";
+
+            bool changed = false;
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::BeginCombo("Slot", selectedLabel.c_str()))
+            {
+                for (const auto& choice : choices)
+                {
+                    const bool selected = choice.slot == slot;
+                    if (ImGui::Selectable(choice.label.c_str(), selected))
+                    {
+                        slot = choice.slot;
+                        changed = true;
+                    }
+                    if (!choice.detail.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                        ImGui::SetTooltip("%s", choice.detail.c_str());
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                if (selectedIt == choices.end())
+                {
+                    ImGui::Separator();
+                    const std::string unknown = "Keep Slot " + std::to_string(slot);
+                    if (ImGui::Selectable(unknown.c_str(), true))
+                        changed = false;
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("Material graph overrides replace one mesh material slot. The saved value is still the numeric slot.");
+            return changed;
+        }
+
         template<typename Component>
         bool drawMetaFields(EditorContext* ctx,
                             ui::TextureSelectorState* textureSelector,
                             Component&     component,
-                            const std::function<void(const char*)>& onChanged = {})
+                            const std::function<void(const char*)>& onChanged = {},
+                            ui::MeshSelectorState* meshSelector = nullptr)
         {
             bool changedAny = false;
             auto instance   = entt::forward_as_meta(component);
@@ -1547,7 +1657,7 @@ namespace vultra_app
 
                 const auto label = displayFieldName(rawName);
                 ImGui::PushID(static_cast<int>(fieldId));
-                if (drawMetaValue(ctx, textureSelector, field, value, rawName, label.c_str()))
+                if (drawMetaValue(ctx, textureSelector, meshSelector, field, value, rawName, label.c_str()))
                 {
                     field.set(instance, value);
                     changedAny = true;
@@ -1560,9 +1670,12 @@ namespace vultra_app
             return changedAny;
         }
 
-        bool drawMeshComponentFields(EditorContext* ctx, ui::TextureSelectorState* textureSelector, vultra::MeshComponent& mesh)
+        bool drawMeshComponentFields(EditorContext* ctx,
+                                     ui::TextureSelectorState* textureSelector,
+                                     ui::MeshSelectorState* meshSelector,
+                                     vultra::MeshComponent& mesh)
         {
-            bool changed = drawMetaFields(ctx, textureSelector, mesh);
+            bool changed = drawMetaFields(ctx, textureSelector, mesh, {}, meshSelector);
             ImGui::Spacing();
             if (ImGui::CollapsingHeader("Material Overrides", ImGuiTreeNodeFlags_DefaultOpen))
             {
@@ -1571,13 +1684,8 @@ namespace vultra_app
                 {
                     auto& override = mesh.materialOverrides[static_cast<size_t>(i)];
                     ImGui::PushID(i);
-                    ImGui::SetNextItemWidth(72.0f);
-                    int slot = static_cast<int>(override.slot);
-                    if (ImGui::InputInt("Slot", &slot))
-                    {
-                        override.slot = static_cast<uint32_t>(std::max(slot, 0));
+                    if (drawMaterialSlotCombo(ctx, mesh, override.slot))
                         changed = true;
-                    }
                     if (drawMaterialGraphUriField(ctx, override.materialGraph, "Graph"))
                         changed = true;
                     if (ImGui::SmallButton(ICON_MDI_DELETE " Remove"))
@@ -2010,7 +2118,7 @@ namespace vultra_app
             else if (key == "Mesh")
             {
                 if (auto* mesh = reg.try_get<vultra::MeshComponent>(e))
-                    if (drawMeshComponentFields(&ctx, &m_TextureSelector, *mesh))
+                    if (drawMeshComponentFields(&ctx, &m_TextureSelector, &m_MeshSelector, *mesh))
                         ctx.state.sceneDirty = true;
             }
             else if (key == "GaussianSplat")

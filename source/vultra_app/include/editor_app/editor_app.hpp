@@ -164,6 +164,11 @@ namespace vultra_app
         std::array<char, 512>               m_ExportTemplateBuffer {};
         std::array<char, 512>               m_BuildExtraArgsBuffer {};
         std::array<char, 512>               m_ExternalEditorBuffer {};
+        std::array<char, 128>               m_AgentMcpServerNameBuffer {};
+        std::array<char, 512>               m_AgentMcpCommandBuffer {};
+        std::array<char, 1024>              m_AgentMcpArgumentsBuffer {};
+        std::array<char, 512>               m_AgentEndpointBuffer {};
+        std::array<char, 128>               m_AgentModelBuffer {};
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                m_PlayModeSceneDirtySnapshot {false};
         bool                m_Initialized {false};

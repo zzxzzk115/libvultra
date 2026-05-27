@@ -2,6 +2,7 @@
 
 #include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 #include <filesystem>
 #include <string>
@@ -47,6 +48,10 @@ namespace vultra_app
             float       applicationScale {1.0f};
             float       textScale {1.0f};
             std::string theme {"Dark"};
+            glm::vec4   customThemeBackground {0.050f, 0.063f, 0.080f, 1.0f};
+            glm::vec4   customThemePanel {0.058f, 0.072f, 0.092f, 1.0f};
+            glm::vec4   customThemeText {0.86f, 0.90f, 0.95f, 1.0f};
+            glm::vec4   customThemeAccent {0.32f, 0.74f, 1.00f, 1.0f};
             std::string interfaceFont {"Inter"};
             std::string monospaceFont {"JetBrains Mono"};
             int         interfaceFontSize {14};
@@ -55,6 +60,16 @@ namespace vultra_app
             bool        showSplashOnStartup {true};
             bool        enableAnimations {true};
             std::string externalEditor;
+            bool        enableAgent {false};
+            bool        autoStartMcp {false};
+            std::string mcpServerName {"vultra"};
+            std::string mcpCommand {"python"};
+            std::string mcpArguments {"tools/vultra_mcp/vultra_mcp.py --engine-root ."};
+            std::string agentEndpoint;
+            std::string agentModel;
+            bool        allowAgentEngineOperations {false};
+            bool        allowAgentProjectOperations {true};
+            bool        requireAgentConfirmation {true};
         };
 
         struct BuildSettings
@@ -76,6 +91,7 @@ namespace vultra_app
 
         AppMode               mode {AppMode::Launcher};
         std::filesystem::path launcherStateFile {".vultra/launcher_projects.txt"};
+        std::filesystem::path editorSettingsFile {".vultra/editor_settings.json"};
         std::filesystem::path currentProject;
         std::filesystem::path selectedSourceAsset;
         std::filesystem::path codeEditorPath;
