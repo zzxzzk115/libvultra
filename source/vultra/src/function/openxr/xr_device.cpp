@@ -51,7 +51,14 @@ namespace vultra
 
             // Get necessary data
             getInstanceProperties();
-            getSystemID();
+            if (!getSystemID())
+            {
+#ifndef __APPLE__
+                destroyXrDebugUtilsMessenger();
+#endif
+                destroyXrInstance();
+                return;
+            }
             getEnvironmentBlendModes();
 
             loadXrFunctions();
@@ -208,13 +215,21 @@ namespace vultra
                          "Failed to get InstanceProperties.");
         }
 
-        void XRDevice::getSystemID()
+        bool XRDevice::getSystemID()
         {
             // Get the XrSystemId from the instance and the supplied XrFormFactor.
             XrSystemGetInfo systemGI {};
             systemGI.type       = XR_TYPE_SYSTEM_GET_INFO;
             systemGI.formFactor = m_XrFormFactor;
-            OPENXR_CHECK(xrGetSystem(m_XrInstance, &systemGI, &m_XrSystemId), "Failed to get SystemID.");
+            const XrResult systemResult = xrGetSystem(m_XrInstance, &systemGI, &m_XrSystemId);
+            if (XR_FAILED(systemResult))
+            {
+                VULTRA_CORE_WARN("[OpenXR] {} ({}) Failed to get SystemID; OpenXR will be disabled for this session.",
+                                 static_cast<int>(systemResult),
+                                 GetXRErrorString(m_XrInstance, systemResult));
+                m_XrSystemId = 0u;
+                return false;
+            }
 
             // Get the System's properties for some general information about the hardware and the vendor.
             OPENXR_CHECK(xrGetSystemProperties(m_XrInstance, m_XrSystemId, &m_XrSystemProperties),
@@ -251,6 +266,7 @@ namespace vultra
                                            XR_VERSION_PATCH(m_XrInstanceProperties.runtimeVersion));
 
             VULTRA_CORE_INFO(runtimeInfo);
+            return true;
         }
 
         void XRDevice::getEnvironmentBlendModes()

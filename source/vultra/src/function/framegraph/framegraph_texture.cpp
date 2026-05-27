@@ -70,12 +70,18 @@ namespace vultra
 
             void applyRenderTargetInfo(const FrameGraphTexture::Desc& desc,
                                        const rhi::Texture&            texture,
+                                       const Attachment&              attachment,
                                        rhi::FramebufferInfo&          framebufferInfo)
             {
-                framebufferInfo.layers =
-                    std::max(framebufferInfo.layers, std::max(texture.getNumLayers(), 1u));
                 if (desc.viewMask != 0u)
+                {
                     framebufferInfo.viewMask = desc.viewMask;
+                    framebufferInfo.layers   = std::max(framebufferInfo.layers, 1u);
+                    return;
+                }
+
+                const auto layerCount = attachment.layer ? 1u : std::max(texture.getNumLayers(), 1u);
+                framebufferInfo.layers = std::max(framebufferInfo.layers, layerCount);
             }
 
             auto calculateMipmapFactor(const uint32_t numMipLevels)
@@ -121,18 +127,19 @@ namespace vultra
             {
                 if (!viewData.framebufferInfo)
                     viewData.framebufferInfo.emplace().area = {.extent = texture->getExtent()};
-                applyRenderTargetInfo(desc, *texture, *viewData.framebufferInfo);
+                const auto attachment = decodeAttachment(bits);
+                applyRenderTargetInfo(desc, *texture, attachment, *viewData.framebufferInfo);
 
-                switch (decodeAttachment(bits).imageAspect)
+                switch (attachment.imageAspect)
                 {
                     using enum rhi::ImageAspect;
 
                     case eDepth:
-                        viewData.framebufferInfo->depthAttachment = rhi::AttachmentInfo {.target = texture};
+                        viewData.framebufferInfo->depthAttachment = makeAttachment(attachment, texture);
                         viewData.framebufferInfo->depthReadOnly   = true;
                         break;
                     case eStencil:
-                        viewData.framebufferInfo->stencilAttachment = rhi::AttachmentInfo {.target = texture};
+                        viewData.framebufferInfo->stencilAttachment = makeAttachment(attachment, texture);
                         viewData.framebufferInfo->stencilReadOnly   = true;
                         break;
 
@@ -217,9 +224,9 @@ namespace vultra
             {
                 if (!viewData.framebufferInfo)
                     viewData.framebufferInfo.emplace().area = {.extent = texture->getExtent()};
-                applyRenderTargetInfo(desc, *texture, *viewData.framebufferInfo);
 
                 const auto attachment = decodeAttachment(bits);
+                applyRenderTargetInfo(desc, *texture, attachment, *viewData.framebufferInfo);
 
                 switch (attachment.imageAspect)
                 {
@@ -261,7 +268,7 @@ namespace vultra
                     {
                         .image            = *texture,
                         .newLayout        = rhi::ImageLayout::eGeneral,
-                        .subresourceRange = rhi::ImageSubresourceRange {.levelCount = 1u, .layerCount = 1u},
+                        .subresourceRange = rhi::ImageSubresourceRange {.levelCount = 1u, .layerCount = UINT32_MAX},
                     },
                     {
                         .dstStage  = convert(pipelineStage),

@@ -582,6 +582,13 @@ namespace vultra
             try
             {
                 backendOf(m_Backend).m_XRDevice = new openxr::XRDevice(openxr::XRDeviceFeatureFlagBits::eVR, backendOf(m_Backend).m_AppName);
+                if (!backendOf(m_Backend).m_XRDevice->isAvailable())
+                {
+                    VULTRA_CORE_WARN("[RenderDevice] OpenXR runtime is present but no compatible XR system is available; falling back to standalone Vulkan.");
+                    delete backendOf(m_Backend).m_XRDevice;
+                    backendOf(m_Backend).m_XRDevice = nullptr;
+                    backendOf(m_Backend).m_FeatureFlag = backendOf(m_Backend).m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eXR;
+                }
             }
             catch (const std::exception& e)
             {
@@ -748,9 +755,12 @@ namespace vultra
 #endif
 
             // If enable OpenXR feature, then let OpenXR create the vulkan instance.
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureFlag, RenderDeviceFeatureFlagBits::eXR))
+            const bool useOpenXR = HasFlagValues(backendOf(m_Backend).m_FeatureFlag, RenderDeviceFeatureFlagBits::eXR) &&
+                                   backendOf(m_Backend).m_XRDevice != nullptr &&
+                                   backendOf(m_Backend).m_XRDevice->isAvailable();
+            if (useOpenXR)
             {
-                VkInstance           vkInstanceC;
+                VkInstance           vkInstanceC = nullptr;
                 VkInstanceCreateInfo createInfoC(createInfo);
 
                 XrVulkanInstanceCreateInfoKHR xrVulkanInstanceCreateInfo {};
@@ -758,7 +768,7 @@ namespace vultra
                 xrVulkanInstanceCreateInfo.pfnGetInstanceProcAddr = vkGetInstanceProcAddr;
                 xrVulkanInstanceCreateInfo.systemId               = backendOf(m_Backend).m_XRDevice->m_XrSystemId;
                 xrVulkanInstanceCreateInfo.vulkanCreateInfo       = &createInfoC;
-                VkResult vkResult;
+                VkResult vkResult = VK_SUCCESS;
 
                 bool ok = true;
                 if (XR_FAILED(backendOf(m_Backend).m_XRDevice->xrCreateVulkanInstanceKHR(
@@ -796,7 +806,7 @@ namespace vultra
         void RenderDevice::selectPhysicalDevice()
         {
             // If OpenXR is enabled, then retrieve the physical device from OpenXR.
-            bool useOpenXR = backendOf(m_Backend).m_XRDevice != nullptr && backendOf(m_Backend).m_XRDevice->m_XrInstance != XR_NULL_HANDLE;
+            bool useOpenXR = backendOf(m_Backend).m_XRDevice != nullptr && backendOf(m_Backend).m_XRDevice->isAvailable();
 
             if (useOpenXR)
             {

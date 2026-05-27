@@ -49,6 +49,7 @@ namespace vultra
 
             [[nodiscard]] std::string        getApplicationName() const { return m_AppName; }
             [[nodiscard]] XRDeviceProperties getProperties() const { return m_Properties; }
+            [[nodiscard]] bool               isAvailable() const { return m_XrInstance != XR_NULL_HANDLE && m_XrSystemId != 0u; }
 
             [[nodiscard]] XrInstance              getXrInstance() const { return m_XrInstance; }
             [[nodiscard]] XrSystemId              getXrSystemId() const { return m_XrSystemId; }
@@ -63,7 +64,7 @@ namespace vultra
             void destroyXrDebugUtilsMessenger();
 
             void getInstanceProperties();
-            void getSystemID();
+            bool getSystemID();
             void getEnvironmentBlendModes();
 
             void loadXrFunctions();

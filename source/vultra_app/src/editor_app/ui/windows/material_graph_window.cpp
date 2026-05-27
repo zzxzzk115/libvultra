@@ -1210,39 +1210,33 @@ namespace vultra_app
         auto& reg = m_PreviewWorld.registry();
 
         m_PreviewLight = m_PreviewWorld.createEntity();
-        reg.emplace<vultra::IDComponent>(m_PreviewLight);
-        reg.emplace<vultra::NameComponent>(m_PreviewLight, vultra::NameComponent {"Preview Key Light"});
-        reg.emplace<vultra::TransformComponent>(m_PreviewLight);
+        reg.emplace_or_replace<vultra::NameComponent>(m_PreviewLight, vultra::NameComponent {"Preview Key Light"});
         auto& lightTransform = reg.get<vultra::TransformComponent>(m_PreviewLight);
         lightTransform.rotation = glm::quatLookAt(glm::normalize(glm::vec3(0.4f, -0.8f, 0.35f)), glm::vec3(0.0f, 1.0f, 0.0f));
         lightTransform.worldMatrix = glm::mat4_cast(lightTransform.rotation);
-        reg.emplace<vultra::LightComponent>(m_PreviewLight);
-        auto& l = reg.get<vultra::LightComponent>(m_PreviewLight);
+        auto& l = reg.emplace_or_replace<vultra::LightComponent>(m_PreviewLight);
         l.kind = 0u;
         l.intensity = 6.0f;
         l.castsShadow = false;
 
         m_PreviewEnvironment = m_PreviewWorld.createEntity();
-        reg.emplace<vultra::IDComponent>(m_PreviewEnvironment);
-        reg.emplace<vultra::NameComponent>(m_PreviewEnvironment, vultra::NameComponent {"Preview Environment"});
-        reg.emplace<vultra::EnvironmentComponent>(m_PreviewEnvironment,
-                                                  vultra::EnvironmentComponent {
-                                                      .ambientColor = glm::vec3 {0.28f, 0.30f, 0.34f},
-                                                      .ambientIntensity = 1.6f,
-                                                      .enableIBL = false,
-                                                      .iblColor = glm::vec3 {0.45f, 0.48f, 0.52f},
-                                                      .iblIntensity = 1.2f,
-                                                  });
+        reg.emplace_or_replace<vultra::NameComponent>(m_PreviewEnvironment, vultra::NameComponent {"Preview Environment"});
+        reg.emplace_or_replace<vultra::EnvironmentComponent>(m_PreviewEnvironment,
+                                                             vultra::EnvironmentComponent {
+                                                                 .ambientColor = glm::vec3 {0.28f, 0.30f, 0.34f},
+                                                                 .ambientIntensity = 1.6f,
+                                                                 .enableIBL = false,
+                                                                 .iblColor = glm::vec3 {0.45f, 0.48f, 0.52f},
+                                                                 .iblIntensity = 1.2f,
+                                                             });
 
         m_PreviewSphere = m_PreviewWorld.createEntity();
-        reg.emplace<vultra::IDComponent>(m_PreviewSphere);
-        reg.emplace<vultra::NameComponent>(m_PreviewSphere, vultra::NameComponent {"Preview Sphere"});
-        reg.emplace<vultra::TransformComponent>(m_PreviewSphere);
-        reg.emplace<vultra::MeshComponent>(m_PreviewSphere,
-                                           vultra::MeshComponent {
-                                               .builtinGeometry = 2u,
-                                               .materialOverrides = {{.slot = 0u, .materialGraph = m_CurrentUri}},
-                                           });
+        reg.emplace_or_replace<vultra::NameComponent>(m_PreviewSphere, vultra::NameComponent {"Preview Sphere"});
+        reg.emplace_or_replace<vultra::MeshComponent>(m_PreviewSphere,
+                                                      vultra::MeshComponent {
+                                                          .builtinGeometry = 2u,
+                                                          .materialOverrides = {{.slot = 0u, .materialGraph = m_CurrentUri}},
+                                                      });
     }
 
     void MaterialGraphWindow::ensurePreviewRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height)
