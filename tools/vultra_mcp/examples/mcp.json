@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "vultra": {
+      "command": "python",
+      "args": [
+        "tools/vultra_mcp/vultra_mcp.py",
+        "--engine-root",
+        "."
+      ],
+      "cwd": "C:/Users/Administrator/GitHub/libvultra"
+    }
+  }
+}
