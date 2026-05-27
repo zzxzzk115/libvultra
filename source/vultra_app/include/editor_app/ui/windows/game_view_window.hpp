@@ -7,6 +7,7 @@
 #include <vultra/function/services/imgui_service.hpp>
 
 #include <optional>
+#include <array>
 #include <vector>
 
 namespace vultra_app
@@ -40,6 +41,7 @@ namespace vultra_app
         void collectRetiredRenderTargets(EditorContext& ctx);
         void releaseRenderTarget(EditorContext& ctx);
         void resetRenderTargetsForProject(EditorContext& ctx);
+        void clearXRMirrorPreview(EditorContext& ctx);
 
         float m_UserZoom {1.0f};
         float m_MinZoom {1.0f};
@@ -49,6 +51,8 @@ namespace vultra_app
         RenderTargetSlot              m_ActiveRenderTarget;
         RenderTargetSlot              m_PendingRenderTarget;
         std::vector<RenderTargetSlot> m_RetiredRenderTargets;
+        std::array<const vultra::rhi::Texture*, 2>   m_XRMirrorTextures {nullptr, nullptr};
+        std::array<vultra::IImGuiService::TextureID, 2> m_XRMirrorTextureIds {};
         uint64_t                      m_ProjectGeneration {0};
     };
 } // namespace vultra_app

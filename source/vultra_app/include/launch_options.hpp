@@ -20,6 +20,8 @@ namespace vultra_app
         std::optional<bool> validation;
         std::optional<bool> debugMarkers;
         std::optional<bool> renderDoc;
+        std::optional<bool> xr;
+        std::optional<bool> xrMirror;
     };
 
     LaunchOptions parseLaunchOptions(std::span<const std::string> args);

@@ -27,6 +27,7 @@
 #include <vultra/function/world/components/reflection_probe_component.hpp>
 #include <vultra/function/world/components/script_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/components/xr_view_component.hpp>
 #include <vultra/function/world/world.hpp>
 
 #include <entt/meta/meta.hpp>
@@ -181,6 +182,8 @@ namespace vultra_app
                 return "Gaussian Splat";
             if (std::strcmp(metaName, "CameraComponent") == 0)
                 return "Camera";
+            if (std::strcmp(metaName, "XRViewComponent") == 0)
+                return "XR View";
             if (std::strcmp(metaName, "EnvironmentComponent") == 0)
                 return "Environment";
             if (std::strcmp(metaName, "ReflectionProbeComponent") == 0)
@@ -226,6 +229,12 @@ namespace vultra_app
         const char* componentDisplayName<vultra::CameraComponent>()
         {
             return "Camera";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::XRViewComponent>()
+        {
+            return "XR View";
         }
 
         template<>
@@ -446,6 +455,42 @@ namespace vultra_app
             }
             changed |= ImGui::Checkbox("Casts Shadow", &light.castsShadow);
             changed |= ImGui::Checkbox("Two Sided", &light.twoSided);
+            return changed;
+        }
+
+        bool drawXRViewComponentFields(EditorContext& ctx, vultra::XRViewComponent& xrView)
+        {
+            bool changed = false;
+
+            changed |= ImGui::Checkbox("Enabled", &xrView.enabled);
+
+            int trackingOrigin = static_cast<int>(xrView.trackingOrigin);
+            const char* trackingOrigins[] = {"Local", "Stage"};
+            if (ImGui::Combo("Tracking Origin", &trackingOrigin, trackingOrigins, IM_ARRAYSIZE(trackingOrigins)))
+            {
+                xrView.trackingOrigin = static_cast<uint32_t>(std::clamp(trackingOrigin, 0, 1));
+                changed = true;
+            }
+
+            int stereoGraphMode = static_cast<int>(xrView.stereoGraphMode);
+            const char* stereoGraphModes[] = {"Single Graph Stereo"};
+            if (ImGui::Combo("Stereo Graph", &stereoGraphMode, stereoGraphModes, IM_ARRAYSIZE(stereoGraphModes)))
+            {
+                xrView.stereoGraphMode = 0u;
+                changed = true;
+            }
+
+            changed |= ImGui::Checkbox("Fallback Mono", &xrView.fallbackMono);
+
+            if (auto* backend = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+            {
+                ImGui::SeparatorText("Runtime");
+                ImGui::Text("OpenXR: %s", backend->isXREnabled() ? "Enabled" : "Disabled");
+                ImGui::Text("Mirror: %s", backend->isXRMirrorEnabled() ? "Enabled" : "Disabled");
+                if (!backend->isXREnabled())
+                    ImGui::TextDisabled("Open Game View to start XR preview in the editor.");
+            }
+
             return changed;
         }
 
@@ -1774,6 +1819,7 @@ namespace vultra_app
             static const std::vector<AddComponentDescriptor> descriptors {
                 addComponentDescriptor<vultra::TransformComponent>("Transform", "Transform"),
                 addComponentDescriptor<vultra::CameraComponent>("Camera", "Camera"),
+                addComponentDescriptor<vultra::XRViewComponent>("XRView", "XR View"),
                 addComponentDescriptor<vultra::EnvironmentComponent>("Environment", "Environment"),
                 addComponentDescriptor<vultra::ReflectionProbeComponent>("ReflectionProbe", "Reflection Probe"),
                 addComponentDescriptor<vultra::LightComponent>("Light", "Light"),
@@ -1794,6 +1840,7 @@ namespace vultra_app
                 "ReflectionProbe",
                 "Light",
                 "Camera",
+                "XRView",
                 "Script",
                 "Prefab",
             };
@@ -1816,6 +1863,8 @@ namespace vultra_app
                 return reg.all_of<vultra::LightComponent>(entity);
             if (key == "Camera")
                 return reg.all_of<vultra::CameraComponent>(entity);
+            if (key == "XRView")
+                return reg.all_of<vultra::XRViewComponent>(entity);
             if (key == "Script")
                 return reg.all_of<vultra::ScriptComponent>(entity);
             if (key == "Prefab")
@@ -1855,6 +1904,8 @@ namespace vultra_app
                 return "Light";
             if (key == "Camera")
                 return "Camera";
+            if (key == "XRView")
+                return "XR View";
             if (key == "Script")
                 return "Script";
             if (key == "Prefab")
@@ -1878,6 +1929,8 @@ namespace vultra_app
                 reg.remove<vultra::LightComponent>(entity);
             else if (key == "Camera")
                 reg.remove<vultra::CameraComponent>(entity);
+            else if (key == "XRView")
+                reg.remove<vultra::XRViewComponent>(entity);
             else if (key == "Script")
                 reg.remove<vultra::ScriptComponent>(entity);
         }
@@ -2186,6 +2239,12 @@ namespace vultra_app
                             ctx.state.sceneDirty = true;
                         });
                 }
+            }
+            else if (key == "XRView")
+            {
+                if (auto* xrView = reg.try_get<vultra::XRViewComponent>(e))
+                    if (drawXRViewComponentFields(ctx, *xrView))
+                        ctx.state.sceneDirty = true;
             }
             else if (key == "Script")
             {

@@ -10,6 +10,7 @@
 #include <openxr/openxr_platform.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace vultra
 {
@@ -61,10 +62,15 @@ namespace vultra
             [[nodiscard]] size_t        getEyeCount() const { return m_EyeCount; }
             [[nodiscard]] glm::vec3     getEyePosition(size_t eyeIndex) const;
             [[nodiscard]] glm::quat     getEyeRotation(size_t eyeIndex) const;
+            [[nodiscard]] glm::mat4     getEyePoseMatrix(size_t eyeIndex) const;
+            [[nodiscard]] glm::vec3     getHeadPosition() const;
+            [[nodiscard]] glm::quat     getHeadRotation() const;
             [[nodiscard]] rhi::Extent2D getEyeResolution(size_t eyeIndex) const;
             [[nodiscard]] glm::mat4     getEyeViewMatrix(size_t eyeIndex) const;
             [[nodiscard]] glm::mat4     getEyeProjectionMatrix(size_t eyeIndex) const;
             [[nodiscard]] XrFovf        getEyeFOV(size_t eyeIndex) const;
+            [[nodiscard]] int64_t       getPredictedDisplayTime() const { return m_FrameState.predictedDisplayTime; }
+            [[nodiscard]] XrViewStateFlags getViewStateFlags() const { return m_ViewState.viewStateFlags; }
 
             [[nodiscard]] float getIPD() const;
 

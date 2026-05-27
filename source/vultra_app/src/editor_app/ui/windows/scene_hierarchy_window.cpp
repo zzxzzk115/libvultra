@@ -17,6 +17,7 @@
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/reflection_probe_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/components/xr_view_component.hpp>
 #include <vultra/function/world/world.hpp>
 
 #include <imgui.h>
@@ -46,6 +47,8 @@ namespace vultra_app
         const char* entityIcon(vultra::World& world, entt::entity entity)
         {
             auto& reg = world.registry();
+            if (reg.all_of<vultra::XRViewComponent>(entity))
+                return ICON_MDI_VIRTUAL_REALITY;
             if (reg.all_of<vultra::CameraComponent>(entity))
                 return ICON_MDI_CAMERA;
             if (reg.all_of<vultra::EnvironmentComponent>(entity))

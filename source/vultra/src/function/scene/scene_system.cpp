@@ -20,6 +20,7 @@
 #include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
+#include "vultra/function/world/components/xr_view_component.hpp"
 
 #include <entt/entt.hpp>
 #include <vfilesystem/core/uri.hpp>
@@ -396,6 +397,11 @@ namespace vultra
                                                                 "clearColor",
                                                                 "priority",
                                                                 "rendererKey"});
+        m_ComponentRegistry.registerComponent<XRViewComponent>("XRViewComponent",
+                                                               {"enabled",
+                                                                "trackingOrigin",
+                                                                "stereoGraphMode",
+                                                                "fallbackMono"});
         m_ComponentRegistry.registerComponent<EnvironmentComponent>("EnvironmentComponent",
                                                                     {"active",
                                                                      "skybox",

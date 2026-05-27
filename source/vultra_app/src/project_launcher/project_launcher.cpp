@@ -214,6 +214,125 @@ CameraComponent/rendererKey = "universal"
 }
 )";
 
+            constexpr std::string_view kStereoRenderGraph = R"({
+  "meta": {
+    "editor": {
+      "nodes": {
+        "DirectGBuffer": { "pos": [260.0, 100.0] },
+        "ShadowMap": { "pos": [260.0, 460.0] },
+        "Ssao": { "pos": [620.0, 260.0] },
+        "DeferredLighting": { "pos": [980.0, 160.0] },
+        "ToneMapping": { "pos": [1340.0, 160.0] },
+        "Fxaa": { "pos": [1700.0, 160.0] },
+        "FinalComposition": { "pos": [2060.0, 160.0] }
+      }
+    }
+  },
+  "passes": [
+    {
+      "enabled": true,
+      "id": "DirectGBuffer",
+      "outputs": {
+        "color": "DirectGBuffer.color",
+        "depth": "DirectGBuffer.depth",
+        "normal": "DirectGBuffer.normal",
+        "material": "DirectGBuffer.material",
+        "entityId": "DirectGBuffer.entityId"
+      },
+      "type": "DirectGBuffer"
+    },
+    {
+      "enabled": true,
+      "id": "ShadowMap",
+      "outputs": {
+        "shadowMap": "ShadowMap.shadowMap",
+        "shadowData": "ShadowMap.shadowData"
+      },
+      "type": "ShadowMap"
+    },
+    {
+      "enabled": true,
+      "id": "Ssao",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "normal": "DirectGBuffer.normal"
+      },
+      "outputs": {
+        "ao": "Ssao.ao"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "Ssao"
+    },
+    {
+      "enabled": true,
+      "id": "DeferredLighting",
+      "inputs": {
+        "color": "DirectGBuffer.color",
+        "normal": "DirectGBuffer.normal",
+        "material": "DirectGBuffer.material",
+        "depth": "DirectGBuffer.depth",
+        "ao": "Ssao.ao",
+        "shadowMap": "ShadowMap.shadowMap",
+        "shadowData": "ShadowMap.shadowData"
+      },
+      "outputs": {
+        "color": "DeferredLighting.color"
+      },
+      "type": "DeferredLighting"
+    },
+    {
+      "enabled": true,
+      "id": "ToneMapping",
+      "inputs": {
+        "source": "DeferredLighting.color"
+      },
+      "outputs": {
+        "color": "ToneMapping.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "ToneMapping"
+    },
+    {
+      "enabled": true,
+      "id": "Fxaa",
+      "inputs": {
+        "source": "ToneMapping.color"
+      },
+      "outputs": {
+        "color": "Fxaa.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "Fxaa"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "Fxaa.color"
+      },
+      "outputs": {
+        "target": "FinalComposition.target"
+      },
+      "type": "FinalComposition"
+    }
+  ],
+  "resources": [
+    { "name": "stereo_color" },
+    { "name": "stereo_depth" },
+    { "name": "previous_stereo_color" },
+    { "name": "previous_stereo_depth" },
+    { "name": "previous_stereo_pose" },
+    { "name": "stereo_reprojection_metadata" }
+  ]
+}
+)";
+
             constexpr std::string_view kPixelatePass = R"(return RenderGraphPass {
     type = "Pixelate",
     shader = {
@@ -371,6 +490,7 @@ This directory is an index, not the runtime asset root.
             const auto resourcesDir = projectDir / "resources";
             return writeTextFile(resourcesDir / "scenes" / "test.vscn", kSampleScene, errorMessage) &&
                    writeTextFile(resourcesDir / "render" / "default.vrg.json", kDefaultRenderGraph, errorMessage) &&
+                   writeTextFile(resourcesDir / "render" / "stereo_vr.vrg.json", kStereoRenderGraph, errorMessage) &&
                    writeTextFile(resourcesDir / "render" / "passes" / "pixelate.lua", kPixelatePass, errorMessage) &&
                    writeTextFile(resourcesDir / "shaders" / "project.vshaderlib.lua", kShaderLibrary, errorMessage) &&
                    writeTextFile(resourcesDir / "shaders" / "fullscreen" / "fullscreen_triangle.vert.vshader",

@@ -44,8 +44,19 @@ namespace vultra
         // Multi-view metadata (mono: viewCount=1, stereo: viewCount=2)
         uint32_t viewIndex {0};
         uint32_t viewCount {1};
+        bool     xrViewEnabled {false};
+        bool     xrFallbackMono {true};
         bool     isXRView {false};
         bool     isXRPrimaryView {true};
+        glm::vec4 xrFov {0.0f};
+        glm::vec3 xrHeadPosition {0.0f};
+        glm::vec3 xrEyePosition {0.0f};
+        float     xrIpd {0.0f};
+        int64_t   xrPredictedDisplayTime {0};
+        bool      xrPositionValid {false};
+        bool      xrOrientationValid {false};
+        bool      xrPositionTracked {false};
+        bool      xrOrientationTracked {false};
 
         // Matrices
         glm::mat4 view {1.0f};
@@ -394,7 +405,7 @@ namespace vultra
         ShadowRenderSettings shadow;
         PbrLightingSettings pbrLighting;
         SelectionOutlineSettings selectionOutline;
-        bool               xrMirrorGammaCorrect {false};
+        bool               xrMirrorGammaCorrect {true};
         bool               enableFXAA {true};
     };
 

@@ -987,6 +987,12 @@ namespace vultra_app
                      "visibility",
                      "shadow_map",
                      "shadow_data",
+                     "stereo_color",
+                     "stereo_depth",
+                     "previous_stereo_color",
+                     "previous_stereo_depth",
+                     "previous_stereo_pose",
+                     "stereo_reprojection_metadata",
                  })
                 registry.registerResource(name);
         }

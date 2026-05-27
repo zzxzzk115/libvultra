@@ -15,6 +15,7 @@
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/components/xr_view_component.hpp>
 #include <vultra/function/world/world.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -113,6 +114,11 @@ namespace vultra_app
             out.debugEntityIdOutput = false;
             out.selectionOutlineEnabled = false;
             out.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
+            if (const auto* xrView = reg.try_get<vultra::XRViewComponent>(entity); xrView && xrView->enabled)
+            {
+                out.xrViewEnabled = true;
+                out.xrFallbackMono = xrView->fallbackMono;
+            }
             return out;
         }
 
@@ -162,9 +168,12 @@ namespace vultra_app
 
         const bool visible =
             ImGui::Begin(title().c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-        ctx.state.gameViewVisible = visible && !ImGui::IsWindowCollapsed();
-        if (!visible)
+        const bool collapsed = visible && ImGui::IsWindowCollapsed();
+        ctx.state.gameViewVisible = visible && !collapsed;
+        if (!visible || collapsed)
         {
+            if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+                backendService->requestXRSession(false);
             ImGui::End();
             return;
         }
@@ -194,6 +203,12 @@ namespace vultra_app
             cursor.y += (avail.y - displaySize.y) * 0.5f;
         ImGui::SetCursorPos(cursor);
 
+        bool primaryCameraWantsXR = false;
+        bool xrBackendEnabled = false;
+        bool xrMirrorReady = false;
+        auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+        auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+
         if (m_ActiveRenderTarget.textureId)
             ImGui::Image(m_ActiveRenderTarget.textureId, displaySize, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
         else
@@ -212,6 +227,15 @@ namespace vultra_app
                 auto& world = worldService->world();
                 auto  cam   = findPrimaryCamera(world);
                 hasPrimaryCamera = cam != entt::null;
+                if (hasPrimaryCamera)
+                {
+                    auto& reg = world.registry();
+                    if (const auto* xrView = reg.try_get<vultra::XRViewComponent>(cam); xrView && xrView->enabled)
+                        primaryCameraWantsXR = true;
+                }
+                xrBackendEnabled = backendService && backendService->isXREnabled();
+                if (backendService)
+                    backendService->requestXRSession(primaryCameraWantsXR);
 
                 auto* renderTarget =
                     m_PendingRenderTarget.texture ? &*m_PendingRenderTarget.texture :
@@ -225,6 +249,59 @@ namespace vultra_app
                         cameraService->addManualCamera(renderCamera);
                 }
             }
+        }
+
+        if (primaryCameraWantsXR && xrBackendEnabled && backendService && imguiService)
+        {
+            const auto eyeViews = backendService->lastXREyeViews();
+            const size_t mirrorCount = std::min<std::size_t>(eyeViews.size(), m_XRMirrorTextureIds.size());
+            for (size_t eyeIndex = 0; eyeIndex < mirrorCount; ++eyeIndex)
+            {
+                const auto* mirror = eyeViews[eyeIndex].mirrorTarget;
+                if (!mirror)
+                    continue;
+                xrMirrorReady = true;
+                if (m_XRMirrorTextures[eyeIndex] != mirror)
+                {
+                    if (m_XRMirrorTextureIds[eyeIndex])
+                        imguiService->removeTexture(m_XRMirrorTextureIds[eyeIndex]);
+                    m_XRMirrorTextures[eyeIndex] = mirror;
+                    m_XRMirrorTextureIds[eyeIndex] = imguiService->addTexture(*mirror);
+                }
+            }
+
+            if (xrMirrorReady)
+            {
+                dl->AddRectFilled(min, max, IM_COL32(10, 12, 16, 255));
+                const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                const float slotWidth = std::max(1.0f, (displaySize.x - spacing) * 0.5f);
+                const float slotHeight = displaySize.y;
+                ImGui::SetCursorScreenPos(min);
+                for (size_t eyeIndex = 0; eyeIndex < mirrorCount; ++eyeIndex)
+                {
+                    if (!m_XRMirrorTextureIds[eyeIndex])
+                        continue;
+                    const auto* mirror = eyeViews[eyeIndex].mirrorTarget;
+                    const auto extent = mirror ? mirror->getExtent() : vultra::rhi::Extent2D {};
+                    const float nativeAspect = extent.height > 0u && extent.width > 0u ?
+                                                   static_cast<float>(extent.width) / static_cast<float>(extent.height) :
+                                                   1.0f;
+                    ImVec2 imageSize {slotWidth, std::min(slotHeight, slotWidth / std::max(nativeAspect, 0.0001f))};
+                    ImGui::BeginGroup();
+                    ImGui::Text("XR Eye %u", static_cast<unsigned>(eyeIndex));
+                    ImGui::Image(m_XRMirrorTextureIds[eyeIndex],
+                                 imageSize,
+                                 ImVec2(0.0f, 0.0f),
+                                 ImVec2(1.0f, 1.0f));
+                    ImGui::EndGroup();
+                    if (eyeIndex + 1 < mirrorCount)
+                        ImGui::SameLine();
+                }
+            }
+        }
+        else
+        {
+            clearXRMirrorPreview(ctx);
         }
 
         if (!hasPrimaryCamera)
@@ -247,7 +324,22 @@ namespace vultra_app
                 }
             }
         }
-
+        else if (primaryCameraWantsXR && !xrBackendEnabled)
+        {
+            dl->AddRectFilled(min, max, IM_COL32(15, 17, 21, 210));
+            ImGui::SetCursorScreenPos(min);
+            ui::emptyState(ICON_MDI_GOOGLE_CARDBOARD,
+                           "XR Disabled",
+                           "OpenXR could not initialize. Check that a runtime/headset is available, or launch with --no-xr to disable XR.");
+        }
+        else if (primaryCameraWantsXR && xrBackendEnabled && !xrMirrorReady)
+        {
+            dl->AddRectFilled(min, max, IM_COL32(15, 17, 21, 180));
+            ImGui::SetCursorScreenPos(min);
+            ui::emptyState(ICON_MDI_GOOGLE_CARDBOARD,
+                           "Waiting For XR Mirror",
+                           "The headset view will appear here after the XR runtime produces mirror textures.");
+        }
         drawMetricsOverlay(ctx, min, max);
 
         ImGui::EndChild();
@@ -317,8 +409,6 @@ namespace vultra_app
 
     void GameViewWindow::drawToolbar(EditorContext& ctx)
     {
-        (void)ctx;
-
         const char* resolutionLabels[] = {"Free Aspect", "16:9", "4:3", "21:9", "1920x1080", "1280x720", "800x600"};
         ImGui::SetNextItemWidth(126.0f);
         if (ImGui::Combo("##GameViewResolution", &m_SelectedResolution, resolutionLabels, IM_ARRAYSIZE(resolutionLabels)))
@@ -343,6 +433,12 @@ namespace vultra_app
                                                                     static_cast<float>(m_ActiveRenderTarget.extent.height))
                                                            : ImVec2(0.0f, 0.0f);
         ImGui::TextDisabled("Res: %dx%d", static_cast<int>(target.x), static_cast<int>(target.y));
+
+        if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
+        {
+            ImGui::SameLine(0.0f, 14.0f);
+            ImGui::Checkbox("Gamma", &renderService->builtinRenderSettings().xrMirrorGammaCorrect);
+        }
     }
 
     ImVec2 GameViewWindow::computeRenderSize(const ImVec2& avail) const
@@ -470,6 +566,9 @@ namespace vultra_app
 
     void GameViewWindow::releaseRenderTarget(EditorContext& ctx)
     {
+        if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+            backendService->requestXRSession(false);
+        clearXRMirrorPreview(ctx);
         if (ctx.services)
         {
             if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
@@ -488,6 +587,21 @@ namespace vultra_app
         m_ActiveRenderTarget  = {};
         m_PendingRenderTarget = {};
         m_RetiredRenderTargets.clear();
+    }
+
+    void GameViewWindow::clearXRMirrorPreview(EditorContext& ctx)
+    {
+        auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        if (imguiService)
+        {
+            for (auto& textureId : m_XRMirrorTextureIds)
+            {
+                if (textureId)
+                    imguiService->removeTexture(textureId);
+            }
+        }
+        m_XRMirrorTextures.fill(nullptr);
+        m_XRMirrorTextureIds.fill({});
     }
 
     void GameViewWindow::resetRenderTargetsForProject(EditorContext& ctx)

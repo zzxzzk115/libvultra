@@ -126,4 +126,11 @@ namespace vultra
     constexpr FrameGraphResourceKey kResKey_ShadowData {.id = vbase::hashLiteral("ShadowData")};
     constexpr FrameGraphResourceKey kResKey_SsaoTexture {.id = vbase::hashLiteral("SSAOTexture")};
     constexpr FrameGraphResourceKey kResKey_SsrTexture {.id = vbase::hashLiteral("SSRTexture")};
+    constexpr FrameGraphResourceKey kResKey_StereoColor {.id = vbase::hashLiteral("StereoColor")};
+    constexpr FrameGraphResourceKey kResKey_StereoDepth {.id = vbase::hashLiteral("StereoDepth")};
+    constexpr FrameGraphResourceKey kResKey_PreviousStereoColor {.id = vbase::hashLiteral("PreviousStereoColor")};
+    constexpr FrameGraphResourceKey kResKey_PreviousStereoDepth {.id = vbase::hashLiteral("PreviousStereoDepth")};
+    constexpr FrameGraphResourceKey kResKey_PreviousStereoPose {.id = vbase::hashLiteral("PreviousStereoPose")};
+    constexpr FrameGraphResourceKey kResKey_StereoReprojectionMetadata {
+        .id = vbase::hashLiteral("StereoReprojectionMetadata")};
 } // namespace vultra

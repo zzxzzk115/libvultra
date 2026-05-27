@@ -491,6 +491,27 @@ namespace vultra
             return xrutils::toQuat(pose.orientation);
         }
 
+        glm::mat4 XRHeadset::getEyePoseMatrix(size_t eyeIndex) const
+        {
+            return xrutils::poseToMatrix(m_EyePoses.at(eyeIndex).pose);
+        }
+
+        glm::vec3 XRHeadset::getHeadPosition() const
+        {
+            if (m_EyePoses.empty())
+                return glm::vec3 {0.0f};
+            if (m_EyePoses.size() < 2)
+                return getEyePosition(0);
+            return (getEyePosition(0) + getEyePosition(1)) * 0.5f;
+        }
+
+        glm::quat XRHeadset::getHeadRotation() const
+        {
+            if (m_EyePoses.empty())
+                return glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+            return getEyeRotation(0);
+        }
+
         rhi::Extent2D XRHeadset::getEyeResolution(size_t eyeIndex) const
         {
             const XrViewConfigurationView& eyeInfo = m_EyeImageInfos.at(eyeIndex);

@@ -12,6 +12,7 @@
 #include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
+#include "vultra/function/world/components/xr_view_component.hpp"
 
 #include <entt/entt.hpp>
 #include <entt/meta/factory.hpp>
@@ -74,6 +75,13 @@ namespace vultra
             .data<&CameraComponent::clearColor>("clearColor"_hs)
             .data<&CameraComponent::priority>("priority"_hs)
             .data<&CameraComponent::rendererKey>("rendererKey"_hs);
+
+        entt::meta_factory<XRViewComponent>()
+            .type("XRViewComponent"_hs)
+            .data<&XRViewComponent::enabled>("enabled"_hs)
+            .data<&XRViewComponent::trackingOrigin>("trackingOrigin"_hs)
+            .data<&XRViewComponent::stereoGraphMode>("stereoGraphMode"_hs)
+            .data<&XRViewComponent::fallbackMono>("fallbackMono"_hs);
 
         entt::meta_factory<EnvironmentComponent>()
             .type("EnvironmentComponent"_hs)

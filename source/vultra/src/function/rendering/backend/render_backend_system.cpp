@@ -187,15 +187,10 @@ namespace vultra
         if (HasFlagValues(ctx().config.render.renderDeviceFeatureFlag, rhi::RenderDeviceFeatureFlagBits::eXR))
         {
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
-            VULTRA_CORE_TRACE("[RenderBackendSystem] Creating XR render backend");
             if (!m_RenderDevice->getXRDevice())
             {
                 VULTRA_CORE_WARN(
-                    "[RenderBackendSystem] XR requested but unavailable; continuing in non-XR fallback mode");
-            }
-            else
-            {
-                m_XRBackend = std::make_unique<openxr::XRHeadset>(*m_RenderDevice);
+                    "[RenderBackendSystem] XR-capable Vulkan device was requested but OpenXR is unavailable.");
             }
 #else
             VULTRA_CORE_WARN("[RenderBackendSystem] XR is disabled in this build; ignoring XR feature flag.");
@@ -225,9 +220,11 @@ namespace vultra
 
         m_ActiveCommandBuffer = nullptr;
         m_XREyeViews.clear();
+        m_LastXREyeViews.clear();
         m_XRMirrorTargets.clear();
         m_XRFrameActive  = false;
         m_XRShouldRender = false;
+        m_XRSessionRequested = false;
 
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         m_XRBackend.reset();
@@ -253,7 +250,25 @@ namespace vultra
         m_XRShouldRender      = false;
         m_XREyeViews.clear();
 
- #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+        if (!m_XRSessionRequested && m_XRBackend)
+        {
+            m_XRBackend.reset();
+            m_LastXREyeViews.clear();
+        }
+        if (m_XRSessionRequested && !m_XRBackend && m_RenderDevice->getXRDevice())
+        {
+            try
+            {
+                VULTRA_CORE_INFO("[RenderBackendSystem] Starting XR session on demand");
+                m_XRBackend = std::make_unique<openxr::XRHeadset>(*m_RenderDevice);
+            }
+            catch (const std::exception& e)
+            {
+                VULTRA_CORE_WARN("[RenderBackendSystem] Failed to start XR session: {}", e.what());
+                m_XRSessionRequested = false;
+            }
+        }
         if (m_XRBackend)
         {
             switch (m_XRBackend->beginFrame(m_XRSwapchainImageIndex))
@@ -262,11 +277,24 @@ namespace vultra
                     VULTRA_CORE_WARN("[RenderBackendSystem] XR beginFrame failed, skip frame");
                     return false;
 
-                case openxr::XRHeadset::BeginFrameResult::eNormal:
+                case openxr::XRHeadset::BeginFrameResult::eNormal: {
                     m_XRFrameActive  = true;
                     m_XRShouldRender = true;
 
                     m_XREyeViews.reserve(m_XRBackend->getEyeCount());
+                    const auto viewStateFlags = m_XRBackend->getViewStateFlags();
+                    const bool positionValid =
+                        (viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) != 0;
+                    const bool orientationValid =
+                        (viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) != 0;
+                    const bool positionTracked =
+                        (viewStateFlags & XR_VIEW_STATE_POSITION_TRACKED_BIT) != 0;
+                    const bool orientationTracked =
+                        (viewStateFlags & XR_VIEW_STATE_ORIENTATION_TRACKED_BIT) != 0;
+                    const auto headPosition = m_XRBackend->getHeadPosition();
+                    const auto headRotation = m_XRBackend->getHeadRotation();
+                    const auto ipd = m_XRBackend->getIPD();
+                    const auto predictedDisplayTime = m_XRBackend->getPredictedDisplayTime();
                     for (uint32_t eyeIndex = 0; eyeIndex < static_cast<uint32_t>(m_XRBackend->getEyeCount());
                          ++eyeIndex)
                     {
@@ -274,11 +302,24 @@ namespace vultra
                         auto* eyeTarget    = (eyeIndex == 0u) ? &stereoTarget.left : &stereoTarget.right;
 
                         const auto extent = m_XRBackend->getEyeResolution(eyeIndex);
+                        const auto fov = m_XRBackend->getEyeFOV(eyeIndex);
 
                         m_XREyeViews.push_back({
                             .eyeIndex   = eyeIndex,
                             .view       = m_XRBackend->getEyeViewMatrix(eyeIndex),
                             .projection = m_XRBackend->getEyeProjectionMatrix(eyeIndex),
+                            .pose       = m_XRBackend->getEyePoseMatrix(eyeIndex),
+                            .fov        = glm::vec4(fov.angleLeft, fov.angleRight, fov.angleUp, fov.angleDown),
+                            .headPosition = headPosition,
+                            .headRotation = headRotation,
+                            .eyePosition = m_XRBackend->getEyePosition(eyeIndex),
+                            .eyeRotation = m_XRBackend->getEyeRotation(eyeIndex),
+                            .ipd = ipd,
+                            .predictedDisplayTime = predictedDisplayTime,
+                            .positionValid = positionValid,
+                            .orientationValid = orientationValid,
+                            .positionTracked = positionTracked,
+                            .orientationTracked = orientationTracked,
                             .extent       = extent,
                             .target       = eyeTarget,
                             .stereoTarget = &stereoTarget.stereo,
@@ -297,6 +338,7 @@ namespace vultra
                         }
                     }
                     break;
+                }
 
                 case openxr::XRHeadset::BeginFrameResult::eSkipRender:
                     m_XRFrameActive  = true;
@@ -350,6 +392,11 @@ namespace vultra
 
     bool RenderBackendSystem::isXRMirrorEnabled() const { return m_XRMirrorEnabled; }
 
+    void RenderBackendSystem::requestXRSession(const bool requested)
+    {
+        m_XRSessionRequested = requested;
+    }
+
     bool RenderBackendSystem::isExitRequested() const
     {
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
@@ -360,6 +407,11 @@ namespace vultra
     }
 
     std::span<const IRenderBackendService::XREyeView> RenderBackendSystem::xrEyeViews() const { return m_XREyeViews; }
+
+    std::span<const IRenderBackendService::XREyeView> RenderBackendSystem::lastXREyeViews() const
+    {
+        return m_LastXREyeViews;
+    }
 
     void RenderBackendSystem::endFrame()
     {
@@ -375,6 +427,7 @@ namespace vultra
         m_ActiveCommandBuffer = nullptr;
         m_XRFrameActive       = false;
         m_XRShouldRender      = false;
+        m_LastXREyeViews      = m_XREyeViews;
         m_XREyeViews.clear();
     }
 

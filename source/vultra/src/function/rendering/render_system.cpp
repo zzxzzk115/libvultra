@@ -2651,6 +2651,8 @@ namespace vultra
                 .target               = target,
                 .extent               = renderArea.extent,
                 .clearValue           = viewCamera.clearValue,
+                .stereoMode           = canUseXrMultiview ? StereoRenderMode::eSingleGraphStereo :
+                                           (cam.isXRView ? StereoRenderMode::ePerEyeFallback : StereoRenderMode::eMono),
                 .enableMultiview      = canUseXrMultiview,
                 .multiviewMask        = canUseXrMultiview ? 0x3u : 0u,
                 .multiviewCameras     = {&viewCamera, nullptr},
@@ -2729,6 +2731,7 @@ namespace vultra
                 prepareCameraData(fgUploader, viewData, renderArea.extent, viewCamera, rd.getBackendApi());
                 bb.add<FrameData>(m_PreparedFrameData.frameData);
                 bb.add<CameraData>(viewData.cameraData);
+                bb.add<StereoViewData>(viewData.stereoViewData);
             }
 
             if (useFrameGraph)

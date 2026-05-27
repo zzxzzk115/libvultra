@@ -80,10 +80,23 @@ namespace vultra
                                                            "CameraBlock",
                                                            framegraph::BufferType::eUniformBuffer,
                                                            makeGPUCameraBlock(extent, camera, backendApi));
+        out.stereoViewData.mode = out.view.stereoMode;
+        out.stereoViewData.viewCount = camera.viewCount;
+        out.stereoViewData.leftFov = camera.xrFov;
+        out.stereoViewData.headPosition = camera.xrHeadPosition;
+        out.stereoViewData.ipd = camera.xrIpd;
+        out.stereoViewData.predictedDisplayTime = camera.xrPredictedDisplayTime;
+        out.stereoViewData.positionValid = camera.xrPositionValid;
+        out.stereoViewData.orientationValid = camera.xrOrientationValid;
+        out.stereoViewData.positionTracked = camera.xrPositionTracked;
+        out.stereoViewData.orientationTracked = camera.xrOrientationTracked;
 
         if (out.view.enableMultiview && out.view.multiviewCameraCount >= 2u && out.view.multiviewCameras[0] &&
             out.view.multiviewCameras[1])
         {
+            out.stereoViewData.viewCount = out.view.multiviewCameraCount;
+            out.stereoViewData.leftFov = out.view.multiviewCameras[0]->xrFov;
+            out.stereoViewData.rightFov = out.view.multiviewCameras[1]->xrFov;
             out.cameraData.stereoCameraBlock = uploader.uploadStruct(
                 "UploadStereoCameraBlock",
                 "StereoCameraBlock",

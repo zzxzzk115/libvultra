@@ -26,6 +26,8 @@
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 
+#include <vbase/core/scoped_enum_flags.hpp>
+
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
@@ -295,6 +297,30 @@ namespace
                     vultra::rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline;
             }
 
+            const bool shouldRequestXR = m_Options.xr.value_or(true);
+            if (shouldRequestXR)
+            {
+                if (engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eVulkan)
+                {
+                    engine.ctx().config.render.renderDeviceFeatureFlag =
+                        engine.ctx().config.render.renderDeviceFeatureFlag |
+                        vultra::rhi::RenderDeviceFeatureFlagBits::eXR;
+                }
+                else
+                {
+                    if (m_Options.xr.value_or(false))
+                        VULTRA_CLIENT_WARN("[Vultra] --xr requested, but XR is only supported on the Vulkan backend.");
+                }
+            }
+            else
+            {
+                engine.ctx().config.render.renderDeviceFeatureFlag =
+                    engine.ctx().config.render.renderDeviceFeatureFlag &
+                    ~vultra::rhi::RenderDeviceFeatureFlagBits::eXR;
+            }
+            if (m_Options.xrMirror.has_value())
+                engine.ctx().config.render.xr.mirror = *m_Options.xrMirror;
+
             if (m_Options.validation.has_value())
             {
                 engine.ctx().config.render.enableValidation = *m_Options.validation;
@@ -310,6 +336,7 @@ namespace
 
             if (m_State.mode != vultra_app::AppMode::Runtime)
             {
+                engine.ctx().config.render.xr.autoStartSessionFromScene = false;
                 engine.ctx().config.imgui.enableDocking = true;
                 engine.ctx().config.imgui.imguiIniFile  = "vultra_editor_layout_v2.ini";
                 engine.ctx().config.window.width        = m_Options.editorMode ? 640 : 1280;

@@ -83,6 +83,7 @@ namespace vultra
                 struct XRConfig
                 {
                     bool mirror {true};
+                    bool autoStartSessionFromScene {true};
                 } xr;
             } render;
 

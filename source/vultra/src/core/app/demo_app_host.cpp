@@ -10,6 +10,9 @@
 #include "vultra/function/camera/camera_system.hpp"
 #include "vultra/function/debugging/frame_debugger_system.hpp"
 #include "vultra/function/imgui/imgui_system.hpp"
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+#include "vultra/function/openxr/xr_runtime_system.hpp"
+#endif
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
 #include "vultra/function/rendering/render_system.hpp"
 #include "vultra/function/rendering/shader_system.hpp"
@@ -395,6 +398,9 @@ namespace vultra
 #endif
         engine.emplaceSubsystem<ShaderSystem>();
         engine.emplaceSubsystem<RenderBackendSystem>();
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+        engine.emplaceSubsystem<XRRuntimeSystem>();
+#endif
         engine.emplaceSubsystem<ImGuiSystem>();
 
         const bool webgpuSafeMode =

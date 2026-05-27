@@ -100,6 +100,10 @@ namespace vultra_app
         program.add_argument("--no-debug-markers").flag();
         program.add_argument("--renderdoc").flag();
         program.add_argument("--no-renderdoc").flag();
+        program.add_argument("--xr").flag();
+        program.add_argument("--no-xr").flag();
+        program.add_argument("--xr-mirror").flag();
+        program.add_argument("--no-xr-mirror").flag();
 
         std::vector<std::string> argv;
         argv.emplace_back("vultra");
@@ -128,6 +132,14 @@ namespace vultra_app
                     options.renderDoc = true;
                 else if (arg == "--no-renderdoc")
                     options.renderDoc = false;
+                else if (arg == "--xr")
+                    options.xr = true;
+                else if (arg == "--no-xr")
+                    options.xr = false;
+                else if (arg == "--xr-mirror")
+                    options.xrMirror = true;
+                else if (arg == "--no-xr-mirror")
+                    options.xrMirror = false;
             }
         }
         catch (const std::exception& e)
@@ -183,6 +195,7 @@ namespace vultra_app
                   << "Usage:\n"
                   << "  vultra [--vpk resources.vpk] [--scene res://scenes/main.vscn]\n"
                   << "  vultra --editor --project <project-dir>\n"
+                  << "  vultra [--no-xr] [--xr-mirror|--no-xr-mirror] --editor --project <project-dir>\n"
                   << "  vultra [--validation|--no-validation] [--debug-markers|--no-debug-markers] [--renderdoc|--no-renderdoc]\n"
                   << "  vultra --project <project-dir>\n"
                   << "  vultra help\n\n"

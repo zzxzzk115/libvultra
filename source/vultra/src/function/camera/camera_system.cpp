@@ -12,6 +12,7 @@
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
+#include "vultra/function/world/components/xr_view_component.hpp"
 #include "vultra/function/world/world.hpp"
 
 #include <texture_headers/kenney_cursor-pack/PNG/Outline/Default/hand_closed.png.bintex.h>
@@ -105,6 +106,38 @@ namespace vultra
 
             for (int i = 0; i < 6; ++i)
                 cam.frustumPlanes[i] = glm::vec4(planes[i].normal, planes[i].d);
+        }
+
+        [[nodiscard]] bool xrPoseUsable(const IRenderBackendService::XREyeView& eyeView)
+        {
+            return eyeView.positionValid && eyeView.orientationValid;
+        }
+
+        [[nodiscard]] RenderCamera makeXREyeCamera(const RenderCamera& base,
+                                                   const IRenderBackendService::XREyeView& eyeView,
+                                                   const glm::mat4& originTransform)
+        {
+            RenderCamera eyeCam = base;
+            const glm::mat4 eyeWorld = originTransform * eyeView.pose;
+            eyeCam.view            = glm::inverse(eyeWorld);
+            eyeCam.projection      = eyeView.projection;
+            eyeCam.target          = eyeView.target;
+            eyeCam.viewIndex       = eyeView.eyeIndex;
+            eyeCam.viewCount       = 2u;
+            eyeCam.xrViewEnabled   = true;
+            eyeCam.isXRView        = true;
+            eyeCam.isXRPrimaryView = eyeView.eyeIndex == 0u;
+            eyeCam.xrHeadPosition  = glm::vec3(originTransform * glm::vec4(eyeView.headPosition, 1.0f));
+            eyeCam.xrEyePosition   = glm::vec3(eyeWorld[3]);
+            eyeCam.xrFov           = eyeView.fov;
+            eyeCam.xrIpd           = eyeView.ipd;
+            eyeCam.xrPredictedDisplayTime = eyeView.predictedDisplayTime;
+            eyeCam.xrPositionValid = eyeView.positionValid;
+            eyeCam.xrOrientationValid = eyeView.orientationValid;
+            eyeCam.xrPositionTracked = eyeView.positionTracked;
+            eyeCam.xrOrientationTracked = eyeView.orientationTracked;
+            finalizeCamera(eyeCam);
+            return eyeCam;
         }
 
         glm::vec3 makeForward(float yawDegrees, float pitchDegrees)
@@ -254,23 +287,22 @@ namespace vultra
                     cam.renderImGui = false;
                     cam.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
 
-                    if (!xrEyeViews.empty())
+                    const auto* xrView = reg.try_get<XRViewComponent>(e);
+                    const bool wantsXR = xrView && xrView->enabled;
+                    const bool xrPoseReady = wantsXR && !xrEyeViews.empty() &&
+                                            std::all_of(xrEyeViews.begin(), xrEyeViews.end(), xrPoseUsable);
+                    if (xrPoseReady)
                     {
+                        const glm::mat4 originTransform = makeWorldTransformMatrix(reg, e);
+                        cam.xrViewEnabled = true;
+                        cam.xrFallbackMono = xrView ? xrView->fallbackMono : true;
                         for (const auto& eyeView : xrEyeViews)
-                        {
-                            RenderCamera eyeCam = cam;
-                            eyeCam.view            = eyeView.view;
-                            eyeCam.projection      = eyeView.projection;
-                            eyeCam.target          = eyeView.target;
-                            eyeCam.viewIndex       = eyeView.eyeIndex;
-                            eyeCam.viewCount       = static_cast<uint32_t>(xrEyeViews.size());
-                            eyeCam.isXRView        = true;
-                            eyeCam.isXRPrimaryView = eyeView.eyeIndex == 0u;
-                            finalizeCamera(eyeCam);
-                            m_Cooked.push_back(std::move(eyeCam));
-                        }
+                            m_Cooked.push_back(makeXREyeCamera(cam, eyeView, originTransform));
                         continue;
                     }
+
+                    if (wantsXR && xrView && !xrView->fallbackMono)
+                        continue;
 
                     finalizeCamera(cam);
                     m_Cooked.push_back(std::move(cam));
@@ -280,24 +312,22 @@ namespace vultra
 
         for (const auto& srcCam : m_Manual)
         {
-            if (!xrEyeViews.empty())
+            if (srcCam.xrViewEnabled && !xrEyeViews.empty())
             {
+                const auto cookedBefore = m_Cooked.size();
+                const glm::mat4 originTransform = glm::inverse(srcCam.view);
                 for (const auto& eyeView : xrEyeViews)
                 {
-                    RenderCamera cam    = srcCam;
-                    cam.view            = eyeView.view;
-                    cam.projection      = eyeView.projection;
-                    cam.target          = eyeView.target;
-                    cam.viewIndex       = eyeView.eyeIndex;
-                    cam.viewCount       = static_cast<uint32_t>(xrEyeViews.size());
-                    cam.isXRView        = true;
-                    cam.isXRPrimaryView = eyeView.eyeIndex == 0u;
-                    finalizeCamera(cam);
-                    m_Cooked.push_back(std::move(cam));
+                    if (xrPoseUsable(eyeView))
+                        m_Cooked.push_back(makeXREyeCamera(srcCam, eyeView, originTransform));
                 }
 
-                continue;
+                if (m_Cooked.size() != cookedBefore)
+                    continue;
             }
+
+            if (srcCam.xrViewEnabled && !srcCam.xrFallbackMono)
+                continue;
 
             RenderCamera cam    = srcCam;
             cam.viewIndex       = 0;

@@ -712,9 +712,15 @@ namespace vultra
                                 {
                                     passCtx.setOutput("color", color);
                                     ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                                        ctx->data.set(kResKey_StereoColor, color);
                                 }
                                 if (auto res = ctx->data.tryGet(kResKey_DepthTexture))
+                                {
                                     passCtx.setOutput("depth", res);
+                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                                        ctx->data.set(kResKey_StereoDepth, res);
+                                }
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferNormal))
                                     passCtx.setOutput("normal", res);
                                 if (auto res = ctx->data.tryGet(kResKey_GBufferMetallicRoughnessAO))
@@ -730,7 +736,11 @@ namespace vultra
                                     return;
                                 m_DepthPrePass.addPass(*ctx);
                                 if (auto depth = ctx->data.tryGet(kResKey_DepthTexture))
+                                {
                                     passCtx.setOutput("depth", depth);
+                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                                        ctx->data.set(kResKey_StereoDepth, depth);
+                                }
                             });
 
             registerBuiltin("ShadowMap", {}, {"shadowMap", "shadowData"},
@@ -849,6 +859,8 @@ namespace vultra
                                                                          nullptr);
                                     }
                                     ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                                        ctx->data.set(kResKey_StereoColor, color);
                                     passCtx.setOutput("color", color);
                                 }
                             });
@@ -869,6 +881,8 @@ namespace vultra
                                 if (color)
                                 {
                                     ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                                        ctx->data.set(kResKey_StereoColor, color);
                                     passCtx.setOutput("color", color);
                                 }
                             });
@@ -1211,6 +1225,12 @@ namespace vultra
                      "visibility",
                      "shadow_map",
                      "shadow_data",
+                     "stereo_color",
+                     "stereo_depth",
+                     "previous_stereo_color",
+                     "previous_stereo_depth",
+                     "previous_stereo_pose",
+                     "stereo_reprojection_metadata",
                  })
                 m_Registry.registerResource(name);
         }

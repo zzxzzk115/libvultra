@@ -3,6 +3,7 @@
 #include "vultra/function/rendering/render_structs.hpp"
 
 #include <array>
+#include <cstdint>
 #include <glm/vec4.hpp>
 
 namespace vultra
@@ -12,6 +13,13 @@ namespace vultra
         class Texture;
     }
 
+    enum class StereoRenderMode : uint32_t
+    {
+        eMono = 0,
+        eSingleGraphStereo,
+        ePerEyeFallback,
+    };
+
     struct RenderView
     {
         const RenderWorld*  renderWorld {nullptr};
@@ -20,6 +28,7 @@ namespace vultra
         rhi::Texture*                      target {nullptr};
         rhi::Extent2D                      extent {};
         glm::vec4                          clearValue {0, 0, 0, 1};
+        StereoRenderMode                   stereoMode {StereoRenderMode::eMono};
         bool                               enableMultiview {false};
         uint32_t                           multiviewMask {0};
         std::array<const RenderCamera*, 2> multiviewCameras {nullptr, nullptr};
