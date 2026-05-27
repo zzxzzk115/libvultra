@@ -1012,15 +1012,16 @@ namespace vultra_app
 
         ImGui::PushID(path.generic_string().c_str());
         ImGui::BeginGroup();
+        const float  tileWidth   = iconSize + 10.0f;
+        const float  labelHeight = ImGui::GetTextLineHeight() * 2.0f;
+        const float  tileHeight  = iconSize + labelHeight + 6.0f;
         const ImVec2 itemMin = ImGui::GetCursorScreenPos();
-        const ImVec2 itemMax {itemMin.x + iconSize + 10.0f,
-                              itemMin.y + iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + 8.0f};
+        const ImVec2 itemMax {itemMin.x + tileWidth, itemMin.y + tileHeight};
         const bool itemVisible = ImGui::IsRectVisible(itemMin, itemMax);
 
         if (!itemVisible)
         {
-            ImGui::Dummy(ImVec2(iconSize + 10.0f,
-                                iconSize + ImGui::GetTextLineHeightWithSpacing() * 2.0f + 8.0f));
+            ImGui::Dummy(ImVec2(tileWidth, tileHeight));
             ImGui::EndGroup();
             ImGui::NextColumn();
             ImGui::PopID();
@@ -1028,6 +1029,19 @@ namespace vultra_app
         }
 
         const bool selected = isPathSelected(path);
+        auto*      drawList = ImGui::GetWindowDrawList();
+        if (selected)
+        {
+            drawList->AddRectFilled(ImVec2 {itemMin.x - 3.0f, itemMin.y - 3.0f},
+                                    ImVec2 {itemMax.x + 3.0f, itemMax.y + 2.0f},
+                                    IM_COL32(28, 45, 62, 230),
+                                    5.0f);
+            drawList->AddRectFilled(ImVec2 {itemMin.x - 3.0f, itemMin.y - 3.0f},
+                                    ImVec2 {itemMax.x + 3.0f, itemMin.y + 1.0f},
+                                    IM_COL32(45, 145, 230, 230),
+                                    5.0f,
+                                    ImDrawFlags_RoundCornersTop);
+        }
 
         ImTextureID previewId {};
         if (isDir)
@@ -1071,20 +1085,6 @@ namespace vultra_app
         }
         if (previewId)
         {
-            const ImVec2 iconPos = ImGui::GetCursorScreenPos();
-            auto*        drawList = ImGui::GetWindowDrawList();
-            if (selected)
-            {
-                drawList->AddRectFilled(ImVec2 {iconPos.x - 8.0f, iconPos.y - 8.0f},
-                                        ImVec2 {iconPos.x + iconSize + 8.0f, iconPos.y + iconSize + 30.0f},
-                                        IM_COL32(28, 45, 62, 230),
-                                        5.0f);
-                drawList->AddRectFilled(ImVec2 {iconPos.x - 8.0f, iconPos.y - 8.0f},
-                                        ImVec2 {iconPos.x + iconSize + 8.0f, iconPos.y - 3.0f},
-                                        IM_COL32(45, 145, 230, 230),
-                                        5.0f,
-                                        ImDrawFlags_RoundCornersTop);
-            }
             ImGui::Image(previewId, ImVec2(iconSize, iconSize));
             drawList->AddRect(ImGui::GetItemRectMin(),
                               ImGui::GetItemRectMax(),
@@ -1173,7 +1173,7 @@ namespace vultra_app
             }
         }
 
-        const float textWidth = iconSize + 10.0f;
+        const float textWidth = tileWidth;
         drawWrappedEllipsizedLabel(name, textWidth, 2);
 
         ImGui::EndGroup();

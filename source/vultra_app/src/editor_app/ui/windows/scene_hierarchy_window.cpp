@@ -135,6 +135,13 @@ namespace vultra_app
             vultra::TransformComponent transform;
         };
 
+        struct MeshSubAssetTransformOptions
+        {
+            bool keepPosition {true};
+            bool keepRotation {true};
+            bool keepScale {true};
+        };
+
         std::optional<MeshSubAssetPlacement> findMeshSubAssetPlacement(EditorContext& ctx, const vultra::CoreUUID& meshUuid)
         {
             if (!ctx.services || !meshUuid.valid())
@@ -160,7 +167,8 @@ namespace vultra_app
         entt::entity instantiateDroppedAsset(EditorContext& ctx,
                                              vultra::World& world,
                                              const vultra::CoreUUID& uuid,
-                                             entt::entity parent)
+                                             entt::entity parent,
+                                             const MeshSubAssetTransformOptions* transformOptions = nullptr)
         {
             if (!uuid.valid() || !ctx.services)
                 return entt::null;
@@ -206,7 +214,20 @@ namespace vultra_app
                 reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {name});
                 auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
                 if (placement)
+                {
+                    const auto defaultTransform = transform;
                     transform = placement->transform;
+                    if (transformOptions)
+                    {
+                        if (!transformOptions->keepPosition)
+                            transform.position = defaultTransform.position;
+                        if (!transformOptions->keepRotation)
+                            transform.rotation = defaultTransform.rotation;
+                        if (!transformOptions->keepScale)
+                            transform.scale = defaultTransform.scale;
+                        transform.dirty = true;
+                    }
+                }
 
                 if (entry.type == vasset::VAssetType::eMesh)
                 {
@@ -234,34 +255,115 @@ namespace vultra_app
                 Selection::select(SelectionCategory::Entity, id->uuid);
         }
 
-        bool acceptAssetDrop(EditorContext& ctx,
-                             vultra::World& world,
-                             entt::entity parent,
-                             entt::entity beforeSibling = entt::null,
-                             entt::entity afterSibling = entt::null)
+        bool shouldPromptMeshSubAssetPlacement(EditorContext& ctx, const vultra::CoreUUID& uuid)
         {
-            const ImGuiPayload* payload =
-                ImGui::AcceptDragDropPayload(kAssetUuidPayload, ImGuiDragDropFlags_AcceptNoDrawDefaultRect);
-            if (!payload || payload->DataSize != sizeof(vultra::CoreUUID))
+            if (!uuid.valid() || !ctx.services)
                 return false;
 
-            vultra::CoreUUID uuid;
-            std::memcpy(&uuid, payload->Data, sizeof(uuid));
-
-            const auto entity = instantiateDroppedAsset(ctx, world, uuid, parent);
-            if (entity == entt::null)
+            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+            if (!assetService)
                 return false;
 
-            if (beforeSibling != entt::null)
-                world.insertBefore(entity, beforeSibling);
-            else if (afterSibling != entt::null)
-                world.insertAfter(entity, afterSibling);
-
-            selectEntityIfPossible(world, entity);
-            ctx.state.sceneDirty = true;
-            return true;
+            const auto entry = assetService->registry().lookup(uuid.native());
+            return entry.type == vasset::VAssetType::eMesh && findMeshSubAssetPlacement(ctx, uuid).has_value();
         }
     } // namespace
+
+    bool SceneHierarchyWindow::acceptAssetDrop(EditorContext& ctx,
+                                               vultra::World& world,
+                                               entt::entity parent,
+                                               entt::entity beforeSibling,
+                                               entt::entity afterSibling)
+    {
+        const ImGuiPayload* payload =
+            ImGui::AcceptDragDropPayload(kAssetUuidPayload, ImGuiDragDropFlags_AcceptNoDrawDefaultRect);
+        if (!payload || payload->DataSize != sizeof(vultra::CoreUUID))
+            return false;
+
+        vultra::CoreUUID uuid;
+        std::memcpy(&uuid, payload->Data, sizeof(uuid));
+
+        if (shouldPromptMeshSubAssetPlacement(ctx, uuid))
+        {
+            m_PendingAssetInstantiation = PendingAssetInstantiation {
+                .uuid          = uuid,
+                .parent        = parent,
+                .beforeSibling = beforeSibling,
+                .afterSibling  = afterSibling,
+                .keepPosition  = false,
+                .keepRotation  = false,
+                .keepScale     = true,
+                .openPopup     = true,
+            };
+            return true;
+        }
+
+        PendingAssetInstantiation request {
+            .uuid          = uuid,
+            .parent        = parent,
+            .beforeSibling = beforeSibling,
+            .afterSibling  = afterSibling,
+        };
+        return completeAssetInstantiation(ctx, world, request);
+    }
+
+    bool SceneHierarchyWindow::completeAssetInstantiation(EditorContext& ctx,
+                                                          vultra::World& world,
+                                                          const PendingAssetInstantiation& request)
+    {
+        MeshSubAssetTransformOptions transformOptions {
+            .keepPosition = request.keepPosition,
+            .keepRotation = request.keepRotation,
+            .keepScale    = request.keepScale,
+        };
+        const auto entity = instantiateDroppedAsset(ctx, world, request.uuid, request.parent, &transformOptions);
+        if (entity == entt::null)
+            return false;
+
+        if (request.beforeSibling != entt::null)
+            world.insertBefore(entity, request.beforeSibling);
+        else if (request.afterSibling != entt::null)
+            world.insertAfter(entity, request.afterSibling);
+
+        selectEntityIfPossible(world, entity);
+        ctx.state.sceneDirty = true;
+        return true;
+    }
+
+    void SceneHierarchyWindow::drawPendingAssetInstantiationPopup(EditorContext& ctx, vultra::World& world)
+    {
+        if (m_PendingAssetInstantiation.openPopup)
+        {
+            ImGui::OpenPopup("Instantiate Sub Mesh Asset");
+            m_PendingAssetInstantiation.openPopup = false;
+        }
+
+        const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings;
+        if (ImGui::BeginPopupModal("Instantiate Sub Mesh Asset", nullptr, flags))
+        {
+            ImGui::TextUnformatted("Keep imported transform channels:");
+            ImGui::Spacing();
+            ImGui::Checkbox("Position", &m_PendingAssetInstantiation.keepPosition);
+            ImGui::Checkbox("Rotation", &m_PendingAssetInstantiation.keepRotation);
+            ImGui::Checkbox("Scale", &m_PendingAssetInstantiation.keepScale);
+            ImGui::Spacing();
+
+            if (ImGui::Button("Instantiate", ImVec2(110.0f, 0.0f)))
+            {
+                const auto request = m_PendingAssetInstantiation;
+                m_PendingAssetInstantiation = {};
+                (void)completeAssetInstantiation(ctx, world, request);
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)))
+            {
+                m_PendingAssetInstantiation = {};
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+    }
 
     SceneHierarchyWindow::SceneHierarchyWindow() : EditorWindow("Scene Hierarchy", ICON_MDI_FILE_TREE) {}
 
@@ -383,6 +485,8 @@ namespace vultra_app
 
             ImGui::EndTable();
         }
+
+        drawPendingAssetInstantiationPopup(ctx, world);
 
         ImGui::End();
     }
