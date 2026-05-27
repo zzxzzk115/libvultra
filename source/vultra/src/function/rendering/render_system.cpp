@@ -149,6 +149,15 @@ namespace vultra
             if (node.typeId == "vultra.input.time" &&
                 (outputPin == "seconds" || outputPin == "value" || outputPin == "out"))
                 return timeSeconds;
+            if ((node.typeId == "vultra.input.view_index" || node.typeId == "vultra.input.eye_index") &&
+                (outputPin == "index" || outputPin == "value" || outputPin == "out"))
+                return 0;
+            if (node.typeId == "vultra.input.view_count" &&
+                (outputPin == "count" || outputPin == "value" || outputPin == "out"))
+                return 1;
+            if (node.typeId == "vultra.input.is_stereo_view" &&
+                (outputPin == "stereo" || outputPin == "value" || outputPin == "out"))
+                return false;
 
             if ((node.typeId == "vultra.math.add" || node.typeId == "vultra.math.subtract" ||
                  node.typeId == "vultra.math.multiply" || node.typeId == "vultra.math.divide" ||

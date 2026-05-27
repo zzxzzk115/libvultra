@@ -73,6 +73,10 @@ namespace vultra::material_graph
         add(desc("vultra.input.world_position", "World Position", {}, {pin("position", ValueType::eVec3)}));
         add(desc("vultra.input.world_normal", "World Normal", {}, {pin("normal", ValueType::eVec3)}));
         add(desc("vultra.input.view_direction", "View Direction", {}, {pin("direction", ValueType::eVec3)}));
+        add(desc("vultra.input.view_index", "View Index", {}, {pin("index", ValueType::eInt)}));
+        add(desc("vultra.input.eye_index", "Eye Index", {}, {pin("index", ValueType::eInt)}));
+        add(desc("vultra.input.view_count", "View Count", {}, {pin("count", ValueType::eInt)}));
+        add(desc("vultra.input.is_stereo_view", "Is Stereo View", {}, {pin("stereo", ValueType::eBool)}));
         add(desc("vultra.input.material_index", "Material Index", {}, {pin("index", ValueType::eInt)}));
         add(desc("vultra.input.time", "Time", {}, {pin("seconds", ValueType::eFloat)}));
 

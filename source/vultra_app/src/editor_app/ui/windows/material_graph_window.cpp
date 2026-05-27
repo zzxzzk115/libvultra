@@ -456,6 +456,9 @@ namespace vultra_app
 
         std::string_view nodeMenuSubcategory(std::string_view typeId)
         {
+            if (typeId == "vultra.input.view_index" || typeId == "vultra.input.eye_index" ||
+                typeId == "vultra.input.view_count" || typeId == "vultra.input.is_stereo_view")
+                return "View";
             if (typeId.starts_with("vultra.input."))
                 return "Vertex Attributes";
             if (typeId == "vultra.param.texture2d")

@@ -28,11 +28,28 @@ struct MaterialGraphSurface
 
 const uint VULTRA_MATERIAL_GRAPH_ID_default_vmatgraph = 3089828321u;
 
-MaterialGraphSurface eval_material_graph_default_vmatgraph(uint materialIndex, vec2 uv, vec3 positionWS, vec3 normalWS, vec3 viewDirWS, float timeSeconds)
+#ifndef VULTRA_MATERIAL_GRAPH_CONTEXT_DECLARED
+#define VULTRA_MATERIAL_GRAPH_CONTEXT_DECLARED
+struct MaterialGraphContext
+{
+    uint materialIndex;
+    vec2 uv;
+    vec3 positionWS;
+    vec3 normalWS;
+    vec3 viewDirWS;
+    float timeSeconds;
+    uint viewIndex;
+    uint eyeIndex;
+    uint viewCount;
+    bool isStereoView;
+};
+#endif
+
+MaterialGraphSurface eval_material_graph_default_vmatgraph_ctx(MaterialGraphContext ctx)
 {
     MaterialGraphSurface surface;
-    surface.baseColor = mix(vec4(0.02, 0.16, 1.0, 1.0), vec4(1.0, 0.08, 0.0, 1.0), ((sin((timeSeconds * 1.2)) * 0.5) + 0.5));
-    surface.normalWS = normalize(normalWS);
+    surface.baseColor = mix(vec4(0.02, 0.16, 1.0, 1.0), vec4(1.0, 0.08, 0.0, 1.0), ((sin((ctx.timeSeconds * 1.2)) * 0.5) + 0.5));
+    surface.normalWS = normalize(ctx.normalWS);
     surface.metallic = clamp(0.08, 0.0, 1.0);
     surface.roughness = clamp(0.42, 0.045, 1.0);
     surface.ao = clamp(1.0, 0.0, 1.0);
@@ -57,6 +74,22 @@ MaterialGraphSurface eval_material_graph_default_vmatgraph(uint materialIndex, v
         surface.emissive += surface.baseColor.rgb;
     }
     return surface;
+}
+
+MaterialGraphSurface eval_material_graph_default_vmatgraph(uint materialIndex, vec2 uv, vec3 positionWS, vec3 normalWS, vec3 viewDirWS, float timeSeconds)
+{
+    MaterialGraphContext ctx;
+    ctx.materialIndex = materialIndex;
+    ctx.uv = uv;
+    ctx.positionWS = positionWS;
+    ctx.normalWS = normalWS;
+    ctx.viewDirWS = viewDirWS;
+    ctx.timeSeconds = timeSeconds;
+    ctx.viewIndex = vultra_view_index();
+    ctx.eyeIndex = vultra_eye_index();
+    ctx.viewCount = vultra_view_count();
+    ctx.isStereoView = vultra_is_stereo_view();
+    return eval_material_graph_default_vmatgraph_ctx(ctx);
 }
 
 layout(location = 0) out vec4 FragColor;

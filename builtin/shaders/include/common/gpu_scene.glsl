@@ -81,6 +81,39 @@ struct CameraData
     vec4 frustumPlanes[6];
 };
 
+#ifndef VULTRA_SHADER_VIEW_CONTEXT_DECLARED
+#define VULTRA_SHADER_VIEW_CONTEXT_DECLARED
+uint vultra_view_index()
+{
+#if defined(VULTRA_MULTIVIEW) && VULTRA_MULTIVIEW
+    return uint(gl_ViewIndex);
+#else
+    return 0u;
+#endif
+}
+
+uint vultra_view_count()
+{
+#if defined(VULTRA_VIEW_COUNT)
+    return uint(VULTRA_VIEW_COUNT);
+#elif defined(VULTRA_MULTIVIEW) && VULTRA_MULTIVIEW
+    return 2u;
+#else
+    return 1u;
+#endif
+}
+
+uint vultra_eye_index()
+{
+    return min(vultra_view_index(), max(vultra_view_count(), 1u) - 1u);
+}
+
+bool vultra_is_stereo_view()
+{
+    return vultra_view_count() > 1u;
+}
+#endif
+
 #if defined(VULTRA_DECLARE_DRAW_BUFFER_READONLY) || defined(VULTRA_DECLARE_DRAW_BUFFER_READWRITE) || \
     defined(VULTRA_DECLARE_INSTANCE_BUFFER) || defined(VULTRA_DECLARE_MESH_TABLE_BUFFER) || \
     defined(VULTRA_DECLARE_MESHLET_BUFFER) || defined(VULTRA_DECLARE_MODEL_BUFFER) || \

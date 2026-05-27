@@ -150,17 +150,25 @@ namespace vultra::material_graph
             {
                 const auto& type = node.typeId;
                 if (type == "vultra.input.uv0")
-                    return "uv";
+                    return "ctx.uv";
                 if (type == "vultra.input.world_position")
-                    return "positionWS";
+                    return "ctx.positionWS";
                 if (type == "vultra.input.world_normal")
-                    return "normalWS";
+                    return "ctx.normalWS";
                 if (type == "vultra.input.view_direction")
-                    return "viewDirWS";
+                    return "ctx.viewDirWS";
+                if (type == "vultra.input.view_index")
+                    return "int(ctx.viewIndex)";
+                if (type == "vultra.input.eye_index")
+                    return "int(ctx.eyeIndex)";
+                if (type == "vultra.input.view_count")
+                    return "int(ctx.viewCount)";
+                if (type == "vultra.input.is_stereo_view")
+                    return "ctx.isStereoView";
                 if (type == "vultra.input.material_index")
-                    return "int(materialIndex)";
+                    return "int(ctx.materialIndex)";
                 if (type == "vultra.input.time")
-                    return "timeSeconds";
+                    return "ctx.timeSeconds";
 
                 if (type == "vultra.param.float")
                     return paramValue(node, "value", ValueType::eFloat, 0.0f);
@@ -295,9 +303,53 @@ namespace vultra::material_graph
         src << "    uint shadingModel;\n";
         src << "};\n";
         src << "#endif\n\n";
+        src << "#ifndef VULTRA_SHADER_VIEW_CONTEXT_DECLARED\n";
+        src << "#define VULTRA_SHADER_VIEW_CONTEXT_DECLARED\n";
+        src << "uint vultra_view_index()\n";
+        src << "{\n";
+        src << "#if defined(VULTRA_MULTIVIEW) && VULTRA_MULTIVIEW\n";
+        src << "    return uint(gl_ViewIndex);\n";
+        src << "#else\n";
+        src << "    return 0u;\n";
+        src << "#endif\n";
+        src << "}\n";
+        src << "uint vultra_view_count()\n";
+        src << "{\n";
+        src << "#if defined(VULTRA_VIEW_COUNT)\n";
+        src << "    return uint(VULTRA_VIEW_COUNT);\n";
+        src << "#elif defined(VULTRA_MULTIVIEW) && VULTRA_MULTIVIEW\n";
+        src << "    return 2u;\n";
+        src << "#else\n";
+        src << "    return 1u;\n";
+        src << "#endif\n";
+        src << "}\n";
+        src << "uint vultra_eye_index()\n";
+        src << "{\n";
+        src << "    return min(vultra_view_index(), max(vultra_view_count(), 1u) - 1u);\n";
+        src << "}\n";
+        src << "bool vultra_is_stereo_view()\n";
+        src << "{\n";
+        src << "    return vultra_view_count() > 1u;\n";
+        src << "}\n";
+        src << "#endif\n\n";
+        src << "#ifndef VULTRA_MATERIAL_GRAPH_CONTEXT_DECLARED\n";
+        src << "#define VULTRA_MATERIAL_GRAPH_CONTEXT_DECLARED\n";
+        src << "struct MaterialGraphContext\n{\n";
+        src << "    uint materialIndex;\n";
+        src << "    vec2 uv;\n";
+        src << "    vec3 positionWS;\n";
+        src << "    vec3 normalWS;\n";
+        src << "    vec3 viewDirWS;\n";
+        src << "    float timeSeconds;\n";
+        src << "    uint viewIndex;\n";
+        src << "    uint eyeIndex;\n";
+        src << "    uint viewCount;\n";
+        src << "    bool isStereoView;\n";
+        src << "};\n";
+        src << "#endif\n\n";
         src << "const uint VULTRA_MATERIAL_GRAPH_ID_" << graphSymbol << " = " << input.graphId << "u;\n\n";
         src << "MaterialGraphSurface eval_material_graph_" << graphSymbol
-            << "(uint materialIndex, vec2 uv, vec3 positionWS, vec3 normalWS, vec3 viewDirWS, float timeSeconds)\n{\n";
+            << "_ctx(MaterialGraphContext ctx)\n{\n";
         src << "    MaterialGraphSurface surface;\n";
         src << "    surface.baseColor = " << baseColor << ";\n";
         src << "    surface.normalWS = normalize(" << normal << ");\n";
@@ -325,6 +377,22 @@ namespace vultra::material_graph
         src << "        surface.emissive += surface.baseColor.rgb;\n";
         src << "    }\n";
         src << "    return surface;\n";
+        src << "}\n";
+        src << "\n";
+        src << "MaterialGraphSurface eval_material_graph_" << graphSymbol
+            << "(uint materialIndex, vec2 uv, vec3 positionWS, vec3 normalWS, vec3 viewDirWS, float timeSeconds)\n{\n";
+        src << "    MaterialGraphContext ctx;\n";
+        src << "    ctx.materialIndex = materialIndex;\n";
+        src << "    ctx.uv = uv;\n";
+        src << "    ctx.positionWS = positionWS;\n";
+        src << "    ctx.normalWS = normalWS;\n";
+        src << "    ctx.viewDirWS = viewDirWS;\n";
+        src << "    ctx.timeSeconds = timeSeconds;\n";
+        src << "    ctx.viewIndex = vultra_view_index();\n";
+        src << "    ctx.eyeIndex = vultra_eye_index();\n";
+        src << "    ctx.viewCount = vultra_view_count();\n";
+        src << "    ctx.isStereoView = vultra_is_stereo_view();\n";
+        src << "    return eval_material_graph_" << graphSymbol << "_ctx(ctx);\n";
         src << "}\n";
 
         return CompileOutput {
