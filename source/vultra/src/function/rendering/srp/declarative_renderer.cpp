@@ -127,6 +127,73 @@ namespace vultra
             return std::string(node) + "." + std::string(slot);
         }
 
+        [[nodiscard]] bool renderGraphConditionTokenMatches(std::string_view token, const RenderView& view)
+        {
+            auto normalized = normalizeId(std::string(token));
+            while (!normalized.empty() && normalized.front() == '_')
+                normalized.erase(normalized.begin());
+            while (!normalized.empty() && normalized.back() == '_')
+                normalized.pop_back();
+
+            if (normalized.empty() || normalized == "always" || normalized == "true")
+                return true;
+            if (normalized == "never" || normalized == "false")
+                return false;
+
+            bool invert = false;
+            if (normalized.front() == '!')
+            {
+                invert = true;
+                normalized.erase(normalized.begin());
+            }
+
+            const bool xrView = view.usesSingleGraphStereo();
+            bool       result = false;
+            if (normalized == "xr" || normalized == "vr" || normalized == "stereo" || normalized == "single_graph_stereo")
+                result = xrView;
+            else if (normalized == "non_xr" || normalized == "non_vr" || normalized == "mono")
+                result = !xrView;
+
+            return invert ? !result : result;
+        }
+
+        [[nodiscard]] bool renderGraphConditionMatches(std::string_view condition, const RenderView& view)
+        {
+            if (condition.empty())
+                return true;
+
+            const auto normalized = normalizeId(std::string(condition));
+            size_t     orBegin    = 0;
+            while (orBegin <= normalized.size())
+            {
+                const auto orEnd = normalized.find("||", orBegin);
+                const auto group = std::string_view(normalized).substr(
+                    orBegin,
+                    orEnd == std::string::npos ? std::string::npos : orEnd - orBegin);
+
+                bool   groupMatches = true;
+                size_t andBegin     = 0;
+                while (andBegin <= group.size())
+                {
+                    const auto andEnd = group.find("&&", andBegin);
+                    const auto token  = group.substr(andBegin,
+                                                     andEnd == std::string_view::npos ? std::string_view::npos :
+                                                                                         andEnd - andBegin);
+                    groupMatches = groupMatches && renderGraphConditionTokenMatches(token, view);
+                    if (andEnd == std::string_view::npos)
+                        break;
+                    andBegin = andEnd + 2;
+                }
+
+                if (groupMatches)
+                    return true;
+                if (orEnd == std::string::npos)
+                    break;
+                orBegin = orEnd + 2;
+            }
+            return false;
+        }
+
         struct RenderGraphPassPorts
         {
             std::vector<std::string> inputs;
@@ -452,7 +519,7 @@ namespace vultra
 
         void build(FrameGraphBuildContext& ctx)
         {
-            vrendergraph::RenderGraphDesc activeDesc = makeActiveGraphWithPassthrough(m_Desc);
+            vrendergraph::RenderGraphDesc activeDesc = makeActiveGraphWithPassthrough(m_Desc, ctx.view());
             if (activeDesc.passes.empty())
                 return;
 
@@ -470,7 +537,7 @@ namespace vultra
 
             vrendergraph::RenderGraph graph {
                 m_Registry,
-                [&ctx](FrameGraph& fg, const std::string_view resourceName) -> FrameGraphResource {
+                [&ctx](FrameGraph& fg, const std::string_view resourceName, const nlohmann::json&) -> FrameGraphResource {
                     const auto normalized = normalizeId(std::string(resourceName));
                     if (normalized == "backbuffer" || normalized == "target")
                         return framegraph::importTexture(fg,
@@ -486,16 +553,21 @@ namespace vultra
         }
 
     private:
-        vrendergraph::RenderGraphDesc makeActiveGraphWithPassthrough(const vrendergraph::RenderGraphDesc& desc) const
+        vrendergraph::RenderGraphDesc makeActiveGraphWithPassthrough(const vrendergraph::RenderGraphDesc& desc,
+                                                                     const RenderView&                   view) const
         {
             auto activeDesc = desc;
+            const auto passIsActive = [&view](const vrendergraph::PassDecl& pass) {
+                return pass.enabled && renderGraphConditionMatches(pass.when, view);
+            };
+
             bool changed = true;
             while (changed)
             {
                 changed = false;
                 for (const auto& pass : activeDesc.passes)
                 {
-                    if (pass.enabled)
+                    if (passIsActive(pass))
                         continue;
 
                     const auto ports = collectPassPorts(m_Registry, pass);
@@ -531,7 +603,7 @@ namespace vultra
 
             activeDesc.passes.erase(std::remove_if(activeDesc.passes.begin(),
                                                    activeDesc.passes.end(),
-                                                   [](const auto& pass) { return !pass.enabled; }),
+                                                   [&passIsActive](const auto& pass) { return !passIsActive(pass); }),
                                     activeDesc.passes.end());
             return activeDesc;
         }

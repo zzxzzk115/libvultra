@@ -52,11 +52,22 @@ manual `viewMask = 0x3u` setup and imported backbuffers without stereo intent.
   descriptors, `ResourceRef` selectors, `when`, and `viewMode`; v0.2 string
   resource refs remain compatible.
 - `xmake-repo` was updated so libvultra can consume `vrendergraph v0.3.0`.
+- Existing project render graphs now declare schema `version: 3` and mark
+  their passes with `viewMode: inherit`, so the same graph can be interpreted
+  for mono and single-graph stereo views.
+- Declarative render graph build now evaluates pass `when` conditions against
+  the current `RenderView`. Supported tokens include `xr`, `vr`, `stereo`,
+  `single_graph_stereo`, `mono`, `non_xr`, `always`, and `never`, with simple
+  `&&`, `||`, and `!` composition.
+- New project templates emitted by the project launcher now create v0.3 render
+  graphs instead of legacy unversioned graphs.
 
 ## Verification
 
 - `xmake build -y vultra-app` passed.
 - `git diff --check` passed.
+- `resources/render/default.vrg.json` and `resources/render/default_rt.vrg.json`
+  parse as JSON and report `version = 3`.
 - `vrendergraph` examples passed for both
   `examples/deferred_virtual/scene.v02.json` and `scene.v03.json`.
 - `xmake l scripts/test.lua --shallow -f debug=false,runtimes="MD" vrendergraph`
@@ -64,11 +75,9 @@ manual `viewMask = 0x3u` setup and imported backbuffers without stereo intent.
 
 ## Follow-Up
 
-- Declarative render graph resources should grow first-class stereo/multiview
-  authoring fields instead of inferring only from `RenderView`.
-- `vrendergraph v0.2.1` only stores resource names, so first-class resource
-  descriptors require a dependency/schema update before `.vrg.json` can carry
-  stereo resource metadata directly.
+- Declarative render graph resources should start using v0.3 resource
+  descriptors/selectors for explicit stereo/multiview authoring instead of
+  inferring everything from `RenderView`.
 - Fullscreen declarative passes still need explicit shader keywords such as
   `VULTRA_MULTIVIEW` / `VULTRA_VIEW_COUNT` when the shader source actually
   consumes per-view built-ins.

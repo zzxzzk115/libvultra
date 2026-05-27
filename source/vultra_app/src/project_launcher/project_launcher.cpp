@@ -151,6 +151,7 @@ CameraComponent/rendererKey = "universal"
 )";
 
             constexpr std::string_view kDefaultRenderGraph = R"({
+  "version": 3,
   "meta": {
     "editor": {
       "nodes": {
@@ -182,7 +183,8 @@ CameraComponent/rendererKey = "universal"
       "outputs": {
         "color": "CompatibilityBaseColor.color"
       },
-      "type": "CompatibilityBaseColor"
+      "type": "CompatibilityBaseColor",
+      "viewMode": "inherit"
     },
     {
       "enabled": true,
@@ -196,7 +198,8 @@ CameraComponent/rendererKey = "universal"
       "params": {
         "name": "Pixelate"
       },
-      "type": "Pixelate"
+      "type": "Pixelate",
+      "viewMode": "inherit"
     },
     {
       "enabled": true,
@@ -207,7 +210,8 @@ CameraComponent/rendererKey = "universal"
       "outputs": {
         "target": "FinalComposition.target"
       },
-      "type": "FinalComposition"
+      "type": "FinalComposition",
+      "viewMode": "inherit"
     }
   ],
   "resources": []
@@ -215,6 +219,7 @@ CameraComponent/rendererKey = "universal"
 )";
 
             constexpr std::string_view kStereoRenderGraph = R"({
+  "version": 3,
   "meta": {
     "editor": {
       "nodes": {
@@ -239,7 +244,8 @@ CameraComponent/rendererKey = "universal"
         "material": "DirectGBuffer.material",
         "entityId": "DirectGBuffer.entityId"
       },
-      "type": "DirectGBuffer"
+      "type": "DirectGBuffer",
+      "viewMode": "inherit"
     },
     {
       "enabled": true,
@@ -248,7 +254,8 @@ CameraComponent/rendererKey = "universal"
         "shadowMap": "ShadowMap.shadowMap",
         "shadowData": "ShadowMap.shadowData"
       },
-      "type": "ShadowMap"
+      "type": "ShadowMap",
+      "viewMode": "inherit"
     },
     {
       "enabled": true,
@@ -263,7 +270,8 @@ CameraComponent/rendererKey = "universal"
       "params": {
         "enabled": true
       },
-      "type": "Ssao"
+      "type": "Ssao",
+      "viewMode": "inherit"
     },
     {
       "enabled": true,
@@ -280,7 +288,8 @@ CameraComponent/rendererKey = "universal"
       "outputs": {
         "color": "DeferredLighting.color"
       },
-      "type": "DeferredLighting"
+      "type": "DeferredLighting",
+      "viewMode": "inherit"
     },
     {
       "enabled": true,
@@ -294,7 +303,8 @@ CameraComponent/rendererKey = "universal"
       "params": {
         "enabled": true
       },
-      "type": "ToneMapping"
+      "type": "ToneMapping",
+      "viewMode": "inherit"
     },
     {
       "enabled": true,
@@ -308,7 +318,8 @@ CameraComponent/rendererKey = "universal"
       "params": {
         "enabled": true
       },
-      "type": "Fxaa"
+      "type": "Fxaa",
+      "viewMode": "inherit"
     },
     {
       "enabled": true,
@@ -319,7 +330,8 @@ CameraComponent/rendererKey = "universal"
       "outputs": {
         "target": "FinalComposition.target"
       },
-      "type": "FinalComposition"
+      "type": "FinalComposition",
+      "viewMode": "inherit"
     }
   ],
   "resources": [
