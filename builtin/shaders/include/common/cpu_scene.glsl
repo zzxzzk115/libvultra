@@ -25,6 +25,7 @@ layout(set = 0, binding = 0) uniform Camera
 layout(set = 1, binding = 0) uniform DrawParams
 {
     mat4 model;
+    vec4 baseColorFactor;
     uint materialIndex;
     uint padding0;
     uint padding1;
@@ -32,4 +33,3 @@ layout(set = 1, binding = 0) uniform DrawParams
 } u_Draw;
 
 #endif // VULTRA_CPU_SCENE_GLSL
-

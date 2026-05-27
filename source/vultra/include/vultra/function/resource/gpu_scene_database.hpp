@@ -9,6 +9,7 @@
 #include "vultra/function/resource/gpu_instance.hpp"
 #include "vultra/function/resource/gpu_mesh_table.hpp"
 #include "vultra/function/resource/gpu_resource_pool.hpp"
+#include "vultra/function/resource/gpu_vertex_layout.hpp"
 
 #include <glm/mat4x4.hpp>
 
@@ -150,6 +151,14 @@ namespace vultra::resource
                 e.vertexByteOffset  = mesh.vertexByteOffset;
                 e.indexBase         = mesh.indexBase;
                 e.flags             = 0;
+                const auto layout = inspectGpuVertexLayout(mesh.vertexAttributes);
+                e.vertexAttributeMask = layout.attributeMask;
+                e.positionOffsetBytes = layout.positionOffsetBytes;
+                e.normalOffsetBytes = layout.normalOffsetBytes;
+                e.colorOffsetBytes = layout.colorOffsetBytes;
+                e.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
+                e.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
+                e.tangentOffsetBytes = layout.tangentOffsetBytes;
 
                 // Build conservative mesh-space bounds from meshlet bounds.
                 if (mesh.meshletCount > 0 &&

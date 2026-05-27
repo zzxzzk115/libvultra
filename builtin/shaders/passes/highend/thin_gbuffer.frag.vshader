@@ -3,11 +3,6 @@ language = glsl
 version = 460
 
 [frag]
-#define VTX_HAS_COLOR 0
-#define VTX_HAS_NORMAL 1
-#define VTX_HAS_UV0 1
-#define VTX_HAS_UV1 0
-#define VTX_HAS_TANGENT 1
 #define VULTRA_DECLARE_CAMERA
 #define VULTRA_DECLARE_DRAW_BUFFER_READONLY
 #define VULTRA_DECLARE_MESHLET_BUFFER
@@ -64,14 +59,14 @@ vec3 perspective_correct_barycentric(vec3 screenBarycentric, vec4 clip0, vec4 cl
     return weighted / sumWeights;
 }
 
-vec4 base_color_for_material(uint materialIndex, vec2 uv)
+vec4 base_color_for_material(uint materialIndex, vec2 uv, bool hasUv0)
 {
     uint model = get_material_model(materialIndex);
     if (model == VULTRA_MAT_PBRMR)
     {
         MaterialParamsPBRMR params = get_pbrmr_params(materialIndex);
         vec4 color = params.baseColor;
-        if (params.baseColorTex != 0u)
+        if (hasUv0 && params.baseColorTex != 0u)
             color *= texture(getBindlessTexture(params.baseColorTex), uv);
         return color;
     }
@@ -79,7 +74,7 @@ vec4 base_color_for_material(uint materialIndex, vec2 uv)
     {
         MaterialParamsPBRSG params = get_pbrsg_params(materialIndex);
         vec4 color = params.diffuseColor;
-        if (params.diffuseColorTex != 0u)
+        if (hasUv0 && params.diffuseColorTex != 0u)
             color *= texture(getBindlessTexture(params.diffuseColorTex), uv);
         return color;
     }
@@ -87,7 +82,7 @@ vec4 base_color_for_material(uint materialIndex, vec2 uv)
     {
         MaterialParamsUnlit params = get_unlit_params(materialIndex);
         vec4 color = params.color;
-        if (params.colorTex != 0u)
+        if (hasUv0 && params.colorTex != 0u)
             color *= texture(getBindlessTexture(params.colorTex), uv);
         return color;
     }
@@ -95,7 +90,7 @@ vec4 base_color_for_material(uint materialIndex, vec2 uv)
     {
         MaterialParamsPhong params = get_phong_params(materialIndex);
         vec4 color = params.diffuse;
-        if (params.diffuseTex != 0u)
+        if (hasUv0 && params.diffuseTex != 0u)
             color *= texture(getBindlessTexture(params.diffuseTex), uv);
         return color;
     }
@@ -103,14 +98,14 @@ vec4 base_color_for_material(uint materialIndex, vec2 uv)
     {
         MaterialParamsGraph params = get_graph_params(materialIndex);
         vec4 color = vec4(params.baseColor.rgb + params.emissiveAlpha.rgb, params.baseColor.a * params.emissiveAlpha.a);
-        if (params.textureInfo.x != 0u)
+        if (hasUv0 && params.textureInfo.x != 0u)
             color *= texture(getBindlessTexture(params.textureInfo.x), uv);
         return color;
     }
     return vec4(1.0);
 }
 
-vec3 material_mra(uint materialIndex, vec2 uv)
+vec3 material_mra(uint materialIndex, vec2 uv, bool hasUv0)
 {
     uint model = get_material_model(materialIndex);
     if (model == VULTRA_MAT_PBRMR)
@@ -119,13 +114,13 @@ vec3 material_mra(uint materialIndex, vec2 uv)
         float metallic = params.metallicFactor;
         float roughness = params.roughnessFactor;
         float ao = 1.0;
-        if (params.mrTex != 0u)
+        if (hasUv0 && params.mrTex != 0u)
         {
             vec4 mr = texture(getBindlessTexture(params.mrTex), uv);
             metallic *= mr.b;
             roughness *= mr.g;
         }
-        if (params.occlusionTex != 0u)
+        if (hasUv0 && params.occlusionTex != 0u)
             ao *= texture(getBindlessTexture(params.occlusionTex), uv).r;
         return vec3(metallic, roughness, ao);
     }
@@ -194,10 +189,9 @@ void main()
     uint vertex1 = s_MeshletVertices.meshletVertices[meshlet.vertexOffset + local1];
     uint vertex2 = s_MeshletVertices.meshletVertices[meshlet.vertexOffset + local2];
 
-    VertexBuffer vb = VertexBuffer(d.vertexAddress);
-    Vertex v0 = vb.vertices[vertex0];
-    Vertex v1 = vb.vertices[vertex1];
-    Vertex v2 = vb.vertices[vertex2];
+    Vertex v0 = load_vertex(d, vertex0);
+    Vertex v1 = load_vertex(d, vertex1);
+    Vertex v2 = load_vertex(d, vertex2);
 
     vec4 w0 = d.model * vec4(v0.position, 1.0);
     vec4 w1 = d.model * vec4(v1.position, 1.0);
@@ -221,8 +215,9 @@ void main()
     vec3 n2 = normalize(normalMatrix * vtx_normal(v2));
     vec3 normalWS = normalize(n0 * bc.x + n1 * bc.y + n2 * bc.z);
 
-    vec4 color = base_color_for_material(d.materialIndex, uv);
-    vec3 mra = material_mra(d.materialIndex, uv);
+    bool hasUv0 = vertex_has_attribute(d.vertexAttributeMask, VULTRA_VERTEX_ATTR_UV0);
+    vec4 color = base_color_for_material(d.materialIndex, uv, hasUv0);
+    vec3 mra = material_mra(d.materialIndex, uv, hasUv0);
 
     FragColor = color;
     GBufferNormal = vec4(normalWS, 1.0);

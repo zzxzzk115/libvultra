@@ -3,9 +3,14 @@ language = glsl
 version = 460
 
 [keywords]
+VTX_HAS_UV0 : bool permute
 VTX_HAS_TANGENT : bool permute
 
 [vert]
+#ifndef VTX_HAS_UV0
+#define VTX_HAS_UV0 0
+#endif
+
 #ifndef VTX_HAS_TANGENT
 #define VTX_HAS_TANGENT 0
 #endif
@@ -44,7 +49,9 @@ layout(set = 1, binding = 0) uniform DrawParams
 
 layout(location = 0) in vec3 a_Position;
 layout(location = 1) in vec3 a_Normal;
+#if VTX_HAS_UV0
 layout(location = 3) in vec2 a_TexCoord0;
+#endif
 #if VTX_HAS_TANGENT
 layout(location = 5) in vec4 a_Tangent;
 #endif
@@ -61,7 +68,11 @@ void main()
     vec4 worldPos = u_Draw.model * vec4(a_Position, 1.0);
     v_PositionWS = worldPos.xyz;
     v_NormalWS = normalize((u_Draw.normalMatrix * vec4(a_Normal, 0.0)).xyz);
+#if VTX_HAS_UV0
     v_TexCoord0 = a_TexCoord0;
+#else
+    v_TexCoord0 = vec2(0.0);
+#endif
 #if VTX_HAS_TANGENT
     v_TangentWS = vec4(normalize((u_Draw.model * vec4(a_Tangent.xyz, 0.0)).xyz), a_Tangent.w);
 #endif

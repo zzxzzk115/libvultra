@@ -70,7 +70,15 @@ struct DrawRecord
     uint flags;
     uint64_t vertexAddress;
     uint instanceIndex;
+    uint vertexAttributeMask;
+    uint positionOffsetBytes;
+    uint normalOffsetBytes;
+    uint colorOffsetBytes;
+    uint texCoord0OffsetBytes;
+    uint texCoord1OffsetBytes;
+    uint tangentOffsetBytes;
     uint padding0;
+    uint padding1;
     mat4 model;
 };
 
@@ -122,6 +130,15 @@ struct GpuMeshEntry
     uint vertexByteOffset;
     uint indexBase;
     uint flags;
+
+    uint vertexAttributeMask;
+    uint positionOffsetBytes;
+    uint normalOffsetBytes;
+    uint colorOffsetBytes;
+    uint texCoord0OffsetBytes;
+    uint texCoord1OffsetBytes;
+    uint tangentOffsetBytes;
+    uint padding0;
 
     vec3 boundsCenter;
     float boundsRadius;

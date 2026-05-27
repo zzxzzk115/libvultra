@@ -226,22 +226,13 @@ namespace vultra
 
     rhi::GraphicsPipeline DepthPrePass::createPipeline() const
     {
-        auto vertexShader = loadHighendShader("mesh.vert",
-                                              vshadersystem::ShaderStage::eVert,
-                                              {
-                                                  {"VTX_HAS_NORMAL", 1},
-                                                  {"VTX_HAS_COLOR", 0},
-                                                  {"VTX_HAS_UV0", 1},
-                                                  {"VTX_HAS_UV1", 0},
-                                                  {"VTX_HAS_TANGENT", 1},
-                                              });
+        auto vertexShader = loadHighendShader("mesh.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
         {
             return {};
         }
 
-        auto fragmentShader =
-            loadHighendShader("depth_pre.frag", vshadersystem::ShaderStage::eFrag, {{"VTX_HAS_UV0", 1}});
+        auto fragmentShader = loadHighendShader("depth_pre.frag", vshadersystem::ShaderStage::eFrag);
         if (!fragmentShader)
         {
             return {};

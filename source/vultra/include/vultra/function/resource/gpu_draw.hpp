@@ -45,7 +45,15 @@ namespace vultra::resource
         rhi::DeviceAddress vertexAddress {};
         // Scene instance payload index (or transform index for legacy CPU-driven path).
         uint32_t instanceIndex {0};
+        uint32_t vertexAttributeMask {0};
+        uint32_t positionOffsetBytes {0xFFFFFFFFu};
+        uint32_t normalOffsetBytes {0xFFFFFFFFu};
+        uint32_t colorOffsetBytes {0xFFFFFFFFu};
+        uint32_t texCoord0OffsetBytes {0xFFFFFFFFu};
+        uint32_t texCoord1OffsetBytes {0xFFFFFFFFu};
+        uint32_t tangentOffsetBytes {0xFFFFFFFFu};
         uint32_t padding0 {0};
+        uint32_t padding1 {0};
 
         glm::mat4 model {1.0f};
     };

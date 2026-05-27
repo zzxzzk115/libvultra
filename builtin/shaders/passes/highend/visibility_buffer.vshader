@@ -3,11 +3,6 @@ language = glsl
 version = 460
 
 [vert]
-#define VTX_HAS_COLOR 0
-#define VTX_HAS_NORMAL 1
-#define VTX_HAS_UV0 1
-#define VTX_HAS_UV1 0
-#define VTX_HAS_TANGENT 1
 #define VULTRA_DECLARE_CAMERA
 #define VULTRA_DECLARE_DRAW_BUFFER_READONLY
 #define VULTRA_DECLARE_MESHLET_BUFFER
@@ -33,14 +28,9 @@ void main()
     uint localVertex = load_meshlet_triangle_index(triDataIndex);
     uint globalVertex = s_MeshletVertices.meshletVertices[meshlet.vertexOffset + localVertex];
 
-    VertexBuffer vb = VertexBuffer(d.vertexAddress);
-    Vertex v = vb.vertices[globalVertex];
+    Vertex v = load_vertex(d, globalVertex);
 
-#if VTX_HAS_UV0
     v_TexCoord0 = v.texCoord0;
-#else
-    v_TexCoord0 = vec2(0.0);
-#endif
 
     vec4 worldPos4 = d.model * vec4(v.position, 1.0);
 

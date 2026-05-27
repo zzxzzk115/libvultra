@@ -23,6 +23,7 @@ namespace vultra
     private:
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat      colorFormat,
                                              bool                  webgpu,
+                                             uint32_t              vertexAttributeMask,
                                              uint32_t              texCoord0Offset,
                                              uint32_t              positionOffset,
                                              uint32_t              vertexStride) const;

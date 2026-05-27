@@ -17,6 +17,7 @@
 #include "vultra/function/rendering/srp/builtin/upload_resources.hpp"
 #include "vultra/function/rendering/srp/declarative_renderer.hpp"
 #include "vultra/function/rendering/srp/render_context.hpp"
+#include "vultra/function/resource/gpu_vertex_layout.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/frame_debugger_service.hpp"
@@ -477,7 +478,14 @@ namespace vultra
                     dr.flags             = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eMeshlet);
                     dr.vertexAddress     = pool.geometry.vertexBytesAddress;
                     dr.instanceIndex     = instanceIndex;
-                    dr.padding0          = 0;
+                    const auto layout    = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                    dr.vertexAttributeMask = layout.attributeMask;
+                    dr.positionOffsetBytes = layout.positionOffsetBytes;
+                    dr.normalOffsetBytes = layout.normalOffsetBytes;
+                    dr.colorOffsetBytes = layout.colorOffsetBytes;
+                    dr.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
+                    dr.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
+                    dr.tangentOffsetBytes = layout.tangentOffsetBytes;
                     dr.model             = inst.worldMatrix;
                     gpuSceneView.pushMeshletDraw(std::move(dr));
                 }
@@ -2172,7 +2180,14 @@ namespace vultra
                         dr.flags             = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eMeshlet);
                         dr.vertexAddress     = pool.geometry.vertexBytesAddress;
                         dr.instanceIndex     = instanceIndex;
-                        dr.padding0          = 0;
+                        const auto layout    = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                        dr.vertexAttributeMask = layout.attributeMask;
+                        dr.positionOffsetBytes = layout.positionOffsetBytes;
+                        dr.normalOffsetBytes = layout.normalOffsetBytes;
+                        dr.colorOffsetBytes = layout.colorOffsetBytes;
+                        dr.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
+                        dr.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
+                        dr.tangentOffsetBytes = layout.tangentOffsetBytes;
                         dr.model             = inst.worldMatrix;
                         m_GpuSceneViewBack.pushMeshletDraw(std::move(dr));
                     }

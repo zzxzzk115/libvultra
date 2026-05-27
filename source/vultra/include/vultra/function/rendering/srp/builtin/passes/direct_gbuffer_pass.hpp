@@ -25,11 +25,11 @@ namespace vultra
                                              rhi::PixelFormat normalFormat,
                                              rhi::PixelFormat materialFormat,
                                              rhi::PixelFormat entityIdFormat,
+                                             uint32_t         vertexAttributeMask,
                                              uint32_t         positionOffset,
                                              uint32_t         normalOffset,
                                              uint32_t         texCoord0Offset,
                                              uint32_t         tangentOffset,
-                                             bool             hasTangent,
                                              bool             doubleSided,
                                              uint32_t         vertexStride) const;
 

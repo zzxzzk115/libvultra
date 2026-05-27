@@ -3,12 +3,17 @@ language = glsl
 version = 460
 
 [keywords]
+VTX_HAS_UV0 : bool permute
 VTX_HAS_TANGENT : bool permute
 
 [frag]
 #extension GL_EXT_nonuniform_qualifier : require
 
 #include "include/common/color.glsl"
+
+#ifndef VTX_HAS_UV0
+#define VTX_HAS_UV0 0
+#endif
 
 #ifndef VTX_HAS_TANGENT
 #define VTX_HAS_TANGENT 0
@@ -77,15 +82,17 @@ void main()
     uint roughnessTex = u_Draw.materialTextureInfo1.w;
 
     vec4 baseColor = u_Draw.baseColorFactor;
+#if VTX_HAS_UV0
     if (baseColorTex != 0u)
         baseColor *= sampleBindless(baseColorTex, v_TexCoord0);
+#endif
     uint alphaMode = u_Draw.entityInfo.y;
     float alphaCutoff = float(u_Draw.entityInfo.z) / 255.0;
     if (alphaMode == 1u && baseColor.a < alphaCutoff)
         discard;
 
     vec3 normalWS = normalize(v_NormalWS);
-#if VTX_HAS_TANGENT
+#if VTX_HAS_UV0 && VTX_HAS_TANGENT
     if (normalTex != 0u)
     {
         vec3 tangentWS = normalize(v_TangentWS.xyz);
@@ -96,6 +103,7 @@ void main()
     }
 #endif
     vec3 mra = u_Draw.materialMRA.xyz;
+#if VTX_HAS_UV0
     if (mrTex != 0u)
     {
         vec4 mr = sampleBindless(mrTex, v_TexCoord0);
@@ -111,6 +119,7 @@ void main()
     }
     if (occlusionTex != 0u)
         mra.z *= sampleBindless(occlusionTex, v_TexCoord0).r;
+#endif
     mra.y = clamp(mra.y, 0.045, 1.0);
 
     GBufferColor = vec4(sRGBToLinear(baseColor.rgb), baseColor.a);

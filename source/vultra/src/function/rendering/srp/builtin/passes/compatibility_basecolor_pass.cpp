@@ -9,6 +9,7 @@
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
+#include "vultra/function/resource/gpu_vertex_layout.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -21,13 +22,12 @@ namespace vultra
     namespace
     {
         constexpr auto     PASS_NAME                     = "CompatibilityBaseColorPass";
-        constexpr uint32_t kVertexLocationPosition       = 0u;
-        constexpr uint32_t kVertexLocationTexCoord0      = 3u;
         constexpr uint64_t kWebGPUUniformOffsetAlignment = 256u;
 
         struct alignas(16) CompatDrawParams
         {
             glm::mat4 model {1.0f};
+            glm::vec4 baseColorFactor {1.0f};
             uint32_t  materialIndex {0};
             uint32_t  padding0 {0};
             uint32_t  padding1 {0};
@@ -115,21 +115,31 @@ namespace vultra
             }
         }
 
-        [[nodiscard]] rhi::VertexAttributes buildPipelineVertexAttributes(const uint32_t positionOffset,
-                                                                          const uint32_t texCoord0Offset)
+        [[nodiscard]] glm::vec4 resolveMaterialBaseColorFactor(const resource::GpuResourcePool& resources,
+                                                               const uint32_t                   materialIndex)
         {
-            rhi::VertexAttributes attrs;
-            attrs[kVertexLocationPosition] = rhi::VertexAttribute {
-                .location = kVertexLocationPosition,
-                .type     = rhi::VertexAttribute::Type::eFloat3,
-                .offset   = positionOffset,
-            };
-            attrs[kVertexLocationTexCoord0] = rhi::VertexAttribute {
-                .location = kVertexLocationTexCoord0,
-                .type     = rhi::VertexAttribute::Type::eFloat2,
-                .offset   = texCoord0Offset,
-            };
-            return attrs;
+            if (materialIndex >= resources.materials.size())
+                return glm::vec4(1.0f);
+
+            const auto& material = resources.materials[materialIndex];
+            switch (material.model)
+            {
+                case resource::GpuMaterialModel::ePBRMetallicRoughness:
+                    return loadMaterialParams<MaterialParamsPBRMR>(resources.materialParams, material.blockOffsetBytes)
+                        .baseColor;
+                case resource::GpuMaterialModel::ePBRSpecularGlossiness:
+                    return loadMaterialParams<MaterialParamsPBRSG>(resources.materialParams, material.blockOffsetBytes)
+                        .diffuseColor;
+                case resource::GpuMaterialModel::eUnlit:
+                    return loadMaterialParams<MaterialParamsUnlit>(resources.materialParams, material.blockOffsetBytes)
+                        .color;
+                case resource::GpuMaterialModel::ePhong:
+                    return loadMaterialParams<MaterialParamsPhong>(resources.materialParams, material.blockOffsetBytes)
+                        .diffuse;
+                case resource::GpuMaterialModel::eInvalid:
+                default:
+                    return glm::vec4(1.0f);
+            }
         }
 
         [[nodiscard]] constexpr uint64_t alignUp(const uint64_t value, const uint64_t alignment)
@@ -255,24 +265,27 @@ namespace vultra
                     rhi::prepareForReading(rc.cb, mesh.vertexBuffer);
                     rhi::prepareForReading(rc.cb, mesh.indexBuffer);
 
-                    const auto posIt = mesh.vertexAttributes.find(kVertexLocationPosition);
-                    if (posIt == mesh.vertexAttributes.end())
+                    const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                    if (!layout.hasPosition())
                         continue;
-                    const auto uvIt = mesh.vertexAttributes.find(kVertexLocationTexCoord0);
-                    if (uvIt == mesh.vertexAttributes.end())
-                        continue;
-
-                    const uint32_t positionOffset  = posIt->second.offset;
-                    const uint32_t texCoord0Offset = uvIt->second.offset;
                     const auto*    pipeline =
-                        getPipeline(colorFormat, webgpu, texCoord0Offset, positionOffset, mesh.vertexStrideBytes);
+                        getPipeline(colorFormat,
+                                    webgpu,
+                                    layout.attributeMask,
+                                    layout.texCoord0OffsetBytes,
+                                    layout.positionOffsetBytes,
+                                    mesh.vertexStrideBytes);
                     if (!pipeline)
                         continue;
 
                     const auto drawSubMesh = [&](const resource::GpuSubMesh& subMesh) {
                         const uint64_t   drawParamOffset = drawParamIndex * drawParamStride;
                         CompatDrawParams drawParams {};
-                        drawParams.model         = instance.worldMatrix;
+                        drawParams.model           = instance.worldMatrix;
+                        drawParams.baseColorFactor =
+                            resolveMaterialBaseColorFactor(*gpuSceneDatabase->resources, subMesh.materialIndex);
+                        if (instance.hasBaseColorOverride)
+                            drawParams.baseColorFactor = instance.baseColorOverride;
                         drawParams.materialIndex = subMesh.materialIndex;
                         rc.rd.uploadS(retainedDrawParamsBuffer,
                                       drawParamOffset,
@@ -362,6 +375,7 @@ namespace vultra
 
     rhi::GraphicsPipeline CompatibilityBaseColorPass::createPipeline(const rhi::PixelFormat colorFormat,
                                                                      const bool             webgpu,
+                                                                     const uint32_t         vertexAttributeMask,
                                                                      const uint32_t         texCoord0Offset,
                                                                      const uint32_t         positionOffset,
                                                                      const uint32_t         vertexStride) const
@@ -369,13 +383,21 @@ namespace vultra
         constexpr const char* kVertexShaderId   = "basecolor_cpu.vert";
         constexpr const char* kFragmentShaderId = "basecolor_cpu.frag";
 
-        auto vertexShader = loadCompatibilityShader(kVertexShaderId, vshadersystem::ShaderStage::eVert);
+        const resource::GpuVertexLayout layout {
+            .attributeMask = vertexAttributeMask,
+            .positionOffsetBytes = positionOffset,
+            .texCoord0OffsetBytes = texCoord0Offset,
+        };
+        const auto keywords =
+            rhi::ShaderLibraryRuntime::KeywordValues {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1u : 0u}};
+
+        auto vertexShader = loadCompatibilityShader(kVertexShaderId, vshadersystem::ShaderStage::eVert, keywords);
         if (!vertexShader)
         {
             return {};
         }
 
-        auto fragmentShader = loadCompatibilityShader(kFragmentShaderId, vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader = loadCompatibilityShader(kFragmentShaderId, vshadersystem::ShaderStage::eFrag, keywords);
         if (!fragmentShader)
         {
             return {};
@@ -386,7 +408,7 @@ namespace vultra
             return rhi::GraphicsPipeline::Builder {}
                 .setColorFormats({colorFormat})
                 .setDepthFormat(rhi::PixelFormat::eDepth32F)
-                .setInputAssembly(buildPipelineVertexAttributes(positionOffset, texCoord0Offset))
+                .setInputAssembly(resource::buildInputAssemblyVertexAttributes(layout, false, true, false))
                 .setVertexStride(vertexStride)
                 .addShader(rhi::ShaderType::eVertex,
                            {.code = vertexShader->wgsl, .reflection = vertexShader->reflection})
@@ -408,7 +430,7 @@ namespace vultra
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({colorFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
-            .setInputAssembly(buildPipelineVertexAttributes(positionOffset, texCoord0Offset))
+            .setInputAssembly(resource::buildInputAssemblyVertexAttributes(layout, false, true, false))
             .setVertexStride(vertexStride)
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)

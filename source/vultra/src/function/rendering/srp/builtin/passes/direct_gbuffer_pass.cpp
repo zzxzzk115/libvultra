@@ -10,6 +10,7 @@
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
+#include "vultra/function/resource/gpu_vertex_layout.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -23,10 +24,6 @@ namespace vultra
     namespace
     {
         constexpr auto     PASS_NAME                     = "DirectGBufferPass";
-        constexpr uint32_t kVertexLocationPosition       = 0u;
-        constexpr uint32_t kVertexLocationNormal         = 1u;
-        constexpr uint32_t kVertexLocationTexCoord0      = 3u;
-        constexpr uint32_t kVertexLocationTangent        = 5u;
         constexpr uint64_t kUniformOffsetAlignment       = 256u;
 
         struct alignas(16) DirectDrawParams
@@ -278,39 +275,6 @@ namespace vultra
             return p.doubleSided != 0u;
         }
 
-        [[nodiscard]] rhi::VertexAttributes buildPipelineVertexAttributes(const uint32_t positionOffset,
-                                                                          const uint32_t normalOffset,
-                                                                          const uint32_t texCoord0Offset,
-                                                                          const uint32_t tangentOffset,
-                                                                          const bool     hasTangent)
-        {
-            rhi::VertexAttributes attrs;
-            attrs[kVertexLocationPosition] = rhi::VertexAttribute {
-                .location = kVertexLocationPosition,
-                .type     = rhi::VertexAttribute::Type::eFloat3,
-                .offset   = positionOffset,
-            };
-            attrs[kVertexLocationNormal] = rhi::VertexAttribute {
-                .location = kVertexLocationNormal,
-                .type     = rhi::VertexAttribute::Type::eFloat3,
-                .offset   = normalOffset,
-            };
-            attrs[kVertexLocationTexCoord0] = rhi::VertexAttribute {
-                .location = kVertexLocationTexCoord0,
-                .type     = rhi::VertexAttribute::Type::eFloat2,
-                .offset   = texCoord0Offset,
-            };
-            if (hasTangent)
-            {
-                attrs[kVertexLocationTangent] = rhi::VertexAttribute {
-                    .location = kVertexLocationTangent,
-                    .type     = rhi::VertexAttribute::Type::eFloat4,
-                    .offset   = tangentOffset,
-                };
-            }
-            return attrs;
-        }
-
         [[nodiscard]] constexpr uint64_t alignUp(const uint64_t value, const uint64_t alignment)
         {
             return alignment == 0u ? value : ((value + alignment - 1u) / alignment) * alignment;
@@ -332,6 +296,16 @@ namespace vultra
                     texture = fallback;
             }
             return fallback;
+        }
+
+        void disableUvDependentTextures(DirectDrawParams& params)
+        {
+            params.materialTextureInfo0.y = 0u;
+            params.materialTextureInfo0.z = 0u;
+            params.materialTextureInfo0.w = 0u;
+            params.materialTextureInfo1.x = 0u;
+            params.materialTextureInfo1.z = 0u;
+            params.materialTextureInfo1.w = 0u;
         }
 
     } // namespace
@@ -479,11 +453,8 @@ namespace vultra
                     if (!mesh.vertexBuffer || !mesh.indexBuffer)
                         continue;
 
-                    const auto posIt     = mesh.vertexAttributes.find(kVertexLocationPosition);
-                    const auto normalIt  = mesh.vertexAttributes.find(kVertexLocationNormal);
-                    const auto uvIt      = mesh.vertexAttributes.find(kVertexLocationTexCoord0);
-                    if (posIt == mesh.vertexAttributes.end() || normalIt == mesh.vertexAttributes.end() ||
-                        uvIt == mesh.vertexAttributes.end())
+                    const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                    if (!layout.hasPosition() || !layout.hasNormal())
                         continue;
 
                     drawCallCount += mesh.subMeshes.empty() ? 1u : static_cast<uint64_t>(mesh.subMeshes.size());
@@ -504,11 +475,8 @@ namespace vultra
                     if (!mesh.vertexBuffer || !mesh.indexBuffer)
                         continue;
 
-                    const auto posIt     = mesh.vertexAttributes.find(kVertexLocationPosition);
-                    const auto normalIt  = mesh.vertexAttributes.find(kVertexLocationNormal);
-                    const auto uvIt      = mesh.vertexAttributes.find(kVertexLocationTexCoord0);
-                    if (posIt == mesh.vertexAttributes.end() || normalIt == mesh.vertexAttributes.end() ||
-                        uvIt == mesh.vertexAttributes.end())
+                    const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                    if (!layout.hasPosition() || !layout.hasNormal())
                         continue;
 
                     const auto prepareSubMesh = [&](const resource::GpuSubMesh& subMesh) {
@@ -517,6 +485,8 @@ namespace vultra
 
                         const uint32_t materialIndex = remapMaterialIndex(instance, mesh, subMesh.materialIndex);
                         auto drawParams = makeDrawParams(*gpuSceneDatabase->resources, materialIndex, instance.worldMatrix);
+                        if (!layout.hasTexCoord0())
+                            disableUvDependentTextures(drawParams);
                         drawParams.entityInfo.x = makeEntityPickingId(instance.entity);
                         if (instance.hasBaseColorOverride)
                         {
@@ -563,14 +533,9 @@ namespace vultra
                     if (!mesh.vertexBuffer || !mesh.indexBuffer)
                         continue;
 
-                    const auto posIt = mesh.vertexAttributes.find(kVertexLocationPosition);
-                    const auto normalIt = mesh.vertexAttributes.find(kVertexLocationNormal);
-                    const auto uvIt = mesh.vertexAttributes.find(kVertexLocationTexCoord0);
-                    const auto tangentIt = mesh.vertexAttributes.find(kVertexLocationTangent);
-                    if (posIt == mesh.vertexAttributes.end() || normalIt == mesh.vertexAttributes.end() ||
-                        uvIt == mesh.vertexAttributes.end())
+                    const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                    if (!layout.hasPosition() || !layout.hasNormal())
                         continue;
-                    const bool hasTangent = tangentIt != mesh.vertexAttributes.end();
 
                     rhi::prepareForReading(rc.cb, mesh.vertexBuffer);
                     rhi::prepareForReading(rc.cb, mesh.indexBuffer);
@@ -580,11 +545,11 @@ namespace vultra
                                                            normalFormat,
                                                            materialFormat,
                                                            entityIdFormat,
-                                                           posIt->second.offset,
-                                                           normalIt->second.offset,
-                                                           uvIt->second.offset,
-                                                           hasTangent ? tangentIt->second.offset : 0u,
-                                                           hasTangent,
+                                                           layout.attributeMask,
+                                                           layout.positionOffsetBytes,
+                                                           layout.normalOffsetBytes,
+                                                           layout.texCoord0OffsetBytes,
+                                                           layout.tangentOffsetBytes,
                                                            isMaterialDoubleSided(*gpuSceneDatabase->resources,
                                                                                  subMesh.materialIndex),
                                                            mesh.vertexStrideBytes);
@@ -663,20 +628,29 @@ namespace vultra
                                                             const rhi::PixelFormat normalFormat,
                                                             const rhi::PixelFormat materialFormat,
                                                             const rhi::PixelFormat entityIdFormat,
+                                                            const uint32_t         vertexAttributeMask,
                                                             const uint32_t         positionOffset,
                                                             const uint32_t         normalOffset,
                                                             const uint32_t         texCoord0Offset,
                                                             const uint32_t         tangentOffset,
-                                                            const bool             hasTangent,
                                                             const bool             doubleSided,
                                                             const uint32_t         vertexStride) const
     {
+        const resource::GpuVertexLayout layout {
+            .attributeMask = vertexAttributeMask,
+            .positionOffsetBytes = positionOffset,
+            .normalOffsetBytes = normalOffset,
+            .texCoord0OffsetBytes = texCoord0Offset,
+            .tangentOffsetBytes = tangentOffset,
+        };
         auto vertexShader = loadHighendShader("direct_gbuffer.vert",
                                               vshadersystem::ShaderStage::eVert,
-                                              {{"VTX_HAS_TANGENT", hasTangent ? 1 : 0}});
+                                              {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},
+                                               {"VTX_HAS_TANGENT", layout.hasTangent() ? 1 : 0}});
         auto fragmentShader = loadHighendShader("direct_gbuffer.frag",
                                                 vshadersystem::ShaderStage::eFrag,
-                                                {{"VTX_HAS_TANGENT", hasTangent ? 1 : 0}});
+                                                {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},
+                                                 {"VTX_HAS_TANGENT", layout.hasTangent() ? 1 : 0}});
         if (!vertexShader || !fragmentShader)
         {
             VULTRA_CORE_ERROR("[DirectGBufferPass] Failed to load shaders");
@@ -687,7 +661,7 @@ namespace vultra
             .setColorFormats({colorFormat, normalFormat, materialFormat, entityIdFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
             .setInputAssembly(
-                buildPipelineVertexAttributes(positionOffset, normalOffset, texCoord0Offset, tangentOffset, hasTangent))
+                resource::buildInputAssemblyVertexAttributes(layout, true, true, true))
             .setVertexStride(vertexStride)
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)

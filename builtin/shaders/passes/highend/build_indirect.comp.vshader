@@ -55,7 +55,15 @@ void main()
     dr.flags = kDrawFlagMeshlet | (renderQueue << kDrawQueueShift);
     dr.vertexAddress = make_u64(u_PC.vertexAddressLo, u_PC.vertexAddressHi);
     dr.instanceIndex = vis.instanceIndex;
+    dr.vertexAttributeMask = mesh.vertexAttributeMask;
+    dr.positionOffsetBytes = mesh.positionOffsetBytes;
+    dr.normalOffsetBytes = mesh.normalOffsetBytes;
+    dr.colorOffsetBytes = mesh.colorOffsetBytes;
+    dr.texCoord0OffsetBytes = mesh.texCoord0OffsetBytes;
+    dr.texCoord1OffsetBytes = mesh.texCoord1OffsetBytes;
+    dr.tangentOffsetBytes = mesh.tangentOffsetBytes;
     dr.padding0 = 0u;
+    dr.padding1 = 0u;
     dr.model = s_Models.models[inst.transformIndex];
     s_Draws.draws[drawId] = dr;
 }
