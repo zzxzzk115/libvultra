@@ -31,7 +31,10 @@ namespace vultra
                                                {buffer});
         }
 
-        FrameGraphResource importTexture(FrameGraph& fg, const std::string_view name, rhi::Texture* texture)
+        FrameGraphResource importTexture(FrameGraph&            fg,
+                                         const std::string_view name,
+                                         rhi::Texture*          texture,
+                                         const uint32_t         viewMask)
         {
             assert(texture && *texture);
             return fg.import <FrameGraphTexture>(name,
@@ -41,6 +44,7 @@ namespace vultra
                                                      .format       = texture->getPixelFormat(),
                                                      .numMipLevels = texture->getNumMipLevels(),
                                                      .layers       = texture->getNumLayers(),
+                                                     .viewMask     = viewMask,
                                                      .cubemap      = rhi::isCubemap(*texture),
                                                      .usageFlags   = texture->getUsageFlags(),
                                                  },

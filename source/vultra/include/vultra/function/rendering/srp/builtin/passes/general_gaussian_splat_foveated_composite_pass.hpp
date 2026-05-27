@@ -6,6 +6,8 @@
 
 #include <fg/Fwd.hpp>
 
+#include <cstdint>
+
 namespace vultra
 {
     class GeneralGaussianSplatFoveatedCompositePass final
@@ -20,7 +22,7 @@ namespace vultra
                                    FrameGraphResource      outerLayer,
                                    FrameGraphResource      baseColor = {});
 
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, bool useMultiview, bool useBase) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask, bool useBase) const;
 
     private:
         rhi::UniformBuffer m_UniformBuffer;

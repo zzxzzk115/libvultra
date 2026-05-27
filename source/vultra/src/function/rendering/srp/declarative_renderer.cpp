@@ -257,7 +257,10 @@ namespace vultra
             FrameGraphResource output =
                 directOutput ? directOutput :
                 normalizeId(m_Desc.output) == "backbuffer" || normalizeId(m_Desc.output) == "target" ?
-                    framegraph::importTexture(ctx.fg, "DeclarativeBackbuffer", ctx.view().target) :
+                    framegraph::importTexture(ctx.fg,
+                                              "DeclarativeBackbuffer",
+                                              ctx.view().target,
+                                              ctx.view().renderTargetViewMask()) :
                     FrameGraphResource {};
 
             ctx.fg.addCallbackPass<PassData>(
@@ -455,7 +458,10 @@ namespace vultra
                 [&ctx](FrameGraph& fg, const std::string_view resourceName) -> FrameGraphResource {
                     const auto normalized = normalizeId(std::string(resourceName));
                     if (normalized == "backbuffer" || normalized == "target")
-                        return framegraph::importTexture(fg, "VRenderGraphBackbuffer", ctx.view().target);
+                        return framegraph::importTexture(fg,
+                                                         "VRenderGraphBackbuffer",
+                                                         ctx.view().target,
+                                                         ctx.view().renderTargetViewMask());
                     return ctx.data.tryGet(resourceKeyFor(resourceName));
                 }};
 
@@ -1024,7 +1030,10 @@ namespace vultra
                                 ctx->data.set(kResKey_FinalCompositionSource, passCtx.getInput("source"));
                                 auto target = m_FinalCompositionPass.compose(
                                     *ctx,
-                                    framegraph::importTexture(fg, "VRenderGraphBackbuffer", ctx->view().target));
+                                    framegraph::importTexture(fg,
+                                                              "VRenderGraphBackbuffer",
+                                                              ctx->view().target,
+                                                              ctx->view().renderTargetViewMask()));
                                 if (target)
                                     passCtx.setOutput("target", target);
                             });

@@ -2,7 +2,9 @@
 
 #include "vultra/function/rendering/render_structs.hpp"
 
+#include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <glm/vec4.hpp>
 
@@ -36,5 +38,23 @@ namespace vultra
 
         resource::GpuSceneDatabase* gpuSceneDatabase {nullptr};
         resource::GpuSceneView*     gpuSceneView {nullptr};
+
+        [[nodiscard]] uint32_t renderTargetViewMask() const
+        {
+            return enableMultiview ? multiviewMask : 0u;
+        }
+
+        [[nodiscard]] uint32_t renderTargetLayerCount() const
+        {
+            const auto viewMask = renderTargetViewMask();
+            if (viewMask == 0u)
+                return 1u;
+            return std::max(1u, static_cast<uint32_t>(std::popcount(viewMask)));
+        }
+
+        [[nodiscard]] bool usesSingleGraphStereo() const
+        {
+            return stereoMode == StereoRenderMode::eSingleGraphStereo && renderTargetViewMask() != 0u;
+        }
     };
 } // namespace vultra

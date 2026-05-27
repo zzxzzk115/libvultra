@@ -69,9 +69,11 @@ namespace vultra
         if (!gpuSceneView || !foveaLayer || !midLayer || !outerLayer)
             return {};
 
-        const bool useBase = static_cast<bool>(baseColor);
+        const bool useBase      = static_cast<bool>(baseColor);
         const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u;
-        const auto resolution = ctx.view().extent;
+        const auto viewMask     = useMultiview ? ctx.view().renderTargetViewMask() : 0u;
+        const auto layerCount   = useMultiview ? ctx.view().renderTargetLayerCount() : 0u;
+        const auto resolution   = ctx.view().extent;
         const auto uniformsData = makeCompositeUniforms(ctx.view(), *gpuSceneView);
         if (!m_UniformBuffer || m_UniformBuffer.getSize() < sizeof(GeneralGaussianSplatFoveatedCompositeUniforms))
         {
@@ -89,7 +91,7 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution, useMultiview, useBase, foveaLayer, midLayer, outerLayer, baseColor](
+            [resolution, useMultiview, viewMask, layerCount, useBase, foveaLayer, midLayer, outerLayer, baseColor](
                 FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
@@ -144,7 +146,8 @@ namespace vultra
                     {
                         .extent     = resolution,
                         .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .layers     = useMultiview ? 2u : 0u,
+                        .layers     = layerCount,
+                        .viewMask   = viewMask,
                         .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                     });
                 data.color = builder.write(data.color,
@@ -154,7 +157,7 @@ namespace vultra
                                                .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                            });
             },
-            [this, useMultiview, useBase, uniformsData](
+            [this, useMultiview, viewMask, layerCount, useBase, uniformsData](
                 const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
@@ -168,7 +171,7 @@ namespace vultra
                     return;
 
                 const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0),
-                                                   useMultiview,
+                                                   viewMask,
                                                    useBase);
                 if (!pipeline)
                     return;
@@ -182,8 +185,8 @@ namespace vultra
                 auto framebufferInfo = rc.framebufferInfo().value();
                 if (useMultiview)
                 {
-                    framebufferInfo.layers   = 2u;
-                    framebufferInfo.viewMask = 0x3u;
+                    framebufferInfo.layers   = layerCount;
+                    framebufferInfo.viewMask = viewMask;
                 }
 
                 rc.cb.update(m_UniformBuffer, 0, sizeof(GeneralGaussianSplatFoveatedCompositeUniforms), &uniformsData);
@@ -198,9 +201,10 @@ namespace vultra
 
     rhi::GraphicsPipeline GeneralGaussianSplatFoveatedCompositePass::createPipeline(
         const rhi::PixelFormat colorFormat,
-        const bool             useMultiview,
+        const uint32_t         viewMask,
         const bool             useBase) const
     {
+        const bool useMultiview = viewMask != 0u;
         auto vertexShader = loadGeneralShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
             return {};
@@ -218,7 +222,7 @@ namespace vultra
             return {};
 
         auto builder = rhi::GraphicsPipeline::Builder {};
-        builder.setViewMask(useMultiview ? 0x3u : 0u)
+        builder.setViewMask(viewMask)
             .setColorFormats({colorFormat})
             .setInputAssembly({})
             .setDepthStencil({

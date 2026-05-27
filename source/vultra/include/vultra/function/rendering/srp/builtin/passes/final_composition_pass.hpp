@@ -5,6 +5,8 @@
 
 #include <fg/Fwd.hpp>
 
+#include <cstdint>
+
 namespace vultra
 {
     class FinalCompositionPass final : public rhi::RenderPass<FinalCompositionPass>
@@ -17,7 +19,7 @@ namespace vultra
 
     private:
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat,
-                                             bool             useMultiview,
+                                             uint32_t         viewMask,
                                              bool             debugEntityIdOutput) const;
     };
 } // namespace vultra

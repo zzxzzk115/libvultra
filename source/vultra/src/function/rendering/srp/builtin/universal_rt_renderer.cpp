@@ -13,7 +13,8 @@ namespace vultra
             const auto toneMapped = m_ToneMappingPass.addPass(ctx, color);
             if (toneMapped)
                 ctx.data.set(kResKey_FinalCompositionSource, toneMapped);
-            const auto backBuffer = framegraph::importTexture(ctx.fg, "Backbuffer", ctx.view().target);
+            const auto backBuffer =
+                framegraph::importTexture(ctx.fg, "Backbuffer", ctx.view().target, ctx.view().renderTargetViewMask());
             m_FinalCompositionPass.compose(ctx, backBuffer);
         }
     }

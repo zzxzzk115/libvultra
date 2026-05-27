@@ -23,6 +23,7 @@ namespace vultra
                 rhi::PixelFormat format {rhi::PixelFormat::eUndefined};
                 uint32_t         numMipLevels {1};
                 uint32_t         layers {0};
+                uint32_t         viewMask {0};
                 bool             cubemap {false};
                 rhi::ImageUsage  usageFlags;
             };

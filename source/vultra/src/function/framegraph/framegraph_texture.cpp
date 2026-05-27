@@ -68,6 +68,16 @@ namespace vultra
                 };
             }
 
+            void applyRenderTargetInfo(const FrameGraphTexture::Desc& desc,
+                                       const rhi::Texture&            texture,
+                                       rhi::FramebufferInfo&          framebufferInfo)
+            {
+                framebufferInfo.layers =
+                    std::max(framebufferInfo.layers, std::max(texture.getNumLayers(), 1u));
+                if (desc.viewMask != 0u)
+                    framebufferInfo.viewMask = desc.viewMask;
+            }
+
             auto calculateMipmapFactor(const uint32_t numMipLevels)
             {
                 auto factor = 0.0;
@@ -101,7 +111,7 @@ namespace vultra
             texture = nullptr;
         }
 
-        void FrameGraphTexture::preRead(const Desc&, const uint32_t bits, void* ctx) const
+        void FrameGraphTexture::preRead(const Desc& desc, const uint32_t bits, void* ctx) const
         {
             ZoneScopedN("T*");
 
@@ -111,8 +121,7 @@ namespace vultra
             {
                 if (!viewData.framebufferInfo)
                     viewData.framebufferInfo.emplace().area = {.extent = texture->getExtent()};
-                viewData.framebufferInfo->layers =
-                    std::max(viewData.framebufferInfo->layers, std::max(texture->getNumLayers(), 1u));
+                applyRenderTargetInfo(desc, *texture, *viewData.framebufferInfo);
 
                 switch (decodeAttachment(bits).imageAspect)
                 {
@@ -198,7 +207,7 @@ namespace vultra
             }
 
         }
-        void FrameGraphTexture::preWrite(const Desc&, const uint32_t bits, void* ctx) const
+        void FrameGraphTexture::preWrite(const Desc& desc, const uint32_t bits, void* ctx) const
         {
             ZoneScopedN("+T");
 
@@ -208,8 +217,7 @@ namespace vultra
             {
                 if (!viewData.framebufferInfo)
                     viewData.framebufferInfo.emplace().area = {.extent = texture->getExtent()};
-                viewData.framebufferInfo->layers =
-                    std::max(viewData.framebufferInfo->layers, std::max(texture->getNumLayers(), 1u));
+                applyRenderTargetInfo(desc, *texture, *viewData.framebufferInfo);
 
                 const auto attachment = decodeAttachment(bits);
 
@@ -265,10 +273,12 @@ namespace vultra
 
         std::string FrameGraphTexture::toString(const Desc& desc)
         {
-            return std::format("{}x{} [{}]<BR/>Size = ~{}<BR/>Usage = {}",
+            return std::format("{}x{} [{}]<BR/>Layers = {}<BR/>ViewMask = 0x{:X}<BR/>Size = ~{}<BR/>Usage = {}",
                                desc.extent.width,
                                desc.extent.height,
                                rhi::toString(desc.format),
+                               std::max(desc.layers, 1u),
+                               desc.viewMask,
                                util::formatBytes(getApproximateSize(desc)),
                                rhi::toString(desc.usageFlags));
         }

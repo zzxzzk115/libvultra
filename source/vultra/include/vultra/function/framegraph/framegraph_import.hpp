@@ -16,7 +16,10 @@ namespace vultra
 
     namespace framegraph
     {
-        [[nodiscard]] FrameGraphResource importTexture(FrameGraph&, const std::string_view name, rhi::Texture*);
+        [[nodiscard]] FrameGraphResource importTexture(FrameGraph&,
+                                                       const std::string_view name,
+                                                       rhi::Texture*          texture,
+                                                       uint32_t               viewMask = 0u);
         [[nodiscard]] FrameGraphResource importBuffer(FrameGraph&,
                                                       const std::string_view name,
                                                       rhi::Buffer*           buffer,

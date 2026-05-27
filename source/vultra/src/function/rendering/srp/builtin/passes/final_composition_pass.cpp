@@ -24,6 +24,8 @@ namespace vultra
         auto       source       = ctx.data.get(kResKey_FinalCompositionSource);
         auto       entityId     = ctx.data.tryGet(kResKey_GBufferEntityId);
         const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount == 2u;
+        const auto viewMask     = useMultiview ? ctx.view().renderTargetViewMask() : 0u;
+        const auto layerCount   = useMultiview ? ctx.view().renderTargetLayerCount() : 1u;
         const bool debugEntityIdOutput = ctx.view().camera && ctx.view().camera->debugEntityIdOutput && entityId;
 
         ctx.fg.addCallbackPass(
@@ -62,7 +64,9 @@ namespace vultra
                                            .clearValue  = framegraph::ClearValue::eOpaqueBlack,
                                        });
             },
-            [this, target, useMultiview, debugEntityIdOutput](const auto&, FrameGraphPassResources&, void* ctxPtr) {
+            [this, target, useMultiview, viewMask, layerCount, debugEntityIdOutput](const auto&,
+                                                                                   FrameGraphPassResources&,
+                                                                                   void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -75,7 +79,7 @@ namespace vultra
 
                 assert(rc.framebufferInfo().has_value());
                 const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0),
-                                                   useMultiview,
+                                                   viewMask,
                                                    debugEntityIdOutput);
                 if (!pipeline)
                 {
@@ -95,8 +99,8 @@ namespace vultra
                 }
                 if (useMultiview)
                 {
-                    framebufferInfo.layers   = 2u;
-                    framebufferInfo.viewMask = 0x3u;
+                    framebufferInfo.layers   = layerCount;
+                    framebufferInfo.viewMask = viewMask;
                 }
                 rc.cb.beginRendering(framebufferInfo).drawFullScreenTriangle().endRendering();
             });
@@ -105,7 +109,7 @@ namespace vultra
     }
 
     rhi::GraphicsPipeline FinalCompositionPass::createPipeline(const rhi::PixelFormat colorFormat,
-                                                               const bool             useMultiview,
+                                                               const uint32_t         viewMask,
                                                                const bool             debugEntityIdOutput) const
     {
         auto vertexShader = loadGeneralShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
@@ -116,6 +120,7 @@ namespace vultra
         }
 
         const bool manualSrgbEncode = !isSrgbColorFormat(colorFormat);
+        const bool useMultiview     = viewMask != 0u;
         rhi::ShaderLibraryRuntime::KeywordValues fragmentKeywords {
             {"MANUAL_SRGB_ENCODE", manualSrgbEncode ? 1u : 0u},
             {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
@@ -130,7 +135,7 @@ namespace vultra
         }
 
         auto builder = rhi::GraphicsPipeline::Builder {};
-        builder.setViewMask(useMultiview ? 0x3u : 0u)
+        builder.setViewMask(viewMask)
             .setColorFormats({colorFormat})
             .setInputAssembly({})
             .setDepthStencil({

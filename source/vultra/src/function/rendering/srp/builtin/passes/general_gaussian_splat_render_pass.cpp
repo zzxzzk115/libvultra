@@ -121,6 +121,8 @@ namespace vultra
             return {};
 
         const bool useMultiview = ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u;
+        const auto viewMask     = useMultiview ? ctx.view().renderTargetViewMask() : 0u;
+        const auto layerCount   = useMultiview ? ctx.view().renderTargetLayerCount() : 0u;
         const bool writeEntityId = ctx.view().camera != nullptr && ctx.view().camera->debugEntityIdOutput;
         const auto passName =
             layer == GeneralGaussianSplatFoveatedLayer::eDisabled ? PASS_NAME :
@@ -148,6 +150,8 @@ namespace vultra
              [passName,
              resolution,
              useMultiview,
+             viewMask,
+             layerCount,
              visibleSplatBuffer,
              sortIndexBuffer,
              indirectBuffer,
@@ -188,7 +192,8 @@ namespace vultra
                         {
                             .extent     = resolution,
                             .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                            .layers     = useMultiview ? 2u : 0u, // 0 -> non-array texture
+                            .layers     = layerCount, // 0 -> non-array texture
+                            .viewMask   = viewMask,
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
                                           rhi::ImageUsage::eTransferSrc,
                         });
@@ -215,7 +220,8 @@ namespace vultra
                         {
                             .extent     = resolution,
                             .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                            .layers     = useMultiview ? 2u : 0u,
+                            .layers     = layerCount,
+                            .viewMask   = viewMask,
                             .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
                                           rhi::ImageUsage::eTransferSrc,
                         });
@@ -227,7 +233,7 @@ namespace vultra
                                                   });
                 }
             },
-            [this, useMultiview, writeEntityId, uniformsData, layerIndex](
+            [this, useMultiview, viewMask, layerCount, writeEntityId, uniformsData, layerIndex](
                 const PassData& data, FrameGraphPassResources& resources, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
@@ -259,7 +265,7 @@ namespace vultra
                                                 rhi::PixelFormat::eUndefined;
                 const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0),
                                                    entityIdFormat,
-                                                   useMultiview,
+                                                   viewMask,
                                                    writeEntityId);
                 if (!pipeline)
                 {
@@ -268,8 +274,8 @@ namespace vultra
 
                 if (useMultiview)
                 {
-                    framebufferInfo.layers   = 2u;
-                    framebufferInfo.viewMask = 0x3u;
+                    framebufferInfo.layers   = layerCount;
+                    framebufferInfo.viewMask = viewMask;
                 }
 
                 auto& uniformsBuffer = m_UniformBuffers[layerIndex];
@@ -293,9 +299,10 @@ namespace vultra
 
     rhi::GraphicsPipeline GeneralGaussianSplatRenderPass::createPipeline(const rhi::PixelFormat colorFormat,
                                                                          const rhi::PixelFormat entityIdFormat,
-                                                                         const bool             useMultiview,
+                                                                         const uint32_t         viewMask,
                                                                          const bool             writeEntityId) const
     {
+        const bool useMultiview = viewMask != 0u;
         rhi::ShaderLibraryRuntime::KeywordValues vertexKeywords {
             {"USE_MULTIVIEW", useMultiview ? 1u : 0u},
         };
@@ -316,7 +323,7 @@ namespace vultra
         std::vector<rhi::PixelFormat> colorFormats {colorFormat};
         if (writeEntityId)
             colorFormats.push_back(entityIdFormat);
-        builder.setViewMask(useMultiview ? 0x3u : 0u)
+        builder.setViewMask(viewMask)
             .setColorFormats(colorFormats)
             .setTopology(rhi::PrimitiveTopology::eTriangleStrip)
             .setDepthStencil({

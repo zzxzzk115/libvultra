@@ -8,6 +8,7 @@
 #include <fg/Fwd.hpp>
 
 #include <array>
+#include <cstdint>
 
 namespace vultra
 {
@@ -31,7 +32,7 @@ namespace vultra
 
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat,
                                              rhi::PixelFormat entityIdFormat,
-                                             bool             useMultiview,
+                                             uint32_t         viewMask,
                                              bool             writeEntityId) const;
 
     private:

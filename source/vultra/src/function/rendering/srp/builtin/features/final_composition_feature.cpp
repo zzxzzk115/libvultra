@@ -15,7 +15,8 @@ namespace vultra
         if (!ctx.view().target || !ctx.data.contains(kResKey_FinalCompositionSource))
             return;
 
-        const auto backBuffer = framegraph::importTexture(ctx.fg, "Backbuffer", ctx.view().target);
+        const auto backBuffer =
+            framegraph::importTexture(ctx.fg, "Backbuffer", ctx.view().target, ctx.view().renderTargetViewMask());
         m_FinalCompositionPass->compose(ctx, backBuffer);
     }
 } // namespace vultra
