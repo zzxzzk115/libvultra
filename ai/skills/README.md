@@ -1,7 +1,7 @@
 # Skill Index
 
-Repository skills live under the top-level `skills/` directory. This Harness
-directory only indexes when to use them.
+Repository skills live in this directory. Each skill keeps its own `SKILL.md`
+and optional agent metadata.
 
 ## Existing Skills
 

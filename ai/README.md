@@ -10,13 +10,13 @@ It is separate from `.vultra/`, which remains local runtime/editor state.
 - `workspace/` stores journals, handoff notes, verification logs, and proposed patches.
 - `knowledge/` stores stable project facts that agents should reuse across sessions.
 - `agents/` defines agent roles and handoff rules.
-- `skills/` indexes repository skills without duplicating their source files.
+- `skills/` stores repository skills and their agent metadata.
 
 ## Workflow
 
 1. Pick or write a spec before implementation starts.
 2. Split work into one focused task under `tasks/`.
-3. Select a relevant skill from `skills/index.md`.
+3. Select a relevant skill from `skills/README.md`.
 4. Implement in a clean context and keep unrelated user changes intact.
 5. Verify with the smallest command set that proves the change.
 6. Record results and next handoff notes under `workspace/`.

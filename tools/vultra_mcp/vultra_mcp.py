@@ -141,7 +141,7 @@ class VultraMcp:
             "resources": [
                 resource("vultra://engine/specs", "Engine Specs", "Tracked engine Harness specs."),
                 resource("vultra://engine/tasks", "Engine Tasks", "Tracked engine task files."),
-                resource("vultra://engine/skills", "Engine Skills", "Skill index and repository skills."),
+                resource("vultra://engine/skills", "Engine Skills", "Repository skills."),
                 resource("vultra://project/current", "Current Project", "Resolved project root and .vproject data.", "application/json"),
                 resource("vultra://project/vproject", "VProject", "Raw .vproject file."),
                 resource("vultra://project/game", "Game Brief", "Project ai/game.md."),
@@ -161,7 +161,7 @@ class VultraMcp:
         if uri == "vultra://engine/tasks":
             return out(json_text(list_files(self.engine_root / "ai" / "tasks", ("*.md",))), "application/json")
         if uri == "vultra://engine/skills":
-            files = list_files(self.engine_root / "skills", ("SKILL.md",))
+            files = list_files(self.engine_root / "ai" / "skills", ("SKILL.md",))
             index = read_text(self.engine_root / "ai" / "skills" / "README.md")
             return out(index + "\n\nRepository skill files:\n" + json_text(files))
         if uri.startswith("vultra://engine/knowledge/"):

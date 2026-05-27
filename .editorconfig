@@ -1,0 +1,14 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{bat,cmd,ps1}]
+end_of_line = crlf
+
+[*.{jpg,jpeg,png,exr,hdr,ktx2,dds,vpk,vshbin,vshlib,vshwebbin,vshweblib}]
+insert_final_newline = false
+trim_trailing_whitespace = false
