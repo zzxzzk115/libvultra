@@ -7,6 +7,7 @@
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
+#include "vultra/function/rendering/srp/render_target_desc.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -36,10 +37,11 @@ namespace vultra
         const auto indirectBuffer = ctx.data.tryGet(kResKey_IndirectBuffer);
         const auto drawSetBuffer  = ctx.data.tryGet(kResKey_DrawSetBuffer);
 
+        const auto depthDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eDepth32F);
         const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution, cameraBlock, drawBuffer, indirectBuffer, drawSetBuffer](FrameGraph::Builder& builder,
-                                                                                 PassData&            pd) {
+            [depthDesc, cameraBlock, drawBuffer, indirectBuffer, drawSetBuffer](FrameGraph::Builder& builder,
+                                                                                PassData&            pd) {
                 PASS_SETUP_ZONE;
 
                 pd.camera = builder.read(cameraBlock,
@@ -80,12 +82,7 @@ namespace vultra
 
                 pd.depth = builder.create<framegraph::FrameGraphTexture>(
                     "DepthPre",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eDepth32F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    depthDesc);
                 pd.depth = builder.write(pd.depth,
                                          framegraph::Attachment {
                                              .imageAspect = rhi::ImageAspect::eDepth,
@@ -119,13 +116,14 @@ namespace vultra
                 }
 
                 assert(rc.framebufferInfo().has_value());
-                const auto* pipeline = getPipeline();
+                const auto framebufferInfo = rc.framebufferInfo().value();
+                const auto* pipeline = getPipeline(framebufferInfo.viewMask);
                 if (!pipeline)
                 {
                     return;
                 }
 
-                rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
+                rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
 
                 auto* drawBufferPtr     = resources.get<framegraph::FrameGraphBuffer>(pd.drawBuffer).buffer;
                 auto* indirectBufferPtr = static_cast<rhi::DrawIndirectBuffer*>(
@@ -224,7 +222,7 @@ namespace vultra
         ctx.data.set(kResKey_DepthTexture, data.depth);
     }
 
-    rhi::GraphicsPipeline DepthPrePass::createPipeline() const
+    rhi::GraphicsPipeline DepthPrePass::createPipeline(const uint32_t viewMask) const
     {
         auto vertexShader = loadHighendShader("mesh.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -240,6 +238,7 @@ namespace vultra
 
         return rhi::GraphicsPipeline::Builder {}
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
+            .setViewMask(viewMask)
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
             .setDepthStencil({

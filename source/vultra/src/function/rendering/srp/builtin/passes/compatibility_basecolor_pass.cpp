@@ -7,6 +7,7 @@
 #include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
 #include "vultra/function/resource/gpu_vertex_layout.hpp"
@@ -169,9 +170,11 @@ namespace vultra
             FrameGraphResource depth;
         };
 
+        const auto colorDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
+        const auto depthDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eDepth32F);
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [webgpu, resolution = ctx.view().extent, cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource](
+            [webgpu, colorDesc, depthDesc, cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource](
                 FrameGraph::Builder& builder, PassData& data) {
                 PASS_SETUP_ZONE;
 
@@ -183,12 +186,7 @@ namespace vultra
 
                 data.color = builder.create<framegraph::FrameGraphTexture>(
                     "Compatibility BaseColor Color",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    colorDesc);
                 data.color = builder.write(data.color,
                                            framegraph::Attachment {
                                                .index       = 0,
@@ -198,12 +196,7 @@ namespace vultra
 
                 data.depth = builder.create<framegraph::FrameGraphTexture>(
                     "Compatibility BaseColor Depth",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eDepth32F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    depthDesc);
                 data.depth = builder.write(data.depth,
                                            framegraph::Attachment {
                                                .imageAspect = rhi::ImageAspect::eDepth,
@@ -274,7 +267,8 @@ namespace vultra
                                     layout.attributeMask,
                                     layout.texCoord0OffsetBytes,
                                     layout.positionOffsetBytes,
-                                    mesh.vertexStrideBytes);
+                                    mesh.vertexStrideBytes,
+                                    framebufferInfo.viewMask);
                     if (!pipeline)
                         continue;
 
@@ -378,7 +372,8 @@ namespace vultra
                                                                      const uint32_t         vertexAttributeMask,
                                                                      const uint32_t         texCoord0Offset,
                                                                      const uint32_t         positionOffset,
-                                                                     const uint32_t         vertexStride) const
+                                                                     const uint32_t         vertexStride,
+                                                                     const uint32_t         viewMask) const
     {
         constexpr const char* kVertexShaderId   = "basecolor_cpu.vert";
         constexpr const char* kFragmentShaderId = "basecolor_cpu.frag";
@@ -408,6 +403,7 @@ namespace vultra
             return rhi::GraphicsPipeline::Builder {}
                 .setColorFormats({colorFormat})
                 .setDepthFormat(rhi::PixelFormat::eDepth32F)
+                .setViewMask(viewMask)
                 .setInputAssembly(resource::buildInputAssemblyVertexAttributes(layout, false, true, false))
                 .setVertexStride(vertexStride)
                 .addShader(rhi::ShaderType::eVertex,
@@ -430,6 +426,7 @@ namespace vultra
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({colorFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
+            .setViewMask(viewMask)
             .setInputAssembly(resource::buildInputAssemblyVertexAttributes(layout, false, true, false))
             .setVertexStride(vertexStride)
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)

@@ -7,6 +7,7 @@
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
+#include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/resource/gpu_material.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
@@ -322,9 +323,16 @@ namespace vultra
             FrameGraphResource depth;
         };
 
+        const auto colorDesc    = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
+        const auto normalDesc   = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F);
+        const auto materialDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
+        const auto entityIdDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
+        const auto depthDesc    = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eDepth32F);
+
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution = ctx.view().extent, cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource](
+            [colorDesc, normalDesc, materialDesc, entityIdDesc, depthDesc,
+             cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource](
                 FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
@@ -337,12 +345,7 @@ namespace vultra
 
                 pd.color = builder.create<framegraph::FrameGraphTexture>(
                     "DirectGBufferColor",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    colorDesc);
                 pd.color = builder.write(pd.color,
                                          framegraph::Attachment {
                                              .index       = 0,
@@ -352,12 +355,7 @@ namespace vultra
 
                 pd.normal = builder.create<framegraph::FrameGraphTexture>(
                     "DirectGBufferNormal",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA16F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    normalDesc);
                 pd.normal = builder.write(pd.normal,
                                           framegraph::Attachment {
                                               .index       = 1,
@@ -367,12 +365,7 @@ namespace vultra
 
                 pd.material = builder.create<framegraph::FrameGraphTexture>(
                     "DirectGBufferMetallicRoughnessAO",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    materialDesc);
                 pd.material = builder.write(pd.material,
                                             framegraph::Attachment {
                                                 .index       = 2,
@@ -382,12 +375,7 @@ namespace vultra
 
                 pd.entityId = builder.create<framegraph::FrameGraphTexture>(
                     "DirectGBufferEntityId",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    entityIdDesc);
                 pd.entityId = builder.write(pd.entityId,
                                             framegraph::Attachment {
                                                 .index       = 3,
@@ -397,12 +385,7 @@ namespace vultra
 
                 pd.depth = builder.create<framegraph::FrameGraphTexture>(
                     "DirectGBufferDepth",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eDepth32F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    depthDesc);
                 pd.depth = builder.write(pd.depth,
                                          framegraph::Attachment {
                                              .imageAspect = rhi::ImageAspect::eDepth,
@@ -552,7 +535,8 @@ namespace vultra
                                                            layout.tangentOffsetBytes,
                                                            isMaterialDoubleSided(*gpuSceneDatabase->resources,
                                                                                  subMesh.materialIndex),
-                                                           mesh.vertexStrideBytes);
+                                                           mesh.vertexStrideBytes,
+                                                           framebufferInfo.viewMask);
                         if (!pipeline)
                             return;
 
@@ -634,7 +618,8 @@ namespace vultra
                                                             const uint32_t         texCoord0Offset,
                                                             const uint32_t         tangentOffset,
                                                             const bool             doubleSided,
-                                                            const uint32_t         vertexStride) const
+                                                            const uint32_t         vertexStride,
+                                                            const uint32_t         viewMask) const
     {
         const resource::GpuVertexLayout layout {
             .attributeMask = vertexAttributeMask,
@@ -660,6 +645,7 @@ namespace vultra
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({colorFormat, normalFormat, materialFormat, entityIdFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
+            .setViewMask(viewMask)
             .setInputAssembly(
                 resource::buildInputAssemblyVertexAttributes(layout, true, true, true))
             .setVertexStride(vertexStride)

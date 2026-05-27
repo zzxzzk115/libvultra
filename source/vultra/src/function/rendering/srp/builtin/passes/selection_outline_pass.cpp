@@ -4,6 +4,7 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/srp/render_target_desc.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -45,7 +46,8 @@ namespace vultra
         const auto format     = sourceDesc.format;
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution, format, source, entityId, depth](FrameGraph::Builder& builder, PassData& pd) {
+            [resolution, source, entityId, depth, outputDesc = makeInheritedTextureDesc(sourceDesc, format)](
+                FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.source = builder.read(source,
@@ -81,12 +83,7 @@ namespace vultra
 
                 pd.output = builder.create<framegraph::FrameGraphTexture>(
                     "SelectionOutlineOutput",
-                    {
-                        .extent     = resolution,
-                        .format     = format,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    outputDesc);
                 pd.output = builder.write(pd.output,
                                           framegraph::Attachment {
                                               .index       = 0,
@@ -103,7 +100,7 @@ namespace vultra
 
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
-                const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0));
+                const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0), framebufferInfo.viewMask);
                 if (!pipeline)
                     return;
 
@@ -135,7 +132,7 @@ namespace vultra
         return data.output;
     }
 
-    rhi::GraphicsPipeline SelectionOutlinePass::createPipeline(const rhi::PixelFormat colorFormat) const
+    rhi::GraphicsPipeline SelectionOutlinePass::createPipeline(const rhi::PixelFormat colorFormat, const uint32_t viewMask) const
     {
         auto vertexShader = loadHighendShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         auto fragmentShader = loadHighendShader("selection_outline.frag", vshadersystem::ShaderStage::eFrag);
@@ -147,6 +144,7 @@ namespace vultra
 
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({colorFormat})
+            .setViewMask(viewMask)
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)

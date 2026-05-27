@@ -26,7 +26,8 @@ namespace vultra
                                              uint32_t              vertexAttributeMask,
                                              uint32_t              texCoord0Offset,
                                              uint32_t              positionOffset,
-                                             uint32_t              vertexStride) const;
+                                             uint32_t              vertexStride,
+                                             uint32_t              viewMask) const;
 
         rhi::UniformBuffer& retainDrawParamBuffer(uint64_t frameIndex, rhi::UniformBuffer buffer);
 

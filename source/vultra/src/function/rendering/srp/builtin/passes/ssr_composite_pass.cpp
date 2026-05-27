@@ -5,6 +5,7 @@
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/srp/render_target_desc.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -21,7 +22,7 @@ namespace vultra
                                                  FrameGraphResource      source,
                                                  FrameGraphResource      reflection)
     {
-        const auto extent = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(source).extent;
+        const auto sourceDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(source);
 
         struct PassData
         {
@@ -32,7 +33,8 @@ namespace vultra
 
         const auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [source, reflection, extent](FrameGraph::Builder& builder, PassData& pd) {
+            [source, reflection, outputDesc = makeInheritedTextureDesc(sourceDesc, rhi::PixelFormat::eRGBA16F)](
+                FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.source = builder.read(source,
@@ -58,12 +60,7 @@ namespace vultra
 
                 pd.output = builder.create<framegraph::FrameGraphTexture>(
                     "SSRCompositeOutput",
-                    {
-                        .extent     = extent,
-                        .format     = rhi::PixelFormat::eRGBA16F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    outputDesc);
                 pd.output = builder.write(pd.output,
                                           framegraph::Attachment {
                                               .index       = 0,
@@ -81,7 +78,8 @@ namespace vultra
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 assert(rc.framebufferInfo().has_value());
-                const auto* pipeline = getPipeline(rhi::getColorFormat(rc.framebufferInfo().value(), 0));
+                const auto framebufferInfo = rc.framebufferInfo().value();
+                const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0), framebufferInfo.viewMask);
                 if (!pipeline)
                     return;
 
@@ -95,7 +93,7 @@ namespace vultra
         return data.output;
     }
 
-    rhi::GraphicsPipeline SsrCompositePass::createPipeline(const rhi::PixelFormat colorFormat) const
+    rhi::GraphicsPipeline SsrCompositePass::createPipeline(const rhi::PixelFormat colorFormat, const uint32_t viewMask) const
     {
         auto vertexShader = loadGeneralShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -113,6 +111,7 @@ namespace vultra
 
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({colorFormat})
+            .setViewMask(viewMask)
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)

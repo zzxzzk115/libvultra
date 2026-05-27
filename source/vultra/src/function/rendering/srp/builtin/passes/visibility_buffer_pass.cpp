@@ -7,6 +7,7 @@
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
+#include "vultra/function/rendering/srp/render_target_desc.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -34,7 +35,10 @@ namespace vultra
             FrameGraphResource depth;
         };
 
-        const auto resolution            = ctx.view().extent;
+        const auto visibilityDesc =
+            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eR32UI, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
+        const auto depthDesc =
+            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eDepth32F, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
         const auto cameraBlock           = ctx.bb.get<CameraData>().cameraBlock.fgResource;
         const auto drawBuffer            = ctx.data.tryGet(kResKey_DrawBuffer);
         const auto indirectBuffer        = ctx.data.tryGet(kResKey_IndirectBuffer);
@@ -46,7 +50,8 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution,
+            [visibilityDesc,
+             depthDesc,
              cameraBlock,
              drawBuffer,
              indirectBuffer,
@@ -104,11 +109,7 @@ namespace vultra
 
                 pd.visibility = builder.create<framegraph::FrameGraphTexture>(
                     "VisibilityBuffer",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eR32UI,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
-                    });
+                    visibilityDesc);
                 pd.visibility = builder.write(pd.visibility,
                                               framegraph::Attachment {
                                                   .index       = 0,
@@ -127,11 +128,7 @@ namespace vultra
                 {
                     pd.depth = builder.create<framegraph::FrameGraphTexture>(
                         "VisibilityDepth",
-                        {
-                            .extent     = resolution,
-                            .format     = rhi::PixelFormat::eDepth32F,
-                            .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
-                        });
+                        depthDesc);
                     pd.depth = builder.write(pd.depth,
                                              framegraph::Attachment {
                                                  .imageAspect = rhi::ImageAspect::eDepth,
@@ -154,7 +151,8 @@ namespace vultra
                     return;
 
                 assert(rc.framebufferInfo().has_value());
-                const auto* pipeline = getPipeline();
+                const auto framebufferInfo = rc.framebufferInfo().value();
+                const auto* pipeline = getPipeline(framebufferInfo.viewMask);
                 if (!pipeline)
                     return;
 
@@ -167,7 +165,7 @@ namespace vultra
                 if (drawSetBuf)
                     rhi::prepareForDrawingIndirect(rc.cb, *drawSetBuf);
 
-                rc.cb.beginRendering(rc.framebufferInfo().value()).bindPipeline(*pipeline);
+                rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
 
                 constexpr uint32_t kRenderQueueOpaque    = 0u;
@@ -224,7 +222,7 @@ namespace vultra
         return data.visibility;
     }
 
-    rhi::GraphicsPipeline VisibilityBufferPass::createPipeline() const
+    rhi::GraphicsPipeline VisibilityBufferPass::createPipeline(const uint32_t viewMask) const
     {
         auto vertexShader = loadHighendShader("visibility_buffer", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -243,6 +241,7 @@ namespace vultra
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({rhi::PixelFormat::eR32UI})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
+            .setViewMask(viewMask)
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
             .setDepthStencil({

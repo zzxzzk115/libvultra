@@ -18,6 +18,6 @@ namespace vultra
                                    const SsaoRenderSettings& settings);
 
     private:
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask) const;
     };
 } // namespace vultra

@@ -6,6 +6,7 @@
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
+#include "vultra/function/rendering/srp/render_target_desc.hpp"
 
 #include <fg/FrameGraph.hpp>
 
@@ -36,7 +37,12 @@ namespace vultra
             FrameGraphResource meshletTriangleBuffer;
         };
 
-        const auto resolution            = ctx.view().extent;
+        const auto colorDesc =
+            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
+        const auto normalDesc =
+            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
+        const auto materialDesc =
+            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
         const auto cameraBlock           = ctx.bb.get<CameraData>().cameraBlock.fgResource;
         const auto drawBuffer            = ctx.data.tryGet(kResKey_DrawBuffer);
         const auto meshletsBuffer        = ctx.data.tryGet(kResKey_MeshletsBuffer);
@@ -47,7 +53,9 @@ namespace vultra
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution,
+            [colorDesc,
+             normalDesc,
+             materialDesc,
              cameraBlock,
              visibility,
              drawBuffer,
@@ -118,11 +126,7 @@ namespace vultra
 
                 pd.color = builder.create<framegraph::FrameGraphTexture>(
                     "ThinGBufferColor",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
-                    });
+                    colorDesc);
                 pd.color = builder.write(pd.color,
                                          framegraph::Attachment {
                                              .index       = 0,
@@ -132,11 +136,7 @@ namespace vultra
 
                 pd.normal = builder.create<framegraph::FrameGraphTexture>(
                     "ThinGBufferNormal",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA16F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
-                    });
+                    normalDesc);
                 pd.normal = builder.write(pd.normal,
                                           framegraph::Attachment {
                                               .index       = 1,
@@ -146,11 +146,7 @@ namespace vultra
 
                 pd.material = builder.create<framegraph::FrameGraphTexture>(
                     "ThinGBufferMetallicRoughnessAO",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA8_UNorm,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
-                    });
+                    materialDesc);
                 pd.material = builder.write(pd.material,
                                             framegraph::Attachment {
                                                 .index       = 2,
@@ -175,7 +171,8 @@ namespace vultra
                 const auto framebufferInfo = rc.framebufferInfo().value();
                 const auto* pipeline       = getPipeline(rhi::getColorFormat(framebufferInfo, 0),
                                                    rhi::getColorFormat(framebufferInfo, 1),
-                                                   rhi::getColorFormat(framebufferInfo, 2));
+                                                   rhi::getColorFormat(framebufferInfo, 2),
+                                                   framebufferInfo.viewMask);
                 if (!pipeline)
                     return;
 
@@ -200,7 +197,8 @@ namespace vultra
 
     rhi::GraphicsPipeline ThinGBufferPass::createPipeline(const rhi::PixelFormat colorFormat,
                                                           const rhi::PixelFormat normalFormat,
-                                                          const rhi::PixelFormat materialFormat) const
+                                                          const rhi::PixelFormat materialFormat,
+                                                          const uint32_t         viewMask) const
     {
         auto vertexShader = loadHighendShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -218,6 +216,7 @@ namespace vultra
 
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({colorFormat, normalFormat, materialFormat})
+            .setViewMask(viewMask)
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)

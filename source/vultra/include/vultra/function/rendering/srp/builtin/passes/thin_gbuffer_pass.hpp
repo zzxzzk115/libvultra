@@ -16,6 +16,7 @@ namespace vultra
     private:
         rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat,
                                              rhi::PixelFormat normalFormat,
-                                             rhi::PixelFormat materialFormat) const;
+                                             rhi::PixelFormat materialFormat,
+                                             uint32_t         viewMask) const;
     };
 } // namespace vultra

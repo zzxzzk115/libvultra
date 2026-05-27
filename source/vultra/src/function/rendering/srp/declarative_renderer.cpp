@@ -40,6 +40,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
+#include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
@@ -254,6 +255,7 @@ namespace vultra
             const auto inputKey  = resourceKeyFor(m_Desc.input);
             const auto outputKey = resourceKeyFor(m_Desc.output);
             const auto input = directInput ? directInput : ctx.data.tryGet(inputKey);
+            const auto outputDesc = makeOutputDesc(ctx, input);
             FrameGraphResource output =
                 directOutput ? directOutput :
                 normalizeId(m_Desc.output) == "backbuffer" || normalizeId(m_Desc.output) == "target" ?
@@ -265,7 +267,7 @@ namespace vultra
 
             ctx.fg.addCallbackPass<PassData>(
                 m_Desc.name.c_str(),
-                [input, &output, &ctx, this](FrameGraph::Builder& builder, PassData& data) mutable {
+                [input, outputDesc, &output, &ctx, this](FrameGraph::Builder& builder, PassData& data) mutable {
                     if (input)
                     {
                         data.input = builder.read(input,
@@ -284,12 +286,7 @@ namespace vultra
                     {
                         output = builder.create<framegraph::FrameGraphTexture>(
                             m_Desc.name + " Color",
-                            {
-                                .extent     = ctx.view().extent,
-                                .format     = rhi::PixelFormat::eRGBA16F,
-                                .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                              rhi::ImageUsage::eTransferSrc,
-                            });
+                            outputDesc);
                     }
 
                     data.output = builder.write(output,
@@ -316,7 +313,9 @@ namespace vultra
                         return;
                     }
 
-                    auto* pipeline = getPipeline(rc.rd, rhi::getColorFormat(framebufferInfo.value(), 0));
+                    auto* pipeline = getPipeline(rc.rd,
+                                                 rhi::getColorFormat(framebufferInfo.value(), 0),
+                                                 framebufferInfo->viewMask);
                     if (!pipeline)
                         return;
 
@@ -336,9 +335,24 @@ namespace vultra
         }
 
     private:
-        rhi::GraphicsPipeline* getPipeline(rhi::RenderDevice& rd, const rhi::PixelFormat colorFormat)
+        framegraph::FrameGraphTexture::Desc makeOutputDesc(FrameGraphBuildContext& ctx, const FrameGraphResource input) const
         {
-            const auto key = static_cast<uint32_t>(colorFormat);
+            auto desc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F);
+
+            if (input)
+            {
+                const auto inputDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(input);
+                desc = makeInheritedTextureDesc(inputDesc, rhi::PixelFormat::eRGBA16F);
+            }
+
+            return desc;
+        }
+
+        rhi::GraphicsPipeline* getPipeline(rhi::RenderDevice& rd,
+                                           const rhi::PixelFormat colorFormat,
+                                           const uint32_t viewMask)
+        {
+            const uint64_t key = static_cast<uint64_t>(colorFormat) | (static_cast<uint64_t>(viewMask) << 32u);
             if (auto it = m_Pipelines.find(key); it != m_Pipelines.end())
                 return &it->second;
 
@@ -349,6 +363,7 @@ namespace vultra
 
             auto builder = rhi::GraphicsPipeline::Builder {};
             builder.setColorFormats({colorFormat})
+                .setViewMask(viewMask)
                 .setInputAssembly({})
                 .setDepthStencil({
                     .depthTest  = false,
@@ -422,7 +437,7 @@ namespace vultra
     private:
         FullscreenPass m_Desc;
         rhi::ShaderLibraryRuntime* m_ShaderLibrary {nullptr};
-        std::unordered_map<uint32_t, rhi::GraphicsPipeline> m_Pipelines;
+        std::unordered_map<uint64_t, rhi::GraphicsPipeline> m_Pipelines;
     };
 
     class DeclarativeRenderer::RenderGraphRuntime
@@ -1240,6 +1255,8 @@ namespace vultra
                      "previous_stereo_depth",
                      "previous_stereo_pose",
                      "stereo_reprojection_metadata",
+                     "stereo_warped_color",
+                     "stereo_inpainted_color",
                  })
                 m_Registry.registerResource(name);
         }

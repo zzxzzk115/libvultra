@@ -42,7 +42,7 @@ namespace vultra
                                           rhi::RenderDevice&  rd,
                                           const PbrLightingSettings& lightingSettings);
         bool ensureFallbackAoTexture(rhi::RenderDevice& rd);
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask) const;
         rhi::ComputePipeline  createComputePipeline(std::string_view shaderName) const;
 
         rhi::Texture m_LtcMat;

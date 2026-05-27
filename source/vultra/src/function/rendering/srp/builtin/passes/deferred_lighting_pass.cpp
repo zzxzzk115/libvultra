@@ -6,6 +6,7 @@
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/framegraph/transient_buffer.hpp"
 #include "vultra/function/framegraph/upload_struct.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
@@ -159,10 +160,10 @@ namespace vultra
             FrameGraphResource output;
         };
 
-        const auto resolution = ctx.view().extent;
+        const auto colorDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F);
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
-            [resolution,
+            [colorDesc,
              color,
              normal,
              material,
@@ -256,12 +257,7 @@ namespace vultra
 
                 pd.output = builder.create<framegraph::FrameGraphTexture>(
                     "DeferredLightingOutput",
-                    {
-                        .extent     = resolution,
-                        .format     = rhi::PixelFormat::eRGBA16F,
-                        .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled |
-                                      rhi::ImageUsage::eTransferSrc,
-                    });
+                    colorDesc);
                 pd.output = builder.write(pd.output,
                                           framegraph::Attachment {
                                               .index       = 0,
@@ -278,7 +274,8 @@ namespace vultra
 
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
-                const auto* pipeline       = getPipeline(rhi::getColorFormat(framebufferInfo, 0));
+                const auto* pipeline       = getPipeline(rhi::getColorFormat(framebufferInfo, 0),
+                                                         framebufferInfo.viewMask);
                 if (!pipeline)
                     return;
 
@@ -709,7 +706,8 @@ namespace vultra
         return true;
     }
 
-    rhi::GraphicsPipeline DeferredLightingPass::createPipeline(const rhi::PixelFormat colorFormat) const
+    rhi::GraphicsPipeline DeferredLightingPass::createPipeline(const rhi::PixelFormat colorFormat,
+                                                               const uint32_t         viewMask) const
     {
         auto vertexShader = loadHighendShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
         auto fragmentShader = loadHighendShader("deferred_lighting.frag", vshadersystem::ShaderStage::eFrag);
@@ -721,6 +719,7 @@ namespace vultra
 
         return rhi::GraphicsPipeline::Builder {}
             .setColorFormats({colorFormat})
+            .setViewMask(viewMask)
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)

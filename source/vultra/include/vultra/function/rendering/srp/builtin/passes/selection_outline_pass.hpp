@@ -22,6 +22,6 @@ namespace vultra
                                    const BuiltinRenderSettings::SelectionOutlineSettings& settings);
 
     private:
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask) const;
     };
 } // namespace vultra

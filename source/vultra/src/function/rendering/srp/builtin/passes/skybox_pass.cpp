@@ -63,7 +63,8 @@ namespace vultra
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
                 const auto* pipeline = getPipeline(rhi::getDepthFormat(framebufferInfo),
-                                                   rhi::getColorFormat(framebufferInfo, 0));
+                                                   rhi::getColorFormat(framebufferInfo, 0),
+                                                   framebufferInfo.viewMask);
                 if (!pipeline)
                     return;
 
@@ -89,7 +90,8 @@ namespace vultra
     }
 
     rhi::GraphicsPipeline SkyboxPass::createPipeline(const rhi::PixelFormat depthFormat,
-                                                     const rhi::PixelFormat colorFormat) const
+                                                     const rhi::PixelFormat colorFormat,
+                                                     const uint32_t         viewMask) const
     {
         auto vertexShader = loadHighendShader("skybox.vert", vshadersystem::ShaderStage::eVert);
         auto fragmentShader = loadHighendShader("skybox.frag", vshadersystem::ShaderStage::eFrag);
@@ -102,6 +104,7 @@ namespace vultra
         return rhi::GraphicsPipeline::Builder {}
             .setDepthFormat(depthFormat)
             .setColorFormats({colorFormat})
+            .setViewMask(viewMask)
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)

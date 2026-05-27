@@ -26,6 +26,8 @@ namespace vultra
                                    rhi::Texture*           cubemapOverride = nullptr);
 
     private:
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat depthFormat, rhi::PixelFormat colorFormat) const;
+        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat depthFormat,
+                                             rhi::PixelFormat colorFormat,
+                                             uint32_t         viewMask) const;
     };
 } // namespace vultra
