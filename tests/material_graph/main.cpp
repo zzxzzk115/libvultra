@@ -98,6 +98,8 @@ int main()
         require(result.has_value(), "color-only graph should compile");
         require(result->vshaderSource.find("eval_material_graph_folder_color_only_vmatgraph") != std::string::npos,
                 "shader id should be sanitized into a GLSL-safe function name");
+        require(result->vshaderSource.find("float timeSeconds") != std::string::npos,
+                "compiled graph function should expose time input for dynamic material nodes");
         require(result->vshaderSource.find("surface.normalWS = normalize(normalWS);") != std::string::npos,
                 "unconnected surface normal should use normalWS fallback");
         require(result->vshaderSource.find("surface.shadingModel = 1u;") != std::string::npos,

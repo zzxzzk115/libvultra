@@ -189,6 +189,7 @@ namespace vultra
                          IGpuResourceService& gpuResources,
                          rhi::RenderDevice&  rd,
                          GeometryFactory&    geometryFactory,
-                         RenderWorld&        out);
+                         RenderWorld&        out,
+                         float               timeSeconds = 0.0f);
     };
 } // namespace vultra

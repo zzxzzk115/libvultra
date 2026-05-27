@@ -28,10 +28,10 @@ struct MaterialGraphSurface
 
 const uint VULTRA_MATERIAL_GRAPH_ID_default_vmatgraph = 3089828321u;
 
-MaterialGraphSurface eval_material_graph_default_vmatgraph(uint materialIndex, vec2 uv, vec3 positionWS, vec3 normalWS, vec3 viewDirWS)
+MaterialGraphSurface eval_material_graph_default_vmatgraph(uint materialIndex, vec2 uv, vec3 positionWS, vec3 normalWS, vec3 viewDirWS, float timeSeconds)
 {
     MaterialGraphSurface surface;
-    surface.baseColor = mix(texture(getBindlessTexture(uint(0u)), uv), vec4(0.95, 0.58, 0.28, 1.0), clamp(pow(1.0 - clamp(dot(normalize(normalWS), normalize(viewDirWS)), 0.0, 1.0), 4.0), 0.0, 1.0));
+    surface.baseColor = mix(vec4(0.02, 0.16, 1.0, 1.0), vec4(1.0, 0.08, 0.0, 1.0), ((sin((timeSeconds * 1.2)) * 0.5) + 0.5));
     surface.normalWS = normalize(normalWS);
     surface.metallic = clamp(0.08, 0.0, 1.0);
     surface.roughness = clamp(0.42, 0.045, 1.0);
@@ -62,6 +62,6 @@ MaterialGraphSurface eval_material_graph_default_vmatgraph(uint materialIndex, v
 layout(location = 0) out vec4 FragColor;
 void main()
 {
-    MaterialGraphSurface surface = eval_material_graph_default_vmatgraph(0u, vec2(0.0), vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0));
+    MaterialGraphSurface surface = eval_material_graph_default_vmatgraph(0u, vec2(0.0), vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), 0.0);
     FragColor = surface.baseColor;
 }

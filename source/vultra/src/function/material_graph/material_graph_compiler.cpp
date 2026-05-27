@@ -159,6 +159,8 @@ namespace vultra::material_graph
                     return "viewDirWS";
                 if (type == "vultra.input.material_index")
                     return "int(materialIndex)";
+                if (type == "vultra.input.time")
+                    return "timeSeconds";
 
                 if (type == "vultra.param.float")
                     return paramValue(node, "value", ValueType::eFloat, 0.0f);
@@ -191,6 +193,10 @@ namespace vultra::material_graph
                     return "min(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ")";
                 if (type == "vultra.math.max")
                     return "max(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ")";
+                if (type == "vultra.math.sine")
+                    return "sin(" + inputExpr(node, "v") + ")";
+                if (type == "vultra.math.fract")
+                    return "fract(" + inputExpr(node, "v") + ")";
                 if (type == "vultra.math.dot")
                     return "dot(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ")";
                 if (type == "vultra.math.normalize")
@@ -199,8 +205,12 @@ namespace vultra::material_graph
                     return "clamp(" + inputExpr(node, "v") + ", " + inputExpr(node, "min") + ", " + inputExpr(node, "max") + ")";
                 if (type == "vultra.math.saturate")
                     return "clamp(" + inputExpr(node, "v") + ", 0.0, 1.0)";
+                if (type == "vultra.math.smoothstep")
+                    return "smoothstep(" + inputExpr(node, "edge0") + ", " + inputExpr(node, "edge1") + ", " + inputExpr(node, "x") + ")";
                 if (type == "vultra.math.mix")
                     return "mix(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ", " + inputExpr(node, "t") + ")";
+                if (type == "vultra.vector.split_vec2")
+                    return inputExpr(node, "v") + "." + (pinName == "y" ? "y" : "x");
 
                 if (type == "vultra.texture.sample2d")
                 {
@@ -287,7 +297,7 @@ namespace vultra::material_graph
         src << "#endif\n\n";
         src << "const uint VULTRA_MATERIAL_GRAPH_ID_" << graphSymbol << " = " << input.graphId << "u;\n\n";
         src << "MaterialGraphSurface eval_material_graph_" << graphSymbol
-            << "(uint materialIndex, vec2 uv, vec3 positionWS, vec3 normalWS, vec3 viewDirWS)\n{\n";
+            << "(uint materialIndex, vec2 uv, vec3 positionWS, vec3 normalWS, vec3 viewDirWS, float timeSeconds)\n{\n";
         src << "    MaterialGraphSurface surface;\n";
         src << "    surface.baseColor = " << baseColor << ";\n";
         src << "    surface.normalWS = normalize(" << normal << ");\n";

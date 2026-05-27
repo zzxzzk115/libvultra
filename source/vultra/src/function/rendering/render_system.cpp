@@ -97,6 +97,17 @@ namespace vultra
             return glm::vec3(v);
         }
 
+        [[nodiscard]] glm::vec2 jsonVec2(const nlohmann::json& value, const glm::vec2 fallback)
+        {
+            if (!value.is_array())
+                return fallback;
+            glm::vec2 out = fallback;
+            for (int i = 0; i < 2 && i < static_cast<int>(value.size()); ++i)
+                if (value[i].is_number())
+                    out[i] = value[i].get<float>();
+            return out;
+        }
+
         [[nodiscard]] float jsonFloat(const nlohmann::json& value, const float fallback)
         {
             return value.is_number() ? value.get<float>() : fallback;
@@ -105,15 +116,6 @@ namespace vultra
         [[nodiscard]] nlohmann::json jsonVec4Value(const glm::vec4& value)
         {
             return nlohmann::json::array({value.x, value.y, value.z, value.w});
-        }
-
-        [[nodiscard]] const material_graph::Node*
-        linkedNode(const material_graph::Graph& graph,
-                   const material_graph::Node&  node,
-                   std::string_view             pin)
-        {
-            const auto* link = material_graph::findInputLink(graph, node.id, pin);
-            return link ? material_graph::findNode(graph, link->from.nodeId) : nullptr;
         }
 
         [[nodiscard]] const material_graph::Link*
@@ -127,23 +129,33 @@ namespace vultra
         [[nodiscard]] nlohmann::json constantNodeValue(const material_graph::Graph& graph,
                                                        const material_graph::Node&  node,
                                                        std::string_view             outputPin,
-                                                       const nlohmann::json&        fallback)
+                                                       const nlohmann::json&        fallback,
+                                                       const float                  timeSeconds)
         {
+            const auto inputValue = [&](std::string_view pin, const nlohmann::json& inputFallback) {
+                const auto* inputLink = linkedInput(graph, node, pin);
+                const auto* inputNode = inputLink ? material_graph::findNode(graph, inputLink->from.nodeId) : nullptr;
+                return inputNode ? constantNodeValue(graph, *inputNode, inputLink->from.pin, inputFallback, timeSeconds)
+                                 : inputFallback;
+            };
+
             if (node.typeId == "vultra.param.float" || node.typeId == "vultra.param.vec2" ||
                 node.typeId == "vultra.param.vec3" || node.typeId == "vultra.param.vec4" ||
                 node.typeId == "vultra.param.color" || node.typeId == "vultra.param.bool" ||
                 node.typeId == "vultra.param.int" || node.typeId == "vultra.param.enum")
                 return node.params.value("value", fallback);
 
+            if (node.typeId == "vultra.input.time" &&
+                (outputPin == "seconds" || outputPin == "value" || outputPin == "out"))
+                return timeSeconds;
+
             if ((node.typeId == "vultra.math.add" || node.typeId == "vultra.math.subtract" ||
                  node.typeId == "vultra.math.multiply" || node.typeId == "vultra.math.divide" ||
                  node.typeId == "vultra.math.min" || node.typeId == "vultra.math.max") &&
                 outputPin == "out")
             {
-                const auto* aNode = linkedNode(graph, node, "a");
-                const auto* bNode = linkedNode(graph, node, "b");
-                const float a = aNode ? jsonFloat(constantNodeValue(graph, *aNode, "value", 0.0f), 0.0f) : 0.0f;
-                const float b = bNode ? jsonFloat(constantNodeValue(graph, *bNode, "value", 0.0f), 0.0f) : 0.0f;
+                const float a = jsonFloat(inputValue("a", 0.0f), 0.0f);
+                const float b = jsonFloat(inputValue("b", 0.0f), 0.0f);
                 if (node.typeId == "vultra.math.add")
                     return a + b;
                 if (node.typeId == "vultra.math.subtract")
@@ -161,31 +173,51 @@ namespace vultra
             {
                 if (node.typeId == "vultra.math.one_minus")
                 {
-                    const auto* vNode = linkedNode(graph, node, "v");
-                    const float v = vNode ? jsonFloat(constantNodeValue(graph, *vNode, "value", 0.0f), 0.0f) : 0.0f;
+                    const float v = jsonFloat(inputValue("v", 0.0f), 0.0f);
                     return 1.0f - v;
                 }
-                const auto* baseNode = linkedNode(graph, node, "base");
-                const auto* exponentNode = linkedNode(graph, node, "exponent");
-                const float base = baseNode ? jsonFloat(constantNodeValue(graph, *baseNode, "value", 1.0f), 1.0f) : 1.0f;
-                const float exponent = exponentNode ? jsonFloat(constantNodeValue(graph, *exponentNode, "value", 1.0f), 1.0f) : 1.0f;
+                const float base = jsonFloat(inputValue("base", 1.0f), 1.0f);
+                const float exponent = jsonFloat(inputValue("exponent", 1.0f), 1.0f);
                 return std::pow(std::max(base, 0.0f), exponent);
             }
 
             if (node.typeId == "vultra.math.saturate" && outputPin == "out")
             {
-                const auto* vNode = linkedNode(graph, node, "v");
-                const float v = vNode ? jsonFloat(constantNodeValue(graph, *vNode, "value", 0.0f), 0.0f) : 0.0f;
+                const float v = jsonFloat(inputValue("v", 0.0f), 0.0f);
                 return glm::clamp(v, 0.0f, 1.0f);
+            }
+
+            if (node.typeId == "vultra.math.sine" && outputPin == "out")
+                return std::sin(jsonFloat(inputValue("v", 0.0f), 0.0f));
+
+            if (node.typeId == "vultra.math.fract" && outputPin == "out")
+            {
+                const float v = jsonFloat(inputValue("v", 0.0f), 0.0f);
+                return v - std::floor(v);
+            }
+
+            if (node.typeId == "vultra.math.smoothstep" && outputPin == "out")
+            {
+                const float edge0 = jsonFloat(inputValue("edge0", 0.0f), 0.0f);
+                const float edge1 = jsonFloat(inputValue("edge1", 1.0f), 1.0f);
+                const float x     = jsonFloat(inputValue("x", 0.0f), 0.0f);
+                if (edge0 == edge1)
+                    return x < edge0 ? 0.0f : 1.0f;
+                const float t = glm::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+                return t * t * (3.0f - 2.0f * t);
+            }
+
+            if (node.typeId == "vultra.vector.split_vec2")
+            {
+                const glm::vec2 v = jsonVec2(inputValue("v", nlohmann::json::array({0.0f, 0.0f})), glm::vec2(0.0f));
+                if (outputPin == "x")
+                    return v.x;
+                if (outputPin == "y")
+                    return v.y;
             }
 
             if (node.typeId == "vultra.math.mix" && outputPin == "out")
             {
-                auto inputValue = [&](std::string_view pin, const nlohmann::json& inputFallback) {
-                    const auto* inputLink = linkedInput(graph, node, pin);
-                    const auto* inputNode = inputLink ? material_graph::findNode(graph, inputLink->from.nodeId) : nullptr;
-                    return inputNode ? constantNodeValue(graph, *inputNode, inputLink->from.pin, inputFallback) : inputFallback;
-                };
                 const auto a = jsonVec4(inputValue("a", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})), glm::vec4(1.0f));
                 const auto b = jsonVec4(inputValue("b", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})), glm::vec4(1.0f));
                 const auto t = glm::clamp(jsonFloat(inputValue("t", 0.0f), 0.0f), 0.0f, 1.0f);
@@ -198,12 +230,13 @@ namespace vultra
         [[nodiscard]] nlohmann::json surfaceInputValue(const material_graph::Graph& graph,
                                                        const material_graph::Node&  output,
                                                        std::string_view             pin,
-                                                       const nlohmann::json&        fallback)
+                                                       const nlohmann::json&        fallback,
+                                                       const float                  timeSeconds)
         {
             if (const auto* link = linkedInput(graph, output, pin))
             {
                 if (const auto* source = material_graph::findNode(graph, link->from.nodeId))
-                    return constantNodeValue(graph, *source, link->from.pin, fallback);
+                    return constantNodeValue(graph, *source, link->from.pin, fallback, timeSeconds);
             }
             return output.params.value(std::string(pin), fallback);
         }
@@ -254,7 +287,10 @@ namespace vultra
         }
 
         [[nodiscard]] MaterialGraphSurfaceParams
-        materialGraphSurfaceParams(IAssetService& assets, std::string_view materialGraphUri, const uint32_t graphId)
+        materialGraphSurfaceParams(IAssetService& assets,
+                                   std::string_view materialGraphUri,
+                                   const uint32_t   graphId,
+                                   const float      timeSeconds)
         {
             MaterialGraphSurfaceParams params {};
             params.graphId = graphId;
@@ -275,19 +311,19 @@ namespace vultra
                 return params;
 
             params.baseColor =
-                jsonVec4(surfaceInputValue(*graph, *output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})),
+                jsonVec4(surfaceInputValue(*graph, *output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds),
                          glm::vec4(1.0f));
             const glm::vec3 emissive =
-                jsonVec3(surfaceInputValue(*graph, *output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f})),
+                jsonVec3(surfaceInputValue(*graph, *output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f}), timeSeconds),
                          glm::vec3(0.0f));
             params.emissiveAlpha = glm::vec4(
                 emissive,
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "alpha", 1.0f), 1.0f), 0.0f, 1.0f));
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "alpha", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f));
             params.metallicRoughnessAoCutoff = glm::vec4(
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "metallic", 0.0f), 0.0f), 0.0f, 1.0f),
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "roughness", 1.0f), 1.0f), 0.045f, 1.0f),
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "ao", 1.0f), 1.0f), 0.0f, 1.0f),
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "alphaCutoff", 0.5f), 0.5f), 0.0f, 1.0f));
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "metallic", 0.0f, timeSeconds), 0.0f), 0.0f, 1.0f),
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "roughness", 1.0f, timeSeconds), 1.0f), 0.045f, 1.0f),
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "ao", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f),
+                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "alphaCutoff", 0.5f, timeSeconds), 0.5f), 0.0f, 1.0f));
             params.textureInfo.x = materialGraphTextureIndex(assets, *graph, *output, "baseColor");
             params.alphaMode = static_cast<uint32_t>(
                 material_graph::alphaModeFromString(output->params.value("alphaMode", std::string {"Opaque"})));
@@ -320,14 +356,15 @@ namespace vultra
         [[nodiscard]] uint32_t ensureMaterialGraphGpuMaterial(IAssetService&       assets,
                                                               IGpuResourceService& gpuResources,
                                                               rhi::RenderDevice&   rd,
-                                                              std::string_view     materialGraphUri)
+                                                              std::string_view     materialGraphUri,
+                                                              const float          timeSeconds)
         {
             if (materialGraphUri.empty())
                 return std::numeric_limits<uint32_t>::max();
 
             auto&          pool = gpuResources.pool();
             const uint32_t graphId = material_graph::stableGraphId(materialGraphUri);
-            const auto     params = materialGraphSurfaceParams(assets, materialGraphUri, graphId);
+            const auto     params = materialGraphSurfaceParams(assets, materialGraphUri, graphId, timeSeconds);
             for (uint32_t i = 0; i < static_cast<uint32_t>(pool.materials.size()); ++i)
             {
                 auto& material = pool.materials[i];
@@ -999,7 +1036,8 @@ namespace vultra
                                  IGpuResourceService& gpuResources,
                                  rhi::RenderDevice&   rd,
                                  GeometryFactory&     geometryFactory,
-                                 RenderWorld&         out)
+                                 RenderWorld&         out,
+                                 const float          timeSeconds)
     {
         out.clear();
 
@@ -1040,7 +1078,7 @@ namespace vultra
             for (const auto& materialOverride : mesh.materialOverrides)
             {
                 const uint32_t graphMaterialIndex =
-                    ensureMaterialGraphGpuMaterial(assets, gpuResources, rd, materialOverride.materialGraph);
+                    ensureMaterialGraphGpuMaterial(assets, gpuResources, rd, materialOverride.materialGraph, timeSeconds);
                 if (graphMaterialIndex != std::numeric_limits<uint32_t>::max())
                 {
                     inst.materialOverrides.push_back(RenderInstance::MaterialOverride {
@@ -1878,9 +1916,10 @@ namespace vultra
         }
         // Cook render instances
         RenderWorldCooker cooker {};
+        const float       renderTimeSeconds = static_cast<float>(m_FrameCounter) / 60.0f;
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "RenderWorldCooker::cook"};
-            cooker.cook(world, assetService, gpuResourceService, rd, m_GeometryFactory, m_RenderWorldBack);
+            cooker.cook(world, assetService, gpuResourceService, rd, m_GeometryFactory, m_RenderWorldBack, renderTimeSeconds);
         }
         m_RenderWorldBack.frameIndex = m_FrameCounter;
 
@@ -2466,7 +2505,7 @@ namespace vultra
             slot.lastTouchedFrame = m_FrameCounter;
             {
                 RuntimeProfiler::Scope scope {m_RuntimeProfiler, "RenderWorldCooker::cook_override"};
-                cooker.cook(*slot.world, assetService, gpuResourceService, rd, m_GeometryFactory, slot.renderWorld);
+                cooker.cook(*slot.world, assetService, gpuResourceService, rd, m_GeometryFactory, slot.renderWorld, renderTimeSeconds);
             }
             slot.renderWorld.frameIndex = m_FrameCounter;
             buildCpuDrivenGpuSceneForRenderWorld(
@@ -2476,7 +2515,7 @@ namespace vultra
         m_FrameResources.beginFrame(m_FrameCounter);
         {
             ImmediateResourceUploader frameUploader {m_FrameResources, rd};
-            prepareFrameData(frameUploader, m_PreparedFrameData, m_FrameCounter, 0.0f, 0.0f);
+            prepareFrameData(frameUploader, m_PreparedFrameData, m_FrameCounter, renderTimeSeconds, 0.0f);
         }
 
         ++m_FrameCounter;
@@ -2682,7 +2721,11 @@ namespace vultra
             if (useFrameGraph)
             {
                 FrameGraphResourceUploader fgUploader {fg};
-                prepareFrameData(fgUploader, m_PreparedFrameData, m_RenderWorldFront.frameIndex, 0.0f, 0.0f);
+                prepareFrameData(fgUploader,
+                                 m_PreparedFrameData,
+                                 m_RenderWorldFront.frameIndex,
+                                 static_cast<float>(m_RenderWorldFront.frameIndex) / 60.0f,
+                                 0.0f);
                 prepareCameraData(fgUploader, viewData, renderArea.extent, viewCamera, rd.getBackendApi());
                 bb.add<FrameData>(m_PreparedFrameData.frameData);
                 bb.add<CameraData>(viewData.cameraData);

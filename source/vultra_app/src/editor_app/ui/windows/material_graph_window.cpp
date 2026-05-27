@@ -1,5 +1,7 @@
 #include "editor_app/ui/windows/material_graph_window.hpp"
 
+#include "editor_app/ui/graph_layout.hpp"
+
 #include <vultra/core/rhi/structs/render_device_structs.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
@@ -57,6 +59,73 @@ namespace vultra_app
             [[nodiscard]] glm::vec3 center() const { return (min + max) * 0.5f; }
             [[nodiscard]] float radius() const { return valid ? glm::length((max - min) * 0.5f) : 0.0f; }
         };
+
+        void applyMaterialGraphAutoLayout(vultra::material_graph::Graph& graph)
+        {
+            std::vector<GraphLayoutNode> nodes;
+            nodes.reserve(graph.nodes.size());
+            for (size_t i = 0; i < graph.nodes.size(); ++i)
+            {
+                const auto& node = graph.nodes[i];
+                nodes.push_back(GraphLayoutNode {
+                    .id = node.id,
+                    .order = static_cast<int>(i),
+                    .inputCount = static_cast<int>(node.inputs.size()),
+                    .outputCount = static_cast<int>(node.outputs.size()),
+                    .heightLanes = std::max(1.0f,
+                                            (56.0f + static_cast<float>(node.inputs.size() + node.outputs.size() + node.params.size()) * 24.0f) /
+                                                120.0f),
+                    .sink = node.typeId == "vultra.output.surface",
+                });
+            }
+
+            std::vector<GraphLayoutEdge> edges;
+            edges.reserve(graph.links.size());
+            for (const auto& link : graph.links)
+            {
+                int fromOrder = 0;
+                if (const auto* source = vultra::material_graph::findNode(graph, link.from.nodeId))
+                {
+                    const auto it = std::ranges::find_if(source->outputs, [&](const auto& pin) {
+                        return pin.name == link.from.pin;
+                    });
+                    if (it != source->outputs.end())
+                        fromOrder = static_cast<int>(std::distance(source->outputs.begin(), it));
+                }
+
+                int toOrder = 0;
+                if (const auto* target = vultra::material_graph::findNode(graph, link.to.nodeId))
+                {
+                    const auto it = std::ranges::find_if(target->inputs, [&](const auto& pin) {
+                        return pin.name == link.to.pin;
+                    });
+                    if (it != target->inputs.end())
+                        toOrder = static_cast<int>(std::distance(target->inputs.begin(), it));
+                }
+                edges.push_back({
+                    .from = link.from.nodeId,
+                    .to = link.to.nodeId,
+                    .fromOrder = fromOrder,
+                    .toOrder = toOrder,
+                });
+            }
+
+            const auto layout = computeLayeredGraphLayout(
+                nodes,
+                edges,
+                GraphLayoutConfig {
+                    .origin = {-760.0f, -120.0f},
+                    .columnSpacing = 260.0f,
+                    .rowSpacing = 120.0f,
+                    .sinkExtraSpacing = 400.0f,
+                });
+
+            for (auto& node : graph.nodes)
+            {
+                if (auto it = layout.find(node.id); it != layout.end())
+                    node.editor["pos"] = {it->second.x, it->second.y};
+            }
+        }
 
         glm::vec3 mapPreviewArcballPoint(const ImVec2& mouse, const ImVec2& min, const ImVec2& max)
         {
@@ -262,15 +331,10 @@ namespace vultra_app
                 case vultra::material_graph::ValueType::eTexture2D:
                 {
                     std::string uri = value.is_string() ? value.get<std::string>() : std::string {};
-                    const auto textureLabel = uri.empty() ? std::string {"<none>"} : std::filesystem::path(uri).filename().generic_string();
                     drawControlLabel(label);
-                    ImGui::SetNextItemWidth(148.0f);
-                    if (ImGui::Button(textureLabel.c_str(), ImVec2(148.0f, 0.0f)))
-                        ImGui::OpenPopup("TextureSelectorPopup");
-                    ui::TextureSelection selection;
-                    if (ui::drawTextureSelectorPopup(ctx, "TextureSelectorPopup", textureSelector, uri, &selection))
+                    if (ui::drawTextureUriSelector(ctx, "TextureSelectorPopup", uri, textureSelector, ImVec2(184.0f, 40.0f)))
                     {
-                        value = selection.uri;
+                        value = uri;
                         return true;
                     }
                     return false;
@@ -489,6 +553,7 @@ namespace vultra_app
             ImGui::End();
             return;
         }
+        const bool windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
         drawToolbar(ctx);
         ImGui::Separator();
@@ -504,6 +569,9 @@ namespace vultra_app
         ImGui::Separator();
         drawInspector(ctx);
         ImGui::EndChild();
+
+        if (!ImGui::GetIO().WantTextInput && windowFocused && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))
+            saveGraph(ctx);
 
         ImGui::End();
     }
@@ -620,7 +688,7 @@ namespace vultra_app
         file << "layout(location = 0) out vec4 FragColor;\n";
         file << "void main()\n{\n";
         file << "    MaterialGraphSurface surface = eval_material_graph_" << vultra::material_graph::sanitizeShaderId(shaderId)
-             << "(0u, vec2(0.0), vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0));\n";
+             << "(0u, vec2(0.0), vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), 0.0);\n";
         file << "    FragColor = surface.baseColor;\n";
         file << "}\n";
         file.close();
@@ -653,6 +721,13 @@ namespace vultra_app
         if (ImGui::Button(ICON_MDI_COG_PLAY " Compile"))
             compileGraph(ctx);
         ImGui::SameLine();
+        if (ImGui::Button(ICON_MDI_GRAPH " Auto Layout"))
+        {
+            applyMaterialGraphAutoLayout(m_Graph);
+            markDirty(ctx);
+            m_Status = "Auto layout applied";
+        }
+        ImGui::SameLine();
         ImGui::Checkbox("Live Apply", &m_LiveApply);
         if (!m_Status.empty())
         {
@@ -664,7 +739,6 @@ namespace vultra_app
     void MaterialGraphWindow::drawNodeEditor(EditorContext& ctx)
     {
         m_Pins.clear();
-        const bool graphCanvasHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
         ImNodes::EditorContextSet(m_NodeEditor);
         ImNodes::BeginNodeEditor();
         for (auto& node : m_Graph.nodes)
@@ -756,14 +830,47 @@ namespace vultra_app
             markDirty(ctx);
         }
 
-        int hovered = 0;
-        if (ImNodes::IsNodeHovered(&hovered) && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+        const bool canvasFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+        const bool canvasHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows |
+                                                          ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+
+        if (canvasFocused && ImGui::IsKeyPressed(ImGuiKey_Delete))
         {
-            m_ContextNode = hovered;
-            ImGui::OpenPopup("MaterialGraphNodeMenu");
+            int selectedCount = ImNodes::NumSelectedNodes();
+            if (selectedCount > 0)
+            {
+                std::vector<int> selected(static_cast<size_t>(selectedCount));
+                ImNodes::GetSelectedNodes(selected.data());
+                for (const int selectedNode : selected)
+                {
+                    std::string node;
+                    for (const auto& item : m_Pins)
+                        if (nodeId(item.second.node) == selectedNode)
+                            node = item.second.node;
+                    if (!node.empty() && node != "Surface")
+                    {
+                        std::erase_if(m_Graph.links, [&](const auto& link) { return link.from.nodeId == node || link.to.nodeId == node; });
+                        std::erase_if(m_Graph.nodes, [&](const auto& n) { return n.id == node; });
+                        markDirty(ctx);
+                    }
+                }
+            }
         }
-        if (graphCanvasHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right) && hovered == 0)
-            ImGui::OpenPopup("MaterialGraphAddNode");
+
+        int        hovered = 0;
+        const bool nodeHovered = ImNodes::IsNodeHovered(&hovered);
+        if (canvasHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+        {
+            if (nodeHovered)
+            {
+                m_ContextNode = hovered;
+                ImGui::OpenPopup("MaterialGraphNodeMenu");
+            }
+            else
+            {
+                ImGui::OpenPopup("MaterialGraphAddNode");
+            }
+        }
         if (ImGui::BeginPopup("MaterialGraphNodeMenu"))
         {
             if (ImGui::MenuItem("Delete"))

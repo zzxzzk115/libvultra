@@ -1,6 +1,7 @@
 #include "editor_app/ui/windows/render_graph_window.hpp"
 
 #include "editor_app/project_asset_utils.hpp"
+#include "editor_app/ui/graph_layout.hpp"
 #include "editor_app/ui/texture_preview_utils.hpp"
 
 #include <vultra/core/rhi/sampler.hpp>
@@ -158,6 +159,91 @@ namespace vultra_app
         bool hasResource(const vrendergraph::RenderGraphDesc& graph, std::string_view name)
         {
             return std::any_of(graph.resources.begin(), graph.resources.end(), [&](const auto& r) { return r.name == name; });
+        }
+
+        void applyRenderGraphAutoLayout(const vrendergraph::RenderGraphRegistry& registry,
+                                        vrendergraph::RenderGraphDesc&           graph)
+        {
+            std::unordered_map<std::string, bool> hasOutgoing;
+            for (const auto& pass : graph.passes)
+                hasOutgoing.try_emplace(pass.id, false);
+
+            std::vector<GraphLayoutEdge> edges;
+            for (const auto& pass : graph.passes)
+            {
+                for (const auto& [slot, ref] : pass.inputs)
+                {
+                    static_cast<void>(slot);
+                    const auto parsed = parseResRef(ref);
+                    if (!parsed || !findPass(graph, parsed->node))
+                        continue;
+                    int fromOrder = 0;
+                    if (const auto* source = findPass(graph, parsed->node); source && registry.contains(source->type))
+                    {
+                        const auto& outputs = registry.get(source->type).outputs;
+                        const auto  outIt = std::find(outputs.begin(), outputs.end(), parsed->slot);
+                        if (outIt != outputs.end())
+                            fromOrder = static_cast<int>(std::distance(outputs.begin(), outIt));
+                    }
+
+                    int toOrder = 0;
+                    if (registry.contains(pass.type))
+                    {
+                        const auto& inputs = registry.get(pass.type).inputs;
+                        const auto  it = std::find(inputs.begin(), inputs.end(), slot);
+                        if (it != inputs.end())
+                            toOrder = static_cast<int>(std::distance(inputs.begin(), it));
+                    }
+                    edges.push_back({
+                        .from = parsed->node,
+                        .to = pass.id,
+                        .fromOrder = fromOrder,
+                        .toOrder = toOrder,
+                    });
+                    hasOutgoing[parsed->node] = true;
+                }
+            }
+
+            std::vector<GraphLayoutNode> nodes;
+            nodes.reserve(graph.passes.size());
+            for (size_t i = 0; i < graph.passes.size(); ++i)
+            {
+                const auto& pass = graph.passes[i];
+                const auto* def = registry.contains(pass.type) ? &registry.get(pass.type) : nullptr;
+                const int   inputCount = def ? static_cast<int>(def->inputs.size()) : 0;
+                const int   outputCount = def ? static_cast<int>(def->outputs.size()) : 0;
+                const int   paramCount = def ? static_cast<int>(def->params.size()) : 0;
+                nodes.push_back(GraphLayoutNode {
+                    .id = pass.id,
+                    .order = static_cast<int>(i),
+                    .inputCount = inputCount,
+                    .outputCount = outputCount,
+                    .heightLanes = std::max(1.0f,
+                                            (124.0f + static_cast<float>(std::max(inputCount, outputCount) + paramCount) * 31.0f) /
+                                                260.0f),
+                    .sink = !hasOutgoing[pass.id],
+                });
+            }
+
+            const auto layout = computeLayeredGraphLayout(
+                nodes,
+                edges,
+                GraphLayoutConfig {
+                    .origin = {80.0f, 80.0f},
+                    .columnSpacing = 560.0f,
+                    .rowSpacing = 260.0f,
+                    .sinkExtraSpacing = 260.0f,
+                    .laneGap = 0.80f,
+                });
+
+            if (!graph.meta.is_object())
+                graph.meta = nlohmann::json::object();
+            auto& metaNodes = graph.meta["editor"]["nodes"];
+            if (!metaNodes.is_object())
+                metaNodes = nlohmann::json::object();
+
+            for (const auto& [id, pos] : layout)
+                metaNodes[id]["pos"] = nlohmann::json::array({pos.x, pos.y});
         }
 
         void ensureSlots(vrendergraph::PassDecl& pass, const vrendergraph::PassDefinition& def)
@@ -1206,6 +1292,65 @@ namespace vultra_app
             }
             std::sort(out.begin(), out.end());
             return out;
+        }
+
+        std::vector<std::string> listEditorProjectRenderGraphPassTypes(const EditorContext& ctx)
+        {
+            std::vector<std::string> types;
+            const auto               dir = assetPathForUri(ctx, "res://render/passes");
+            if (dir.empty())
+                return types;
+
+            std::error_code ec;
+            if (!std::filesystem::is_directory(dir, ec))
+                return types;
+
+            std::vector<std::filesystem::path> files;
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec))
+            {
+                if (ec)
+                    break;
+                if (!entry.is_regular_file(ec) || entry.path().extension() != ".lua")
+                    continue;
+                files.push_back(entry.path().lexically_normal());
+            }
+            std::sort(files.begin(), files.end());
+
+            for (const auto& path : files)
+            {
+                std::ifstream file(path);
+                if (!file.is_open())
+                    continue;
+
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+
+                sol::state lua;
+                lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
+                lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
+                auto result = lua.safe_script(buffer.str(), &sol::script_pass_on_error);
+                if (!result.valid())
+                    continue;
+
+                sol::object obj = result;
+                if (!obj.is<sol::table>())
+                    continue;
+
+                sol::table  passTable = obj.as<sol::table>();
+                std::string type;
+                sol::object typeObj = passTable["type"];
+                sol::object nameObj = passTable["name"];
+                if (typeObj.is<std::string>())
+                    type = typeObj.as<std::string>();
+                else if (nameObj.is<std::string>())
+                    type = nameObj.as<std::string>();
+                if (!type.empty())
+                    types.push_back(type);
+            }
+
+            std::sort(types.begin(), types.end());
+            types.erase(std::unique(types.begin(), types.end()), types.end());
+            return types;
         }
 
         void registerEditorProjectRenderGraphPasses(const EditorContext& ctx, vrendergraph::RenderGraphRegistry& registry)
@@ -4211,6 +4356,14 @@ namespace vultra_app
             }
         }
         ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_MDI_GRAPH " Auto Layout") && state.loaded)
+        {
+            applyRenderGraphAutoLayout(state.registry, state.graph);
+            state.markDirty();
+            state.applyPositions = true;
+            state.status = "Auto layout applied";
+        }
+        ImGui::SameLine();
         if (ImGui::SmallButton(ICON_MDI_DELETE " Delete Selected") && state.loaded)
             state.removeSelected();
 
@@ -4322,29 +4475,46 @@ namespace vultra_app
         if (!ImGui::BeginPopup("RenderGraphAddMenu"))
             return;
 
+        const auto addPassItem = [&](const std::string& type) {
+            if (!ImGui::MenuItem(type.c_str()))
+                return;
+
+            const auto& def = state.registry.get(type);
+            int         suffix = 1;
+            std::string id = type;
+            while (findPass(state.graph, id))
+                id = type + "_" + std::to_string(suffix++);
+
+            vrendergraph::PassDecl pass;
+            pass.id = std::move(id);
+            pass.type = type;
+            ensureSlots(pass, def);
+            state.graph.passes.push_back(std::move(pass));
+            state.markDirty();
+            state.applyPositions = true;
+            ImGui::CloseCurrentPopup();
+        };
+
+        auto projectTypes = listEditorProjectRenderGraphPassTypes(ctx);
+        std::erase_if(projectTypes, [&](const std::string& type) { return !state.registry.contains(type); });
+        const std::unordered_set<std::string> projectTypeSet(projectTypes.begin(), projectTypes.end());
+
+        if (state.editingFeatureInternals && !projectTypes.empty() && ImGui::BeginMenu("Project Pass"))
+        {
+            for (const auto& type : projectTypes)
+                addPassItem(type);
+            ImGui::EndMenu();
+        }
+
         if (state.editingFeatureInternals && ImGui::BeginMenu("Builtin Pass"))
         {
             auto types = state.registry.listTypes();
             std::sort(types.begin(), types.end());
             for (const auto& type : types)
             {
-                if (!ImGui::MenuItem(type.c_str()))
+                if (projectTypeSet.contains(type))
                     continue;
-
-                const auto& def = state.registry.get(type);
-                int         suffix = 1;
-                std::string id = type;
-                while (findPass(state.graph, id))
-                    id = type + "_" + std::to_string(suffix++);
-
-                vrendergraph::PassDecl pass;
-                pass.id = std::move(id);
-                pass.type = type;
-                ensureSlots(pass, def);
-                state.graph.passes.push_back(std::move(pass));
-                state.markDirty();
-                state.applyPositions = true;
-                ImGui::CloseCurrentPopup();
+                addPassItem(type);
             }
             ImGui::EndMenu();
         }

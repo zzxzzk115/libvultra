@@ -74,6 +74,7 @@ namespace vultra::material_graph
         add(desc("vultra.input.world_normal", "World Normal", {}, {pin("normal", ValueType::eVec3)}));
         add(desc("vultra.input.view_direction", "View Direction", {}, {pin("direction", ValueType::eVec3)}));
         add(desc("vultra.input.material_index", "Material Index", {}, {pin("index", ValueType::eInt)}));
+        add(desc("vultra.input.time", "Time", {}, {pin("seconds", ValueType::eFloat)}));
 
         add(desc("vultra.param.float", "Float", {}, {pin("value", ValueType::eFloat)}, {{"value", 0.0f}}));
         add(desc("vultra.param.vec2", "Vec2", {}, {pin("value", ValueType::eVec2)}, {{"value", {0.0f, 0.0f}}}));
@@ -94,6 +95,8 @@ namespace vultra::material_graph
         add(desc("vultra.math.power", "Power", {pin("base", ValueType::eFloat, 1.0f), pin("exponent", ValueType::eFloat, 1.0f)}, {pin("out", ValueType::eFloat)}));
         add(desc("vultra.math.min", "Min", number, {pin("out", ValueType::eFloat)}));
         add(desc("vultra.math.max", "Max", number, {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.sine", "Sine", {pin("v", ValueType::eFloat, 0.0f)}, {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.fract", "Fract", {pin("v", ValueType::eFloat, 0.0f)}, {pin("out", ValueType::eFloat)}));
         add(desc("vultra.math.dot",
                  "Dot",
                  {pin("a", ValueType::eVec3, nlohmann::json::array({0.0f, 0.0f, 0.0f})),
@@ -102,12 +105,14 @@ namespace vultra::material_graph
         add(desc("vultra.math.normalize", "Normalize", {pin("v", ValueType::eVec3, nlohmann::json::array({0.0f, 1.0f, 0.0f}))}, {pin("out", ValueType::eVec3)}));
         add(desc("vultra.math.clamp", "Clamp", {pin("v", ValueType::eFloat, 0.0f), pin("min", ValueType::eFloat, 0.0f), pin("max", ValueType::eFloat, 1.0f)}, {pin("out", ValueType::eFloat)}));
         add(desc("vultra.math.saturate", "Saturate", {pin("v", ValueType::eFloat, 0.0f)}, {pin("out", ValueType::eFloat)}));
+        add(desc("vultra.math.smoothstep", "Smoothstep", {pin("edge0", ValueType::eFloat, 0.0f), pin("edge1", ValueType::eFloat, 1.0f), pin("x", ValueType::eFloat, 0.5f)}, {pin("out", ValueType::eFloat)}));
         add(desc("vultra.math.mix",
                  "Mix",
                  {pin("a", ValueType::eVec4, nlohmann::json::array({0.0f, 0.0f, 0.0f, 1.0f})),
                   pin("b", ValueType::eVec4, nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})),
                   pin("t", ValueType::eFloat, 0.5f)},
                  {pin("out", ValueType::eVec4)}));
+        add(desc("vultra.vector.split_vec2", "Split Vec2", {pin("v", ValueType::eVec2, nlohmann::json::array({0.0f, 0.0f}))}, {pin("x", ValueType::eFloat), pin("y", ValueType::eFloat)}));
 
         add(desc("vultra.texture.sample2d", "Sample Texture2D", {pin("texture", ValueType::eTexture2D), pin("uv", ValueType::eVec2)}, {pin("rgba", ValueType::eVec4), pin("rgb", ValueType::eVec3), pin("a", ValueType::eFloat)}));
         add(desc("vultra.utility.normal_map", "Normal Map", {pin("sample", ValueType::eVec3), pin("normalWS", ValueType::eVec3)}, {pin("normal", ValueType::eVec3)}));

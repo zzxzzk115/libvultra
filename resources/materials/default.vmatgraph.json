@@ -3,28 +3,8 @@
     "links": [
         {
             "from": {
-                "node": "BaseTexture",
-                "pin": "texture"
-            },
-            "to": {
-                "node": "SampleBase",
-                "pin": "texture"
-            }
-        },
-        {
-            "from": {
-                "node": "UV0",
-                "pin": "uv"
-            },
-            "to": {
-                "node": "SampleBase",
-                "pin": "uv"
-            }
-        },
-        {
-            "from": {
-                "node": "SampleBase",
-                "pin": "rgba"
+                "node": "ColdPulseColor",
+                "pin": "value"
             },
             "to": {
                 "node": "BaseMix",
@@ -33,62 +13,12 @@
         },
         {
             "from": {
-                "node": "WarmTint",
+                "node": "HotPulseColor",
                 "pin": "value"
             },
             "to": {
                 "node": "BaseMix",
                 "pin": "b"
-            }
-        },
-        {
-            "from": {
-                "node": "WorldNormal",
-                "pin": "normal"
-            },
-            "to": {
-                "node": "Fresnel",
-                "pin": "normalWS"
-            }
-        },
-        {
-            "from": {
-                "node": "ViewDirection",
-                "pin": "direction"
-            },
-            "to": {
-                "node": "Fresnel",
-                "pin": "viewDirWS"
-            }
-        },
-        {
-            "from": {
-                "node": "FresnelPower",
-                "pin": "value"
-            },
-            "to": {
-                "node": "Fresnel",
-                "pin": "power"
-            }
-        },
-        {
-            "from": {
-                "node": "Fresnel",
-                "pin": "factor"
-            },
-            "to": {
-                "node": "FresnelMask",
-                "pin": "v"
-            }
-        },
-        {
-            "from": {
-                "node": "FresnelMask",
-                "pin": "out"
-            },
-            "to": {
-                "node": "BaseMix",
-                "pin": "t"
             }
         },
         {
@@ -143,109 +73,99 @@
         },
         {
             "from": {
-                "node": "Alpha",
+                "node": "Time",
+                "pin": "seconds"
+            },
+            "to": {
+                "node": "PulseTime",
+                "pin": "a"
+            }
+        },
+        {
+            "from": {
+                "node": "PulseSpeed",
                 "pin": "value"
             },
             "to": {
-                "node": "Surface",
-                "pin": "alpha"
+                "node": "PulseTime",
+                "pin": "b"
+            }
+        },
+        {
+            "from": {
+                "node": "PulseTime",
+                "pin": "out"
+            },
+            "to": {
+                "node": "PulseSine",
+                "pin": "v"
+            }
+        },
+        {
+            "from": {
+                "node": "PulseSine",
+                "pin": "out"
+            },
+            "to": {
+                "node": "PulseScale",
+                "pin": "a"
+            }
+        },
+        {
+            "from": {
+                "node": "PulseAmplitude",
+                "pin": "value"
+            },
+            "to": {
+                "node": "PulseScale",
+                "pin": "b"
+            }
+        },
+        {
+            "from": {
+                "node": "PulseScale",
+                "pin": "out"
+            },
+            "to": {
+                "node": "Pulse01",
+                "pin": "a"
+            }
+        },
+        {
+            "from": {
+                "node": "PulseBias",
+                "pin": "value"
+            },
+            "to": {
+                "node": "Pulse01",
+                "pin": "b"
+            }
+        },
+        {
+            "from": {
+                "node": "Pulse01",
+                "pin": "out"
+            },
+            "to": {
+                "node": "BaseMix",
+                "pin": "t"
             }
         }
     ],
     "metadata": {
-        "description": "Default complex material graph exercising texture sampling, vertex inputs, utility nodes and PBR surface fields."
+        "description": "Default complex material graph exercising a high-contrast time-driven color pulse and PBR surface fields."
     },
     "name": "Default Material Graph",
     "nodes": [
         {
-            "displayName": "Texture2D",
+            "displayName": "Cold Pulse Color",
             "editor": {
                 "pos": [
-                    -740.0,
-                    -140.0
+                    280.0,
+                    -120.0
                 ]
             },
-            "id": "BaseTexture",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "texture",
-                    "type": "texture2d"
-                }
-            ],
-            "params": {
-                "texture": "res://models/Sponza/11474523244911310074.jpg"
-            },
-            "type": "vultra.param.texture2d"
-        },
-        {
-            "displayName": "UV0",
-            "editor": {
-                "pos": [
-                    -740.0,
-                    40.0
-                ]
-            },
-            "id": "UV0",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "uv",
-                    "type": "vec2"
-                }
-            ],
-            "params": {},
-            "type": "vultra.input.uv0"
-        },
-        {
-            "displayName": "Sample Texture2D",
-            "editor": {
-                "pos": [
-                    -500.0,
-                    -80.0
-                ]
-            },
-            "id": "SampleBase",
-            "inputs": [
-                {
-                    "name": "texture",
-                    "type": "texture2d"
-                },
-                {
-                    "default": [
-                        0.0,
-                        0.0
-                    ],
-                    "name": "uv",
-                    "type": "vec2"
-                }
-            ],
-            "outputs": [
-                {
-                    "name": "rgba",
-                    "type": "vec4"
-                },
-                {
-                    "name": "rgb",
-                    "type": "vec3"
-                },
-                {
-                    "name": "a",
-                    "type": "float"
-                }
-            ],
-            "params": {},
-            "type": "vultra.texture.sample2d"
-        },
-        {
-            "displayName": "Warm Tint",
-            "editor": {
-                "pos": [
-                    -500.0,
-                    120.0
-                ]
-            },
-            "id": "WarmTint",
+            "id": "ColdPulseColor",
             "inputs": [],
             "outputs": [
                 {
@@ -255,147 +175,46 @@
             ],
             "params": {
                 "value": [
-                    0.95,
-                    0.58,
-                    0.28,
+                    0.02,
+                    0.16,
+                    1.0,
                     1.0
                 ]
             },
             "type": "vultra.param.color"
         },
         {
-            "displayName": "World Normal",
+            "displayName": "Hot Pulse Color",
             "editor": {
                 "pos": [
-                    -500.0,
-                    300.0
+                    280.0,
+                    18.000015258789063
                 ]
             },
-            "id": "WorldNormal",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "normal",
-                    "type": "vec3"
-                }
-            ],
-            "params": {},
-            "type": "vultra.input.world_normal"
-        },
-        {
-            "displayName": "View Direction",
-            "editor": {
-                "pos": [
-                    -500.0,
-                    420.0
-                ]
-            },
-            "id": "ViewDirection",
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "direction",
-                    "type": "vec3"
-                }
-            ],
-            "params": {},
-            "type": "vultra.input.view_direction"
-        },
-        {
-            "displayName": "Fresnel Power",
-            "editor": {
-                "pos": [
-                    -500.0,
-                    540.0
-                ]
-            },
-            "id": "FresnelPower",
+            "id": "HotPulseColor",
             "inputs": [],
             "outputs": [
                 {
                     "name": "value",
-                    "type": "float"
+                    "type": "color"
                 }
             ],
             "params": {
-                "value": 4.0
-            },
-            "type": "vultra.param.float"
-        },
-        {
-            "displayName": "Fresnel",
-            "editor": {
-                "pos": [
-                    -250.0,
-                    380.0
+                "value": [
+                    1.0,
+                    0.08,
+                    0.0,
+                    1.0
                 ]
             },
-            "id": "Fresnel",
-            "inputs": [
-                {
-                    "default": [
-                        0.0,
-                        1.0,
-                        0.0
-                    ],
-                    "name": "normalWS",
-                    "type": "vec3"
-                },
-                {
-                    "default": [
-                        0.0,
-                        0.0,
-                        1.0
-                    ],
-                    "name": "viewDirWS",
-                    "type": "vec3"
-                },
-                {
-                    "default": 5.0,
-                    "name": "power",
-                    "type": "float"
-                }
-            ],
-            "outputs": [
-                {
-                    "name": "factor",
-                    "type": "float"
-                }
-            ],
-            "params": {},
-            "type": "vultra.utility.fresnel"
-        },
-        {
-            "displayName": "Saturate",
-            "editor": {
-                "pos": [
-                    -40.0,
-                    390.0
-                ]
-            },
-            "id": "FresnelMask",
-            "inputs": [
-                {
-                    "default": 0.0,
-                    "name": "v",
-                    "type": "float"
-                }
-            ],
-            "outputs": [
-                {
-                    "name": "out",
-                    "type": "float"
-                }
-            ],
-            "params": {},
-            "type": "vultra.math.saturate"
+            "type": "vultra.param.color"
         },
         {
             "displayName": "Mix",
             "editor": {
                 "pos": [
-                    -120.0,
-                    -20.0
+                    540.0,
+                    0.0
                 ]
             },
             "id": "BaseMix",
@@ -432,15 +251,29 @@
                     "type": "vec4"
                 }
             ],
-            "params": {},
+            "params": {
+                "a": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "b": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0
+                ],
+                "t": 0.5
+            },
             "type": "vultra.math.mix"
         },
         {
             "displayName": "Roughness",
             "editor": {
                 "pos": [
-                    -120.0,
-                    180.0
+                    800.0,
+                    377.99993896484375
                 ]
             },
             "id": "Roughness",
@@ -460,8 +293,8 @@
             "displayName": "Metallic",
             "editor": {
                 "pos": [
-                    -120.0,
-                    290.0
+                    800.0,
+                    239.99996948242188
                 ]
             },
             "id": "Metallic",
@@ -481,8 +314,8 @@
             "displayName": "AO",
             "editor": {
                 "pos": [
-                    -120.0,
-                    520.0
+                    800.0,
+                    515.9999389648438
                 ]
             },
             "id": "AO",
@@ -502,8 +335,8 @@
             "displayName": "Rim Emissive",
             "editor": {
                 "pos": [
-                    -120.0,
-                    640.0
+                    800.0,
+                    654.0
                 ]
             },
             "id": "RimEmissive",
@@ -524,14 +357,33 @@
             "type": "vultra.param.vec3"
         },
         {
-            "displayName": "Alpha",
+            "displayName": "Time",
             "editor": {
                 "pos": [
-                    -120.0,
-                    760.0
+                    -760.0,
+                    -60.0
                 ]
             },
-            "id": "Alpha",
+            "id": "Time",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "seconds",
+                    "type": "float"
+                }
+            ],
+            "params": {},
+            "type": "vultra.input.time"
+        },
+        {
+            "displayName": "Pulse Speed",
+            "editor": {
+                "pos": [
+                    -760.0,
+                    78.00001525878906
+                ]
+            },
+            "id": "PulseSpeed",
             "inputs": [],
             "outputs": [
                 {
@@ -540,16 +392,184 @@
                 }
             ],
             "params": {
-                "value": 1.0
+                "value": 1.2
             },
             "type": "vultra.param.float"
+        },
+        {
+            "displayName": "Multiply",
+            "editor": {
+                "pos": [
+                    -500.0,
+                    0.0
+                ]
+            },
+            "id": "PulseTime",
+            "inputs": [
+                {
+                    "default": 0.0,
+                    "name": "a",
+                    "type": "float"
+                },
+                {
+                    "default": 0.0,
+                    "name": "b",
+                    "type": "float"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "out",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "a": 0.0,
+                "b": 0.0
+            },
+            "type": "vultra.math.multiply"
+        },
+        {
+            "displayName": "Sine",
+            "editor": {
+                "pos": [
+                    -240.0,
+                    0.0
+                ]
+            },
+            "id": "PulseSine",
+            "inputs": [
+                {
+                    "default": 0.0,
+                    "name": "v",
+                    "type": "float"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "out",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "v": 0.0
+            },
+            "type": "vultra.math.sine"
+        },
+        {
+            "displayName": "Pulse Amplitude",
+            "editor": {
+                "pos": [
+                    -240.0,
+                    146.0
+                ]
+            },
+            "id": "PulseAmplitude",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 0.5
+            },
+            "type": "vultra.param.float"
+        },
+        {
+            "displayName": "Pulse Bias",
+            "editor": {
+                "pos": [
+                    20.0,
+                    254.0
+                ]
+            },
+            "id": "PulseBias",
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "value",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "value": 0.5
+            },
+            "type": "vultra.param.float"
+        },
+        {
+            "displayName": "Multiply",
+            "editor": {
+                "pos": [
+                    20.0,
+                    60.0
+                ]
+            },
+            "id": "PulseScale",
+            "inputs": [
+                {
+                    "default": 0.0,
+                    "name": "a",
+                    "type": "float"
+                },
+                {
+                    "default": 0.0,
+                    "name": "b",
+                    "type": "float"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "out",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "a": 0.0,
+                "b": 0.0
+            },
+            "type": "vultra.math.multiply"
+        },
+        {
+            "displayName": "Add",
+            "editor": {
+                "pos": [
+                    280.0,
+                    156.00003051757813
+                ]
+            },
+            "id": "Pulse01",
+            "inputs": [
+                {
+                    "default": 0.0,
+                    "name": "a",
+                    "type": "float"
+                },
+                {
+                    "default": 0.0,
+                    "name": "b",
+                    "type": "float"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "out",
+                    "type": "float"
+                }
+            ],
+            "params": {
+                "a": 0.0,
+                "b": 0.0
+            },
+            "type": "vultra.math.add"
         },
         {
             "displayName": "Surface Output",
             "editor": {
                 "pos": [
-                    240.0,
-                    60.0
+                    1460.0,
+                    420.0
                 ]
             },
             "id": "Surface",
