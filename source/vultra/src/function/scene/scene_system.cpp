@@ -8,8 +8,8 @@
 #include "vultra/function/scene/vscn_writer.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
-#include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
+#include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/hierarchy_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
@@ -27,9 +27,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstring>
 #include <filesystem>
-#include <charconv>
 #include <sstream>
 #include <unordered_set>
 #include <vector>
@@ -154,11 +154,11 @@ namespace vultra
     static std::vector<MaterialSlotOverride> parse_material_overrides(std::string_view raw)
     {
         std::string t = strip_quotes_copy(std::string(raw));
-        t = unescape_scene_string(t);
+        t             = unescape_scene_string(t);
 
         std::vector<MaterialSlotOverride> out;
-        std::stringstream ss(t);
-        std::string item;
+        std::stringstream                 ss(t);
+        std::string                       item;
         while (std::getline(ss, item, ';'))
         {
             item = trim_copy(item);
@@ -169,9 +169,9 @@ namespace vultra
             if (sep == std::string::npos)
                 continue;
 
-            const auto slotText = trim_copy(std::string_view(item).substr(0, sep));
-            const auto uri      = trim_copy(std::string_view(item).substr(sep + 1));
-            uint32_t slot = 0;
+            const auto slotText  = trim_copy(std::string_view(item).substr(0, sep));
+            const auto uri       = trim_copy(std::string_view(item).substr(sep + 1));
+            uint32_t   slot      = 0;
             const auto [ptr, ec] = std::from_chars(slotText.data(), slotText.data() + slotText.size(), slot);
             if (ec != std::errc {} || ptr != slotText.data() + slotText.size() || uri.empty())
                 continue;
@@ -183,7 +183,7 @@ namespace vultra
     static std::string material_overrides_to_text(const std::vector<MaterialSlotOverride>& overrides)
     {
         std::ostringstream oss;
-        bool first = true;
+        bool               first = true;
         for (const auto& override : overrides)
         {
             if (override.materialGraph.empty())
@@ -383,8 +383,8 @@ namespace vultra
                                                                      {"active", "visible", "locked", "selectable"});
         m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent",
                                                                   {"position", "rotation", "scale"});
-        m_ComponentRegistry.registerComponent<MeshComponent>("MeshComponent",
-                                                             {"mesh", "builtinGeometry", "materialColor", "materialOverrides"});
+        m_ComponentRegistry.registerComponent<MeshComponent>(
+            "MeshComponent", {"mesh", "builtinGeometry", "materialColor", "materialOverrides"});
         m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});
         m_ComponentRegistry.registerComponent<CameraComponent>("CameraComponent",
                                                                {"primary",
@@ -397,19 +397,11 @@ namespace vultra
                                                                 "clearColor",
                                                                 "priority",
                                                                 "rendererKey"});
-        m_ComponentRegistry.registerComponent<XRViewComponent>("XRViewComponent",
-                                                               {"enabled",
-                                                                "trackingOrigin",
-                                                                "stereoGraphMode",
-                                                                "fallbackMono"});
-        m_ComponentRegistry.registerComponent<EnvironmentComponent>("EnvironmentComponent",
-                                                                    {"active",
-                                                                     "skybox",
-                                                                     "ambientColor",
-                                                                     "ambientIntensity",
-                                                                     "enableIBL",
-                                                                     "iblColor",
-                                                                     "iblIntensity"});
+        m_ComponentRegistry.registerComponent<XRViewComponent>(
+            "XRViewComponent", {"enabled", "trackingOrigin", "stereoGraphMode", "fallbackMono"});
+        m_ComponentRegistry.registerComponent<EnvironmentComponent>(
+            "EnvironmentComponent",
+            {"active", "skybox", "ambientColor", "ambientIntensity", "enableIBL", "iblColor", "iblIntensity"});
         m_ComponentRegistry.registerComponent<ReflectionProbeComponent>("ReflectionProbeComponent",
                                                                         {"active",
                                                                          "enableIBL",
@@ -528,9 +520,8 @@ namespace vultra
 
     void SceneSystem::applyMeshDefaultTransformIfNeeded(entt::registry& reg, entt::entity e, const SceneNode& node)
     {
-        const bool hasExplicitTransform = std::ranges::any_of(node.properties, [](const SceneProperty& prop) {
-            return prop.component == "TransformComponent";
-        });
+        const bool hasExplicitTransform = std::ranges::any_of(
+            node.properties, [](const SceneProperty& prop) { return prop.component == "TransformComponent"; });
         if (hasExplicitTransform || !m_AssetService || !reg.all_of<MeshComponent>(e))
             return;
 
@@ -542,8 +533,8 @@ namespace vultra
         if (!handle.ready())
             return;
 
-        vasset::VMesh  metadataMesh {};
-        const auto*    cpuMesh = handle.cpu();
+        vasset::VMesh metadataMesh {};
+        const auto*   cpuMesh = handle.cpu();
         if (!cpuMesh)
         {
             const auto entry = m_AssetService->registry().lookup(mesh.mesh);
@@ -565,7 +556,7 @@ namespace vultra
         if (!cpuMesh->hasDefaultTransform)
             return;
 
-        auto& transform = reg.get_or_emplace<TransformComponent>(e);
+        auto& transform    = reg.get_or_emplace<TransformComponent>(e);
         transform.position = cpuMesh->defaultPosition;
         transform.rotation = cpuMesh->defaultRotation;
         transform.scale    = cpuMesh->defaultScale;
@@ -694,9 +685,8 @@ namespace vultra
                 auto childResult = instantiateNodeR(world, *child, parent, baseDir, !doc->isManifest, doc->assets);
                 if (!childResult)
                 {
-                    VULTRA_CORE_ERROR("[SceneSystem] Failed to instantiate scene '{}': {}",
-                                      uri,
-                                      std::move(childResult).error());
+                    VULTRA_CORE_ERROR(
+                        "[SceneSystem] Failed to instantiate scene '{}': {}", uri, std::move(childResult).error());
                     return entt::null;
                 }
                 if (firstRoot == entt::null)
@@ -714,10 +704,8 @@ namespace vultra
         return std::move(rootResult).value();
     }
 
-    entt::entity SceneSystem::instantiateSceneDocument(World&             world,
-                                                       const SceneDocument& doc,
-                                                       entt::entity         parent,
-                                                       bool                 clearWorld)
+    entt::entity
+    SceneSystem::instantiateSceneDocument(World& world, const SceneDocument& doc, entt::entity parent, bool clearWorld)
     {
         if (!doc.root)
             return entt::null;

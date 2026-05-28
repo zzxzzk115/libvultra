@@ -1,7 +1,7 @@
 #include "vultra/core/rhi/backends/vk/vulkan_radix_sorter.hpp"
 
-#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 
@@ -50,9 +50,11 @@ namespace vultra
             assert(maxElementCount > 0u);
 
             VrdxSorterCreateInfo createInfo {};
-            createInfo.physicalDevice = asVkHandle<VkPhysicalDevice>(VulkanRenderDeviceAccess::getPhysicalDeviceHandle(rd));
-            createInfo.device         = asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd));
-            createInfo.pipelineCache  = asVkHandle<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd));
+            createInfo.physicalDevice =
+                asVkHandle<VkPhysicalDevice>(VulkanRenderDeviceAccess::getPhysicalDeviceHandle(rd));
+            createInfo.device = asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd));
+            createInfo.pipelineCache =
+                asVkHandle<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd));
 
             vrdxCreateSorter(&createInfo, &m_Sorter);
             if (m_Sorter)
@@ -63,8 +65,8 @@ namespace vultra
 
                 VrdxSorterStorageRequirements keyValueStorageRequirements {};
                 vrdxGetSorterKeyValueStorageRequirements(m_Sorter, maxElementCount, &keyValueStorageRequirements);
-                m_KeyValueStorageRequirements =
-                    {.size = keyValueStorageRequirements.size, .usage = toRhi(keyValueStorageRequirements.usage)};
+                m_KeyValueStorageRequirements = {.size  = keyValueStorageRequirements.size,
+                                                 .usage = toRhi(keyValueStorageRequirements.usage)};
             }
         }
 

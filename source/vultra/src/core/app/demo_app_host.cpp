@@ -69,7 +69,8 @@ namespace vultra
             return std::nullopt;
         }
 
-        [[nodiscard]] std::optional<UniversalRenderer::RenderProfile> parseRenderProfileToken(const std::string_view token)
+        [[nodiscard]] std::optional<UniversalRenderer::RenderProfile>
+        parseRenderProfileToken(const std::string_view token)
         {
             if (token == "default" || token == "universal")
             {
@@ -143,18 +144,21 @@ namespace vultra
         }
 
         [[nodiscard]] std::optional<UniversalRenderer::RenderProfile>
-        parseCliRenderProfile(std::span<const std::string> args, bool& sawRenderProfileArg, bool& invalidRenderProfileValue)
+        parseCliRenderProfile(std::span<const std::string> args,
+                              bool&                        sawRenderProfileArg,
+                              bool&                        invalidRenderProfileValue)
         {
             std::optional<UniversalRenderer::RenderProfile> parsed;
             for (size_t i = 0; i < args.size(); ++i)
             {
-                const std::string_view arg = args[i];
+                const std::string_view     arg = args[i];
                 constexpr std::string_view kRenderProfileEqPrefix {"--render-profile="};
 
                 if (arg.starts_with(kRenderProfileEqPrefix))
                 {
                     sawRenderProfileArg = true;
-                    if (auto value = parseRenderProfileToken(arg.substr(kRenderProfileEqPrefix.size())); value.has_value())
+                    if (auto value = parseRenderProfileToken(arg.substr(kRenderProfileEqPrefix.size()));
+                        value.has_value())
                     {
                         parsed = value;
                     }
@@ -295,8 +299,8 @@ namespace vultra
 
             if (invalidRenderProfileValue)
             {
-                VULTRA_CORE_WARN(
-                    "[DemoAppHost] Invalid render profile CLI value. Use --render-profile=(default|universal|compat|compatibility)");
+                VULTRA_CORE_WARN("[DemoAppHost] Invalid render profile CLI value. Use "
+                                 "--render-profile=(default|universal|compat|compatibility)");
             }
         }
 
@@ -458,8 +462,8 @@ namespace vultra
                 return;
             }
 
-            m_PendingResize = true;
-            m_PendingResizeWidth = framebufferWidth;
+            m_PendingResize       = true;
+            m_PendingResizeWidth  = framebufferWidth;
             m_PendingResizeHeight = framebufferHeight;
             m_LastResizeEventTime = std::chrono::steady_clock::now();
         }
@@ -485,9 +489,9 @@ namespace vultra
             return;
         }
 
-        const uint32_t framebufferWidth = m_PendingResizeWidth;
+        const uint32_t framebufferWidth  = m_PendingResizeWidth;
         const uint32_t framebufferHeight = m_PendingResizeHeight;
-        m_PendingResize = false;
+        m_PendingResize                  = false;
 
         backendService->renderDevice().waitIdle();
         backendService->frameController().recreate();

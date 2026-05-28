@@ -40,7 +40,7 @@ namespace vultra::rhi
         const os::Window::CursorImage* decodeImGuiCursor(std::span<const uint8_t> bytes, int hotX, int hotY)
         {
             static std::vector<std::optional<os::Window::CursorImage>> cache;
-            static std::vector<const void*> keys;
+            static std::vector<const void*>                            keys;
 
             const void* key = bytes.data();
             for (std::size_t i = 0; i < keys.size(); ++i)
@@ -143,13 +143,13 @@ namespace vultra::rhi
         initInfo.PipelineCache = VK_NULL_HANDLE;
         initInfo.DescriptorPool =
             asVkHandle<VkDescriptorPool>(VulkanRenderDeviceAccess::getDescriptorPoolHandle(renderDevice));
-        initInfo.MinImageCount               = static_cast<uint32_t>(swapchain.getNumBuffers());
-        initInfo.ImageCount                  = static_cast<uint32_t>(swapchain.getNumBuffers());
-        initInfo.Allocator                   = nullptr;
-        initInfo.UseDynamicRendering         = true;
+        initInfo.MinImageCount       = static_cast<uint32_t>(swapchain.getNumBuffers());
+        initInfo.ImageCount          = static_cast<uint32_t>(swapchain.getNumBuffers());
+        initInfo.Allocator           = nullptr;
+        initInfo.UseDynamicRendering = true;
 #if IMGUI_VERSION_NUM >= 19250
-        initInfo.PipelineInfoMain.Subpass         = 0;
-        initInfo.PipelineInfoMain.MSAASamples     = VK_SAMPLE_COUNT_1_BIT;
+        initInfo.PipelineInfoMain.Subpass     = 0;
+        initInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
         initInfo.PipelineInfoMain.PipelineRenderingCreateInfo =
             static_cast<VkPipelineRenderingCreateInfo>(renderingCreateInfo);
 #else
@@ -172,8 +172,8 @@ namespace vultra::rhi
         ImGui_ImplSDL3_Shutdown();
 #endif
         m_HasAppliedImGuiCursorOverride = false;
-        m_Window      = nullptr;
-        m_Initialized = false;
+        m_Window                        = nullptr;
+        m_Initialized                   = false;
     }
 
     void VulkanImGui::beginFrame(const os::Window& window)
@@ -197,9 +197,9 @@ namespace vultra::rhi
     {
         if (m_Window != nullptr)
         {
-            ImGuiIO& io = ImGui::GetIO();
-            const bool uiOwnsCursor = io.WantCaptureMouse || ImGui::IsAnyItemHovered() ||
-                                      ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+            ImGuiIO&   io = ImGui::GetIO();
+            const bool uiOwnsCursor =
+                io.WantCaptureMouse || ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
             if (uiOwnsCursor)
             {
                 auto& window = const_cast<os::Window&>(*m_Window);
@@ -264,10 +264,10 @@ namespace vultra::rhi
 
     std::uintptr_t VulkanImGui::addTexture(const Texture& texture, const Sampler sampler)
     {
-        auto* const descriptorSet = ImGui_ImplVulkan_AddTexture(
-            asVkHandle<VkSampler>(m_RenderDevice.getSamplerHandle(sampler).value),
-            asVkHandle<VkImageView>(texture.getImageView().getHandle()),
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        auto* const descriptorSet =
+            ImGui_ImplVulkan_AddTexture(asVkHandle<VkSampler>(m_RenderDevice.getSamplerHandle(sampler).value),
+                                        asVkHandle<VkImageView>(texture.getImageView().getHandle()),
+                                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         return toBackendHandle(descriptorSet);
     }
 

@@ -49,9 +49,8 @@ namespace vultra
             // tracked transition state. This matters for backbuffer-derived views whose current layout may become
             // Present after a previous frame while the next use is still a sampled read.
             const auto aspect = toRhi(toVk(info.imageAspect));
-            const auto view = info.layer ?
-                info.texture->getLayer(*info.layer, std::nullopt, aspect) :
-                info.texture->getImageView(aspect);
+            const auto view   = info.layer ? info.texture->getLayer(*info.layer, std::nullopt, aspect) :
+                                             info.texture->getImageView(aspect);
             addCombinedImageSampler(view.getHandle(), ImageLayout::eReadOnly, sampler);
         }
 
@@ -74,9 +73,8 @@ namespace vultra
         {
             m_Bindings[index] = {DescriptorType::eSampledImage, 1, static_cast<int32_t>(m_ImageInfos.size())};
             const auto aspect = toRhi(toVk(info.imageAspect));
-            const auto view = info.layer ?
-                info.texture->getLayer(*info.layer, std::nullopt, aspect) :
-                info.texture->getImageView(aspect);
+            const auto view   = info.layer ? info.texture->getLayer(*info.layer, std::nullopt, aspect) :
+                                             info.texture->getImageView(aspect);
             addImage(view.getHandle(), ImageLayout::eReadOnly);
         }
 

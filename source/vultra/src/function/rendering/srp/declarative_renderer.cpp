@@ -26,7 +26,6 @@
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_foveated_composite_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_preprocess_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/general_gaussian_splat_render_pass.hpp"
-#include "vultra/function/rendering/srp/builtin/passes/ssao_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/hzb_generate_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/meshlet_cull_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/meshlet_hiz_cull_pass.hpp"
@@ -34,8 +33,9 @@
 #include "vultra/function/rendering/srp/builtin/passes/selection_outline_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/shadow_map_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/skybox_pass.hpp"
-#include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ssao_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssr_composite_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/thin_gbuffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
@@ -150,7 +150,8 @@ namespace vultra
 
             const bool xrView = view.usesSingleGraphStereo();
             bool       result = false;
-            if (normalized == "xr" || normalized == "vr" || normalized == "stereo" || normalized == "single_graph_stereo")
+            if (normalized == "xr" || normalized == "vr" || normalized == "stereo" ||
+                normalized == "single_graph_stereo")
                 result = xrView;
             else if (normalized == "non_xr" || normalized == "non_vr" || normalized == "mono")
                 result = !xrView;
@@ -168,18 +169,17 @@ namespace vultra
             while (orBegin <= normalized.size())
             {
                 const auto orEnd = normalized.find("||", orBegin);
-                const auto group = std::string_view(normalized).substr(
-                    orBegin,
-                    orEnd == std::string::npos ? std::string::npos : orEnd - orBegin);
+                const auto group =
+                    std::string_view(normalized)
+                        .substr(orBegin, orEnd == std::string::npos ? std::string::npos : orEnd - orBegin);
 
                 bool   groupMatches = true;
                 size_t andBegin     = 0;
                 while (andBegin <= group.size())
                 {
                     const auto andEnd = group.find("&&", andBegin);
-                    const auto token  = group.substr(andBegin,
-                                                     andEnd == std::string_view::npos ? std::string_view::npos :
-                                                                                         andEnd - andBegin);
+                    const auto token  = group.substr(
+                        andBegin, andEnd == std::string_view::npos ? std::string_view::npos : andEnd - andBegin);
                     groupMatches = groupMatches && renderGraphConditionTokenMatches(token, view);
                     if (andEnd == std::string_view::npos)
                         break;
@@ -256,7 +256,7 @@ namespace vultra
         }
 
         [[nodiscard]] std::unique_ptr<RenderFeature> makeBuiltinFeature(std::string_view id,
-                                                                         IRenderService*  renderService)
+                                                                        IRenderService*  renderService)
         {
             const auto normalized = normalizeId(std::string(id));
             if (normalized == "compatibility_basecolor" || normalized == "basecolor" || normalized == "compatibility")
@@ -297,18 +297,18 @@ namespace vultra
 
         void update(FullscreenPass desc, rhi::ShaderLibraryRuntime* shaderLibrary)
         {
-            const bool pipelineKeyChanged = shaderLibrary != m_ShaderLibrary || desc.shader.library != m_Desc.shader.library ||
-                                            desc.shader.vertex != m_Desc.shader.vertex ||
-                                            desc.shader.fragment != m_Desc.shader.fragment;
-            m_Desc = std::move(desc);
+            const bool pipelineKeyChanged =
+                shaderLibrary != m_ShaderLibrary || desc.shader.library != m_Desc.shader.library ||
+                desc.shader.vertex != m_Desc.shader.vertex || desc.shader.fragment != m_Desc.shader.fragment;
+            m_Desc          = std::move(desc);
             m_ShaderLibrary = shaderLibrary;
             if (pipelineKeyChanged)
                 m_Pipelines.clear();
         }
 
         FrameGraphResource addPass(FrameGraphBuildContext& ctx,
-                                   FrameGraphResource      directInput = {},
-                                   FrameGraphResource      directOutput = {},
+                                   FrameGraphResource      directInput        = {},
+                                   FrameGraphResource      directOutput       = {},
                                    const bool              publishNamedOutput = true)
         {
             if (!ctx.view().target || !m_ShaderLibrary)
@@ -320,17 +320,16 @@ namespace vultra
                 FrameGraphResource output;
             };
 
-            const auto inputKey  = resourceKeyFor(m_Desc.input);
-            const auto outputKey = resourceKeyFor(m_Desc.output);
-            const auto input = directInput ? directInput : ctx.data.tryGet(inputKey);
-            const auto outputDesc = makeOutputDesc(ctx, input);
+            const auto         inputKey   = resourceKeyFor(m_Desc.input);
+            const auto         outputKey  = resourceKeyFor(m_Desc.output);
+            const auto         input      = directInput ? directInput : ctx.data.tryGet(inputKey);
+            const auto         outputDesc = makeOutputDesc(ctx, input);
             FrameGraphResource output =
-                directOutput ? directOutput :
+                directOutput ?
+                    directOutput :
                 normalizeId(m_Desc.output) == "backbuffer" || normalizeId(m_Desc.output) == "target" ?
-                    framegraph::importTexture(ctx.fg,
-                                              "DeclarativeBackbuffer",
-                                              ctx.view().target,
-                                              ctx.view().renderTargetViewMask()) :
+                    framegraph::importTexture(
+                        ctx.fg, "DeclarativeBackbuffer", ctx.view().target, ctx.view().renderTargetViewMask()) :
                     FrameGraphResource {};
 
             ctx.fg.addCallbackPass<PassData>(
@@ -338,23 +337,22 @@ namespace vultra
                 [input, outputDesc, &output, &ctx, this](FrameGraph::Builder& builder, PassData& data) mutable {
                     if (input)
                     {
-                        data.input = builder.read(input,
-                                                  framegraph::TextureRead {
-                                                      .binding =
-                                                          {
-                                                              .location      = {.set = 3, .binding = 0},
-                                                              .pipelineStage = framegraph::PipelineStage::eFragmentShader,
-                                                          },
-                                                      .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
-                                                      .imageAspect = rhi::ImageAspect::eColor,
-                                                  });
+                        data.input =
+                            builder.read(input,
+                                         framegraph::TextureRead {
+                                             .binding =
+                                                 {
+                                                     .location      = {.set = 3, .binding = 0},
+                                                     .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                                 },
+                                             .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                             .imageAspect = rhi::ImageAspect::eColor,
+                                         });
                     }
 
                     if (!output)
                     {
-                        output = builder.create<framegraph::FrameGraphTexture>(
-                            m_Desc.name + " Color",
-                            outputDesc);
+                        output = builder.create<framegraph::FrameGraphTexture>(m_Desc.name + " Color", outputDesc);
                     }
 
                     data.output = builder.write(output,
@@ -363,7 +361,7 @@ namespace vultra
                                                     .imageAspect = rhi::ImageAspect::eColor,
                                                     .clearValue  = input ? std::optional<framegraph::ClearValue> {} :
                                                                            std::optional<framegraph::ClearValue> {
-                                                                               framegraph::ClearValue::eOpaqueBlack},
+                                                                              framegraph::ClearValue::eOpaqueBlack},
                                                 });
                 },
                 [this](const PassData& data, FrameGraphPassResources&, void* ctxPtr) {
@@ -381,13 +379,13 @@ namespace vultra
                         return;
                     }
 
-                    auto* pipeline = getPipeline(rc.rd,
-                                                 rhi::getColorFormat(framebufferInfo.value(), 0),
-                                                 framebufferInfo->viewMask);
+                    auto* pipeline =
+                        getPipeline(rc.rd, rhi::getColorFormat(framebufferInfo.value(), 0), framebufferInfo->viewMask);
                     if (!pipeline)
                         return;
 
-                    if (rc.resourceSet.contains(3) && rc.resourceSet[3].contains(0) && rc.ext.samplers.contains("linear"))
+                    if (rc.resourceSet.contains(3) && rc.resourceSet[3].contains(0) &&
+                        rc.ext.samplers.contains("linear"))
                         rc.overrideSampler(rc.resourceSet[3][0], rc.ext.samplers["linear"]);
 
                     rc.cb.bindPipeline(*pipeline);
@@ -403,28 +401,28 @@ namespace vultra
         }
 
     private:
-        framegraph::FrameGraphTexture::Desc makeOutputDesc(FrameGraphBuildContext& ctx, const FrameGraphResource input) const
+        framegraph::FrameGraphTexture::Desc makeOutputDesc(FrameGraphBuildContext&  ctx,
+                                                           const FrameGraphResource input) const
         {
             auto desc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F);
 
             if (input)
             {
                 const auto inputDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(input);
-                desc = makeInheritedTextureDesc(inputDesc, rhi::PixelFormat::eRGBA16F);
+                desc                 = makeInheritedTextureDesc(inputDesc, rhi::PixelFormat::eRGBA16F);
             }
 
             return desc;
         }
 
-        rhi::GraphicsPipeline* getPipeline(rhi::RenderDevice& rd,
-                                           const rhi::PixelFormat colorFormat,
-                                           const uint32_t viewMask)
+        rhi::GraphicsPipeline*
+        getPipeline(rhi::RenderDevice& rd, const rhi::PixelFormat colorFormat, const uint32_t viewMask)
         {
             const uint64_t key = static_cast<uint64_t>(colorFormat) | (static_cast<uint64_t>(viewMask) << 32u);
             if (auto it = m_Pipelines.find(key); it != m_Pipelines.end())
                 return &it->second;
 
-            auto vertexShader = loadShader(m_Desc.shader.vertex, vshadersystem::ShaderStage::eVert);
+            auto vertexShader   = loadShader(m_Desc.shader.vertex, vshadersystem::ShaderStage::eVert);
             auto fragmentShader = loadShader(m_Desc.shader.fragment, vshadersystem::ShaderStage::eFrag);
             if (!vertexShader || !fragmentShader)
                 return nullptr;
@@ -468,15 +466,14 @@ namespace vultra
                     .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader);
             }
 
-            auto pipeline = builder.build(rd);
+            auto pipeline       = builder.build(rd);
             auto [it, inserted] = m_Pipelines.emplace(key, std::move(pipeline));
             static_cast<void>(inserted);
             return &it->second;
         }
 
-        std::optional<rhi::ShaderLibraryRuntime::LoadedShader> loadShader(
-            const std::string& shaderId,
-            const vshadersystem::ShaderStage stage) const
+        std::optional<rhi::ShaderLibraryRuntime::LoadedShader> loadShader(const std::string&               shaderId,
+                                                                          const vshadersystem::ShaderStage stage) const
         {
             if (!m_ShaderLibrary)
                 return std::nullopt;
@@ -496,15 +493,14 @@ namespace vultra
                     break;
             }
             if (!shader)
-                VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to load shader '{}' for pass '{}'",
-                                  shaderId,
-                                  m_Desc.name);
+                VULTRA_CORE_ERROR(
+                    "[DeclarativeRenderer] Failed to load shader '{}' for pass '{}'", shaderId, m_Desc.name);
             return shader;
         }
 
     private:
-        FullscreenPass m_Desc;
-        rhi::ShaderLibraryRuntime* m_ShaderLibrary {nullptr};
+        FullscreenPass                                      m_Desc;
+        rhi::ShaderLibraryRuntime*                          m_ShaderLibrary {nullptr};
         std::unordered_map<uint64_t, rhi::GraphicsPipeline> m_Pipelines;
     };
 
@@ -538,13 +534,12 @@ namespace vultra
 
             vrendergraph::RenderGraph graph {
                 m_Registry,
-                [&ctx](FrameGraph& fg, const std::string_view resourceName, const nlohmann::json&) -> FrameGraphResource {
+                [&ctx](
+                    FrameGraph& fg, const std::string_view resourceName, const nlohmann::json&) -> FrameGraphResource {
                     const auto normalized = normalizeId(std::string(resourceName));
                     if (normalized == "backbuffer" || normalized == "target")
-                        return framegraph::importTexture(fg,
-                                                         "VRenderGraphBackbuffer",
-                                                         ctx.view().target,
-                                                         ctx.view().renderTargetViewMask());
+                        return framegraph::importTexture(
+                            fg, "VRenderGraphBackbuffer", ctx.view().target, ctx.view().renderTargetViewMask());
                     return ctx.data.tryGet(resourceKeyFor(resourceName));
                 }};
 
@@ -555,9 +550,9 @@ namespace vultra
 
     private:
         vrendergraph::RenderGraphDesc makeActiveGraphWithPassthrough(const vrendergraph::RenderGraphDesc& desc,
-                                                                     const RenderView&                   view) const
+                                                                     const RenderView&                    view) const
         {
-            auto activeDesc = desc;
+            auto       activeDesc   = desc;
             const auto passIsActive = [&view](const vrendergraph::PassDecl& pass) {
                 return pass.enabled && renderGraphConditionMatches(pass.when, view);
             };
@@ -579,7 +574,8 @@ namespace vultra
                             replacement = it->second;
                         else if (ports.inputs.size() == 1)
                         {
-                            if (auto it = pass.inputs.find(ports.inputs.front()); it != pass.inputs.end() && !it->second.empty())
+                            if (auto it = pass.inputs.find(ports.inputs.front());
+                                it != pass.inputs.end() && !it->second.empty())
                                 replacement = it->second;
                         }
                         if (replacement.empty())
@@ -593,7 +589,7 @@ namespace vultra
                                 static_cast<void>(_);
                                 if (ref == disabledOutput)
                                 {
-                                    ref = replacement;
+                                    ref     = replacement;
                                     changed = true;
                                 }
                             }
@@ -648,7 +644,7 @@ namespace vultra
 
             for (const auto& pass : desc.passes)
             {
-                const auto& def = m_Registry.get(pass.type);
+                const auto&                           def = m_Registry.get(pass.type);
                 const std::unordered_set<std::string> validInputs(def.inputs.begin(), def.inputs.end());
                 const std::unordered_set<std::string> validOutputs(def.outputs.begin(), def.outputs.end());
 
@@ -730,12 +726,14 @@ namespace vultra
                             if (!ctx)
                                 return;
 
-                            auto* shaderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IShaderService>() : nullptr;
+                            auto* shaderService =
+                                m_Owner.getServices() ? m_Owner.getServices()->tryGet<IShaderService>() : nullptr;
                             if (!shaderService)
                                 return;
 
                             auto pass = projectPass.fullscreen;
-                            pass.name = params.get<std::string>("name", pass.name.empty() ? projectPass.type : pass.name);
+                            pass.name =
+                                params.get<std::string>("name", pass.name.empty() ? projectPass.type : pass.name);
 
                             rhi::ShaderLibraryRuntime* library = nullptr;
                             if (pass.shader.library == "builtin")
@@ -746,7 +744,8 @@ namespace vultra
 
                             if (!library)
                             {
-                                VULTRA_CORE_ERROR("[DeclarativeRenderer] Shader library '{}' is not loaded for project graph pass '{}'",
+                                VULTRA_CORE_ERROR("[DeclarativeRenderer] Shader library '{}' is not loaded for project "
+                                                  "graph pass '{}'",
                                                   pass.shader.library,
                                                   projectPass.type);
                                 return;
@@ -758,33 +757,41 @@ namespace vultra
                             else
                                 runtime->update(pass, library);
 
-                            const auto input = passCtx.getInput("source");
+                            const auto input  = passCtx.getInput("source");
                             const auto output = runtime->addPass(*ctx, input, {}, false);
                             if (output)
                                 passCtx.setOutput("color", output);
                         },
-                    .inputs = {"source"},
+                    .inputs  = {"source"},
                     .outputs = {"color"},
-                    .params = {
-                        {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = projectPass.type},
-                    },
+                    .params =
+                        {
+                            {.name         = "name",
+                             .type         = vrendergraph::ParamType::eString,
+                             .defaultValue = projectPass.type},
+                        },
                 });
             }
 
-            const auto registerBuiltin = [this](std::string type,
-                                                std::vector<std::string> inputs,
-                                                std::vector<std::string> outputs,
+            const auto registerBuiltin = [this](std::string               type,
+                                                std::vector<std::string>  inputs,
+                                                std::vector<std::string>  outputs,
                                                 vrendergraph::PassSetupFn setup) {
                 m_Registry.registerPass(vrendergraph::PassDefinition {
-                    .type = std::move(type),
-                    .setup = std::move(setup),
-                    .inputs = std::move(inputs),
+                    .type    = std::move(type),
+                    .setup   = std::move(setup),
+                    .inputs  = std::move(inputs),
                     .outputs = std::move(outputs),
                 });
             };
 
-            registerBuiltin("CompatibilityBaseColor", {}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("CompatibilityBaseColor",
+                            {},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -796,8 +803,13 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("DirectGBuffer", {}, {"color", "depth", "normal", "material", "entityId"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("DirectGBuffer",
+                            {},
+                            {"color", "depth", "normal", "material", "entityId"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -823,8 +835,13 @@ namespace vultra
                                     passCtx.setOutput("entityId", res);
                             });
 
-            registerBuiltin("DepthPre", {}, {"depth"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("DepthPre",
+                            {},
+                            {"depth"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -837,130 +854,152 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("ShadowMap", {}, {"shadowMap", "shadowData"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
-                                if (!ctx || !renderService)
-                                    return;
-                                auto settings = renderService->builtinRenderSettings().shadow;
-                                settings.enabled = params.get<bool>("enabled", settings.enabled);
-                                settings.resolution = static_cast<uint32_t>(params.get<int>("resolution", static_cast<int>(settings.resolution)));
-                                settings.cascadeCount = static_cast<uint32_t>(params.get<int>("cascadeCount", static_cast<int>(settings.cascadeCount)));
-                                settings.coverageRadius = params.get<float>("coverageRadius", settings.coverageRadius);
-                                settings.lightDistance = params.get<float>("lightDistance", settings.lightDistance);
-                                settings.zRange = params.get<float>("zRange", settings.zRange);
-                                settings.splitLambda = params.get<float>("splitLambda", settings.splitLambda);
-                                settings.autoFitBounds = params.get<bool>("autoFitBounds", settings.autoFitBounds);
-                                settings.stableTexelSnapping = params.get<bool>("stableTexelSnapping", settings.stableTexelSnapping);
-                                settings.depthBias = params.get<float>("depthBias", settings.depthBias);
-                                settings.normalBias = params.get<float>("normalBias", settings.normalBias);
-                                settings.pcssLightRadius = params.get<float>("pcssLightRadius", settings.pcssLightRadius);
-                                if (ctx->view().renderWorld)
-                                {
-                                    for (const auto& light : ctx->view().renderWorld->lights)
-                                    {
-                                        if (light.kind == RenderLightKind::eDirectional && light.castsShadow)
-                                        {
-                                            settings.enabled = settings.enabled;
-                                            settings.lightDirection = light.direction;
-                                            break;
-                                        }
-                                    }
-                                }
-                                auto shadow = m_ShadowMapPass.addPass(*ctx, settings);
-                                if (shadow.shadowMap)
-                                    passCtx.setOutput("shadowMap", shadow.shadowMap);
-                                if (shadow.shadowData)
-                                    passCtx.setOutput("shadowData", shadow.shadowData);
-                            });
+            registerBuiltin(
+                "ShadowMap",
+                {},
+                {"shadowMap", "shadowData"},
+                [this](FrameGraph&,
+                       FrameGraphBlackboard&,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) {
+                    auto* ctx = m_Owner.m_CurrentBuildContext;
+                    auto* renderService =
+                        m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                    if (!ctx || !renderService)
+                        return;
+                    auto settings    = renderService->builtinRenderSettings().shadow;
+                    settings.enabled = params.get<bool>("enabled", settings.enabled);
+                    settings.resolution =
+                        static_cast<uint32_t>(params.get<int>("resolution", static_cast<int>(settings.resolution)));
+                    settings.cascadeCount =
+                        static_cast<uint32_t>(params.get<int>("cascadeCount", static_cast<int>(settings.cascadeCount)));
+                    settings.coverageRadius = params.get<float>("coverageRadius", settings.coverageRadius);
+                    settings.lightDistance  = params.get<float>("lightDistance", settings.lightDistance);
+                    settings.zRange         = params.get<float>("zRange", settings.zRange);
+                    settings.splitLambda    = params.get<float>("splitLambda", settings.splitLambda);
+                    settings.autoFitBounds  = params.get<bool>("autoFitBounds", settings.autoFitBounds);
+                    settings.stableTexelSnapping =
+                        params.get<bool>("stableTexelSnapping", settings.stableTexelSnapping);
+                    settings.depthBias       = params.get<float>("depthBias", settings.depthBias);
+                    settings.normalBias      = params.get<float>("normalBias", settings.normalBias);
+                    settings.pcssLightRadius = params.get<float>("pcssLightRadius", settings.pcssLightRadius);
+                    if (ctx->view().renderWorld)
+                    {
+                        for (const auto& light : ctx->view().renderWorld->lights)
+                        {
+                            if (light.kind == RenderLightKind::eDirectional && light.castsShadow)
+                            {
+                                settings.enabled        = settings.enabled;
+                                settings.lightDirection = light.direction;
+                                break;
+                            }
+                        }
+                    }
+                    auto shadow = m_ShadowMapPass.addPass(*ctx, settings);
+                    if (shadow.shadowMap)
+                        passCtx.setOutput("shadowMap", shadow.shadowMap);
+                    if (shadow.shadowData)
+                        passCtx.setOutput("shadowData", shadow.shadowData);
+                });
 
-            registerBuiltin("DeferredLighting", {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
-                                if (!ctx || !renderService)
-                                    return;
-                                const auto& settings = renderService->builtinRenderSettings();
-                                auto lightingSettings = settings.pbrLighting;
-                                auto shadowSettings = settings.shadow;
-                                rhi::Texture* skyboxTexture = settings.pbrLighting.showSkybox ? settings.pbrLighting.environmentMap : nullptr;
-                                lightingSettings.ambientIntensity = params.get<float>("ambientIntensity", lightingSettings.ambientIntensity);
-                                lightingSettings.shadowStrength = params.get<float>("shadowStrength", lightingSettings.shadowStrength);
-                                lightingSettings.iblIntensity = params.get<float>("iblIntensity", lightingSettings.iblIntensity);
-                                lightingSettings.debugViewMode = static_cast<PbrLightingSettings::DebugViewMode>(
-                                    std::clamp(params.get<int>("debugViewMode", static_cast<int>(lightingSettings.debugViewMode)), 0, 6));
-                                shadowSettings.filterMode = static_cast<ShadowRenderSettings::FilterMode>(
-                                    std::clamp(params.get<int>("shadowFilterMode", static_cast<int>(shadowSettings.filterMode)), 0, 2));
-                                shadowSettings.debugMode = static_cast<ShadowRenderSettings::DebugMode>(
-                                    std::clamp(params.get<int>("shadowDebugMode", static_cast<int>(shadowSettings.debugMode)), 0, 5));
-                                if (params.get<bool>("debugCascades", false))
-                                    shadowSettings.debugMode = ShadowRenderSettings::DebugMode::eCascade;
-                                const auto* renderEnvironment =
-                                    ctx->view().renderWorld && ctx->view().renderWorld->environment.active ?
-                                        &ctx->view().renderWorld->environment :
-                                        nullptr;
-                                if (renderEnvironment)
-                                {
-                                    lightingSettings.ambientColor = renderEnvironment->ambientColor;
-                                    lightingSettings.ambientIntensity = renderEnvironment->ambientIntensity;
-                                    lightingSettings.enableIBL = renderEnvironment->enableIBL;
-                                    lightingSettings.iblColor = renderEnvironment->iblColor;
-                                    lightingSettings.iblIntensity = renderEnvironment->iblIntensity;
-                                    lightingSettings.environmentMap = renderEnvironment->skybox;
-                                    skyboxTexture = renderEnvironment->skybox;
-                                }
-                                if (const auto* probe = selectReflectionProbe(ctx->view().renderWorld, ctx->view().camera))
-                                {
-                                    lightingSettings.enableIBL = probe->enableIBL;
-                                    lightingSettings.iblIntensity = probe->intensity;
-                                    if (probe->enableIBL)
-                                        lightingSettings.environmentMap = probe->environmentMap;
-                                }
-                                if (lightingSettings.debugViewMode != PbrLightingSettings::DebugViewMode::eLit ||
-                                    shadowSettings.debugMode != ShadowRenderSettings::DebugMode::eOff)
-                                    m_Owner.m_CurrentFrameApplyToneMapping = false;
-                                shadowSettings.pcssBlockerSamples = params.get<int>("pcssBlockerSamples", shadowSettings.pcssBlockerSamples);
-                                shadowSettings.pcssFilterSamples = params.get<int>("pcfRadius", shadowSettings.pcssFilterSamples);
-                                auto color = m_DeferredLightingPass.addPass(*ctx,
-                                                                            passCtx.getInput("color"),
-                                                                            passCtx.getInput("normal"),
-                                                                            passCtx.getInput("material"),
-                                                                            passCtx.getInput("depth"),
-                                                                            passCtx.getInput("ao"),
-                                                                            passCtx.getInput("shadowMap"),
-                                                                            passCtx.getInput("shadowData"),
-                                                                            shadowSettings,
-                                                                            lightingSettings,
-                                                                            ctx->view().renderWorld);
-                                if (color)
-                                {
-                                    const bool cameraWantsSkybox =
-                                        (ctx->view().camera && ctx->view().camera->clearMode == 1u) ||
-                                        settings.pbrLighting.showSkybox;
-                                    if (cameraWantsSkybox && skyboxTexture &&
-                                        ctx->data.contains(kResKey_DepthTexture))
-                                    {
-                                        const auto env = framegraph::importTexture(ctx->fg,
-                                                                                   "Environment Map",
-                                                                                   skyboxTexture);
-                                        color = m_SkyboxPass.addPass(*ctx,
-                                                                     color,
-                                                                     ctx->data.get(kResKey_DepthTexture),
-                                                                     env,
-                                                                     lightingSettings.environmentMap == skyboxTexture ?
-                                                                         m_DeferredLightingPass.environmentCubemap() :
-                                                                         nullptr);
-                                    }
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    if (ctx->view().stereoMode != StereoRenderMode::eMono)
-                                        ctx->data.set(kResKey_StereoColor, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
+            registerBuiltin(
+                "DeferredLighting",
+                {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"},
+                {"color"},
+                [this](FrameGraph&,
+                       FrameGraphBlackboard&,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) {
+                    auto* ctx = m_Owner.m_CurrentBuildContext;
+                    auto* renderService =
+                        m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                    if (!ctx || !renderService)
+                        return;
+                    const auto&   settings         = renderService->builtinRenderSettings();
+                    auto          lightingSettings = settings.pbrLighting;
+                    auto          shadowSettings   = settings.shadow;
+                    rhi::Texture* skyboxTexture =
+                        settings.pbrLighting.showSkybox ? settings.pbrLighting.environmentMap : nullptr;
+                    lightingSettings.ambientIntensity =
+                        params.get<float>("ambientIntensity", lightingSettings.ambientIntensity);
+                    lightingSettings.shadowStrength =
+                        params.get<float>("shadowStrength", lightingSettings.shadowStrength);
+                    lightingSettings.iblIntensity  = params.get<float>("iblIntensity", lightingSettings.iblIntensity);
+                    lightingSettings.debugViewMode = static_cast<PbrLightingSettings::DebugViewMode>(std::clamp(
+                        params.get<int>("debugViewMode", static_cast<int>(lightingSettings.debugViewMode)), 0, 6));
+                    shadowSettings.filterMode      = static_cast<ShadowRenderSettings::FilterMode>(std::clamp(
+                        params.get<int>("shadowFilterMode", static_cast<int>(shadowSettings.filterMode)), 0, 2));
+                    shadowSettings.debugMode       = static_cast<ShadowRenderSettings::DebugMode>(std::clamp(
+                        params.get<int>("shadowDebugMode", static_cast<int>(shadowSettings.debugMode)), 0, 5));
+                    if (params.get<bool>("debugCascades", false))
+                        shadowSettings.debugMode = ShadowRenderSettings::DebugMode::eCascade;
+                    const auto* renderEnvironment =
+                        ctx->view().renderWorld && ctx->view().renderWorld->environment.active ?
+                            &ctx->view().renderWorld->environment :
+                            nullptr;
+                    if (renderEnvironment)
+                    {
+                        lightingSettings.ambientColor     = renderEnvironment->ambientColor;
+                        lightingSettings.ambientIntensity = renderEnvironment->ambientIntensity;
+                        lightingSettings.enableIBL        = renderEnvironment->enableIBL;
+                        lightingSettings.iblColor         = renderEnvironment->iblColor;
+                        lightingSettings.iblIntensity     = renderEnvironment->iblIntensity;
+                        lightingSettings.environmentMap   = renderEnvironment->skybox;
+                        skyboxTexture                     = renderEnvironment->skybox;
+                    }
+                    if (const auto* probe = selectReflectionProbe(ctx->view().renderWorld, ctx->view().camera))
+                    {
+                        lightingSettings.enableIBL    = probe->enableIBL;
+                        lightingSettings.iblIntensity = probe->intensity;
+                        if (probe->enableIBL)
+                            lightingSettings.environmentMap = probe->environmentMap;
+                    }
+                    if (lightingSettings.debugViewMode != PbrLightingSettings::DebugViewMode::eLit ||
+                        shadowSettings.debugMode != ShadowRenderSettings::DebugMode::eOff)
+                        m_Owner.m_CurrentFrameApplyToneMapping = false;
+                    shadowSettings.pcssBlockerSamples =
+                        params.get<int>("pcssBlockerSamples", shadowSettings.pcssBlockerSamples);
+                    shadowSettings.pcssFilterSamples = params.get<int>("pcfRadius", shadowSettings.pcssFilterSamples);
+                    auto color                       = m_DeferredLightingPass.addPass(*ctx,
+                                                                passCtx.getInput("color"),
+                                                                passCtx.getInput("normal"),
+                                                                passCtx.getInput("material"),
+                                                                passCtx.getInput("depth"),
+                                                                passCtx.getInput("ao"),
+                                                                passCtx.getInput("shadowMap"),
+                                                                passCtx.getInput("shadowData"),
+                                                                shadowSettings,
+                                                                lightingSettings,
+                                                                ctx->view().renderWorld);
+                    if (color)
+                    {
+                        const bool cameraWantsSkybox = (ctx->view().camera && ctx->view().camera->clearMode == 1u) ||
+                                                       settings.pbrLighting.showSkybox;
+                        if (cameraWantsSkybox && skyboxTexture && ctx->data.contains(kResKey_DepthTexture))
+                        {
+                            const auto env = framegraph::importTexture(ctx->fg, "Environment Map", skyboxTexture);
+                            color          = m_SkyboxPass.addPass(*ctx,
+                                                         color,
+                                                         ctx->data.get(kResKey_DepthTexture),
+                                                         env,
+                                                         lightingSettings.environmentMap == skyboxTexture ?
+                                                                      m_DeferredLightingPass.environmentCubemap() :
+                                                                      nullptr);
+                        }
+                        ctx->data.set(kResKey_FinalCompositionSource, color);
+                        if (ctx->view().stereoMode != StereoRenderMode::eMono)
+                            ctx->data.set(kResKey_StereoColor, color);
+                        passCtx.setOutput("color", color);
+                    }
+                });
 
-            registerBuiltin("SsrComposite", {"source", "reflection"}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("SsrComposite",
+                            {"source", "reflection"},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -969,9 +1008,8 @@ namespace vultra
                                     passCtx.setOutput("color", passCtx.getInput("source"));
                                     return;
                                 }
-                                auto color = m_SsrCompositePass.addPass(*ctx,
-                                                                        passCtx.getInput("source"),
-                                                                        passCtx.getInput("reflection"));
+                                auto color = m_SsrCompositePass.addPass(
+                                    *ctx, passCtx.getInput("source"), passCtx.getInput("reflection"));
                                 if (color)
                                 {
                                     ctx->data.set(kResKey_FinalCompositionSource, color);
@@ -981,8 +1019,13 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("HzbGenerate", {"depth"}, {"hzb"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("HzbGenerate",
+                            {"depth"},
+                            {"hzb"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -991,21 +1034,28 @@ namespace vultra
                                     passCtx.setOutput("hzb", hzb);
                             });
 
-            registerBuiltin("Ssao", {"depth", "normal"}, {"ao"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("Ssao",
+                            {"depth", "normal"},
+                            {"ao"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
-                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                                auto* renderService =
+                                    m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
                                 if (!ctx || !renderService)
                                     return;
-                                auto settings = renderService->builtinRenderSettings().ssao;
-                                settings.enabled = params.get<bool>("enabled", settings.enabled);
-                                settings.radius = params.get<float>("radius", settings.radius);
-                                settings.bias = params.get<float>("bias", settings.bias);
-                                settings.intensity = params.get<float>("intensity", settings.intensity);
+                                auto settings            = renderService->builtinRenderSettings().ssao;
+                                settings.enabled         = params.get<bool>("enabled", settings.enabled);
+                                settings.radius          = params.get<float>("radius", settings.radius);
+                                settings.bias            = params.get<float>("bias", settings.bias);
+                                settings.intensity       = params.get<float>("intensity", settings.intensity);
                                 settings.maxRadiusPixels = params.get<int>("maxRadiusPixels", settings.maxRadiusPixels);
-                                settings.stepCount = params.get<int>("stepCount", settings.stepCount);
-                                settings.directionCount = params.get<int>("directionCount", settings.directionCount);
-                                auto ao = m_SsaoPass.addPass(*ctx, passCtx.getInput("depth"), passCtx.getInput("normal"), settings);
+                                settings.stepCount       = params.get<int>("stepCount", settings.stepCount);
+                                settings.directionCount  = params.get<int>("directionCount", settings.directionCount);
+                                auto ao                  = m_SsaoPass.addPass(
+                                    *ctx, passCtx.getInput("depth"), passCtx.getInput("normal"), settings);
                                 if (ao)
                                 {
                                     ctx->data.set(kResKey_SsaoTexture, ao);
@@ -1013,25 +1063,33 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("Ssr", {"color", "depth", "normal", "material"}, {"reflection"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("Ssr",
+                            {"color", "depth", "normal", "material"},
+                            {"reflection"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
-                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                                auto* renderService =
+                                    m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
                                 if (!ctx || !renderService)
                                     return;
-                                auto settings = renderService->builtinRenderSettings().ssr;
+                                auto settings    = renderService->builtinRenderSettings().ssr;
                                 settings.enabled = params.get<bool>("enabled", settings.enabled);
-                                settings.reflectionFactor = params.get<float>("reflectionFactor", settings.reflectionFactor);
+                                settings.reflectionFactor =
+                                    params.get<float>("reflectionFactor", settings.reflectionFactor);
                                 settings.maxSteps = params.get<int>("maxSteps", settings.maxSteps);
-                                settings.binaryRefinement = params.get<int>("binaryRefinement", settings.binaryRefinement);
-                                settings.stride = params.get<float>("stride", settings.stride);
+                                settings.binaryRefinement =
+                                    params.get<int>("binaryRefinement", settings.binaryRefinement);
+                                settings.stride    = params.get<float>("stride", settings.stride);
                                 settings.thickness = params.get<float>("thickness", settings.thickness);
-                                auto reflection = m_SsrPass.addPass(*ctx,
-                                                                     passCtx.getInput("color"),
-                                                                     passCtx.getInput("depth"),
-                                                                     passCtx.getInput("normal"),
-                                                                     passCtx.getInput("material"),
-                                                                     settings);
+                                auto reflection    = m_SsrPass.addPass(*ctx,
+                                                                    passCtx.getInput("color"),
+                                                                    passCtx.getInput("depth"),
+                                                                    passCtx.getInput("normal"),
+                                                                    passCtx.getInput("material"),
+                                                                    settings);
                                 if (reflection)
                                 {
                                     ctx->data.set(kResKey_SsrTexture, reflection);
@@ -1039,8 +1097,13 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("Fxaa", {"source"}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("Fxaa",
+                            {"source"},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1057,12 +1120,18 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("ToneMapping", {"source"}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("ToneMapping",
+                            {"source"},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
-                                const bool enabled = params.get<bool>("enabled", true) && m_Owner.m_CurrentFrameApplyToneMapping;
+                                const bool enabled =
+                                    params.get<bool>("enabled", true) && m_Owner.m_CurrentFrameApplyToneMapping;
                                 if (!enabled)
                                 {
                                     passCtx.setOutput("color", passCtx.getInput("source"));
@@ -1079,15 +1148,21 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("SelectionOutline", {"source", "entityId", "depth"}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("SelectionOutline",
+                            {"source", "entityId", "depth"},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
-                                auto* renderService = m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
+                                auto* renderService =
+                                    m_Owner.getServices() ? m_Owner.getServices()->tryGet<IRenderService>() : nullptr;
                                 if (!ctx || !renderService)
                                     return;
-                                auto settings = renderService->builtinRenderSettings().selectionOutline;
-                                settings.enabled = params.get<bool>("enabled", settings.enabled);
-                                settings.thickness = params.get<float>("thickness", settings.thickness);
+                                auto settings        = renderService->builtinRenderSettings().selectionOutline;
+                                settings.enabled     = params.get<bool>("enabled", settings.enabled);
+                                settings.thickness   = params.get<float>("thickness", settings.thickness);
                                 settings.fillOpacity = params.get<float>("fillOpacity", settings.fillOpacity);
                                 settings.edgeOpacity = params.get<float>("edgeOpacity", settings.edgeOpacity);
                                 const bool cameraAllowsOutline =
@@ -1110,55 +1185,67 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("XrViewSynthesis", {"source", "depth"}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock& params, vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx)
-                                    return;
+            registerBuiltin(
+                "XrViewSynthesis",
+                {"source", "depth"},
+                {"color"},
+                [this](FrameGraph&,
+                       FrameGraphBlackboard&,
+                       const vrendergraph::ParamBlock& params,
+                       vrendergraph::PassBuildContext& passCtx) {
+                    auto* ctx = m_Owner.m_CurrentBuildContext;
+                    if (!ctx)
+                        return;
 
-                                XrViewSynthesisSettings settings {};
-                                settings.warpingBackend = params.get<std::string>("warpingBackend", settings.warpingBackend);
-                                settings.inpaintingBackend =
-                                    params.get<std::string>("inpaintingBackend", settings.inpaintingBackend);
-                                settings.sourceView = params.get<std::string>("sourceView", settings.sourceView);
-                                settings.targetView = params.get<std::string>("targetView", settings.targetView);
-                                settings.baseGridSize =
-                                    static_cast<uint32_t>(std::max(1, params.get<int>("baseGridSize", 16)));
-                                settings.maxSubdivision =
-                                    static_cast<uint32_t>(std::max(0, params.get<int>("maxSubdivision", 2)));
-                                settings.sideLengthThreshold =
-                                    std::max(0.0f, params.get<float>("sideLengthThreshold", settings.sideLengthThreshold));
-                                settings.depthThreshold = std::max(0.0f, params.get<float>("depthThreshold", settings.depthThreshold));
+                    XrViewSynthesisSettings settings {};
+                    settings.warpingBackend = params.get<std::string>("warpingBackend", settings.warpingBackend);
+                    settings.inpaintingBackend =
+                        params.get<std::string>("inpaintingBackend", settings.inpaintingBackend);
+                    settings.sourceView     = params.get<std::string>("sourceView", settings.sourceView);
+                    settings.targetView     = params.get<std::string>("targetView", settings.targetView);
+                    settings.baseGridSize   = static_cast<uint32_t>(std::max(1, params.get<int>("baseGridSize", 16)));
+                    settings.maxSubdivision = static_cast<uint32_t>(std::max(0, params.get<int>("maxSubdivision", 2)));
+                    settings.sideLengthThreshold =
+                        std::max(0.0f, params.get<float>("sideLengthThreshold", settings.sideLengthThreshold));
+                    settings.depthThreshold =
+                        std::max(0.0f, params.get<float>("depthThreshold", settings.depthThreshold));
 
-                                auto color = m_XrViewSynthesisPass.addPass(*ctx,
-                                                                           passCtx.getInput("source"),
-                                                                           passCtx.getInput("depth"),
-                                                                           settings);
-                                if (color)
-                                {
-                                    ctx->data.set(kResKey_FinalCompositionSource, color);
-                                    passCtx.setOutput("color", color);
-                                }
-                            });
+                    auto color = m_XrViewSynthesisPass.addPass(
+                        *ctx, passCtx.getInput("source"), passCtx.getInput("depth"), settings);
+                    if (color)
+                    {
+                        ctx->data.set(kResKey_FinalCompositionSource, color);
+                        passCtx.setOutput("color", color);
+                    }
+                });
 
-            registerBuiltin("FinalComposition", {"source"}, {"target"},
-                            [this](FrameGraph& fg, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
-                                auto* ctx = m_Owner.m_CurrentBuildContext;
-                                if (!ctx || !ctx->view().target)
-                                    return;
-                                ctx->data.set(kResKey_FinalCompositionSource, passCtx.getInput("source"));
-                                auto target = m_FinalCompositionPass.compose(
-                                    *ctx,
-                                    framegraph::importTexture(fg,
-                                                              "VRenderGraphBackbuffer",
-                                                              ctx->view().target,
-                                                              ctx->view().renderTargetViewMask()));
-                                if (target)
-                                    passCtx.setOutput("target", target);
-                            });
+            registerBuiltin(
+                "FinalComposition",
+                {"source"},
+                {"target"},
+                [this](FrameGraph& fg,
+                       FrameGraphBlackboard&,
+                       const vrendergraph::ParamBlock&,
+                       vrendergraph::PassBuildContext& passCtx) {
+                    auto* ctx = m_Owner.m_CurrentBuildContext;
+                    if (!ctx || !ctx->view().target)
+                        return;
+                    ctx->data.set(kResKey_FinalCompositionSource, passCtx.getInput("source"));
+                    auto target = m_FinalCompositionPass.compose(
+                        *ctx,
+                        framegraph::importTexture(
+                            fg, "VRenderGraphBackbuffer", ctx->view().target, ctx->view().renderTargetViewMask()));
+                    if (target)
+                        passCtx.setOutput("target", target);
+                });
 
-            registerBuiltin("RayTracingPrimary", {}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("RayTracingPrimary",
+                            {},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1170,8 +1257,13 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("VisibilityBuffer", {}, {"visibility"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("VisibilityBuffer",
+                            {},
+                            {"visibility"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1180,8 +1272,13 @@ namespace vultra
                                     passCtx.setOutput("visibility", visibility);
                             });
 
-            registerBuiltin("ThinGBuffer", {"visibility"}, {"color", "normal", "material"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("ThinGBuffer",
+                            {"visibility"},
+                            {"color", "normal", "material"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1194,8 +1291,13 @@ namespace vultra
                                     passCtx.setOutput("material", res);
                             });
 
-            registerBuiltin("CoarseInstanceCull", {}, {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("CoarseInstanceCull",
+                            {},
+                            {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1208,8 +1310,13 @@ namespace vultra
                                     passCtx.setOutput("meshletCullDispatchArgs", res);
                             });
 
-            registerBuiltin("MeshletCull", {}, {"visibleMeshlet", "visibleMeshletCount"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("MeshletCull",
+                            {},
+                            {"visibleMeshlet", "visibleMeshletCount"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1220,9 +1327,20 @@ namespace vultra
                                     passCtx.setOutput("visibleMeshletCount", res);
                             });
 
-            registerBuiltin("BuildIndirect", {},
-                            {"draw", "instance", "meshTable", "transform", "meshlets", "visibleMeshlet", "visibleMeshletCount", "materialTable"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("BuildIndirect",
+                            {},
+                            {"draw",
+                             "instance",
+                             "meshTable",
+                             "transform",
+                             "meshlets",
+                             "visibleMeshlet",
+                             "visibleMeshletCount",
+                             "materialTable"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1245,8 +1363,13 @@ namespace vultra
                                     passCtx.setOutput("materialTable", res);
                             });
 
-            registerBuiltin("DrawsetBuild", {}, {"draw", "meshlets", "indirect", "drawSet"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("DrawsetBuild",
+                            {},
+                            {"draw", "meshlets", "indirect", "drawSet"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1261,8 +1384,13 @@ namespace vultra
                                     passCtx.setOutput("drawSet", res);
                             });
 
-            registerBuiltin("MeshletHiZCull", {}, {"visibleMeshlet", "visibleMeshletCount"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("MeshletHiZCull",
+                            {},
+                            {"visibleMeshlet", "visibleMeshletCount"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1273,9 +1401,22 @@ namespace vultra
                                     passCtx.setOutput("visibleMeshletCount", res);
                             });
 
-            registerBuiltin("GeneralGaussianSplatPreprocess", {},
-                            {"draw", "packedSource", "selectedSource", "visibleSplat", "sortKey", "sortIndex", "visibleCount", "indirect", "sortStorage", "sh"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("GeneralGaussianSplatPreprocess",
+                            {},
+                            {"draw",
+                             "packedSource",
+                             "selectedSource",
+                             "visibleSplat",
+                             "sortKey",
+                             "sortIndex",
+                             "visibleCount",
+                             "indirect",
+                             "sortStorage",
+                             "sh"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1302,8 +1443,13 @@ namespace vultra
                                     passCtx.setOutput("sh", res);
                             });
 
-            registerBuiltin("GeneralGaussianSplatRender", {}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("GeneralGaussianSplatRender",
+                            {},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1315,8 +1461,13 @@ namespace vultra
                                 }
                             });
 
-            registerBuiltin("GeneralGaussianSplatFoveatedComposite", {"fovea", "mid", "outer", "base"}, {"color"},
-                            [this](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext& passCtx) {
+            registerBuiltin("GeneralGaussianSplatFoveatedComposite",
+                            {"fovea", "mid", "outer", "base"},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
                                 auto* ctx = m_Owner.m_CurrentBuildContext;
                                 if (!ctx)
                                     return;
@@ -1366,38 +1517,38 @@ namespace vultra
         }
 
     private:
-        DeclarativeRenderer& m_Owner;
-        std::string m_Uri;
-        vrendergraph::RenderGraphDesc m_Desc;
-        vrendergraph::RenderGraphRegistry m_Registry;
+        DeclarativeRenderer&                                                    m_Owner;
+        std::string                                                             m_Uri;
+        vrendergraph::RenderGraphDesc                                           m_Desc;
+        vrendergraph::RenderGraphRegistry                                       m_Registry;
         std::unordered_map<std::string, std::unique_ptr<FullscreenPassRuntime>> m_ProjectPassRuntimes;
-        std::string m_LastValidationError;
-        CompatibilityBaseColorPass m_CompatibilityBaseColorPass;
-        DirectGBufferPass m_DirectGBufferPass;
-        DepthPrePass m_DepthPrePass;
-        ShadowMapPass m_ShadowMapPass;
-        DeferredLightingPass m_DeferredLightingPass;
-        SkyboxPass m_SkyboxPass;
-        HzbGeneratePass m_HzbGeneratePass;
-        SsaoPass m_SsaoPass;
-        SsrPass m_SsrPass;
-        SsrCompositePass m_SsrCompositePass;
-        FxaaPass m_FxaaPass;
-        ToneMappingPass m_ToneMappingPass;
-        SelectionOutlinePass m_SelectionOutlinePass;
-        XrViewSynthesisPass m_XrViewSynthesisPass;
-        FinalCompositionPass m_FinalCompositionPass;
-        RayTracingPrimaryPass m_RayTracingPrimaryPass;
-        VisibilityBufferPass m_VisibilityBufferPass;
-        ThinGBufferPass m_ThinGBufferPass;
-        CoarseInstanceCullPass m_CoarseInstanceCullPass;
-        MeshletCullPass m_MeshletCullPass;
-        BuildIndirectPass m_BuildIndirectPass;
-        DrawsetBuildPass m_DrawsetBuildPass;
-        MeshletHiZCullPass m_MeshletHiZCullPass;
-        GeneralGaussianSplatPreprocessPass m_GaussianPreprocessPass;
-        GeneralGaussianSplatRenderPass m_GaussianRenderPass;
-        GeneralGaussianSplatFoveatedCompositePass m_GaussianFoveatedCompositePass;
+        std::string                                                             m_LastValidationError;
+        CompatibilityBaseColorPass                                              m_CompatibilityBaseColorPass;
+        DirectGBufferPass                                                       m_DirectGBufferPass;
+        DepthPrePass                                                            m_DepthPrePass;
+        ShadowMapPass                                                           m_ShadowMapPass;
+        DeferredLightingPass                                                    m_DeferredLightingPass;
+        SkyboxPass                                                              m_SkyboxPass;
+        HzbGeneratePass                                                         m_HzbGeneratePass;
+        SsaoPass                                                                m_SsaoPass;
+        SsrPass                                                                 m_SsrPass;
+        SsrCompositePass                                                        m_SsrCompositePass;
+        FxaaPass                                                                m_FxaaPass;
+        ToneMappingPass                                                         m_ToneMappingPass;
+        SelectionOutlinePass                                                    m_SelectionOutlinePass;
+        XrViewSynthesisPass                                                     m_XrViewSynthesisPass;
+        FinalCompositionPass                                                    m_FinalCompositionPass;
+        RayTracingPrimaryPass                                                   m_RayTracingPrimaryPass;
+        VisibilityBufferPass                                                    m_VisibilityBufferPass;
+        ThinGBufferPass                                                         m_ThinGBufferPass;
+        CoarseInstanceCullPass                                                  m_CoarseInstanceCullPass;
+        MeshletCullPass                                                         m_MeshletCullPass;
+        BuildIndirectPass                                                       m_BuildIndirectPass;
+        DrawsetBuildPass                                                        m_DrawsetBuildPass;
+        MeshletHiZCullPass                                                      m_MeshletHiZCullPass;
+        GeneralGaussianSplatPreprocessPass                                      m_GaussianPreprocessPass;
+        GeneralGaussianSplatRenderPass                                          m_GaussianRenderPass;
+        GeneralGaussianSplatFoveatedCompositePass                               m_GaussianFoveatedCompositePass;
     };
 
     struct DeclarativeRenderer::RuntimeFeature
@@ -1434,9 +1585,9 @@ namespace vultra
 
     bool DeclarativeRenderer::buildRuntimeFeatures()
     {
-        auto* services = getServices();
+        auto* services      = getServices();
         auto* shaderService = services ? services->tryGet<IShaderService>() : nullptr;
-        auto* assetService = services ? services->tryGet<IAssetService>() : nullptr;
+        auto* assetService  = services ? services->tryGet<IAssetService>() : nullptr;
         auto* renderService = services ? services->tryGet<IRenderService>() : nullptr;
         if (!shaderService)
             return false;
@@ -1451,7 +1602,7 @@ namespace vultra
                     VULTRA_CORE_ERROR("[DeclarativeRenderer] Unknown builtin render feature '{}'", feature.builtin);
                     continue;
                 }
-                auto runtime = std::make_unique<RuntimeFeature>();
+                auto runtime     = std::make_unique<RuntimeFeature>();
                 runtime->builtin = std::move(builtin);
                 m_RuntimeFeatures.push_back(std::move(runtime));
             }
@@ -1472,17 +1623,17 @@ namespace vultra
 
                 try
                 {
-                    const auto json = nlohmann::json::parse(text.value());
-                    auto       desc = vrendergraph::loadRenderGraph(json);
+                    const auto json    = nlohmann::json::parse(text.value());
+                    auto       desc    = vrendergraph::loadRenderGraph(json);
                     auto       runtime = std::make_unique<RuntimeFeature>();
-                    runtime->renderGraph = std::make_unique<RenderGraphRuntime>(*this, feature.renderGraph, std::move(desc));
+                    runtime->renderGraph =
+                        std::make_unique<RenderGraphRuntime>(*this, feature.renderGraph, std::move(desc));
                     m_RuntimeFeatures.push_back(std::move(runtime));
                 }
                 catch (const std::exception& e)
                 {
-                    VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to parse render graph '{}': {}",
-                                      feature.renderGraph,
-                                      e.what());
+                    VULTRA_CORE_ERROR(
+                        "[DeclarativeRenderer] Failed to parse render graph '{}': {}", feature.renderGraph, e.what());
                 }
             }
 
@@ -1491,7 +1642,8 @@ namespace vultra
                 rhi::ShaderLibraryRuntime* library = nullptr;
                 if (pass.shader.library == "builtin")
                     library = &shaderService->builtinLibrary();
-                else if (auto it = m_Asset.shaderLibraries.find(pass.shader.library); it != m_Asset.shaderLibraries.end())
+                else if (auto it = m_Asset.shaderLibraries.find(pass.shader.library);
+                         it != m_Asset.shaderLibraries.end())
                     library = shaderService->findProjectLibrary(it->second);
 
                 if (!library)
@@ -1502,7 +1654,7 @@ namespace vultra
                     continue;
                 }
 
-                auto runtime = std::make_unique<RuntimeFeature>();
+                auto runtime        = std::make_unique<RuntimeFeature>();
                 runtime->fullscreen = std::make_unique<FullscreenPassRuntime>(pass, library);
                 m_RuntimeFeatures.push_back(std::move(runtime));
             }
@@ -1520,7 +1672,7 @@ namespace vultra
 
     bool DeclarativeRenderer::loadPipelineAsset()
     {
-        auto* services = getServices();
+        auto* services     = getServices();
         auto* assetService = services ? services->tryGet<IAssetService>() : nullptr;
         if (!assetService)
             return false;
@@ -1528,7 +1680,8 @@ namespace vultra
         auto text = assetService->loadTextAssetSync(m_PipelineUri);
         if (!text)
         {
-            VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to load SRP asset '{}': {}", m_PipelineUri, std::move(text).error());
+            VULTRA_CORE_ERROR(
+                "[DeclarativeRenderer] Failed to load SRP asset '{}': {}", m_PipelineUri, std::move(text).error());
             return false;
         }
 
@@ -1538,12 +1691,11 @@ namespace vultra
             {
                 const auto json = nlohmann::json::parse(text.value());
                 static_cast<void>(vrendergraph::loadRenderGraph(json));
-                auto feature = Feature {};
-                feature.name = m_PipelineUri;
+                auto feature        = Feature {};
+                feature.name        = m_PipelineUri;
                 feature.renderGraph = m_PipelineUri;
-                m_Asset.rendererKey = m_RendererKeyOverride.empty() ?
-                                          rendererKeyFromRenderGraphUri(m_PipelineUri) :
-                                          m_RendererKeyOverride;
+                m_Asset.rendererKey = m_RendererKeyOverride.empty() ? rendererKeyFromRenderGraphUri(m_PipelineUri) :
+                                                                      m_RendererKeyOverride;
                 m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
                 loadProjectGraphPasses();
                 m_Asset.features.push_back(std::move(feature));
@@ -1551,19 +1703,19 @@ namespace vultra
             }
             catch (const std::exception& e)
             {
-                VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to parse render graph pipeline '{}': {}",
-                                  m_PipelineUri,
-                                  e.what());
+                VULTRA_CORE_ERROR(
+                    "[DeclarativeRenderer] Failed to parse render graph pipeline '{}': {}", m_PipelineUri, e.what());
                 return false;
             }
         }
 
-        auto lua = makeAssetLuaState();
+        auto lua    = makeAssetLuaState();
         auto result = lua.safe_script(text.value(), &sol::script_pass_on_error);
         if (!result.valid())
         {
             sol::error err = result;
-            VULTRA_CORE_ERROR("[DeclarativeRenderer] Failed to parse render pipeline '{}': {}", m_PipelineUri, err.what());
+            VULTRA_CORE_ERROR(
+                "[DeclarativeRenderer] Failed to parse render pipeline '{}': {}", m_PipelineUri, err.what());
             return false;
         }
 
@@ -1584,7 +1736,7 @@ namespace vultra
 
     bool DeclarativeRenderer::loadFeatureAsset(std::string_view uri, Feature& outFeature)
     {
-        auto* services = getServices();
+        auto* services     = getServices();
         auto* assetService = services ? services->tryGet<IAssetService>() : nullptr;
         if (!assetService)
             return false;
@@ -1593,7 +1745,7 @@ namespace vultra
         if (!text)
             return false;
 
-        auto lua = makeAssetLuaState();
+        auto lua    = makeAssetLuaState();
         auto result = lua.safe_script(text.value(), &sol::script_pass_on_error);
         if (!result.valid())
             return false;
@@ -1633,7 +1785,7 @@ namespace vultra
                 {
                     if (featureRef.find(".vrg.json") != std::string::npos)
                     {
-                        feature.name = featureRef;
+                        feature.name        = featureRef;
                         feature.renderGraph = featureRef;
                         outAsset.features.push_back(std::move(feature));
                     }
@@ -1642,7 +1794,7 @@ namespace vultra
                 }
                 else
                 {
-                    feature.name = featureRef;
+                    feature.name    = featureRef;
                     feature.builtin = featureRef;
                     outAsset.features.push_back(std::move(feature));
                 }
@@ -1657,7 +1809,7 @@ namespace vultra
 
     bool DeclarativeRenderer::parseFeatureTable(sol::table table, Feature& outFeature)
     {
-        outFeature.name = getString(table, "name", "LuaRenderFeature");
+        outFeature.name    = getString(table, "name", "LuaRenderFeature");
         outFeature.builtin = getString(table, "builtin");
         if (outFeature.builtin.empty())
             outFeature.builtin = getString(table, "useBuiltin");
@@ -1674,22 +1826,22 @@ namespace vultra
                 continue;
 
             sol::table passTable = passObj.as<sol::table>();
-            const auto type = getString(passTable, "type", "fullscreen");
+            const auto type      = getString(passTable, "type", "fullscreen");
             if (type != "fullscreen")
                 continue;
 
             FullscreenPass pass;
-            pass.name = getString(passTable, "name", outFeature.name + "::Fullscreen");
+            pass.name             = getString(passTable, "name", outFeature.name + "::Fullscreen");
             sol::object shaderObj = passTable["shader"];
             if (!shaderObj.is<sol::table>())
                 continue;
 
             sol::table shaderTable = shaderObj.as<sol::table>();
-            pass.shader.library = getString(shaderTable, "library", "project");
-            pass.shader.vertex = getString(shaderTable, "vertex");
-            pass.shader.fragment = getString(shaderTable, "fragment");
-            pass.input = getString(passTable, "input", pass.input);
-            pass.output = getString(passTable, "output", pass.output);
+            pass.shader.library    = getString(shaderTable, "library", "project");
+            pass.shader.vertex     = getString(shaderTable, "vertex");
+            pass.shader.fragment   = getString(shaderTable, "fragment");
+            pass.input             = getString(passTable, "input", pass.input);
+            pass.output            = getString(passTable, "output", pass.output);
             if (pass.shader.vertex.empty() || pass.shader.fragment.empty())
                 continue;
 
@@ -1706,9 +1858,9 @@ namespace vultra
         if (outPass.type.empty())
             return false;
 
-        auto& pass = outPass.fullscreen;
-        pass.name = getString(table, "passName", outPass.type);
-        pass.input = "source";
+        auto& pass  = outPass.fullscreen;
+        pass.name   = getString(table, "passName", outPass.type);
+        pass.input  = "source";
         pass.output = "color";
 
         sol::object shaderObj = table["shader"];
@@ -1716,15 +1868,15 @@ namespace vultra
             return false;
 
         sol::table shaderTable = shaderObj.as<sol::table>();
-        pass.shader.library = getString(shaderTable, "library", "project");
-        pass.shader.vertex = getString(shaderTable, "vertex", "fullscreen_triangle.vert");
-        pass.shader.fragment = getString(shaderTable, "fragment");
+        pass.shader.library    = getString(shaderTable, "library", "project");
+        pass.shader.vertex     = getString(shaderTable, "vertex", "fullscreen_triangle.vert");
+        pass.shader.fragment   = getString(shaderTable, "fragment");
         return !pass.shader.vertex.empty() && !pass.shader.fragment.empty();
     }
 
     void DeclarativeRenderer::loadProjectGraphPasses()
     {
-        auto* services = getServices();
+        auto* services     = getServices();
         auto* assetService = services ? services->tryGet<IAssetService>() : nullptr;
         if (!assetService)
             return;
@@ -1754,7 +1906,7 @@ namespace vultra
             std::stringstream buffer;
             buffer << stream.rdbuf();
 
-            auto lua = makeAssetLuaState();
+            auto lua    = makeAssetLuaState();
             auto result = lua.safe_script(buffer.str(), &sol::script_pass_on_error);
             if (!result.valid())
             {
@@ -1777,7 +1929,7 @@ namespace vultra
 
     bool DeclarativeRenderer::loadShaderLibraries()
     {
-        auto* services = getServices();
+        auto* services      = getServices();
         auto* shaderService = services ? services->tryGet<IShaderService>() : nullptr;
         if (!shaderService)
             return false;

@@ -7,8 +7,8 @@
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/transient_resources.hpp"
 
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
 
 namespace vultra
 {
@@ -80,7 +80,7 @@ namespace vultra
                     return;
                 }
 
-                const auto layerCount = attachment.layer ? 1u : std::max(texture.getNumLayers(), 1u);
+                const auto layerCount  = attachment.layer ? 1u : std::max(texture.getNumLayers(), 1u);
                 framebufferInfo.layers = std::max(framebufferInfo.layers, layerCount);
             }
 
@@ -212,7 +212,6 @@ namespace vultra
                         .dstAccess = dstAccess,
                     });
             }
-
         }
         void FrameGraphTexture::preWrite(const Desc& desc, const uint32_t bits, void* ctx) const
         {
@@ -275,7 +274,6 @@ namespace vultra
                         .dstAccess = rhi::Access::eShaderStorageWrite,
                     });
             }
-
         }
 
         std::string FrameGraphTexture::toString(const Desc& desc)

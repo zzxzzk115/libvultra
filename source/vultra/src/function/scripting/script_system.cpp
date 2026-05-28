@@ -3,10 +3,10 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/services/input_service.hpp"
 #include "vultra/core/services/timing_service.hpp"
-#include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/scripting/script_binding.hpp"
 #include "vultra/function/scripting/script_types.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/frame_debugger_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/render_service.hpp"
@@ -32,14 +32,14 @@ namespace vultra
         if (!m_Engine.init())
             return false;
 
-        m_ScriptContext.worldService = ctx().services.tryGet<IWorldService>();
-        m_ScriptContext.inputService = ctx().services.tryGet<IInputService>();
-        m_ScriptContext.timingService = ctx().services.tryGet<ITimingService>();
-        m_ScriptContext.assetService = ctx().services.tryGet<IAssetService>();
-        m_ScriptContext.sceneService = ctx().services.tryGet<ISceneService>();
-        m_ScriptContext.scriptService = this;
-        m_ScriptContext.cameraService = ctx().services.tryGet<ICameraService>();
-        m_ScriptContext.renderService = ctx().services.tryGet<IRenderService>();
+        m_ScriptContext.worldService         = ctx().services.tryGet<IWorldService>();
+        m_ScriptContext.inputService         = ctx().services.tryGet<IInputService>();
+        m_ScriptContext.timingService        = ctx().services.tryGet<ITimingService>();
+        m_ScriptContext.assetService         = ctx().services.tryGet<IAssetService>();
+        m_ScriptContext.sceneService         = ctx().services.tryGet<ISceneService>();
+        m_ScriptContext.scriptService        = this;
+        m_ScriptContext.cameraService        = ctx().services.tryGet<ICameraService>();
+        m_ScriptContext.renderService        = ctx().services.tryGet<IRenderService>();
         m_ScriptContext.renderBackendService = ctx().services.tryGet<IRenderBackendService>();
         m_ScriptContext.frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>();
 
@@ -183,9 +183,8 @@ namespace vultra
         if (!assetSvc)
             return false;
 
-        VULTRA_CORE_INFO("[ScriptSystem] Loading script for entity {} from '{}'",
-                         static_cast<uint32_t>(e),
-                         sc.scriptUri);
+        VULTRA_CORE_INFO(
+            "[ScriptSystem] Loading script for entity {} from '{}'", static_cast<uint32_t>(e), sc.scriptUri);
 
         auto textRes = assetSvc->loadTextAssetSync(sc.scriptUri);
         if (!textRes)
@@ -214,18 +213,19 @@ namespace vultra
             return false;
         }
 
-        inst->onCreate  = inst->env["OnCreate"];
-        inst->onDestroy = inst->env["OnDestroy"];
-        inst->onUpdate  = inst->env["OnUpdate"];
+        inst->onCreate      = inst->env["OnCreate"];
+        inst->onDestroy     = inst->env["OnDestroy"];
+        inst->onUpdate      = inst->env["OnUpdate"];
         inst->onFixedUpdate = inst->env["OnFixedUpdate"];
-        inst->valid     = true;
+        inst->valid         = true;
 
-        VULTRA_CORE_INFO("[ScriptSystem] Script loaded for entity {}: OnCreate={}, OnUpdate={}, OnFixedUpdate={}, OnDestroy={}",
-                         static_cast<uint32_t>(e),
-                         inst->onCreate.valid(),
-                         inst->onUpdate.valid(),
-                         inst->onFixedUpdate.valid(),
-                         inst->onDestroy.valid());
+        VULTRA_CORE_INFO(
+            "[ScriptSystem] Script loaded for entity {}: OnCreate={}, OnUpdate={}, OnFixedUpdate={}, OnDestroy={}",
+            static_cast<uint32_t>(e),
+            inst->onCreate.valid(),
+            inst->onUpdate.valid(),
+            inst->onFixedUpdate.valid(),
+            inst->onDestroy.valid());
 
         if (callCreate && inst->onCreate.valid())
         {
@@ -263,9 +263,8 @@ namespace vultra
         if (!r.valid())
         {
             sol::error err = r;
-            VULTRA_CORE_ERROR("[ScriptSystem] OnFixedUpdate error for entity {}: {}",
-                              static_cast<uint32_t>(e),
-                              err.what());
+            VULTRA_CORE_ERROR(
+                "[ScriptSystem] OnFixedUpdate error for entity {}: {}", static_cast<uint32_t>(e), err.what());
         }
     }
 

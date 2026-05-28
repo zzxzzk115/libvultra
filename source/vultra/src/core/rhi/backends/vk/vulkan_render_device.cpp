@@ -1,16 +1,16 @@
-#include "vultra/core/rhi/render_device.hpp"
-#include "vultra/core/base/hash.hpp"
-#include "vultra/core/rhi/command_buffer.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_buffer.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_acceleration_structure.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device.hpp"
-#include "vultra/core/rhi/backends/webgpu/webgpu_sorter.hpp"
-#include "vultra/core/rhi/raytracing_pipeline.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_radix_sorter.hpp"
+#include "vultra/core/base/hash.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
-#include "vultra/core/rhi/util.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_acceleration_structure.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_buffer.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_radix_sorter.hpp"
+#include "vultra/core/rhi/backends/webgpu/webgpu_sorter.hpp"
+#include "vultra/core/rhi/command_buffer.hpp"
+#include "vultra/core/rhi/raytracing_pipeline.hpp"
+#include "vultra/core/rhi/render_device.hpp"
+#include "vultra/core/rhi/util.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
 
 #include <glm/glm.hpp>
@@ -27,7 +27,8 @@
 #endif
 
 #if UINTPTR_MAX < UINT64_MAX && !defined(VULTRA_ALLOW_UNSAFE_32BIT_VULKAN_HANDLES)
-#error "32-bit Vulkan build is blocked by default due to handle truncation risk. Enable android_allow_32bit_unsafe to override."
+#error \
+    "32-bit Vulkan build is blocked by default due to handle truncation risk. Enable android_allow_32bit_unsafe to override."
 #endif
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
@@ -137,20 +138,20 @@ namespace
     [[nodiscard]] vultra::rhi::RenderDeviceLimits toRenderDeviceLimits(const vk::PhysicalDeviceLimits& limits)
     {
         vultra::rhi::RenderDeviceLimits out {};
-        out.maxBindGroups                    = limits.maxBoundDescriptorSets;
-        out.maxUniformBuffersPerShaderStage  = limits.maxPerStageDescriptorUniformBuffers;
-        out.maxStorageBuffersPerShaderStage  = limits.maxPerStageDescriptorStorageBuffers;
-        out.maxSampledTexturesPerShaderStage = limits.maxPerStageDescriptorSampledImages;
-        out.maxSamplersPerShaderStage        = limits.maxPerStageDescriptorSamplers;
-        out.maxStorageTexturesPerShaderStage = limits.maxPerStageDescriptorStorageImages;
-        out.maxUniformBufferBindingSize      = limits.maxUniformBufferRange;
-        out.maxStorageBufferBindingSize      = limits.maxStorageBufferRange;
-        out.maxBufferSize                    = std::numeric_limits<uint64_t>::max();
-        out.maxVertexBuffers                 = limits.maxVertexInputBindings;
-        out.maxVertexAttributes              = limits.maxVertexInputAttributes;
-        out.maxInterStageShaderVariables     = limits.maxVertexOutputComponents;
-        out.maxColorAttachments              = limits.maxColorAttachments;
-        out.maxComputeWorkgroupStorageSize   = limits.maxComputeSharedMemorySize;
+        out.maxBindGroups                     = limits.maxBoundDescriptorSets;
+        out.maxUniformBuffersPerShaderStage   = limits.maxPerStageDescriptorUniformBuffers;
+        out.maxStorageBuffersPerShaderStage   = limits.maxPerStageDescriptorStorageBuffers;
+        out.maxSampledTexturesPerShaderStage  = limits.maxPerStageDescriptorSampledImages;
+        out.maxSamplersPerShaderStage         = limits.maxPerStageDescriptorSamplers;
+        out.maxStorageTexturesPerShaderStage  = limits.maxPerStageDescriptorStorageImages;
+        out.maxUniformBufferBindingSize       = limits.maxUniformBufferRange;
+        out.maxStorageBufferBindingSize       = limits.maxStorageBufferRange;
+        out.maxBufferSize                     = std::numeric_limits<uint64_t>::max();
+        out.maxVertexBuffers                  = limits.maxVertexInputBindings;
+        out.maxVertexAttributes               = limits.maxVertexInputAttributes;
+        out.maxInterStageShaderVariables      = limits.maxVertexOutputComponents;
+        out.maxColorAttachments               = limits.maxColorAttachments;
+        out.maxComputeWorkgroupStorageSize    = limits.maxComputeSharedMemorySize;
         out.maxComputeInvocationsPerWorkgroup = limits.maxComputeWorkGroupInvocations;
         out.maxComputeWorkgroupSizeX          = limits.maxComputeWorkGroupSize[0];
         out.maxComputeWorkgroupSizeY          = limits.maxComputeWorkGroupSize[1];
@@ -162,8 +163,7 @@ namespace
 
 namespace
 {
-    [[nodiscard]] vultra::rhi::VulkanRenderDevice&
-    backendOf(std::unique_ptr<vultra::rhi::IRenderDevice>& backend)
+    [[nodiscard]] vultra::rhi::VulkanRenderDevice& backendOf(std::unique_ptr<vultra::rhi::IRenderDevice>& backend)
     {
         assert(backend);
         auto* vkBackend = dynamic_cast<vultra::rhi::VulkanRenderDevice*>(backend.get());
@@ -180,7 +180,7 @@ namespace
         return *vkBackend;
     }
 
-}
+} // namespace
 
 namespace
 {
@@ -277,10 +277,10 @@ namespace
     }
 
     [[nodiscard]] vultra::rhi::Buffer makeBuffer(const vma::Allocator             allocator,
-                                                 const uint64_t                  size,
-                                                 const vultra::rhi::BufferUsage  usage,
+                                                 const uint64_t                   size,
+                                                 const vultra::rhi::BufferUsage   usage,
                                                  const vma::AllocationCreateFlags flags,
-                                                 const vma::MemoryUsage          memoryUsage)
+                                                 const vma::MemoryUsage           memoryUsage)
     {
         return vultra::rhi::Buffer {
             std::make_unique<vultra::rhi::VulkanBuffer>(allocator, size, usage, flags, memoryUsage)};
@@ -364,9 +364,9 @@ namespace vultra
                 return;
             }
 
-            const uint32_t slot      = static_cast<uint32_t>(m_ActiveFrameTimeSlot);
-            const uint32_t endQuery  = slot * 2u + 1u;
-            auto           cmd       = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
+            const uint32_t slot     = static_cast<uint32_t>(m_ActiveFrameTimeSlot);
+            const uint32_t endQuery = slot * 2u + 1u;
+            auto           cmd      = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(commandBufferHandle)};
             cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, m_FrameTimeQueryPool, endQuery);
             m_PendingFrameTimeSlots.push_back(slot);
             m_ActiveFrameTimeSlot = -1;
@@ -381,18 +381,18 @@ namespace vultra
 
             while (!m_PendingFrameTimeSlots.empty())
             {
-                const uint32_t slot       = m_PendingFrameTimeSlots.front();
-                const uint32_t firstQuery = slot * 2u;
+                const uint32_t          slot       = m_PendingFrameTimeSlots.front();
+                const uint32_t          firstQuery = slot * 2u;
                 std::array<uint64_t, 4> results {};
 
                 const auto res = m_Device.getQueryPoolResults(m_FrameTimeQueryPool,
-                                                               firstQuery,
-                                                               2u,
-                                                               sizeof(results),
-                                                               results.data(),
-                                                               sizeof(uint64_t) * 2u,
-                                                               vk::QueryResultFlagBits::e64 |
-                                                                   vk::QueryResultFlagBits::eWithAvailability);
+                                                              firstQuery,
+                                                              2u,
+                                                              sizeof(results),
+                                                              results.data(),
+                                                              sizeof(uint64_t) * 2u,
+                                                              vk::QueryResultFlagBits::e64 |
+                                                                  vk::QueryResultFlagBits::eWithAvailability);
                 if (res == vk::Result::eNotReady)
                 {
                     break;
@@ -410,7 +410,7 @@ namespace vultra
                 }
 
                 const uint64_t delta = results[2] - results[0];
-                m_LastGpuFrameMs = static_cast<double>(delta) * static_cast<double>(m_TimestampPeriodNs) * 1e-6;
+                m_LastGpuFrameMs     = static_cast<double>(delta) * static_cast<double>(m_TimestampPeriodNs) * 1e-6;
             }
 
             return m_LastGpuFrameMs;
@@ -466,12 +466,12 @@ namespace vultra
             cmd.resetQueryPool(m_ScopeTimeQueryPool, firstQuery, 2u);
             cmd.writeTimestamp(vk::PipelineStageFlagBits::eAllCommands, m_ScopeTimeQueryPool, firstQuery);
 
-            const uint64_t token = m_ScopeTimeNextToken++;
-            slot.token           = token;
-            slot.active          = true;
-            slot.pending         = false;
-            slot.resolved        = false;
-            slot.ms              = -1.0;
+            const uint64_t token          = m_ScopeTimeNextToken++;
+            slot.token                    = token;
+            slot.active                   = true;
+            slot.pending                  = false;
+            slot.resolved                 = false;
+            slot.ms                       = -1.0;
             m_ScopeTimeTokenToSlot[token] = slotIndex;
             return token;
         }
@@ -526,14 +526,14 @@ namespace vultra
 
             std::array<uint64_t, 4> results {};
             const uint32_t          firstQuery = it->second * 2u;
-            const auto res = m_Device.getQueryPoolResults(m_ScopeTimeQueryPool,
-                                                           firstQuery,
-                                                           2u,
-                                                           sizeof(results),
-                                                           results.data(),
-                                                           sizeof(uint64_t) * 2u,
-                                                           vk::QueryResultFlagBits::e64 |
-                                                               vk::QueryResultFlagBits::eWithAvailability);
+            const auto              res =
+                m_Device.getQueryPoolResults(m_ScopeTimeQueryPool,
+                                             firstQuery,
+                                             2u,
+                                             sizeof(results),
+                                             results.data(),
+                                             sizeof(uint64_t) * 2u,
+                                             vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWithAvailability);
             if (res == vk::Result::eNotReady)
             {
                 return -1.0;
@@ -581,20 +581,24 @@ namespace vultra
 
             try
             {
-                backendOf(m_Backend).m_XRDevice = new openxr::XRDevice(openxr::XRDeviceFeatureFlagBits::eVR, backendOf(m_Backend).m_AppName);
+                backendOf(m_Backend).m_XRDevice =
+                    new openxr::XRDevice(openxr::XRDeviceFeatureFlagBits::eVR, backendOf(m_Backend).m_AppName);
                 if (!backendOf(m_Backend).m_XRDevice->isAvailable())
                 {
-                    VULTRA_CORE_WARN("[RenderDevice] OpenXR runtime is present but no compatible XR system is available; falling back to standalone Vulkan.");
+                    VULTRA_CORE_WARN("[RenderDevice] OpenXR runtime is present but no compatible XR system is "
+                                     "available; falling back to standalone Vulkan.");
                     delete backendOf(m_Backend).m_XRDevice;
                     backendOf(m_Backend).m_XRDevice = nullptr;
-                    backendOf(m_Backend).m_FeatureFlag = backendOf(m_Backend).m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eXR;
+                    backendOf(m_Backend).m_FeatureFlag =
+                        backendOf(m_Backend).m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eXR;
                 }
             }
             catch (const std::exception& e)
             {
                 VULTRA_CORE_ERROR("[RenderDevice] Failed to initialize OpenXR device: {}", e.what());
-                backendOf(m_Backend).m_XRDevice    = nullptr;
-                backendOf(m_Backend).m_FeatureFlag = backendOf(m_Backend).m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eXR;
+                backendOf(m_Backend).m_XRDevice = nullptr;
+                backendOf(m_Backend).m_FeatureFlag =
+                    backendOf(m_Backend).m_FeatureFlag & ~RenderDeviceFeatureFlagBits::eXR;
             }
         }
 
@@ -626,11 +630,12 @@ namespace vultra
 
             std::vector<const char*> requiredExtensions;
             std::vector<const char*> extensions;
-            bool                     enableDebugUtils = false;
+            bool                     enableDebugUtils      = false;
             const bool               validationRequested   = backendOf(m_Backend).m_EnableValidation;
             const bool               debugMarkersRequested = backendOf(m_Backend).m_EnableDebugMarkers;
 
-            requiredExtensions.assign(backendOf(m_Backend).m_RequiredInstanceExtensions.begin(), backendOf(m_Backend).m_RequiredInstanceExtensions.end());
+            requiredExtensions.assign(backendOf(m_Backend).m_RequiredInstanceExtensions.begin(),
+                                      backendOf(m_Backend).m_RequiredInstanceExtensions.end());
 
             if (validationRequested || debugMarkersRequested)
             {
@@ -719,8 +724,8 @@ namespace vultra
                 VULTRA_CORE_WARN("[RenderDevice] Validation layer unavailable, continuing without it");
             }
 
-            createInfo.enabledLayerCount   = static_cast<uint32_t>(enabledLayers.size());
-            createInfo.ppEnabledLayerNames = enabledLayers.data();
+            createInfo.enabledLayerCount       = static_cast<uint32_t>(enabledLayers.size());
+            createInfo.ppEnabledLayerNames     = enabledLayers.data();
             createInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
             createInfo.ppEnabledExtensionNames = extensions.data();
 
@@ -755,9 +760,9 @@ namespace vultra
 #endif
 
             // If enable OpenXR feature, then let OpenXR create the vulkan instance.
-            const bool useOpenXR = HasFlagValues(backendOf(m_Backend).m_FeatureFlag, RenderDeviceFeatureFlagBits::eXR) &&
-                                   backendOf(m_Backend).m_XRDevice != nullptr &&
-                                   backendOf(m_Backend).m_XRDevice->isAvailable();
+            const bool useOpenXR =
+                HasFlagValues(backendOf(m_Backend).m_FeatureFlag, RenderDeviceFeatureFlagBits::eXR) &&
+                backendOf(m_Backend).m_XRDevice != nullptr && backendOf(m_Backend).m_XRDevice->isAvailable();
             if (useOpenXR)
             {
                 VkInstance           vkInstanceC = nullptr;
@@ -768,11 +773,14 @@ namespace vultra
                 xrVulkanInstanceCreateInfo.pfnGetInstanceProcAddr = vkGetInstanceProcAddr;
                 xrVulkanInstanceCreateInfo.systemId               = backendOf(m_Backend).m_XRDevice->m_XrSystemId;
                 xrVulkanInstanceCreateInfo.vulkanCreateInfo       = &createInfoC;
-                VkResult vkResult = VK_SUCCESS;
+                VkResult vkResult                                 = VK_SUCCESS;
 
                 bool ok = true;
                 if (XR_FAILED(backendOf(m_Backend).m_XRDevice->xrCreateVulkanInstanceKHR(
-                        backendOf(m_Backend).m_XRDevice->m_XrInstance, &xrVulkanInstanceCreateInfo, &vkInstanceC, &vkResult)))
+                        backendOf(m_Backend).m_XRDevice->m_XrInstance,
+                        &xrVulkanInstanceCreateInfo,
+                        &vkInstanceC,
+                        &vkResult)))
                 {
                     ok = false;
                 }
@@ -791,8 +799,9 @@ namespace vultra
             }
             else
             {
-                VK_CHECK(
-                    vk::createInstance(&createInfo, nullptr, &backendOf(m_Backend).m_Instance), LOGTAG, "Failed to create Vulkan instance");
+                VK_CHECK(vk::createInstance(&createInfo, nullptr, &backendOf(m_Backend).m_Instance),
+                         LOGTAG,
+                         "Failed to create Vulkan instance");
             }
 
             VULKAN_HPP_DEFAULT_DISPATCHER.init(backendOf(m_Backend).m_Instance);
@@ -806,7 +815,8 @@ namespace vultra
         void RenderDevice::selectPhysicalDevice()
         {
             // If OpenXR is enabled, then retrieve the physical device from OpenXR.
-            bool useOpenXR = backendOf(m_Backend).m_XRDevice != nullptr && backendOf(m_Backend).m_XRDevice->isAvailable();
+            bool useOpenXR =
+                backendOf(m_Backend).m_XRDevice != nullptr && backendOf(m_Backend).m_XRDevice->isAvailable();
 
             if (useOpenXR)
             {
@@ -876,9 +886,12 @@ namespace vultra
                 backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) > 0;
             const bool supportsRayTracingPipeline =
                 backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) > 0;
-            const bool supportsRayQuery   = backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_RAY_QUERY_EXTENSION_NAME) > 0;
-            const bool supportsMeshShader = backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_MESH_SHADER_EXTENSION_NAME) > 0;
-            const bool supportsMultiDraw  = backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_MULTI_DRAW_EXTENSION_NAME) > 0;
+            const bool supportsRayQuery =
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_RAY_QUERY_EXTENSION_NAME) > 0;
+            const bool supportsMeshShader =
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_MESH_SHADER_EXTENSION_NAME) > 0;
+            const bool supportsMultiDraw =
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_MULTI_DRAW_EXTENSION_NAME) > 0;
             const bool supportsFragmentShaderInterlock =
                 backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME) > 0;
 
@@ -899,10 +912,12 @@ namespace vultra
             }
             else
             {
-                backendOf(m_Backend).m_RayTracingPipelineProperties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {};
+                backendOf(m_Backend).m_RayTracingPipelineProperties =
+                    vk::PhysicalDeviceRayTracingPipelinePropertiesKHR {};
             }
 
-            backendOf(m_Backend).m_Limits = toRenderDeviceLimits(backendOf(m_Backend).m_PhysicalDevice.getProperties().limits);
+            backendOf(m_Backend).m_Limits =
+                toRenderDeviceLimits(backendOf(m_Backend).m_PhysicalDevice.getProperties().limits);
 
             // Query supported features
             vk::PhysicalDeviceFeatures2        features2 {};
@@ -967,7 +982,8 @@ namespace vultra
             }
             else
             {
-                backendOf(m_Backend).m_AccelerationStructureFeatures = vk::PhysicalDeviceAccelerationStructureFeaturesKHR {};
+                backendOf(m_Backend).m_AccelerationStructureFeatures =
+                    vk::PhysicalDeviceAccelerationStructureFeaturesKHR {};
             }
             // Fill feature report
             auto       props = backendOf(m_Backend).m_PhysicalDevice.getProperties();
@@ -984,10 +1000,12 @@ namespace vultra
             backendOf(m_Backend).m_FeatureReport.apiMajor   = VK_API_VERSION_MAJOR(props.apiVersion);
             backendOf(m_Backend).m_FeatureReport.apiMinor   = VK_API_VERSION_MINOR(props.apiVersion);
             backendOf(m_Backend).m_FeatureReport.apiPatch   = VK_API_VERSION_PATCH(props.apiVersion);
-            backendOf(m_Backend).m_UseKhrDynamicRendering   = supportsDynamicRendering && !useVulkan13CoreFeatures &&
-                                       backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
-            backendOf(m_Backend).m_UseKhrSynchronization2 = supportsSynchronization2 && !useVulkan13CoreFeatures &&
-                                       backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
+            backendOf(m_Backend).m_UseKhrDynamicRendering =
+                supportsDynamicRendering && !useVulkan13CoreFeatures &&
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME) > 0;
+            backendOf(m_Backend).m_UseKhrSynchronization2 =
+                supportsSynchronization2 && !useVulkan13CoreFeatures &&
+                backendOf(m_Backend).m_SupportedExtensions.count(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) > 0;
 
             auto& flags = backendOf(m_Backend).m_FeatureReport.flags;
 
@@ -1048,14 +1066,18 @@ namespace vultra
 
             // Summarize selected device
             VULTRA_CORE_INFO("[RenderDevice] Selected GPU: {}", props.deviceName.data());
-            VULTRA_CORE_INFO(
-                "  Vulkan API: {}.{}.{}", backendOf(m_Backend).m_FeatureReport.apiMajor, backendOf(m_Backend).m_FeatureReport.apiMinor, backendOf(m_Backend).m_FeatureReport.apiPatch);
+            VULTRA_CORE_INFO("  Vulkan API: {}.{}.{}",
+                             backendOf(m_Backend).m_FeatureReport.apiMajor,
+                             backendOf(m_Backend).m_FeatureReport.apiMinor,
+                             backendOf(m_Backend).m_FeatureReport.apiPatch);
             VULTRA_CORE_INFO("[RenderDevice] Supported features:");
 
 #define PRINT_FEATURE(f) \
     VULTRA_CORE_INFO("   {:<30} {}", \
                      std::string_view(#f).substr(1), \
-                     HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::f) ? "yes" : "no")
+                     HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::f) ? \
+                         "yes" : \
+                         "no")
             VULTRA_CORE_INFO("[RenderDevice] Feature support report:");
             PRINT_FEATURE(eXR);
             PRINT_FEATURE(eRayTracingPipeline);
@@ -1075,17 +1097,21 @@ namespace vultra
 
             // === Assign & Check Feature Flags ===
             auto availableFeatureFlag = RenderDeviceFeatureFlagBits::eNormal;
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
-                HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
+                HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eRayTracingPipeline;
             }
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eAccelerationStructure) &&
                 HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayQuery))
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eRayQuery;
             }
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMeshShader))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eMeshShader))
             {
                 availableFeatureFlag |= RenderDeviceFeatureFlagBits::eMeshShader;
             }
@@ -1142,24 +1168,25 @@ namespace vultra
             queueCreateInfo.queueCount       = 1;
             queueCreateInfo.pQueuePriorities = &queuePriority;
 
-            const auto physicalDeviceFeatures  = backendOf(m_Backend).m_PhysicalDevice.getFeatures();
-            vk::PhysicalDeviceFeatures2        supportedFeatures2 {};
+            const auto                  physicalDeviceFeatures = backendOf(m_Backend).m_PhysicalDevice.getFeatures();
+            vk::PhysicalDeviceFeatures2 supportedFeatures2 {};
             vk::PhysicalDeviceVulkan12Features supportedVk12Features {};
             supportedFeatures2.pNext = &supportedVk12Features;
             backendOf(m_Backend).m_PhysicalDevice.getFeatures2(&supportedFeatures2);
-            const bool useVulkan13CoreFeatures = !backendOf(m_Backend).m_UseKhrDynamicRendering && !backendOf(m_Backend).m_UseKhrSynchronization2;
+            const bool useVulkan13CoreFeatures =
+                !backendOf(m_Backend).m_UseKhrDynamicRendering && !backendOf(m_Backend).m_UseKhrSynchronization2;
             // === Base extensions ===
             std::vector<const char*> extensions = {
                 VK_KHR_SWAPCHAIN_EXTENSION_NAME,
             };
 
-            if (!useVulkan13CoreFeatures &&
-                HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
+            if (!useVulkan13CoreFeatures && HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                                                          RenderDeviceFeatureReportFlagBits::eSynchronization2))
             {
                 extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
             }
-            if (!useVulkan13CoreFeatures &&
-                HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
+            if (!useVulkan13CoreFeatures && HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                                                          RenderDeviceFeatureReportFlagBits::eDynamicRendering))
             {
                 extensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
             }
@@ -1189,11 +1216,13 @@ namespace vultra
             vk::PhysicalDeviceSynchronization2FeaturesKHR vkSync2Features {};
             if (useVulkan13CoreFeatures)
             {
-                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
+                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                                  RenderDeviceFeatureReportFlagBits::eDynamicRendering))
                 {
                     vk13Features.dynamicRendering = VK_TRUE;
                 }
-                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
+                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                                  RenderDeviceFeatureReportFlagBits::eSynchronization2))
                 {
                     vk13Features.synchronization2 = VK_TRUE;
                 }
@@ -1204,12 +1233,14 @@ namespace vultra
             }
             else
             {
-                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDynamicRendering))
+                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                                  RenderDeviceFeatureReportFlagBits::eDynamicRendering))
                 {
                     vkDynamicRenderingFeatures.dynamicRendering = VK_TRUE;
                     featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vkDynamicRenderingFeatures));
                 }
-                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eSynchronization2))
+                if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                                  RenderDeviceFeatureReportFlagBits::eSynchronization2))
                 {
                     vkSync2Features.synchronization2 = VK_TRUE;
                     featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&vkSync2Features));
@@ -1217,11 +1248,13 @@ namespace vultra
             }
             // Vulkan 1.1 features
             vk::PhysicalDeviceVulkan11Features vk11Features {};
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDrawParameters))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eDrawParameters))
             {
                 vk11Features.shaderDrawParameters = VK_TRUE;
             }
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMultiview))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eMultiview))
             {
                 vk11Features.multiview = VK_TRUE;
             }
@@ -1229,7 +1262,8 @@ namespace vultra
 
             // Vulkan 1.2 features
             vk::PhysicalDeviceVulkan12Features vk12Features {};
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 vk12Features.bufferDeviceAddress = VK_TRUE;
                 if (backendOf(m_Backend).m_EnableRenderDoc)
@@ -1238,7 +1272,8 @@ namespace vultra
                 vk12Features.scalarBlockLayout       = VK_TRUE;
                 vk12Features.storageBuffer8BitAccess = VK_TRUE;
             }
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDescriptorIndexing))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eDescriptorIndexing))
             {
                 vk12Features.descriptorIndexing                        = VK_TRUE;
                 vk12Features.descriptorBindingVariableDescriptorCount  = VK_TRUE;
@@ -1247,7 +1282,8 @@ namespace vultra
                 vk12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
                 vk12Features.runtimeDescriptorArray                    = VK_TRUE;
             }
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eDrawIndirectCount))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eDrawIndirectCount))
             {
                 vk12Features.drawIndirectCount = VK_TRUE;
             }
@@ -1259,7 +1295,8 @@ namespace vultra
 
             // Multi-draw
             vk::PhysicalDeviceMultiDrawFeaturesEXT multidraw {};
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMultiDraw))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eMultiDraw))
             {
                 multidraw.multiDraw = VK_TRUE;
                 featureChain.push_back(reinterpret_cast<vk::BaseOutStructure*>(&multidraw));
@@ -1267,7 +1304,8 @@ namespace vultra
 
             // Ray Tracing & Ray Query
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures {};
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eAccelerationStructure))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eAccelerationStructure))
             {
                 extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
                 extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
@@ -1284,7 +1322,8 @@ namespace vultra
             }
 
             vk::PhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingFeatures {};
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eRayTracingPipeline))
             {
                 extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
                 rayTracingFeatures.rayTracingPipeline = VK_TRUE;
@@ -1293,7 +1332,8 @@ namespace vultra
 
             // Mesh Shaders
             vk::PhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures {};
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eMeshShader))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eMeshShader))
             {
                 extensions.push_back(VK_EXT_MESH_SHADER_EXTENSION_NAME);
                 meshShaderFeatures.meshShader = VK_TRUE;
@@ -1302,7 +1342,8 @@ namespace vultra
             }
 
             vk::PhysicalDeviceFragmentShaderInterlockFeaturesEXT fragmentShaderInterlockFeatures {};
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eFragmentShaderInterlock))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eFragmentShaderInterlock))
             {
                 extensions.push_back(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME);
                 fragmentShaderInterlockFeatures.fragmentShaderPixelInterlock = VK_TRUE;
@@ -1356,13 +1397,17 @@ namespace vultra
                 VkDevice device   = nullptr;
 
                 if (XR_FAILED(backendOf(m_Backend).m_XRDevice->xrCreateVulkanDeviceKHR(
-                        backendOf(m_Backend).m_XRDevice->m_XrInstance, &xrVulkanDeviceCreateInfo, &device, &vkResult)) ||
+                        backendOf(m_Backend).m_XRDevice->m_XrInstance,
+                        &xrVulkanDeviceCreateInfo,
+                        &device,
+                        &vkResult)) ||
                     vkResult != VK_SUCCESS)
                 {
                     VULTRA_CORE_ERROR("[RenderDevice] OpenXR Vulkan device creation failed (VkResult: {})",
                                       vk::to_string(static_cast<vk::Result>(vkResult)));
                     VULTRA_CORE_WARN("[RenderDevice] Falling back to standard Vulkan device creation");
-                    VK_CHECK(backendOf(m_Backend).m_PhysicalDevice.createDevice(&createInfo, nullptr, &backendOf(m_Backend).m_Device),
+                    VK_CHECK(backendOf(m_Backend).m_PhysicalDevice.createDevice(
+                                 &createInfo, nullptr, &backendOf(m_Backend).m_Device),
                              LOGTAG,
                              "Failed to create logical device");
                 }
@@ -1374,13 +1419,15 @@ namespace vultra
             else
             {
                 VULTRA_CORE_INFO("[RenderDevice] Creating standalone Vulkan device (non-XR)");
-                VK_CHECK(backendOf(m_Backend).m_PhysicalDevice.createDevice(&createInfo, nullptr, &backendOf(m_Backend).m_Device),
+                VK_CHECK(backendOf(m_Backend).m_PhysicalDevice.createDevice(
+                             &createInfo, nullptr, &backendOf(m_Backend).m_Device),
                          LOGTAG,
                          "Failed to create logical device");
             }
 
             // === Get Generic Queue (for both graphics & compute) ===
-            backendOf(m_Backend).m_Device.getQueue(backendOf(m_Backend).m_GenericQueueFamilyIndex, 0, &backendOf(m_Backend).m_GenericQueue);
+            backendOf(m_Backend).m_Device.getQueue(
+                backendOf(m_Backend).m_GenericQueueFamilyIndex, 0, &backendOf(m_Backend).m_GenericQueue);
         }
 
         void RenderDevice::createMemoryAllocator()
@@ -1394,7 +1441,8 @@ namespace vultra
             allocatorInfo.instance         = backendOf(m_Backend).m_Instance;
             allocatorInfo.pVulkanFunctions = &functions;
 
-            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags, RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
+            if (HasFlagValues(backendOf(m_Backend).m_FeatureReport.flags,
+                              RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 allocatorInfo.flags |= vma::AllocatorCreateFlagBits::eBufferDeviceAddress;
             }
@@ -1410,7 +1458,8 @@ namespace vultra
             vk::CommandPoolCreateInfo createInfo {};
             createInfo.flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
             createInfo.queueFamilyIndex = backendOf(m_Backend).m_GenericQueueFamilyIndex;
-            VK_CHECK(backendOf(m_Backend).m_Device.createCommandPool(&createInfo, nullptr, &backendOf(m_Backend).m_CommandPool),
+            VK_CHECK(backendOf(m_Backend).m_Device.createCommandPool(
+                         &createInfo, nullptr, &backendOf(m_Backend).m_CommandPool),
                      LOGTAG,
                      "Failed to create command pool");
         }
@@ -1418,14 +1467,15 @@ namespace vultra
         void RenderDevice::createPipelineCache()
         {
             vk::PipelineCacheCreateInfo createInfo {};
-            VK_CHECK(backendOf(m_Backend).m_Device.createPipelineCache(&createInfo, nullptr, &backendOf(m_Backend).m_PipelineCache),
+            VK_CHECK(backendOf(m_Backend).m_Device.createPipelineCache(
+                         &createInfo, nullptr, &backendOf(m_Backend).m_PipelineCache),
                      LOGTAG,
                      "Failed to create pipeline cache");
         }
 
         void RenderDevice::createDefaultDescriptorPool()
         {
-            constexpr uint32_t kDefaultDescriptorPoolSets = 4096;
+            constexpr uint32_t                  kDefaultDescriptorPoolSets = 4096;
             std::vector<vk::DescriptorPoolSize> poolSizes {
                 {vk::DescriptorType::eSampler, kDefaultDescriptorPoolSets},
                 {vk::DescriptorType::eCombinedImageSampler, kDefaultDescriptorPoolSets},
@@ -1446,21 +1496,22 @@ namespace vultra
             descriptorPoolCreateInfo.setPoolSizes(poolSizes);
             descriptorPoolCreateInfo.setMaxSets(kDefaultDescriptorPoolSets);
             descriptorPoolCreateInfo.setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
-            backendOf(m_Backend).m_DefaultDescriptorPool = backendOf(m_Backend).m_Device.createDescriptorPool(descriptorPoolCreateInfo);
+            backendOf(m_Backend).m_DefaultDescriptorPool =
+                backendOf(m_Backend).m_Device.createDescriptorPool(descriptorPoolCreateInfo);
         }
 
         void RenderDevice::createTracyContext()
         {
 #ifdef TRACY_ENABLE
             const auto cmdBuffer = vk::CommandBuffer {asVkHandle<VkCommandBuffer>(allocateCommandBuffer())};
-            backendOf(m_Backend).m_TracyContext =
-                TracyVkContext(backendOf(m_Backend).m_PhysicalDevice,
-                               backendOf(m_Backend).m_Device,
-                               backendOf(m_Backend).m_GenericQueue,
-                               cmdBuffer);
+            backendOf(m_Backend).m_TracyContext = TracyVkContext(backendOf(m_Backend).m_PhysicalDevice,
+                                                                 backendOf(m_Backend).m_Device,
+                                                                 backendOf(m_Backend).m_GenericQueue,
+                                                                 cmdBuffer);
             backendOf(m_Backend).m_Device.freeCommandBuffers(backendOf(m_Backend).m_CommandPool, 1, &cmdBuffer);
             const auto deviceName = getPhysicalDeviceInfo().deviceName;
-            TracyVkContextName(backendOf(m_Backend).m_TracyContext, deviceName.data(), static_cast<uint16_t>(deviceName.length()));
+            TracyVkContextName(
+                backendOf(m_Backend).m_TracyContext, deviceName.data(), static_cast<uint16_t>(deviceName.length()));
 #endif
         }
 
@@ -1468,10 +1519,12 @@ namespace vultra
         void RenderDevice::createTracky()
         {
 #ifdef __APPLE__
-            const float timestampPeriodNs = backendOf(m_Backend).m_PhysicalDevice.getProperties().limits.timestampPeriod;
+            const float timestampPeriodNs =
+                backendOf(m_Backend).m_PhysicalDevice.getProperties().limits.timestampPeriod;
             TRACKY_STARTUP(backendOf(m_Backend).m_Device, 4 * 1024, timestampPeriodNs);
 #else
-            const float timestampPeriodNs = backendOf(m_Backend).m_PhysicalDevice.getProperties().limits.timestampPeriod;
+            const float timestampPeriodNs =
+                backendOf(m_Backend).m_PhysicalDevice.getProperties().limits.timestampPeriod;
             TRACKY_STARTUP(backendOf(m_Backend).m_Device, 64 * 1024, timestampPeriodNs);
 #endif
         }
@@ -1599,20 +1652,22 @@ namespace vultra
 
             vk::AccelerationStructureDeviceAddressInfoKHR addressInfo {};
             addressInfo.accelerationStructure = handle;
-            DeviceAddress deviceAddress {
-                backendOf(m_Backend).m_Device.getAccelerationStructureAddressKHR(addressInfo)};
+            DeviceAddress deviceAddress {backendOf(m_Backend).m_Device.getAccelerationStructureAddressKHR(addressInfo)};
 
-            return AccelerationStructure {
-                std::make_unique<VulkanAccelerationStructure>(
-                    backendOf(m_Backend).m_Device, handle, deviceAddress, type, std::move(buildSizesInfo), std::move(buffer))};
+            return AccelerationStructure {std::make_unique<VulkanAccelerationStructure>(backendOf(m_Backend).m_Device,
+                                                                                        handle,
+                                                                                        deviceAddress,
+                                                                                        type,
+                                                                                        std::move(buildSizesInfo),
+                                                                                        std::move(buffer))};
         }
 
         AccelerationStructure RenderDevice::createBuildSingleGeometryBLAS(DeviceAddress vertexBufferAddress,
                                                                           DeviceAddress indexBufferAddress,
                                                                           DeviceAddress transformBufferAddress,
-                                                                          uint32_t vertexStride,
-                                                                          uint32_t vertexCount,
-                                                                          uint32_t indexCount)
+                                                                          uint32_t      vertexStride,
+                                                                          uint32_t      vertexCount,
+                                                                          uint32_t      indexCount)
         {
             VULTRA_CORE_ASSERT(isRaytracingOrRayQueryEnabled(backendOf(m_Backend).m_FeatureFlag),
                                "[RenderDevice] Raytracing Pipeline feature is not enabled!");
@@ -1673,9 +1728,7 @@ namespace vultra
             execute(
                 [&](CommandBuffer& cb) {
                     vk::CommandBuffer {asVkHandle<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
-                        1,
-                        &buildGeometryInfo,
-                        buildRangeInfos.data());
+                        1, &buildGeometryInfo, buildRangeInfos.data());
                 },
                 true);
 
@@ -1767,9 +1820,7 @@ namespace vultra
             execute(
                 [&](CommandBuffer& cb) {
                     vk::CommandBuffer {asVkHandle<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
-                        1,
-                        &buildGeometryInfo,
-                        buildRangePtrs.data());
+                        1, &buildGeometryInfo, buildRangePtrs.data());
                 },
                 true);
 
@@ -1793,7 +1844,7 @@ namespace vultra
             instance.instanceCustomIndex                    = 0;
             instance.mask                                   = 0xFF;
             instance.instanceShaderBindingTableRecordOffset = 0;
-            instance.flags = static_cast<VkGeometryInstanceFlagsKHR>(
+            instance.flags                                  = static_cast<VkGeometryInstanceFlagsKHR>(
                 static_cast<uint32_t>(RayTracingInstanceFlags::eTriangleFacingCullDisable));
             instance.accelerationStructureReference = referenceBLAS.getDeviceAddress().value;
 
@@ -1836,15 +1887,13 @@ namespace vultra
 
             buildInfo.dstAccelerationStructure =
                 vk::AccelerationStructureKHR {asVkHandle<VkAccelerationStructureKHR>(tlas.getHandle())};
-            buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer).value;
+            buildInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer).value;
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> ranges = {&rangeInfo};
 
             execute(
                 [&](CommandBuffer& cb) {
                     vk::CommandBuffer {asVkHandle<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
-                        1,
-                        &buildInfo,
-                        ranges.data());
+                        1, &buildInfo, ranges.data());
                 },
                 true);
 
@@ -1876,7 +1925,7 @@ namespace vultra
                 vkInstance.mask                                   = inst.mask;
                 vkInstance.instanceShaderBindingTableRecordOffset = inst.sbtRecordOffset;
                 vkInstance.flags = static_cast<VkGeometryInstanceFlagsKHR>(static_cast<uint32_t>(inst.flags));
-                vkInstance.accelerationStructureReference         = inst.blas->getDeviceAddress().value;
+                vkInstance.accelerationStructureReference = inst.blas->getDeviceAddress().value;
 
                 vkInstances.push_back(vkInstance);
             }
@@ -1920,15 +1969,13 @@ namespace vultra
 
             buildInfo.dstAccelerationStructure =
                 vk::AccelerationStructureKHR {asVkHandle<VkAccelerationStructureKHR>(tlas.getHandle())};
-            buildInfo.scratchData.deviceAddress                             = getBufferDeviceAddress(scratchBuffer).value;
+            buildInfo.scratchData.deviceAddress = getBufferDeviceAddress(scratchBuffer).value;
             std::vector<vk::AccelerationStructureBuildRangeInfoKHR*> ranges = {&rangeInfo};
 
             execute(
                 [&](CommandBuffer& cb) {
                     vk::CommandBuffer {asVkHandle<VkCommandBuffer>(cb.getHandle())}.buildAccelerationStructuresKHR(
-                        1,
-                        &buildInfo,
-                        ranges.data());
+                        1, &buildInfo, ranges.data());
                 },
                 true);
 
@@ -1954,26 +2001,26 @@ namespace vultra
         {
             assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            return InstanceBuffer {Buffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                                                      instanceCount * sizeof(VkAccelerationStructureInstanceKHR),
-                                                      BufferUsage::eShaderDeviceAddress |
-                                                          BufferUsage::eAccelerationBuildInput,
-                                                      makeAllocationFlags(allocationHint),
-                                                      vma::MemoryUsage::eCpuToGpu)},
-                                   instanceCount}; // Host visible & coherent for easy mapping
+            return InstanceBuffer {
+                Buffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
+                                   instanceCount * sizeof(VkAccelerationStructureInstanceKHR),
+                                   BufferUsage::eShaderDeviceAddress | BufferUsage::eAccelerationBuildInput,
+                                   makeAllocationFlags(allocationHint),
+                                   vma::MemoryUsage::eCpuToGpu)},
+                instanceCount}; // Host visible & coherent for easy mapping
         }
 
         TransformBuffer RenderDevice::createTransformBuffer(AllocationHints allocationHint) const
         {
             assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            return TransformBuffer {Buffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                                                       sizeof(vk::TransformMatrixKHR),
-                                                       BufferUsage::eShaderDeviceAddress |
-                                                           BufferUsage::eAccelerationBuildInput,
-                                                       makeAllocationFlags(allocationHint),
-                                                       vma::MemoryUsage::eCpuToGpu)}}; // Host visible & coherent for
-                                                                                         // easy mapping
+            return TransformBuffer {
+                Buffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
+                                   sizeof(vk::TransformMatrixKHR),
+                                   BufferUsage::eShaderDeviceAddress | BufferUsage::eAccelerationBuildInput,
+                                   makeAllocationFlags(allocationHint),
+                                   vma::MemoryUsage::eCpuToGpu)}}; // Host visible & coherent for
+                                                                   // easy mapping
         }
 
         ShaderBindingTable RenderDevice::createShaderBindingTable(const rhi::RayTracingPipeline& pipeline,
@@ -2098,12 +2145,12 @@ namespace vultra
         {
             assert(backendOf(m_Backend).m_MemoryAllocator);
 
-            return AccelerationStructureBuffer {Buffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
-                                                                    size,
-                                                                    BufferUsage::eAccelerationStorage |
-                                                                        BufferUsage::eShaderDeviceAddress,
-                                                                    makeAllocationFlags(allocationHint),
-                                                                    vma::MemoryUsage::eAutoPreferDevice)}};
+            return AccelerationStructureBuffer {
+                Buffer {makeBuffer(backendOf(m_Backend).m_MemoryAllocator,
+                                   size,
+                                   BufferUsage::eAccelerationStorage | BufferUsage::eShaderDeviceAddress,
+                                   makeAllocationFlags(allocationHint),
+                                   vma::MemoryUsage::eAutoPreferDevice)}};
         }
 
         DeviceAddress RenderDevice::getAccelerationStructureDeviceAddress(const AccelerationStructure& accel) const
@@ -2119,8 +2166,9 @@ namespace vultra
                                                                                      uint32_t      handleCount,
                                                                                      DeviceAddress offset) const
         {
-            const uint32_t handleSizeAligned = alignedSize(backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupHandleSize,
-                                                           backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupHandleAlignment);
+            const uint32_t handleSizeAligned =
+                alignedSize(backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupHandleSize,
+                            backendOf(m_Backend).m_RayTracingPipelineProperties.shaderGroupHandleAlignment);
 
             return StrideDeviceAddressRegion {
                 .deviceAddress = DeviceAddress {getBufferDeviceAddress(sbt).value + offset.value},

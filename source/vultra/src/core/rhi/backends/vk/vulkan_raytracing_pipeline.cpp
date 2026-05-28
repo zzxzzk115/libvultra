@@ -4,8 +4,8 @@ namespace vultra
 {
     namespace rhi
     {
-        VulkanRayTracingPipeline::VulkanRayTracingPipeline(const std::uintptr_t handle,
-                                                                         const RayTracingPipelineProperties properties) :
+        VulkanRayTracingPipeline::VulkanRayTracingPipeline(const std::uintptr_t               handle,
+                                                           const RayTracingPipelineProperties properties) :
             m_Handle(handle), m_Properties(properties)
         {}
 
@@ -13,9 +13,6 @@ namespace vultra
 
         std::uintptr_t VulkanRayTracingPipeline::getHandle() const { return m_Handle; }
 
-        RayTracingPipelineProperties VulkanRayTracingPipeline::getProperties() const
-        {
-            return m_Properties;
-        }
+        RayTracingPipelineProperties VulkanRayTracingPipeline::getProperties() const { return m_Properties; }
     } // namespace rhi
 } // namespace vultra

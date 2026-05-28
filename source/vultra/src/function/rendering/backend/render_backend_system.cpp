@@ -21,13 +21,13 @@ namespace vultra
     namespace
     {
         [[nodiscard]] std::unique_ptr<rhi::RenderDevice>
-        createRenderDevice(rhi::RenderDeviceFeatureFlagBits        featureFlags,
-                           std::string_view                       title,
-                           std::span<const char* const>           vulkanInstanceExtensions,
-                           rhi::RenderBackendApi                  backendApi,
-                           bool                                   enableValidation,
-                           bool                                   enableDebugMarkers,
-                           bool                                   enableRenderDoc)
+        createRenderDevice(rhi::RenderDeviceFeatureFlagBits featureFlags,
+                           std::string_view                 title,
+                           std::span<const char* const>     vulkanInstanceExtensions,
+                           rhi::RenderBackendApi            backendApi,
+                           bool                             enableValidation,
+                           bool                             enableDebugMarkers,
+                           bool                             enableRenderDoc)
         {
             return std::make_unique<rhi::RenderDevice>(featureFlags,
                                                        title,
@@ -76,13 +76,13 @@ namespace vultra
                                     .addressModeS = rhi::SamplerAddressMode::eClampToEdge,
                                     .addressModeT = rhi::SamplerAddressMode::eClampToEdge,
                                     .addressModeR = rhi::SamplerAddressMode::eClampToEdge,
-                });
+                                });
             }
         }
 #endif
     } // namespace
 
-    RenderBackendSystem::RenderBackendSystem() = default;
+    RenderBackendSystem::RenderBackendSystem()  = default;
     RenderBackendSystem::~RenderBackendSystem() = default;
 
     bool RenderBackendSystem::onInit()
@@ -108,8 +108,7 @@ namespace vultra
 #if defined(__ANDROID__)
         if (requestedBackendApi == rhi::RenderBackendApi::eWebGPU)
         {
-            VULTRA_CORE_WARN(
-                "[RenderBackendSystem] WebGPU is disabled on Android. Falling back to Vulkan backend.");
+            VULTRA_CORE_WARN("[RenderBackendSystem] WebGPU is disabled on Android. Falling back to Vulkan backend.");
             requestedBackendApi = rhi::RenderBackendApi::eVulkan;
         }
 #endif
@@ -135,12 +134,12 @@ namespace vultra
                     if (!HasFlagValues(featureFlags, rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline))
                         throw;
 
-                    VULTRA_CORE_WARN(
-                        "[RenderBackendSystem] Ray tracing was requested but is unavailable ({}); falling back to normal Vulkan rendering.",
-                        e.what());
-                    featureFlags                              = rhi::RenderDeviceFeatureFlagBits::eNormal;
+                    VULTRA_CORE_WARN("[RenderBackendSystem] Ray tracing was requested but is unavailable ({}); falling "
+                                     "back to normal Vulkan rendering.",
+                                     e.what());
+                    featureFlags                                = rhi::RenderDeviceFeatureFlagBits::eNormal;
                     ctx().config.render.renderDeviceFeatureFlag = featureFlags;
-                    m_RenderDevice = createRenderDevice(featureFlags,
+                    m_RenderDevice                              = createRenderDevice(featureFlags,
                                                         ctx().config.window.title,
                                                         window.getRequiredVulkanInstanceExtensions(),
                                                         rhi::RenderBackendApi::eVulkan,
@@ -172,8 +171,8 @@ namespace vultra
 
         if (!m_RenderDevice->supportsSwapchain())
         {
-            throw std::runtime_error(std::format("Backend '{}' does not support swapchain yet",
-                                                 m_RenderDevice->getName()));
+            throw std::runtime_error(
+                std::format("Backend '{}' does not support swapchain yet", m_RenderDevice->getName()));
         }
 
         VULTRA_CORE_TRACE("[RenderBackendSystem] Creating swapchain");
@@ -222,8 +221,8 @@ namespace vultra
         m_XREyeViews.clear();
         m_LastXREyeViews.clear();
         m_XRMirrorTargets.clear();
-        m_XRFrameActive  = false;
-        m_XRShouldRender = false;
+        m_XRFrameActive      = false;
+        m_XRShouldRender     = false;
         m_XRSessionRequested = false;
 
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
@@ -282,18 +281,14 @@ namespace vultra
                     m_XRShouldRender = true;
 
                     m_XREyeViews.reserve(m_XRBackend->getEyeCount());
-                    const auto viewStateFlags = m_XRBackend->getViewStateFlags();
-                    const bool positionValid =
-                        (viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) != 0;
-                    const bool orientationValid =
-                        (viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) != 0;
-                    const bool positionTracked =
-                        (viewStateFlags & XR_VIEW_STATE_POSITION_TRACKED_BIT) != 0;
-                    const bool orientationTracked =
-                        (viewStateFlags & XR_VIEW_STATE_ORIENTATION_TRACKED_BIT) != 0;
-                    const auto headPosition = m_XRBackend->getHeadPosition();
-                    const auto headRotation = m_XRBackend->getHeadRotation();
-                    const auto ipd = m_XRBackend->getIPD();
+                    const auto viewStateFlags       = m_XRBackend->getViewStateFlags();
+                    const bool positionValid        = (viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) != 0;
+                    const bool orientationValid     = (viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) != 0;
+                    const bool positionTracked      = (viewStateFlags & XR_VIEW_STATE_POSITION_TRACKED_BIT) != 0;
+                    const bool orientationTracked   = (viewStateFlags & XR_VIEW_STATE_ORIENTATION_TRACKED_BIT) != 0;
+                    const auto headPosition         = m_XRBackend->getHeadPosition();
+                    const auto headRotation         = m_XRBackend->getHeadRotation();
+                    const auto ipd                  = m_XRBackend->getIPD();
                     const auto predictedDisplayTime = m_XRBackend->getPredictedDisplayTime();
                     for (uint32_t eyeIndex = 0; eyeIndex < static_cast<uint32_t>(m_XRBackend->getEyeCount());
                          ++eyeIndex)
@@ -302,28 +297,28 @@ namespace vultra
                         auto* eyeTarget    = (eyeIndex == 0u) ? &stereoTarget.left : &stereoTarget.right;
 
                         const auto extent = m_XRBackend->getEyeResolution(eyeIndex);
-                        const auto fov = m_XRBackend->getEyeFOV(eyeIndex);
+                        const auto fov    = m_XRBackend->getEyeFOV(eyeIndex);
 
                         m_XREyeViews.push_back({
-                            .eyeIndex   = eyeIndex,
-                            .view       = m_XRBackend->getEyeViewMatrix(eyeIndex),
-                            .projection = m_XRBackend->getEyeProjectionMatrix(eyeIndex),
-                            .pose       = m_XRBackend->getEyePoseMatrix(eyeIndex),
-                            .fov        = glm::vec4(fov.angleLeft, fov.angleRight, fov.angleUp, fov.angleDown),
+                            .eyeIndex     = eyeIndex,
+                            .view         = m_XRBackend->getEyeViewMatrix(eyeIndex),
+                            .projection   = m_XRBackend->getEyeProjectionMatrix(eyeIndex),
+                            .pose         = m_XRBackend->getEyePoseMatrix(eyeIndex),
+                            .fov          = glm::vec4(fov.angleLeft, fov.angleRight, fov.angleUp, fov.angleDown),
                             .headPosition = headPosition,
                             .headRotation = headRotation,
-                            .eyePosition = m_XRBackend->getEyePosition(eyeIndex),
-                            .eyeRotation = m_XRBackend->getEyeRotation(eyeIndex),
-                            .ipd = ipd,
+                            .eyePosition  = m_XRBackend->getEyePosition(eyeIndex),
+                            .eyeRotation  = m_XRBackend->getEyeRotation(eyeIndex),
+                            .ipd          = ipd,
                             .predictedDisplayTime = predictedDisplayTime,
-                            .positionValid = positionValid,
-                            .orientationValid = orientationValid,
-                            .positionTracked = positionTracked,
-                            .orientationTracked = orientationTracked,
-                            .extent       = extent,
-                            .target       = eyeTarget,
-                            .stereoTarget = &stereoTarget.stereo,
-                            .mirrorTarget = nullptr,
+                            .positionValid        = positionValid,
+                            .orientationValid     = orientationValid,
+                            .positionTracked      = positionTracked,
+                            .orientationTracked   = orientationTracked,
+                            .extent               = extent,
+                            .target               = eyeTarget,
+                            .stereoTarget         = &stereoTarget.stereo,
+                            .mirrorTarget         = nullptr,
                         });
                     }
 
@@ -352,7 +347,7 @@ namespace vultra
                     return false;
             }
         }
- #endif
+#endif
 
         if (!m_FrameController->acquireNextFrame())
         {
@@ -392,10 +387,7 @@ namespace vultra
 
     bool RenderBackendSystem::isXRMirrorEnabled() const { return m_XRMirrorEnabled; }
 
-    void RenderBackendSystem::requestXRSession(const bool requested)
-    {
-        m_XRSessionRequested = requested;
-    }
+    void RenderBackendSystem::requestXRSession(const bool requested) { m_XRSessionRequested = requested; }
 
     bool RenderBackendSystem::isExitRequested() const
     {
@@ -417,12 +409,12 @@ namespace vultra
     {
         m_FrameController->endFrame();
 
- #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+#if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         if (m_XRBackend && m_XRFrameActive)
         {
             m_XRBackend->endFrame();
         }
- #endif
+#endif
 
         m_ActiveCommandBuffer = nullptr;
         m_XRFrameActive       = false;

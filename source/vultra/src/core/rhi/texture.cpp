@@ -119,7 +119,7 @@ namespace vultra
                 }
             }
 
-            #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             [[nodiscard]] auto createImageView(const vk::Device                 device,
                                                const vk::Image                  image,
                                                const vk::ImageViewType          viewType,
@@ -137,9 +137,9 @@ namespace vultra
                     device.createImageView(&createInfo, nullptr, &imageView), "Texture", "Failed to create image view");
                 return TextureView {toBackendHandle(static_cast<VkImageView>(imageView))};
             }
-            #endif
+#endif
 
-            #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
+#if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
             [[nodiscard]] vk::ImageView toVk(const TextureView view)
             {
                 return vk::ImageView {asVkHandle<VkImageView>(view.getHandle())};
@@ -183,16 +183,17 @@ namespace vultra
             {
                 return vma::Allocation {reinterpret_cast<VmaAllocation>(allocationHandle.value)};
             }
-            #endif
+#endif
         } // namespace
 
         Texture::Texture(Texture&& other) noexcept :
             m_DeviceOrAllocator(std::move(other.m_DeviceOrAllocator)), m_Image(std::move(other.m_Image)),
-            m_RenderDevice(other.m_RenderDevice), m_BackendApi(other.m_BackendApi), m_OwnsImage(other.m_OwnsImage), m_Type(other.m_Type),
-            m_Layout(other.m_Layout), m_LastScope(std::move(other.m_LastScope)), m_Aspects(std::move(other.m_Aspects)),
-            m_Sampler(other.m_Sampler), m_Extent(other.m_Extent), m_Depth(other.m_Depth), m_Format(other.m_Format),
-            m_NumMipLevels(other.m_NumMipLevels), m_NumLayers(other.m_NumLayers), m_LayerFaces(other.m_LayerFaces),
-            m_BaseArrayLayer(other.m_BaseArrayLayer), m_UsageFlags(other.m_UsageFlags)
+            m_RenderDevice(other.m_RenderDevice), m_BackendApi(other.m_BackendApi), m_OwnsImage(other.m_OwnsImage),
+            m_Type(other.m_Type), m_Layout(other.m_Layout), m_LastScope(std::move(other.m_LastScope)),
+            m_Aspects(std::move(other.m_Aspects)), m_Sampler(other.m_Sampler), m_Extent(other.m_Extent),
+            m_Depth(other.m_Depth), m_Format(other.m_Format), m_NumMipLevels(other.m_NumMipLevels),
+            m_NumLayers(other.m_NumLayers), m_LayerFaces(other.m_LayerFaces), m_BaseArrayLayer(other.m_BaseArrayLayer),
+            m_UsageFlags(other.m_UsageFlags)
         {
             other.m_DeviceOrAllocator = {};
             other.m_Image             = {};
@@ -301,11 +302,11 @@ namespace vultra
                 return 0u;
             }
 
-            uint64_t totalBytes = 0u;
-            uint32_t width      = std::max(1u, m_Extent.width);
-            uint32_t height     = std::max(1u, m_Extent.height);
-            uint32_t depth      = std::max(1u, m_Depth);
-            const uint32_t layers = std::max(1u, m_LayerFaces);
+            uint64_t       totalBytes = 0u;
+            uint32_t       width      = std::max(1u, m_Extent.width);
+            uint32_t       height     = std::max(1u, m_Extent.height);
+            uint32_t       depth      = std::max(1u, m_Depth);
+            const uint32_t layers     = std::max(1u, m_LayerFaces);
 
             for (uint32_t mip = 0u; mip < std::max(1u, m_NumMipLevels); ++mip)
             {
@@ -718,11 +719,11 @@ namespace vultra
                          uint32_t                  numLayers,
                          uint32_t                  numMipLevels,
                          IRenderDevice*            renderDevice) :
-            m_DeviceOrAllocator(device), m_RenderDevice(renderDevice), m_Image(image.value), m_BackendApi(api), m_OwnsImage(ownsImage),
-            m_Type(numLayers > 1u ? TextureType::eTexture2DArray : TextureType::eTexture2D), m_Extent(extent),
-            m_Format(pixelFormat), m_NumMipLevels(std::max(numMipLevels, 1u)), m_NumLayers(numLayers),
-            m_LayerFaces(std::max(numLayers, 1u)),
-            m_BaseArrayLayer(baseLayer), m_UsageFlags(kSwapchainDefaultUsageFlags)
+            m_DeviceOrAllocator(device), m_RenderDevice(renderDevice), m_Image(image.value), m_BackendApi(api),
+            m_OwnsImage(ownsImage), m_Type(numLayers > 1u ? TextureType::eTexture2DArray : TextureType::eTexture2D),
+            m_Extent(extent), m_Format(pixelFormat), m_NumMipLevels(std::max(numMipLevels, 1u)), m_NumLayers(numLayers),
+            m_LayerFaces(std::max(numLayers, 1u)), m_BaseArrayLayer(baseLayer),
+            m_UsageFlags(kSwapchainDefaultUsageFlags)
         {
             const auto deviceHandle = getDeviceHandle();
             if (api == RenderBackendApi::eWebGPU)
@@ -741,12 +742,11 @@ namespace vultra
                     m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eColor)]);
 #else
                 (void)deviceHandle;
-                createAspect(
-                    {},
-                    image,
-                    0u,
-                    ImageAspectFlags::eColor,
-                    m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eColor)]);
+                createAspect({},
+                             image,
+                             0u,
+                             ImageAspectFlags::eColor,
+                             m_Aspects[static_cast<uint32_t>(ImageAspectFlags::eColor)]);
 #endif
             }
 
@@ -925,7 +925,7 @@ namespace vultra
                                                                  1u,
                                                                  m_BaseArrayLayer + i,
                                                                  1u,
-                    }));
+                                                             }));
                 }
             }
 #endif
@@ -1007,7 +1007,11 @@ namespace vultra
 
         glm::uvec3 calcMipSize(const glm::uvec3& baseSize, uint32_t level)
         {
-            return glm::vec3(baseSize) * glm::pow(0.5f, static_cast<float>(level));
+            return {
+                std::max(1u, baseSize.x >> level),
+                std::max(1u, baseSize.y >> level),
+                std::max(1u, baseSize.z >> level),
+            };
         }
 
         bool isCubemap(const Texture& texture)

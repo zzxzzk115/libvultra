@@ -129,10 +129,9 @@ namespace vultra
             return out;
         }
 
-        uint64_t
-        ShaderLibraryRuntime::computeVariantHash(const std::string_view                           shaderId,
-                                                 const vshadersystem::ShaderStage                 stage,
-                                                 const KeywordValues&                             keywordValues)
+        uint64_t ShaderLibraryRuntime::computeVariantHash(const std::string_view           shaderId,
+                                                          const vshadersystem::ShaderStage stage,
+                                                          const KeywordValues&             keywordValues)
         {
             vshadersystem::VariantKey vk;
             vk.setShaderId(shaderId);

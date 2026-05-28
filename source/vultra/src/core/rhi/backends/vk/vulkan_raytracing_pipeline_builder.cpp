@@ -1,11 +1,11 @@
-#include "vultra/core/rhi/raytracing_pipeline.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
 #include "vultra/core/rhi/backends/vk/macro.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_pipeline.hpp"
-#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_raytracing_pipeline.hpp"
+#include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
+#include "vultra/core/rhi/raytracing_pipeline.hpp"
 #include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/shader_module.hpp"
 #include "vultra/core/rhi/shader_reflection.hpp"
@@ -110,8 +110,7 @@ namespace vultra
             for (const auto& [shaderType, spv] : m_BuiltinShaderStages)
             {
                 ShaderReflection stageReflection {};
-                auto shaderModule =
-                    rd.createShaderModule(spv, reflection ? std::addressof(stageReflection) : nullptr);
+                auto shaderModule = rd.createShaderModule(spv, reflection ? std::addressof(stageReflection) : nullptr);
                 if (!shaderModule)
                     continue;
                 if (reflection)
@@ -144,7 +143,7 @@ namespace vultra
             for (const auto& [shaderType, shaderStageInfo] : m_ShaderStages)
             {
                 ShaderReflection stageReflection {};
-                auto shaderModule = rd.createShaderModule(shaderType,
+                auto             shaderModule = rd.createShaderModule(shaderType,
                                                           shaderStageInfo.code,
                                                           shaderStageInfo.entryPointName,
                                                           shaderStageInfo.defines,
@@ -197,11 +196,10 @@ namespace vultra
             pipelineInfo.groupCount                   = static_cast<uint32_t>(groupInfos.size());
             pipelineInfo.pGroups                      = groupInfos.data();
             pipelineInfo.maxPipelineRayRecursionDepth = m_MaxRecursionDepth;
-            pipelineInfo.layout =
-                vk::PipelineLayout {asVkHandle<VkPipelineLayout>(m_PipelineLayout.getHandle())};
+            pipelineInfo.layout = vk::PipelineLayout {asVkHandle<VkPipelineLayout>(m_PipelineLayout.getHandle())};
 
             const vk::Device device {asVkHandle<VkDevice>(VulkanRenderDeviceAccess::getDeviceHandle(rd))};
-            auto result = device.createRayTracingPipelineKHR(
+            auto             result = device.createRayTracingPipelineKHR(
                 nullptr,
                 vk::PipelineCache {asVkHandle<VkPipelineCache>(VulkanRenderDeviceAccess::getPipelineCacheHandle(rd))},
                 pipelineInfo);
@@ -217,8 +215,7 @@ namespace vultra
             }
 
             auto backend = std::make_unique<VulkanRayTracingPipeline>(
-                toBackendHandle(static_cast<VkPipeline>(result.value)),
-                rd.getRayTracingPipelineProperties());
+                toBackendHandle(static_cast<VkPipeline>(result.value)), rd.getRayTracingPipelineProperties());
             const auto pipelineHandle = backend->getHandle();
 
             return RayTracingPipeline {std::move(m_PipelineLayout),

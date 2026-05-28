@@ -49,7 +49,7 @@ namespace vultra::rhi
         const os::Window::CursorImage* decodeImGuiCursor(std::span<const uint8_t> bytes, int hotX, int hotY)
         {
             static std::vector<std::optional<os::Window::CursorImage>> cache;
-            static std::vector<const void*> keys;
+            static std::vector<const void*>                            keys;
 
             const void* key = bytes.data();
             for (std::size_t i = 0; i < keys.size(); ++i)
@@ -151,7 +151,7 @@ namespace vultra::rhi
 #else
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
         const auto& glfwWindow = static_cast<const platform::glfw::GLFWWindow&>(window);
-        const bool glfwOk = ImGui_ImplGlfw_InitForOther(glfwWindow.getHandle(), true);
+        const bool  glfwOk     = ImGui_ImplGlfw_InitForOther(glfwWindow.getHandle(), true);
         if (!glfwOk)
         {
             throw std::runtime_error("ImGui_ImplGlfw_InitForOther failed");
@@ -163,7 +163,7 @@ namespace vultra::rhi
         initInfo.Device = reinterpret_cast<WGPUDevice>(WebGPURenderDeviceAccess::getDeviceHandle(renderDevice));
         initInfo.NumFramesInFlight  = static_cast<int>(std::max<std::size_t>(swapchain.getNumBuffers(), 2));
         initInfo.RenderTargetFormat = webgpu::toWgpuTextureFormat(swapchain.getPixelFormat());
-        const bool wgpuOk = ImGui_ImplWGPU_Init(&initInfo);
+        const bool wgpuOk           = ImGui_ImplWGPU_Init(&initInfo);
         if (!wgpuOk)
         {
             throw std::runtime_error("ImGui_ImplWGPU_Init failed");
@@ -194,8 +194,8 @@ namespace vultra::rhi
         ImGui_ImplGlfw_Shutdown();
 #endif
         m_HasAppliedImGuiCursorOverride = false;
-        m_Window      = nullptr;
-        m_Initialized = false;
+        m_Window                        = nullptr;
+        m_Initialized                   = false;
     }
 
     void WebGPUImGui::beginFrame(const os::Window& window)
@@ -215,7 +215,7 @@ namespace vultra::rhi
     {
 #if VULTRA_HAS_IMGUI_IMPL_WGPU
         ImGui::Render();
-        ImDrawData* drawData = ImGui::GetDrawData();
+        ImDrawData* drawData   = ImGui::GetDrawData();
         auto* const renderPass = WebGPUCommandBufferAccess::getCurrentRenderPassEncoder(cb);
         if (renderPass != nullptr)
         {
@@ -230,9 +230,9 @@ namespace vultra::rhi
     {
         if (m_Window != nullptr)
         {
-            ImGuiIO& io = ImGui::GetIO();
-            const bool uiOwnsCursor = io.WantCaptureMouse || ImGui::IsAnyItemHovered() ||
-                                      ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+            ImGuiIO&   io = ImGui::GetIO();
+            const bool uiOwnsCursor =
+                io.WantCaptureMouse || ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
             if (uiOwnsCursor)
             {
                 auto& window = const_cast<os::Window&>(*m_Window);

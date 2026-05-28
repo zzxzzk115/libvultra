@@ -15,8 +15,8 @@
 #include <stb_image.h>
 #include <tinyexr.h>
 
-#include <magic_enum.hpp>
 #include <algorithm>
+#include <magic_enum.hpp>
 #include <utility>
 
 namespace vultra::resource
@@ -149,7 +149,7 @@ namespace vultra::resource
                 return vbase::Result<rhi::Texture, std::string>::err("Failed to parse texture file.");
             }
 
-            auto extent = rhi::Extent2D {static_cast<uint32_t>(tc.width), static_cast<uint32_t>(tc.height)};
+            auto extent      = rhi::Extent2D {static_cast<uint32_t>(tc.width), static_cast<uint32_t>(tc.height)};
             auto pixelFormat = toRHI(tc.format);
             if (pixelFormat == rhi::PixelFormat::eUndefined)
             {
@@ -195,9 +195,10 @@ namespace vultra::resource
                         copyRegions[0].bufferImageHeight = 0;
                         copyRegions[0].aspectMask        = rhi::ImageAspectFlags::eColor;
                         copyRegions[0].mipLevel          = static_cast<uint32_t>(mip);
-                        const uint32_t faceCount         =
+                        const uint32_t faceCount =
                             static_cast<uint32_t>(tc.flags & DDSKTX_TEXTURE_FLAG_CUBEMAP ? DDSKTX_CUBE_FACE_COUNT : 1);
-                        copyRegions[0].baseArrayLayer    = static_cast<uint32_t>(layer) * faceCount + static_cast<uint32_t>(face);
+                        copyRegions[0].baseArrayLayer =
+                            static_cast<uint32_t>(layer) * faceCount + static_cast<uint32_t>(face);
                         copyRegions[0].layerCount        = 1;
                         copyRegions[0].imageOffsetX      = 0;
                         copyRegions[0].imageOffsetY      = 0;
@@ -316,8 +317,8 @@ namespace vultra::resource
         {
             ktxTexture2* tex = nullptr;
 
-            if (ktxTexture2_CreateFromMemory(v.data.data(), v.data.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &tex) !=
-                KTX_SUCCESS)
+            if (ktxTexture2_CreateFromMemory(
+                    v.data.data(), v.data.size(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &tex) != KTX_SUCCESS)
             {
                 return vbase::Result<rhi::Texture, std::string>::err("ktx load fail");
             }
@@ -353,14 +354,15 @@ namespace vultra::resource
             if (useBasisUPath != needsTranscoding)
             {
                 return vbase::Result<rhi::Texture, std::string>::err(
-                    "KTX2 metadata mismatch: compressedBasisU does not match payload. Please reimport/repack textures.");
+                    "KTX2 metadata mismatch: compressedBasisU does not match payload. Please reimport/repack "
+                    "textures.");
             }
 
             rhi::PixelFormat pixelFormat = rhi::PixelFormat::eUndefined;
             if (useBasisUPath)
             {
                 auto [basisTarget, basisPixelFormat] = chooseBasisTarget();
-                pixelFormat                           = basisPixelFormat;
+                pixelFormat                          = basisPixelFormat;
 
                 const auto transcodeResult = ktxTexture2_TranscodeBasis(tex, basisTarget, 0);
                 if (transcodeResult != KTX_SUCCESS)
@@ -414,13 +416,15 @@ namespace vultra::resource
                             copyRegions[0].mipLevel          = static_cast<uint32_t>(mip);
                             copyRegions[0].baseArrayLayer =
                                 static_cast<uint32_t>(layer) * tex->numFaces + static_cast<uint32_t>(face);
-                            copyRegions[0].layerCount        = 1;
-                            copyRegions[0].imageOffsetX      = 0;
-                            copyRegions[0].imageOffsetY      = 0;
-                            copyRegions[0].imageOffsetZ      = 0;
-                            copyRegions[0].imageExtentWidth  = std::max(1u, static_cast<uint32_t>(tex->baseWidth >> mip));
-                            copyRegions[0].imageExtentHeight = std::max(1u, static_cast<uint32_t>(tex->baseHeight >> mip));
-                            copyRegions[0].imageExtentDepth  = std::max(1u, static_cast<uint32_t>(tex->baseDepth));
+                            copyRegions[0].layerCount   = 1;
+                            copyRegions[0].imageOffsetX = 0;
+                            copyRegions[0].imageOffsetY = 0;
+                            copyRegions[0].imageOffsetZ = 0;
+                            copyRegions[0].imageExtentWidth =
+                                std::max(1u, static_cast<uint32_t>(tex->baseWidth >> mip));
+                            copyRegions[0].imageExtentHeight =
+                                std::max(1u, static_cast<uint32_t>(tex->baseHeight >> mip));
+                            copyRegions[0].imageExtentDepth = std::max(1u, static_cast<uint32_t>(tex->baseDepth));
 
                             rhi::upload(rd, staging, copyRegions, rhiTex, false);
                         }

@@ -1,9 +1,9 @@
 #include "vultra/function/imgui/imgui_system.hpp"
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/render_device.hpp"
-#include "vultra/core/services/window_service.hpp"
 #include "vultra/core/rhi/structs/sampler_info.hpp"
 #include "vultra/core/rhi/texture.hpp"
+#include "vultra/core/services/window_service.hpp"
 #include "vultra/function/imgui/imgui_theme.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #if defined(__ANDROID__)
@@ -28,12 +28,12 @@
 #include <imgui.h>
 #include <imgui_graphnode/imgui_graphnode.h>
 #include <imgui_internal.h>
-#include <implot/implot.h>
 #include <imnodes/imnodes.h>
+#include <implot/implot.h>
 
 namespace
 {
-    vultra::rhi::Sampler resolveImGuiSampler(vultra::rhi::RenderDevice& rd,
+    vultra::rhi::Sampler resolveImGuiSampler(vultra::rhi::RenderDevice&  rd,
                                              const vultra::rhi::Texture& texture,
                                              vultra::rhi::Sampler        sampler)
     {
@@ -45,9 +45,9 @@ namespace
             return sampler;
 
         return rd.getSampler(vultra::rhi::SamplerInfo {
-            .magFilter = vultra::rhi::TexelFilter::eNearest,
-            .minFilter = vultra::rhi::TexelFilter::eNearest,
-            .mipmapMode = vultra::rhi::MipmapMode::eNearest,
+            .magFilter    = vultra::rhi::TexelFilter::eNearest,
+            .minFilter    = vultra::rhi::TexelFilter::eNearest,
+            .mipmapMode   = vultra::rhi::MipmapMode::eNearest,
             .addressModeS = vultra::rhi::SamplerAddressMode::eClampToEdge,
             .addressModeT = vultra::rhi::SamplerAddressMode::eClampToEdge,
             .addressModeR = vultra::rhi::SamplerAddressMode::eClampToEdge,
@@ -150,39 +150,38 @@ namespace vultra
 
     void ImGuiSystem::begin()
     {
-        auto& window = ctx().services.require<IWindowService>().window();
+        auto& window               = ctx().services.require<IWindowService>().window();
         auto& renderBackendService = ctx().services.require<IRenderBackendService>();
         renderBackendService.imguiBackend().beginFrame(window);
 
         // Backend new-frame hooks own DisplaySize on native platforms. Only touch
         // ImGui's display metrics when the cached window metrics actually changed.
         {
-            ImGuiIO& io       = ImGui::GetIO();
-            const auto extent = window.getExtent();
+            ImGuiIO&   io       = ImGui::GetIO();
+            const auto extent   = window.getExtent();
             const auto fbExtent = window.getFrameBufferExtent();
 
             const bool displaySizeInvalid = io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f;
-            const bool metricsChanged = !m_DisplayMetricsInitialized || extent != m_LastDisplayExtent ||
-                                        fbExtent != m_LastFramebufferExtent;
+            const bool metricsChanged =
+                !m_DisplayMetricsInitialized || extent != m_LastDisplayExtent || fbExtent != m_LastFramebufferExtent;
 
             if (displaySizeInvalid || metricsChanged)
             {
-                const float width    = static_cast<float>(std::max(extent.x, 1));
-                const float height   = static_cast<float>(std::max(extent.y, 1));
-                const float fbWidth  = static_cast<float>(std::max(fbExtent.x, 1));
-                const float fbHeight = static_cast<float>(std::max(fbExtent.y, 1));
-                io.DisplaySize = ImVec2(width, height);
+                const float width          = static_cast<float>(std::max(extent.x, 1));
+                const float height         = static_cast<float>(std::max(extent.y, 1));
+                const float fbWidth        = static_cast<float>(std::max(fbExtent.x, 1));
+                const float fbHeight       = static_cast<float>(std::max(fbExtent.y, 1));
+                io.DisplaySize             = ImVec2(width, height);
                 io.DisplayFramebufferScale = ImVec2(fbWidth / width, fbHeight / height);
 
-                m_LastDisplayExtent = extent;
-                m_LastFramebufferExtent = fbExtent;
+                m_LastDisplayExtent         = extent;
+                m_LastFramebufferExtent     = fbExtent;
                 m_DisplayMetricsInitialized = true;
             }
         }
 
         ImGui::NewFrame();
         ImGuizmo::BeginFrame();
-
     }
 
     void ImGuiSystem::render(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& framebufferInfo)
@@ -217,9 +216,7 @@ namespace vultra
         cb.endRendering();
     }
 
-    void ImGuiSystem::end()
-    {
-    }
+    void ImGuiSystem::end() {}
 
     void ImGuiSystem::postRender() { ctx().services.require<IRenderBackendService>().imguiBackend().postRender(); }
 
@@ -341,7 +338,7 @@ namespace vultra
         io.Fonts->AddFontFromMemoryCompressedTTF(
             RobotoRegular_compressed_data, RobotoRegular_compressed_size, fontSize * 0.8f, &fontConfig, ranges);
 
-        ImFontConfig codeFontConfig = fontConfig;
+        ImFontConfig codeFontConfig     = fontConfig;
         codeFontConfig.GlyphMinAdvanceX = 0.0f;
         io.Fonts->AddFontFromMemoryCompressedTTF(
             CousineRegular_compressed_data, CousineRegular_compressed_size, fontSize, &codeFontConfig, ranges);
@@ -505,93 +502,93 @@ namespace vultra
         ImGui::StyleColorsDark(&style);
 
         // Vultra editor theme: compact dark UI shared by editor, launcher and popups.
-        style.WindowPadding              = ImVec2(7.0f, 6.0f);
-        style.FramePadding               = ImVec2(7.0f, 4.0f);
-        style.CellPadding                = ImVec2(6.0f, 4.0f);
-        style.ItemSpacing                = ImVec2(7.0f, 5.0f);
-        style.ItemInnerSpacing           = ImVec2(5.0f, 4.0f);
-        style.WindowRounding             = 3.0f;
-        style.ChildRounding              = 4.0f;
-        style.PopupRounding              = 4.0f;
-        style.FrameRounding              = 4.0f;
-        style.GrabRounding               = 4.0f;
-        style.TabRounding                = 4.0f;
-        style.ScrollbarRounding          = 6.0f;
-        style.WindowBorderSize           = 1.0f;
-        style.ChildBorderSize            = 1.0f;
-        style.PopupBorderSize            = 1.0f;
-        style.FrameBorderSize            = 0.0f;
-        style.TabBorderSize              = 0.0f;
-        style.ScrollbarSize              = 12.0f;
-        style.IndentSpacing              = 18.0f;
+        style.WindowPadding     = ImVec2(7.0f, 6.0f);
+        style.FramePadding      = ImVec2(7.0f, 4.0f);
+        style.CellPadding       = ImVec2(6.0f, 4.0f);
+        style.ItemSpacing       = ImVec2(7.0f, 5.0f);
+        style.ItemInnerSpacing  = ImVec2(5.0f, 4.0f);
+        style.WindowRounding    = 3.0f;
+        style.ChildRounding     = 4.0f;
+        style.PopupRounding     = 4.0f;
+        style.FrameRounding     = 4.0f;
+        style.GrabRounding      = 4.0f;
+        style.TabRounding       = 4.0f;
+        style.ScrollbarRounding = 6.0f;
+        style.WindowBorderSize  = 1.0f;
+        style.ChildBorderSize   = 1.0f;
+        style.PopupBorderSize   = 1.0f;
+        style.FrameBorderSize   = 0.0f;
+        style.TabBorderSize     = 0.0f;
+        style.ScrollbarSize     = 12.0f;
+        style.IndentSpacing     = 18.0f;
 
-        auto& c = style.Colors;
-        namespace theme = vultra::imgui_theme;
-        c[ImGuiCol_Text]                  = theme::text();
-        c[ImGuiCol_TextDisabled]          = theme::textMuted();
-        c[ImGuiCol_WindowBg]              = theme::backgroundTransparent(0.985f);
-        c[ImGuiCol_ChildBg]               = theme::backgroundTransparent(0.965f);
-        c[ImGuiCol_PopupBg]               = theme::backgroundTransparent(0.985f);
-        c[ImGuiCol_Border]                = theme::border();
-        c[ImGuiCol_Border].w              = 0.88f;
-        c[ImGuiCol_BorderShadow]          = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-        c[ImGuiCol_FrameBg]               = theme::frame();
-        c[ImGuiCol_FrameBg].w             = 0.96f;
-        c[ImGuiCol_FrameBgHovered]        = theme::frameHovered();
-        c[ImGuiCol_FrameBgActive]         = theme::frameActive();
-        c[ImGuiCol_TitleBg]               = theme::backgroundDeep();
-        c[ImGuiCol_TitleBgActive]         = theme::panel();
-        c[ImGuiCol_TitleBgCollapsed]      = theme::backgroundDeeper();
-        c[ImGuiCol_TitleBgCollapsed].w    = 0.95f;
-        c[ImGuiCol_MenuBarBg]             = theme::backgroundDeep();
-        c[ImGuiCol_ScrollbarBg]           = ImVec4(0.035f, 0.045f, 0.058f, 0.70f);
-        c[ImGuiCol_ScrollbarGrab]         = ImVec4(0.125f, 0.155f, 0.195f, 0.95f);
-        c[ImGuiCol_ScrollbarGrabHovered]  = ImVec4(0.195f, 0.245f, 0.305f, 1.00f);
-        c[ImGuiCol_ScrollbarGrabActive]   = ImVec4(0.230f, 0.300f, 0.375f, 1.00f);
-        c[ImGuiCol_CheckMark]             = theme::accent();
-        c[ImGuiCol_SliderGrab]            = ImVec4(0.32f, 0.60f, 0.88f, 1.00f);
-        c[ImGuiCol_SliderGrabActive]      = ImVec4(0.43f, 0.78f, 1.00f, 1.00f);
-        c[ImGuiCol_Button]                = theme::buttonTransparent(0.96f);
-        c[ImGuiCol_ButtonHovered]         = theme::buttonHovered();
-        c[ImGuiCol_ButtonActive]          = theme::accentButton();
-        c[ImGuiCol_Header]                = theme::header();
-        c[ImGuiCol_Header].w              = 0.88f;
-        c[ImGuiCol_HeaderHovered]         = theme::headerHovered();
-        c[ImGuiCol_HeaderHovered].w       = 0.96f;
-        c[ImGuiCol_HeaderActive]          = theme::headerActive();
-        c[ImGuiCol_Separator]             = theme::separator();
-        c[ImGuiCol_Separator].w           = 0.95f;
-        c[ImGuiCol_SeparatorHovered]      = ImVec4(0.180f, 0.420f, 0.660f, 1.00f);
-        c[ImGuiCol_SeparatorActive]       = ImVec4(0.220f, 0.560f, 0.850f, 1.00f);
-        c[ImGuiCol_ResizeGrip]            = ImVec4(0.160f, 0.280f, 0.380f, 0.30f);
-        c[ImGuiCol_ResizeGripHovered]     = ImVec4(0.230f, 0.500f, 0.720f, 0.65f);
-        c[ImGuiCol_ResizeGripActive]      = ImVec4(0.270f, 0.670f, 0.950f, 0.95f);
-        c[ImGuiCol_Tab]                   = theme::panel();
-        c[ImGuiCol_TabHovered]            = ImVec4(0.105f, 0.230f, 0.350f, 1.00f);
-        c[ImGuiCol_TabActive]             = ImVec4(0.085f, 0.125f, 0.165f, 1.00f);
-        c[ImGuiCol_TabUnfocused]          = theme::background();
-        c[ImGuiCol_TabUnfocusedActive]    = theme::frameHovered();
-        c[ImGuiCol_TableHeaderBg]         = ImVec4(0.080f, 0.100f, 0.128f, 1.00f);
-        c[ImGuiCol_TableBorderStrong]     = ImVec4(0.150f, 0.185f, 0.230f, 1.00f);
-        c[ImGuiCol_TableBorderLight]      = ImVec4(0.105f, 0.130f, 0.165f, 1.00f);
-        c[ImGuiCol_TableRowBg]            = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-        c[ImGuiCol_TableRowBgAlt]         = ImVec4(1.00f, 1.00f, 1.00f, 0.025f);
-        c[ImGuiCol_PlotLines]             = ImVec4(0.36f, 0.66f, 0.90f, 1.00f);
-        c[ImGuiCol_PlotLinesHovered]      = ImVec4(0.43f, 0.78f, 1.00f, 1.00f);
-        c[ImGuiCol_PlotHistogram]         = ImVec4(0.25f, 0.56f, 0.82f, 1.00f);
-        c[ImGuiCol_PlotHistogramHovered]  = ImVec4(0.36f, 0.78f, 1.00f, 1.00f);
-        c[ImGuiCol_TextSelectedBg]        = ImVec4(0.110f, 0.380f, 0.660f, 0.55f);
-        c[ImGuiCol_DragDropTarget]        = theme::accent();
-        c[ImGuiCol_DragDropTarget].w      = 0.90f;
-        c[ImGuiCol_NavHighlight]          = theme::accent();
-        c[ImGuiCol_NavHighlight].w        = 0.90f;
-        c[ImGuiCol_NavWindowingHighlight] = theme::accent();
+        auto& c                             = style.Colors;
+        namespace theme                     = vultra::imgui_theme;
+        c[ImGuiCol_Text]                    = theme::text();
+        c[ImGuiCol_TextDisabled]            = theme::textMuted();
+        c[ImGuiCol_WindowBg]                = theme::backgroundTransparent(0.985f);
+        c[ImGuiCol_ChildBg]                 = theme::backgroundTransparent(0.965f);
+        c[ImGuiCol_PopupBg]                 = theme::backgroundTransparent(0.985f);
+        c[ImGuiCol_Border]                  = theme::border();
+        c[ImGuiCol_Border].w                = 0.88f;
+        c[ImGuiCol_BorderShadow]            = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+        c[ImGuiCol_FrameBg]                 = theme::frame();
+        c[ImGuiCol_FrameBg].w               = 0.96f;
+        c[ImGuiCol_FrameBgHovered]          = theme::frameHovered();
+        c[ImGuiCol_FrameBgActive]           = theme::frameActive();
+        c[ImGuiCol_TitleBg]                 = theme::backgroundDeep();
+        c[ImGuiCol_TitleBgActive]           = theme::panel();
+        c[ImGuiCol_TitleBgCollapsed]        = theme::backgroundDeeper();
+        c[ImGuiCol_TitleBgCollapsed].w      = 0.95f;
+        c[ImGuiCol_MenuBarBg]               = theme::backgroundDeep();
+        c[ImGuiCol_ScrollbarBg]             = ImVec4(0.035f, 0.045f, 0.058f, 0.70f);
+        c[ImGuiCol_ScrollbarGrab]           = ImVec4(0.125f, 0.155f, 0.195f, 0.95f);
+        c[ImGuiCol_ScrollbarGrabHovered]    = ImVec4(0.195f, 0.245f, 0.305f, 1.00f);
+        c[ImGuiCol_ScrollbarGrabActive]     = ImVec4(0.230f, 0.300f, 0.375f, 1.00f);
+        c[ImGuiCol_CheckMark]               = theme::accent();
+        c[ImGuiCol_SliderGrab]              = ImVec4(0.32f, 0.60f, 0.88f, 1.00f);
+        c[ImGuiCol_SliderGrabActive]        = ImVec4(0.43f, 0.78f, 1.00f, 1.00f);
+        c[ImGuiCol_Button]                  = theme::buttonTransparent(0.96f);
+        c[ImGuiCol_ButtonHovered]           = theme::buttonHovered();
+        c[ImGuiCol_ButtonActive]            = theme::accentButton();
+        c[ImGuiCol_Header]                  = theme::header();
+        c[ImGuiCol_Header].w                = 0.88f;
+        c[ImGuiCol_HeaderHovered]           = theme::headerHovered();
+        c[ImGuiCol_HeaderHovered].w         = 0.96f;
+        c[ImGuiCol_HeaderActive]            = theme::headerActive();
+        c[ImGuiCol_Separator]               = theme::separator();
+        c[ImGuiCol_Separator].w             = 0.95f;
+        c[ImGuiCol_SeparatorHovered]        = ImVec4(0.180f, 0.420f, 0.660f, 1.00f);
+        c[ImGuiCol_SeparatorActive]         = ImVec4(0.220f, 0.560f, 0.850f, 1.00f);
+        c[ImGuiCol_ResizeGrip]              = ImVec4(0.160f, 0.280f, 0.380f, 0.30f);
+        c[ImGuiCol_ResizeGripHovered]       = ImVec4(0.230f, 0.500f, 0.720f, 0.65f);
+        c[ImGuiCol_ResizeGripActive]        = ImVec4(0.270f, 0.670f, 0.950f, 0.95f);
+        c[ImGuiCol_Tab]                     = theme::panel();
+        c[ImGuiCol_TabHovered]              = ImVec4(0.105f, 0.230f, 0.350f, 1.00f);
+        c[ImGuiCol_TabActive]               = ImVec4(0.085f, 0.125f, 0.165f, 1.00f);
+        c[ImGuiCol_TabUnfocused]            = theme::background();
+        c[ImGuiCol_TabUnfocusedActive]      = theme::frameHovered();
+        c[ImGuiCol_TableHeaderBg]           = ImVec4(0.080f, 0.100f, 0.128f, 1.00f);
+        c[ImGuiCol_TableBorderStrong]       = ImVec4(0.150f, 0.185f, 0.230f, 1.00f);
+        c[ImGuiCol_TableBorderLight]        = ImVec4(0.105f, 0.130f, 0.165f, 1.00f);
+        c[ImGuiCol_TableRowBg]              = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+        c[ImGuiCol_TableRowBgAlt]           = ImVec4(1.00f, 1.00f, 1.00f, 0.025f);
+        c[ImGuiCol_PlotLines]               = ImVec4(0.36f, 0.66f, 0.90f, 1.00f);
+        c[ImGuiCol_PlotLinesHovered]        = ImVec4(0.43f, 0.78f, 1.00f, 1.00f);
+        c[ImGuiCol_PlotHistogram]           = ImVec4(0.25f, 0.56f, 0.82f, 1.00f);
+        c[ImGuiCol_PlotHistogramHovered]    = ImVec4(0.36f, 0.78f, 1.00f, 1.00f);
+        c[ImGuiCol_TextSelectedBg]          = ImVec4(0.110f, 0.380f, 0.660f, 0.55f);
+        c[ImGuiCol_DragDropTarget]          = theme::accent();
+        c[ImGuiCol_DragDropTarget].w        = 0.90f;
+        c[ImGuiCol_NavHighlight]            = theme::accent();
+        c[ImGuiCol_NavHighlight].w          = 0.90f;
+        c[ImGuiCol_NavWindowingHighlight]   = theme::accent();
         c[ImGuiCol_NavWindowingHighlight].w = 0.72f;
-        c[ImGuiCol_NavWindowingDimBg]     = ImVec4(0.01f, 0.015f, 0.020f, 0.35f);
-        c[ImGuiCol_ModalWindowDimBg]      = theme::dim();
+        c[ImGuiCol_NavWindowingDimBg]       = ImVec4(0.01f, 0.015f, 0.020f, 0.35f);
+        c[ImGuiCol_ModalWindowDimBg]        = theme::dim();
 #ifdef IMGUI_HAS_DOCK
-        c[ImGuiCol_DockingPreview]        = ImVec4(0.20f, 0.62f, 1.00f, 0.62f);
-        c[ImGuiCol_DockingEmptyBg]        = ImVec4(0.040f, 0.050f, 0.064f, 1.00f);
+        c[ImGuiCol_DockingPreview] = ImVec4(0.20f, 0.62f, 1.00f, 0.62f);
+        c[ImGuiCol_DockingEmptyBg] = ImVec4(0.040f, 0.050f, 0.064f, 1.00f);
 #endif
     }
 } // namespace vultra

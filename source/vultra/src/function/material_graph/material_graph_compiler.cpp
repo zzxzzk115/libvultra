@@ -18,7 +18,7 @@ namespace vultra::material_graph
 
         std::string scalarLiteral(const nlohmann::json& value, const float fallback = 0.0f)
         {
-            const float f = value.is_number() ? value.get<float>() : fallback;
+            const float        f = value.is_number() ? value.get<float>() : fallback;
             std::ostringstream oss;
             oss << f;
             if (oss.str().find('.') == std::string::npos)
@@ -26,7 +26,8 @@ namespace vultra::material_graph
             return oss.str();
         }
 
-        std::string vectorLiteral(const nlohmann::json& value, const char* typeName, const int count, const float fallback)
+        std::string
+        vectorLiteral(const nlohmann::json& value, const char* typeName, const int count, const float fallback)
         {
             std::ostringstream oss;
             oss << typeName << "(";
@@ -70,7 +71,8 @@ namespace vultra::material_graph
                     if (v.is_string())
                     {
                         const auto text = v.get<std::string>();
-                        if (!text.empty() && std::ranges::all_of(text, [](const unsigned char c) { return std::isdigit(c); }))
+                        if (!text.empty() &&
+                            std::ranges::all_of(text, [](const unsigned char c) { return std::isdigit(c); }))
                             return text + "u";
                     }
                     return "0u";
@@ -134,12 +136,13 @@ namespace vultra::material_graph
                     return "0.0";
 
                 const std::string expr = emitNode(*node, pinName);
-                m_OutputCache[key] = expr;
+                m_OutputCache[key]     = expr;
                 return expr;
             }
 
         private:
-            std::string paramValue(const Node& node, std::string_view key, ValueType type, nlohmann::json fallback) const
+            std::string
+            paramValue(const Node& node, std::string_view key, ValueType type, nlohmann::json fallback) const
             {
                 if (node.params.contains(std::string(key)))
                     return defaultFor(type, node.params.at(std::string(key)));
@@ -210,19 +213,23 @@ namespace vultra::material_graph
                 if (type == "vultra.math.normalize")
                     return "normalize(" + inputExpr(node, "v") + ")";
                 if (type == "vultra.math.clamp")
-                    return "clamp(" + inputExpr(node, "v") + ", " + inputExpr(node, "min") + ", " + inputExpr(node, "max") + ")";
+                    return "clamp(" + inputExpr(node, "v") + ", " + inputExpr(node, "min") + ", " +
+                           inputExpr(node, "max") + ")";
                 if (type == "vultra.math.saturate")
                     return "clamp(" + inputExpr(node, "v") + ", 0.0, 1.0)";
                 if (type == "vultra.math.smoothstep")
-                    return "smoothstep(" + inputExpr(node, "edge0") + ", " + inputExpr(node, "edge1") + ", " + inputExpr(node, "x") + ")";
+                    return "smoothstep(" + inputExpr(node, "edge0") + ", " + inputExpr(node, "edge1") + ", " +
+                           inputExpr(node, "x") + ")";
                 if (type == "vultra.math.mix")
-                    return "mix(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ", " + inputExpr(node, "t") + ")";
+                    return "mix(" + inputExpr(node, "a") + ", " + inputExpr(node, "b") + ", " + inputExpr(node, "t") +
+                           ")";
                 if (type == "vultra.vector.split_vec2")
                     return inputExpr(node, "v") + "." + (pinName == "y" ? "y" : "x");
 
                 if (type == "vultra.texture.sample2d")
                 {
-                    const auto sample = "texture(getBindlessTexture(uint(" + inputExpr(node, "texture") + ")), " + inputExpr(node, "uv") + ")";
+                    const auto sample = "texture(getBindlessTexture(uint(" + inputExpr(node, "texture") + ")), " +
+                                        inputExpr(node, "uv") + ")";
                     if (pinName == "rgb")
                         return sample + ".rgb";
                     if (pinName == "a")
@@ -231,26 +238,30 @@ namespace vultra::material_graph
                 }
 
                 if (type == "vultra.utility.normal_map")
-                    return "normalize(" + inputExpr(node, "normalWS") + " + (" + inputExpr(node, "sample") + " * 2.0 - 1.0))";
+                    return "normalize(" + inputExpr(node, "normalWS") + " + (" + inputExpr(node, "sample") +
+                           " * 2.0 - 1.0))";
                 if (type == "vultra.utility.fresnel")
-                    return "pow(1.0 - clamp(dot(normalize(" + inputExpr(node, "normalWS") + "), normalize(" + inputExpr(node, "viewDirWS") + ")), 0.0, 1.0), " + inputExpr(node, "power") + ")";
+                    return "pow(1.0 - clamp(dot(normalize(" + inputExpr(node, "normalWS") + "), normalize(" +
+                           inputExpr(node, "viewDirWS") + ")), 0.0, 1.0), " + inputExpr(node, "power") + ")";
 
                 return pinName == "rgb" ? "vec3(0.0)" : pinName == "rgba" ? "vec4(1.0)" : "0.0";
             }
 
-            const Graph& m_Graph;
-            const NodeRegistry& m_Registry;
+            const Graph&                                 m_Graph;
+            const NodeRegistry&                          m_Registry;
             std::unordered_map<std::string, std::string> m_OutputCache;
         };
 
         std::string alphaModeCode(const Node& output)
         {
-            return std::to_string(static_cast<uint32_t>(alphaModeFromString(output.params.value("alphaMode", std::string {"Opaque"}))));
+            return std::to_string(
+                static_cast<uint32_t>(alphaModeFromString(output.params.value("alphaMode", std::string {"Opaque"}))));
         }
 
         std::string shadingModelCode(const Node& output)
         {
-            return std::to_string(static_cast<uint32_t>(shadingModelFromString(output.params.value("shadingModel", std::string {"PBR_MR"}))));
+            return std::to_string(static_cast<uint32_t>(
+                shadingModelFromString(output.params.value("shadingModel", std::string {"PBR_MR"}))));
         }
     } // namespace
 
@@ -276,17 +287,17 @@ namespace vultra::material_graph
             return std::unexpected {diagnostics};
 
         GlslEmitter emitter {input.graph, registry};
-        const auto  baseColor = emitter.inputExpr(*output, "baseColor");
-        const auto  normal = emitter.inputExpr(*output, "normal");
-        const auto  metallic = emitter.inputExpr(*output, "metallic");
-        const auto  roughness = emitter.inputExpr(*output, "roughness");
-        const auto  ao = emitter.inputExpr(*output, "ao");
-        const auto  emissive = emitter.inputExpr(*output, "emissive");
-        const auto  alpha = emitter.inputExpr(*output, "alpha");
+        const auto  baseColor   = emitter.inputExpr(*output, "baseColor");
+        const auto  normal      = emitter.inputExpr(*output, "normal");
+        const auto  metallic    = emitter.inputExpr(*output, "metallic");
+        const auto  roughness   = emitter.inputExpr(*output, "roughness");
+        const auto  ao          = emitter.inputExpr(*output, "ao");
+        const auto  emissive    = emitter.inputExpr(*output, "emissive");
+        const auto  alpha       = emitter.inputExpr(*output, "alpha");
         const auto  alphaCutoff = emitter.inputExpr(*output, "alphaCutoff");
 
         std::ostringstream src;
-        const auto graphSymbol = sanitizeShaderId(input.shaderId);
+        const auto         graphSymbol = sanitizeShaderId(input.shaderId);
         src << "// Generated by Vultra material graph compiler. Include from a graph-aware surface shader.\n";
         src << "#ifndef VULTRA_MATERIAL_GRAPH_SURFACE_DECLARED\n";
         src << "#define VULTRA_MATERIAL_GRAPH_SURFACE_DECLARED\n";
@@ -348,8 +359,7 @@ namespace vultra::material_graph
         src << "};\n";
         src << "#endif\n\n";
         src << "const uint VULTRA_MATERIAL_GRAPH_ID_" << graphSymbol << " = " << input.graphId << "u;\n\n";
-        src << "MaterialGraphSurface eval_material_graph_" << graphSymbol
-            << "_ctx(MaterialGraphContext ctx)\n{\n";
+        src << "MaterialGraphSurface eval_material_graph_" << graphSymbol << "_ctx(MaterialGraphContext ctx)\n{\n";
         src << "    MaterialGraphSurface surface;\n";
         src << "    surface.baseColor = " << baseColor << ";\n";
         src << "    surface.normalWS = normalize(" << normal << ");\n";
@@ -396,9 +406,9 @@ namespace vultra::material_graph
         src << "}\n";
 
         return CompileOutput {
-            .shaderId = input.shaderId,
+            .shaderId      = input.shaderId,
             .vshaderSource = src.str(),
-            .diagnostics = std::move(diagnostics),
+            .diagnostics   = std::move(diagnostics),
         };
     }
 

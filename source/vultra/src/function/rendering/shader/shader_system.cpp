@@ -46,7 +46,7 @@ namespace vultra
         if (useWebGpuLibrary)
         {
             if (!m_BuiltinCompatibilityShaderLibrary.loadFromMemory(builtin_shaders_compatibility_web_vshweblib,
-                                                                     builtin_shaders_compatibility_web_vshweblib_size))
+                                                                    builtin_shaders_compatibility_web_vshweblib_size))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load WebGPU compatibility builtin shader library");
                 return false;
@@ -57,7 +57,7 @@ namespace vultra
         {
 #if defined(__ANDROID__)
             if (!m_BuiltinCompatibilityShaderLibrary.loadFromMemory(builtin_shaders_compatibility_vshlib,
-                                                                     builtin_shaders_compatibility_vshlib_size))
+                                                                    builtin_shaders_compatibility_vshlib_size))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load Android compatibility builtin shader library");
                 return false;
@@ -65,19 +65,19 @@ namespace vultra
             m_DefaultBuiltinShaderLibrary = &m_BuiltinCompatibilityShaderLibrary;
 #else
             if (!m_BuiltinHighendShaderLibrary.loadFromMemory(builtin_shaders_highend_vshlib,
-                                                               builtin_shaders_highend_vshlib_size))
+                                                              builtin_shaders_highend_vshlib_size))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load highend builtin shader library");
                 return false;
             }
             if (!m_BuiltinCompatibilityShaderLibrary.loadFromMemory(builtin_shaders_compatibility_vshlib,
-                                                                     builtin_shaders_compatibility_vshlib_size))
+                                                                    builtin_shaders_compatibility_vshlib_size))
             {
                 VULTRA_CORE_ERROR("[ShaderSystem] Failed to load compatibility builtin shader library");
                 return false;
             }
-            m_DefaultBuiltinShaderLibrary = useCompatibilityLibrary ? &m_BuiltinCompatibilityShaderLibrary :
-                                                              &m_BuiltinHighendShaderLibrary;
+            m_DefaultBuiltinShaderLibrary =
+                useCompatibilityLibrary ? &m_BuiltinCompatibilityShaderLibrary : &m_BuiltinHighendShaderLibrary;
 #endif
         }
 
@@ -138,8 +138,8 @@ namespace vultra
         if (forceReload)
             assetService->reimportAsset(uri, false);
 
-        std::string runtimeUri = std::string(uri);
-        const auto  logicalPath = logicalPathFromUri(uri);
+        std::string runtimeUri              = std::string(uri);
+        const auto  logicalPath             = logicalPathFromUri(uri);
         bool        hasImportedRuntimeAsset = false;
         for (const auto& [_, entry] : assetService->registry().getRegistry())
         {
@@ -160,23 +160,22 @@ namespace vultra
             bytes = assetService->loadBinaryAssetSync(uri);
         if (!bytes)
         {
-            VULTRA_CORE_ERROR("[ShaderSystem] Cannot load project shader library '{}': {}", uri, std::move(bytes).error());
+            VULTRA_CORE_ERROR(
+                "[ShaderSystem] Cannot load project shader library '{}': {}", uri, std::move(bytes).error());
             return nullptr;
         }
 
         rhi::ShaderLibraryRuntime library;
-        const auto& data = bytes.value();
+        const auto&               data = bytes.value();
         if (!library.loadFromMemory(data.data(), data.size()))
         {
             VULTRA_CORE_ERROR("[ShaderSystem] Failed to parse project shader library '{}'", uri);
             return nullptr;
         }
 
-        const auto key = std::string(uri);
+        const auto key      = std::string(uri);
         auto [it, inserted] = m_ProjectShaderLibraries.insert_or_assign(key, std::move(library));
-        VULTRA_CORE_INFO("[ShaderSystem] {} project shader library '{}'",
-                         inserted ? "Loaded" : "Reloaded",
-                         uri);
+        VULTRA_CORE_INFO("[ShaderSystem] {} project shader library '{}'", inserted ? "Loaded" : "Reloaded", uri);
         return &it->second;
     }
 } // namespace vultra

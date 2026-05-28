@@ -60,15 +60,8 @@ namespace vultra
                                               const uint32_t            numMipLevels,
                                               IRenderDevice*            renderDevice)
         {
-            return Texture::fromOwnedImage(api,
-                                            device,
-                                            image,
-                                            extent,
-                                            format,
-                                            baseLayer,
-                                            numLayers,
-                                            numMipLevels,
-                                            renderDevice);
+            return Texture::fromOwnedImage(
+                api, device, image, extent, format, baseLayer, numLayers, numMipLevels, renderDevice);
         }
     } // namespace rhi
 } // namespace vultra

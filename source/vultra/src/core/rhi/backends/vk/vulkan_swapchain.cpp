@@ -20,12 +20,13 @@ namespace vultra
         {
             struct SurfaceInfo
             {
-                vk::SurfaceCapabilitiesKHR         capabilities;
+                vk::SurfaceCapabilitiesKHR        capabilities;
                 std::vector<vk::SurfaceFormatKHR> formats;
                 std::vector<vk::PresentModeKHR>   presentModes;
             };
 
-            [[nodiscard]] SurfaceInfo getSurfaceInfo(const vk::PhysicalDevice physicalDevice, const vk::SurfaceKHR surface)
+            [[nodiscard]] SurfaceInfo getSurfaceInfo(const vk::PhysicalDevice physicalDevice,
+                                                     const vk::SurfaceKHR     surface)
             {
                 assert(physicalDevice && surface);
 
@@ -48,7 +49,8 @@ namespace vultra
                          "Swapchain",
                          "Failed to get surface presentation modes");
                 surfaceInfo.presentModes.resize(numPresentModes);
-                VK_CHECK(physicalDevice.getSurfacePresentModesKHR(surface, &numPresentModes, surfaceInfo.presentModes.data()),
+                VK_CHECK(physicalDevice.getSurfacePresentModesKHR(
+                             surface, &numPresentModes, surfaceInfo.presentModes.data()),
                          "Swapchain",
                          "Failed to get surface presentation modes");
 
@@ -89,7 +91,8 @@ namespace vultra
                 return formats.empty() ? preferred : formats.front();
             }
 
-            [[nodiscard]] vk::CompositeAlphaFlagBitsKHR chooseCompositeAlpha(const vk::SurfaceCapabilitiesKHR& capabilities)
+            [[nodiscard]] vk::CompositeAlphaFlagBitsKHR
+            chooseCompositeAlpha(const vk::SurfaceCapabilitiesKHR& capabilities)
             {
                 constexpr vk::CompositeAlphaFlagBitsKHR candidates[] = {
                     vk::CompositeAlphaFlagBitsKHR::eOpaque,
@@ -109,12 +112,12 @@ namespace vultra
             }
         } // namespace
 
-        VulkanSwapchain::VulkanSwapchain(const std::uintptr_t instance,
-                                                       const std::uintptr_t physicalDevice,
-                                                       const std::uintptr_t device,
-                                                       os::Window*          window,
-                                                       const SwapchainFormat format,
-                                                       const VerticalSync   vsync)
+        VulkanSwapchain::VulkanSwapchain(const std::uintptr_t  instance,
+                                         const std::uintptr_t  physicalDevice,
+                                         const std::uintptr_t  device,
+                                         os::Window*           window,
+                                         const SwapchainFormat format,
+                                         const VerticalSync    vsync)
         {
             m_Instance       = vk::Instance {asVkHandle<VkInstance>(instance)};
             m_PhysicalDevice = vk::PhysicalDevice {asVkHandle<VkPhysicalDevice>(physicalDevice)};
@@ -169,12 +172,11 @@ namespace vultra
             assert(m_Handle);
             ZoneScopedN("RHI::AcquireNextImage");
 
-            const auto result = m_Device.acquireNextImageKHR(
-                m_Handle,
-                std::numeric_limits<uint64_t>::max(),
-                vk::Semaphore {asVkHandle<VkSemaphore>(imageAcquired)},
-                nullptr,
-                &m_CurrentImageIndex);
+            const auto result = m_Device.acquireNextImageKHR(m_Handle,
+                                                             std::numeric_limits<uint64_t>::max(),
+                                                             vk::Semaphore {asVkHandle<VkSemaphore>(imageAcquired)},
+                                                             nullptr,
+                                                             &m_CurrentImageIndex);
 
             switch (result)
             {
@@ -241,12 +243,14 @@ namespace vultra
             VULTRA_CORE_TRACE("[Swapchain] Surface info acquired");
 
             const os::Window::Extent fbExtent = m_Window->getFrameBufferExtent();
-            const bool variableExtent = surfaceInfo.capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max() ||
-                                        surfaceInfo.capabilities.currentExtent.height == std::numeric_limits<uint32_t>::max();
-            Extent2D extent = variableExtent ? Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)} :
-                                               fromVkExtent(surfaceInfo.capabilities.currentExtent);
+            const bool               variableExtent =
+                surfaceInfo.capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max() ||
+                surfaceInfo.capabilities.currentExtent.height == std::numeric_limits<uint32_t>::max();
+            Extent2D extent = variableExtent ?
+                                  Extent2D {static_cast<uint32_t>(fbExtent.x), static_cast<uint32_t>(fbExtent.y)} :
+                                  fromVkExtent(surfaceInfo.capabilities.currentExtent);
 
-            extent.width = std::clamp(extent.width,
+            extent.width  = std::clamp(extent.width,
                                       surfaceInfo.capabilities.minImageExtent.width,
                                       surfaceInfo.capabilities.maxImageExtent.width);
             extent.height = std::clamp(extent.height,
@@ -262,18 +266,20 @@ namespace vultra
                 presentMode = vk::PresentModeKHR::eFifo;
             }
 
-            const auto surfaceFormat  = chooseSurfaceFormat(surfaceInfo.formats, format);
-            const auto preTransform   = (surfaceInfo.capabilities.supportedTransforms & surfaceInfo.capabilities.currentTransform) ==
-                                            surfaceInfo.capabilities.currentTransform ?
-                                            surfaceInfo.capabilities.currentTransform :
-                                            vk::SurfaceTransformFlagBitsKHR::eIdentity;
+            const auto surfaceFormat = chooseSurfaceFormat(surfaceInfo.formats, format);
+            const auto preTransform =
+                (surfaceInfo.capabilities.supportedTransforms & surfaceInfo.capabilities.currentTransform) ==
+                        surfaceInfo.capabilities.currentTransform ?
+                    surfaceInfo.capabilities.currentTransform :
+                    vk::SurfaceTransformFlagBitsKHR::eIdentity;
             const auto compositeAlpha = chooseCompositeAlpha(surfaceInfo.capabilities);
 
             vk::SwapchainCreateInfoKHR createInfo {};
-            createInfo.surface         = m_Surface;
-            createInfo.minImageCount   = std::clamp(3u,
-                                                  surfaceInfo.capabilities.minImageCount,
-                                                  surfaceInfo.capabilities.maxImageCount > 0 ? surfaceInfo.capabilities.maxImageCount : 8u);
+            createInfo.surface = m_Surface;
+            createInfo.minImageCount =
+                std::clamp(3u,
+                           surfaceInfo.capabilities.minImageCount,
+                           surfaceInfo.capabilities.maxImageCount > 0 ? surfaceInfo.capabilities.maxImageCount : 8u);
             createInfo.imageFormat      = surfaceFormat.format;
             createInfo.imageColorSpace  = surfaceFormat.colorSpace;
             createInfo.imageExtent      = toVk(extent);
@@ -287,7 +293,9 @@ namespace vultra
             createInfo.clipped          = true;
             createInfo.oldSwapchain     = oldSwapchain;
 
-            VK_CHECK(m_Device.createSwapchainKHR(&createInfo, nullptr, &m_Handle), "Swapchain", "Failed to create swapchain");
+            VK_CHECK(m_Device.createSwapchainKHR(&createInfo, nullptr, &m_Handle),
+                     "Swapchain",
+                     "Failed to create swapchain");
 
             buildBuffers(extent, fromVk(createInfo.imageFormat));
             m_Format       = format;

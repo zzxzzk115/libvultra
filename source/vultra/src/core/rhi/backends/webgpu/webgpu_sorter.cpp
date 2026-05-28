@@ -24,7 +24,7 @@ namespace vultra
             constexpr uint32_t kTotalBits              = 32u;
             constexpr uint64_t kStorageOffsetAlignment = 256u;
             constexpr uint64_t kParamsOffsetAlignment  = 256u;
-            constexpr uint32_t kBufferedParamSlices     = 16u;
+            constexpr uint32_t kBufferedParamSlices    = 16u;
 
             [[nodiscard]] constexpr uint32_t ceilDiv(const uint32_t value, const uint32_t divisor)
             {
@@ -420,14 +420,14 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
             m_KeyOnlyTmpKeysOffset       = 0u;
             m_KeyOnlyLocalPrefixOffset   = alignUp(m_KeyOnlyTmpKeysOffset + elementBytes, kStorageOffsetAlignment);
             m_KeyOnlyPrefixScratchOffset = alignUp(m_KeyOnlyLocalPrefixOffset + elementBytes, kStorageOffsetAlignment);
-            m_StorageRequirements = {
-                .size  = m_KeyOnlyPrefixScratchOffset + m_MaxPrefixScratchBytes,
-                .usage = BufferUsage::eStorageBuffer,
+            m_StorageRequirements        = {
+                       .size  = m_KeyOnlyPrefixScratchOffset + m_MaxPrefixScratchBytes,
+                       .usage = BufferUsage::eStorageBuffer,
             };
 
-            m_KeyValueTmpKeysOffset       = 0u;
-            m_KeyValueTmpValuesOffset     = alignUp(m_KeyValueTmpKeysOffset + elementBytes, kStorageOffsetAlignment);
-            m_KeyValueLocalPrefixOffset   = alignUp(m_KeyValueTmpValuesOffset + elementBytes, kStorageOffsetAlignment);
+            m_KeyValueTmpKeysOffset     = 0u;
+            m_KeyValueTmpValuesOffset   = alignUp(m_KeyValueTmpKeysOffset + elementBytes, kStorageOffsetAlignment);
+            m_KeyValueLocalPrefixOffset = alignUp(m_KeyValueTmpValuesOffset + elementBytes, kStorageOffsetAlignment);
             m_KeyValuePrefixScratchOffset =
                 alignUp(m_KeyValueLocalPrefixOffset + elementBytes, kStorageOffsetAlignment);
             m_KeyValueStorageRequirements = {
@@ -436,10 +436,7 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
             };
         }
 
-        WebGPUSorter::operator bool() const
-        {
-            return m_RenderDevice != nullptr && m_MaxElementCount > 0u;
-        }
+        WebGPUSorter::operator bool() const { return m_RenderDevice != nullptr && m_MaxElementCount > 0u; }
 
         uint32_t WebGPUSorter::getMaxElementCount() const { return m_MaxElementCount; }
 
@@ -450,14 +447,15 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
             return m_KeyValueStorageRequirements;
         }
 
-        void WebGPUSorter::sortKeys(CommandBuffer&   cb,
-                                    const uint32_t  elementCount,
-                                    const Buffer&   keys,
-                                    const uint64_t  keysOffset,
-                                    const Buffer&   storage,
-                                    const uint64_t  storageOffset) const
+        void WebGPUSorter::sortKeys(CommandBuffer& cb,
+                                    const uint32_t elementCount,
+                                    const Buffer&  keys,
+                                    const uint64_t keysOffset,
+                                    const Buffer&  storage,
+                                    const uint64_t storageOffset) const
         {
-            sortImpl(cb, elementCount, false, keys, keysOffset, keys, keysOffset, Buffer {}, 0u, storage, storageOffset);
+            sortImpl(
+                cb, elementCount, false, keys, keysOffset, keys, keysOffset, Buffer {}, 0u, storage, storageOffset);
         }
 
         void WebGPUSorter::sortKeyValues(CommandBuffer& cb,
@@ -717,8 +715,8 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
 
             auto& self = const_cast<WebGPUSorter&>(*this);
             self.ensurePipelines();
-            if (!m_BlockSumPipeline || !m_ReorderKeysPipeline || !m_ReorderKeyValuesPipeline || !m_PrefixReducePipeline ||
-                !m_PrefixAddPipeline)
+            if (!m_BlockSumPipeline || !m_ReorderKeysPipeline || !m_ReorderKeyValuesPipeline ||
+                !m_PrefixReducePipeline || !m_PrefixAddPipeline)
             {
                 VULTRA_CORE_WARN("[WebGPUSorter] Pipelines are not ready");
                 return;
@@ -784,43 +782,42 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
             const uint64_t dispatchBytes    = static_cast<uint64_t>(dispatchCount) * sizeof(uint32_t);
             const uint64_t localPrefixBytes = dispatchBytes;
 
-            auto buildBlockSumSet = [&](const ParamsBinding paramsBinding,
-                                        const Buffer& inputKeys,
-                                        const uint64_t inputKeysOffset) {
-                auto builder = cb.createDescriptorSetBuilder();
-                builder.bind(0,
-                             bindings::UniformBuffer {
-                                 .buffer = paramsBinding.buffer,
-                                 .offset = paramsBinding.offset,
-                                 .range  = sizeof(Params),
-                             });
-                builder.bind(1, bindings::StorageBuffer {.buffer = &indirect, .offset = indirectOffset});
-                builder.bind(2,
-                             bindings::StorageBuffer {
-                                 .buffer = &inputKeys,
-                                 .offset = inputKeysOffset,
-                                 .range  = dispatchBytes,
-                             });
-                builder.bind(3,
-                             bindings::StorageBuffer {
-                                 .buffer = &storage,
-                                 .offset = localPrefixOffset,
-                                 .range  = localPrefixBytes,
-                             });
-                builder.bind(4,
-                             bindings::StorageBuffer {
-                                 .buffer = &storage,
-                                 .offset = prefixScratchOffset + levelOffsets[0],
-                                 .range  = static_cast<uint64_t>(levelCounts[0]) * sizeof(uint32_t),
-                             });
-                return builder.build(m_BlockSumPipeline.getDescriptorSetLayout(0));
-            };
+            auto buildBlockSumSet =
+                [&](const ParamsBinding paramsBinding, const Buffer& inputKeys, const uint64_t inputKeysOffset) {
+                    auto builder = cb.createDescriptorSetBuilder();
+                    builder.bind(0,
+                                 bindings::UniformBuffer {
+                                     .buffer = paramsBinding.buffer,
+                                     .offset = paramsBinding.offset,
+                                     .range  = sizeof(Params),
+                                 });
+                    builder.bind(1, bindings::StorageBuffer {.buffer = &indirect, .offset = indirectOffset});
+                    builder.bind(2,
+                                 bindings::StorageBuffer {
+                                     .buffer = &inputKeys,
+                                     .offset = inputKeysOffset,
+                                     .range  = dispatchBytes,
+                                 });
+                    builder.bind(3,
+                                 bindings::StorageBuffer {
+                                     .buffer = &storage,
+                                     .offset = localPrefixOffset,
+                                     .range  = localPrefixBytes,
+                                 });
+                    builder.bind(4,
+                                 bindings::StorageBuffer {
+                                     .buffer = &storage,
+                                     .offset = prefixScratchOffset + levelOffsets[0],
+                                     .range  = static_cast<uint64_t>(levelCounts[0]) * sizeof(uint32_t),
+                                 });
+                    return builder.build(m_BlockSumPipeline.getDescriptorSetLayout(0));
+                };
 
             auto buildReorderKeysSet = [&](const ParamsBinding paramsBinding,
-                                           const Buffer& inputKeys,
-                                           const uint64_t inputKeysOffset,
-                                           const Buffer& outputKeys,
-                                           const uint64_t outputKeysOffset) {
+                                           const Buffer&       inputKeys,
+                                           const uint64_t      inputKeysOffset,
+                                           const Buffer&       outputKeys,
+                                           const uint64_t      outputKeysOffset) {
                 auto builder = cb.createDescriptorSetBuilder();
                 builder.bind(0,
                              bindings::UniformBuffer {
@@ -857,14 +854,14 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
             };
 
             auto buildReorderKeyValuesSet = [&](const ParamsBinding paramsBinding,
-                                                const Buffer& inputKeys,
-                                                const uint64_t inputKeysOffset,
-                                                const Buffer& outputKeys,
-                                                const uint64_t outputKeysOffset,
-                                                const Buffer& inputValues,
-                                                const uint64_t inputValuesOffset,
-                                                const Buffer& outputValues,
-                                                const uint64_t outputValuesOffset) {
+                                                const Buffer&       inputKeys,
+                                                const uint64_t      inputKeysOffset,
+                                                const Buffer&       outputKeys,
+                                                const uint64_t      outputKeysOffset,
+                                                const Buffer&       inputValues,
+                                                const uint64_t      inputValuesOffset,
+                                                const Buffer&       outputValues,
+                                                const uint64_t      outputValuesOffset) {
                 auto builder = cb.createDescriptorSetBuilder();
                 builder.bind(0,
                              bindings::UniformBuffer {
@@ -912,43 +909,43 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
                 return builder.build(m_ReorderKeyValuesPipeline.getDescriptorSetLayout(0));
             };
 
-            auto buildPrefixSet = [&](const ParamsBinding paramsBinding,
-                                      const ComputePipeline& pipeline,
-                                      const uint32_t levelIndex) {
-                const bool hasNextLevel = levelIndex + 1u < levelCounts.size();
-                const auto itemsOffset = prefixScratchOffset + levelOffsets[levelIndex];
-                const auto itemsRange = static_cast<uint64_t>(levelCounts[levelIndex]) * sizeof(uint32_t);
-                const auto blockOffset =
-                    prefixScratchOffset + (hasNextLevel ? levelOffsets[levelIndex + 1u] : terminalOffset);
-                const auto blockRange = hasNextLevel ? static_cast<uint64_t>(levelCounts[levelIndex + 1u]) * sizeof(uint32_t) :
-                                                       sizeof(uint32_t);
+            auto buildPrefixSet =
+                [&](const ParamsBinding paramsBinding, const ComputePipeline& pipeline, const uint32_t levelIndex) {
+                    const bool hasNextLevel = levelIndex + 1u < levelCounts.size();
+                    const auto itemsOffset  = prefixScratchOffset + levelOffsets[levelIndex];
+                    const auto itemsRange   = static_cast<uint64_t>(levelCounts[levelIndex]) * sizeof(uint32_t);
+                    const auto blockOffset =
+                        prefixScratchOffset + (hasNextLevel ? levelOffsets[levelIndex + 1u] : terminalOffset);
+                    const auto blockRange = hasNextLevel ?
+                                                static_cast<uint64_t>(levelCounts[levelIndex + 1u]) * sizeof(uint32_t) :
+                                                sizeof(uint32_t);
 
-                auto builder = cb.createDescriptorSetBuilder();
-                builder.bind(0,
-                             bindings::UniformBuffer {
-                                 .buffer = paramsBinding.buffer,
-                                 .offset = paramsBinding.offset,
-                                 .range  = sizeof(Params),
-                             });
-                builder.bind(1,
-                             bindings::StorageBuffer {
-                                 .buffer = &storage,
-                                 .offset = itemsOffset,
-                                 .range  = itemsRange,
-                             });
-                builder.bind(2,
-                             bindings::StorageBuffer {
-                                 .buffer = &storage,
-                                 .offset = blockOffset,
-                                 .range  = blockRange,
-                             });
-                return builder.build(pipeline.getDescriptorSetLayout(0));
-            };
+                    auto builder = cb.createDescriptorSetBuilder();
+                    builder.bind(0,
+                                 bindings::UniformBuffer {
+                                     .buffer = paramsBinding.buffer,
+                                     .offset = paramsBinding.offset,
+                                     .range  = sizeof(Params),
+                                 });
+                    builder.bind(1,
+                                 bindings::StorageBuffer {
+                                     .buffer = &storage,
+                                     .offset = itemsOffset,
+                                     .range  = itemsRange,
+                                 });
+                    builder.bind(2,
+                                 bindings::StorageBuffer {
+                                     .buffer = &storage,
+                                     .offset = blockOffset,
+                                     .range  = blockRange,
+                                 });
+                    return builder.build(pipeline.getDescriptorSetLayout(0));
+                };
 
             auto dispatchCompute = [&](const ComputePipeline& pipeline,
-                                       const Params& params,
-                                       const auto& buildSet,
-                                       const glm::uvec3 groups) {
+                                       const Params&          params,
+                                       const auto&            buildSet,
+                                       const glm::uvec3       groups) {
                 const auto paramsBinding = acquireParamsBinding();
                 cb.update(*paramsBinding.buffer, paramsBinding.offset, sizeof(Params), &params);
                 cb.bindPipeline(pipeline);
@@ -958,10 +955,10 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
 
             for (uint32_t bit = 0u; bit < kTotalBits; bit += kBitsPerPass)
             {
-                const bool evenPass = ((bit / kBitsPerPass) % 2u) == 0u;
-                const Buffer& inputKeys = evenPass ? keys : storage;
-                const uint64_t inputKeysOffset = evenPass ? keysOffset : tmpKeysOffset;
-                const Buffer& outputKeys = evenPass ? storage : keys;
+                const bool     evenPass         = ((bit / kBitsPerPass) % 2u) == 0u;
+                const Buffer&  inputKeys        = evenPass ? keys : storage;
+                const uint64_t inputKeysOffset  = evenPass ? keysOffset : tmpKeysOffset;
+                const Buffer&  outputKeys       = evenPass ? storage : keys;
                 const uint64_t outputKeysOffset = evenPass ? tmpKeysOffset : keysOffset;
 
                 Params params {};
@@ -969,76 +966,77 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>, @builtin(local_invocatio
                 params.useIndirectCount = useIndirectCount ? 1u : 0u;
                 params.currentBit       = bit;
 
-                dispatchCompute(m_BlockSumPipeline,
-                                params,
-                                [&](const ParamsBinding paramsBinding) {
-                                    return buildBlockSumSet(paramsBinding, inputKeys, inputKeysOffset);
-                                },
-                                glm::uvec3 {workgroupCount, 1u, 1u});
+                dispatchCompute(
+                    m_BlockSumPipeline,
+                    params,
+                    [&](const ParamsBinding paramsBinding) {
+                        return buildBlockSumSet(paramsBinding, inputKeys, inputKeysOffset);
+                    },
+                    glm::uvec3 {workgroupCount, 1u, 1u});
                 cb.insertComputeUavBarrier();
 
                 for (uint32_t level = 0u; level < levelCounts.size(); ++level)
                 {
                     params.levelCount = levelCounts[level];
-                    dispatchCompute(m_PrefixReducePipeline,
-                                    params,
-                                    [&](const ParamsBinding paramsBinding) {
-                                        return buildPrefixSet(paramsBinding, m_PrefixReducePipeline, level);
-                                    },
-                                    glm::uvec3 {std::max(ceilDiv(levelCounts[level], kPrefixItemsPerGroup), 1u), 1u, 1u});
+                    dispatchCompute(
+                        m_PrefixReducePipeline,
+                        params,
+                        [&](const ParamsBinding paramsBinding) {
+                            return buildPrefixSet(paramsBinding, m_PrefixReducePipeline, level);
+                        },
+                        glm::uvec3 {std::max(ceilDiv(levelCounts[level], kPrefixItemsPerGroup), 1u), 1u, 1u});
                     cb.insertComputeUavBarrier();
                 }
 
                 for (int32_t level = static_cast<int32_t>(levelCounts.size()) - 2; level >= 0; --level)
                 {
                     params.levelCount = levelCounts[static_cast<size_t>(level)];
-                    dispatchCompute(m_PrefixAddPipeline,
-                                    params,
-                                    [&](const ParamsBinding paramsBinding) {
-                                        return buildPrefixSet(paramsBinding, m_PrefixAddPipeline, static_cast<uint32_t>(level));
-                                    },
-                                    glm::uvec3 {std::max(ceilDiv(levelCounts[static_cast<size_t>(level)],
-                                                                 kPrefixItemsPerGroup),
-                                                        1u),
-                                                1u,
-                                                1u});
+                    dispatchCompute(
+                        m_PrefixAddPipeline,
+                        params,
+                        [&](const ParamsBinding paramsBinding) {
+                            return buildPrefixSet(paramsBinding, m_PrefixAddPipeline, static_cast<uint32_t>(level));
+                        },
+                        glm::uvec3 {
+                            std::max(ceilDiv(levelCounts[static_cast<size_t>(level)], kPrefixItemsPerGroup), 1u),
+                            1u,
+                            1u});
                     cb.insertComputeUavBarrier();
                 }
 
                 if (hasValues)
                 {
-                    const Buffer& inputValues = evenPass ? values : storage;
-                    const uint64_t inputValuesOffset = evenPass ? valuesOffset : tmpValuesOffset;
-                    const Buffer& outputValues = evenPass ? storage : values;
+                    const Buffer&  inputValues        = evenPass ? values : storage;
+                    const uint64_t inputValuesOffset  = evenPass ? valuesOffset : tmpValuesOffset;
+                    const Buffer&  outputValues       = evenPass ? storage : values;
                     const uint64_t outputValuesOffset = evenPass ? tmpValuesOffset : valuesOffset;
 
-                    dispatchCompute(m_ReorderKeyValuesPipeline,
-                                    params,
-                                    [&](const ParamsBinding paramsBinding) {
-                                        return buildReorderKeyValuesSet(paramsBinding,
-                                                                        inputKeys,
-                                                                        inputKeysOffset,
-                                                                        outputKeys,
-                                                                        outputKeysOffset,
-                                                                        inputValues,
-                                                                        inputValuesOffset,
-                                                                        outputValues,
-                                                                        outputValuesOffset);
-                                    },
-                                    glm::uvec3 {workgroupCount, 1u, 1u});
+                    dispatchCompute(
+                        m_ReorderKeyValuesPipeline,
+                        params,
+                        [&](const ParamsBinding paramsBinding) {
+                            return buildReorderKeyValuesSet(paramsBinding,
+                                                            inputKeys,
+                                                            inputKeysOffset,
+                                                            outputKeys,
+                                                            outputKeysOffset,
+                                                            inputValues,
+                                                            inputValuesOffset,
+                                                            outputValues,
+                                                            outputValuesOffset);
+                        },
+                        glm::uvec3 {workgroupCount, 1u, 1u});
                 }
                 else
                 {
-                    dispatchCompute(m_ReorderKeysPipeline,
-                                    params,
-                                    [&](const ParamsBinding paramsBinding) {
-                                        return buildReorderKeysSet(paramsBinding,
-                                                                  inputKeys,
-                                                                  inputKeysOffset,
-                                                                  outputKeys,
-                                                                  outputKeysOffset);
-                                    },
-                                    glm::uvec3 {workgroupCount, 1u, 1u});
+                    dispatchCompute(
+                        m_ReorderKeysPipeline,
+                        params,
+                        [&](const ParamsBinding paramsBinding) {
+                            return buildReorderKeysSet(
+                                paramsBinding, inputKeys, inputKeysOffset, outputKeys, outputKeysOffset);
+                        },
+                        glm::uvec3 {workgroupCount, 1u, 1u});
                 }
                 cb.insertComputeUavBarrier();
             }

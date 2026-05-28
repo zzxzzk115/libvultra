@@ -128,7 +128,7 @@ namespace vultra
         {
             const auto h = std::hash<FrameGraphTexture::Desc> {}(desc);
 
-            auto& pool = m_Textures.entryGroups[h];
+            auto& pool       = m_Textures.entryGroups[h];
             auto  reusableIt = std::find_if(pool.begin(), pool.end(), [](const auto& entry) {
                 return entry.life >= kMinReusableResourceAgeFrames;
             });
@@ -171,7 +171,7 @@ namespace vultra
             assert(desc.dataSize() > 0);
             const auto h = std::hash<FrameGraphBuffer::Desc> {}(desc);
 
-            auto& pool = m_Buffers.entryGroups[h];
+            auto& pool       = m_Buffers.entryGroups[h];
             auto  reusableIt = std::find_if(pool.begin(), pool.end(), [](const auto& entry) {
                 return entry.life >= kMinReusableResourceAgeFrames;
             });

@@ -2,8 +2,8 @@
 
 #include "vultra/core/base/uuid.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
-#include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
+#include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"

@@ -8,10 +8,10 @@ namespace vultra::material_graph
     namespace
     {
         void addDiag(std::vector<Diagnostic>* diagnostics,
-                     Diagnostic::Severity severity,
-                     std::string message,
-                     std::string nodeId = {},
-                     std::string pin = {})
+                     Diagnostic::Severity     severity,
+                     std::string              message,
+                     std::string              nodeId = {},
+                     std::string              pin    = {})
         {
             if (!diagnostics)
                 return;
@@ -217,9 +217,9 @@ namespace vultra::material_graph
         }
 
         Graph graph;
-        graph.version = json.value("version", 1u);
-        graph.domain  = domainFromString(json.value("domain", std::string {"surface"}));
-        graph.name    = json.value("name", std::string {});
+        graph.version  = json.value("version", 1u);
+        graph.domain   = domainFromString(json.value("domain", std::string {"surface"}));
+        graph.name     = json.value("name", std::string {});
         graph.metadata = json.value("metadata", nlohmann::json::object());
 
         static constexpr std::array knownKeys {
@@ -292,10 +292,10 @@ namespace vultra::material_graph
     nlohmann::json graphToJson(const Graph& graph)
     {
         nlohmann::json json = graph.unknown.is_object() ? graph.unknown : nlohmann::json::object();
-        json["version"] = graph.version;
-        json["domain"] = std::string(toString(graph.domain));
-        json["name"] = graph.name;
-        json["metadata"] = graph.metadata;
+        json["version"]     = graph.version;
+        json["domain"]      = std::string(toString(graph.domain));
+        json["name"]        = graph.name;
+        json["metadata"]    = graph.metadata;
 
         json["nodes"] = nlohmann::json::array();
         for (const auto& node : graph.nodes)
@@ -325,7 +325,9 @@ namespace vultra::material_graph
         }
         catch (const std::exception& e)
         {
-            addDiag(diagnostics, Diagnostic::Severity::eError, std::string("Material graph JSON parse failed: ") + e.what());
+            addDiag(diagnostics,
+                    Diagnostic::Severity::eError,
+                    std::string("Material graph JSON parse failed: ") + e.what());
             return std::nullopt;
         }
     }

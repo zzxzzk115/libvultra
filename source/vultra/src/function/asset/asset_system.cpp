@@ -225,10 +225,7 @@ namespace vultra
 
         float sigmoid(float x) { return 1.0f / (1.0f + std::exp(-x)); }
 
-        [[nodiscard]] uint64_t stringBytes(const std::string& value)
-        {
-            return static_cast<uint64_t>(value.capacity());
-        }
+        [[nodiscard]] uint64_t stringBytes(const std::string& value) { return static_cast<uint64_t>(value.capacity()); }
 
         template<typename T>
         [[nodiscard]] uint64_t vectorBytes(const std::vector<T>& value)
@@ -254,15 +251,17 @@ namespace vultra
         [[nodiscard]] uint64_t estimateVSubMeshBytes(const vasset::VSubMesh& subMesh)
         {
             return sizeof(subMesh) + stringBytes(subMesh.name) + vectorBytes(subMesh.meshletGroup.meshlets) +
-                   vectorBytes(subMesh.meshletGroup.meshletVertices) + vectorBytes(subMesh.meshletGroup.meshletTriangles);
+                   vectorBytes(subMesh.meshletGroup.meshletVertices) +
+                   vectorBytes(subMesh.meshletGroup.meshletTriangles);
         }
 
         [[nodiscard]] uint64_t estimateVMeshBytes(const vasset::VMesh& mesh)
         {
             uint64_t bytes = sizeof(mesh) + vectorBytes(mesh.positions) + vectorBytes(mesh.normals) +
                              vectorBytes(mesh.colors) + vectorBytes(mesh.texCoords0) + vectorBytes(mesh.texCoords1) +
-                             vectorBytes(mesh.tangents) + vectorBytes(mesh.jointIndices) + vectorBytes(mesh.jointWeights) +
-                             vectorBytes(mesh.indices) + stringBytes(mesh.name) + stringBytes(mesh.sourceFileName);
+                             vectorBytes(mesh.tangents) + vectorBytes(mesh.jointIndices) +
+                             vectorBytes(mesh.jointWeights) + vectorBytes(mesh.indices) + stringBytes(mesh.name) +
+                             stringBytes(mesh.sourceFileName);
 
             bytes += vectorBytes(mesh.subMeshes);
             for (const auto& subMesh : mesh.subMeshes)
@@ -286,8 +285,7 @@ namespace vultra
 
         [[nodiscard]] uint64_t estimateVGaussianSplatLodBytes(const vasset::VGaussianSplatLodData& lod)
         {
-            return sizeof(lod) + vectorBytes(lod.importance) + vectorBytes(lod.lodLevel) +
-                   vectorBytes(lod.clusterId);
+            return sizeof(lod) + vectorBytes(lod.importance) + vectorBytes(lod.lodLevel) + vectorBytes(lod.clusterId);
         }
 
         [[nodiscard]] uint64_t estimateVGaussianSplatBytes(const vasset::VGaussianSplat& splat)
@@ -329,9 +327,8 @@ namespace vultra
         bool shouldReadPhysicalTextSourceDirectly(const std::filesystem::path& path)
         {
             auto ext = path.extension().generic_string();
-            std::ranges::transform(ext, ext.begin(), [](unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
+            std::ranges::transform(
+                ext, ext.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
 
             const auto filename = path.filename().generic_string();
             return ext == ".vscn" || ext == ".vmanifest" || ext == ".lua" || ext == ".vmatgraph" ||
@@ -354,10 +351,10 @@ namespace vultra
 
         // Default config (can be overridden at runtime/editor).
         configure(AssetSystemDesc {
-            .assetRoot      = ctx().config.asset.assetRoot,
-            .importedFolder = ctx().config.asset.importedFolder,
-            .registryFile   = ctx().config.asset.registryFile,
-            .vpkFile        = ctx().config.asset.vpkFile,
+            .assetRoot        = ctx().config.asset.assetRoot,
+            .importedFolder   = ctx().config.asset.importedFolder,
+            .registryFile     = ctx().config.asset.registryFile,
+            .vpkFile          = ctx().config.asset.vpkFile,
             .enableImportScan = ctx().config.asset.enableImportScan,
         });
 
@@ -553,7 +550,7 @@ namespace vultra
             {
                 vasset::VAssetImporter importer {m_Registry};
                 importer.setOptions(makeAssetImportOptions(false));
-                auto                   importResult = importer.importOrReimportAssetFolder(m_Desc.assetRoot, false);
+                auto importResult = importer.importOrReimportAssetFolder(m_Desc.assetRoot, false);
                 if (!importResult)
                 {
                     VULTRA_CORE_WARN("[AssetSystem] Asset import scan failed while checking stale editor assets.");
@@ -569,7 +566,8 @@ namespace vultra
                             createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {m_Desc.assetRoot})),
                         m_Desc.scheme);
 #else
-            m_VFS.mount(createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {m_Desc.assetRoot}), m_Desc.scheme);
+            m_VFS.mount(createRef<vfilesystem::PhysicalFileSystem>(vfilesystem::Path {m_Desc.assetRoot}),
+                        m_Desc.scheme);
 #endif
         }
 
@@ -728,8 +726,8 @@ namespace vultra
         const bool         cookedOnly = entry.type == vasset::VAssetType::eMesh;
         const std::string& path       = cookedOnly && !entry.importedPath.empty() ? entry.importedPath :
                                         !entry.sourcePath.empty()                 ? entry.sourcePath :
-                                                                                   entry.importedPath;
-        outUri                  = m_Desc.scheme + "://" + path;
+                                                                                    entry.importedPath;
+        outUri                        = m_Desc.scheme + "://" + path;
         return true;
     }
 
@@ -963,11 +961,11 @@ namespace vultra
         {
             auto& gpuMesh = pool.meshes[meshIndex];
 
-            const auto vertexAddress = m_RenderDevice->getBufferDeviceAddress(gpuMesh.vertexBuffer);
-            const auto indexAddress  = m_RenderDevice->getBufferDeviceAddress(gpuMesh.indexBuffer);
+            const auto vertexAddress    = m_RenderDevice->getBufferDeviceAddress(gpuMesh.vertexBuffer);
+            const auto indexAddress     = m_RenderDevice->getBufferDeviceAddress(gpuMesh.indexBuffer);
             gpuMesh.vertexBufferAddress = vertexAddress;
             gpuMesh.indexBufferAddress  = indexAddress;
-            const auto positionIt = gpuMesh.vertexAttributes.find(0);
+            const auto     positionIt   = gpuMesh.vertexAttributes.find(0);
             const uint32_t positionOffsetBytes =
                 positionIt != gpuMesh.vertexAttributes.end() ? positionIt->second.offset : 0u;
 
@@ -980,15 +978,15 @@ namespace vultra
 
                 rhi::RenderSubMesh rtSubMesh {};
                 rtSubMesh.vertexBufferAddress = vertexAddress;
-                rtSubMesh.indexBufferAddress  = rhi::DeviceAddress {
-                    indexAddress.value + static_cast<uint64_t>(sm.indexOffset) * sizeof(uint32_t)};
-                rtSubMesh.vertexStride  = gpuMesh.vertexStrideBytes;
-                rtSubMesh.vertexCount   = gpuMesh.vertexCount;
-                rtSubMesh.vertexOffset  = sm.vertexOffset;
+                rtSubMesh.indexBufferAddress =
+                    rhi::DeviceAddress {indexAddress.value + static_cast<uint64_t>(sm.indexOffset) * sizeof(uint32_t)};
+                rtSubMesh.vertexStride        = gpuMesh.vertexStrideBytes;
+                rtSubMesh.vertexCount         = gpuMesh.vertexCount;
+                rtSubMesh.vertexOffset        = sm.vertexOffset;
                 rtSubMesh.positionOffsetBytes = positionOffsetBytes;
-                rtSubMesh.indexCount    = sm.indexCount;
-                rtSubMesh.indexType     = rhi::IndexType::eUInt32;
-                rtSubMesh.materialIndex = sm.materialIndex;
+                rtSubMesh.indexCount          = sm.indexCount;
+                rtSubMesh.indexType           = rhi::IndexType::eUInt32;
+                rtSubMesh.materialIndex       = sm.materialIndex;
                 const uint32_t localMaterialIndex =
                     sm.materialIndex >= materialOffset ? sm.materialIndex - materialOffset : sm.materialIndex;
                 rtSubMesh.opaque = localMaterialIndex >= cpuMesh.materials.size() ||
@@ -1412,7 +1410,7 @@ namespace vultra
         if (ctx().config.asset.loadFromVPK)
             return false;
 
-        const auto physicalPath = std::filesystem::path(resolveUri(uri)).lexically_normal();
+        const auto             physicalPath = std::filesystem::path(resolveUri(uri)).lexically_normal();
         vasset::VAssetImporter importer {m_Registry};
         importer.setOptions(makeAssetImportOptions());
         auto result = importer.importOrReimportAsset(physicalPath.generic_string(), forceReimport);
@@ -1422,8 +1420,8 @@ namespace vultra
             return false;
         }
 
-        const auto registryPath = (std::filesystem::path(m_Desc.assetRoot) / m_Desc.importedFolder / m_Desc.registryFile)
-                                      .generic_string();
+        const auto registryPath =
+            (std::filesystem::path(m_Desc.assetRoot) / m_Desc.importedFolder / m_Desc.registryFile).generic_string();
         m_Registry.save(registryPath);
         m_Resolver.loadFromAssetRegistry(m_Registry);
         m_Resolver.setScheme(m_Desc.scheme);
@@ -1445,14 +1443,14 @@ namespace vultra
 
         if (!ctx().config.asset.loadFromVPK)
         {
-            const auto sourcePath = std::filesystem::path(resolveUri(uri)).lexically_normal();
+            const auto      sourcePath = std::filesystem::path(resolveUri(uri)).lexically_normal();
             std::error_code ec;
             if (shouldReadPhysicalTextSourceDirectly(sourcePath) && std::filesystem::is_regular_file(sourcePath, ec))
             {
                 std::ifstream file(sourcePath, std::ios::binary | std::ios::ate);
                 if (file)
                 {
-                    const auto size = static_cast<std::streamsize>(file.tellg());
+                    const auto  size = static_cast<std::streamsize>(file.tellg());
                     std::string text(static_cast<size_t>(std::max<std::streamsize>(size, 0)), '\0');
                     file.seekg(0);
                     if (text.empty() || file.read(text.data(), size))
@@ -1486,9 +1484,10 @@ namespace vultra
     {
         auto bytesResult = m_VFS.readAll(uri);
         if (!bytesResult)
-            return vbase::Result<std::vector<uint8_t>, std::string>::err("Failed to read binary asset: " + std::string(uri));
+            return vbase::Result<std::vector<uint8_t>, std::string>::err("Failed to read binary asset: " +
+                                                                         std::string(uri));
 
-        const auto& bytes = bytesResult.value();
+        const auto&          bytes = bytesResult.value();
         std::vector<uint8_t> out;
         out.reserve(bytes.size());
         for (const auto byte : bytes)

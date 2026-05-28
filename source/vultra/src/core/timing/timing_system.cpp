@@ -34,10 +34,10 @@ namespace vultra
         m_FpsAccumulatedTime += m_UnscaledDeltaTime;
         if (m_FpsAccumulatedTime >= 0.25f)
         {
-            m_FramesPerSecond = m_FpsAccumulatedFrames / m_FpsAccumulatedTime;
-            m_AverageFrameTime = m_FramesPerSecond > 0.0f ? (1.0f / m_FramesPerSecond) : 0.0f;
+            m_FramesPerSecond      = m_FpsAccumulatedFrames / m_FpsAccumulatedTime;
+            m_AverageFrameTime     = m_FramesPerSecond > 0.0f ? (1.0f / m_FramesPerSecond) : 0.0f;
             m_FpsAccumulatedFrames = 0;
-            m_FpsAccumulatedTime = 0.0f;
+            m_FpsAccumulatedTime   = 0.0f;
         }
 
         m_FixedStepsThisFrame = 0;
@@ -55,14 +55,14 @@ namespace vultra
             return;
         }
 
-        const uint32_t steps = static_cast<uint32_t>(rawStepCount);
+        const uint32_t steps  = static_cast<uint32_t>(rawStepCount);
         m_FixedStepsThisFrame = std::min(steps, m_MaxFixedStepsPerFrame);
 
         m_FixedAccumulator -= static_cast<float>(m_FixedStepsThisFrame) * m_FixedDeltaTime;
 
         const float maxAccumulator = static_cast<float>(m_MaxFixedStepsPerFrame) * m_FixedDeltaTime;
-        m_FixedAccumulator = std::clamp(m_FixedAccumulator, 0.0f, maxAccumulator);
-        m_FixedAlpha       = std::clamp(m_FixedAccumulator / m_FixedDeltaTime, 0.0f, 1.0f);
+        m_FixedAccumulator         = std::clamp(m_FixedAccumulator, 0.0f, maxAccumulator);
+        m_FixedAlpha               = std::clamp(m_FixedAccumulator / m_FixedDeltaTime, 0.0f, 1.0f);
     }
 
     void TimingSystem::setUpdateDeltaTime(float dt)
@@ -81,18 +81,15 @@ namespace vultra
 
     void TimingSystem::setTimeScale(float scale)
     {
-        m_TimeScale = std::max(0.0f, scale);
+        m_TimeScale       = std::max(0.0f, scale);
         m_UpdateDeltaTime = m_UnscaledDeltaTime * m_TimeScale;
     }
 
-    void TimingSystem::setMaxFixedStepsPerFrame(uint32_t maxSteps)
-    {
-        m_MaxFixedStepsPerFrame = std::max(1u, maxSteps);
-    }
+    void TimingSystem::setMaxFixedStepsPerFrame(uint32_t maxSteps) { m_MaxFixedStepsPerFrame = std::max(1u, maxSteps); }
 
     void TimingSystem::setMaxDeltaTime(float dt)
     {
-        m_MaxDeltaTime = std::max(1e-6f, dt);
+        m_MaxDeltaTime      = std::max(1e-6f, dt);
         m_UnscaledDeltaTime = std::clamp(m_UnscaledDeltaTime, 0.0f, m_MaxDeltaTime);
         m_UpdateDeltaTime   = m_UnscaledDeltaTime * m_TimeScale;
         m_SmoothedDeltaTime = std::clamp(m_SmoothedDeltaTime, 0.0f, m_MaxDeltaTime);

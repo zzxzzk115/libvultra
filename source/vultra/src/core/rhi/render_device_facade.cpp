@@ -115,12 +115,12 @@ namespace vultra
             [[nodiscard]] uint64_t webgpuFormatFeatureFlags(const WebGPURenderDevice& backend,
                                                             const PixelFormat         pixelFormat)
             {
-                constexpr uint64_t kTransferSrc      = 0x00004000ull;
-                constexpr uint64_t kTransferDst      = 0x00008000ull;
-                constexpr uint64_t kSampledImage     = 0x00000004ull;
-                constexpr uint64_t kSampledLinear    = 0x00001000ull;
-                constexpr uint64_t kStorageImage     = 0x00000008ull;
-                constexpr uint64_t kColorAttachment  = 0x00000080ull;
+                constexpr uint64_t kTransferSrc     = 0x00004000ull;
+                constexpr uint64_t kTransferDst     = 0x00008000ull;
+                constexpr uint64_t kSampledImage    = 0x00000004ull;
+                constexpr uint64_t kSampledLinear   = 0x00001000ull;
+                constexpr uint64_t kStorageImage    = 0x00000008ull;
+                constexpr uint64_t kColorAttachment = 0x00000080ull;
 
                 switch (pixelFormat)
                 {
@@ -175,7 +175,8 @@ namespace vultra
                                                   const vma::AllocationCreateFlags flags,
                                                   const vma::MemoryUsage           memoryUsage)
             {
-                return Buffer {std::make_unique<VulkanBuffer>(allocator, size, usage, flags, memoryUsage, renderDevice)};
+                return Buffer {
+                    std::make_unique<VulkanBuffer>(allocator, size, usage, flags, memoryUsage, renderDevice)};
             }
 
             [[nodiscard]] vk::ShaderModule createVulkanShaderModule(const vk::Device device, const SPIRV& spv)
@@ -237,11 +238,10 @@ namespace vultra
                 {
                     return {};
                 }
-                return Buffer {std::make_unique<WebGPUBuffer>(
-                    &backend,
-                    size,
-                    reinterpret_cast<std::uintptr_t>(handle),
-                    reinterpret_cast<std::uintptr_t>(backend.m_Queue))};
+                return Buffer {std::make_unique<WebGPUBuffer>(&backend,
+                                                              size,
+                                                              reinterpret_cast<std::uintptr_t>(handle),
+                                                              reinterpret_cast<std::uintptr_t>(backend.m_Queue))};
 #endif
             }
 
@@ -292,11 +292,11 @@ namespace vultra
                     {
                         case DescriptorType::eUniformBuffer: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding               = binding.binding;
-                            entry.visibility            = visibility;
-                            entry.buffer.type           = WGPUBufferBindingType_Uniform;
+                            entry.binding                 = binding.binding;
+                            entry.visibility              = visibility;
+                            entry.buffer.type             = WGPUBufferBindingType_Uniform;
                             entry.buffer.hasDynamicOffset = binding.binding == 31u;
-                            entry.buffer.minBindingSize = 0;
+                            entry.buffer.minBindingSize   = 0;
                             entries.push_back(entry);
                             break;
                         }
@@ -348,8 +348,8 @@ namespace vultra
                         }
                         case DescriptorType::eStorageImage: {
                             WGPUBindGroupLayoutEntry entry {};
-                            entry.binding                      = binding.binding;
-                            entry.visibility                   = visibility;
+                            entry.binding    = binding.binding;
+                            entry.visibility = visibility;
                             switch (binding.access)
                             {
                                 case vshadersystem::ResourceAccess::eReadOnly:
@@ -519,7 +519,7 @@ namespace vultra
 #if defined(VULTRA_ENABLE_VULKAN) && VULTRA_ENABLE_VULKAN
                     m_Backend = std::make_unique<VulkanRenderDevice>();
 #else
-                    m_Backend = createWebGPUBackend(appName);
+                    m_Backend                                     = createWebGPUBackend(appName);
                     webgpuBackend(m_Backend).m_EnableDebugMarkers = enableDebugMarkers;
 #ifdef TRACKY_ENABLE
                     TRACKY_STARTUP_WEBGPU(reinterpret_cast<std::uintptr_t>(webgpuBackend(m_Backend).m_Instance),
@@ -553,8 +553,8 @@ namespace vultra
                 return;
             }
 
-            vkBackend(m_Backend).m_FeatureFlag = featureFlag;
-            vkBackend(m_Backend).m_AppName     = appName;
+            vkBackend(m_Backend).m_FeatureFlag        = featureFlag;
+            vkBackend(m_Backend).m_AppName            = appName;
             vkBackend(m_Backend).m_EnableValidation   = enableValidation;
             vkBackend(m_Backend).m_EnableDebugMarkers = enableDebugMarkers;
             vkBackend(m_Backend).m_EnableRenderDoc    = enableRenderDoc;
@@ -751,7 +751,7 @@ namespace vultra
                                  m_Backend.get(),
                                  stride * vertexCount,
                                  usage,
-                makeAllocationFlags(allocationHint),
+                                 makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eAutoPreferDevice),
                 stride,
             };
@@ -791,7 +791,7 @@ namespace vultra
                                  m_Backend.get(),
                                  indexStride * indexCount,
                                  usage,
-                makeAllocationFlags(allocationHint),
+                                 makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eAutoPreferDevice),
                 indexType,
             };
@@ -848,7 +848,7 @@ namespace vultra
                                  m_Backend.get(),
                                  size,
                                  usage,
-                makeAllocationFlags(allocationHint),
+                                 makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eAutoPreferDevice),
             }};
 #endif
@@ -868,7 +868,8 @@ namespace vultra
             return {};
 #else
             assert(vkBackend(m_Backend).m_MemoryAllocator);
-            BufferUsage usage = BufferUsage::eStorageBuffer | BufferUsage::eTransferSrc | BufferUsage::eTransferDst | extraUsage;
+            BufferUsage usage =
+                BufferUsage::eStorageBuffer | BufferUsage::eTransferSrc | BufferUsage::eTransferDst | extraUsage;
             if (HasFlagValues(vkBackend(m_Backend).m_FeatureReport.flags,
                               RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
@@ -883,7 +884,7 @@ namespace vultra
                                  m_Backend.get(),
                                  size,
                                  usage,
-                makeAllocationFlags(allocationHint),
+                                 makeAllocationFlags(allocationHint),
                                  vma::MemoryUsage::eAutoPreferDevice),
             }};
 #endif
@@ -895,11 +896,11 @@ namespace vultra
         {
             if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
             {
-                auto&      backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
+                auto&                 backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
                 constexpr std::size_t kDrawIndirectCommandSize        = sizeof(uint32_t) * 4;
                 constexpr std::size_t kDrawIndexedIndirectCommandSize = sizeof(uint32_t) * 5;
-                const auto            stride = type == DrawIndirectType::eIndexed ? kDrawIndexedIndirectCommandSize :
-                                                                                     kDrawIndirectCommandSize;
+                const auto            stride =
+                    type == DrawIndirectType::eIndexed ? kDrawIndexedIndirectCommandSize : kDrawIndirectCommandSize;
                 return DrawIndirectBuffer {makeWebGPUBuffer(backend,
                                                             commandCount * stride,
                                                             BufferUsage::eIndirectBuffer | BufferUsage::eStorageBuffer |
@@ -1112,8 +1113,7 @@ namespace vultra
             assert(texture && HasFlagValues(texture.getUsageFlags(), ImageUsage::eSampled));
 
             if (m_Backend->getBackendApi() != RenderBackendApi::eWebGPU &&
-                (getFormatFeatureFlagsOptimal(texture.getPixelFormat()) &
-                 0x00001000ull) == 0)
+                (getFormatFeatureFlagsOptimal(texture.getPixelFormat()) & 0x00001000ull) == 0)
             {
                 samplerInfo.minFilter  = TexelFilter::eNearest;
                 samplerInfo.magFilter  = TexelFilter::eNearest;
@@ -1607,23 +1607,25 @@ namespace vultra
                 return std::nullopt;
 
             auto stagingBuffer = createStagingBuffer(texture.getSize());
-            execute([&](CommandBuffer& cb) {
-                cb.getBarrierBuilder().imageBarrier(
-                    {
-                        .image     = const_cast<Texture&>(texture),
-                        .newLayout = ImageLayout::eGeneral,
-                    },
-                    {
-                        .dstStage  = PipelineStages::eTransfer,
-                        .dstAccess = Access::eTransferRead,
-                    });
-                cb.copyImage(texture, stagingBuffer, ImageAspect::eColor);
-                cb.getBarrierBuilder().bufferBarrier({.buffer = stagingBuffer},
-                                                     {
-                                                         .dstStage  = PipelineStages::eTransfer,
-                                                         .dstAccess = Access::eTransferRead,
-                                                     });
-            }, true);
+            execute(
+                [&](CommandBuffer& cb) {
+                    cb.getBarrierBuilder().imageBarrier(
+                        {
+                            .image     = const_cast<Texture&>(texture),
+                            .newLayout = ImageLayout::eGeneral,
+                        },
+                        {
+                            .dstStage  = PipelineStages::eTransfer,
+                            .dstAccess = Access::eTransferRead,
+                        });
+                    cb.copyImage(texture, stagingBuffer, ImageAspect::eColor);
+                    cb.getBarrierBuilder().bufferBarrier({.buffer = stagingBuffer},
+                                                         {
+                                                             .dstStage  = PipelineStages::eTransfer,
+                                                             .dstAccess = Access::eTransferRead,
+                                                         });
+                },
+                true);
             waitIdle();
 
             const auto* mappedPtr = static_cast<const uint8_t*>(stagingBuffer.map());
@@ -1633,7 +1635,7 @@ namespace vultra
                 return std::nullopt;
             }
 
-            const uint64_t offset = (static_cast<uint64_t>(y) * extent.width + x) * 4u;
+            const uint64_t         offset = (static_cast<uint64_t>(y) * extent.width + x) * 4u;
             std::array<uint8_t, 4> out {
                 mappedPtr[offset + 0u],
                 mappedPtr[offset + 1u],
@@ -1661,23 +1663,25 @@ namespace vultra
             }
 
             auto stagingBuffer = createStagingBuffer(texture.getSize());
-            execute([&](CommandBuffer& cb) {
-                cb.getBarrierBuilder().imageBarrier(
-                    {
-                        .image     = const_cast<Texture&>(texture),
-                        .newLayout = ImageLayout::eGeneral,
-                    },
-                    {
-                        .dstStage  = PipelineStages::eTransfer,
-                        .dstAccess = Access::eTransferRead,
-                    });
-                cb.copyImage(texture, stagingBuffer, ImageAspect::eColor);
-                cb.getBarrierBuilder().bufferBarrier({.buffer = stagingBuffer},
-                                                     {
-                                                         .dstStage  = PipelineStages::eTransfer,
-                                                         .dstAccess = Access::eTransferRead,
-                                                     });
-            }, true);
+            execute(
+                [&](CommandBuffer& cb) {
+                    cb.getBarrierBuilder().imageBarrier(
+                        {
+                            .image     = const_cast<Texture&>(texture),
+                            .newLayout = ImageLayout::eGeneral,
+                        },
+                        {
+                            .dstStage  = PipelineStages::eTransfer,
+                            .dstAccess = Access::eTransferRead,
+                        });
+                    cb.copyImage(texture, stagingBuffer, ImageAspect::eColor);
+                    cb.getBarrierBuilder().bufferBarrier({.buffer = stagingBuffer},
+                                                         {
+                                                             .dstStage  = PipelineStages::eTransfer,
+                                                             .dstAccess = Access::eTransferRead,
+                                                         });
+                },
+                true);
             waitIdle();
 
             const auto* mappedPtr = static_cast<const uint8_t*>(stagingBuffer.map());
@@ -1987,7 +1991,7 @@ namespace vultra
                     return {};
                 }
 
-                auto reflection = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
+                auto reflection   = pipelineLayout ? std::nullopt : std::make_optional<ShaderReflection>();
                 auto shaderModule = createShaderModule(ShaderType::eCompute,
                                                        shaderStageInfo.code,
                                                        shaderStageInfo.entryPointName,
@@ -2021,8 +2025,8 @@ namespace vultra
                 source.code        = WGPUStringView {.data = shaderModule.getWgsl().data(), .length = WGPU_STRLEN};
 
                 WGPUShaderModuleDescriptor shaderDesc {};
-                shaderDesc.nextInChain = const_cast<WGPUChainedStruct*>(
-                    reinterpret_cast<const WGPUChainedStruct*>(&source));
+                shaderDesc.nextInChain =
+                    const_cast<WGPUChainedStruct*>(reinterpret_cast<const WGPUChainedStruct*>(&source));
                 auto* const shaderHandle = wgpuDeviceCreateShaderModule(backend.m_Device, &shaderDesc);
                 if (shaderHandle == nullptr)
                 {
@@ -2030,8 +2034,8 @@ namespace vultra
                 }
 
                 WGPUComputePipelineDescriptor descriptor {};
-                descriptor.layout  = reinterpret_cast<WGPUPipelineLayout>(pipelineLayout->getHandle());
-                descriptor.compute.module = shaderHandle;
+                descriptor.layout             = reinterpret_cast<WGPUPipelineLayout>(pipelineLayout->getHandle());
+                descriptor.compute.module     = shaderHandle;
                 descriptor.compute.entryPoint = WGPUStringView {.data   = shaderStageInfo.entryPointName.data(),
                                                                 .length = shaderStageInfo.entryPointName.size()};
 
@@ -2116,7 +2120,7 @@ namespace vultra
 #endif
         }
 
-        ComputePipeline RenderDevice::createComputePipelineBuiltin(const SPIRV&            spv,
+        ComputePipeline RenderDevice::createComputePipelineBuiltin(const SPIRV&                  spv,
                                                                    std::optional<PipelineLayout> pipelineLayout,
                                                                    const ShaderReflection*       bakedReflection)
         {
@@ -2134,9 +2138,9 @@ namespace vultra
             (void)bakedReflection;
             return {};
 #else
-            auto reflection = pipelineLayout ? std::nullopt :
-                               bakedReflection ? std::make_optional<ShaderReflection>(*bakedReflection) :
-                                                 std::make_optional<ShaderReflection>();
+            auto reflection = pipelineLayout  ? std::nullopt :
+                              bakedReflection ? std::make_optional<ShaderReflection>(*bakedReflection) :
+                                                std::make_optional<ShaderReflection>();
 
             const auto shaderModule =
                 createShaderModule(spv, reflection && !bakedReflection ? std::addressof(reflection.value()) : nullptr);
@@ -2185,9 +2189,8 @@ namespace vultra
 #endif
         }
 
-        ComputePipeline
-        RenderDevice::createComputePipelineBuiltin(const ShaderLibraryRuntime::LoadedShader& shader,
-                                                   std::optional<PipelineLayout>             pipelineLayout)
+        ComputePipeline RenderDevice::createComputePipelineBuiltin(const ShaderLibraryRuntime::LoadedShader& shader,
+                                                                   std::optional<PipelineLayout> pipelineLayout)
         {
             return createComputePipelineBuiltin(shader.spirv, std::move(pipelineLayout), &shader.reflection);
         }

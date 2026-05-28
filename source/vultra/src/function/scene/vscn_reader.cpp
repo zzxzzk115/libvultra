@@ -132,12 +132,12 @@ namespace vultra
 
         std::unordered_map<int, std::unique_ptr<SceneNode>> nodes;
         std::unordered_map<int, int>                        parentOf;
-        std::vector<int>                                     nodeOrder;
+        std::vector<int>                                    nodeOrder;
 
         int         rootId        = -1;
         int         currentNodeId = -1;
         std::string currentSection;
-        bool        isManifest = false;
+        bool        isManifest      = false;
         bool        hasExplicitRoot = false;
 
         auto strip_quotes = [](std::string s) {
@@ -170,10 +170,10 @@ namespace vultra
 
                 if (inside == "vmanifest")
                 {
-                    currentSection  = "vmanifest";
-                    currentNodeId   = -1;
-                    doc.isManifest  = true;
-                    isManifest      = true;
+                    currentSection = "vmanifest";
+                    currentNodeId  = -1;
+                    doc.isManifest = true;
+                    isManifest     = true;
                     continue;
                 }
 
@@ -269,7 +269,7 @@ namespace vultra
                 else if (key == "root")
                 {
                     hasExplicitRoot = true;
-                    int parsedRoot = -1;
+                    int parsedRoot  = -1;
                     if (try_parse_int(val, parsedRoot))
                         rootId = parsedRoot;
                 }
@@ -385,8 +385,8 @@ namespace vultra
 
         if (doc.syntheticRoot)
         {
-            doc.root     = std::make_unique<SceneNode>();
-            doc.root->id = CoreUUIDHelper::getFromName("SceneRoot:synthetic");
+            doc.root       = std::make_unique<SceneNode>();
+            doc.root->id   = CoreUUIDHelper::getFromName("SceneRoot:synthetic");
             doc.root->name = "SceneRoot";
             for (int cid : children[0])
             {

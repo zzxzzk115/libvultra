@@ -74,8 +74,8 @@ namespace vultra
                 source.code        = WGPUStringView {.data = wgsl.data(), .length = WGPU_STRLEN};
 
                 WGPUShaderModuleDescriptor descriptor {};
-                descriptor.nextInChain = const_cast<WGPUChainedStruct*>(
-                    reinterpret_cast<const WGPUChainedStruct*>(&source));
+                descriptor.nextInChain =
+                    const_cast<WGPUChainedStruct*>(reinterpret_cast<const WGPUChainedStruct*>(&source));
                 return wgpuDeviceCreateShaderModule(device, &descriptor);
             };
 
@@ -172,7 +172,7 @@ namespace vultra
             const bool     hasBlendState = !m_BlendStates.empty() && m_BlendStates.front().enabled;
             if (hasBlendState)
             {
-                const auto& blend = m_BlendStates.front();
+                const auto& blend          = m_BlendStates.front();
                 blendState.color.operation = webgpu::toWgpuBlendOperation(blend.colorOp);
                 blendState.color.srcFactor = webgpu::toWgpuBlendFactor(blend.srcColor);
                 blendState.color.dstFactor = webgpu::toWgpuBlendFactor(blend.dstColor);

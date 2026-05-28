@@ -79,10 +79,9 @@ namespace vultra
             return *this;
         }
 
-        GraphicsPipeline::Builder&
-        GraphicsPipeline::Builder::addBuiltinShader(const ShaderType type,
-                                                    const SPIRV&     spv,
-                                                    const ShaderReflection* reflection)
+        GraphicsPipeline::Builder& GraphicsPipeline::Builder::addBuiltinShader(const ShaderType        type,
+                                                                               const SPIRV&            spv,
+                                                                               const ShaderReflection* reflection)
         {
             m_BuiltinShaderStages.emplace(type,
                                           BuiltinShaderStage {
@@ -93,7 +92,8 @@ namespace vultra
         }
 
         GraphicsPipeline::Builder&
-        GraphicsPipeline::Builder::addBuiltinShader(const ShaderType type, const ShaderLibraryRuntime::LoadedShader& shader)
+        GraphicsPipeline::Builder::addBuiltinShader(const ShaderType                          type,
+                                                    const ShaderLibraryRuntime::LoadedShader& shader)
         {
             return addBuiltinShader(type, shader.spirv, &shader.reflection);
         }
@@ -132,8 +132,8 @@ namespace vultra
                                            const PixelFormat          depthFormat,
                                            const PixelFormat          stencilFormat,
                                            const DepthStencilState    depthStencilState) :
-            BasePipeline {std::move(pipelineLayout), pipeline, std::move(destroyBackend)},
-            m_DepthFormat(depthFormat), m_StencilFormat(stencilFormat), m_DepthStencilState(depthStencilState)
+            BasePipeline {std::move(pipelineLayout), pipeline, std::move(destroyBackend)}, m_DepthFormat(depthFormat),
+            m_StencilFormat(stencilFormat), m_DepthStencilState(depthStencilState)
         {}
     } // namespace rhi
 } // namespace vultra

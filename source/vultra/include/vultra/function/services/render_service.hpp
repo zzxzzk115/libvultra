@@ -49,6 +49,7 @@ namespace vultra
     struct FrameGraphTexturePreviewSettings
     {
         static constexpr std::string_view kCaptureAllTextures = "__all__";
+        static constexpr std::string_view kCaptureNoTextures  = "__none__";
 
         bool channels[4] {true, true, true, true};
         bool gammaCorrect {false};
@@ -57,6 +58,7 @@ namespace vultra
         float depthFar {1000.0f};
         float clampMin {0.0f};
         float clampMax {1.0f};
+        uint32_t maxPreviewExtent {0};
         std::string selectedTextureKey;
     };
 

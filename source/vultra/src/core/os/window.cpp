@@ -107,7 +107,7 @@ namespace vultra
         }
 
         std::optional<Window::CursorImage>
-            Window::decodeCursorImage(const std::span<const uint8_t> encodedBytes, const int hotX, const int hotY)
+        Window::decodeCursorImage(const std::span<const uint8_t> encodedBytes, const int hotX, const int hotY)
         {
             if (encodedBytes.empty())
             {

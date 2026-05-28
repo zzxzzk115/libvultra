@@ -45,7 +45,8 @@ namespace vultra::rhi
                                IRenderDevice*                   renderDevice) :
         m_MemoryAllocator(memoryAllocator), m_RenderDevice(renderDevice)
     {
-        m_MemoryKind = memoryUsage == vma::MemoryUsage::eGpuOnly ? RenderMemoryKind::eGpuDeviceLocal : RenderMemoryKind::eGpuHostVisible;
+        m_MemoryKind = memoryUsage == vma::MemoryUsage::eGpuOnly ? RenderMemoryKind::eGpuDeviceLocal :
+                                                                   RenderMemoryKind::eGpuHostVisible;
 
         vk::BufferCreateInfo bufferCreateInfo {};
         bufferCreateInfo.size        = size;

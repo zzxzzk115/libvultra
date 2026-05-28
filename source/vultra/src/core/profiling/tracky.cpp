@@ -24,7 +24,6 @@
 #include <webgpu/webgpu.h>
 #endif
 
-
 // NOLINTBEGIN
 // clang-format off
 #if defined(__APPLE__)

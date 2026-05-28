@@ -9,35 +9,30 @@ namespace vultra
     {
         auto time = script_binding::getOrCreateTable(lua, "Time");
 
-        time.set_function("deltaTime", [&ctx]() { return ctx.timingService ? ctx.timingService->updateDeltaTime() : 0.0f; });
-        time.set_function("fixedDeltaTime", [&ctx]() {
-            return ctx.timingService ? ctx.timingService->fixedDeltaTime() : 0.0f;
-        });
-        time.set_function("unscaledDeltaTime", [&ctx]() {
-            return ctx.timingService ? ctx.timingService->unscaledDeltaTime() : 0.0f;
-        });
-        time.set_function("smoothedDeltaTime", [&ctx]() {
-            return ctx.timingService ? ctx.timingService->smoothedDeltaTime() : 0.0f;
-        });
+        time.set_function("deltaTime",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->updateDeltaTime() : 0.0f; });
+        time.set_function("fixedDeltaTime",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->fixedDeltaTime() : 0.0f; });
+        time.set_function("unscaledDeltaTime",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->unscaledDeltaTime() : 0.0f; });
+        time.set_function("smoothedDeltaTime",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->smoothedDeltaTime() : 0.0f; });
         time.set_function("totalTime", [&ctx]() { return ctx.timingService ? ctx.timingService->totalTime() : 0.0f; });
-        time.set_function("unscaledTotalTime", [&ctx]() {
-            return ctx.timingService ? ctx.timingService->unscaledTotalTime() : 0.0f;
-        });
-        time.set_function("averageFrameTime", [&ctx]() {
-            return ctx.timingService ? ctx.timingService->averageFrameTime() : 0.0f;
-        });
-        time.set_function("framesPerSecond", [&ctx]() {
-            return ctx.timingService ? ctx.timingService->framesPerSecond() : 0.0f;
-        });
+        time.set_function("unscaledTotalTime",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->unscaledTotalTime() : 0.0f; });
+        time.set_function("averageFrameTime",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->averageFrameTime() : 0.0f; });
+        time.set_function("framesPerSecond",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->framesPerSecond() : 0.0f; });
         time.set_function("timeScale", [&ctx]() { return ctx.timingService ? ctx.timingService->timeScale() : 1.0f; });
-        time.set_function("fixedAlpha", [&ctx]() { return ctx.timingService ? ctx.timingService->fixedAlpha() : 0.0f; });
-        time.set_function("fixedStepsThisFrame", [&ctx]() {
-            return ctx.timingService ? ctx.timingService->fixedStepsThisFrame() : 0u;
-        });
-        time.set_function("frameIndex", [&ctx]() { return ctx.timingService ? ctx.timingService->frameIndex() : 0ull; });
-        time.set_function("maxDeltaTime", [&ctx]() {
-            return ctx.timingService ? ctx.timingService->maxDeltaTime() : 0.0f;
-        });
+        time.set_function("fixedAlpha",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->fixedAlpha() : 0.0f; });
+        time.set_function("fixedStepsThisFrame",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->fixedStepsThisFrame() : 0u; });
+        time.set_function("frameIndex",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->frameIndex() : 0ull; });
+        time.set_function("maxDeltaTime",
+                          [&ctx]() { return ctx.timingService ? ctx.timingService->maxDeltaTime() : 0.0f; });
 
         time.set_function("setTimeScale", [&ctx](float scale) {
             if (ctx.timingService)

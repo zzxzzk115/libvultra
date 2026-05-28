@@ -2,10 +2,10 @@
 #include "vultra/core/base/common_context.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 #include <limits>
 #include <stdexcept>
-#include <cstring>
 #include <thread>
 #include <vector>
 
@@ -106,7 +106,7 @@ namespace vultra
             void onDeviceLost(const WGPUDevice*,
                               const WGPUDeviceLostReason reason,
                               const WGPUStringView       message,
-                              void* userdata1,
+                              void*                      userdata1,
                               void*)
             {
                 auto* const device = static_cast<WebGPURenderDevice*>(userdata1);
@@ -119,12 +119,11 @@ namespace vultra
                                   toStdString(message));
             }
 
-            void
-            onUncapturedError(const WGPUDevice*,
-                              const WGPUErrorType type,
-                              const WGPUStringView message,
-                              void* userdata1,
-                              void*)
+            void onUncapturedError(const WGPUDevice*,
+                                   const WGPUErrorType  type,
+                                   const WGPUStringView message,
+                                   void*                userdata1,
+                                   void*)
             {
                 auto* const device = static_cast<WebGPURenderDevice*>(userdata1);
                 if (device != nullptr)
@@ -139,19 +138,19 @@ namespace vultra
             [[nodiscard]] RenderDeviceLimits toRenderDeviceLimits(const WGPULimits& limits)
             {
                 RenderDeviceLimits out {};
-                out.maxBindGroups                    = limits.maxBindGroups;
-                out.maxUniformBuffersPerShaderStage  = limits.maxUniformBuffersPerShaderStage;
-                out.maxStorageBuffersPerShaderStage  = limits.maxStorageBuffersPerShaderStage;
-                out.maxSampledTexturesPerShaderStage = limits.maxSampledTexturesPerShaderStage;
-                out.maxSamplersPerShaderStage        = limits.maxSamplersPerShaderStage;
-                out.maxStorageTexturesPerShaderStage = limits.maxStorageTexturesPerShaderStage;
-                out.maxUniformBufferBindingSize      = limits.maxUniformBufferBindingSize;
-                out.maxStorageBufferBindingSize      = limits.maxStorageBufferBindingSize;
-                out.maxBufferSize                    = limits.maxBufferSize;
-                out.maxVertexBuffers                 = limits.maxVertexBuffers;
-                out.maxVertexAttributes              = limits.maxVertexAttributes;
+                out.maxBindGroups                     = limits.maxBindGroups;
+                out.maxUniformBuffersPerShaderStage   = limits.maxUniformBuffersPerShaderStage;
+                out.maxStorageBuffersPerShaderStage   = limits.maxStorageBuffersPerShaderStage;
+                out.maxSampledTexturesPerShaderStage  = limits.maxSampledTexturesPerShaderStage;
+                out.maxSamplersPerShaderStage         = limits.maxSamplersPerShaderStage;
+                out.maxStorageTexturesPerShaderStage  = limits.maxStorageTexturesPerShaderStage;
+                out.maxUniformBufferBindingSize       = limits.maxUniformBufferBindingSize;
+                out.maxStorageBufferBindingSize       = limits.maxStorageBufferBindingSize;
+                out.maxBufferSize                     = limits.maxBufferSize;
+                out.maxVertexBuffers                  = limits.maxVertexBuffers;
+                out.maxVertexAttributes               = limits.maxVertexAttributes;
                 out.maxInterStageShaderVariables      = limits.maxInterStageShaderVariables;
-                out.maxColorAttachments              = limits.maxColorAttachments;
+                out.maxColorAttachments               = limits.maxColorAttachments;
                 out.maxComputeWorkgroupStorageSize    = limits.maxComputeWorkgroupStorageSize;
                 out.maxComputeInvocationsPerWorkgroup = limits.maxComputeInvocationsPerWorkgroup;
                 out.maxComputeWorkgroupSizeX          = limits.maxComputeWorkgroupSizeX;
@@ -173,10 +172,8 @@ namespace vultra
                 uint32_t            slot {0};
             };
 
-            void onFrameTimeReadbackMapped(const WGPUMapAsyncStatus status,
-                                           const WGPUStringView,
-                                           void* userdata1,
-                                           void*)
+            void
+            onFrameTimeReadbackMapped(const WGPUMapAsyncStatus status, const WGPUStringView, void* userdata1, void*)
             {
                 auto* const userData = static_cast<MapQueryUserData*>(userdata1);
                 if (!userData || !userData->device)
@@ -199,10 +196,8 @@ namespace vultra
                 delete userData;
             }
 
-            void onScopeTimeReadbackMapped(const WGPUMapAsyncStatus status,
-                                           const WGPUStringView,
-                                           void* userdata1,
-                                           void*)
+            void
+            onScopeTimeReadbackMapped(const WGPUMapAsyncStatus status, const WGPUStringView, void* userdata1, void*)
             {
                 auto* const userData = static_cast<ScopeMapQueryUserData*>(userdata1);
                 if (!userData || !userData->device)
@@ -218,10 +213,10 @@ namespace vultra
                     slot.mapReady   = (status == WGPUMapAsyncStatus_Success);
                     if (!slot.mapReady)
                     {
-                        slot.pendingResolve = false;
+                        slot.pendingResolve   = false;
                         slot.resolveSubmitted = false;
-                        slot.resolved       = true;
-                        slot.ms             = -1.0;
+                        slot.resolved         = true;
+                        slot.ms               = -1.0;
                     }
                 }
                 delete userData;
@@ -311,17 +306,18 @@ namespace vultra
             // Builtin WebGPU GPU timing is disabled on this backend/runtime path. Even when the
             // adapter reports TimestampQuery support, creating query resources has proven unstable
             // and can invalidate the device before swapchain setup completes.
-            m_SupportsTimestampQuery = false;
-            m_SupportsScopeTimestampQuery = false;
+            m_SupportsTimestampQuery               = false;
+            m_SupportsScopeTimestampQuery          = false;
             m_SupportsTimestampQueryInsideEncoders = false;
             if (supportsTimestampQuery)
             {
-                VULTRA_CORE_WARN(
-                    "[RenderDevice] WebGPU timestamp query support detected, but real GPU pass timing is disabled on this runtime because query resource creation invalidates the device.");
+                VULTRA_CORE_WARN("[RenderDevice] WebGPU timestamp query support detected, but real GPU pass timing is "
+                                 "disabled on this runtime because query resource creation invalidates the device.");
             }
             else
             {
-                VULTRA_CORE_WARN("[RenderDevice] WebGPU timestamp query feature unavailable; GPU frame time will be N/A.");
+                VULTRA_CORE_WARN(
+                    "[RenderDevice] WebGPU timestamp query feature unavailable; GPU frame time will be N/A.");
             }
 
             WGPUDeviceDescriptor deviceDesc {};
@@ -406,13 +402,13 @@ namespace vultra
                     slot.querySet   = wgpuDeviceCreateQuerySet(m_Device, &queryDesc);
 
                     WGPUBufferDescriptor resolveDesc {};
-                    resolveDesc.usage = WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc;
-                    resolveDesc.size  = sizeof(uint64_t);
+                    resolveDesc.usage  = WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc;
+                    resolveDesc.size   = sizeof(uint64_t);
                     slot.resolveBuffer = wgpuDeviceCreateBuffer(m_Device, &resolveDesc);
 
                     WGPUBufferDescriptor readbackDesc {};
-                    readbackDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-                    readbackDesc.size  = sizeof(uint64_t);
+                    readbackDesc.usage  = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+                    readbackDesc.size   = sizeof(uint64_t);
                     slot.readbackBuffer = wgpuDeviceCreateBuffer(m_Device, &readbackDesc);
 
                     if (slot.querySet == nullptr || slot.resolveBuffer == nullptr || slot.readbackBuffer == nullptr)
@@ -422,7 +418,7 @@ namespace vultra
                         m_SupportsTimestampQuery = false;
                         m_FrameTimeSlots.clear();
                         m_PendingFrameTimeSlots.clear();
-                        m_ActiveFrameTimeSlot = -1;
+                        m_ActiveFrameTimeSlot           = -1;
                         m_FrameTimePassTimestampPending = false;
                         break;
                     }
@@ -437,8 +433,8 @@ namespace vultra
                 {
                     if (!initializeScopeTimeSlotResources(slot))
                     {
-                        VULTRA_CORE_WARN(
-                            "[RenderDevice] WebGPU per-scope timestamp resources unavailable; disabling GPU scope timing.");
+                        VULTRA_CORE_WARN("[RenderDevice] WebGPU per-scope timestamp resources unavailable; disabling "
+                                         "GPU scope timing.");
                         m_SupportsScopeTimestampQuery = false;
                         m_ScopeTimeSlots.clear();
                         m_ScopeTimeTokenToSlot.clear();
@@ -453,12 +449,12 @@ namespace vultra
 
         uint64_t WebGPURenderDevice::getFormatFeatureFlagsOptimal(const PixelFormat pixelFormat) const
         {
-            constexpr uint64_t kSampledImage   = 0x00000001ull;
-            constexpr uint64_t kStorageImage   = 0x00000002ull;
+            constexpr uint64_t kSampledImage    = 0x00000001ull;
+            constexpr uint64_t kStorageImage    = 0x00000002ull;
             constexpr uint64_t kColorAttachment = 0x00000080ull;
-            constexpr uint64_t kSampledLinear  = 0x00001000ull;
-            constexpr uint64_t kTransferSrc    = 0x00004000ull;
-            constexpr uint64_t kTransferDst    = 0x00008000ull;
+            constexpr uint64_t kSampledLinear   = 0x00001000ull;
+            constexpr uint64_t kTransferSrc     = 0x00004000ull;
+            constexpr uint64_t kTransferDst     = 0x00008000ull;
 
             switch (pixelFormat)
             {
@@ -506,16 +502,16 @@ namespace vultra
             if (slot.resolveBuffer == nullptr)
             {
                 WGPUBufferDescriptor resolveDesc {};
-                resolveDesc.usage = WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc;
-                resolveDesc.size  = sizeof(uint64_t) * 2u;
+                resolveDesc.usage  = WGPUBufferUsage_QueryResolve | WGPUBufferUsage_CopySrc;
+                resolveDesc.size   = sizeof(uint64_t) * 2u;
                 slot.resolveBuffer = wgpuDeviceCreateBuffer(m_Device, &resolveDesc);
             }
 
             if (slot.readbackBuffer == nullptr)
             {
                 WGPUBufferDescriptor readbackDesc {};
-                readbackDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-                readbackDesc.size  = sizeof(uint64_t) * 2u;
+                readbackDesc.usage  = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+                readbackDesc.size   = sizeof(uint64_t) * 2u;
                 slot.readbackBuffer = wgpuDeviceCreateBuffer(m_Device, &readbackDesc);
             }
 
@@ -530,10 +526,10 @@ namespace vultra
 
         void WebGPURenderDevice::disableGpuTiming()
         {
-            m_SupportsTimestampQuery          = false;
-            m_SupportsScopeTimestampQuery     = false;
-            m_FrameTimePassTimestampPending   = false;
-            m_ActiveFrameTimeSlot             = -1;
+            m_SupportsTimestampQuery        = false;
+            m_SupportsScopeTimestampQuery   = false;
+            m_FrameTimePassTimestampPending = false;
+            m_ActiveFrameTimeSlot           = -1;
             m_PendingFrameTimeSlots.clear();
             m_PendingScopePassTimestampTokens.clear();
             m_ScopeTimeTokenToSlot.clear();
@@ -590,7 +586,7 @@ namespace vultra
             auto&          slot      = m_FrameTimeSlots[slotIndex];
             if (slot.mapPending)
             {
-                m_ActiveFrameTimeSlot = -1;
+                m_ActiveFrameTimeSlot           = -1;
                 m_FrameTimePassTimestampPending = false;
                 return;
             }
@@ -601,8 +597,8 @@ namespace vultra
                 slot.mapReady = false;
             }
 
-            m_ActiveFrameTimeSlot = static_cast<int32_t>(slotIndex);
-                m_FrameTimePassTimestampPending = true;
+            m_ActiveFrameTimeSlot           = static_cast<int32_t>(slotIndex);
+            m_FrameTimePassTimestampPending = true;
 #endif
         }
 
@@ -626,7 +622,7 @@ namespace vultra
             auto& slot = m_FrameTimeSlots[slotIndex];
             if (slot.querySet == nullptr || slot.resolveBuffer == nullptr || slot.readbackBuffer == nullptr)
             {
-                m_ActiveFrameTimeSlot = -1;
+                m_ActiveFrameTimeSlot           = -1;
                 m_FrameTimePassTimestampPending = false;
                 return;
             }
@@ -636,32 +632,28 @@ namespace vultra
                 if (!s_loggedNoPassTimestampWrite)
                 {
                     s_loggedNoPassTimestampWrite = true;
-                    VULTRA_CORE_WARN(
-                        "[RenderDevice] WebGPU timestamp request was not consumed by any pass this frame; skipping GPU frame query.");
+                    VULTRA_CORE_WARN("[RenderDevice] WebGPU timestamp request was not consumed by any pass this frame; "
+                                     "skipping GPU frame query.");
                 }
-                m_ActiveFrameTimeSlot = -1;
+                m_ActiveFrameTimeSlot           = -1;
                 m_FrameTimePassTimestampPending = false;
                 return;
             }
             auto* encoder = reinterpret_cast<WGPUCommandEncoder>(commandBufferHandle);
             wgpuCommandEncoderResolveQuerySet(encoder, slot.querySet, 0, 1, slot.resolveBuffer, 0);
-            wgpuCommandEncoderCopyBufferToBuffer(encoder,
-                                                 slot.resolveBuffer,
-                                                 0,
-                                                 slot.readbackBuffer,
-                                                 0,
-                                                 sizeof(uint64_t));
+            wgpuCommandEncoderCopyBufferToBuffer(
+                encoder, slot.resolveBuffer, 0, slot.readbackBuffer, 0, sizeof(uint64_t));
 
             m_PendingFrameTimeSlots.push_back(slotIndex);
 
-            m_ActiveFrameTimeSlot = -1;
+            m_ActiveFrameTimeSlot           = -1;
             m_FrameTimePassTimestampPending = false;
 #endif
         }
 
         bool WebGPURenderDevice::consumePassTimestampWriteRequest(WGPUQuerySet& querySet,
-                                                                   uint32_t&     beginWriteIndex,
-                                                                   uint32_t&     endWriteIndex)
+                                                                  uint32_t&     beginWriteIndex,
+                                                                  uint32_t&     endWriteIndex)
         {
 #if !defined(VULTRA_ENABLE_WEBGPU) || !VULTRA_ENABLE_WEBGPU
             (void)querySet;
@@ -692,9 +684,9 @@ namespace vultra
                     continue;
                 }
 
-                querySet               = slot.querySet;
-                beginWriteIndex        = 0u;
-                endWriteIndex          = 1u;
+                querySet                 = slot.querySet;
+                beginWriteIndex          = 0u;
+                endWriteIndex            = 1u;
                 slot.passTimestampIssued = true;
                 return true;
             }
@@ -716,10 +708,10 @@ namespace vultra
                 return false;
             }
 
-            querySet         = slot.querySet;
-            beginWriteIndex  = 0u;
-            endWriteIndex    = WGPU_QUERY_SET_INDEX_UNDEFINED;
-            m_FrameTimePassTimestampPending = false;
+            querySet                                     = slot.querySet;
+            beginWriteIndex                              = 0u;
+            endWriteIndex                                = WGPU_QUERY_SET_INDEX_UNDEFINED;
+            m_FrameTimePassTimestampPending              = false;
             static bool s_loggedTimestampRequestConsumed = false;
             if (!s_loggedTimestampRequestConsumed)
             {
@@ -790,21 +782,21 @@ namespace vultra
                     continue;
                 }
 
-                const auto* const ptr = static_cast<const uint64_t*>(wgpuBufferGetConstMappedRange(slot.readbackBuffer,
-                                                                                                     0,
-                                                                                                     sizeof(uint64_t)));
+                const auto* const ptr = static_cast<const uint64_t*>(
+                    wgpuBufferGetConstMappedRange(slot.readbackBuffer, 0, sizeof(uint64_t)));
                 if (ptr != nullptr)
                 {
                     const uint64_t timestamp = ptr[0];
                     if (m_HasGpuFrameTimestamp && timestamp >= m_LastGpuFrameTimestamp)
                     {
-                        const uint64_t delta = timestamp - m_LastGpuFrameTimestamp;
-                        m_LastGpuFrameMs     = static_cast<double>(delta) * 1e-6;
+                        const uint64_t delta               = timestamp - m_LastGpuFrameTimestamp;
+                        m_LastGpuFrameMs                   = static_cast<double>(delta) * 1e-6;
                         static bool s_loggedFirstGpuSample = false;
                         if (!s_loggedFirstGpuSample)
                         {
                             s_loggedFirstGpuSample = true;
-                            VULTRA_CORE_INFO("[RenderDevice] WebGPU first GPU frame sample: {:.3f} ms", m_LastGpuFrameMs);
+                            VULTRA_CORE_INFO("[RenderDevice] WebGPU first GPU frame sample: {:.3f} ms",
+                                             m_LastGpuFrameMs);
                         }
                     }
                     m_LastGpuFrameTimestamp = timestamp;
@@ -863,12 +855,12 @@ namespace vultra
                 if (!s_LoggedScopePoolExhausted)
                 {
                     s_LoggedScopePoolExhausted = true;
-                    VULTRA_CORE_WARN(
-                        "[RenderDevice] WebGPU GPU scope timestamp pool exhausted; skipping some scope timings this frame.");
+                    VULTRA_CORE_WARN("[RenderDevice] WebGPU GPU scope timestamp pool exhausted; skipping some scope "
+                                     "timings this frame.");
                 }
                 return 0;
             }
-            auto&          slot      = m_ScopeTimeSlots[slotIndex];
+            auto& slot = m_ScopeTimeSlots[slotIndex];
 
             if (slot.token != 0)
             {
@@ -885,7 +877,6 @@ namespace vultra
                         ++it;
                     }
                 }
-
             }
 
             if (slot.mapReady)
@@ -900,16 +891,16 @@ namespace vultra
                 wgpuCommandEncoderWriteTimestamp(encoder, slot.querySet, 0u);
             }
 
-            const uint64_t token = m_ScopeTimeNextToken++;
-            slot.token           = token;
-            slot.active          = true;
-            slot.passTimestampIssued = false;
-            slot.mapPending      = false;
-            slot.mapReady        = false;
-            slot.pendingResolve  = false;
-            slot.resolveSubmitted = false;
-            slot.resolved        = false;
-            slot.ms              = -1.0;
+            const uint64_t token          = m_ScopeTimeNextToken++;
+            slot.token                    = token;
+            slot.active                   = true;
+            slot.passTimestampIssued      = false;
+            slot.mapPending               = false;
+            slot.mapReady                 = false;
+            slot.pendingResolve           = false;
+            slot.resolveSubmitted         = false;
+            slot.resolved                 = false;
+            slot.ms                       = -1.0;
             m_ScopeTimeTokenToSlot[token] = slotIndex;
 
             if (!m_SupportsTimestampQueryInsideEncoders)
@@ -938,7 +929,8 @@ namespace vultra
             }
 
             auto& slot = m_ScopeTimeSlots[it->second];
-            if (!slot.active || slot.querySet == nullptr || slot.resolveBuffer == nullptr || slot.readbackBuffer == nullptr)
+            if (!slot.active || slot.querySet == nullptr || slot.resolveBuffer == nullptr ||
+                slot.readbackBuffer == nullptr)
             {
                 return;
             }
@@ -946,21 +938,21 @@ namespace vultra
             (void)commandBufferHandle;
             if (!slot.passTimestampIssued)
             {
-                slot.active         = false;
-                slot.pendingResolve = false;
+                slot.active           = false;
+                slot.pendingResolve   = false;
                 slot.resolveSubmitted = false;
-                slot.mapPending     = false;
-                slot.mapReady       = false;
-                slot.resolved       = true;
-                slot.ms             = -1.0;
+                slot.mapPending       = false;
+                slot.mapReady         = false;
+                slot.resolved         = true;
+                slot.ms               = -1.0;
                 return;
             }
 
-            slot.active         = false;
-            slot.pendingResolve = true;
+            slot.active           = false;
+            slot.pendingResolve   = true;
             slot.resolveSubmitted = false;
-            slot.mapPending     = false;
-            slot.mapReady       = false;
+            slot.mapPending       = false;
+            slot.mapReady         = false;
 #endif
         }
 
@@ -985,12 +977,8 @@ namespace vultra
                 }
 
                 wgpuCommandEncoderResolveQuerySet(encoder, slot.querySet, 0u, 2u, slot.resolveBuffer, 0u);
-                wgpuCommandEncoderCopyBufferToBuffer(encoder,
-                                                     slot.resolveBuffer,
-                                                     0u,
-                                                     slot.readbackBuffer,
-                                                     0u,
-                                                     sizeof(uint64_t) * 2u);
+                wgpuCommandEncoderCopyBufferToBuffer(
+                    encoder, slot.resolveBuffer, 0u, slot.readbackBuffer, 0u, sizeof(uint64_t) * 2u);
 
                 slot.resolveSubmitted = true;
                 slot.mapPending       = false;
@@ -1055,18 +1043,17 @@ namespace vultra
                 return -1.0;
             }
 
-            const auto* const ptr = static_cast<const uint64_t*>(wgpuBufferGetConstMappedRange(slot.readbackBuffer,
-                                                                                                 0,
-                                                                                                 sizeof(uint64_t) * 2u));
+            const auto* const ptr = static_cast<const uint64_t*>(
+                wgpuBufferGetConstMappedRange(slot.readbackBuffer, 0, sizeof(uint64_t) * 2u));
             if (ptr == nullptr)
             {
                 wgpuBufferUnmap(slot.readbackBuffer);
-                slot.mapReady       = false;
-                slot.mapPending     = false;
-                slot.pendingResolve = false;
+                slot.mapReady         = false;
+                slot.mapPending       = false;
+                slot.pendingResolve   = false;
                 slot.resolveSubmitted = false;
-                slot.resolved       = true;
-                slot.ms             = -1.0;
+                slot.resolved         = true;
+                slot.ms               = -1.0;
                 return -1.0;
             }
 
@@ -1081,17 +1068,17 @@ namespace vultra
             }
 
             wgpuBufferUnmap(slot.readbackBuffer);
-            slot.mapReady        = false;
-            slot.mapPending      = false;
-            slot.pendingResolve  = false;
+            slot.mapReady         = false;
+            slot.mapPending       = false;
+            slot.pendingResolve   = false;
             slot.resolveSubmitted = false;
-            slot.resolved        = true;
+            slot.resolved         = true;
             return slot.ms;
 #endif
         }
 
-        WebGPURenderDevice& WebGPURenderDevice::uploadDrawIndirect(
-            DrawIndirectBuffer& buffer, const std::vector<DrawIndirectCommand>& commands)
+        WebGPURenderDevice& WebGPURenderDevice::uploadDrawIndirect(DrawIndirectBuffer&                     buffer,
+                                                                   const std::vector<DrawIndirectCommand>& commands)
         {
             if (commands.empty())
             {

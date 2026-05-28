@@ -471,11 +471,11 @@ namespace vultra::platform::glfw
         if (!m_WindowHandle)
             return *this;
 
-        GLFWmonitor* targetMonitor = nullptr;
-        int          monitorCount  = 0;
-        GLFWmonitor** monitors     = glfwGetMonitors(&monitorCount);
-        const int windowCenterX = m_Position.x + m_Extent.x / 2;
-        const int windowCenterY = m_Position.y + m_Extent.y / 2;
+        GLFWmonitor*  targetMonitor = nullptr;
+        int           monitorCount  = 0;
+        GLFWmonitor** monitors      = glfwGetMonitors(&monitorCount);
+        const int     windowCenterX = m_Position.x + m_Extent.x / 2;
+        const int     windowCenterY = m_Position.y + m_Extent.y / 2;
 
         for (int i = 0; monitors != nullptr && i < monitorCount; ++i)
         {

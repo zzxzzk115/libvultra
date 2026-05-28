@@ -88,7 +88,7 @@ namespace vultra
 
     void World::attachToParent(entt::entity child, entt::entity parent, entt::entity beforeSibling)
     {
-        auto& childH = ensureHierarchy(child);
+        auto& childH  = ensureHierarchy(child);
         auto* parentH = parent != entt::null ? &ensureHierarchy(parent) : nullptr;
 
         childH.parent = parent;
@@ -119,7 +119,7 @@ namespace vultra
         }
 
         // Append by default so load/save and editor operations preserve visible sibling order.
-        entt::entity last = entt::null;
+        entt::entity last  = entt::null;
         entt::entity first = parentH ? parentH->firstChild : m_FirstRoot;
         for (entt::entity c = first; c != entt::null; c = ensureHierarchy(c).nextSibling)
             last = c;

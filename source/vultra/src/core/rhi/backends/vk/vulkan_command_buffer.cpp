@@ -79,14 +79,13 @@ namespace vultra
                         vk::ImageView {asVkHandle<VkImageView>(attachment.target->getImageView().getHandle())};
                 attachmentInfo.imageLayout = toVk(attachment.target->getImageLayout());
                 attachmentInfo.resolveMode = vk::ResolveModeFlagBits::eNone;
-                attachmentInfo.loadOp      = attachment.clearValue.has_value() ||
-                                                attachment.loadOp == AttachmentLoadOp::eClear ?
-                                                 vk::AttachmentLoadOp::eClear :
-                                             attachment.loadOp == AttachmentLoadOp::eDontCare ?
-                                                 vk::AttachmentLoadOp::eDontCare :
-                                                 vk::AttachmentLoadOp::eLoad;
-                attachmentInfo.storeOp     = readOnly ? vk::AttachmentStoreOp::eNone : vk::AttachmentStoreOp::eStore;
-                attachmentInfo.clearValue  = attachment.clearValue ? toVk(*attachment.clearValue) : vk::ClearValue {};
+                attachmentInfo.loadOp =
+                    attachment.clearValue.has_value() || attachment.loadOp == AttachmentLoadOp::eClear ?
+                        vk::AttachmentLoadOp::eClear :
+                    attachment.loadOp == AttachmentLoadOp::eDontCare ? vk::AttachmentLoadOp::eDontCare :
+                                                                       vk::AttachmentLoadOp::eLoad;
+                attachmentInfo.storeOp    = readOnly ? vk::AttachmentStoreOp::eNone : vk::AttachmentStoreOp::eStore;
+                attachmentInfo.clearValue = attachment.clearValue ? toVk(*attachment.clearValue) : vk::ClearValue {};
                 return attachmentInfo;
             }
         } // namespace
@@ -107,8 +106,8 @@ namespace vultra
             m_BarrierBuilder(std::move(other.m_BarrierBuilder)), m_Pipeline(other.m_Pipeline),
             m_VertexBuffer(other.m_VertexBuffer), m_IndexBuffer(other.m_IndexBuffer),
             m_UseKhrDynamicRendering(other.m_UseKhrDynamicRendering),
-            m_UseKhrSynchronization2(other.m_UseKhrSynchronization2),
-            m_EnableDebugMarkers(other.m_EnableDebugMarkers), m_InsideRenderPass(other.m_InsideRenderPass)
+            m_UseKhrSynchronization2(other.m_UseKhrSynchronization2), m_EnableDebugMarkers(other.m_EnableDebugMarkers),
+            m_InsideRenderPass(other.m_InsideRenderPass)
         {
             other.m_Device                 = nullptr;
             other.m_CommandPool            = nullptr;
@@ -820,8 +819,8 @@ namespace vultra
                 {
                     .dstStage  = PipelineStages::eAllCommands,
                     .dstAccess = Access::eMemoryRead | Access::eUniformRead | Access::eShaderRead |
-                                 Access::eShaderStorageRead | Access::eIndirectCommandRead |
-                                 Access::eIndexRead | Access::eVertexAttributeRead | Access::eTransferRead,
+                                 Access::eShaderStorageRead | Access::eIndirectCommandRead | Access::eIndexRead |
+                                 Access::eVertexAttributeRead | Access::eTransferRead,
                 });
             return *this;
         }
@@ -840,6 +839,8 @@ namespace vultra
 
             TRACY_GPU_ZONE2_("Texture->Texture");
 
+            const uint32_t layerCount = std::min(std::max(src.getNumLayers(), 1u), std::max(dst.getNumLayers(), 1u));
+
             getBarrierBuilder()
                 .imageBarrier(
                     {
@@ -851,7 +852,7 @@ namespace vultra
                                 .baseMipLevel   = srcMipLevel,
                                 .levelCount     = 1u,
                                 .baseArrayLayer = src.getBaseArrayLayer(),
-                                .layerCount     = 1u,
+                                .layerCount     = layerCount,
                             },
                     },
                     {
@@ -868,7 +869,7 @@ namespace vultra
                                 .baseMipLevel   = dstMipLevel,
                                 .levelCount     = 1u,
                                 .baseArrayLayer = dst.getBaseArrayLayer(),
-                                .layerCount     = 1u,
+                                .layerCount     = layerCount,
                             },
                     },
                     {
@@ -878,12 +879,14 @@ namespace vultra
 
             flushBarriers();
 
-            static const auto GetRegion = [](const Texture& texture) {
+            static const auto GetRegion = [](const Texture& texture, const uint32_t mipLevel) {
                 const auto extent = texture.getExtent();
+                const auto size   = calcMipSize(glm::uvec3 {extent.width, extent.height, std::max(texture.getDepth(), 1u)},
+                                               mipLevel);
                 return vk::Offset3D {
-                    static_cast<int32_t>(extent.width),
-                    static_cast<int32_t>(extent.height),
-                    1,
+                    static_cast<int32_t>(size.x),
+                    static_cast<int32_t>(size.y),
+                    static_cast<int32_t>(std::max(size.z, 1u)),
                 };
             };
 
@@ -891,13 +894,13 @@ namespace vultra
             region.srcSubresource.aspectMask     = toVk(aspectMask);
             region.srcSubresource.mipLevel       = srcMipLevel;
             region.srcSubresource.baseArrayLayer = src.getBaseArrayLayer();
-            region.srcSubresource.layerCount     = 1;
-            region.srcOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(src)};
+            region.srcSubresource.layerCount     = layerCount;
+            region.srcOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(src, srcMipLevel)};
             region.dstSubresource.aspectMask     = toVk(aspectMask);
             region.dstSubresource.mipLevel       = dstMipLevel;
             region.dstSubresource.baseArrayLayer = dst.getBaseArrayLayer();
-            region.dstSubresource.layerCount     = 1;
-            region.dstOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(dst)};
+            region.dstSubresource.layerCount     = layerCount;
+            region.dstOffsets                    = std::array<vk::Offset3D, 2> {vk::Offset3D {}, GetRegion(dst, dstMipLevel)};
 
             m_Handle.blitImage(vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(src))},
                                toVk(src.getImageLayout()),
@@ -978,18 +981,18 @@ namespace vultra
                                    toVk(filter));
 
                 vk::ImageMemoryBarrier2 mipBarrier {};
-                mipBarrier.srcStageMask                 = vk::PipelineStageFlagBits2::eTransfer;
-                mipBarrier.srcAccessMask                = vk::AccessFlagBits2::eTransferWrite;
-                mipBarrier.dstStageMask                 = vk::PipelineStageFlagBits2::eTransfer;
-                mipBarrier.dstAccessMask                = vk::AccessFlagBits2::eTransferRead;
-                mipBarrier.oldLayout                    = vk::ImageLayout::eTransferDstOptimal;
-                mipBarrier.newLayout                    = vk::ImageLayout::eTransferSrcOptimal;
-                mipBarrier.srcQueueFamilyIndex          = VK_QUEUE_FAMILY_IGNORED;
-                mipBarrier.dstQueueFamilyIndex          = VK_QUEUE_FAMILY_IGNORED;
-                mipBarrier.image                        = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(texture))};
-                mipBarrier.subresourceRange.aspectMask  = vk::ImageAspectFlagBits::eColor;
-                mipBarrier.subresourceRange.baseMipLevel = i;
-                mipBarrier.subresourceRange.levelCount   = 1u;
+                mipBarrier.srcStageMask        = vk::PipelineStageFlagBits2::eTransfer;
+                mipBarrier.srcAccessMask       = vk::AccessFlagBits2::eTransferWrite;
+                mipBarrier.dstStageMask        = vk::PipelineStageFlagBits2::eTransfer;
+                mipBarrier.dstAccessMask       = vk::AccessFlagBits2::eTransferRead;
+                mipBarrier.oldLayout           = vk::ImageLayout::eTransferDstOptimal;
+                mipBarrier.newLayout           = vk::ImageLayout::eTransferSrcOptimal;
+                mipBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                mipBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                mipBarrier.image = vk::Image {asVkHandle<VkImage>(TextureAccess::getImageHandle(texture))};
+                mipBarrier.subresourceRange.aspectMask     = vk::ImageAspectFlagBits::eColor;
+                mipBarrier.subresourceRange.baseMipLevel   = i;
+                mipBarrier.subresourceRange.levelCount     = 1u;
                 mipBarrier.subresourceRange.baseArrayLayer = 0u;
                 mipBarrier.subresourceRange.layerCount     = texture.getLayerFaceCount();
 

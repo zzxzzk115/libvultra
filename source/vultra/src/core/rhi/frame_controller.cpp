@@ -144,8 +144,8 @@ namespace vultra
             m_Frames.reserve(numFramesInFlight);
             std::generate_n(std::back_inserter(m_Frames), numFramesInFlight, [&rd = *m_RenderDevice] {
                 return PerFrameData {
-                    .commandBuffer   = rd.createCommandBuffer(),
-                    .imageAcquired   = rd.createSemaphore(),
+                    .commandBuffer = rd.createCommandBuffer(),
+                    .imageAcquired = rd.createSemaphore(),
                 };
             });
             ensureSwapchainSyncObjects();

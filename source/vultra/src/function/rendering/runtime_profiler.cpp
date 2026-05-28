@@ -38,43 +38,43 @@ namespace vultra
 
         // Root nodes keep tree traversal stable for both CPU and GPU views.
         m_Working.cpuScopeTree.push_back(ScopeNode {
-            .name = "Frame",
-            .parent = -1,
-            .depth = 0,
-            .callCount = 1,
-            .totalMs = 0.0,
-            .selfMs = 0.0,
+            .name       = "Frame",
+            .parent     = -1,
+            .depth      = 0,
+            .callCount  = 1,
+            .totalMs    = 0.0,
+            .selfMs     = 0.0,
             .gpuTotalMs = -1.0,
-            .gpuSelfMs = -1.0,
-            .gpuToken = 0,
+            .gpuSelfMs  = -1.0,
+            .gpuToken   = 0,
         });
 
         m_Working.gpuScopeTree.push_back(ScopeNode {
-            .name = "GPU Frame",
-            .parent = -1,
-            .depth = 0,
-            .callCount = 1,
-            .totalMs = 0.0,
-            .selfMs = 0.0,
+            .name       = "GPU Frame",
+            .parent     = -1,
+            .depth      = 0,
+            .callCount  = 1,
+            .totalMs    = 0.0,
+            .selfMs     = 0.0,
             .gpuTotalMs = -1.0,
-            .gpuSelfMs = -1.0,
-            .gpuToken = 0,
+            .gpuSelfMs  = -1.0,
+            .gpuToken   = 0,
         });
 
         m_CpuScopeStack.clear();
         m_CpuScopeStack.push_back(ScopeFrame {
             .nodeIndex = 0,
-            .start = m_FrameStart,
-            .childMs = 0.0,
-            .gpuToken = 0,
+            .start     = m_FrameStart,
+            .childMs   = 0.0,
+            .gpuToken  = 0,
         });
 
         m_GpuScopeStack.clear();
         m_GpuScopeStack.push_back(ScopeFrame {
             .nodeIndex = 0,
-            .start = m_FrameStart,
-            .childMs = 0.0,
-            .gpuToken = 0,
+            .start     = m_FrameStart,
+            .childMs   = 0.0,
+            .gpuToken  = 0,
         });
     }
 
@@ -95,7 +95,7 @@ namespace vultra
         while (m_GpuScopeStack.size() > 1)
             endScope(ScopeDomain::eGpu);
 
-        const auto frameEnd = Clock::now();
+        const auto frameEnd  = Clock::now();
         m_Working.cpuFrameMs = std::chrono::duration<double, std::milli>(frameEnd - m_FrameStart).count();
 
         if (!m_Working.cpuScopeTree.empty())
@@ -131,10 +131,7 @@ namespace vultra
         harvestPendingGpuRecords();
     }
 
-    bool RuntimeProfiler::beginScope(const std::string_view name)
-    {
-        return beginScope(name, ScopeDomain::eCpu);
-    }
+    bool RuntimeProfiler::beginScope(const std::string_view name) { return beginScope(name, ScopeDomain::eCpu); }
 
     bool RuntimeProfiler::beginScope(const std::string_view name, const ScopeDomain domain)
     {
@@ -150,15 +147,15 @@ namespace vultra
         const auto    depth       = static_cast<uint32_t>(stack->size());
 
         tree->push_back(ScopeNode {
-            .name = std::string(name),
-            .parent = parentIndex,
-            .depth = depth,
-            .callCount = 1,
-            .totalMs = 0.0,
-            .selfMs = 0.0,
+            .name       = std::string(name),
+            .parent     = parentIndex,
+            .depth      = depth,
+            .callCount  = 1,
+            .totalMs    = 0.0,
+            .selfMs     = 0.0,
             .gpuTotalMs = -1.0,
-            .gpuSelfMs = -1.0,
-            .gpuToken = 0,
+            .gpuSelfMs  = -1.0,
+            .gpuToken   = 0,
         });
 
         uint64_t gpuToken = 0;
@@ -174,28 +171,25 @@ namespace vultra
 
         stack->push_back(ScopeFrame {
             .nodeIndex = static_cast<int32_t>(tree->size() - 1),
-            .start = Clock::now(),
-            .childMs = 0.0,
-            .gpuToken = gpuToken,
+            .start     = Clock::now(),
+            .childMs   = 0.0,
+            .gpuToken  = gpuToken,
         });
 
         if (gpuToken != 0)
         {
             m_PendingGpuRecords.push_back(PendingGpuRecord {
                 .frameIndex = m_Working.frameIndex,
-                .domain = domain,
-                .nodeIndex = static_cast<uint32_t>(tree->size() - 1),
-                .token = gpuToken,
+                .domain     = domain,
+                .nodeIndex  = static_cast<uint32_t>(tree->size() - 1),
+                .token      = gpuToken,
             });
         }
 
         return true;
     }
 
-    void RuntimeProfiler::endScope()
-    {
-        endScope(ScopeDomain::eCpu);
-    }
+    void RuntimeProfiler::endScope() { endScope(ScopeDomain::eCpu); }
 
     void RuntimeProfiler::endScope(const ScopeDomain domain)
     {
@@ -209,9 +203,9 @@ namespace vultra
         const ScopeFrame finished = stack->back();
         stack->pop_back();
 
-        auto& node = (*tree)[finished.nodeIndex];
-        node.totalMs = std::chrono::duration<double, std::milli>(now - finished.start).count();
-        node.selfMs  = std::max(0.0, node.totalMs - finished.childMs);
+        auto& node    = (*tree)[finished.nodeIndex];
+        node.totalMs  = std::chrono::duration<double, std::milli>(now - finished.start).count();
+        node.selfMs   = std::max(0.0, node.totalMs - finished.childMs);
         node.gpuToken = finished.gpuToken;
 
         if (domain == ScopeDomain::eGpu && finished.gpuToken != 0 && m_GpuScopeEndCb)
@@ -249,7 +243,7 @@ namespace vultra
 
         for (size_t i = m_History.size(); i > 0; --i)
         {
-            const auto& frame = m_History[i - 1];
+            const auto& frame             = m_History[i - 1];
             const bool  frameHasGpuScopes = frame.gpuScopeResolvedCount > 0 || frame.gpuScopeTokenCount > 0;
             const bool  frameComplete = !frameHasGpuScopes || frame.gpuScopeResolvedCount == frame.gpuScopeTokenCount;
             if (frameComplete)
@@ -261,10 +255,7 @@ namespace vultra
         return nullptr;
     }
 
-    void RuntimeProfiler::clearWorkingFrame()
-    {
-        m_Working = {};
-    }
+    void RuntimeProfiler::clearWorkingFrame() { m_Working = {}; }
 
     void RuntimeProfiler::finalizeTree()
     {
@@ -292,11 +283,10 @@ namespace vultra
                     continue;
                 }
 
-                auto frameIt = std::find_if(m_History.begin(),
-                                            m_History.end(),
-                                            [frameIndex = it->frameIndex](const FrameStats& frame) {
-                                                return frame.frameIndex == frameIndex;
-                                            });
+                auto frameIt = std::find_if(
+                    m_History.begin(), m_History.end(), [frameIndex = it->frameIndex](const FrameStats& frame) {
+                        return frame.frameIndex == frameIndex;
+                    });
                 if (frameIt == m_History.end())
                 {
                     it = m_PendingGpuRecords.erase(it);
@@ -327,7 +317,7 @@ namespace vultra
                 if (gpuMs >= 0.0)
                 {
                     node.gpuTotalMs = gpuMs;
-                    it = m_PendingGpuRecords.erase(it);
+                    it              = m_PendingGpuRecords.erase(it);
                 }
                 else if (gpuMs < -1.0)
                 {

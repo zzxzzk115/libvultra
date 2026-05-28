@@ -21,15 +21,12 @@ namespace vultra::platform::sdl
 {
     namespace
     {
-        constexpr auto kSDLInitFlags = SDL_INIT_VIDEO | SDL_INIT_GAMEPAD;
+        constexpr auto kSDLInitFlags            = SDL_INIT_VIDEO | SDL_INIT_GAMEPAD;
         constexpr int  kBorderlessResizeBorder  = 6;
         constexpr int  kBorderlessTitleHeight   = 44;
         constexpr int  kBorderlessControlsWidth = 112;
 
-        float sanitizeScale(const float scale)
-        {
-            return scale > 0.0f ? scale : 1.0f;
-        }
+        float sanitizeScale(const float scale) { return scale > 0.0f ? scale : 1.0f; }
 
         bool cursorImagesEqual(const os::Window::CursorImage& lhs, const os::Window::CursorImage& rhs)
         {
@@ -78,8 +75,8 @@ namespace vultra::platform::sdl
 
             SDL_GetWindowSize(window, &extent.x, &extent.y);
             SDL_GetWindowSizeInPixels(window, &framebufferExtent.x, &framebufferExtent.y);
-            extent.x = std::max(extent.x, 1);
-            extent.y = std::max(extent.y, 1);
+            extent.x            = std::max(extent.x, 1);
+            extent.y            = std::max(extent.y, 1);
             framebufferExtent.x = std::max(framebufferExtent.x, 1);
             framebufferExtent.y = std::max(framebufferExtent.y, 1);
         }
@@ -121,14 +118,14 @@ namespace vultra::platform::sdl
                     return SDL_HITTEST_RESIZE_RIGHT;
             }
 
-            const bool inTitleDragBand  = y >= kBorderlessResizeBorder && y < kBorderlessTitleHeight;
+            const bool inTitleDragBand   = y >= kBorderlessResizeBorder && y < kBorderlessTitleHeight;
             const bool overWindowButtons = x >= width - kBorderlessControlsWidth;
             if (inTitleDragBand && !overWindowButtons)
                 return SDL_HITTEST_DRAGGABLE;
 
             return SDL_HITTEST_NORMAL;
         }
-    }
+    } // namespace
 
     SDLWindow::SDLWindow(std::string_view title,
                          Extent           extent,
@@ -185,11 +182,10 @@ namespace vultra::platform::sdl
         float mainScale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
 #endif
 
-        m_WindowHandle = SDL_CreateWindow(
-            m_Title.c_str(),
-            static_cast<int>(static_cast<float>(m_Extent.x) * sanitizeScale(mainScale)),
-            static_cast<int>(static_cast<float>(m_Extent.y) * sanitizeScale(mainScale)),
-            windowFlags);
+        m_WindowHandle = SDL_CreateWindow(m_Title.c_str(),
+                                          static_cast<int>(static_cast<float>(m_Extent.x) * sanitizeScale(mainScale)),
+                                          static_cast<int>(static_cast<float>(m_Extent.y) * sanitizeScale(mainScale)),
+                                          windowFlags);
         if (m_WindowHandle == nullptr)
         {
             VULTRA_CORE_ERROR("[SDLWindow] Failed to create SDL3 window, Error:{}", SDL_GetError());
@@ -471,8 +467,8 @@ namespace vultra::platform::sdl
             return *this;
 
         syncWindowMetrics(m_WindowHandle, m_Extent, m_FrameBufferExtent);
-        return setPosition({usableBounds.x + (usableBounds.w - m_Extent.x) / 2,
-                            usableBounds.y + (usableBounds.h - m_Extent.y) / 2});
+        return setPosition(
+            {usableBounds.x + (usableBounds.w - m_Extent.x) / 2, usableBounds.y + (usableBounds.h - m_Extent.y) / 2});
     }
 
     float SDLWindow::getDisplayScale() const { return sanitizeScale(SDL_GetWindowDisplayScale(m_WindowHandle)); }
@@ -495,7 +491,7 @@ namespace vultra::platform::sdl
         if (!m_WindowHandle || !m_CursorVisibility || m_MouseRelativeMode)
             return;
         SDL_SetCursor(m_HasCursorOverride ? m_OverrideCursorHandle :
-                      (m_HasCustomCursor ? m_CustomCursorHandle : ensureCursor(m_Cursor)));
+                                            (m_HasCustomCursor ? m_CustomCursorHandle : ensureCursor(m_Cursor)));
     }
 
     SDL_Cursor* SDLWindow::ensureCursor(CursorType cursor)
@@ -706,7 +702,7 @@ namespace vultra::platform::sdl
                 case SDL_EVENT_DROP_FILE:
                     if (event.drop.windowID == SDL_GetWindowID(m_WindowHandle) && event.drop.data != nullptr)
                     {
-                        generalEvent.type = event::WindowEventType::eFileDrop;
+                        generalEvent.type     = event::WindowEventType::eFileDrop;
                         generalEvent.fileDrop = event::FileDropEvent {
                             .paths = {std::string {event.drop.data}},
                         };

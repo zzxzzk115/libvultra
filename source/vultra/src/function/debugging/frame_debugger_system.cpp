@@ -23,7 +23,7 @@ namespace vultra
         VULTRA_CORE_INFO("[FrameDebuggerSystem] Shutting down");
 
         delete m_RenderDocAPI;
-        m_RenderDocAPI = nullptr;
+        m_RenderDocAPI     = nullptr;
         m_RenderDocEnabled = false;
     }
 
@@ -59,10 +59,7 @@ namespace vultra
         }
     }
 
-    bool FrameDebuggerSystem::isAvailable() const
-    {
-        return m_RenderDocAPI != nullptr && m_RenderDocAPI->isAvailable();
-    }
+    bool FrameDebuggerSystem::isAvailable() const { return m_RenderDocAPI != nullptr && m_RenderDocAPI->isAvailable(); }
 
     bool FrameDebuggerSystem::isFrameCapturing() const
     {

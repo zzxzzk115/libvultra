@@ -10,11 +10,8 @@ namespace vultra
 {
     namespace framegraph
     {
-        FrameGraphResource importBuffer(FrameGraph&            fg,
-                                        const std::string_view name,
-                                        rhi::Buffer*           buffer,
-                                        BufferType             type,
-                                        uint32_t               stride)
+        FrameGraphResource
+        importBuffer(FrameGraph& fg, const std::string_view name, rhi::Buffer* buffer, BufferType type, uint32_t stride)
         {
             assert(buffer && *buffer);
             assert(stride > 0u);
@@ -22,19 +19,17 @@ namespace vultra
             const uint64_t sizeBytes = static_cast<uint64_t>(buffer->getSize());
             const uint64_t capacity  = std::max<uint64_t>(1u, sizeBytes / stride);
 
-            return fg.import<FrameGraphBuffer>(name,
-                                               {
-                                                   .type     = type,
-                                                   .stride   = stride,
-                                                   .capacity = capacity,
-                                               },
-                                               {buffer});
+            return fg.import <FrameGraphBuffer>(name,
+                                                {
+                                                    .type     = type,
+                                                    .stride   = stride,
+                                                    .capacity = capacity,
+                                                },
+                                                {buffer});
         }
 
-        FrameGraphResource importTexture(FrameGraph&            fg,
-                                         const std::string_view name,
-                                         rhi::Texture*          texture,
-                                         const uint32_t         viewMask)
+        FrameGraphResource
+        importTexture(FrameGraph& fg, const std::string_view name, rhi::Texture* texture, const uint32_t viewMask)
         {
             assert(texture && *texture);
             return fg.import <FrameGraphTexture>(name,

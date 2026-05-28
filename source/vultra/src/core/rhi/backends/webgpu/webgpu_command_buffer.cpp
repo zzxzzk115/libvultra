@@ -409,8 +409,9 @@ namespace vultra
             {
                 if (m_PendingComputeBindGroups[set] != nullptr)
                 {
-                    const auto dynamicOffsetCount = m_PendingComputeDynamicOffsetCounts[set];
-                    const auto* dynamicOffsets = dynamicOffsetCount > 0 ? &m_PendingComputeDynamicOffsets[set] : nullptr;
+                    const auto  dynamicOffsetCount = m_PendingComputeDynamicOffsetCounts[set];
+                    const auto* dynamicOffsets =
+                        dynamicOffsetCount > 0 ? &m_PendingComputeDynamicOffsets[set] : nullptr;
                     wgpuComputePassEncoderSetBindGroup(
                         m_ComputePass, set, m_PendingComputeBindGroups[set], dynamicOffsetCount, dynamicOffsets);
                 }
@@ -469,8 +470,8 @@ namespace vultra
             }
             if (m_BoundPipeline != nullptr)
             {
-                m_PendingRenderBindGroups[index] = bindGroup;
-                m_PendingRenderDynamicOffsets[index] = 0;
+                m_PendingRenderBindGroups[index]          = bindGroup;
+                m_PendingRenderDynamicOffsets[index]      = 0;
                 m_PendingRenderDynamicOffsetCounts[index] = 0;
                 if (m_RenderPass != nullptr)
                 {
@@ -483,8 +484,8 @@ namespace vultra
                 {
                     wgpuComputePassEncoderSetBindGroup(m_ComputePass, index, bindGroup, 0, nullptr);
                 }
-                m_PendingComputeBindGroups[index] = bindGroup;
-                m_PendingComputeDynamicOffsets[index] = 0;
+                m_PendingComputeBindGroups[index]          = bindGroup;
+                m_PendingComputeDynamicOffsets[index]      = 0;
                 m_PendingComputeDynamicOffsetCounts[index] = 0;
             }
             return *this;
@@ -533,7 +534,7 @@ namespace vultra
                 return *this;
             }
 
-            const uint64_t bindingSize    = std::max<uint64_t>(kWebGPUPushConstantBufferBytes, offset + size);
+            const uint64_t bindingSize = std::max<uint64_t>(kWebGPUPushConstantBufferBytes, offset + size);
             if (bindingSize > kWebGPUPushConstantBufferBytes)
             {
                 return *this;
@@ -601,18 +602,17 @@ namespace vultra
                 }
                 bindGroupIt = page.bindGroups.emplace(layoutKey.value, bindGroup).first;
             }
-            auto* const bindGroup = bindGroupIt->second;
+            auto* const bindGroup     = bindGroupIt->second;
             const auto  dynamicOffset = static_cast<uint32_t>(bindingOffset);
 
             if (m_RenderPass != nullptr && m_BoundPipeline != nullptr)
             {
-                wgpuRenderPassEncoderSetBindGroup(
-                    m_RenderPass, kWebGPUPushConstantsSet, bindGroup, 1, &dynamicOffset);
+                wgpuRenderPassEncoderSetBindGroup(m_RenderPass, kWebGPUPushConstantsSet, bindGroup, 1, &dynamicOffset);
             }
             else if (m_BoundPipeline != nullptr)
             {
-                m_PendingRenderBindGroups[kWebGPUPushConstantsSet] = bindGroup;
-                m_PendingRenderDynamicOffsets[kWebGPUPushConstantsSet] = dynamicOffset;
+                m_PendingRenderBindGroups[kWebGPUPushConstantsSet]          = bindGroup;
+                m_PendingRenderDynamicOffsets[kWebGPUPushConstantsSet]      = dynamicOffset;
                 m_PendingRenderDynamicOffsetCounts[kWebGPUPushConstantsSet] = 1;
             }
             else if (m_BoundComputePipeline != nullptr)
@@ -622,8 +622,8 @@ namespace vultra
                     wgpuComputePassEncoderSetBindGroup(
                         m_ComputePass, kWebGPUPushConstantsSet, bindGroup, 1, &dynamicOffset);
                 }
-                m_PendingComputeBindGroups[kWebGPUPushConstantsSet] = bindGroup;
-                m_PendingComputeDynamicOffsets[kWebGPUPushConstantsSet] = dynamicOffset;
+                m_PendingComputeBindGroups[kWebGPUPushConstantsSet]          = bindGroup;
+                m_PendingComputeDynamicOffsets[kWebGPUPushConstantsSet]      = dynamicOffset;
                 m_PendingComputeDynamicOffsetCounts[kWebGPUPushConstantsSet] = 1;
             }
             return *this;
@@ -693,26 +693,25 @@ namespace vultra
             WGPURenderPassColorAttachment colorDesc {};
             colorDesc.view       = m_RenderView;
             colorDesc.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-            colorDesc.loadOp     = colorAttachment.clearValue.has_value() ||
-                                        colorAttachment.loadOp == AttachmentLoadOp::eClear ?
-                                        WGPULoadOp_Clear :
-                                    colorAttachment.loadOp == AttachmentLoadOp::eDontCare ?
-                                        WGPULoadOp_Undefined :
-                                        WGPULoadOp_Load;
+            colorDesc.loadOp =
+                colorAttachment.clearValue.has_value() || colorAttachment.loadOp == AttachmentLoadOp::eClear ?
+                    WGPULoadOp_Clear :
+                colorAttachment.loadOp == AttachmentLoadOp::eDontCare ? WGPULoadOp_Undefined :
+                                                                        WGPULoadOp_Load;
             colorDesc.storeOp    = WGPUStoreOp_Store;
             colorDesc.clearValue = clearColor;
 
             WGPURenderPassDepthStencilAttachment depthDesc {};
-            bool                                allowDepthStencilAttachment = true;
+            bool                                 allowDepthStencilAttachment = true;
             if (m_BoundPipelineObject != nullptr &&
                 m_BoundPipelineObject->getBindPoint() == PipelineBindPoint::eGraphics)
             {
                 const auto* graphicsPipeline = static_cast<const GraphicsPipeline*>(m_BoundPipelineObject);
                 const auto& depthStencil     = graphicsPipeline->getDepthStencilState();
-                allowDepthStencilAttachment =
-                    graphicsPipeline->getDepthFormat() != PixelFormat::eUndefined ||
-                    graphicsPipeline->getStencilFormat() != PixelFormat::eUndefined || depthStencil.depthTest ||
-                    depthStencil.depthWrite || depthStencil.stencilTestEnable;
+                allowDepthStencilAttachment  = graphicsPipeline->getDepthFormat() != PixelFormat::eUndefined ||
+                                              graphicsPipeline->getStencilFormat() != PixelFormat::eUndefined ||
+                                              depthStencil.depthTest || depthStencil.depthWrite ||
+                                              depthStencil.stencilTestEnable;
             }
 
             if (allowDepthStencilAttachment && framebufferInfo.depthAttachment &&
@@ -731,11 +730,10 @@ namespace vultra
                     depthDesc.view = m_DepthView;
                     depthDesc.depthLoadOp =
                         framebufferInfo.depthAttachment->clearValue.has_value() ||
-                            framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eClear ?
+                                framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eClear ?
                             WGPULoadOp_Clear :
-                        framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eDontCare ?
-                            WGPULoadOp_Undefined :
-                            WGPULoadOp_Load;
+                        framebufferInfo.depthAttachment->loadOp == AttachmentLoadOp::eDontCare ? WGPULoadOp_Undefined :
+                                                                                                 WGPULoadOp_Load;
                     depthDesc.depthStoreOp    = framebufferInfo.depthReadOnly ? WGPUStoreOp_Discard : WGPUStoreOp_Store;
                     depthDesc.depthClearValue = toWgpuDepthClear(framebufferInfo.depthAttachment->clearValue);
                     depthDesc.depthReadOnly   = framebufferInfo.depthReadOnly;
@@ -748,14 +746,13 @@ namespace vultra
                     if (!stencilReadOnly && framebufferInfo.stencilAttachment &&
                         framebufferInfo.stencilAttachment->target != nullptr)
                     {
-                        depthDesc.stencilLoadOp     = framebufferInfo.stencilAttachment->clearValue.has_value() ||
-                                                          framebufferInfo.stencilAttachment->loadOp ==
-                                                              AttachmentLoadOp::eClear ?
-                                                          WGPULoadOp_Clear :
-                                                      framebufferInfo.stencilAttachment->loadOp ==
-                                                              AttachmentLoadOp::eDontCare ?
-                                                          WGPULoadOp_Undefined :
-                                                          WGPULoadOp_Load;
+                        depthDesc.stencilLoadOp =
+                            framebufferInfo.stencilAttachment->clearValue.has_value() ||
+                                    framebufferInfo.stencilAttachment->loadOp == AttachmentLoadOp::eClear ?
+                                WGPULoadOp_Clear :
+                            framebufferInfo.stencilAttachment->loadOp == AttachmentLoadOp::eDontCare ?
+                                WGPULoadOp_Undefined :
+                                WGPULoadOp_Load;
                         depthDesc.stencilStoreOp    = WGPUStoreOp_Store;
                         depthDesc.stencilClearValue = toWgpuStencilClear(framebufferInfo.stencilAttachment->clearValue);
                     }
@@ -849,12 +846,12 @@ namespace vultra
             if (m_RenderPass != nullptr)
             {
                 wgpuRenderPassEncoderSetViewport(m_RenderPass,
-                                                  static_cast<float>(rect.offset.x),
-                                                  static_cast<float>(rect.offset.y),
-                                                  static_cast<float>(rect.extent.width),
-                                                  static_cast<float>(rect.extent.height),
-                                                  0.0f,
-                                                  1.0f);
+                                                 static_cast<float>(rect.offset.x),
+                                                 static_cast<float>(rect.offset.y),
+                                                 static_cast<float>(rect.extent.width),
+                                                 static_cast<float>(rect.extent.height),
+                                                 0.0f,
+                                                 1.0f);
             }
 #else
             (void)rect;
@@ -898,7 +895,7 @@ namespace vultra
             {
                 if (m_PendingRenderBindGroups[set] != nullptr)
                 {
-                    const auto dynamicOffsetCount = m_PendingRenderDynamicOffsetCounts[set];
+                    const auto  dynamicOffsetCount = m_PendingRenderDynamicOffsetCounts[set];
                     const auto* dynamicOffsets = dynamicOffsetCount > 0 ? &m_PendingRenderDynamicOffsets[set] : nullptr;
                     wgpuRenderPassEncoderSetBindGroup(
                         m_RenderPass, set, m_PendingRenderBindGroups[set], dynamicOffsetCount, dynamicOffsets);
@@ -1007,7 +1004,7 @@ namespace vultra
             {
                 if (m_PendingRenderBindGroups[set] != nullptr)
                 {
-                    const auto dynamicOffsetCount = m_PendingRenderDynamicOffsetCounts[set];
+                    const auto  dynamicOffsetCount = m_PendingRenderDynamicOffsetCounts[set];
                     const auto* dynamicOffsets = dynamicOffsetCount > 0 ? &m_PendingRenderDynamicOffsets[set] : nullptr;
                     wgpuRenderPassEncoderSetBindGroup(
                         m_RenderPass, set, m_PendingRenderBindGroups[set], dynamicOffsetCount, dynamicOffsets);

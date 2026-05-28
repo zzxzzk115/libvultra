@@ -72,8 +72,8 @@ namespace vultra
             return 0;
         }
 
-        std::uintptr_t
-        VulkanRenderDeviceAccess::getDescriptorSetLayoutHandle(const RenderDevice& rd, const DescriptorSetLayoutKey layoutKey)
+        std::uintptr_t VulkanRenderDeviceAccess::getDescriptorSetLayoutHandle(const RenderDevice&          rd,
+                                                                              const DescriptorSetLayoutKey layoutKey)
         {
             if (!dynamic_cast<const VulkanRenderDevice*>(RenderDeviceAccess::get(rd)))
             {

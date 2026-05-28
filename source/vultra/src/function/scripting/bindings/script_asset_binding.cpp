@@ -1,9 +1,9 @@
 #include "vultra/function/scripting/bindings/script_asset_binding.hpp"
 
 #include "vultra/function/asset/asset_state.hpp"
-#include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/scripting/bindings/script_binding_common.hpp"
 #include "vultra/function/scripting/script_types.hpp"
+#include "vultra/function/services/asset_service.hpp"
 
 #include <utility>
 
@@ -44,9 +44,8 @@ namespace vultra
                                                 "error",
                                                 &ScriptTextAssetResult::error);
 
-        lua.new_usertype<ScriptAssetMemoryStats>("AssetMemoryStats",
-                                                 "cpuCacheBytes",
-                                                 &ScriptAssetMemoryStats::cpuCacheBytes);
+        lua.new_usertype<ScriptAssetMemoryStats>(
+            "AssetMemoryStats", "cpuCacheBytes", &ScriptAssetMemoryStats::cpuCacheBytes);
 
         auto asset = script_binding::getOrCreateTable(lua, "Asset");
 
@@ -70,12 +69,13 @@ namespace vultra
         });
 
         asset.set_function("loadTexture", [&ctx](const std::string& uri) {
-            return ctx.assetService ? toScriptAssetHandle(ctx.assetService->loadTextureSync(uri)) : ScriptAssetHandle {};
+            return ctx.assetService ? toScriptAssetHandle(ctx.assetService->loadTextureSync(uri)) :
+                                      ScriptAssetHandle {};
         });
 
         asset.set_function("loadGaussianSplat", [&ctx](const std::string& uri) {
-            return ctx.assetService ? toScriptAssetHandle(ctx.assetService->loadGaussianSplatSync(uri))
-                                    : ScriptAssetHandle {};
+            return ctx.assetService ? toScriptAssetHandle(ctx.assetService->loadGaussianSplatSync(uri)) :
+                                      ScriptAssetHandle {};
         });
 
         asset.set_function("memoryStats", [&ctx]() {

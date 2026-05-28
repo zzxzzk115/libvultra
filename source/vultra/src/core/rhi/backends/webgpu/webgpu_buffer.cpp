@@ -11,12 +11,12 @@ namespace vultra
 {
     namespace rhi
     {
-        WebGPUBuffer::WebGPUBuffer(IRenderDevice*         renderDevice,
-                                   const uint64_t         size,
-                                   const std::uintptr_t   handle,
-                                   const std::uintptr_t   queueHandle) :
-            m_RenderDevice(renderDevice), m_Data(static_cast<size_t>(size)), m_Size(size), m_Handle(handle), m_QueueHandle(queueHandle),
-            m_Valid(handle != 0)
+        WebGPUBuffer::WebGPUBuffer(IRenderDevice*       renderDevice,
+                                   const uint64_t       size,
+                                   const std::uintptr_t handle,
+                                   const std::uintptr_t queueHandle) :
+            m_RenderDevice(renderDevice), m_Data(static_cast<size_t>(size)), m_Size(size), m_Handle(handle),
+            m_QueueHandle(queueHandle), m_Valid(handle != 0)
         {
             if (m_RenderDevice)
             {

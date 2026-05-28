@@ -232,11 +232,11 @@ namespace vultra
         // Conversion operators:
         //
 
-        Attachment::operator uint32_t() const { return encode(*this); }
-        Location::operator uint32_t() const { return encode(*this); }
+        Attachment:: operator uint32_t() const { return encode(*this); }
+        Location::   operator uint32_t() const { return encode(*this); }
         BindingInfo::operator uint32_t() const { return encode(*this); }
         TextureRead::operator uint32_t() const { return encode(*this); }
-        ImageWrite::operator uint32_t() const { return encode(*this); }
+        ImageWrite:: operator uint32_t() const { return encode(*this); }
 
     } // namespace framegraph
 } // namespace vultra
