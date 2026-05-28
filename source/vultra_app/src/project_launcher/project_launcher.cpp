@@ -1100,8 +1100,12 @@ This directory is an index, not the runtime asset root.
         state.currentDefaultScene       = project.defaultScene;
         state.currentEditingRenderGraph = project.editingRenderGraph;
         ++state.projectGeneration;
-        state.mode          = AppMode::Editor;
-        state.statusMessage = "Created project: " + projectDir.generic_string();
+        state.editorPlaying           = false;
+        state.editorPaused            = false;
+        state.editorStepRequested     = false;
+        state.editorShutdownRequested = false;
+        state.mode                    = AppMode::Editor;
+        state.statusMessage           = "Created project: " + projectDir.generic_string();
         return true;
     }
 
@@ -1151,7 +1155,11 @@ This directory is an index, not the runtime asset root.
         state.currentDefaultScene       = project->defaultScene;
         state.currentEditingRenderGraph = project->editingRenderGraph;
         ++state.projectGeneration;
-        state.mode          = AppMode::Editor;
-        state.statusMessage = "Opened project: " + state.currentProject.generic_string();
+        state.editorPlaying           = false;
+        state.editorPaused            = false;
+        state.editorStepRequested     = false;
+        state.editorShutdownRequested = false;
+        state.mode                    = AppMode::Editor;
+        state.statusMessage           = "Opened project: " + state.currentProject.generic_string();
     }
 } // namespace vultra_app

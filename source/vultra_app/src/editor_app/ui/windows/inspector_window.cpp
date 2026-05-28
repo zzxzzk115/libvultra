@@ -2032,6 +2032,8 @@ namespace vultra_app
     void InspectorWindow::onDestroy(EditorContext& ctx)
     {
         m_PreviewCache.clear(ctx);
+        m_TextureSelector.previewCache.clear(ctx);
+        m_MeshSelector.previewCache.clear(ctx);
         releaseModelPreviewRenderTarget(ctx);
         m_ModelPreviewWorld.clear();
         m_ModelPreviewRoot        = entt::null;

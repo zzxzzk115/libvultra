@@ -112,6 +112,7 @@ namespace vultra_app
         void syncPlaybackState(EditorContext& ctx);
         void capturePlayModeSnapshot(EditorContext& ctx);
         void restorePlayModeSnapshot(EditorContext& ctx);
+        void releaseEditorStateForProjectLoad(EditorContext& ctx);
         void beginDockSpace();
         void endDockSpace();
         void buildDefaultDockLayout();

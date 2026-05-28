@@ -394,6 +394,13 @@ namespace vultra_app::ui
                                 TextureSelectorState& state,
                                 const ImVec2          size)
     {
+        if (state.observedProjectGeneration != ctx.state.projectGeneration)
+        {
+            state.observedProjectGeneration = ctx.state.projectGeneration;
+            state.previewCache.clear(ctx);
+            state.remainingPreviewLoads = 16;
+        }
+
         bool        changed   = false;
         auto        selection = textureSelectionForUri(ctx, uri);
         ImTextureID preview =
@@ -414,6 +421,13 @@ namespace vultra_app::ui
     bool
     drawTextureUuidField(EditorContext& ctx, const char* label, vultra::CoreUUID& uuid, TextureSelectorState& state)
     {
+        if (state.observedProjectGeneration != ctx.state.projectGeneration)
+        {
+            state.observedProjectGeneration = ctx.state.projectGeneration;
+            state.previewCache.clear(ctx);
+            state.remainingPreviewLoads = 16;
+        }
+
         bool        changed = false;
         std::string uri     = textureUriForUuid(ctx, uuid);
 

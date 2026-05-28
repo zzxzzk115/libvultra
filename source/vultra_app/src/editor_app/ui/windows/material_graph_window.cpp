@@ -578,6 +578,8 @@ namespace vultra_app
 
     void MaterialGraphWindow::onDestroy(EditorContext& ctx)
     {
+        m_TextureSelector.previewCache.clear(ctx);
+        m_MeshSelector.previewCache.clear(ctx);
         if (ctx.services)
             if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
                 renderService->releaseOverrideRenderWorld(&m_PreviewWorld);

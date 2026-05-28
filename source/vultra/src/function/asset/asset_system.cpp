@@ -423,6 +423,20 @@ namespace vultra
 
     void AssetSystem::configure(const AssetSystemDesc& desc)
     {
+        if (auto* backend = ctx().services.tryGet<IRenderBackendService>())
+            backend->renderDevice().waitIdle();
+
+        {
+            std::scoped_lock lock(m_UploadQueueMutex);
+            m_UploadQueue.clear();
+        }
+        m_MeshCache.clear();
+        m_TextureCache.clear();
+        m_GaussianSplatCache.clear();
+        m_TexUUIDToBindlessIndex.clear();
+        if (m_GpuResourceService)
+            m_GpuResourceService->pool().clear();
+
         m_Desc = desc;
         {
             std::scoped_lock lock(m_TextOverrideMutex);

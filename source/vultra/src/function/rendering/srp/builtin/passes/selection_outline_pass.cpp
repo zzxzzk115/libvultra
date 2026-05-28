@@ -24,6 +24,13 @@ namespace vultra
             glm::vec4 texelSize {0.0f};
             glm::uvec4 entityInfo {0u};
         };
+
+        bool compatibleTextureShape(const framegraph::FrameGraphTexture::Desc& lhs,
+                                    const framegraph::FrameGraphTexture::Desc& rhs)
+        {
+            return lhs.extent.width == rhs.extent.width && lhs.extent.height == rhs.extent.height &&
+                   lhs.layers == rhs.layers && lhs.viewMask == rhs.viewMask;
+        }
     } // namespace
 
     FrameGraphResource
@@ -42,6 +49,11 @@ namespace vultra
         };
 
         const auto sourceDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(source);
+        const auto entityDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(entityId);
+        const auto depthDesc  = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(depth);
+        if (!compatibleTextureShape(sourceDesc, entityDesc) || !compatibleTextureShape(sourceDesc, depthDesc))
+            return source;
+
         const auto resolution = sourceDesc.extent;
         const auto format     = sourceDesc.format;
         auto data = ctx.fg.addCallbackPass<PassData>(

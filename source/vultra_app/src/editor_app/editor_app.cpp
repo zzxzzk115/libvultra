@@ -379,6 +379,23 @@ namespace vultra_app
             if (!selectedId.valid() || !ctx.services)
                 return 0u;
 
+            auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
+            if (!worldService)
+                return 0u;
+
+            bool entityExists = false;
+            auto view = worldService->world().registry().view<vultra::IDComponent>();
+            for (auto e : view)
+            {
+                if (view.get<vultra::IDComponent>(e).uuid == selectedId)
+                {
+                    entityExists = true;
+                    break;
+                }
+            }
+            if (!entityExists)
+                return 0u;
+
             return vultra::makeEntityPickingId(selectedId);
         }
 
@@ -1025,6 +1042,45 @@ namespace vultra_app
         ctx.state.editorStepRequested = false;
     }
 
+    void EditorApp::releaseEditorStateForProjectLoad(EditorContext& ctx)
+    {
+        if (m_Loading.releasedEditorState)
+            return;
+
+        if (ctx.services)
+        {
+            if (auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>())
+                backendService->renderDevice().waitIdle();
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+            {
+                renderService->resetSceneState();
+                renderService->setFrameGraphTextureCaptureEnabled(false);
+                renderService->clearFrameGraphTexturePreviewOverrides();
+            }
+            if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                worldService->world().clear();
+        }
+
+        m_WindowManager.destroy(ctx);
+        m_ThumbnailService.clear();
+        m_Initialized        = false;
+        m_DefaultLayoutBuilt = false;
+        Selection::clear();
+        m_History.clear();
+        m_PlayModeSnapshot.reset();
+        m_PlayModeSceneDirtySnapshot  = false;
+        m_PlaybackWasPlaying          = false;
+        ctx.state.editorPlaying       = false;
+        ctx.state.editorPaused        = false;
+        ctx.state.editorStepRequested = false;
+        ctx.state.gameViewVisible     = false;
+        ctx.state.gameViewVisibleLastFrame = false;
+        ctx.state.sceneCamera.valid        = false;
+        ctx.state.sceneCameraAlignRequest.pending = false;
+        ctx.state.scenePicking             = {};
+        m_Loading.releasedEditorState = true;
+    }
+
     void EditorApp::ensureInitialized()
     {
         if (m_Initialized)
@@ -1213,6 +1269,7 @@ namespace vultra_app
         if (projectReloadRequested && m_Loading.phase == LoadingPhase::Idle)
         {
             startProjectLoading(projectRoot);
+            releaseEditorStateForProjectLoad(ctx);
             applySplashWindow(ctx);
             return true;
         }
@@ -1223,6 +1280,7 @@ namespace vultra_app
         if (projectRoot != m_Loading.projectRoot)
         {
             startProjectLoading(projectRoot);
+            releaseEditorStateForProjectLoad(ctx);
             applySplashWindow(ctx);
             return true;
         }
@@ -1238,24 +1296,7 @@ namespace vultra_app
 
             case LoadingPhase::ShowSplash:
                 applySplashWindow(ctx);
-                if (!m_Loading.releasedEditorState)
-                {
-                    if (auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>())
-                        backendService->renderDevice().waitIdle();
-                    m_WindowManager.destroy(ctx);
-                    m_Initialized        = false;
-                    m_DefaultLayoutBuilt = false;
-                    Selection::clear();
-                    if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
-                        worldService->world().clear();
-                    m_PlayModeSnapshot.reset();
-                    m_PlayModeSceneDirtySnapshot  = false;
-                    m_PlaybackWasPlaying          = false;
-                    ctx.state.editorPlaying       = false;
-                    ctx.state.editorPaused        = false;
-                    ctx.state.editorStepRequested = false;
-                    m_Loading.releasedEditorState = true;
-                }
+                releaseEditorStateForProjectLoad(ctx);
                 startAssetImportTask(projectRoot, ctx.state.currentAssetRoot);
                 m_Loading.phase    = LoadingPhase::ImportAssets;
                 m_Loading.progress = 0.08f;

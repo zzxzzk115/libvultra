@@ -227,6 +227,12 @@ namespace vultra
         }
     } // namespace
 
+    void GeometryFactory::clear()
+    {
+        m_UnlitMaterialIndex = std::numeric_limits<uint32_t>::max();
+        m_MeshIndices.fill(std::numeric_limits<uint32_t>::max());
+    }
+
     uint32_t GeometryFactory::ensureUnlitMaterial(IGpuResourceService& gpuResources, rhi::RenderDevice& rd)
     {
         if (m_UnlitMaterialIndex != std::numeric_limits<uint32_t>::max())

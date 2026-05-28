@@ -77,6 +77,7 @@ namespace vultra
         virtual void onResize(uint32_t width, uint32_t height) = 0;
         virtual bool reloadRenderPipeline() = 0;
         virtual bool reloadRenderPipeline(std::string_view asset, std::string_view rendererKey = {}) = 0;
+        virtual void resetSceneState() = 0;
         virtual void releaseOverrideRenderWorld(World* world) = 0;
 
         // Built-in runtime profiler (default disabled).

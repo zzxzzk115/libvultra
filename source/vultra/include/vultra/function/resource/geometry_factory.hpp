@@ -18,6 +18,7 @@ namespace vultra
     class GeometryFactory
     {
     public:
+        void clear();
         uint32_t getOrCreateMeshIndex(BuiltinGeometryKind kind, IGpuResourceService& gpuResources, rhi::RenderDevice& rd);
 
     private:

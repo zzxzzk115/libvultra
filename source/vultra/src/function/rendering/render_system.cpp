@@ -1458,6 +1458,19 @@ namespace vultra
         }
     }
 
+    void RenderSystem::resetSceneState()
+    {
+        m_RenderWorldFront.clear();
+        m_RenderWorldBack.clear();
+        m_GpuSceneViewBack.clear();
+        m_GpuSceneViewFront.clear();
+        m_GpuSceneDatabaseBack.clear();
+        m_GpuSceneDatabaseFront.clear();
+        m_GpuSceneDirtyTracker.reset();
+        m_OverrideRenderWorlds.clear();
+        m_GeometryFactory.clear();
+    }
+
     bool RenderSystem::reloadRenderPipeline()
     {
         if (m_InRenderFrame)

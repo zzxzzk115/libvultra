@@ -54,6 +54,7 @@ namespace vultra
         void onResize(uint32_t width, uint32_t height) override;
         bool reloadRenderPipeline() override;
         bool reloadRenderPipeline(std::string_view asset, std::string_view rendererKey = {}) override;
+        void resetSceneState() override;
         void releaseOverrideRenderWorld(World* world) override;
 
         // Optional: set default renderer key used if camera.rendererKey not found

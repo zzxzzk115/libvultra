@@ -305,6 +305,13 @@ namespace vultra_app::ui
 
     bool drawMeshUuidField(EditorContext& ctx, const char* label, vultra::CoreUUID& uuid, MeshSelectorState& state)
     {
+        if (state.observedProjectGeneration != ctx.state.projectGeneration)
+        {
+            state.observedProjectGeneration = ctx.state.projectGeneration;
+            state.previewCache.clear(ctx);
+            state.remainingPreviewLoads = 16;
+        }
+
         bool       changed = false;
         const auto uri     = meshUriForUuid(ctx, uuid);
         ImGui::TextUnformatted(label);
