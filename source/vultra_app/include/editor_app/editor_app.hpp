@@ -4,6 +4,7 @@
 #include "common/file_dialog.hpp"
 #include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/editor_context.hpp"
+#include "editor_app/editor_history.hpp"
 #include "editor_app/project_file_watcher.hpp"
 #include "editor_app/ui/editor_window_manager.hpp"
 #include "launch_options.hpp"
@@ -117,6 +118,7 @@ namespace vultra_app
         void resetDefaultDockLayout();
 
         EditorWindowManager m_WindowManager;
+        EditorHistory       m_History;
         ui::AssetThumbnailService m_ThumbnailService;
         ProjectFileWatcher m_FileWatcher;
         std::filesystem::path m_SyncedProject;

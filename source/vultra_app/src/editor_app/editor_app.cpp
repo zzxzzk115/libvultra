@@ -9,6 +9,7 @@
 #include "editor_app/ui/windows/content_browser_window.hpp"
 #include "editor_app/ui/windows/frame_debugger_window.hpp"
 #include "editor_app/ui/windows/game_view_window.hpp"
+#include "editor_app/ui/windows/history_window.hpp"
 #include "editor_app/ui/windows/inspector_window.hpp"
 #include "editor_app/ui/windows/material_graph_window.hpp"
 #include "editor_app/ui/windows/profiler_window.hpp"
@@ -555,6 +556,7 @@ namespace vultra_app
     void EditorApp::tick(EditorContext& ctx)
     {
         ctx.thumbnails       = &m_ThumbnailService;
+        ctx.history          = &m_History;
         const auto assetRoot = ctx.state.currentProject.empty() ?
                                    std::filesystem::path {} :
                                    (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
@@ -577,6 +579,7 @@ namespace vultra_app
     void EditorApp::draw(EditorContext& ctx)
     {
         ctx.thumbnails = &m_ThumbnailService;
+        ctx.history    = &m_History;
         ui::applyEditorSettingsRuntime(ctx.state.editorSettings);
         if (isProjectLoading())
         {
@@ -606,6 +609,8 @@ namespace vultra_app
                                      Selection::clear(SelectionCategory::Entity);
                                      topBarCtx.state.sceneDirty    = true;
                                      topBarCtx.state.statusMessage = "Created an empty scene workspace.";
+                                     if (topBarCtx.history)
+                                         topBarCtx.history->reset(topBarCtx, "New Empty Scene");
                                  },
                              .saveScene   = [this](EditorContext& topBarCtx) { saveCurrentScene(topBarCtx); },
                              .buildAndRun = [this](EditorContext& topBarCtx) { startBuildAndRun(topBarCtx); },
@@ -633,6 +638,7 @@ namespace vultra_app
                                      m_PlayModeSnapshot.reset();
                                      m_PlayModeSceneDirtySnapshot = false;
                                      m_PlaybackWasPlaying         = false;
+                                     m_History.clear();
                                  },
                              .resetLayout = [this](EditorContext&) { resetDefaultDockLayout(); },
                              .showAbout   = [this](EditorContext&) { m_ShowAboutPopup = true; },
@@ -642,6 +648,10 @@ namespace vultra_app
 
         if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))
             saveCurrentScene(ctx);
+        if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z))
+            m_History.redo(ctx);
+        else if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z))
+            m_History.undo(ctx);
         if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F5))
             startBuildAndRun(ctx);
 
@@ -652,6 +662,7 @@ namespace vultra_app
         buildDefaultDockLayout();
         m_WindowManager.draw(ctx);
         endDockSpace();
+        m_History.observeScene(ctx);
 
         if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
             renderService->builtinRenderSettings().selectionOutline.selectedEntityId = selectedEntityPickingId(ctx);
@@ -962,6 +973,7 @@ namespace vultra_app
         {
             ctx.state.sceneDirty    = false;
             ctx.state.statusMessage = "Saved scene: " + ctx.state.currentDefaultScene;
+            m_History.markCurrentClean(ctx);
         }
         else
         {
@@ -1029,6 +1041,7 @@ namespace vultra_app
         m_WindowManager.addWindow<FrameDebuggerWindow>();
         m_WindowManager.addWindow<ProfilerWindow>();
         m_WindowManager.addWindow<InspectorWindow>();
+        m_WindowManager.addWindow<HistoryWindow>();
         m_Initialized = true;
     }
 
@@ -1353,6 +1366,7 @@ namespace vultra_app
                         ctx.state.statusMessage = "Loaded default scene: " + ctx.state.currentDefaultScene;
                     }
                 }
+                m_History.reset(ctx, "Scene Loaded");
 
                 m_Loading.phase    = LoadingPhase::Finalize;
                 m_Loading.progress = 0.98f;
@@ -1561,6 +1575,7 @@ namespace vultra_app
             ImGuiID mainId   = id;
             ImGuiID leftId   = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Left, 0.24f, nullptr, &mainId);
             ImGuiID rightId  = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Right, 0.28f, nullptr, &mainId);
+            ImGuiID historyId = ImGui::DockBuilderSplitNode(rightId, ImGuiDir_Down, 0.34f, nullptr, &rightId);
             ImGuiID bottomId = ImGui::DockBuilderSplitNode(mainId, ImGuiDir_Down, 0.30f, nullptr, &mainId);
 
             const auto dockWindow = [&](const char* name, const ImGuiID target) {
@@ -1582,6 +1597,7 @@ namespace vultra_app
             dockWindow("Render Graph", mainId);
             dockWindow("Material Graph", mainId);
             dockWindow("Inspector", rightId);
+            dockWindow("History", historyId);
             dockWindow("Content Browser", bottomId);
             dockWindow("Console", bottomId);
             dockWindow("Frame Debugger", bottomId);

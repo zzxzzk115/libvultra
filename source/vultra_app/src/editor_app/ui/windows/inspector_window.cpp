@@ -2,6 +2,7 @@
 
 #include "common/file_dialog.hpp"
 #include "common/ui_widgets.hpp"
+#include "editor_app/editor_history.hpp"
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
@@ -2135,13 +2136,19 @@ namespace vultra_app
         {
             name.name            = m_NameBuffer.data();
             ctx.state.sceneDirty = true;
+            if (ctx.history)
+                ctx.history->setNextLabel("Rename Entity");
         }
 
         auto& status = reg.get_or_emplace<vultra::EntityStatusComponent>(e);
         if (ImGui::CollapsingHeader("Status", ImGuiTreeNodeFlags_DefaultOpen))
         {
             if (drawMetaFields(&ctx, &m_TextureSelector, status))
+            {
                 ctx.state.sceneDirty = true;
+                if (ctx.history)
+                    ctx.history->setNextLabel("Edit Entity Status");
+            }
         }
 
         if (componentHeader<vultra::HierarchyComponent>(world, e))
@@ -2189,6 +2196,8 @@ namespace vultra_app
                 componentOrder.erase(componentOrder.begin() + static_cast<std::ptrdiff_t>(i));
                 ctx.state.sceneDirty    = true;
                 ctx.state.statusMessage = "Removed component: " + std::string(orderedComponentLabel(key));
+                if (ctx.history)
+                    ctx.history->setNextLabel(ctx.state.statusMessage);
                 break;
             }
 
@@ -2203,38 +2212,62 @@ namespace vultra_app
                     if (drawTransformComponentFields(*transform,
                                                      entityId ? entityId->uuid : vultra::CoreUUID {},
                                                      reg.try_get<vultra::LightComponent>(e)))
+                    {
                         ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Transform");
+                    }
                 }
             }
             else if (key == "Mesh")
             {
                 if (auto* mesh = reg.try_get<vultra::MeshComponent>(e))
                     if (drawMeshComponentFields(&ctx, &m_TextureSelector, &m_MeshSelector, *mesh))
+                    {
                         ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Mesh");
+                    }
             }
             else if (key == "GaussianSplat")
             {
                 if (auto* splat = reg.try_get<vultra::GaussianSplatComponent>(e))
                     if (drawMetaFields(&ctx, &m_TextureSelector, *splat))
+                    {
                         ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Gaussian Splat");
+                    }
             }
             else if (key == "Environment")
             {
                 if (auto* environment = reg.try_get<vultra::EnvironmentComponent>(e))
                     if (drawMetaFields(&ctx, &m_TextureSelector, *environment))
+                    {
                         ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Environment");
+                    }
             }
             else if (key == "ReflectionProbe")
             {
                 if (auto* probe = reg.try_get<vultra::ReflectionProbeComponent>(e))
                     if (drawMetaFields(&ctx, &m_TextureSelector, *probe))
+                    {
                         ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Reflection Probe");
+                    }
             }
             else if (key == "Light")
             {
                 if (auto* light = reg.try_get<vultra::LightComponent>(e))
                     if (drawLightComponentFields(*light))
+                    {
                         ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Light");
+                    }
             }
             else if (key == "Camera")
             {
@@ -2244,7 +2277,11 @@ namespace vultra_app
                                       ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
                     {
                         if (alignCameraEntityToSceneView(ctx, world, e))
+                        {
                             ctx.state.sceneDirty = true;
+                            if (ctx.history)
+                                ctx.history->setNextLabel("Align Camera");
+                        }
                     }
                     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                         ImGui::SetTooltip("Move this Camera entity to the current Scene View camera pose.");
@@ -2271,6 +2308,8 @@ namespace vultra_app
                             if (camera->zFar <= camera->zNear)
                                 camera->zFar = camera->zNear + 0.001f;
                             ctx.state.sceneDirty = true;
+                            if (ctx.history)
+                                ctx.history->setNextLabel("Edit Camera");
                         });
                 }
             }
@@ -2278,13 +2317,21 @@ namespace vultra_app
             {
                 if (auto* xrView = reg.try_get<vultra::XRViewComponent>(e))
                     if (drawXRViewComponentFields(ctx, *xrView))
+                    {
                         ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit XR View");
+                    }
             }
             else if (key == "Script")
             {
                 if (auto* script = reg.try_get<vultra::ScriptComponent>(e))
                     if (drawMetaFields(&ctx, &m_TextureSelector, *script))
+                    {
                         ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Script");
+                    }
             }
             else if (key == "Prefab")
             {
@@ -2326,6 +2373,8 @@ namespace vultra_app
                         order.emplace_back(desc.key);
                     ctx.state.sceneDirty    = true;
                     ctx.state.statusMessage = std::string("Added component: ") + desc.label;
+                    if (ctx.history)
+                        ctx.history->setNextLabel(ctx.state.statusMessage);
                     ImGui::CloseCurrentPopup();
                 }
             }

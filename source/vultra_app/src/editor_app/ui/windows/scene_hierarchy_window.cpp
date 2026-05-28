@@ -1,6 +1,7 @@
 #include "editor_app/ui/windows/scene_hierarchy_window.hpp"
 
 #include "common/ui_widgets.hpp"
+#include "editor_app/editor_history.hpp"
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
@@ -387,6 +388,8 @@ namespace vultra_app
             selectEntityIfPossible(world, entity);
             ctx.state.sceneDirty    = true;
             ctx.state.statusMessage = "Created " + reg.get<vultra::NameComponent>(entity).name + ".";
+            if (ctx.history)
+                ctx.history->setNextLabel(ctx.state.statusMessage);
             return entity;
         }
 
@@ -488,6 +491,8 @@ namespace vultra_app
 
         selectEntityIfPossible(world, entity);
         ctx.state.sceneDirty = true;
+        if (ctx.history)
+            ctx.history->setNextLabel(ctx.state.statusMessage.empty() ? "Instantiate Asset" : ctx.state.statusMessage);
         return true;
     }
 
@@ -630,6 +635,8 @@ namespace vultra_app
                                 world.removeParent(dropped);
                                 ctx.state.sceneDirty    = true;
                                 ctx.state.statusMessage = "Moved entity to scene root.";
+                                if (ctx.history)
+                                    ctx.history->setNextLabel(ctx.state.statusMessage);
                             }
                         }
                     }
@@ -768,6 +775,8 @@ namespace vultra_app
                                 ctx.state.statusMessage = "Reparented entity.";
                             }
                             ctx.state.sceneDirty = true;
+                            if (ctx.history)
+                                ctx.history->setNextLabel(ctx.state.statusMessage);
                         }
                     }
                 }
@@ -805,6 +814,8 @@ namespace vultra_app
                 Selection::clear(SelectionCategory::Entity);
                 ctx.state.sceneDirty    = true;
                 ctx.state.statusMessage = "Deleted entity.";
+                if (ctx.history)
+                    ctx.history->setNextLabel(ctx.state.statusMessage);
                 ImGui::EndPopup();
                 ImGui::PopID();
                 return;
@@ -818,12 +829,16 @@ namespace vultra_app
         {
             status.visible       = !status.visible;
             ctx.state.sceneDirty = true;
+            if (ctx.history)
+                ctx.history->setNextLabel(status.visible ? "Show Entity" : "Hide Entity");
         }
         ImGui::SameLine();
         if (ui::iconButton(status.locked ? ICON_MDI_LOCK : ICON_MDI_LOCK_OPEN_VARIANT, "Toggle lock", status.locked))
         {
             status.locked        = !status.locked;
             ctx.state.sceneDirty = true;
+            if (ctx.history)
+                ctx.history->setNextLabel(status.locked ? "Lock Entity" : "Unlock Entity");
         }
 
         if (m_RenameEntity == entity &&
@@ -835,6 +850,8 @@ namespace vultra_app
                 reg.get_or_emplace<vultra::NameComponent>(entity).name = m_RenameBuffer.data();
                 m_RenameEntity                                         = entt::null;
                 ctx.state.sceneDirty                                   = true;
+                if (ctx.history)
+                    ctx.history->setNextLabel("Rename Entity");
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();

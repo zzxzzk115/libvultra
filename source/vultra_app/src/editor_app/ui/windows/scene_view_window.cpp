@@ -1,5 +1,6 @@
 #include "editor_app/ui/windows/scene_view_window.hpp"
 
+#include "editor_app/editor_history.hpp"
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
@@ -813,7 +814,11 @@ namespace vultra_app
                                                  glm::value_ptr(matrix)))
                         {
                             if (setLocalTransformFromGizmoMatrix(reg, e, transform, matrix, m_Tool))
+                            {
                                 ctx.state.sceneDirty = true;
+                                if (ctx.history)
+                                    ctx.history->setNextLabel("Transform Entity");
+                            }
                         }
                     }
                 }

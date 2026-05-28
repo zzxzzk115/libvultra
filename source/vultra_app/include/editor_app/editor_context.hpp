@@ -6,6 +6,8 @@
 
 namespace vultra_app
 {
+    class EditorHistory;
+
     namespace ui
     {
         class AssetThumbnailService;
@@ -16,5 +18,6 @@ namespace vultra_app
         AppState&               state;
         vbase::ServiceRegistry* services {nullptr};
         ui::AssetThumbnailService* thumbnails {nullptr};
+        EditorHistory*          history {nullptr};
     };
 } // namespace vultra_app
