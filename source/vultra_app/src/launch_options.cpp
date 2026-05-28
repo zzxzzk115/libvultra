@@ -12,8 +12,8 @@
 #endif
 #include <windows.h>
 #elif defined(__APPLE__)
-#include <mach-o/dyld.h>
 #include <limits.h>
+#include <mach-o/dyld.h>
 #include <unistd.h>
 #else
 #include <limits.h>
@@ -43,7 +43,7 @@ namespace vultra_app
         {
 #if defined(_WIN32)
             std::wstring buffer(MAX_PATH, L'\0');
-            DWORD size = 0;
+            DWORD        size = 0;
             for (;;)
             {
                 size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
@@ -64,7 +64,7 @@ namespace vultra_app
             return std::filesystem::weakly_canonical(buffer.data(), ec);
 #else
             std::vector<char> buffer(PATH_MAX, '\0');
-            const ssize_t size = readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+            const ssize_t     size = readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
             if (size <= 0)
                 return {};
             buffer[static_cast<size_t>(size)] = '\0';
@@ -112,8 +112,8 @@ namespace vultra_app
         try
         {
             program.parse_args(argv);
-            options.showHelp   = program.get<bool>("--help");
-            options.editorMode = program.get<bool>("--editor");
+            options.showHelp    = program.get<bool>("--help");
+            options.editorMode  = program.get<bool>("--editor");
             options.projectPath = program.get<std::string>("--project");
             options.vpkPath     = program.get<std::string>("--vpk");
             options.sceneUri    = program.get<std::string>("--scene");
@@ -196,7 +196,8 @@ namespace vultra_app
                   << "  vultra [--vpk resources.vpk] [--scene res://scenes/main.vscn]\n"
                   << "  vultra --editor --project <project-dir>\n"
                   << "  vultra [--no-xr] [--xr-mirror|--no-xr-mirror] --editor --project <project-dir>\n"
-                  << "  vultra [--validation|--no-validation] [--debug-markers|--no-debug-markers] [--renderdoc|--no-renderdoc]\n"
+                  << "  vultra [--validation|--no-validation] [--debug-markers|--no-debug-markers] "
+                     "[--renderdoc|--no-renderdoc]\n"
                   << "  vultra --project <project-dir>\n"
                   << "  vultra help\n\n"
                   << "Notes:\n"

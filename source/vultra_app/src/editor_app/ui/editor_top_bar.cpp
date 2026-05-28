@@ -35,7 +35,7 @@ namespace vultra_app
                                 vultra::imgui_theme::u32(vultra::imgui_theme::accentTransparent(210.0f / 255.0f)),
                                 40,
                                 1.5f);
-            const char* mark = "V";
+            const char*  mark     = "V";
             const ImVec2 textSize = ImGui::CalcTextSize(mark);
             drawList->AddText(ImVec2 {pos.x - textSize.x * 0.5f, pos.y - textSize.y * 0.5f - 1.0f},
                               vultra::imgui_theme::u32(vultra::imgui_theme::text()),
@@ -67,10 +67,10 @@ namespace vultra_app
             return pressed;
         }
 
-        bool toolbarToggleButton(const char* label,
-                                 const bool  active,
-                                 const char* tooltip = nullptr,
-                                 const ImVec2 size = ImVec2 {0.0f, 0.0f})
+        bool toolbarToggleButton(const char*  label,
+                                 const bool   active,
+                                 const char*  tooltip = nullptr,
+                                 const ImVec2 size    = ImVec2 {0.0f, 0.0f})
         {
             pushToolbarButtonStyle();
             if (active)
@@ -93,7 +93,7 @@ namespace vultra_app
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
                                   vultra::imgui_theme::withAlpha(vultra::imgui_theme::buttonHovered(), 0.95f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, vultra::imgui_theme::accentButton());
-            const bool pressed = ImGui::Button(label);
+            const bool   pressed = ImGui::Button(label);
             const ImVec2 popupPos {menuPos.x, ImGui::GetItemRectMax().y};
             ImGui::PopStyleColor(3);
             ImGui::PopStyleVar(2);
@@ -121,10 +121,7 @@ namespace vultra_app
             return pressed;
         }
 
-        float relativeLuminance(const ImVec4& color)
-        {
-            return color.x * 0.299f + color.y * 0.587f + color.z * 0.114f;
-        }
+        float relativeLuminance(const ImVec4& color) { return color.x * 0.299f + color.y * 0.587f + color.z * 0.114f; }
 
         ImVec4 contrastTextFor(const ImVec4& fill)
         {
@@ -142,23 +139,20 @@ namespace vultra_app
             if (!enabled)
                 ImGui::BeginDisabled();
 
-            const ImVec2 pos = ImGui::GetCursorScreenPos();
+            const ImVec2 pos     = ImGui::GetCursorScreenPos();
             const bool   pressed = ImGui::InvisibleButton(label, buttonSize) && enabled;
             const bool   hovered = enabled && ImGui::IsItemHovered();
             const bool   held    = enabled && ImGui::IsItemActive();
 
-            const ImVec4 baseColor =
-                accent ? vultra::imgui_theme::success() :
-                active ? vultra::imgui_theme::accentButton() :
-                         vultra::imgui_theme::buttonTransparent(0.96f);
-            const ImVec4 hoverColor =
-                accent ? vultra::imgui_theme::successHovered() :
-                active ? vultra::imgui_theme::accentButtonHovered() :
-                         vultra::imgui_theme::buttonHovered();
-            const ImVec4 downColor =
-                accent ? vultra::imgui_theme::successActive() :
-                active ? vultra::imgui_theme::accentButtonActive() :
-                         vultra::imgui_theme::accentButton();
+            const ImVec4 baseColor  = accent ? vultra::imgui_theme::success() :
+                                      active ? vultra::imgui_theme::accentButton() :
+                                               vultra::imgui_theme::buttonTransparent(0.96f);
+            const ImVec4 hoverColor = accent ? vultra::imgui_theme::successHovered() :
+                                      active ? vultra::imgui_theme::accentButtonHovered() :
+                                               vultra::imgui_theme::buttonHovered();
+            const ImVec4 downColor  = accent ? vultra::imgui_theme::successActive() :
+                                      active ? vultra::imgui_theme::accentButtonActive() :
+                                               vultra::imgui_theme::accentButton();
 
             ImVec4 fill = held ? downColor : hovered ? hoverColor : baseColor;
             ImVec4 text = (accent || active) ? contrastTextFor(fill) : vultra::imgui_theme::text();
@@ -169,18 +163,18 @@ namespace vultra_app
                 text.w *= 0.42f;
             }
 
-            auto*       drawList = ImGui::GetWindowDrawList();
+            auto*        drawList = ImGui::GetWindowDrawList();
             const ImVec2 max {pos.x + buttonSize.x, pos.y + buttonSize.y};
             drawList->AddRectFilled(pos, max, ImGui::GetColorU32(fill), 4.0f);
             drawList->AddRect(pos,
                               max,
                               ImGui::GetColorU32(vultra::imgui_theme::withAlpha(vultra::imgui_theme::border(),
-                                                                                 enabled ? 0.82f : 0.38f)),
+                                                                                enabled ? 0.82f : 0.38f)),
                               4.0f);
 
-            ImFont*      font      = ImGui::GetFont();
-            const float  iconSize  = ImGui::GetFontSize() * 1.18f;
-            const ImVec2 textSize  = font->CalcTextSizeA(iconSize, 1000.0f, 0.0f, label);
+            ImFont*      font     = ImGui::GetFont();
+            const float  iconSize = ImGui::GetFontSize() * 1.18f;
+            const ImVec2 textSize = font->CalcTextSizeA(iconSize, 1000.0f, 0.0f, label);
             const ImVec2 textPos {pos.x + (buttonSize.x - textSize.x) * 0.5f,
                                   pos.y + (buttonSize.y - textSize.y) * 0.5f - 1.0f};
             drawList->AddText(font, iconSize, textPos, ImGui::GetColorU32(text), label);
@@ -246,9 +240,9 @@ namespace vultra_app
 
         void drawRenderDocMenu(EditorContext& ctx)
         {
-            auto* frameDebugger = ctx.services ? ctx.services->tryGet<vultra::IFrameDebuggerService>() : nullptr;
-            const bool enabled  = frameDebugger && frameDebugger->isRenderDocEnabled();
-            const bool available = enabled && frameDebugger->isAvailable();
+            auto*      frameDebugger = ctx.services ? ctx.services->tryGet<vultra::IFrameDebuggerService>() : nullptr;
+            const bool enabled       = frameDebugger && frameDebugger->isRenderDocEnabled();
+            const bool available     = enabled && frameDebugger->isAvailable();
 
             if (ImGui::BeginMenu("RenderDoc", enabled))
             {
@@ -274,20 +268,19 @@ namespace vultra_app
         }
     } // namespace
 
-    void drawEditorTopBar(EditorContext&                                      ctx,
+    void drawEditorTopBar(EditorContext&                                    ctx,
                           const std::vector<std::unique_ptr<EditorWindow>>& windows,
-                          const EditorTopBarActions&                         actions)
+                          const EditorTopBarActions&                        actions)
     {
-        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImGuiViewport*   viewport = ImGui::GetMainViewport();
         ImGuiWindowFlags barFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
-                                    ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove |
-                                    ImGuiWindowFlags_NoDocking;
+                                    ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking;
 
         if (ImGui::BeginViewportSideBar("##VultraEditorTitleBar", viewport, ImGuiDir_Up, kTitleBarHeight, barFlags))
         {
-            const ImVec2 start = ImGui::GetCursorScreenPos();
-            auto* windowService = ctx.services ? ctx.services->tryGet<IWindowService>() : nullptr;
-            const bool decoratedWindow = windowService && windowService->window().isDecorated();
+            const ImVec2 start           = ImGui::GetCursorScreenPos();
+            auto*        windowService   = ctx.services ? ctx.services->tryGet<IWindowService>() : nullptr;
+            const bool   decoratedWindow = windowService && windowService->window().isDecorated();
 
             drawEngineMark(ImVec2 {start.x + 28.0f, start.y + kTitleLogoY}, 20.0f);
 
@@ -405,9 +398,10 @@ namespace vultra_app
             ImGui::SetNextItemWidth(158.0f);
             if (ImGui::BeginCombo("##ProjectSelector", projectLabel.c_str(), ImGuiComboFlags_NoArrowButton))
             {
-                ImGui::TextDisabled("%s", ctx.state.currentProject.empty() ?
-                                             "No project loaded" :
-                                             ctx.state.currentProject.generic_string().c_str());
+                ImGui::TextDisabled("%s",
+                                    ctx.state.currentProject.empty() ?
+                                        "No project loaded" :
+                                        ctx.state.currentProject.generic_string().c_str());
                 if (ImGui::Selectable("Back to Launcher") && actions.backToLauncher)
                     actions.backToLauncher(ctx);
                 ImGui::EndCombo();
@@ -421,17 +415,16 @@ namespace vultra_app
             drawPlaybackControls(ctx);
 
             ImGui::SameLine(0.0f, 12.0f);
-            if (toolbarButton(ICON_MDI_ROCKET_LAUNCH "  Export & Run", "Export package and run", ImVec2 {126.0f, 0.0f}) &&
+            if (toolbarButton(
+                    ICON_MDI_ROCKET_LAUNCH "  Export & Run", "Export package and run", ImVec2 {126.0f, 0.0f}) &&
                 actions.buildAndRun)
             {
                 actions.buildAndRun(ctx);
             }
 
             ImGui::SameLine(0.0f, 8.0f);
-            if (toolbarToggleButton(ICON_MDI_CHART_LINE,
-                                    ctx.state.metricsOverlayVisible,
-                                    "Metrics overlay",
-                                    ImVec2 {34.0f, 0.0f}))
+            if (toolbarToggleButton(
+                    ICON_MDI_CHART_LINE, ctx.state.metricsOverlayVisible, "Metrics overlay", ImVec2 {34.0f, 0.0f}))
             {
                 ctx.state.metricsOverlayVisible = !ctx.state.metricsOverlayVisible;
             }

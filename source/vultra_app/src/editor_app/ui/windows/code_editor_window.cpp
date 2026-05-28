@@ -21,10 +21,9 @@ namespace vultra_app
     {
         std::string lowerString(std::string value)
         {
-            std::transform(value.begin(),
-                           value.end(),
-                           value.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
             return value;
         }
 
@@ -58,7 +57,7 @@ namespace vultra_app
         std::string pathToResUri(const EditorContext& ctx, const std::filesystem::path& path)
         {
             std::error_code ec;
-            const auto      rel = std::filesystem::relative(path.lexically_normal(), assetRoot(ctx), ec);
+            const auto      rel     = std::filesystem::relative(path.lexically_normal(), assetRoot(ctx), ec);
             const auto      relText = rel.generic_string();
             if (ec || rel.empty() || relText == ".." || relText.starts_with("../"))
                 return {};
@@ -68,8 +67,8 @@ namespace vultra_app
         std::vector<std::filesystem::path> shaderLibraryManifests(const EditorContext& ctx)
         {
             std::vector<std::filesystem::path> manifests;
-            const auto root = assetRoot(ctx);
-            std::error_code ec;
+            const auto                         root = assetRoot(ctx);
+            std::error_code                    ec;
             for (const auto& entry : std::filesystem::recursive_directory_iterator(root, ec))
             {
                 if (ec)
@@ -91,15 +90,9 @@ namespace vultra_app
         m_Editor.SetTabSize(4);
     }
 
-    bool CodeEditorWindow::hasOpenFile() const
-    {
-        return m_Loaded && !m_CurrentPath.empty();
-    }
+    bool CodeEditorWindow::hasOpenFile() const { return m_Loaded && !m_CurrentPath.empty(); }
 
-    bool CodeEditorWindow::isDirty() const
-    {
-        return hasOpenFile() && m_Editor.GetText() != m_LastSavedText;
-    }
+    bool CodeEditorWindow::isDirty() const { return hasOpenFile() && m_Editor.GetText() != m_LastSavedText; }
 
     void CodeEditorWindow::applyLanguageForPath(const std::filesystem::path& path)
     {
@@ -128,8 +121,8 @@ namespace vultra_app
         std::ifstream file(m_CurrentPath, std::ios::binary);
         if (!file)
         {
-            m_Loaded = false;
-            m_Error = "Failed to open file.";
+            m_Loaded                = false;
+            m_Error                 = "Failed to open file.";
             ctx.state.statusMessage = m_Error + " " + m_CurrentPath.generic_string();
             return;
         }
@@ -139,10 +132,10 @@ namespace vultra_app
         m_LastSavedText = std::move(text);
 
         std::error_code ec;
-        m_LoadedWriteTime = std::filesystem::last_write_time(m_CurrentPath, ec);
-        m_Loaded          = true;
-        m_Open            = true;
-        m_RequestFocus    = true;
+        m_LoadedWriteTime       = std::filesystem::last_write_time(m_CurrentPath, ec);
+        m_Loaded                = true;
+        m_Open                  = true;
+        m_RequestFocus          = true;
         ctx.state.statusMessage = "Opened source: " + m_CurrentPath.filename().generic_string();
     }
 
@@ -151,11 +144,11 @@ namespace vultra_app
         if (!hasOpenFile())
             return;
 
-        const auto text = m_Editor.GetText();
+        const auto    text = m_Editor.GetText();
         std::ofstream file(m_CurrentPath, std::ios::binary | std::ios::trunc);
         if (!file)
         {
-            m_Error = "Failed to save file.";
+            m_Error                 = "Failed to save file.";
             ctx.state.statusMessage = m_Error + " " + m_CurrentPath.generic_string();
             return;
         }
@@ -165,7 +158,7 @@ namespace vultra_app
         m_LastSavedText = text;
 
         std::error_code ec;
-        m_LoadedWriteTime = std::filesystem::last_write_time(m_CurrentPath, ec);
+        m_LoadedWriteTime       = std::filesystem::last_write_time(m_CurrentPath, ec);
         ctx.state.statusMessage = "Saved source: " + m_CurrentPath.filename().generic_string();
 
         reimport(ctx);
@@ -208,9 +201,9 @@ namespace vultra_app
                 pipelineReloaded = renderService->reloadRenderPipeline();
         }
 
-        ctx.state.statusMessage = pipelineReloaded ? "Saved and reloaded render pipeline."
-                                  : anyImported    ? "Reimported source asset."
-                                                   : "No import target was refreshed for this file.";
+        ctx.state.statusMessage = pipelineReloaded ? "Saved and reloaded render pipeline." :
+                                  anyImported      ? "Reimported source asset." :
+                                                     "No import target was refreshed for this file.";
     }
 
     void CodeEditorWindow::draw(EditorContext& ctx)
@@ -224,10 +217,11 @@ namespace vultra_app
         if (m_RequestFocus)
             m_RequestFocus = false;
 
-        const bool editorFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-        const ImGuiIO& io = ImGui::GetIO();
-        const bool saveShortcut = editorFocused && hasOpenFile() && (io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl) &&
-                                  !io.KeyAlt && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_S);
+        const bool     editorFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+        const ImGuiIO& io            = ImGui::GetIO();
+        const bool     saveShortcut  = editorFocused && hasOpenFile() &&
+                                  (io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl) && !io.KeyAlt && !io.KeyShift &&
+                                  ImGui::IsKeyPressed(ImGuiKey_S);
         if (saveShortcut)
             save(ctx);
 
@@ -271,8 +265,8 @@ namespace vultra_app
 
         if (hasOpenFile())
         {
-            const ImVec2 size = ImGui::GetContentRegionAvail();
-            ImFont* codeFont = ImGui::GetIO().Fonts->Fonts.Size > 3 ? ImGui::GetIO().Fonts->Fonts[3] : nullptr;
+            const ImVec2 size     = ImGui::GetContentRegionAvail();
+            ImFont*      codeFont = ImGui::GetIO().Fonts->Fonts.Size > 3 ? ImGui::GetIO().Fonts->Fonts[3] : nullptr;
             if (codeFont)
                 ImGui::PushFont(codeFont);
             m_Editor.Render("##VultraCodeEditor", editorFocused, size, false);

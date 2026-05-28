@@ -27,7 +27,7 @@ namespace vultra_app::ui
         std::string uriForPath(EditorContext& ctx, const std::filesystem::path& path)
         {
             std::error_code ec;
-            const auto rel = std::filesystem::relative(path.lexically_normal(), assetRoot(ctx), ec);
+            const auto      rel = std::filesystem::relative(path.lexically_normal(), assetRoot(ctx), ec);
             if (ec || rel.empty())
                 return {};
             return "res://" + rel.generic_string();
@@ -38,7 +38,7 @@ namespace vultra_app::ui
             if (needle.empty())
                 return true;
 
-            const auto lower = [](unsigned char c) { return static_cast<char>(std::tolower(c)); };
+            const auto  lower = [](unsigned char c) { return static_cast<char>(std::tolower(c)); };
             std::string haystack(text);
             std::string query(needle);
             std::ranges::transform(haystack, haystack.begin(), lower);
@@ -66,7 +66,7 @@ namespace vultra_app::ui
                 if (entry.type != vasset::VAssetType::eTexture || entry.sourcePath.empty())
                     continue;
                 vultra::CoreUUID uuid;
-                vbase::UUID parsed {};
+                vbase::UUID      parsed {};
                 if (!vbase::try_parse_uuid(uuidText.c_str(), parsed))
                     continue;
                 uuid = vultra::CoreUUID(parsed);
@@ -90,19 +90,19 @@ namespace vultra_app::ui
             return "res://" + std::filesystem::path(entry.sourcePath).generic_string();
         }
 
-        ImTextureID thumbnailFor(EditorContext& ctx,
-                                 TextureSelectorState& state,
+        ImTextureID thumbnailFor(EditorContext&               ctx,
+                                 TextureSelectorState&        state,
                                  const std::filesystem::path& sourcePath,
-                                 const float iconSize)
+                                 const float                  iconSize)
         {
             if (ctx.thumbnails)
             {
                 const auto thumbnail = ctx.thumbnails->requestTexture(ctx, sourcePath);
                 if (thumbnail.status == AssetThumbnailStatus::Ready)
                 {
-                    const bool cached = state.previewCache.hasCachedImageFilePreview(ctx, thumbnail.outputPath);
+                    const bool cached    = state.previewCache.hasCachedImageFilePreview(ctx, thumbnail.outputPath);
                     const bool allowLoad = cached || state.remainingPreviewLoads > 0;
-                    auto id = state.previewCache.getImageFilePreview(ctx, thumbnail.outputPath, allowLoad);
+                    auto       id        = state.previewCache.getImageFilePreview(ctx, thumbnail.outputPath, allowLoad);
                     if (!cached && id)
                         --state.remainingPreviewLoads;
                     if (id)
@@ -110,9 +110,9 @@ namespace vultra_app::ui
                 }
             }
 
-            const bool cached = state.previewCache.hasCachedTexturePreview(ctx, sourcePath);
+            const bool cached    = state.previewCache.hasCachedTexturePreview(ctx, sourcePath);
             const bool allowLoad = cached || state.remainingPreviewLoads > 0;
-            auto id = state.previewCache.getTexturePreview(ctx, sourcePath, allowLoad);
+            auto       id        = state.previewCache.getTexturePreview(ctx, sourcePath, allowLoad);
             if (!cached && id)
                 --state.remainingPreviewLoads;
             return id;
@@ -151,8 +151,8 @@ namespace vultra_app::ui
             if (ImGui::CalcTextSize(out.c_str()).x <= maxWidth)
                 return out;
 
-            constexpr const char* ellipsis = "...";
-            const float ellipsisWidth = ImGui::CalcTextSize(ellipsis).x;
+            constexpr const char* ellipsis      = "...";
+            const float           ellipsisWidth = ImGui::CalcTextSize(ellipsis).x;
             if (ellipsisWidth >= maxWidth)
                 return ellipsis;
 
@@ -166,28 +166,28 @@ namespace vultra_app::ui
             return ellipsis;
         }
 
-        bool drawPreviewSelectorButton(const char*       id,
-                                       const char*       fallbackIcon,
-                                       ImTextureID       preview,
-                                       std::string_view  primary,
-                                       std::string_view  secondary,
-                                       const ImVec2      size)
+        bool drawPreviewSelectorButton(const char*      id,
+                                       const char*      fallbackIcon,
+                                       ImTextureID      preview,
+                                       std::string_view primary,
+                                       std::string_view secondary,
+                                       const ImVec2     size)
         {
-            const ImVec2 pos = ImGui::GetCursorScreenPos();
-            const bool pressed = ImGui::InvisibleButton(id, size);
-            const bool hovered = ImGui::IsItemHovered();
-            const bool held = ImGui::IsItemActive();
+            const ImVec2 pos     = ImGui::GetCursorScreenPos();
+            const bool   pressed = ImGui::InvisibleButton(id, size);
+            const bool   hovered = ImGui::IsItemHovered();
+            const bool   held    = ImGui::IsItemActive();
 
-            const ImVec4 fill = held ? vultra::imgui_theme::frameActive() :
-                                hovered ? vultra::imgui_theme::frameHovered() :
-                                          vultra::imgui_theme::frame();
-            auto* drawList = ImGui::GetWindowDrawList();
+            const ImVec4 fill     = held    ? vultra::imgui_theme::frameActive() :
+                                    hovered ? vultra::imgui_theme::frameHovered() :
+                                              vultra::imgui_theme::frame();
+            auto*        drawList = ImGui::GetWindowDrawList();
             const ImVec2 max {pos.x + size.x, pos.y + size.y};
             drawList->AddRectFilled(pos, max, ImGui::GetColorU32(fill), 4.0f);
             drawList->AddRect(pos, max, ImGui::GetColorU32(vultra::imgui_theme::border()), 4.0f);
 
-            const float pad = 4.0f;
-            const float previewSize = std::max(1.0f, size.y - pad * 2.0f);
+            const float  pad         = 4.0f;
+            const float  previewSize = std::max(1.0f, size.y - pad * 2.0f);
             const ImVec2 imageMin {pos.x + pad, pos.y + pad};
             const ImVec2 imageMax {imageMin.x + previewSize, imageMin.y + previewSize};
             drawList->AddRectFilled(imageMin, imageMax, ImGui::GetColorU32(vultra::imgui_theme::panel()), 3.0f);
@@ -205,12 +205,12 @@ namespace vultra_app::ui
             }
             drawList->AddRect(imageMin, imageMax, ImGui::GetColorU32(vultra::imgui_theme::separator()), 3.0f);
 
-            const float textX = imageMax.x + 8.0f;
-            const float textRight = max.x - 8.0f;
-            const float textWidth = std::max(1.0f, textRight - textX);
-            const ImVec2 clipMin {textX, pos.y + 3.0f};
-            const ImVec2 clipMax {textRight, max.y - 3.0f};
-            const std::string primaryText = primary.empty() ? std::string {"<none>"} : std::string {primary};
+            const float       textX     = imageMax.x + 8.0f;
+            const float       textRight = max.x - 8.0f;
+            const float       textWidth = std::max(1.0f, textRight - textX);
+            const ImVec2      clipMin {textX, pos.y + 3.0f};
+            const ImVec2      clipMax {textRight, max.y - 3.0f};
+            const std::string primaryText    = primary.empty() ? std::string {"<none>"} : std::string {primary};
             const std::string primaryDisplay = ellipsizeText(primaryText, textWidth);
             drawList->PushClipRect(clipMin, clipMax, true);
             drawList->AddText(ImVec2 {textX, pos.y + 6.0f},
@@ -240,8 +240,8 @@ namespace vultra_app::ui
     std::vector<TextureSelection> collectProjectTextures(EditorContext& ctx)
     {
         std::vector<TextureSelection> out;
-        const auto root = assetRoot(ctx);
-        std::error_code ec;
+        const auto                    root = assetRoot(ctx);
+        std::error_code               ec;
         if (root.empty() || !std::filesystem::exists(root, ec) || ec)
             return out;
 
@@ -259,16 +259,15 @@ namespace vultra_app::ui
             if (uri.empty())
                 continue;
             TextureSelection selection;
-            selection.uri = std::move(uri);
+            selection.uri        = std::move(uri);
             selection.sourcePath = path;
             if (auto it = uuidByUri.find(selection.uri); it != uuidByUri.end())
                 selection.uuid = it->second;
             out.push_back(std::move(selection));
         }
 
-        std::ranges::sort(out, [](const TextureSelection& lhs, const TextureSelection& rhs) {
-            return lhs.uri < rhs.uri;
-        });
+        std::ranges::sort(out,
+                          [](const TextureSelection& lhs, const TextureSelection& rhs) { return lhs.uri < rhs.uri; });
         return out;
     }
 
@@ -298,10 +297,10 @@ namespace vultra_app::ui
         ImGui::Separator();
 
         state.remainingPreviewLoads = 24;
-        const auto textures = collectProjectTextures(ctx);
-        const float iconSize = state.iconSize;
-        const float cellWidth = iconSize + 20.0f;
-        const int columns = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / cellWidth));
+        const auto  textures        = collectProjectTextures(ctx);
+        const float iconSize        = state.iconSize;
+        const float cellWidth       = iconSize + 20.0f;
+        const int   columns         = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / cellWidth));
 
         if (ImGui::BeginChild("##TextureSelectorGrid", ImVec2(0.0f, 320.0f), true))
         {
@@ -310,15 +309,16 @@ namespace vultra_app::ui
             for (const auto& texture : textures)
             {
                 const auto label = trimLabel(texture.sourcePath);
-                if (!containsIgnoreCase(texture.uri, state.filter.data()) && !containsIgnoreCase(label, state.filter.data()))
+                if (!containsIgnoreCase(texture.uri, state.filter.data()) &&
+                    !containsIgnoreCase(label, state.filter.data()))
                     continue;
 
                 any = true;
                 ImGui::PushID(texture.uri.c_str());
                 ImGui::BeginGroup();
-                const bool isSelected = texture.uri == selectedUri;
-                const ImVec2 start = ImGui::GetCursorScreenPos();
-                auto previewId = thumbnailFor(ctx, state, texture.sourcePath, iconSize);
+                const bool   isSelected = texture.uri == selectedUri;
+                const ImVec2 start      = ImGui::GetCursorScreenPos();
+                auto         previewId  = thumbnailFor(ctx, state, texture.sourcePath, iconSize);
                 if (previewId)
                     ImGui::Image(previewId, ImVec2(iconSize, iconSize));
                 else
@@ -326,7 +326,8 @@ namespace vultra_app::ui
 
                 const ImVec2 end {start.x + iconSize, start.y + iconSize};
                 if (isSelected)
-                    ImGui::GetWindowDrawList()->AddRect(start, end, ImGui::GetColorU32(ImGuiCol_ButtonActive), 0.0f, 0, 2.0f);
+                    ImGui::GetWindowDrawList()->AddRect(
+                        start, end, ImGui::GetColorU32(ImGuiCol_ButtonActive), 0.0f, 0, 2.0f);
 
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 {
@@ -336,7 +337,8 @@ namespace vultra_app::ui
                     ImGui::CloseCurrentPopup();
                 }
 
-                if (ImGui::Selectable(label.c_str(), isSelected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(iconSize, 0.0f)))
+                if (ImGui::Selectable(
+                        label.c_str(), isSelected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(iconSize, 0.0f)))
                 {
                     if (selected)
                         *selected = texture;
@@ -372,8 +374,9 @@ namespace vultra_app::ui
         ImGui::TextUnformatted(label);
         ImGui::PushID(label);
         const float clearButtonSize = ImGui::GetFrameHeight();
-        const float fieldHeight = 40.0f;
-        const float width = std::max(1.0f, ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);
+        const float fieldHeight     = 40.0f;
+        const float width =
+            std::max(1.0f, ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);
         changed |= drawTextureUriSelector(ctx, "TextureSelectorPopup", uri, state, ImVec2(width, fieldHeight));
         ImGui::SameLine();
         if (ImGui::SmallButton(ICON_MDI_CLOSE) && !uri.empty())
@@ -385,15 +388,16 @@ namespace vultra_app::ui
         return changed;
     }
 
-    bool drawTextureUriSelector(EditorContext& ctx,
-                                const char* popupId,
-                                std::string& uri,
+    bool drawTextureUriSelector(EditorContext&        ctx,
+                                const char*           popupId,
+                                std::string&          uri,
                                 TextureSelectorState& state,
-                                const ImVec2 size)
+                                const ImVec2          size)
     {
-        bool changed = false;
-        auto selection = textureSelectionForUri(ctx, uri);
-        ImTextureID preview = selection.sourcePath.empty() ? ImTextureID {} : thumbnailFor(ctx, state, selection.sourcePath, size.y);
+        bool        changed   = false;
+        auto        selection = textureSelectionForUri(ctx, uri);
+        ImTextureID preview =
+            selection.sourcePath.empty() ? ImTextureID {} : thumbnailFor(ctx, state, selection.sourcePath, size.y);
         const std::string labelText = selection.sourcePath.empty() ? std::string(uri) : trimLabel(selection.sourcePath);
         if (drawPreviewSelectorButton("##TextureSelectorField", ICON_MDI_IMAGE, preview, labelText, uri, size))
             ImGui::OpenPopup(popupId);
@@ -401,40 +405,44 @@ namespace vultra_app::ui
         TextureSelection popupSelection;
         if (drawTextureSelectorPopup(ctx, popupId, state, uri, &popupSelection))
         {
-            uri = popupSelection.uri;
+            uri     = popupSelection.uri;
             changed = true;
         }
         return changed;
     }
 
-    bool drawTextureUuidField(EditorContext& ctx, const char* label, vultra::CoreUUID& uuid, TextureSelectorState& state)
+    bool
+    drawTextureUuidField(EditorContext& ctx, const char* label, vultra::CoreUUID& uuid, TextureSelectorState& state)
     {
-        bool changed = false;
-        std::string uri = textureUriForUuid(ctx, uuid);
+        bool        changed = false;
+        std::string uri     = textureUriForUuid(ctx, uuid);
 
         ImGui::TextUnformatted(label);
         ImGui::PushID(label);
         const float clearButtonSize = ImGui::GetFrameHeight();
-        const float fieldHeight = 40.0f;
-        const float width = std::max(1.0f, ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);
+        const float fieldHeight     = 40.0f;
+        const float width =
+            std::max(1.0f, ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);
         auto current = textureSelectionForUuid(ctx, uuid);
         if (uri.empty() && !current.uri.empty())
             uri = current.uri;
-        ImTextureID preview = current.sourcePath.empty() ? ImTextureID {} : thumbnailFor(ctx, state, current.sourcePath, fieldHeight);
+        ImTextureID preview =
+            current.sourcePath.empty() ? ImTextureID {} : thumbnailFor(ctx, state, current.sourcePath, fieldHeight);
         const std::string labelText = current.sourcePath.empty() ? std::string(uri) : trimLabel(current.sourcePath);
-        if (drawPreviewSelectorButton("##TextureUuidField", ICON_MDI_IMAGE, preview, labelText, uri, ImVec2(width, fieldHeight)))
+        if (drawPreviewSelectorButton(
+                "##TextureUuidField", ICON_MDI_IMAGE, preview, labelText, uri, ImVec2(width, fieldHeight)))
             ImGui::OpenPopup("TextureSelectorPopup");
 
         TextureSelection selection;
         if (drawTextureSelectorPopup(ctx, "TextureSelectorPopup", state, uri, &selection))
         {
-            uuid = selection.uuid;
+            uuid    = selection.uuid;
             changed = true;
         }
         ImGui::SameLine();
         if (ImGui::SmallButton(ICON_MDI_CLOSE) && uuid.valid())
         {
-            uuid = {};
+            uuid    = {};
             changed = true;
         }
         ImGui::PopID();

@@ -12,10 +12,7 @@ namespace vultra_app::ui
 {
     namespace
     {
-        ImVec4 toImVec4(const glm::vec4& color)
-        {
-            return {color.x, color.y, color.z, color.w};
-        }
+        ImVec4 toImVec4(const glm::vec4& color) { return {color.x, color.y, color.z, color.w}; }
 
         void applyThemePalette(const AppState::EditorSettings& settings)
         {
@@ -28,9 +25,9 @@ namespace vultra_app::ui
             else if (settings.theme == "Custom")
             {
                 theme::setPalette(theme::makeCustomPalette(toImVec4(settings.customThemeBackground),
-                                                            toImVec4(settings.customThemePanel),
-                                                            toImVec4(settings.customThemeText),
-                                                            toImVec4(settings.customThemeAccent)));
+                                                           toImVec4(settings.customThemePanel),
+                                                           toImVec4(settings.customThemeText),
+                                                           toImVec4(settings.customThemeAccent)));
             }
             else
                 theme::setPreset(theme::Preset::Dark);
@@ -38,7 +35,7 @@ namespace vultra_app::ui
 
         void applyCurrentThemeToImGuiStyle()
         {
-            auto& c = ImGui::GetStyle().Colors;
+            auto& c         = ImGui::GetStyle().Colors;
             namespace theme = vultra::imgui_theme;
 
             c[ImGuiCol_Text]                  = theme::text();
@@ -95,11 +92,11 @@ namespace vultra_app::ui
             c[ImGuiCol_NavWindowingDimBg]     = theme::withAlpha(theme::backgroundDeeper(), 0.35f);
             c[ImGuiCol_ModalWindowDimBg]      = theme::dim();
 #ifdef IMGUI_HAS_DOCK
-            c[ImGuiCol_DockingPreview]        = theme::accentTransparent(0.62f);
-            c[ImGuiCol_DockingEmptyBg]        = theme::backgroundDeep();
+            c[ImGuiCol_DockingPreview] = theme::accentTransparent(0.62f);
+            c[ImGuiCol_DockingEmptyBg] = theme::backgroundDeep();
 #endif
         }
-    }
+    } // namespace
 
     bool settingsNavItem(const char* label, const bool selected)
     {
@@ -127,10 +124,7 @@ namespace vultra_app::ui
         return true;
     }
 
-    void endSettingsRow()
-    {
-        ImGui::PopID();
-    }
+    void endSettingsRow() { ImGui::PopID(); }
 
     void drawInfoRegion(const char* text)
     {
@@ -145,8 +139,8 @@ namespace vultra_app::ui
     void alignSettingsButtonGroup(const int buttonCount, const float buttonWidth)
     {
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        const float width = static_cast<float>(buttonCount) * buttonWidth +
-                            static_cast<float>(std::max(buttonCount - 1, 0)) * spacing;
+        const float width =
+            static_cast<float>(buttonCount) * buttonWidth + static_cast<float>(std::max(buttonCount - 1, 0)) * spacing;
         const float cursorX = std::max(ImGui::GetCursorPosX(), ImGui::GetContentRegionMax().x - width);
         ImGui::SameLine(cursorX);
     }
@@ -171,7 +165,7 @@ namespace vultra_app::ui
         const float applicationScale = std::clamp(settings.applicationScale, 0.75f, 2.0f);
         const float textScale        = std::clamp(settings.textScale, 0.75f, 2.0f);
 
-        auto& io = ImGui::GetIO();
+        auto& io           = ImGui::GetIO();
         io.FontGlobalScale = textScale;
         applyThemePalette(settings);
         applyCurrentThemeToImGuiStyle();

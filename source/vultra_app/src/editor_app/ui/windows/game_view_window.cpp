@@ -45,7 +45,7 @@ namespace vultra_app
             if (!transform)
                 return glm::mat4 {1.0f};
 
-            const auto local = makeTransformMatrix(*transform);
+            const auto  local     = makeTransformMatrix(*transform);
             const auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(entity);
             if (!hierarchy || hierarchy->parent == entt::null || !reg.valid(hierarchy->parent))
                 return local;
@@ -64,8 +64,7 @@ namespace vultra_app
                 return glm::orthoRH_ZO(-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, zNear, zFar);
             }
 
-            return glm::perspectiveRH_ZO(
-                glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
+            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
         }
 
         entt::entity findPrimaryCamera(vultra::World& world)
@@ -73,7 +72,7 @@ namespace vultra_app
             auto& reg  = world.registry();
             auto  view = reg.view<vultra::IDComponent, vultra::TransformComponent, vultra::CameraComponent>();
 
-            entt::entity best = entt::null;
+            entt::entity best         = entt::null;
             int          bestPriority = std::numeric_limits<int>::min();
             for (auto e : view)
             {
@@ -94,29 +93,30 @@ namespace vultra_app
                                             const float           aspect,
                                             vultra::rhi::Texture* target)
         {
-            auto& reg       = world.registry();
-            auto& id        = reg.get<vultra::IDComponent>(entity);
-            auto& camera    = reg.get<vultra::CameraComponent>(entity);
+            auto& reg    = world.registry();
+            auto& id     = reg.get<vultra::IDComponent>(entity);
+            auto& camera = reg.get<vultra::CameraComponent>(entity);
 
             vultra::RenderCamera out {};
-            out.uuid        = id.uuid;
-            out.name        = reg.all_of<vultra::NameComponent>(entity) ? reg.get<vultra::NameComponent>(entity).name : "Game Camera";
-            out.priority    = camera.priority;
-            out.view        = glm::inverse(makeWorldTransformMatrix(reg, entity));
-            out.projection  = makeProjection(camera, aspect);
-            out.zNear       = std::max(camera.zNear, 0.0001f);
-            out.zFar        = std::max(camera.zFar, out.zNear + 0.0001f);
-            out.fovY        = glm::radians(camera.fovYDegrees);
-            out.target      = target;
-            out.clearValue  = camera.clearColor;
-            out.clearMode   = camera.clearMode;
-            out.renderImGui = false;
-            out.debugEntityIdOutput = false;
+            out.uuid = id.uuid;
+            out.name =
+                reg.all_of<vultra::NameComponent>(entity) ? reg.get<vultra::NameComponent>(entity).name : "Game Camera";
+            out.priority                = camera.priority;
+            out.view                    = glm::inverse(makeWorldTransformMatrix(reg, entity));
+            out.projection              = makeProjection(camera, aspect);
+            out.zNear                   = std::max(camera.zNear, 0.0001f);
+            out.zFar                    = std::max(camera.zFar, out.zNear + 0.0001f);
+            out.fovY                    = glm::radians(camera.fovYDegrees);
+            out.target                  = target;
+            out.clearValue              = camera.clearColor;
+            out.clearMode               = camera.clearMode;
+            out.renderImGui             = false;
+            out.debugEntityIdOutput     = false;
             out.selectionOutlineEnabled = false;
-            out.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
+            out.rendererKey             = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
             if (const auto* xrView = reg.try_get<vultra::XRViewComponent>(entity); xrView && xrView->enabled)
             {
-                out.xrViewEnabled = true;
+                out.xrViewEnabled  = true;
                 out.xrFallbackMono = xrView->fallbackMono;
             }
             return out;
@@ -127,7 +127,7 @@ namespace vultra_app
             auto& reg = world.registry();
             auto  e   = world.createEntity();
             reg.emplace<vultra::NameComponent>(e, vultra::NameComponent {"Camera"});
-            auto& transform = reg.get_or_emplace<vultra::TransformComponent>(e);
+            auto& transform    = reg.get_or_emplace<vultra::TransformComponent>(e);
             transform.position = {0.0f, 1.6f, 4.0f};
             transform.rotation = glm::quat(glm::radians(glm::vec3 {-12.0f, 180.0f, 0.0f}));
             transform.dirty    = true;
@@ -154,6 +154,17 @@ namespace vultra_app
                 std::snprintf(buffer, sizeof(buffer), "%.1f %s", value, kUnits[unit]);
             return buffer;
         }
+
+        ImVec2 fitAspectInside(const ImVec2 bounds, const float aspect)
+        {
+            const float safeWidth  = std::max(bounds.x, 1.0f);
+            const float safeHeight = std::max(bounds.y, 1.0f);
+            const float safeAspect = std::max(aspect, 0.0001f);
+
+            if (safeWidth / safeHeight > safeAspect)
+                return ImVec2(safeHeight * safeAspect, safeHeight);
+            return ImVec2(safeWidth, safeWidth / safeAspect);
+        }
     } // namespace
 
     GameViewWindow::GameViewWindow() : EditorWindow("Game View", ICON_MDI_GAMEPAD_VARIANT) {}
@@ -168,46 +179,42 @@ namespace vultra_app
 
         const bool visible =
             ImGui::Begin(title().c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-        const bool collapsed = visible && ImGui::IsWindowCollapsed();
+        const bool collapsed      = visible && ImGui::IsWindowCollapsed();
         ctx.state.gameViewVisible = visible && !collapsed;
         if (!visible || collapsed)
         {
-            if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
-                backendService->requestXRSession(false);
             ImGui::End();
             return;
         }
         drawToolbar(ctx);
 
         ImGui::BeginChild("##GameViewport", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-        ImVec2 avail = ImGui::GetContentRegionAvail();
-        avail.x      = std::max(1.0f, avail.x);
-        avail.y      = std::max(1.0f, avail.y);
+        ImVec2 avail        = ImGui::GetContentRegionAvail();
+        avail.x             = std::max(1.0f, avail.x);
+        avail.y             = std::max(1.0f, avail.y);
         m_LastViewportAvail = avail;
 
-        const ImVec2 outputSize = computeRenderSize(avail);
-        ctx.state.gameViewRenderWidth =
-            static_cast<uint32_t>(std::max(outputSize.x, 1.0f));
-        ctx.state.gameViewRenderHeight =
-            static_cast<uint32_t>(std::max(outputSize.y, 1.0f));
+        const ImVec2 outputSize        = computeRenderSize(avail);
+        ctx.state.gameViewRenderWidth  = static_cast<uint32_t>(std::max(outputSize.x, 1.0f));
+        ctx.state.gameViewRenderHeight = static_cast<uint32_t>(std::max(outputSize.y, 1.0f));
         ensureRenderTarget(ctx, static_cast<uint32_t>(outputSize.x), static_cast<uint32_t>(outputSize.y));
 
-        m_MinZoom = m_SelectedResolution == 0 ? 1.0f : computeFitZoom(avail, outputSize);
-        m_UserZoom = std::clamp(m_UserZoom, m_MinZoom, 4.0f);
-        const float zoom = m_SelectedResolution == 0 ? 1.0f : m_UserZoom;
+        m_MinZoom         = m_SelectedResolution == 0 ? 1.0f : computeFitZoom(avail, outputSize);
+        m_UserZoom        = std::clamp(m_UserZoom, m_MinZoom, 4.0f);
+        const float  zoom = m_SelectedResolution == 0 ? 1.0f : m_UserZoom;
         const ImVec2 displaySize {outputSize.x * zoom, outputSize.y * zoom};
-        ImVec2 cursor = ImGui::GetCursorPos();
+        ImVec2       cursor = ImGui::GetCursorPos();
         if (displaySize.x < avail.x)
             cursor.x += (avail.x - displaySize.x) * 0.5f;
         if (displaySize.y < avail.y)
             cursor.y += (avail.y - displaySize.y) * 0.5f;
         ImGui::SetCursorPos(cursor);
 
-        bool primaryCameraWantsXR = false;
-        bool xrBackendEnabled = false;
-        bool xrMirrorReady = false;
-        auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
-        auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        bool  primaryCameraWantsXR = false;
+        bool  xrBackendEnabled     = false;
+        bool  xrMirrorReady        = false;
+        auto* backendService       = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+        auto* imguiService         = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
 
         if (m_ActiveRenderTarget.textureId)
             ImGui::Image(m_ActiveRenderTarget.textureId, displaySize, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
@@ -224,8 +231,8 @@ namespace vultra_app
         {
             if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
             {
-                auto& world = worldService->world();
-                auto  cam   = findPrimaryCamera(world);
+                auto& world      = worldService->world();
+                auto  cam        = findPrimaryCamera(world);
                 hasPrimaryCamera = cam != entt::null;
                 if (hasPrimaryCamera)
                 {
@@ -234,16 +241,13 @@ namespace vultra_app
                         primaryCameraWantsXR = true;
                 }
                 xrBackendEnabled = backendService && backendService->isXREnabled();
-                if (backendService)
-                    backendService->requestXRSession(primaryCameraWantsXR);
 
-                auto* renderTarget =
-                    m_PendingRenderTarget.texture ? &*m_PendingRenderTarget.texture :
-                                                    (m_ActiveRenderTarget.texture ? &*m_ActiveRenderTarget.texture :
-                                                                                    nullptr);
+                auto* renderTarget = m_PendingRenderTarget.texture ?
+                                         &*m_PendingRenderTarget.texture :
+                                         (m_ActiveRenderTarget.texture ? &*m_ActiveRenderTarget.texture : nullptr);
                 if (hasPrimaryCamera && renderTarget != nullptr)
                 {
-                    const float aspect = outputSize.x / std::max(outputSize.y, 1.0f);
+                    const float aspect       = outputSize.x / std::max(outputSize.y, 1.0f);
                     auto        renderCamera = makeGameCamera(world, cam, aspect, renderTarget);
                     if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
                         cameraService->addManualCamera(renderCamera);
@@ -253,7 +257,7 @@ namespace vultra_app
 
         if (primaryCameraWantsXR && xrBackendEnabled && backendService && imguiService)
         {
-            const auto eyeViews = backendService->lastXREyeViews();
+            const auto   eyeViews    = backendService->lastXREyeViews();
             const size_t mirrorCount = std::min<std::size_t>(eyeViews.size(), m_XRMirrorTextureIds.size());
             for (size_t eyeIndex = 0; eyeIndex < mirrorCount; ++eyeIndex)
             {
@@ -265,7 +269,7 @@ namespace vultra_app
                 {
                     if (m_XRMirrorTextureIds[eyeIndex])
                         imguiService->removeTexture(m_XRMirrorTextureIds[eyeIndex]);
-                    m_XRMirrorTextures[eyeIndex] = mirror;
+                    m_XRMirrorTextures[eyeIndex]   = mirror;
                     m_XRMirrorTextureIds[eyeIndex] = imguiService->addTexture(*mirror);
                 }
             }
@@ -273,29 +277,43 @@ namespace vultra_app
             if (xrMirrorReady)
             {
                 dl->AddRectFilled(min, max, IM_COL32(10, 12, 16, 255));
-                const float spacing = ImGui::GetStyle().ItemSpacing.x;
-                const float slotWidth = std::max(1.0f, (displaySize.x - spacing) * 0.5f);
-                const float slotHeight = displaySize.y;
-                ImGui::SetCursorScreenPos(min);
+                const float spacing      = ImGui::GetStyle().ItemSpacing.x;
+                const float padding      = 8.0f;
+                const float labelHeight  = ImGui::GetTextLineHeight();
+                const float headerHeight = labelHeight + padding * 2.0f;
+                const float slotCount    = static_cast<float>(std::max<size_t>(mirrorCount, 1u));
+                const float slotWidth    = std::max(1.0f, (displaySize.x - spacing * (slotCount - 1.0f)) / slotCount);
+                const float slotHeight   = displaySize.y;
                 for (size_t eyeIndex = 0; eyeIndex < mirrorCount; ++eyeIndex)
                 {
                     if (!m_XRMirrorTextureIds[eyeIndex])
                         continue;
                     const auto* mirror = eyeViews[eyeIndex].mirrorTarget;
-                    const auto extent = mirror ? mirror->getExtent() : vultra::rhi::Extent2D {};
-                    const float nativeAspect = extent.height > 0u && extent.width > 0u ?
-                                                   static_cast<float>(extent.width) / static_cast<float>(extent.height) :
-                                                   1.0f;
-                    ImVec2 imageSize {slotWidth, std::min(slotHeight, slotWidth / std::max(nativeAspect, 0.0001f))};
-                    ImGui::BeginGroup();
-                    ImGui::Text("XR Eye %u", static_cast<unsigned>(eyeIndex));
-                    ImGui::Image(m_XRMirrorTextureIds[eyeIndex],
-                                 imageSize,
+                    const auto  extent = mirror ? mirror->getExtent() : vultra::rhi::Extent2D {};
+                    const float nativeAspect =
+                        extent.height > 0u && extent.width > 0u ?
+                            static_cast<float>(extent.width) / static_cast<float>(extent.height) :
+                            1.0f;
+                    const ImVec2 slotMin {min.x + static_cast<float>(eyeIndex) * (slotWidth + spacing), min.y};
+                    const ImVec2 slotMax {slotMin.x + slotWidth, slotMin.y + slotHeight};
+                    const ImVec2 imageAreaMin {slotMin.x + padding, slotMin.y + headerHeight};
+                    const ImVec2 imageAreaMax {slotMax.x - padding, slotMax.y - padding};
+                    const ImVec2 imageBounds {std::max(imageAreaMax.x - imageAreaMin.x, 1.0f),
+                                              std::max(imageAreaMax.y - imageAreaMin.y, 1.0f)};
+                    const ImVec2 imageSize = fitAspectInside(imageBounds, nativeAspect);
+                    const ImVec2 imageMin {imageAreaMin.x + (imageBounds.x - imageSize.x) * 0.5f,
+                                           imageAreaMin.y + (imageBounds.y - imageSize.y) * 0.5f};
+                    const ImVec2 imageMax {imageMin.x + imageSize.x, imageMin.y + imageSize.y};
+
+                    char label[32] {};
+                    std::snprintf(label, sizeof(label), "XR Eye %u", static_cast<unsigned>(eyeIndex));
+                    dl->AddText(ImVec2(slotMin.x + padding, slotMin.y + padding), IM_COL32(190, 204, 218, 255), label);
+                    dl->AddImage(m_XRMirrorTextureIds[eyeIndex],
+                                 imageMin,
+                                 imageMax,
                                  ImVec2(0.0f, 0.0f),
                                  ImVec2(1.0f, 1.0f));
-                    ImGui::EndGroup();
-                    if (eyeIndex + 1 < mirrorCount)
-                        ImGui::SameLine();
+                    dl->AddRect(imageMin, imageMax, IM_COL32(70, 78, 90, 255));
                 }
             }
         }
@@ -319,7 +337,7 @@ namespace vultra_app
                 if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
                 {
                     createDefaultCamera(worldService->world());
-                    ctx.state.sceneDirty = true;
+                    ctx.state.sceneDirty    = true;
                     ctx.state.statusMessage = "Created a primary Camera entity.";
                 }
             }
@@ -330,7 +348,8 @@ namespace vultra_app
             ImGui::SetCursorScreenPos(min);
             ui::emptyState(ICON_MDI_GOOGLE_CARDBOARD,
                            "XR Disabled",
-                           "OpenXR could not initialize. Check that a runtime/headset is available, or launch with --no-xr to disable XR.");
+                           "OpenXR could not initialize. Check that a runtime/headset is available, or launch with "
+                           "--no-xr to disable XR.");
         }
         else if (primaryCameraWantsXR && xrBackendEnabled && !xrMirrorReady)
         {
@@ -411,11 +430,12 @@ namespace vultra_app
     {
         const char* resolutionLabels[] = {"Free Aspect", "16:9", "4:3", "21:9", "1920x1080", "1280x720", "800x600"};
         ImGui::SetNextItemWidth(126.0f);
-        if (ImGui::Combo("##GameViewResolution", &m_SelectedResolution, resolutionLabels, IM_ARRAYSIZE(resolutionLabels)))
+        if (ImGui::Combo(
+                "##GameViewResolution", &m_SelectedResolution, resolutionLabels, IM_ARRAYSIZE(resolutionLabels)))
         {
             const auto renderSize = computeRenderSize(m_LastViewportAvail);
-            m_MinZoom = m_SelectedResolution == 0 ? 1.0f : computeFitZoom(m_LastViewportAvail, renderSize);
-            m_UserZoom = m_MinZoom;
+            m_MinZoom             = m_SelectedResolution == 0 ? 1.0f : computeFitZoom(m_LastViewportAvail, renderSize);
+            m_UserZoom            = m_MinZoom;
         }
 
         ImGui::SameLine();
@@ -429,9 +449,10 @@ namespace vultra_app
             ImGui::EndDisabled();
 
         ImGui::SameLine(0.0f, 14.0f);
-        const ImVec2 target = m_ActiveRenderTarget.texture ? ImVec2(static_cast<float>(m_ActiveRenderTarget.extent.width),
-                                                                    static_cast<float>(m_ActiveRenderTarget.extent.height))
-                                                           : ImVec2(0.0f, 0.0f);
+        const ImVec2 target = m_ActiveRenderTarget.texture ?
+                                  ImVec2(static_cast<float>(m_ActiveRenderTarget.extent.width),
+                                         static_cast<float>(m_ActiveRenderTarget.extent.height)) :
+                                  ImVec2(0.0f, 0.0f);
         ImGui::TextDisabled("Res: %dx%d", static_cast<int>(target.x), static_cast<int>(target.y));
 
         if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
@@ -443,8 +464,7 @@ namespace vultra_app
 
     ImVec2 GameViewWindow::computeRenderSize(const ImVec2& avail) const
     {
-        auto fitAspect = [&](const float aspect)
-        {
+        auto fitAspect = [&](const float aspect) {
             const float heightFromWidth = avail.x / aspect;
             if (heightFromWidth <= avail.y)
                 return ImVec2(std::max(1.0f, avail.x), std::max(1.0f, heightFromWidth));
@@ -453,20 +473,20 @@ namespace vultra_app
 
         switch (m_SelectedResolution)
         {
-        case 1:
-            return fitAspect(16.0f / 9.0f);
-        case 2:
-            return fitAspect(4.0f / 3.0f);
-        case 3:
-            return fitAspect(21.0f / 9.0f);
-        case 4:
-            return {1920.0f, 1080.0f};
-        case 5:
-            return {1280.0f, 720.0f};
-        case 6:
-            return {800.0f, 600.0f};
-        default:
-            return {std::max(1.0f, avail.x), std::max(1.0f, avail.y)};
+            case 1:
+                return fitAspect(16.0f / 9.0f);
+            case 2:
+                return fitAspect(4.0f / 3.0f);
+            case 3:
+                return fitAspect(21.0f / 9.0f);
+            case 4:
+                return {1920.0f, 1080.0f};
+            case 5:
+                return {1280.0f, 720.0f};
+            case 6:
+                return {800.0f, 600.0f};
+            default:
+                return {std::max(1.0f, avail.x), std::max(1.0f, avail.y)};
         }
     }
 
@@ -489,8 +509,7 @@ namespace vultra_app
             promotePendingRenderTarget(ctx);
         }
 
-        const auto& currentTarget =
-            m_PendingRenderTarget.texture ? m_PendingRenderTarget : m_ActiveRenderTarget;
+        const auto& currentTarget = m_PendingRenderTarget.texture ? m_PendingRenderTarget : m_ActiveRenderTarget;
         if (currentTarget.texture && currentTarget.extent.width == width && currentTarget.extent.height == height &&
             currentTarget.textureId)
             return;
@@ -516,9 +535,9 @@ namespace vultra_app
                 .setNumMipLevels(1)
                 .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
                 .build(rd);
-        m_PendingRenderTarget.textureId     = imguiService->addTexture(*m_PendingRenderTarget.texture);
-        m_PendingRenderTarget.frameCreated  = static_cast<uint64_t>(ImGui::GetFrameCount());
-        m_PendingRenderTarget.releaseFrame  = 0;
+        m_PendingRenderTarget.textureId    = imguiService->addTexture(*m_PendingRenderTarget.texture);
+        m_PendingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
+        m_PendingRenderTarget.releaseFrame = 0;
     }
 
     void GameViewWindow::promotePendingRenderTarget(EditorContext& ctx)
@@ -544,7 +563,7 @@ namespace vultra_app
 
     void GameViewWindow::collectRetiredRenderTargets(EditorContext& ctx)
     {
-        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+        const auto frame        = static_cast<uint64_t>(ImGui::GetFrameCount());
         auto*      imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
 
         std::size_t out = 0;
@@ -566,8 +585,6 @@ namespace vultra_app
 
     void GameViewWindow::releaseRenderTarget(EditorContext& ctx)
     {
-        if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
-            backendService->requestXRSession(false);
         clearXRMirrorPreview(ctx);
         if (ctx.services)
         {

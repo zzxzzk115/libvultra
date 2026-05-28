@@ -1,6 +1,6 @@
 #include "app_state.hpp"
-#include "editor_app/editor_settings_persistence.hpp"
 #include "editor_app/editor_app.hpp"
+#include "editor_app/editor_settings_persistence.hpp"
 #include "launch_options.hpp"
 #include "project_launcher/project_launcher.hpp"
 #include "vproject.hpp"
@@ -16,13 +16,13 @@
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
-#include <vultra/function/rendering/srp/renderer.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_renderer.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_rt_renderer.hpp>
-#include <vultra/function/services/scene_service.hpp>
+#include <vultra/function/rendering/srp/renderer.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
+#include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 
@@ -31,9 +31,9 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 
-#include <filesystem>
 #include <algorithm>
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -122,10 +122,8 @@ namespace
     public:
         VultraShellRenderer(vultra_app::AppState&        state,
                             vultra_app::ProjectLauncher& launcher,
-                            vultra_app::EditorApp&       editor) :
-            m_State(state), m_Launcher(launcher), m_Editor(editor)
-        {
-        }
+                            vultra_app::EditorApp& editor) : m_State(state), m_Launcher(launcher), m_Editor(editor)
+        {}
 
         std::string_view name() const override { return "editor-shell"; }
 
@@ -137,26 +135,25 @@ namespace
         {
             if (auto* services = getServices())
             {
-                auto* cameraService = services->tryGet<vultra::ICameraService>();
-                auto* windowService = services->tryGet<IWindowService>();
-                auto addEditorShellCamera = [&]() {
+                auto* cameraService        = services->tryGet<vultra::ICameraService>();
+                auto* windowService        = services->tryGet<IWindowService>();
+                auto  addEditorShellCamera = [&]() {
                     if (!cameraService || !windowService)
                         return;
 
-                    const auto extent = windowService->window().getExtent();
-                    const float width  = static_cast<float>(std::max(extent.x, 1));
-                    const float height = static_cast<float>(std::max(extent.y, 1));
+                    const auto           extent = windowService->window().getExtent();
+                    const float          width  = static_cast<float>(std::max(extent.x, 1));
+                    const float          height = static_cast<float>(std::max(extent.y, 1));
                     vultra::RenderCamera shellCamera {};
-                    shellCamera.name        = "Vultra Editor UI";
-                    shellCamera.priority    = 1000;
-                    shellCamera.view        = glm::lookAt(glm::vec3 {0.0f, 0.0f, 1.0f},
-                                                   glm::vec3 {0.0f, 0.0f, 0.0f},
-                                                   glm::vec3 {0.0f, 1.0f, 0.0f});
-                    shellCamera.projection  = glm::perspectiveRH_ZO(glm::radians(60.0f), width / height, 0.1f, 1000.0f);
-                    shellCamera.zNear       = 0.1f;
-                    shellCamera.zFar        = 1000.0f;
-                    shellCamera.fovY        = glm::radians(60.0f);
-                    shellCamera.clearValue  = {0.018f, 0.02f, 0.026f, 1.0f};
+                    shellCamera.name     = "Vultra Editor UI";
+                    shellCamera.priority = 1000;
+                    shellCamera.view     = glm::lookAt(
+                        glm::vec3 {0.0f, 0.0f, 1.0f}, glm::vec3 {0.0f, 0.0f, 0.0f}, glm::vec3 {0.0f, 1.0f, 0.0f});
+                    shellCamera.projection = glm::perspectiveRH_ZO(glm::radians(60.0f), width / height, 0.1f, 1000.0f);
+                    shellCamera.zNear      = 0.1f;
+                    shellCamera.zFar       = 1000.0f;
+                    shellCamera.fovY       = glm::radians(60.0f);
+                    shellCamera.clearValue = {0.018f, 0.02f, 0.026f, 1.0f};
                     shellCamera.renderImGui = true;
                     shellCamera.rendererKey = "editor-shell";
                     cameraService->addManualCamera(shellCamera);
@@ -193,15 +190,14 @@ namespace
         if (!cameraService || !windowService)
             return;
 
-        const auto extent = windowService->window().getExtent();
-        const float width  = static_cast<float>(std::max(extent.x, 1));
-        const float height = static_cast<float>(std::max(extent.y, 1));
+        const auto           extent = windowService->window().getExtent();
+        const float          width  = static_cast<float>(std::max(extent.x, 1));
+        const float          height = static_cast<float>(std::max(extent.y, 1));
         vultra::RenderCamera shellCamera {};
-        shellCamera.name        = "Vultra Editor UI";
-        shellCamera.priority    = 1000;
-        shellCamera.view        = glm::lookAt(glm::vec3 {0.0f, 0.0f, 1.0f},
-                                       glm::vec3 {0.0f, 0.0f, 0.0f},
-                                       glm::vec3 {0.0f, 1.0f, 0.0f});
+        shellCamera.name     = "Vultra Editor UI";
+        shellCamera.priority = 1000;
+        shellCamera.view =
+            glm::lookAt(glm::vec3 {0.0f, 0.0f, 1.0f}, glm::vec3 {0.0f, 0.0f, 0.0f}, glm::vec3 {0.0f, 1.0f, 0.0f});
         shellCamera.projection  = glm::perspectiveRH_ZO(glm::radians(60.0f), width / height, 0.1f, 1000.0f);
         shellCamera.zNear       = 0.1f;
         shellCamera.zFar        = 1000.0f;
@@ -240,10 +236,10 @@ namespace
                     m_State.currentProject = m_Options.projectPath;
                     if (auto project = vultra_app::loadVProject(m_Options.projectPath); project.has_value())
                     {
-                        m_State.currentProject      = project->projectDir;
-                        m_State.currentProjectName  = project->name;
-                        m_State.currentAssetRoot    = project->assetRoot;
-                        m_State.currentDefaultScene = project->defaultScene;
+                        m_State.currentProject            = project->projectDir;
+                        m_State.currentProjectName        = project->name;
+                        m_State.currentAssetRoot          = project->assetRoot;
+                        m_State.currentDefaultScene       = project->defaultScene;
                         m_State.currentEditingRenderGraph = project->editingRenderGraph;
                     }
                 }
@@ -315,8 +311,7 @@ namespace
             else
             {
                 engine.ctx().config.render.renderDeviceFeatureFlag =
-                    engine.ctx().config.render.renderDeviceFeatureFlag &
-                    ~vultra::rhi::RenderDeviceFeatureFlagBits::eXR;
+                    engine.ctx().config.render.renderDeviceFeatureFlag & ~vultra::rhi::RenderDeviceFeatureFlagBits::eXR;
             }
             if (m_Options.xrMirror.has_value())
                 engine.ctx().config.render.xr.mirror = *m_Options.xrMirror;
@@ -336,13 +331,12 @@ namespace
 
             if (m_State.mode != vultra_app::AppMode::Runtime)
             {
-                engine.ctx().config.render.xr.autoStartSessionFromScene = false;
-                engine.ctx().config.imgui.enableDocking = true;
-                engine.ctx().config.imgui.imguiIniFile  = "vultra_editor_layout_v2.ini";
-                engine.ctx().config.window.width        = m_Options.editorMode ? 640 : 1280;
-                engine.ctx().config.window.height       = m_Options.editorMode ? 360 : 720;
-                engine.ctx().config.window.resizable    = !m_Options.editorMode;
-                engine.ctx().config.window.visible      = !m_Options.editorMode;
+                engine.ctx().config.imgui.enableDocking                 = true;
+                engine.ctx().config.imgui.imguiIniFile                  = "vultra_editor_layout_v2.ini";
+                engine.ctx().config.window.width                        = m_Options.editorMode ? 640 : 1280;
+                engine.ctx().config.window.height                       = m_Options.editorMode ? 360 : 720;
+                engine.ctx().config.window.resizable                    = !m_Options.editorMode;
+                engine.ctx().config.window.visible                      = !m_Options.editorMode;
                 engine.ctx().config.window.decorated =
                     !m_Options.editorMode &&
                     engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eWebGPU;
@@ -406,19 +400,19 @@ namespace
                 }
             }
 
-            auto& sceneService = engine.ctx().services.require<vultra::ISceneService>();
-            auto& worldService = engine.ctx().services.require<vultra::IWorldService>();
-            const std::string sceneUri = m_Options.sceneUri.empty() ? "res://scenes/main.vscn" : m_Options.sceneUri;
+            auto&             sceneService = engine.ctx().services.require<vultra::ISceneService>();
+            auto&             worldService = engine.ctx().services.require<vultra::IWorldService>();
+            const std::string sceneUri     = m_Options.sceneUri.empty() ? "res://scenes/main.vscn" : m_Options.sceneUri;
             sceneService.instantiateScene(worldService.world(), sceneUri);
 
-            bool hasSceneCamera = false;
-            auto& world = worldService.world();
-            auto& reg   = world.registry();
-            auto  view  = reg.view<vultra::CameraComponent>();
+            bool  hasSceneCamera = false;
+            auto& world          = worldService.world();
+            auto& reg            = world.registry();
+            auto  view           = reg.view<vultra::CameraComponent>();
             for (auto entity : view)
             {
                 hasSceneCamera = true;
-                auto& camera = view.get<vultra::CameraComponent>(entity);
+                auto& camera   = view.get<vultra::CameraComponent>(entity);
                 if (camera.rendererKey.empty())
                     camera.rendererKey = "universal";
             }
@@ -455,7 +449,10 @@ namespace
 
             vultra_app::EditorContext ctx {.state = m_State, .services = &engineCtx().services};
             if (auto* cameraService = engineCtx().services.tryGet<vultra::ICameraService>())
+            {
                 cameraService->setWorldCamerasEnabled(false);
+                cameraService->setWorldXRCamerasEnabled(true);
+            }
 
             if (m_State.editorShutdownRequested && m_State.mode != vultra_app::AppMode::Editor)
             {
@@ -476,11 +473,11 @@ namespace
             m_Editor.shutdown(ctx);
         }
 
-        vultra_app::LaunchOptions             m_Options;
-        std::optional<std::filesystem::path>  m_VpkPath;
-        mutable vultra_app::AppState          m_State;
-        mutable vultra_app::ProjectLauncher   m_Launcher;
-        mutable vultra_app::EditorApp         m_Editor;
+        vultra_app::LaunchOptions            m_Options;
+        std::optional<std::filesystem::path> m_VpkPath;
+        mutable vultra_app::AppState         m_State;
+        mutable vultra_app::ProjectLauncher  m_Launcher;
+        mutable vultra_app::EditorApp        m_Editor;
     };
 } // namespace
 

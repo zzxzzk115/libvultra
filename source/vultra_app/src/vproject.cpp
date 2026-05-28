@@ -80,7 +80,8 @@ namespace vultra_app
     {
         namespace fs = std::filesystem;
 
-        fs::path        normalizedPath = path.extension() == ".vproject" ? path : vprojectFileFor(path, path.filename().generic_string());
+        fs::path normalizedPath =
+            path.extension() == ".vproject" ? path : vprojectFileFor(path, path.filename().generic_string());
         std::error_code ec;
         if (!fs::exists(normalizedPath, ec) && path.extension() != ".vproject" && fs::is_directory(path, ec))
         {
@@ -94,7 +95,7 @@ namespace vultra_app
             }
         }
 
-        std::ifstream  file(normalizedPath);
+        std::ifstream file(normalizedPath);
         if (!file)
             return std::nullopt;
 
@@ -173,7 +174,7 @@ namespace vultra_app
             return false;
         }
 
-        const auto manifestPath = assetRoot / kVPackageManifestPath;
+        const auto    manifestPath = assetRoot / kVPackageManifestPath;
         std::ofstream file(manifestPath, std::ios::trunc);
         if (!file)
         {
@@ -243,13 +244,8 @@ namespace vultra_app
 
         std::string text;
         text.resize(bytes.value().size());
-        std::transform(bytes.value().begin(),
-                       bytes.value().end(),
-                       text.begin(),
-                       [](std::byte b)
-                       {
-                           return static_cast<char>(b);
-                       });
+        std::transform(
+            bytes.value().begin(), bytes.value().end(), text.begin(), [](std::byte b) { return static_cast<char>(b); });
         return loadVPackageManifestText(text);
     }
 } // namespace vultra_app

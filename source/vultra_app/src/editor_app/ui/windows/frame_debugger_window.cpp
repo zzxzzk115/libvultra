@@ -14,8 +14,8 @@
 
 #include <algorithm>
 #include <cctype>
-#include <unordered_set>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace vultra_app
@@ -85,34 +85,33 @@ namespace vultra_app
         std::vector<FrameGraphEntry> parseSnapshot(std::string_view snapshot)
         {
             std::vector<FrameGraphEntry> entries;
-            size_t lineStart = 0;
+            size_t                       lineStart = 0;
             while (lineStart < snapshot.size())
             {
                 const size_t lineEnd = snapshot.find('\n', lineStart);
-                const auto   line = snapshot.substr(lineStart, lineEnd == std::string_view::npos ?
-                                                                  std::string_view::npos :
-                                                                  lineEnd - lineStart);
-                const auto   trimmed = trim(line);
+                const auto   line    = snapshot.substr(
+                    lineStart, lineEnd == std::string_view::npos ? std::string_view::npos : lineEnd - lineStart);
+                const auto trimmed = trim(line);
                 if (!trimmed.empty())
                 {
                     try
                     {
-                        auto        json = nlohmann::json::parse(trimmed);
-                        const auto  renderer = json.value("renderer", std::string {"renderer?"});
-                        const auto  camera = json.value("camera", std::string {"camera?"});
+                        auto        json      = nlohmann::json::parse(trimmed);
+                        const auto  renderer  = json.value("renderer", std::string {"renderer?"});
+                        const auto  camera    = json.value("camera", std::string {"camera?"});
                         const auto  nodeCount = json.value("nodes", nlohmann::json::array()).size();
-                        std::string key = renderer + "/" + camera;
-                        if (std::any_of(entries.begin(), entries.end(), [&](const auto& entry) { return entry.key == key; }))
+                        std::string key       = renderer + "/" + camera;
+                        if (std::any_of(
+                                entries.begin(), entries.end(), [&](const auto& entry) { return entry.key == key; }))
                             key += "#" + std::to_string(entries.size());
                         entries.push_back(FrameGraphEntry {
-                            .json = std::move(json),
-                            .key = key,
+                            .json  = std::move(json),
+                            .key   = key,
                             .label = camera + " - " + renderer + " (" + std::to_string(nodeCount) + " nodes)",
                         });
                     }
                     catch (const std::exception&)
-                    {
-                    }
+                    {}
                 }
 
                 if (lineEnd == std::string_view::npos)
@@ -154,9 +153,9 @@ namespace vultra_app
                 if (!nodeMatches(node, filter))
                     continue;
 
-                const auto id = node.value("id", std::string {});
-                const auto label = node.value("label", std::string {});
-                const auto kind = node.value("kind", std::string {});
+                const auto id        = node.value("id", std::string {});
+                const auto label     = node.value("label", std::string {});
+                const auto kind      = node.value("kind", std::string {});
                 const bool highlight = nodeMatches(node, "GBufferEntityId") || nodeMatches(node, "SelectionOutline") ||
                                        nodeMatches(node, "FinalComposition");
 
@@ -174,12 +173,12 @@ namespace vultra_app
                 if (kind == "resource")
                 {
                     const bool imported = node.value("imported", false);
-                    const int  version = node.value("version", 0);
+                    const int  version  = node.value("version", 0);
                     ImGui::Text("%s v%d", imported ? "import" : "runtime", version);
                 }
                 else
                 {
-                    const bool active = node.value("active", true);
+                    const bool active     = node.value("active", true);
                     const bool sideEffect = node.value("sideEffect", false);
                     ImGui::TextUnformatted(!active ? "inactive" : sideEffect ? "side" : "active");
                 }
@@ -209,9 +208,10 @@ namespace vultra_app
             for (const auto& edge : edges)
             {
                 const auto label = edge.value("label", std::string {});
-                const auto from = edge.value("from", std::string {});
-                const auto to = edge.value("to", std::string {});
-                if (!containsIgnoreCase(label, filter) && !containsIgnoreCase(from, filter) && !containsIgnoreCase(to, filter))
+                const auto from  = edge.value("from", std::string {});
+                const auto to    = edge.value("to", std::string {});
+                if (!containsIgnoreCase(label, filter) && !containsIgnoreCase(from, filter) &&
+                    !containsIgnoreCase(to, filter))
                     continue;
 
                 ImGui::TableNextRow();
@@ -255,8 +255,8 @@ namespace vultra_app
             return {};
         }
 
-        void drawPassResourceList(const char* title,
-                                  const nlohmann::json& graph,
+        void drawPassResourceList(const char*                     title,
+                                  const nlohmann::json&           graph,
                                   const std::vector<std::string>& resourceIds)
         {
             ImGui::TextUnformatted(title);
@@ -303,9 +303,9 @@ namespace vultra_app
                 if (node.value("kind", std::string {}) == "resource" || !nodeMatches(node, filter))
                     continue;
 
-                const auto id = node.value("id", std::string {});
-                const auto label = node.value("label", id);
-                const bool selected = id == selectedPassId;
+                const auto id        = node.value("id", std::string {});
+                const auto label     = node.value("label", id);
+                const bool selected  = id == selectedPassId;
                 const auto itemLabel = label + "##" + id;
                 if (ImGui::Selectable(itemLabel.c_str(), selected))
                     selectedPassId = id;
@@ -332,8 +332,8 @@ namespace vultra_app
             std::vector<std::string> outputs;
             for (const auto& edge : graph.value("edges", nlohmann::json::array()))
             {
-                const auto from = edge.value("from", std::string {});
-                const auto to = edge.value("to", std::string {});
+                const auto from  = edge.value("from", std::string {});
+                const auto to    = edge.value("to", std::string {});
                 const auto label = edge.value("label", std::string {});
                 if (to == selectedPassId && label == "read")
                     inputs.push_back(from);
@@ -349,16 +349,16 @@ namespace vultra_app
 
         float fitImageScale(const vultra::rhi::Extent2D extent, const ImVec2 available)
         {
-            const float width = static_cast<float>(std::max(extent.width, 1u));
-            const float height = static_cast<float>(std::max(extent.height, 1u));
-            const float availableWidth = std::max(1.0f, available.x);
+            const float width           = static_cast<float>(std::max(extent.width, 1u));
+            const float height          = static_cast<float>(std::max(extent.height, 1u));
+            const float availableWidth  = std::max(1.0f, available.x);
             const float availableHeight = std::max(1.0f, available.y);
             return std::min(availableWidth / width, availableHeight / height);
         }
 
         ImVec2 scaledImageSize(const vultra::rhi::Extent2D extent, const float scale)
         {
-            const float width = static_cast<float>(std::max(extent.width, 1u));
+            const float width  = static_cast<float>(std::max(extent.width, 1u));
             const float height = static_cast<float>(std::max(extent.height, 1u));
             return ImVec2 {std::max(1.0f, width * scale), std::max(1.0f, height * scale)};
         }
@@ -370,9 +370,9 @@ namespace vultra_app
                 return {};
 
             return backendService->renderDevice().getSampler(vultra::rhi::SamplerInfo {
-                .magFilter = vultra::rhi::TexelFilter::eNearest,
-                .minFilter = vultra::rhi::TexelFilter::eNearest,
-                .mipmapMode = vultra::rhi::MipmapMode::eNearest,
+                .magFilter    = vultra::rhi::TexelFilter::eNearest,
+                .minFilter    = vultra::rhi::TexelFilter::eNearest,
+                .mipmapMode   = vultra::rhi::MipmapMode::eNearest,
                 .addressModeS = vultra::rhi::SamplerAddressMode::eClampToEdge,
                 .addressModeT = vultra::rhi::SamplerAddressMode::eClampToEdge,
                 .addressModeR = vultra::rhi::SamplerAddressMode::eClampToEdge,
@@ -426,15 +426,15 @@ namespace vultra_app
             return;
         }
 
-        auto* frameDebugger = ctx.services ? ctx.services->tryGet<vultra::IFrameDebuggerService>() : nullptr;
-        auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
-        auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        auto* frameDebugger  = ctx.services ? ctx.services->tryGet<vultra::IFrameDebuggerService>() : nullptr;
+        auto* renderService  = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
+        auto* imguiService   = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
         auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
         if (imguiService)
         {
             constexpr uint64_t kDescriptorReleaseDelayFrames = 8u;
-            const uint64_t     frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-            std::size_t        out = 0;
+            const uint64_t     frame                         = static_cast<uint64_t>(ImGui::GetFrameCount());
+            std::size_t        out                           = 0;
             for (auto& entry : m_RetiredTextureCache)
             {
                 if (frame > entry.retireFrame + kDescriptorReleaseDelayFrames)
@@ -450,9 +450,9 @@ namespace vultra_app
             m_RetiredTextureCache.resize(out);
         }
 
-        const bool renderDocEnabled = frameDebugger && frameDebugger->isRenderDocEnabled();
+        const bool renderDocEnabled   = frameDebugger && frameDebugger->isRenderDocEnabled();
         const bool renderDocAvailable = renderDocEnabled && frameDebugger->isAvailable();
-        const bool capturing = frameDebugger && frameDebugger->isFrameCapturing();
+        const bool capturing          = frameDebugger && frameDebugger->isFrameCapturing();
 
         if (!renderDocAvailable || capturing)
             ImGui::BeginDisabled();
@@ -475,11 +475,11 @@ namespace vultra_app
         ImGui::SameLine();
         drawStatusChip("RenderDoc", renderDocAvailable);
         ImGui::SameLine();
-        ImGui::TextDisabled("captures=%u%s",
-                            frameDebugger ? frameDebugger->getCaptureCount() : 0,
-                            capturing ? ", capturing" : "");
+        ImGui::TextDisabled(
+            "captures=%u%s", frameDebugger ? frameDebugger->getCaptureCount() : 0, capturing ? ", capturing" : "");
 
-        const std::string liveSnapshot = renderService ? std::string(renderService->lastFrameGraphSnapshot()) : std::string {};
+        const std::string liveSnapshot =
+            renderService ? std::string(renderService->lastFrameGraphSnapshot()) : std::string {};
 
         ImGui::Separator();
         if (m_UseFrozenSnapshot)
@@ -497,7 +497,7 @@ namespace vultra_app
                 ImGui::BeginDisabled();
             if (ImGui::Button(ICON_MDI_PAUSE " Freeze Frame"))
             {
-                m_FrozenSnapshot = liveSnapshot;
+                m_FrozenSnapshot    = liveSnapshot;
                 m_UseFrozenSnapshot = !m_FrozenSnapshot.empty();
             }
             if (liveSnapshot.empty())
@@ -505,18 +505,18 @@ namespace vultra_app
         }
 
         const std::string& snapshot = m_UseFrozenSnapshot ? m_FrozenSnapshot : liveSnapshot;
-        auto               entries = parseSnapshot(snapshot);
+        auto               entries  = parseSnapshot(snapshot);
         if (entries.empty())
         {
-            ImGui::TextDisabled("%s", snapshot.empty() ? "No frame graph has been compiled yet." :
-                                                         "Frame graph snapshot is not parseable.");
+            ImGui::TextDisabled("%s",
+                                snapshot.empty() ? "No frame graph has been compiled yet." :
+                                                   "Frame graph snapshot is not parseable.");
             ImGui::End();
             return;
         }
 
-        auto selectedIt = std::find_if(entries.begin(), entries.end(), [&](const auto& entry) {
-            return entry.key == m_SelectedGraphKey;
-        });
+        auto selectedIt = std::find_if(
+            entries.begin(), entries.end(), [&](const auto& entry) { return entry.key == m_SelectedGraphKey; });
         if (selectedIt != entries.end())
             m_SelectedGraphIndex = static_cast<int>(std::distance(entries.begin(), selectedIt));
         else
@@ -532,7 +532,7 @@ namespace vultra_app
                 if (ImGui::Selectable(entries[static_cast<size_t>(i)].label.c_str(), selected))
                 {
                     m_SelectedGraphIndex = i;
-                    m_SelectedGraphKey = entries[static_cast<size_t>(i)].key;
+                    m_SelectedGraphKey   = entries[static_cast<size_t>(i)].key;
                 }
                 if (selected)
                     ImGui::SetItemDefaultFocus();
@@ -540,10 +540,10 @@ namespace vultra_app
             ImGui::EndCombo();
         }
 
-        const auto& graph = entries[static_cast<size_t>(m_SelectedGraphIndex)].json;
-        const auto  nodes = graph.value("nodes", nlohmann::json::array());
-        const auto  edges = graph.value("edges", nlohmann::json::array());
-        size_t      passCount = 0;
+        const auto& graph         = entries[static_cast<size_t>(m_SelectedGraphIndex)].json;
+        const auto  nodes         = graph.value("nodes", nlohmann::json::array());
+        const auto  edges         = graph.value("edges", nlohmann::json::array());
+        size_t      passCount     = 0;
         size_t      resourceCount = 0;
         for (const auto& node : nodes)
         {
@@ -559,7 +559,8 @@ namespace vultra_app
         ImGui::Spacing();
         drawStatusChip("GBufferEntityId", graphHasText(graph, "GBufferEntityId"));
         ImGui::SameLine();
-        drawStatusChip("DepthTexture", graphHasText(graph, "DepthTexture") || graphHasText(graph, "DirectGBufferDepth"));
+        drawStatusChip("DepthTexture",
+                       graphHasText(graph, "DepthTexture") || graphHasText(graph, "DirectGBufferDepth"));
         ImGui::SameLine();
         drawStatusChip("ShadowMap", graphHasText(graph, "ShadowMap") || graphHasText(graph, "DirectionalShadowMap"));
         ImGui::SameLine();
@@ -632,8 +633,8 @@ namespace vultra_app
                 {
                     if (!containsIgnoreCase(texture.name, filter) && !containsIgnoreCase(texture.camera, filter))
                         continue;
-                    const bool selected = texture.resourceKey == m_SelectedTextureKey;
-                    std::string label = texture.camera + " / " + texture.name;
+                    const bool  selected = texture.resourceKey == m_SelectedTextureKey;
+                    std::string label    = texture.camera + " / " + texture.name;
                     if (texture.imported)
                         label += " [import]";
                     if (!texture.capturable)
@@ -654,7 +655,7 @@ namespace vultra_app
                 if (selectedTextureIt == textures.end() && !textures.empty())
                 {
                     m_SelectedTextureKey = textures.front().resourceKey;
-                    selectedTextureIt = textures.begin();
+                    selectedTextureIt    = textures.begin();
                 }
 
                 if (selectedTextureIt == textures.end())
@@ -666,29 +667,29 @@ namespace vultra_app
                     const auto& texture = *selectedTextureIt;
                     if (m_TexturePreviewDepthDefaultsKey != texture.resourceKey)
                     {
-                        m_TexturePreviewDepthNear = std::max(texture.zNear, 0.0001f);
-                        m_TexturePreviewDepthFar = std::max(texture.zFar, m_TexturePreviewDepthNear + 0.0001f);
-                        m_TexturePreviewClampMin = 0.0f;
-                        m_TexturePreviewClampMax = 1.0f;
+                        m_TexturePreviewDepthNear        = std::max(texture.zNear, 0.0001f);
+                        m_TexturePreviewDepthFar         = std::max(texture.zFar, m_TexturePreviewDepthNear + 0.0001f);
+                        m_TexturePreviewClampMin         = 0.0f;
+                        m_TexturePreviewClampMax         = 1.0f;
                         m_TexturePreviewDepthDefaultsKey = texture.resourceKey;
                         if (ui::isDepthLikeTexture(texture))
                         {
                             m_TexturePreviewMode = ui::defaultTexturePreviewMode(texture);
                             if (isAutoFitClampUseful(texture))
                             {
-                                m_PendingTexturePreviewAutoFitKey = texture.resourceKey;
+                                m_PendingTexturePreviewAutoFitKey     = texture.resourceKey;
                                 m_PendingTexturePreviewAutoFitTexture = texture.texture;
-                                const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-                                m_PendingTexturePreviewAutoFitFrame = frame + 3u;
-                                m_PendingTexturePreviewAutoFitNextTryFrame = frame + 3u;
+                                const auto frame                      = static_cast<uint64_t>(ImGui::GetFrameCount());
+                                m_PendingTexturePreviewAutoFitFrame   = frame + 3u;
+                                m_PendingTexturePreviewAutoFitNextTryFrame  = frame + 3u;
                                 m_PendingTexturePreviewAutoFitDeadlineFrame = frame + 24u;
                             }
                             else
                             {
                                 m_PendingTexturePreviewAutoFitKey.clear();
-                                m_PendingTexturePreviewAutoFitTexture = nullptr;
-                                m_PendingTexturePreviewAutoFitFrame = 0u;
-                                m_PendingTexturePreviewAutoFitNextTryFrame = 0u;
+                                m_PendingTexturePreviewAutoFitTexture       = nullptr;
+                                m_PendingTexturePreviewAutoFitFrame         = 0u;
+                                m_PendingTexturePreviewAutoFitNextTryFrame  = 0u;
                                 m_PendingTexturePreviewAutoFitDeadlineFrame = 0u;
                             }
                         }
@@ -696,9 +697,9 @@ namespace vultra_app
                         {
                             m_TexturePreviewMode = ui::defaultTexturePreviewMode(texture);
                             m_PendingTexturePreviewAutoFitKey.clear();
-                            m_PendingTexturePreviewAutoFitTexture = nullptr;
-                            m_PendingTexturePreviewAutoFitFrame = 0u;
-                            m_PendingTexturePreviewAutoFitNextTryFrame = 0u;
+                            m_PendingTexturePreviewAutoFitTexture       = nullptr;
+                            m_PendingTexturePreviewAutoFitFrame         = 0u;
+                            m_PendingTexturePreviewAutoFitNextTryFrame  = 0u;
                             m_PendingTexturePreviewAutoFitDeadlineFrame = 0u;
                         }
                     }
@@ -732,15 +733,16 @@ namespace vultra_app
                     if (texture.imported)
                         ImGui::TextDisabled("Imported frame graph texture");
                     if (!texture.capturable)
-                        ImGui::TextDisabled("Preview unavailable: texture is not sampleable by the debug preview pass.");
+                        ImGui::TextDisabled(
+                            "Preview unavailable: texture is not sampleable by the debug preview pass.");
                     ImGui::SetNextItemWidth(180.0f);
-                    ImGui::Combo(
-                        "Mode",
-                        &m_TexturePreviewMode,
-                        "Color\0Raw Depth\0Linear Depth\0Inverted Linear Depth\0Alpha\0Normal\0");
+                    ImGui::Combo("Mode",
+                                 &m_TexturePreviewMode,
+                                 "Color\0Raw Depth\0Linear Depth\0Inverted Linear Depth\0Alpha\0Normal\0");
                     if (m_TexturePreviewMode == 2 || m_TexturePreviewMode == 3)
                     {
-                        ImGui::TextDisabled("Camera z: %.4f - %.1f", m_TexturePreviewDepthNear, m_TexturePreviewDepthFar);
+                        ImGui::TextDisabled(
+                            "Camera z: %.4f - %.1f", m_TexturePreviewDepthNear, m_TexturePreviewDepthFar);
                     }
                     auto autoFitClamp = [&]() {
                         if (!backendService || !texture.texture)
@@ -752,52 +754,52 @@ namespace vultra_app
                         // The preview target is already RGBA8 after applying the current mode. Read it once,
                         // sample sparsely on CPU, and derive the source-domain clamp range by inverting the
                         // previous clamp.
-                        float minValue = 1.0f;
-                        float maxValue = 0.0f;
-                        bool  found = false;
+                        float      minValue     = 1.0f;
+                        float      maxValue     = 0.0f;
+                        bool       found        = false;
                         const auto sampleCountX = std::min<uint32_t>(64u, std::max(texture.extent.width, 1u));
                         const auto sampleCountY = std::min<uint32_t>(64u, std::max(texture.extent.height, 1u));
                         for (uint32_t sy = 0; sy < sampleCountY; ++sy)
                         {
-                            const auto y = std::min(texture.extent.height - 1u,
-                                                    static_cast<uint32_t>((static_cast<uint64_t>(sy) *
-                                                                           texture.extent.height) /
-                                                                          sampleCountY));
+                            const auto y =
+                                std::min(texture.extent.height - 1u,
+                                         static_cast<uint32_t>((static_cast<uint64_t>(sy) * texture.extent.height) /
+                                                               sampleCountY));
                             for (uint32_t sx = 0; sx < sampleCountX; ++sx)
                             {
-                                const auto x = std::min(texture.extent.width - 1u,
-                                                        static_cast<uint32_t>((static_cast<uint64_t>(sx) *
-                                                                               texture.extent.width) /
-                                                                              sampleCountX));
+                                const auto x =
+                                    std::min(texture.extent.width - 1u,
+                                             static_cast<uint32_t>((static_cast<uint64_t>(sx) * texture.extent.width) /
+                                                                   sampleCountX));
                                 const auto offset = (static_cast<uint64_t>(y) * texture.extent.width + x) * 4u;
                                 if (offset + 2u >= pixels->size())
                                     continue;
-                                const float r = static_cast<float>((*pixels)[offset + 0u]) / 255.0f;
-                                const float g = static_cast<float>((*pixels)[offset + 1u]) / 255.0f;
-                                const float b = static_cast<float>((*pixels)[offset + 2u]) / 255.0f;
+                                const float r            = static_cast<float>((*pixels)[offset + 0u]) / 255.0f;
+                                const float g            = static_cast<float>((*pixels)[offset + 1u]) / 255.0f;
+                                const float b            = static_cast<float>((*pixels)[offset + 2u]) / 255.0f;
                                 const float displayValue = (m_TexturePreviewMode == 0) ? ((r + g + b) / 3.0f) : r;
                                 if (displayValue <= 0.001f || displayValue >= 0.999f)
                                     continue;
                                 minValue = std::min(minValue, displayValue);
                                 maxValue = std::max(maxValue, displayValue);
-                                found = true;
+                                found    = true;
                             }
                         }
 
                         if (!found)
                             return false;
 
-                        const float oldMin = m_TexturePreviewClampMin;
+                        const float oldMin   = m_TexturePreviewClampMin;
                         const float oldRange = std::max(m_TexturePreviewClampMax - m_TexturePreviewClampMin, 0.0001f);
-                        const float padding = std::max((maxValue - minValue) * 0.08f, 1.0f / 255.0f);
-                        const float low = std::max(0.0f, minValue - padding);
-                        const float high = std::min(1.0f, maxValue + padding);
+                        const float padding  = std::max((maxValue - minValue) * 0.08f, 1.0f / 255.0f);
+                        const float low      = std::max(0.0f, minValue - padding);
+                        const float high     = std::min(1.0f, maxValue + padding);
                         m_TexturePreviewClampMin = oldMin + low * oldRange;
                         m_TexturePreviewClampMax = oldMin + high * oldRange;
                         ui::normalizePreviewClamp(m_TexturePreviewClampMin, m_TexturePreviewClampMax);
                         return true;
                     };
-                    const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+                    const auto frame               = static_cast<uint64_t>(ImGui::GetFrameCount());
                     const bool pendingAutoFitReady = m_PendingTexturePreviewAutoFitKey == texture.resourceKey &&
                                                      texture.texture &&
                                                      frame >= m_PendingTexturePreviewAutoFitNextTryFrame &&
@@ -808,9 +810,9 @@ namespace vultra_app
                         if (autoFitClamp())
                         {
                             m_PendingTexturePreviewAutoFitKey.clear();
-                            m_PendingTexturePreviewAutoFitTexture = nullptr;
-                            m_PendingTexturePreviewAutoFitFrame = 0u;
-                            m_PendingTexturePreviewAutoFitNextTryFrame = 0u;
+                            m_PendingTexturePreviewAutoFitTexture       = nullptr;
+                            m_PendingTexturePreviewAutoFitFrame         = 0u;
+                            m_PendingTexturePreviewAutoFitNextTryFrame  = 0u;
                             m_PendingTexturePreviewAutoFitDeadlineFrame = 0u;
                         }
                         else if (frame < m_PendingTexturePreviewAutoFitDeadlineFrame)
@@ -820,9 +822,9 @@ namespace vultra_app
                         else
                         {
                             m_PendingTexturePreviewAutoFitKey.clear();
-                            m_PendingTexturePreviewAutoFitTexture = nullptr;
-                            m_PendingTexturePreviewAutoFitFrame = 0u;
-                            m_PendingTexturePreviewAutoFitNextTryFrame = 0u;
+                            m_PendingTexturePreviewAutoFitTexture       = nullptr;
+                            m_PendingTexturePreviewAutoFitFrame         = 0u;
+                            m_PendingTexturePreviewAutoFitNextTryFrame  = 0u;
                             m_PendingTexturePreviewAutoFitDeadlineFrame = 0u;
                         }
                     }
@@ -861,20 +863,20 @@ namespace vultra_app
                     ImGui::Checkbox("A", &m_TexturePreviewChannels[3]);
                     if (renderService)
                     {
-                        const auto previewSettings = ui::makeFrameGraphTexturePreviewSettings(m_SelectedTextureKey,
-                                                                                              m_TexturePreviewGammaCorrect,
-                                                                                              m_TexturePreviewChannels,
-                                                                                              m_TexturePreviewMode,
-                                                                                              m_TexturePreviewDepthNear,
-                                                                                              m_TexturePreviewDepthFar,
-                                                                                              m_TexturePreviewClampMin,
-                                                                                              m_TexturePreviewClampMax);
+                        const auto previewSettings =
+                            ui::makeFrameGraphTexturePreviewSettings(m_SelectedTextureKey,
+                                                                     m_TexturePreviewGammaCorrect,
+                                                                     m_TexturePreviewChannels,
+                                                                     m_TexturePreviewMode,
+                                                                     m_TexturePreviewDepthNear,
+                                                                     m_TexturePreviewDepthFar,
+                                                                     m_TexturePreviewClampMin,
+                                                                     m_TexturePreviewClampMax);
                         renderService->setFrameGraphTexturePreviewSettings(previewSettings);
                     }
-                    const int enabledChannelCount = (m_TexturePreviewChannels[0] ? 1 : 0) +
-                                                    (m_TexturePreviewChannels[1] ? 1 : 0) +
-                                                    (m_TexturePreviewChannels[2] ? 1 : 0) +
-                                                    (m_TexturePreviewChannels[3] ? 1 : 0);
+                    const int enabledChannelCount =
+                        (m_TexturePreviewChannels[0] ? 1 : 0) + (m_TexturePreviewChannels[1] ? 1 : 0) +
+                        (m_TexturePreviewChannels[2] ? 1 : 0) + (m_TexturePreviewChannels[3] ? 1 : 0);
                     if (m_TexturePreviewMode == 0 && enabledChannelCount == 0)
                         ImGui::TextDisabled("No channels selected; preview renders black.");
                     ImGui::Separator();
@@ -885,9 +887,8 @@ namespace vultra_app
                     }
                     else if (!texture.texture)
                     {
-                        ImGui::TextDisabled(texture.capturable ?
-                                                "Texture preview will update next frame." :
-                                                "Texture preview is unavailable for this resource.");
+                        ImGui::TextDisabled(texture.capturable ? "Texture preview will update next frame." :
+                                                                 "Texture preview is unavailable for this resource.");
                     }
                     else
                     {
@@ -902,7 +903,7 @@ namespace vultra_app
                         if (ImGui::SmallButton("1:1##FrameDebuggerTextureOneToOne"))
                         {
                             m_TexturePreviewFitToView = false;
-                            m_TexturePreviewScale = 1.0f;
+                            m_TexturePreviewScale     = 1.0f;
                         }
                         if (ImGui::IsItemHovered())
                             ImGui::SetTooltip("View at native resolution");
@@ -928,7 +929,7 @@ namespace vultra_app
                                 cached.retireFrame = static_cast<uint64_t>(ImGui::GetFrameCount());
                                 m_RetiredTextureCache.push_back(cached);
                             }
-                            cached.texture = texture.texture;
+                            cached.texture   = texture.texture;
                             cached.textureId = imguiService->addTexture(*texture.texture, makeTextureViewSampler(ctx));
                             cached.retireFrame = 0;
                         }
@@ -938,15 +939,15 @@ namespace vultra_app
                                           false,
                                           ImGuiWindowFlags_HorizontalScrollbar);
                         const ImVec2 available = ImGui::GetContentRegionAvail();
-                        const float fitScale = std::clamp(fitImageScale(texture.extent, available), 0.01f, 8.0f);
+                        const float  fitScale  = std::clamp(fitImageScale(texture.extent, available), 0.01f, 8.0f);
                         if (m_TexturePreviewFitToView)
                             m_TexturePreviewScale = fitScale;
                         else
                             m_TexturePreviewScale = std::clamp(m_TexturePreviewScale, 0.01f, 8.0f);
 
                         const ImVec2 imageSize = scaledImageSize(texture.extent, m_TexturePreviewScale);
-                        const float offsetX = std::max(0.0f, (available.x - imageSize.x) * 0.5f);
-                        const float offsetY = std::max(0.0f, (available.y - imageSize.y) * 0.5f);
+                        const float  offsetX   = std::max(0.0f, (available.x - imageSize.x) * 0.5f);
+                        const float  offsetY   = std::max(0.0f, (available.y - imageSize.y) * 0.5f);
                         if (offsetY > 0.0f)
                             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + offsetY);
                         if (offsetX > 0.0f)

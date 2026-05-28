@@ -7,10 +7,9 @@
 
 namespace vultra_app
 {
-    std::unordered_map<std::string, ImVec2>
-    computeLayeredGraphLayout(const std::vector<GraphLayoutNode>& nodes,
-                              const std::vector<GraphLayoutEdge>& edges,
-                              const GraphLayoutConfig&            config)
+    std::unordered_map<std::string, ImVec2> computeLayeredGraphLayout(const std::vector<GraphLayoutNode>& nodes,
+                                                                      const std::vector<GraphLayoutEdge>& edges,
+                                                                      const GraphLayoutConfig&            config)
     {
         std::unordered_map<std::string, size_t> index;
         index.reserve(nodes.size());
@@ -36,17 +35,17 @@ namespace vultra_app
                 continue;
 
             const ResolvedEdge resolved {
-                .from = from->second,
-                .to = to->second,
+                .from      = from->second,
+                .to        = to->second,
                 .fromOrder = edge.fromOrder,
-                .toOrder = edge.toOrder,
+                .toOrder   = edge.toOrder,
             };
             outgoing[from->second].push_back(resolved);
             incoming[to->second].push_back(resolved);
             ++indegree[to->second];
         }
 
-        std::vector<int> layer(nodes.size(), 0);
+        std::vector<int>    layer(nodes.size(), 0);
         std::vector<size_t> ready;
         for (size_t i = 0; i < nodes.size(); ++i)
             if (indegree[i] == 0)
@@ -67,7 +66,7 @@ namespace vultra_app
             for (const auto& edge : outgoing[current])
             {
                 const size_t next = edge.to;
-                layer[next] = std::max(layer[next], layer[current] + 1);
+                layer[next]       = std::max(layer[next], layer[current] + 1);
                 if (--indegree[next] == 0)
                 {
                     ready.push_back(next);
@@ -178,12 +177,12 @@ namespace vultra_app
         std::vector<float> adjustedLane = lane;
         for (const int layerIndex : layerKeys)
         {
-            const auto& layerNodes = layers[layerIndex];
+            const auto& layerNodes     = layers[layerIndex];
             float       previousBottom = -std::numeric_limits<float>::infinity();
             for (const size_t node : layerNodes)
             {
                 adjustedLane[node] = std::max(adjustedLane[node], previousBottom + config.laneGap);
-                previousBottom = adjustedLane[node] + std::max(nodes[node].heightLanes, 1.0f);
+                previousBottom     = adjustedLane[node] + std::max(nodes[node].heightLanes, 1.0f);
             }
         }
 
@@ -196,7 +195,8 @@ namespace vultra_app
         for (const int layerIndex : layerKeys)
         {
             const auto& layerNodes = layers[layerIndex];
-            const bool  sinkColumn = std::ranges::any_of(layerNodes, [&](const size_t node) { return nodes[node].sink; });
+            const bool  sinkColumn =
+                std::ranges::any_of(layerNodes, [&](const size_t node) { return nodes[node].sink; });
             const float x = config.origin.x + static_cast<float>(layerIndex) * config.columnSpacing +
                             (sinkColumn ? config.sinkExtraSpacing : 0.0f);
             for (const size_t node : layerNodes)

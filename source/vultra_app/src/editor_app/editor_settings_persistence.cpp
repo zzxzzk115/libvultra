@@ -72,16 +72,14 @@ namespace vultra_app
             if (std::find(validThemes.begin(), validThemes.end(), settings.theme) == validThemes.end())
                 settings.theme = "Dark";
 
-            settings.applicationScale = std::clamp(settings.applicationScale, 0.75f, 2.0f);
-            settings.textScale        = std::clamp(settings.textScale, 0.75f, 2.0f);
+            settings.applicationScale  = std::clamp(settings.applicationScale, 0.75f, 2.0f);
+            settings.textScale         = std::clamp(settings.textScale, 0.75f, 2.0f);
             settings.interfaceFontSize = std::clamp(settings.interfaceFontSize, 10, 24);
             settings.monospaceFontSize = std::clamp(settings.monospaceFontSize, 10, 24);
         }
     } // namespace
 
-    bool loadEditorSettings(const std::filesystem::path& path,
-                            AppState::EditorSettings&   settings,
-                            std::string*                error)
+    bool loadEditorSettings(const std::filesystem::path& path, AppState::EditorSettings& settings, std::string* error)
     {
         namespace fs = std::filesystem;
 
@@ -151,9 +149,8 @@ namespace vultra_app
         }
     }
 
-    bool saveEditorSettings(const std::filesystem::path&        path,
-                            const AppState::EditorSettings&    settings,
-                            std::string*                       error)
+    bool
+    saveEditorSettings(const std::filesystem::path& path, const AppState::EditorSettings& settings, std::string* error)
     {
         namespace fs = std::filesystem;
 

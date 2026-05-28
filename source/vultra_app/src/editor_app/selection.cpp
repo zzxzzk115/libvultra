@@ -5,8 +5,8 @@
 namespace vultra_app
 {
     std::unordered_map<SelectionCategory, std::vector<vultra::CoreUUID>> Selection::s_Selected;
-    SelectionCategory                                                   Selection::s_LastCategory {SelectionCategory::None};
-    vultra::CoreUUID                                                    Selection::s_LastId {};
+    SelectionCategory Selection::s_LastCategory {SelectionCategory::None};
+    vultra::CoreUUID  Selection::s_LastId {};
 
     void Selection::select(SelectionCategory category, vultra::CoreUUID id)
     {

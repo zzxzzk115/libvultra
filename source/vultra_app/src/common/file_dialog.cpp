@@ -17,14 +17,14 @@ namespace vultra_app::ui
         {
             switch (mode)
             {
-            case FileDialogMode::Directory:
-                return nullptr;
-            case FileDialogMode::File:
-                return ".*";
-            case FileDialogMode::ProjectFile:
-                return ".vproject";
-            case FileDialogMode::LuaScript:
-                return ".lua";
+                case FileDialogMode::Directory:
+                    return nullptr;
+                case FileDialogMode::File:
+                    return ".*";
+                case FileDialogMode::ProjectFile:
+                    return ".vproject";
+                case FileDialogMode::LuaScript:
+                    return ".lua";
             }
             return nullptr;
         }
@@ -33,9 +33,8 @@ namespace vultra_app::ui
         {
             return ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
                    ImGuiFileDialogFlags_HideColumnSize | ImGuiFileDialogFlags_HideColumnDate |
-                   ImGuiFileDialogFlags_DontShowHiddenFiles |
-                   ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering | ImGuiFileDialogFlags_NaturalSorting |
-                   ImGuiFileDialogFlags_DisableThumbnailMode;
+                   ImGuiFileDialogFlags_DontShowHiddenFiles | ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering |
+                   ImGuiFileDialogFlags_NaturalSorting | ImGuiFileDialogFlags_DisableThumbnailMode;
         }
 
         void configureFileDialogStyles()
@@ -127,9 +126,8 @@ namespace vultra_app::ui
     bool FileDialogField::display(char* buffer, std::size_t bufferSize)
     {
         ScopedPopupStyle style;
-        if (!ImGuiFileDialog::Instance()->Display(m_Key,
-                                                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
-                                                  ImVec2(640.0f, 420.0f)))
+        if (!ImGuiFileDialog::Instance()->Display(
+                m_Key, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings, ImVec2(640.0f, 420.0f)))
             return false;
 
         bool changed = false;

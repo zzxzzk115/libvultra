@@ -20,10 +20,7 @@ namespace vultra_app
         }
     } // namespace
 
-    ProjectFileWatcher::~ProjectFileWatcher()
-    {
-        stop();
-    }
+    ProjectFileWatcher::~ProjectFileWatcher() { stop(); }
 
     void ProjectFileWatcher::setRoot(const std::filesystem::path& assetRoot)
     {
@@ -66,10 +63,7 @@ namespace vultra_app
         m_StopRequested.store(false, std::memory_order_release);
     }
 
-    bool ProjectFileWatcher::consumeChanged()
-    {
-        return m_Changed.exchange(false, std::memory_order_acq_rel);
-    }
+    bool ProjectFileWatcher::consumeChanged() { return m_Changed.exchange(false, std::memory_order_acq_rel); }
 
     void ProjectFileWatcher::startLocked(const std::filesystem::path& assetRoot)
     {
@@ -94,22 +88,20 @@ namespace vultra_app
             }
 
             std::vector<unsigned char> buffer(64 * 1024);
-            OVERLAPPED overlapped {};
+            OVERLAPPED                 overlapped {};
             overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
             if (overlapped.hEvent)
             {
                 while (!m_StopRequested.load(std::memory_order_acquire))
                 {
                     ResetEvent(overlapped.hEvent);
-                    DWORD bytesReturned = 0;
-                    const BOOL ok = ReadDirectoryChangesW(handle,
+                    DWORD      bytesReturned = 0;
+                    const BOOL ok            = ReadDirectoryChangesW(handle,
                                                           buffer.data(),
                                                           static_cast<DWORD>(buffer.size()),
                                                           TRUE,
-                                                          FILE_NOTIFY_CHANGE_FILE_NAME |
-                                                              FILE_NOTIFY_CHANGE_DIR_NAME |
-                                                              FILE_NOTIFY_CHANGE_SIZE |
-                                                              FILE_NOTIFY_CHANGE_LAST_WRITE,
+                                                          FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
+                                                              FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE,
                                                           nullptr,
                                                           &overlapped,
                                                           nullptr);
@@ -157,15 +149,14 @@ namespace vultra_app
         std::unique_lock lock(m_Mutex);
         while (!m_StopRequested.load(std::memory_order_acquire))
         {
-            if (m_Cv.wait_for(lock, kPollInterval, [this]() {
-                    return m_StopRequested.load(std::memory_order_acquire);
-                }))
+            if (m_Cv.wait_for(
+                    lock, kPollInterval, [this]() { return m_StopRequested.load(std::memory_order_acquire); }))
             {
                 break;
             }
 
             lock.unlock();
-            Snapshot current = scanRoot(assetRoot);
+            Snapshot   current = scanRoot(assetRoot);
             const bool changed = current != previous;
             if (changed)
                 previous = std::move(current);
@@ -181,15 +172,13 @@ namespace vultra_app
 
     ProjectFileWatcher::Snapshot ProjectFileWatcher::scanRoot(const std::filesystem::path& root)
     {
-        Snapshot snapshot;
+        Snapshot        snapshot;
         std::error_code ec;
         if (root.empty() || !std::filesystem::exists(root, ec) || ec)
             return snapshot;
 
-        for (auto it = std::filesystem::recursive_directory_iterator(root,
-                                                                     std::filesystem::directory_options::
-                                                                         skip_permission_denied,
-                                                                     ec);
+        for (auto it = std::filesystem::recursive_directory_iterator(
+                 root, std::filesystem::directory_options::skip_permission_denied, ec);
              it != std::filesystem::recursive_directory_iterator {};
              it.increment(ec))
         {
@@ -197,8 +186,8 @@ namespace vultra_app
                 break;
 
             const auto& entry = *it;
-            const auto path = entry.path();
-            const auto name = path.filename().generic_string();
+            const auto  path  = entry.path();
+            const auto  name  = path.filename().generic_string();
             if (name == ".vultra" || name == ".git")
             {
                 if (entry.is_directory(ec) && !ec)

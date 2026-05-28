@@ -1,11 +1,11 @@
 #include "common/asset_preview_cache.hpp"
 
+#include <vultra/core/rhi/util.hpp>
+#include <vultra/function/resource/vtexture_loader.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/gpu_resource_service.hpp>
 #include <vultra/function/services/imgui_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
-#include <vultra/function/resource/vtexture_loader.hpp>
-#include <vultra/core/rhi/util.hpp>
 
 #include <texture_headers/editor/folder_icon.png.bintex.h>
 
@@ -22,10 +22,9 @@ namespace vultra_app::ui
         bool hasExtension(const std::filesystem::path& path, std::initializer_list<const char*> exts)
         {
             auto ext = path.extension().generic_string();
-            std::transform(ext.begin(),
-                           ext.end(),
-                           ext.begin(),
-                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
             return std::any_of(exts.begin(), exts.end(), [&](const char* candidate) { return ext == candidate; });
         }
 
@@ -51,10 +50,9 @@ namespace vultra_app::ui
         vasset::VTextureFileFormat textureFileFormatForPath(const std::filesystem::path& path)
         {
             auto ext = path.extension().generic_string();
-            std::transform(ext.begin(),
-                           ext.end(),
-                           ext.begin(),
-                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
 
             if (ext == ".png")
                 return vasset::VTextureFileFormat::ePNG;
@@ -96,7 +94,7 @@ namespace vultra_app::ui
 
     std::string AssetPreviewCache::textureUriFor(EditorContext& ctx, const std::filesystem::path& path) const
     {
-        const auto assetRoot = ctx.state.currentProject / ctx.state.currentAssetRoot;
+        const auto      assetRoot = ctx.state.currentProject / ctx.state.currentAssetRoot;
         std::error_code relEc;
         const auto      rel = std::filesystem::relative(path, assetRoot, relEc);
         if (relEc)
@@ -121,9 +119,8 @@ namespace vultra_app::ui
         return !uri.empty() && m_TexturePreviewIds.find(std::string(uri)) != m_TexturePreviewIds.end();
     }
 
-    ImTextureID AssetPreviewCache::getTexturePreview(EditorContext& ctx,
-                                                     const std::filesystem::path& path,
-                                                     bool                         allowLoad)
+    ImTextureID
+    AssetPreviewCache::getTexturePreview(EditorContext& ctx, const std::filesystem::path& path, bool allowLoad)
     {
         const auto uri = textureUriFor(ctx, path);
         return getTexturePreview(ctx, std::string_view(uri), allowLoad);
@@ -162,7 +159,7 @@ namespace vultra_app::ui
             return {};
         }
 
-        auto&             handle = m_TextureHandles[uri];
+        auto& handle = m_TextureHandles[uri];
         if (!handle)
         {
             if (!allowLoad)
@@ -212,9 +209,8 @@ namespace vultra_app::ui
         return it != m_ImageFilePreviews.end() && it->second.textureId;
     }
 
-    ImTextureID AssetPreviewCache::getImageFilePreview(EditorContext&            ctx,
-                                                       const std::filesystem::path& path,
-                                                       const bool                 allowLoad)
+    ImTextureID
+    AssetPreviewCache::getImageFilePreview(EditorContext& ctx, const std::filesystem::path& path, const bool allowLoad)
     {
         m_LastError.clear();
         syncProject(ctx);
@@ -225,7 +221,7 @@ namespace vultra_app::ui
             return {};
         }
 
-        const std::string key = path.lexically_normal().generic_string();
+        const std::string key    = path.lexically_normal().generic_string();
         auto&             cached = m_ImageFilePreviews[key];
         if (cached.textureId)
             return cached.textureId;
@@ -243,7 +239,7 @@ namespace vultra_app::ui
         }
 
         auto* renderBackendService = ctx.services->tryGet<vultra::IRenderBackendService>();
-        auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>();
+        auto* imguiService         = ctx.services->tryGet<vultra::IImGuiService>();
         if (!renderBackendService || !imguiService)
         {
             m_LastError = "Image file preview services are not available.";
@@ -275,22 +271,21 @@ namespace vultra_app::ui
             return {};
         }
 
-        auto& rd = renderBackendService->renderDevice();
-        auto result = vultra::resource::loadTextureFromVTexture(texture, rd);
+        auto& rd     = renderBackendService->renderDevice();
+        auto  result = vultra::resource::loadTextureFromVTexture(texture, rd);
         if (!result)
         {
             m_LastError = "Failed to load image file preview: " + result.error();
             return {};
         }
 
-        cached.texture = std::move(result.value());
+        cached.texture   = std::move(result.value());
         cached.textureId = imguiService->addTexture(*cached.texture);
         return cached.textureId;
     }
 
-    ImTextureID AssetPreviewCache::getBuiltinIcon(EditorContext& ctx,
-                                                  const BuiltinAssetIcon icon,
-                                                  const float            requestedSize)
+    ImTextureID
+    AssetPreviewCache::getBuiltinIcon(EditorContext& ctx, const BuiltinAssetIcon icon, const float requestedSize)
     {
         (void)requestedSize;
         m_LastError.clear();
@@ -303,28 +298,28 @@ namespace vultra_app::ui
         }
 
         auto* renderBackendService = ctx.services->tryGet<vultra::IRenderBackendService>();
-        auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>();
+        auto* imguiService         = ctx.services->tryGet<vultra::IImGuiService>();
         if (!renderBackendService || !imguiService)
         {
             m_LastError = "Icon preview services are not available.";
             return {};
         }
 
-        const auto     key  = builtinIconKey(icon);
-        auto&          cached = m_BuiltinIcons[key];
+        const auto key    = builtinIconKey(icon);
+        auto&      cached = m_BuiltinIcons[key];
         if (cached.textureId)
             return cached.textureId;
 
-        auto& rd = renderBackendService->renderDevice();
-        auto texture = makeBuiltinFolderIconTexture();
-        auto result  = vultra::resource::loadTextureFromVTexture(texture, rd);
+        auto& rd      = renderBackendService->renderDevice();
+        auto  texture = makeBuiltinFolderIconTexture();
+        auto  result  = vultra::resource::loadTextureFromVTexture(texture, rd);
         if (!result)
         {
             m_LastError = "Failed to load builtin folder icon: " + result.error();
             return {};
         }
 
-        cached.texture = std::move(result.value());
+        cached.texture   = std::move(result.value());
         cached.textureId = imguiService->addTexture(*cached.texture);
         return cached.textureId;
     }

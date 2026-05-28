@@ -11,10 +11,7 @@ namespace vultra_app
 {
     namespace
     {
-        uint32_t levelBit(vultra::Logger::Level level)
-        {
-            return 1u << static_cast<uint32_t>(level);
-        }
+        uint32_t levelBit(vultra::Logger::Level level) { return 1u << static_cast<uint32_t>(level); }
 
         const char* levelIcon(vultra::Logger::Level level)
         {
@@ -88,8 +85,8 @@ namespace vultra_app
 
         const float levelButtonWidth =
             ImGui::CalcTextSize(levelIcon(vultra::Logger::Level::eInfo)).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-        const float levelButtonsWidth =
-            (levelButtonWidth + ImGui::GetStyle().ItemSpacing.x) * static_cast<float>(vultra::Logger::Level::eMaxLevels);
+        const float levelButtonsWidth = (levelButtonWidth + ImGui::GetStyle().ItemSpacing.x) *
+                                        static_cast<float>(vultra::Logger::Level::eMaxLevels);
 
         ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(0, 0, 0, 0));
         m_Filter.Draw("##ConsoleFilter", ImGui::GetContentRegionAvail().x - levelButtonsWidth - 112.0f);
@@ -97,8 +94,8 @@ namespace vultra_app
 
         for (int i = 0; i < static_cast<int>(vultra::Logger::Level::eMaxLevels); ++i)
         {
-            const auto level = static_cast<vultra::Logger::Level>(i);
-            const auto bit   = levelBit(level);
+            const auto level   = static_cast<vultra::Logger::Level>(i);
+            const auto bit     = levelBit(level);
             const bool enabled = (m_LevelMask & bit) != 0;
             ImGui::SameLine();
             ImGui::PushStyleColor(ImGuiCol_Text, enabled ? levelColor(level) : ImVec4(0.5f, 0.5f, 0.5f, 0.55f));
@@ -122,8 +119,8 @@ namespace vultra_app
 
         if (ImGui::BeginTable("ConsoleMessages",
                               2,
-                              ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_Borders | ImGuiTableFlags_SizingStretchProp |
-                                  ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg))
+                              ImGuiTableFlags_NoSavedSettings | ImGuiTableFlags_Borders |
+                                  ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg))
         {
             ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 46.0f);
             ImGui::TableSetupColumn("Message");
@@ -162,18 +159,16 @@ namespace vultra_app
         if (m_Subscribed)
             return;
 
-        vultra::commonContext.logger.on<vultra::Logger::LogEvent>(
-            [this](const vultra::Logger::LogEvent& event, auto&)
-            {
-                if (event.region != vultra::Logger::Region::eClient)
-                    return;
+        vultra::commonContext.logger.on<vultra::Logger::LogEvent>([this](const vultra::Logger::LogEvent& event, auto&) {
+            if (event.region != vultra::Logger::Region::eClient)
+                return;
 
-                m_Logs.push_back(LogEntry {.region = event.region, .level = event.level, .message = event.msg});
-                if (m_Logs.size() > 3500)
-                    m_Logs.erase(m_Logs.begin(), m_Logs.begin() + 500);
-                if (m_AutoScroll)
-                    m_RequestScrollToBottom = true;
-            });
+            m_Logs.push_back(LogEntry {.region = event.region, .level = event.level, .message = event.msg});
+            if (m_Logs.size() > 3500)
+                m_Logs.erase(m_Logs.begin(), m_Logs.begin() + 500);
+            if (m_AutoScroll)
+                m_RequestScrollToBottom = true;
+        });
 
         m_Subscribed = true;
     }

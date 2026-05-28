@@ -6,6 +6,7 @@
 
 #include <vultra/core/rhi/sampler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
+#include <vultra/function/rendering/srp/builtin/passes/xr_view_synthesis_pass.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/imgui_service.hpp>
@@ -32,13 +33,13 @@
 #include <nlohmann/json.hpp>
 #include <sol/sol.hpp>
 
-#include <entt/entity/entity.hpp>
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cmath>
-#include <cstring>
 #include <cstdio>
+#include <cstring>
+#include <entt/entity/entity.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -78,10 +79,7 @@ namespace vultra_app
             return h == 0 ? 1 : h;
         }
 
-        int stableId(std::string_view text)
-        {
-            return static_cast<int>(fnv1a32(text) & 0x7fffffffu);
-        }
+        int stableId(std::string_view text) { return static_cast<int>(fnv1a32(text) & 0x7fffffffu); }
 
         std::optional<ResRef> parseResRef(std::string_view ref)
         {
@@ -158,7 +156,8 @@ namespace vultra_app
 
         bool hasResource(const vrendergraph::RenderGraphDesc& graph, std::string_view name)
         {
-            return std::any_of(graph.resources.begin(), graph.resources.end(), [&](const auto& r) { return r.name == name; });
+            return std::any_of(
+                graph.resources.begin(), graph.resources.end(), [&](const auto& r) { return r.name == name; });
         }
 
         void applyRenderGraphAutoLayout(const vrendergraph::RenderGraphRegistry& registry,
@@ -181,7 +180,7 @@ namespace vultra_app
                     if (const auto* source = findPass(graph, parsed->node); source && registry.contains(source->type))
                     {
                         const auto& outputs = registry.get(source->type).outputs;
-                        const auto  outIt = std::find(outputs.begin(), outputs.end(), parsed->slot);
+                        const auto  outIt   = std::find(outputs.begin(), outputs.end(), parsed->slot);
                         if (outIt != outputs.end())
                             fromOrder = static_cast<int>(std::distance(outputs.begin(), outIt));
                     }
@@ -190,15 +189,15 @@ namespace vultra_app
                     if (registry.contains(pass.type))
                     {
                         const auto& inputs = registry.get(pass.type).inputs;
-                        const auto  it = std::find(inputs.begin(), inputs.end(), slot);
+                        const auto  it     = std::find(inputs.begin(), inputs.end(), slot);
                         if (it != inputs.end())
                             toOrder = static_cast<int>(std::distance(inputs.begin(), it));
                     }
                     edges.push_back({
-                        .from = parsed->node,
-                        .to = pass.id,
+                        .from      = parsed->node,
+                        .to        = pass.id,
                         .fromOrder = fromOrder,
-                        .toOrder = toOrder,
+                        .toOrder   = toOrder,
                     });
                     hasOutgoing[parsed->node] = true;
                 }
@@ -208,33 +207,32 @@ namespace vultra_app
             nodes.reserve(graph.passes.size());
             for (size_t i = 0; i < graph.passes.size(); ++i)
             {
-                const auto& pass = graph.passes[i];
-                const auto* def = registry.contains(pass.type) ? &registry.get(pass.type) : nullptr;
-                const int   inputCount = def ? static_cast<int>(def->inputs.size()) : 0;
+                const auto& pass        = graph.passes[i];
+                const auto* def         = registry.contains(pass.type) ? &registry.get(pass.type) : nullptr;
+                const int   inputCount  = def ? static_cast<int>(def->inputs.size()) : 0;
                 const int   outputCount = def ? static_cast<int>(def->outputs.size()) : 0;
-                const int   paramCount = def ? static_cast<int>(def->params.size()) : 0;
+                const int   paramCount  = def ? static_cast<int>(def->params.size()) : 0;
                 nodes.push_back(GraphLayoutNode {
-                    .id = pass.id,
-                    .order = static_cast<int>(i),
-                    .inputCount = inputCount,
+                    .id          = pass.id,
+                    .order       = static_cast<int>(i),
+                    .inputCount  = inputCount,
                     .outputCount = outputCount,
-                    .heightLanes = std::max(1.0f,
-                                            (124.0f + static_cast<float>(std::max(inputCount, outputCount) + paramCount) * 31.0f) /
-                                                260.0f),
+                    .heightLanes = std::max(
+                        1.0f,
+                        (124.0f + static_cast<float>(std::max(inputCount, outputCount) + paramCount) * 31.0f) / 260.0f),
                     .sink = !hasOutgoing[pass.id],
                 });
             }
 
-            const auto layout = computeLayeredGraphLayout(
-                nodes,
-                edges,
-                GraphLayoutConfig {
-                    .origin = {80.0f, 80.0f},
-                    .columnSpacing = 560.0f,
-                    .rowSpacing = 260.0f,
-                    .sinkExtraSpacing = 260.0f,
-                    .laneGap = 0.80f,
-                });
+            const auto layout = computeLayeredGraphLayout(nodes,
+                                                          edges,
+                                                          GraphLayoutConfig {
+                                                              .origin           = {80.0f, 80.0f},
+                                                              .columnSpacing    = 560.0f,
+                                                              .rowSpacing       = 260.0f,
+                                                              .sinkExtraSpacing = 260.0f,
+                                                              .laneGap          = 0.80f,
+                                                          });
 
             if (!graph.meta.is_object())
                 graph.meta = nlohmann::json::object();
@@ -267,7 +265,7 @@ namespace vultra_app
                 order[graph.passes[i].id] = i;
 
             std::unordered_map<std::string, std::vector<std::string>> edges;
-            std::unordered_map<std::string, int> indegree;
+            std::unordered_map<std::string, int>                      indegree;
             for (const auto& pass : graph.passes)
                 indegree.try_emplace(pass.id, 0);
 
@@ -294,7 +292,8 @@ namespace vultra_app
             std::vector<std::string> sorted;
             while (!ready.empty())
             {
-                std::sort(ready.begin(), ready.end(), [&](const auto& a, const auto& b) { return order[a] < order[b]; });
+                std::sort(
+                    ready.begin(), ready.end(), [&](const auto& a, const auto& b) { return order[a] < order[b]; });
                 const auto id = ready.front();
                 ready.erase(ready.begin());
                 sorted.push_back(id);
@@ -322,10 +321,10 @@ namespace vultra_app
         }
 
         vrendergraph::RenderGraphDesc makeActiveGraphWithPassthrough(const vrendergraph::RenderGraphRegistry& registry,
-                                                                      const vrendergraph::RenderGraphDesc&     graph)
+                                                                     const vrendergraph::RenderGraphDesc&     graph)
         {
             auto activeGraph = graph;
-            bool changed = true;
+            bool changed     = true;
             while (changed)
             {
                 changed = false;
@@ -342,7 +341,8 @@ namespace vultra_app
                             replacement = it->second;
                         else if (ports.inputs.size() == 1)
                         {
-                            if (auto it = pass.inputs.find(ports.inputs.front()); it != pass.inputs.end() && !it->second.empty())
+                            if (auto it = pass.inputs.find(ports.inputs.front());
+                                it != pass.inputs.end() && !it->second.empty())
                                 replacement = it->second;
                         }
                         if (replacement.empty())
@@ -356,7 +356,7 @@ namespace vultra_app
                                 static_cast<void>(_);
                                 if (ref == disabledOutput)
                                 {
-                                    ref = replacement;
+                                    ref     = replacement;
                                     changed = true;
                                 }
                             }
@@ -412,7 +412,7 @@ namespace vultra_app
                     return false;
                 }
 
-                const auto& def = registry.get(pass.type);
+                const auto&                           def = registry.get(pass.type);
                 const std::unordered_set<std::string> validInputs(def.inputs.begin(), def.inputs.end());
                 const std::unordered_set<std::string> validOutputs(def.outputs.begin(), def.outputs.end());
                 for (const auto& slot : def.inputs)
@@ -439,7 +439,8 @@ namespace vultra_app
                     }
                     if (!resources.contains(parsed->node) && !passes.contains(parsed->node))
                     {
-                        error = "Pass '" + pass.id + "' input '" + slot + "' references missing node '" + parsed->node + "'.";
+                        error = "Pass '" + pass.id + "' input '" + slot + "' references missing node '" + parsed->node +
+                                "'.";
                         return false;
                     }
                     if (passes.contains(parsed->node))
@@ -448,7 +449,8 @@ namespace vultra_app
                         if (!registry.contains(src.type))
                             continue;
                         const auto& srcDef = registry.get(src.type);
-                        if (std::find(srcDef.outputs.begin(), srcDef.outputs.end(), parsed->slot) == srcDef.outputs.end())
+                        if (std::find(srcDef.outputs.begin(), srcDef.outputs.end(), parsed->slot) ==
+                            srcDef.outputs.end())
                         {
                             error = "Pass '" + pass.id + "' input '" + slot + "' references missing output slot '" +
                                     parsed->slot + "' on pass '" + parsed->node + "'.";
@@ -478,15 +480,20 @@ namespace vultra_app
             if (message.empty())
                 return;
 
-            const ImVec4 bg = error ? ImVec4 {0.34f, 0.08f, 0.06f, 0.95f} : ImVec4 {0.08f, 0.16f, 0.24f, 0.95f};
+            const ImVec4 bg     = error ? ImVec4 {0.34f, 0.08f, 0.06f, 0.95f} : ImVec4 {0.08f, 0.16f, 0.24f, 0.95f};
             const ImVec4 border = error ? ImVec4 {0.95f, 0.22f, 0.16f, 1.0f} : ImVec4 {0.22f, 0.48f, 0.78f, 1.0f};
-            const ImVec4 text = error ? ImVec4 {1.0f, 0.84f, 0.80f, 1.0f} : ImVec4 {0.82f, 0.92f, 1.0f, 1.0f};
+            const ImVec4 text   = error ? ImVec4 {1.0f, 0.84f, 0.80f, 1.0f} : ImVec4 {0.82f, 0.92f, 1.0f, 1.0f};
 
             ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
             ImGui::PushStyleColor(ImGuiCol_Border, border);
             ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 4.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
-            const float height = std::max(34.0f, ImGui::CalcTextSize(message.data(), message.data() + message.size(), false, ImGui::GetContentRegionAvail().x - 20.0f).y + 18.0f);
+            const float height = std::max(
+                34.0f,
+                ImGui::CalcTextSize(
+                    message.data(), message.data() + message.size(), false, ImGui::GetContentRegionAvail().x - 20.0f)
+                        .y +
+                    18.0f);
             if (ImGui::BeginChild("##RenderGraphStatusBanner",
                                   ImVec2(0.0f, height),
                                   true,
@@ -509,30 +516,24 @@ namespace vultra_app
 
         struct EditorShaderRef
         {
-            std::string library {"project"};
+            std::string                library {"project"};
             vultra::rhi::ShaderProfile profile {vultra::rhi::ShaderProfile::eGeneral};
-            std::string fragment;
+            std::string                fragment;
         };
 
-        std::vector<ParamEnumOption> readShaderParamEnum(const EditorContext& ctx,
-                                                         const vrendergraph::PassDecl& pass,
-                                                         std::string_view paramName);
-        std::vector<vrendergraph::ParamDesc> readShaderParamDescs(const EditorContext& ctx,
+        std::vector<ParamEnumOption>
+        readShaderParamEnum(const EditorContext& ctx, const vrendergraph::PassDecl& pass, std::string_view paramName);
+        std::vector<vrendergraph::ParamDesc> readShaderParamDescs(const EditorContext&          ctx,
                                                                   const vrendergraph::PassDecl& pass);
 
-        bool isEditorVisiblePassPin(const vrendergraph::PassDecl& pass,
-                                    const std::string&            slot,
-                                    bool                          input)
+        bool isEditorVisiblePassPin(const vrendergraph::PassDecl& pass, const std::string& slot, bool input)
         {
             if (!input && pass.type == "FinalComposition" && slot == "target")
                 return false;
             return true;
         }
 
-        float textWidth(std::string_view text)
-        {
-            return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
-        }
+        float textWidth(std::string_view text) { return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x; }
 
         float valuePreviewWidth(const nlohmann::json& value)
         {
@@ -557,12 +558,12 @@ namespace vultra_app
             }
         }
 
-        void drawParamField(EditorContext&             ctx,
-                            vrendergraph::PassDecl&   pass,
+        void drawParamField(EditorContext&                 ctx,
+                            vrendergraph::PassDecl&        pass,
                             const vrendergraph::ParamDesc& param,
-                            bool&                     dirty,
-                            const float               labelWidth,
-                            const float               valueWidth)
+                            bool&                          dirty,
+                            const float                    labelWidth,
+                            const float                    valueWidth)
         {
             auto& raw = pass.params.raw();
             if (!raw.contains(param.name))
@@ -588,12 +589,12 @@ namespace vultra_app
                     if (param.maxValue)
                         value = std::min(value, param.maxValue->get<float>());
                     raw[param.name] = value;
-                    dirty = true;
+                    dirty           = true;
                 }
             }
             else if (param.type == vrendergraph::ParamType::eInt)
             {
-                int value = raw[param.name].get<int>();
+                int        value       = raw[param.name].get<int>();
                 const auto enumOptions = readShaderParamEnum(ctx, pass, param.name);
                 if (!enumOptions.empty())
                 {
@@ -617,7 +618,7 @@ namespace vultra_app
                             if (ImGui::Selectable(option.label.c_str(), selected))
                             {
                                 raw[param.name] = option.value;
-                                dirty = true;
+                                dirty           = true;
                             }
                             if (selected)
                                 ImGui::SetItemDefaultFocus();
@@ -632,7 +633,7 @@ namespace vultra_app
                     if (param.maxValue)
                         value = std::min(value, param.maxValue->get<int>());
                     raw[param.name] = value;
-                    dirty = true;
+                    dirty           = true;
                 }
             }
             else if (param.type == vrendergraph::ParamType::eBoolean)
@@ -641,18 +642,80 @@ namespace vultra_app
                 if (ImGui::Checkbox("##value", &value))
                 {
                     raw[param.name] = value;
-                    dirty = true;
+                    dirty           = true;
                 }
             }
             else
             {
-                std::array<char, 256> buffer {};
-                const auto            value = raw[param.name].get<std::string>();
-                std::snprintf(buffer.data(), buffer.size(), "%s", value.c_str());
-                if (ImGui::InputText("##value", buffer.data(), buffer.size()))
+                const auto value = raw[param.name].get<std::string>();
+                struct StringOption
                 {
-                    raw[param.name] = std::string(buffer.data());
-                    dirty = true;
+                    std::string_view label;
+                    std::string_view value;
+                };
+
+                std::vector<StringOption> options;
+                if (pass.type == "XrViewSynthesis")
+                {
+                    if (param.name == "sourceView")
+                    {
+                        for (const auto& view : vultra::XrViewSynthesisPass::sourceViews())
+                            options.push_back({.label = view.label, .value = view.value});
+                    }
+                    else if (param.name == "targetView")
+                    {
+                        for (const auto& view : vultra::XrViewSynthesisPass::targetViews())
+                            options.push_back({.label = view.label, .value = view.value});
+                    }
+                    else if (param.name == "warpingBackend")
+                    {
+                        for (const auto& backend : vultra::XrViewSynthesisPass::warpingBackends())
+                            options.push_back({.label = backend.label, .value = backend.value});
+                    }
+                    else if (param.name == "inpaintingBackend")
+                    {
+                        for (const auto& backend : vultra::XrViewSynthesisPass::inpaintingBackends())
+                            options.push_back({.label = backend.label, .value = backend.value});
+                    }
+                }
+
+                if (!options.empty())
+                {
+                    std::string preview = value;
+                    for (const auto& option : options)
+                    {
+                        if (value == option.value)
+                        {
+                            preview = std::string(option.label);
+                            break;
+                        }
+                    }
+
+                    if (ImGui::BeginCombo("##value", preview.c_str()))
+                    {
+                        for (const auto& option : options)
+                        {
+                            const bool selected = value == option.value;
+                            if (ImGui::Selectable(std::string(option.label).c_str(), selected))
+                            {
+                                raw[param.name] = std::string(option.value);
+                                dirty           = true;
+                            }
+                            if (selected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+                }
+                else
+                {
+                    std::array<char, 256> buffer {};
+                    std::snprintf(buffer.data(), buffer.size(), "%s", value.c_str());
+                    if (ImGui::InputText("##value", buffer.data(), buffer.size()))
+                    {
+                        raw[param.name] = std::string(buffer.data());
+                        dirty           = true;
+                    }
                 }
             }
 
@@ -660,8 +723,8 @@ namespace vultra_app
             ImGui::PopID();
         }
 
-        float passNodeWidth(const EditorContext&             ctx,
-                            const vrendergraph::PassDecl&   pass,
+        float passNodeWidth(const EditorContext&                ctx,
+                            const vrendergraph::PassDecl&       pass,
                             const vrendergraph::PassDefinition& def)
         {
             float width = std::max(textWidth(pass.id), textWidth(pass.type)) + 58.0f;
@@ -677,9 +740,10 @@ namespace vultra_app
                 if (param.name == "name" || param.name == "library" || param.name == "vertex" ||
                     param.name == "fragment" || param.name == "pushConstants")
                     return;
-                const auto& raw = pass.params.raw();
+                const auto& raw     = pass.params.raw();
                 const auto  valueIt = raw.find(param.name);
-                const float value = valueIt == raw.end() ? valuePreviewWidth(param.defaultValue) : valuePreviewWidth(*valueIt);
+                const float value =
+                    valueIt == raw.end() ? valuePreviewWidth(param.defaultValue) : valuePreviewWidth(*valueIt);
                 width = std::max(width, textWidth(param.name) + std::clamp(value + 58.0f, 150.0f, 280.0f) + 50.0f);
             };
             auto params = def.params;
@@ -718,14 +782,14 @@ namespace vultra_app
         void pushNodeTitlePalette(ImU32 title)
         {
             ImVec4 hovered = ImGui::ColorConvertU32ToFloat4(title);
-            hovered.x = std::min(hovered.x + 0.08f, 1.0f);
-            hovered.y = std::min(hovered.y + 0.08f, 1.0f);
-            hovered.z = std::min(hovered.z + 0.08f, 1.0f);
+            hovered.x      = std::min(hovered.x + 0.08f, 1.0f);
+            hovered.y      = std::min(hovered.y + 0.08f, 1.0f);
+            hovered.z      = std::min(hovered.z + 0.08f, 1.0f);
 
             ImVec4 selected = ImGui::ColorConvertU32ToFloat4(title);
-            selected.x = std::min(selected.x + 0.15f, 1.0f);
-            selected.y = std::min(selected.y + 0.15f, 1.0f);
-            selected.z = std::min(selected.z + 0.15f, 1.0f);
+            selected.x      = std::min(selected.x + 0.15f, 1.0f);
+            selected.y      = std::min(selected.y + 0.15f, 1.0f);
+            selected.z      = std::min(selected.z + 0.15f, 1.0f);
 
             ImNodes::PushColorStyle(ImNodesCol_TitleBar, title);
             ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, ImGui::ColorConvertFloat4ToU32(hovered));
@@ -741,11 +805,11 @@ namespace vultra_app
 
         void drawNodeTitleText(const char* text, const float fontSize = 18.0f)
         {
-            const ImVec2 pos = ImGui::GetCursorScreenPos();
-            ImDrawList* drawList = ImGui::GetWindowDrawList();
-            ImFont* font = ImGui::GetFont();
-            const ImU32 outline = IM_COL32(0, 0, 0, 220);
-            const ImU32 main = ImGui::GetColorU32(ImGuiCol_Text);
+            const ImVec2 pos      = ImGui::GetCursorScreenPos();
+            ImDrawList*  drawList = ImGui::GetWindowDrawList();
+            ImFont*      font     = ImGui::GetFont();
+            const ImU32  outline  = IM_COL32(0, 0, 0, 220);
+            const ImU32  main     = ImGui::GetColorU32(ImGuiCol_Text);
 
             drawList->AddText(font, fontSize, ImVec2(pos.x - 1.0f, pos.y), outline, text);
             drawList->AddText(font, fontSize, ImVec2(pos.x + 1.0f, pos.y), outline, text);
@@ -753,7 +817,7 @@ namespace vultra_app
             drawList->AddText(font, fontSize, ImVec2(pos.x, pos.y + 1.0f), outline, text);
             drawList->AddText(font, fontSize, pos, main, text);
 
-            const float scale = fontSize / ImGui::GetFontSize();
+            const float  scale    = fontSize / ImGui::GetFontSize();
             const ImVec2 textSize = ImGui::CalcTextSize(text);
             ImGui::Dummy(ImVec2 {textSize.x * scale, textSize.y * scale});
         }
@@ -779,9 +843,9 @@ namespace vultra_app
                 return {};
 
             return backendService->renderDevice().getSampler(vultra::rhi::SamplerInfo {
-                .magFilter = vultra::rhi::TexelFilter::eNearest,
-                .minFilter = vultra::rhi::TexelFilter::eNearest,
-                .mipmapMode = vultra::rhi::MipmapMode::eNearest,
+                .magFilter    = vultra::rhi::TexelFilter::eNearest,
+                .minFilter    = vultra::rhi::TexelFilter::eNearest,
+                .mipmapMode   = vultra::rhi::MipmapMode::eNearest,
                 .addressModeS = vultra::rhi::SamplerAddressMode::eClampToEdge,
                 .addressModeT = vultra::rhi::SamplerAddressMode::eClampToEdge,
                 .addressModeR = vultra::rhi::SamplerAddressMode::eClampToEdge,
@@ -869,7 +933,7 @@ namespace vultra_app
                 return out;
 
             int    depth = 0;
-            size_t end = openBrace;
+            size_t end   = openBrace;
             for (; end < lua.size(); ++end)
             {
                 if (lua[end] == '{')
@@ -889,7 +953,7 @@ namespace vultra_app
                 if (block[i] != '"' && block[i] != '\'')
                     continue;
 
-                const char quote = block[i++];
+                const char  quote = block[i++];
                 std::string value;
                 while (i < block.size() && block[i] != quote)
                 {
@@ -926,7 +990,7 @@ namespace vultra_app
             return out;
         }
 
-        std::optional<std::string> replacePipelineFeatureRefs(std::string_view lua,
+        std::optional<std::string> replacePipelineFeatureRefs(std::string_view                lua,
                                                               const std::vector<std::string>& features)
         {
             const auto featuresPos = lua.find("features");
@@ -938,7 +1002,7 @@ namespace vultra_app
                 return std::nullopt;
 
             int    depth = 0;
-            size_t end = openBrace;
+            size_t end   = openBrace;
             for (; end < lua.size(); ++end)
             {
                 if (lua[end] == '{')
@@ -999,70 +1063,146 @@ namespace vultra_app
 
         void registerEditorBuiltinRenderGraphPasses(vrendergraph::RenderGraphRegistry& registry)
         {
-            const auto noop = [](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext&) {};
-            const auto pass = [&](std::string type,
-                                  std::vector<std::string> inputs,
-                                  std::vector<std::string> outputs,
+            const auto noop = [](FrameGraph&,
+                                 FrameGraphBlackboard&,
+                                 const vrendergraph::ParamBlock&,
+                                 vrendergraph::PassBuildContext&) {};
+            const auto pass = [&](std::string                          type,
+                                  std::vector<std::string>             inputs,
+                                  std::vector<std::string>             outputs,
                                   std::vector<vrendergraph::ParamDesc> params = {}) {
                 registry.registerPass(vrendergraph::PassDefinition {
-                    .type = std::move(type),
-                    .setup = noop,
-                    .inputs = std::move(inputs),
+                    .type    = std::move(type),
+                    .setup   = noop,
+                    .inputs  = std::move(inputs),
                     .outputs = std::move(outputs),
-                    .params = std::move(params),
+                    .params  = std::move(params),
                 });
             };
 
             pass("CompatibilityBaseColor", {}, {"color"});
             pass("DirectGBuffer", {}, {"color", "depth", "normal", "material", "entityId"});
             pass("DepthPre", {}, {"depth"});
-            pass("ShadowMap", {}, {"shadowMap", "shadowData"},
+            pass("ShadowMap",
+                 {},
+                 {"shadowMap", "shadowData"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name = "resolution", .type = vrendergraph::ParamType::eInt, .defaultValue = 2048, .minValue = 256, .maxValue = 8192},
-                     {.name = "cascadeCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4, .minValue = 1, .maxValue = 4},
-                     {.name = "coverageRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 75.0f, .minValue = 1.0f, .maxValue = 500.0f},
-                     {.name = "lightDistance", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f, .minValue = 1.0f, .maxValue = 500.0f},
-                     {.name = "zRange", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f, .minValue = 1.0f, .maxValue = 800.0f},
-                     {.name = "splitLambda", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.60f, .minValue = 0.0f, .maxValue = 1.0f},
+                     {.name         = "resolution",
+                      .type         = vrendergraph::ParamType::eInt,
+                      .defaultValue = 2048,
+                      .minValue     = 256,
+                      .maxValue     = 8192},
+                     {.name         = "cascadeCount",
+                      .type         = vrendergraph::ParamType::eInt,
+                      .defaultValue = 4,
+                      .minValue     = 1,
+                      .maxValue     = 4},
+                     {.name         = "coverageRadius",
+                      .type         = vrendergraph::ParamType::eFloat,
+                      .defaultValue = 75.0f,
+                      .minValue     = 1.0f,
+                      .maxValue     = 500.0f},
+                     {.name         = "lightDistance",
+                      .type         = vrendergraph::ParamType::eFloat,
+                      .defaultValue = 120.0f,
+                      .minValue     = 1.0f,
+                      .maxValue     = 500.0f},
+                     {.name         = "zRange",
+                      .type         = vrendergraph::ParamType::eFloat,
+                      .defaultValue = 120.0f,
+                      .minValue     = 1.0f,
+                      .maxValue     = 800.0f},
+                     {.name         = "splitLambda",
+                      .type         = vrendergraph::ParamType::eFloat,
+                      .defaultValue = 0.60f,
+                      .minValue     = 0.0f,
+                      .maxValue     = 1.0f},
                      {.name = "autoFitBounds", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
                      {.name = "stableTexelSnapping", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name = "depthBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0012f, .minValue = 0.0f, .maxValue = 0.1f},
-                     {.name = "normalBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.015f, .minValue = 0.0f, .maxValue = 1.0f},
-                     {.name = "pcssLightRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.5f, .minValue = 0.0f, .maxValue = 16.0f},
+                     {.name         = "depthBias",
+                      .type         = vrendergraph::ParamType::eFloat,
+                      .defaultValue = 0.0012f,
+                      .minValue     = 0.0f,
+                      .maxValue     = 0.1f},
+                     {.name         = "normalBias",
+                      .type         = vrendergraph::ParamType::eFloat,
+                      .defaultValue = 0.015f,
+                      .minValue     = 0.0f,
+                      .maxValue     = 1.0f},
+                     {.name         = "pcssLightRadius",
+                      .type         = vrendergraph::ParamType::eFloat,
+                      .defaultValue = 1.5f,
+                      .minValue     = 0.0f,
+                      .maxValue     = 16.0f},
                  });
-            pass("DeferredLighting", {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"}, {"color"},
-                 {
-                 });
+            pass("DeferredLighting",
+                 {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"},
+                 {"color"},
+                 {});
             pass("HzbGenerate", {"depth"}, {"hzb"});
-            pass("Ssao", {"depth", "normal"}, {"ao"},
+            pass("Ssao",
+                 {"depth", "normal"},
+                 {"ao"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
                  });
-            pass("Ssr", {"color", "depth", "normal", "material"}, {"reflection"},
+            pass("Ssr",
+                 {"color", "depth", "normal", "material"},
+                 {"reflection"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
                  });
-            pass("SsrComposite", {"source", "reflection"}, {"color"},
+            pass("SsrComposite",
+                 {"source", "reflection"},
+                 {"color"},
                  {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-            pass("ToneMapping", {"source"}, {"color"},
+            pass("ToneMapping",
+                 {"source"},
+                 {"color"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
                  });
-            pass("Fxaa", {"source"}, {"color"},
+            pass("Fxaa",
+                 {"source"},
+                 {"color"},
                  {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-            pass("XrViewSynthesis", {"source", "depth"}, {"color"},
+            pass("XrViewSynthesis",
+                 {"source", "depth"},
+                 {"color"},
                  {
-                     {.name = "warpingBackend", .type = vrendergraph::ParamType::eString, .defaultValue = "adaptive_mesh_graphics"},
-                     {.name = "inpaintingBackend", .type = vrendergraph::ParamType::eString, .defaultValue = "pull_push"},
+                     {.name         = "warpingBackend",
+                      .type         = vrendergraph::ParamType::eString,
+                      .defaultValue = "adaptive_mesh_graphics"},
+                     {.name         = "inpaintingBackend",
+                      .type         = vrendergraph::ParamType::eString,
+                      .defaultValue = "pull_push"},
                      {.name = "sourceView", .type = vrendergraph::ParamType::eString, .defaultValue = "left"},
                      {.name = "targetView", .type = vrendergraph::ParamType::eString, .defaultValue = "right"},
-                     {.name = "baseGridSize", .type = vrendergraph::ParamType::eInt, .defaultValue = 16, .minValue = 1, .maxValue = 128},
-                     {.name = "maxSubdivision", .type = vrendergraph::ParamType::eInt, .defaultValue = 2, .minValue = 0, .maxValue = 3},
-                     {.name = "sideLengthThreshold", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.12f, .minValue = 0.0f, .maxValue = 2.0f},
-                     {.name = "depthThreshold", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.02f, .minValue = 0.0f, .maxValue = 1.0f},
+                     {.name         = "baseGridSize",
+                      .type         = vrendergraph::ParamType::eInt,
+                      .defaultValue = 16,
+                      .minValue     = 1,
+                      .maxValue     = 128},
+                     {.name         = "maxSubdivision",
+                      .type         = vrendergraph::ParamType::eInt,
+                      .defaultValue = 2,
+                      .minValue     = 0,
+                      .maxValue     = 3},
+                     {.name         = "sideLengthThreshold",
+                      .type         = vrendergraph::ParamType::eFloat,
+                      .defaultValue = 0.12f,
+                      .minValue     = 0.0f,
+                      .maxValue     = 2.0f},
+                     {.name         = "depthThreshold",
+                      .type         = vrendergraph::ParamType::eFloat,
+                      .defaultValue = 0.02f,
+                      .minValue     = 0.0f,
+                      .maxValue     = 1.0f},
                  });
-            pass("SelectionOutline", {"source", "entityId", "depth"}, {"color"},
+            pass("SelectionOutline",
+                 {"source", "entityId", "depth"},
+                 {"color"},
                  {
                      {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
                  });
@@ -1072,11 +1212,30 @@ namespace vultra_app
             pass("ThinGBuffer", {"visibility"}, {"color", "normal", "material"});
             pass("CoarseInstanceCull", {}, {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"});
             pass("MeshletCull", {}, {"visibleMeshlet", "visibleMeshletCount"});
-            pass("BuildIndirect", {}, {"draw", "instance", "meshTable", "transform", "meshlets", "visibleMeshlet", "visibleMeshletCount", "materialTable"});
+            pass("BuildIndirect",
+                 {},
+                 {"draw",
+                  "instance",
+                  "meshTable",
+                  "transform",
+                  "meshlets",
+                  "visibleMeshlet",
+                  "visibleMeshletCount",
+                  "materialTable"});
             pass("DrawsetBuild", {}, {"draw", "meshlets", "indirect", "drawSet"});
             pass("MeshletHiZCull", {}, {"visibleMeshlet", "visibleMeshletCount"});
-            pass("GeneralGaussianSplatPreprocess", {},
-                 {"draw", "packedSource", "selectedSource", "visibleSplat", "sortKey", "sortIndex", "visibleCount", "indirect", "sortStorage", "sh"});
+            pass("GeneralGaussianSplatPreprocess",
+                 {},
+                 {"draw",
+                  "packedSource",
+                  "selectedSource",
+                  "visibleSplat",
+                  "sortKey",
+                  "sortIndex",
+                  "visibleCount",
+                  "indirect",
+                  "sortStorage",
+                  "sh"});
             pass("GeneralGaussianSplatRender", {}, {"color"});
             pass("GeneralGaussianSplatFoveatedComposite", {"fovea", "mid", "outer", "base"}, {"color"});
         }
@@ -1104,7 +1263,7 @@ namespace vultra_app
             if (ctx.state.currentProject.empty() || shaderId.empty())
                 return std::nullopt;
 
-            const auto root = (ctx.state.currentProject / ctx.state.currentAssetRoot / "shaders").lexically_normal();
+            const auto root   = (ctx.state.currentProject / ctx.state.currentAssetRoot / "shaders").lexically_normal();
             const auto wanted = std::string(shaderId);
             const auto wantedVShader = wanted.ends_with(".vshader") ? wanted : wanted + ".vshader";
             std::error_code ec;
@@ -1141,16 +1300,16 @@ namespace vultra_app
             }();
 
             std::vector<std::filesystem::path> roots;
-            auto cwd = std::filesystem::current_path();
+            auto                               cwd = std::filesystem::current_path();
             roots.push_back(cwd);
             roots.push_back(cwd.parent_path());
             roots.push_back(cwd.parent_path().parent_path());
 
             std::vector<std::filesystem::path> candidates;
-            const auto fragment = std::filesystem::path(shaderRef.fragment);
-            const auto fragmentVShader = shaderRef.fragment.ends_with(".vshader") ?
-                                             fragment :
-                                             std::filesystem::path(shaderRef.fragment + ".vshader");
+            const auto                         fragment        = std::filesystem::path(shaderRef.fragment);
+            const auto                         fragmentVShader = shaderRef.fragment.ends_with(".vshader") ?
+                                                                     fragment :
+                                                                     std::filesystem::path(shaderRef.fragment + ".vshader");
             for (const auto& root : roots)
             {
                 candidates.push_back(root / "builtin" / "shaders" / "passes" / profileDir / fragmentVShader);
@@ -1167,7 +1326,7 @@ namespace vultra_app
             return std::nullopt;
         }
 
-        std::optional<std::filesystem::path> findShaderSourceFile(const EditorContext& ctx,
+        std::optional<std::filesystem::path> findShaderSourceFile(const EditorContext&   ctx,
                                                                   const EditorShaderRef& shaderRef)
         {
             if (shaderRef.library == "builtin")
@@ -1180,8 +1339,8 @@ namespace vultra_app
             if (ctx.state.currentProject.empty())
                 return {};
             std::error_code ec;
-            const auto assetRoot = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
-            const auto rel = std::filesystem::relative(path.lexically_normal(), assetRoot, ec);
+            const auto      assetRoot = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+            const auto      rel       = std::filesystem::relative(path.lexically_normal(), assetRoot, ec);
             if (ec || rel.empty())
                 return {};
             return "res://" + rel.generic_string();
@@ -1206,8 +1365,8 @@ namespace vultra_app
 
         std::string rendererKeyFromRenderGraphUri(std::string_view uri)
         {
-            auto filename = std::filesystem::path(std::string(uri)).filename().generic_string();
-            constexpr std::string_view suffix = ".vrg.json";
+            auto                       filename = std::filesystem::path(std::string(uri)).filename().generic_string();
+            constexpr std::string_view suffix   = ".vrg.json";
             if (filename.ends_with(suffix))
                 filename.resize(filename.size() - suffix.size());
             if (filename.empty())
@@ -1237,10 +1396,9 @@ namespace vultra_app
             ImGui::SameLine();
             ImGui::SetNextItemWidth(320.0f);
 
-            bool changed = false;
-            const char* preview = ctx.state.currentEditingRenderGraph.empty() ?
-                                      "<none>" :
-                                      ctx.state.currentEditingRenderGraph.c_str();
+            bool        changed = false;
+            const char* preview =
+                ctx.state.currentEditingRenderGraph.empty() ? "<none>" : ctx.state.currentEditingRenderGraph.c_str();
             if (ImGui::BeginCombo("##ProjectRenderGraphAsset", preview))
             {
                 for (const auto& uri : uris)
@@ -1249,7 +1407,7 @@ namespace vultra_app
                     if (ImGui::Selectable(uri.c_str(), selected))
                     {
                         ctx.state.currentEditingRenderGraph = uri;
-                        changed                         = true;
+                        changed                             = true;
                     }
                     if (selected)
                         ImGui::SetItemDefaultFocus();
@@ -1264,8 +1422,9 @@ namespace vultra_app
                     const auto rendererKey = rendererKeyFromRenderGraphUri(ctx.state.currentEditingRenderGraph);
                     if (renderService->reloadRenderPipeline(ctx.state.currentEditingRenderGraph, rendererKey))
                     {
-                        status                  = "Switched render graph";
-                        ctx.state.statusMessage = "Renderer '" + rendererKey + "': " + ctx.state.currentEditingRenderGraph;
+                        status = "Switched render graph";
+                        ctx.state.statusMessage =
+                            "Renderer '" + rendererKey + "': " + ctx.state.currentEditingRenderGraph;
                     }
                     else
                     {
@@ -1370,7 +1529,8 @@ namespace vultra_app
             return types;
         }
 
-        void registerEditorProjectRenderGraphPasses(const EditorContext& ctx, vrendergraph::RenderGraphRegistry& registry)
+        void registerEditorProjectRenderGraphPasses(const EditorContext&               ctx,
+                                                    vrendergraph::RenderGraphRegistry& registry)
         {
             const auto dir = assetPathForUri(ctx, "res://render/passes");
             if (dir.empty())
@@ -1391,7 +1551,10 @@ namespace vultra_app
             }
             std::sort(files.begin(), files.end());
 
-            const auto noop = [](FrameGraph&, FrameGraphBlackboard&, const vrendergraph::ParamBlock&, vrendergraph::PassBuildContext&) {};
+            const auto noop = [](FrameGraph&,
+                                 FrameGraphBlackboard&,
+                                 const vrendergraph::ParamBlock&,
+                                 vrendergraph::PassBuildContext&) {};
             for (const auto& path : files)
             {
                 std::ifstream file(path);
@@ -1412,7 +1575,7 @@ namespace vultra_app
                 if (!obj.is<sol::table>())
                     continue;
 
-                sol::table passTable = obj.as<sol::table>();
+                sol::table  passTable = obj.as<sol::table>();
                 std::string type;
                 sol::object typeObj = passTable["type"];
                 sol::object nameObj = passTable["name"];
@@ -1424,13 +1587,14 @@ namespace vultra_app
                     continue;
 
                 registry.registerPass(vrendergraph::PassDefinition {
-                    .type = type,
-                    .setup = noop,
-                    .inputs = {"source"},
+                    .type    = type,
+                    .setup   = noop,
+                    .inputs  = {"source"},
                     .outputs = {"color"},
-                    .params = {
-                        {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = type},
-                    },
+                    .params =
+                        {
+                            {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = type},
+                        },
                 });
             }
         }
@@ -1439,26 +1603,26 @@ namespace vultra_app
         {
             if (type == "DeferredLighting")
                 return EditorShaderRef {
-                    .library = "builtin",
-                    .profile = vultra::rhi::ShaderProfile::eHighend,
+                    .library  = "builtin",
+                    .profile  = vultra::rhi::ShaderProfile::eHighend,
                     .fragment = "deferred_lighting.frag",
                 };
             if (type == "Ssao")
                 return EditorShaderRef {
-                    .library = "builtin",
-                    .profile = vultra::rhi::ShaderProfile::eHighend,
+                    .library  = "builtin",
+                    .profile  = vultra::rhi::ShaderProfile::eHighend,
                     .fragment = "ssao.frag",
                 };
             if (type == "Ssr")
                 return EditorShaderRef {
-                    .library = "builtin",
-                    .profile = vultra::rhi::ShaderProfile::eHighend,
+                    .library  = "builtin",
+                    .profile  = vultra::rhi::ShaderProfile::eHighend,
                     .fragment = "ssr.frag",
                 };
             if (type == "SelectionOutline")
                 return EditorShaderRef {
-                    .library = "builtin",
-                    .profile = vultra::rhi::ShaderProfile::eHighend,
+                    .library  = "builtin",
+                    .profile  = vultra::rhi::ShaderProfile::eHighend,
                     .fragment = "selection_outline.frag",
                 };
             if (type == "ToneMapping")
@@ -1507,7 +1671,7 @@ namespace vultra_app
                 if (!obj.is<sol::table>())
                     continue;
 
-                sol::table passTable = obj.as<sol::table>();
+                sol::table  passTable = obj.as<sol::table>();
                 std::string passType;
                 sol::object typeObj = passTable["type"];
                 sol::object nameObj = passTable["name"];
@@ -1522,10 +1686,10 @@ namespace vultra_app
                 if (!shaderObj.is<sol::table>())
                     return std::nullopt;
 
-                sol::table shaderTable = shaderObj.as<sol::table>();
+                sol::table      shaderTable = shaderObj.as<sol::table>();
                 EditorShaderRef ref;
-                sol::object libraryObj = shaderTable["library"];
-                sol::object fragmentObj = shaderTable["fragment"];
+                sol::object     libraryObj  = shaderTable["library"];
+                sol::object     fragmentObj = shaderTable["fragment"];
                 if (libraryObj.is<std::string>())
                     ref.library = libraryObj.as<std::string>();
                 if (fragmentObj.is<std::string>())
@@ -1537,16 +1701,16 @@ namespace vultra_app
             return std::nullopt;
         }
 
-        std::optional<EditorShaderRef> resolvePassShaderRef(const EditorContext& ctx,
+        std::optional<EditorShaderRef> resolvePassShaderRef(const EditorContext&          ctx,
                                                             const vrendergraph::PassDecl& pass)
         {
             auto fragment = pass.params.get<std::string>("fragment", {});
             if (!fragment.empty())
                 return EditorShaderRef {
-                    .library = pass.params.get<std::string>("library", "project"),
-                    .profile = pass.params.get<std::string>("library", "project") == "builtin" ?
-                                   vultra::rhi::ShaderProfile::eGeneral :
-                                   vultra::rhi::ShaderProfile::eUnspecified,
+                    .library  = pass.params.get<std::string>("library", "project"),
+                    .profile  = pass.params.get<std::string>("library", "project") == "builtin" ?
+                                    vultra::rhi::ShaderProfile::eGeneral :
+                                    vultra::rhi::ShaderProfile::eUnspecified,
                     .fragment = std::move(fragment),
                 };
 
@@ -1578,8 +1742,8 @@ namespace vultra_app
                 {
                     const unsigned char prev = static_cast<unsigned char>(label[i - 1]);
                     const unsigned char next = i + 1 < label.size() ? static_cast<unsigned char>(label[i + 1]) : 0;
-                    const bool startsNewWord = std::islower(prev) || std::isdigit(prev);
-                    const bool endsAcronym = std::isupper(prev) && next != 0 && std::islower(next);
+                    const bool          startsNewWord = std::islower(prev) || std::isdigit(prev);
+                    const bool          endsAcronym   = std::isupper(prev) && next != 0 && std::islower(next);
                     if (startsNewWord || endsAcronym)
                         appendSpace();
                 }
@@ -1590,9 +1754,9 @@ namespace vultra_app
             return out;
         }
 
-        std::vector<ParamEnumOption> readShaderSourceEnumOptions(const EditorContext& ctx,
+        std::vector<ParamEnumOption> readShaderSourceEnumOptions(const EditorContext&   ctx,
                                                                  const EditorShaderRef& shaderRef,
-                                                                 std::string_view paramName)
+                                                                 std::string_view       paramName)
         {
             const auto shaderPath = findShaderSourceFile(ctx, shaderRef);
             if (!shaderPath)
@@ -1605,33 +1769,33 @@ namespace vultra_app
             std::string line;
             while (std::getline(file, line))
             {
-                auto view = std::string_view(line);
+                auto       view    = std::string_view(line);
                 const auto comment = view.find("//");
                 if (comment != std::string_view::npos)
                     view = view.substr(0, comment);
 
                 const auto strippedLine = trim(view);
-                view = strippedLine;
+                view                    = strippedLine;
                 if (!view.starts_with(paramName))
                     continue;
 
                 auto restString = trim(view.substr(paramName.size()));
-                auto rest = std::string_view(restString);
+                auto rest       = std::string_view(restString);
                 if (!rest.starts_with(":"))
                     continue;
                 restString = trim(rest.substr(1));
-                rest = restString;
+                rest       = restString;
                 if (!rest.starts_with("enum("))
                     continue;
 
-                const auto open = rest.find('(');
+                const auto open  = rest.find('(');
                 const auto close = rest.find(')', open + 1);
                 if (open == std::string_view::npos || close == std::string_view::npos || close <= open)
                     continue;
 
                 std::vector<ParamEnumOption> options;
-                std::stringstream ss {std::string(rest.substr(open + 1, close - open - 1))};
-                std::string item;
+                std::stringstream            ss {std::string(rest.substr(open + 1, close - open - 1))};
+                std::string                  item;
                 while (std::getline(ss, item, ','))
                 {
                     item = trim(item);
@@ -1652,7 +1816,8 @@ namespace vultra_app
                     auto value = trim(std::string_view(item).substr(eq + 1));
                     try
                     {
-                        options.push_back(ParamEnumOption {.label = prettifyEnumLabel(label), .value = std::stoi(value)});
+                        options.push_back(
+                            ParamEnumOption {.label = prettifyEnumLabel(label), .value = std::stoi(value)});
                     }
                     catch (...)
                     {}
@@ -1670,8 +1835,8 @@ namespace vultra_app
                 return std::nullopt;
 
             vrendergraph::ParamDesc desc {.name = trim(line.substr(0, colon))};
-            auto restString = trim(line.substr(colon + 1));
-            auto rest = std::string_view(restString);
+            auto                    restString = trim(line.substr(colon + 1));
+            auto                    rest       = std::string_view(restString);
             if (desc.name.empty() || rest.empty())
                 return std::nullopt;
 
@@ -1679,7 +1844,7 @@ namespace vultra_app
                 const auto eq = afterType.find('=');
                 if (eq != std::string_view::npos)
                 {
-                    auto value = trim(afterType.substr(eq + 1));
+                    auto       value    = trim(afterType.substr(eq + 1));
                     const auto rangePos = value.find("range(");
                     if (rangePos != std::string::npos)
                         value = trim(std::string_view(value).substr(0, rangePos));
@@ -1689,7 +1854,7 @@ namespace vultra_app
                 const auto range = afterType.find("range(");
                 if (range != std::string_view::npos)
                 {
-                    const auto open = afterType.find('(', range);
+                    const auto open  = afterType.find('(', range);
                     const auto comma = afterType.find(',', open + 1);
                     const auto close = afterType.find(')', comma + 1);
                     if (open != std::string_view::npos && comma != std::string_view::npos &&
@@ -1703,7 +1868,7 @@ namespace vultra_app
 
             if (rest.starts_with("float"))
             {
-                desc.type = vrendergraph::ParamType::eFloat;
+                desc.type         = vrendergraph::ParamType::eFloat;
                 desc.defaultValue = 0.0f;
                 parseDefaultAndRange(rest.substr(5), [](std::string_view value) {
                     return nlohmann::json(std::stof(std::string(value)));
@@ -1712,7 +1877,7 @@ namespace vultra_app
             }
             if (rest.starts_with("int"))
             {
-                desc.type = vrendergraph::ParamType::eInt;
+                desc.type         = vrendergraph::ParamType::eInt;
                 desc.defaultValue = 0;
                 parseDefaultAndRange(rest.substr(3), [](std::string_view value) {
                     return nlohmann::json(std::stoi(std::string(value)));
@@ -1721,7 +1886,7 @@ namespace vultra_app
             }
             if (rest.starts_with("bool"))
             {
-                desc.type = vrendergraph::ParamType::eBoolean;
+                desc.type         = vrendergraph::ParamType::eBoolean;
                 desc.defaultValue = false;
                 parseDefaultAndRange(rest.substr(4), [](std::string_view value) {
                     return nlohmann::json(value == "true" || value == "1");
@@ -1730,7 +1895,7 @@ namespace vultra_app
             }
             if (rest.starts_with("enum("))
             {
-                desc.type = vrendergraph::ParamType::eInt;
+                desc.type         = vrendergraph::ParamType::eInt;
                 desc.defaultValue = 0;
 
                 const auto close = rest.find(')');
@@ -1738,8 +1903,8 @@ namespace vultra_app
                     return desc;
 
                 std::vector<ParamEnumOption> options;
-                std::stringstream ss {std::string(rest.substr(5, close - 5))};
-                std::string item;
+                std::stringstream            ss {std::string(rest.substr(5, close - 5))};
+                std::string                  item;
                 while (std::getline(ss, item, ','))
                 {
                     item = trim(item);
@@ -1766,8 +1931,8 @@ namespace vultra_app
                 const auto eq = rest.find('=', close + 1);
                 if (eq != std::string_view::npos)
                 {
-                    auto defaultToken = trim(rest.substr(eq + 1));
-                    const auto space = defaultToken.find_first_of(" \t");
+                    auto       defaultToken = trim(rest.substr(eq + 1));
+                    const auto space        = defaultToken.find_first_of(" \t");
                     if (space != std::string::npos)
                         defaultToken.resize(space);
                     for (const auto& option : options)
@@ -1785,7 +1950,7 @@ namespace vultra_app
             return std::nullopt;
         }
 
-        std::vector<vrendergraph::ParamDesc> readShaderSourceParamDescs(const EditorContext& ctx,
+        std::vector<vrendergraph::ParamDesc> readShaderSourceParamDescs(const EditorContext&   ctx,
                                                                         const EditorShaderRef& shaderRef)
         {
             const auto shaderPath = findShaderSourceFile(ctx, shaderRef);
@@ -1797,11 +1962,11 @@ namespace vultra_app
                 return {};
 
             std::vector<vrendergraph::ParamDesc> params;
-            bool inProperties = false;
-            std::string line;
+            bool                                 inProperties = false;
+            std::string                          line;
             while (std::getline(file, line))
             {
-                auto view = std::string_view(line);
+                auto       view    = std::string_view(line);
                 const auto comment = view.find("//");
                 if (comment != std::string_view::npos)
                     view = view.substr(0, comment);
@@ -1823,14 +1988,14 @@ namespace vultra_app
             return params;
         }
 
-        std::vector<ParamEnumOption> readShaderParamEnum(const EditorContext& ctx,
-                                                         const vrendergraph::PassDecl& pass,
-                                                         std::string_view paramName)
+        std::vector<ParamEnumOption>
+        readShaderParamEnum(const EditorContext& ctx, const vrendergraph::PassDecl& pass, std::string_view paramName)
         {
             const auto shaderRef = resolvePassShaderRef(ctx, pass);
             if (shaderRef && !shaderRef->fragment.empty())
             {
-                if (auto sourceOptions = readShaderSourceEnumOptions(ctx, *shaderRef, paramName); !sourceOptions.empty())
+                if (auto sourceOptions = readShaderSourceEnumOptions(ctx, *shaderRef, paramName);
+                    !sourceOptions.empty())
                     return sourceOptions;
 
                 auto* shaderService = ctx.services ? ctx.services->tryGet<vultra::IShaderService>() : nullptr;
@@ -1852,15 +2017,14 @@ namespace vultra_app
                         return {};
 
                     std::vector<std::string> shaderIds {shaderRef->fragment};
-                    if (shaderRef->fragment.find('/') == std::string::npos && shaderRef->fragment.find('\\') == std::string::npos)
+                    if (shaderRef->fragment.find('/') == std::string::npos &&
+                        shaderRef->fragment.find('\\') == std::string::npos)
                         shaderIds.push_back("fullscreen/" + shaderRef->fragment);
 
                     for (const auto& shaderId : shaderIds)
                     {
                         const auto variantHash = vultra::rhi::ShaderLibraryRuntime::computeVariantHash(
-                            shaderId,
-                            vshadersystem::ShaderStage::eFrag,
-                            {});
+                            shaderId, vshadersystem::ShaderStage::eFrag, {});
                         if (!library->hasVariant(variantHash, vshadersystem::ShaderStage::eFrag))
                             continue;
                         auto shader = library->load(variantHash, vshadersystem::ShaderStage::eFrag);
@@ -1893,7 +2057,8 @@ namespace vultra_app
                 }
             }
 
-            const auto shaderPath = shaderRef ? findShaderSourceFile(ctx, *shaderRef) : std::optional<std::filesystem::path> {};
+            const auto shaderPath =
+                shaderRef ? findShaderSourceFile(ctx, *shaderRef) : std::optional<std::filesystem::path> {};
             if (!shaderPath)
                 return {};
 
@@ -1902,7 +2067,7 @@ namespace vultra_app
                 return {};
 
             const std::string prefix = "@param_enum " + std::string(paramName);
-            std::string line;
+            std::string       line;
             while (std::getline(file, line))
             {
                 const auto marker = line.find(prefix);
@@ -1910,12 +2075,12 @@ namespace vultra_app
                     continue;
 
                 std::vector<ParamEnumOption> options;
-                std::string rest = trim(std::string_view(line).substr(marker + prefix.size()));
-                std::stringstream ss(rest);
-                std::string item;
+                std::string                  rest = trim(std::string_view(line).substr(marker + prefix.size()));
+                std::stringstream            ss(rest);
+                std::string                  item;
                 while (std::getline(ss, item, ','))
                 {
-                    item = trim(item);
+                    item          = trim(item);
                     const auto eq = item.rfind('=');
                     if (eq == std::string::npos)
                         continue;
@@ -1943,17 +2108,18 @@ namespace vultra_app
             return out;
         }
 
-        std::optional<vrendergraph::ParamDesc> shaderParamDescFromReflection(
-            const vshadersystem::MaterialParamDesc& param)
+        std::optional<vrendergraph::ParamDesc>
+        shaderParamDescFromReflection(const vshadersystem::MaterialParamDesc& param)
         {
             vrendergraph::ParamDesc desc {.name = param.name};
 
             switch (param.type)
             {
                 case vshadersystem::ParamType::eFloat:
-                    desc.type = vrendergraph::ParamType::eFloat;
-                    desc.defaultValue = param.hasDefault ? nlohmann::json(readShaderDefaultValue<float>(param.defaultValue)) :
-                                                           nlohmann::json(0.0f);
+                    desc.type         = vrendergraph::ParamType::eFloat;
+                    desc.defaultValue = param.hasDefault ?
+                                            nlohmann::json(readShaderDefaultValue<float>(param.defaultValue)) :
+                                            nlohmann::json(0.0f);
                     if (param.hasRange)
                     {
                         desc.minValue = static_cast<float>(param.range.min);
@@ -1961,9 +2127,10 @@ namespace vultra_app
                     }
                     break;
                 case vshadersystem::ParamType::eInt:
-                    desc.type = vrendergraph::ParamType::eInt;
-                    desc.defaultValue = param.hasDefault ? nlohmann::json(readShaderDefaultValue<int32_t>(param.defaultValue)) :
-                                                           nlohmann::json(0);
+                    desc.type         = vrendergraph::ParamType::eInt;
+                    desc.defaultValue = param.hasDefault ?
+                                            nlohmann::json(readShaderDefaultValue<int32_t>(param.defaultValue)) :
+                                            nlohmann::json(0);
                     if (param.hasRange)
                     {
                         desc.minValue = static_cast<int>(param.range.min);
@@ -1972,9 +2139,10 @@ namespace vultra_app
                     break;
                 case vshadersystem::ParamType::eUInt:
                     desc.type = vrendergraph::ParamType::eInt;
-                    desc.defaultValue = param.hasDefault ?
-                                            nlohmann::json(static_cast<int>(readShaderDefaultValue<uint32_t>(param.defaultValue))) :
-                                            nlohmann::json(0);
+                    desc.defaultValue =
+                        param.hasDefault ?
+                            nlohmann::json(static_cast<int>(readShaderDefaultValue<uint32_t>(param.defaultValue))) :
+                            nlohmann::json(0);
                     if (param.hasRange)
                     {
                         desc.minValue = static_cast<int>(param.range.min);
@@ -1982,9 +2150,10 @@ namespace vultra_app
                     }
                     break;
                 case vshadersystem::ParamType::eBool:
-                    desc.type = vrendergraph::ParamType::eBoolean;
-                    desc.defaultValue = param.hasDefault ? nlohmann::json(readShaderDefaultValue<bool>(param.defaultValue)) :
-                                                           nlohmann::json(false);
+                    desc.type         = vrendergraph::ParamType::eBoolean;
+                    desc.defaultValue = param.hasDefault ?
+                                            nlohmann::json(readShaderDefaultValue<bool>(param.defaultValue)) :
+                                            nlohmann::json(false);
                     break;
                 default:
                     return std::nullopt;
@@ -1993,7 +2162,7 @@ namespace vultra_app
             return desc;
         }
 
-        std::vector<vrendergraph::ParamDesc> readShaderReflectedParamDescs(const EditorContext& ctx,
+        std::vector<vrendergraph::ParamDesc> readShaderReflectedParamDescs(const EditorContext&          ctx,
                                                                            const vrendergraph::PassDecl& pass)
         {
             const auto shaderRef = resolvePassShaderRef(ctx, pass);
@@ -2020,7 +2189,8 @@ namespace vultra_app
                 return {};
 
             std::vector<std::string> shaderIds {shaderRef->fragment};
-            if (shaderRef->fragment.find('/') == std::string::npos && shaderRef->fragment.find('\\') == std::string::npos)
+            if (shaderRef->fragment.find('/') == std::string::npos &&
+                shaderRef->fragment.find('\\') == std::string::npos)
                 shaderIds.push_back("fullscreen/" + shaderRef->fragment);
 
             auto loadReflectedShader = [&](vultra::rhi::ShaderLibraryRuntime& shaderLibrary)
@@ -2028,9 +2198,7 @@ namespace vultra_app
                 for (const auto& shaderId : shaderIds)
                 {
                     const auto variantHash = vultra::rhi::ShaderLibraryRuntime::computeVariantHash(
-                        shaderId,
-                        vshadersystem::ShaderStage::eFrag,
-                        {});
+                        shaderId, vshadersystem::ShaderStage::eFrag, {});
                     if (!shaderLibrary.hasVariant(variantHash, vshadersystem::ShaderStage::eFrag))
                         continue;
                     auto shader = shaderLibrary.load(variantHash, vshadersystem::ShaderStage::eFrag);
@@ -2054,7 +2222,7 @@ namespace vultra_app
             return params;
         }
 
-        std::vector<vrendergraph::ParamDesc> readShaderParamDescs(const EditorContext& ctx,
+        std::vector<vrendergraph::ParamDesc> readShaderParamDescs(const EditorContext&          ctx,
                                                                   const vrendergraph::PassDecl& pass)
         {
             return readShaderReflectedParamDescs(ctx, pass);
@@ -2072,7 +2240,7 @@ namespace vultra_app
             if (!transform)
                 return glm::mat4 {1.0f};
 
-            const auto local = makeTransformMatrix(*transform);
+            const auto  local     = makeTransformMatrix(*transform);
             const auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(entity);
             if (!hierarchy || hierarchy->parent == entt::null || !reg.valid(hierarchy->parent))
                 return local;
@@ -2091,10 +2259,7 @@ namespace vultra_app
                 return glm::orthoRH_ZO(-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, zNear, zFar);
             }
 
-            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees),
-                                         std::max(aspect, 0.0001f),
-                                         zNear,
-                                         zFar);
+            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
         }
 
         entt::entity findPrimaryCamera(vultra::World& world)
@@ -2102,7 +2267,7 @@ namespace vultra_app
             auto& reg  = world.registry();
             auto  view = reg.view<vultra::IDComponent, vultra::TransformComponent, vultra::CameraComponent>();
 
-            entt::entity best = entt::null;
+            entt::entity best         = entt::null;
             int          bestPriority = std::numeric_limits<int>::min();
             for (auto e : view)
             {
@@ -2130,20 +2295,20 @@ namespace vultra_app
             auto& camera = reg.get<vultra::CameraComponent>(entity);
 
             vultra::RenderCamera out {};
-            out.uuid        = id.uuid;
-            out.name        = std::move(name);
-            out.priority    = camera.priority;
-            out.view        = glm::inverse(makeWorldTransformMatrix(reg, entity));
-            out.projection  = makeGameProjection(camera, aspect);
-            out.zNear       = std::max(camera.zNear, 0.0001f);
-            out.zFar        = std::max(camera.zFar, out.zNear + 0.0001f);
-            out.fovY        = glm::radians(camera.fovYDegrees);
-            out.target      = target;
-            out.clearValue  = camera.clearColor;
-            out.clearValue.a = 1.0f;
-            out.clearMode = camera.clearMode;
-            out.renderImGui = false;
-            out.debugEntityIdOutput = false;
+            out.uuid                    = id.uuid;
+            out.name                    = std::move(name);
+            out.priority                = camera.priority;
+            out.view                    = glm::inverse(makeWorldTransformMatrix(reg, entity));
+            out.projection              = makeGameProjection(camera, aspect);
+            out.zNear                   = std::max(camera.zNear, 0.0001f);
+            out.zFar                    = std::max(camera.zFar, out.zNear + 0.0001f);
+            out.fovY                    = glm::radians(camera.fovYDegrees);
+            out.target                  = target;
+            out.clearValue              = camera.clearColor;
+            out.clearValue.a            = 1.0f;
+            out.clearMode               = camera.clearMode;
+            out.renderImGui             = false;
+            out.debugEntityIdOutput     = false;
             out.selectionOutlineEnabled = false;
             out.rendererKey = rendererKey.empty() ? (camera.rendererKey.empty() ? "universal" : camera.rendererKey) :
                                                     std::move(rendererKey);
@@ -2156,8 +2321,7 @@ namespace vultra_app
                                                           vultra::rhi::Texture* target,
                                                           std::string           rendererKey)
         {
-            return makeRenderGraphCamera(
-                world, entity, aspect, target, "Render Graph Preview", std::move(rendererKey));
+            return makeRenderGraphCamera(world, entity, aspect, target, "Render Graph Preview", std::move(rendererKey));
         }
 
         std::string normalizedTextureLookupKey(std::string_view key)
@@ -2193,11 +2357,10 @@ namespace vultra_app
             return lower(haystack).find(lower(needle)) != std::string::npos;
         }
 
-        void addTextureLookupKey(
-            std::unordered_map<std::string, const vultra::FrameGraphDebugTexture*>& textureByName,
-            std::string_view                                                       key,
-            const vultra::FrameGraphDebugTexture&                                  texture,
-            const bool                                                             replace = false)
+        void addTextureLookupKey(std::unordered_map<std::string, const vultra::FrameGraphDebugTexture*>& textureByName,
+                                 std::string_view                                                        key,
+                                 const vultra::FrameGraphDebugTexture&                                   texture,
+                                 const bool replace = false)
         {
             const auto normalized = normalizedTextureLookupKey(key);
             if (normalized.empty())
@@ -2211,7 +2374,7 @@ namespace vultra_app
 
         std::string runtimeGraphDisplayLabel(std::string_view label)
         {
-            label = trim(label);
+            label                                         = trim(label);
             constexpr std::string_view debugCapturePrefix = "DebugCapture/";
             if (label.starts_with(debugCapturePrefix))
                 label.remove_prefix(debugCapturePrefix.size());
@@ -2248,7 +2411,7 @@ namespace vultra_app
 
         bool isDebugCaptureRuntimeGraphNode(std::string_view id, std::string_view label)
         {
-            id = trim(id);
+            id    = trim(id);
             label = trim(label);
             return id.starts_with("pass:DebugCapture/") || id.starts_with("resource:DebugCapture/") ||
                    label.starts_with("DebugCapture/");
@@ -2256,7 +2419,7 @@ namespace vultra_app
 
         bool isAnonymousRuntimeGraphDebugId(std::string_view id, std::string_view label)
         {
-            id = trim(id);
+            id    = trim(id);
             label = trim(label);
             if (!label.empty() && label != id)
                 return false;
@@ -2285,11 +2448,20 @@ namespace vultra_app
             {
                 switch (c)
                 {
-                    case '\\': out += "\\\\"; break;
-                    case '"': out += "\\\""; break;
-                    case '\n': out += "\\n"; break;
-                    case '\r': break;
-                    default: out += c; break;
+                    case '\\':
+                        out += "\\\\";
+                        break;
+                    case '"':
+                        out += "\\\"";
+                        break;
+                    case '\n':
+                        out += "\\n";
+                        break;
+                    case '\r':
+                        break;
+                    default:
+                        out += c;
+                        break;
                 }
             }
             return out;
@@ -2348,7 +2520,7 @@ namespace vultra_app
 
             std::unordered_map<std::string, Node> nodeById;
             auto addNode = [&](std::string id, std::string label = {}, std::string kind = {}) {
-                id = trim(id);
+                id    = trim(id);
                 label = trim(label.empty() ? id : label);
                 if (id.empty() || id == "node" || id == "edge" || id == "graph")
                     return;
@@ -2365,12 +2537,13 @@ namespace vultra_app
             };
 
             std::vector<nlohmann::json> allGraphEntries;
-            size_t lineStart = 0;
+            size_t                      lineStart = 0;
             while (lineStart < snapshot.size())
             {
                 const size_t lineEnd = snapshot.find('\n', lineStart);
-                const auto   line = snapshot.substr(lineStart, lineEnd == std::string_view::npos ? std::string_view::npos : lineEnd - lineStart);
-                const auto   trimmedLine = trim(line);
+                const auto   line    = snapshot.substr(
+                    lineStart, lineEnd == std::string_view::npos ? std::string_view::npos : lineEnd - lineStart);
+                const auto trimmedLine = trim(line);
                 if (!trimmedLine.empty())
                 {
                     try
@@ -2379,8 +2552,7 @@ namespace vultra_app
                         allGraphEntries.push_back(json);
                     }
                     catch (const std::exception&)
-                    {
-                    }
+                    {}
                 }
 
                 if (lineEnd == std::string_view::npos)
@@ -2390,18 +2562,18 @@ namespace vultra_app
 
             auto graphEntries = std::move(allGraphEntries);
 
-            int previewGraphIndex = -1;
-            int gameGraphIndex = -1;
-            int largestGraphIndex = -1;
-            size_t largestGraphSize = 0;
+            int    previewGraphIndex = -1;
+            int    gameGraphIndex    = -1;
+            int    largestGraphIndex = -1;
+            size_t largestGraphSize  = 0;
             for (size_t i = 0; i < graphEntries.size(); ++i)
             {
-                const auto& json = graphEntries[i];
+                const auto& json        = graphEntries[i];
                 const auto  rendererKey = json.value("renderer", std::string {"renderer?"});
-                const auto  cameraName = json.value("camera", std::string {"camera?"});
-                const auto  nodesJson = json.value("nodes", nlohmann::json::array());
-                const auto  nodeCount = nodesJson.size();
-                auto        graphKey = rendererKey + "/" + cameraName;
+                const auto  cameraName  = json.value("camera", std::string {"camera?"});
+                const auto  nodesJson   = json.value("nodes", nlohmann::json::array());
+                const auto  nodeCount   = nodesJson.size();
+                auto        graphKey    = rendererKey + "/" + cameraName;
                 if (std::find(graphKeys.begin(), graphKeys.end(), graphKey) != graphKeys.end())
                     graphKey += "#" + std::to_string(i);
 
@@ -2416,7 +2588,7 @@ namespace vultra_app
                     gameGraphIndex = static_cast<int>(i);
                 if (nodeCount > largestGraphSize)
                 {
-                    largestGraphSize = nodeCount;
+                    largestGraphSize  = nodeCount;
                     largestGraphIndex = static_cast<int>(i);
                 }
             }
@@ -2429,34 +2601,34 @@ namespace vultra_app
             else if (previewGraphIndex >= 0)
             {
                 selectedGraphIndex = previewGraphIndex;
-                selectedGraphKey = graphKeys[static_cast<size_t>(selectedGraphIndex)];
+                selectedGraphKey   = graphKeys[static_cast<size_t>(selectedGraphIndex)];
             }
             else if (gameGraphIndex >= 0)
             {
                 selectedGraphIndex = gameGraphIndex;
-                selectedGraphKey = graphKeys[static_cast<size_t>(selectedGraphIndex)];
+                selectedGraphKey   = graphKeys[static_cast<size_t>(selectedGraphIndex)];
             }
             else if (largestGraphIndex >= 0)
             {
                 selectedGraphIndex = largestGraphIndex;
-                selectedGraphKey = graphKeys[static_cast<size_t>(selectedGraphIndex)];
+                selectedGraphKey   = graphKeys[static_cast<size_t>(selectedGraphIndex)];
             }
             else if (!graphLabels.empty())
             {
                 selectedGraphIndex = 0;
-                selectedGraphKey = graphKeys.front();
+                selectedGraphKey   = graphKeys.front();
             }
 
-            std::vector<std::string>      dotNodeOrder;
+            std::vector<std::string>        dotNodeOrder;
             std::unordered_set<std::string> dotVisibleNodeIds;
             if (!graphEntries.empty() && selectedGraphIndex >= 0 &&
                 selectedGraphIndex < static_cast<int>(graphEntries.size()))
             {
                 const auto& selectedGraph = graphEntries[static_cast<size_t>(selectedGraphIndex)];
-                camera = selectedGraph.value("camera", std::string {});
-                cameraDisplay = runtimeCameraDisplayName(camera);
-                renderer = selectedGraph.value("renderer", std::string {});
-                rawDot = selectedGraph.value("dot", std::string {});
+                camera                    = selectedGraph.value("camera", std::string {});
+                cameraDisplay             = runtimeCameraDisplayName(camera);
+                renderer                  = selectedGraph.value("renderer", std::string {});
+                rawDot                    = selectedGraph.value("dot", std::string {});
                 if (camera != "Render Graph Preview")
                 {
                     textureCamera = camera;
@@ -2474,8 +2646,7 @@ namespace vultra_app
 
                         textureCamera = graphCamera;
                         if (graphCamera.find("Game") != std::string::npos ||
-                            graphCamera.find("game") != std::string::npos ||
-                            graphCamera == "Camera")
+                            graphCamera.find("game") != std::string::npos || graphCamera == "Camera")
                         {
                             break;
                         }
@@ -2494,15 +2665,13 @@ namespace vultra_app
                             debugCaptureNodeIds.insert(id);
                         continue;
                     }
-                    addNode(id,
-                            node.value("label", std::string {}),
-                            node.value("kind", std::string {}));
+                    addNode(id, node.value("label", std::string {}), node.value("kind", std::string {}));
                     if (auto it = nodeById.find(id); it != nodeById.end())
                     {
-                        it->second.imported = node.value("imported", false);
-                        it->second.active = node.value("active", true);
+                        it->second.imported   = node.value("imported", false);
+                        it->second.active     = node.value("active", true);
                         it->second.sideEffect = node.value("sideEffect", false);
-                        it->second.version = node.value("version", 0);
+                        it->second.version    = node.value("version", 0);
                     }
                 }
                 for (const auto& edge : selectedEdgesJson)
@@ -2511,7 +2680,7 @@ namespace vultra_app
                     if (edge.contains("from") && edge.contains("to"))
                     {
                         const auto from = edge.value("from", std::string {});
-                        const auto to = edge.value("to", std::string {});
+                        const auto to   = edge.value("to", std::string {});
                         if (isHiddenRuntimeGraphDebugNode(from, {}) || isHiddenRuntimeGraphDebugNode(to, {}) ||
                             debugCaptureNodeIds.contains(from) || debugCaptureNodeIds.contains(to))
                             continue;
@@ -2529,7 +2698,7 @@ namespace vultra_app
                         for (size_t i = 1; i < vertices.size(); ++i)
                         {
                             const auto from = vertices[i - 1].get<std::string>();
-                            const auto to = vertices[i].get<std::string>();
+                            const auto to   = vertices[i].get<std::string>();
                             if (isHiddenRuntimeGraphDebugNode(from, {}) || isHiddenRuntimeGraphDebugNode(to, {}) ||
                                 debugCaptureNodeIds.contains(from) || debugCaptureNodeIds.contains(to))
                                 continue;
@@ -2553,7 +2722,7 @@ namespace vultra_app
                         std::string label;
                     };
 
-                    std::vector<DotEdge>     dotEdges;
+                    std::vector<DotEdge>            dotEdges;
                     std::unordered_set<std::string> dotNodeIds;
 
                     auto unescapeDotString = [](std::string_view text) {
@@ -2566,9 +2735,14 @@ namespace vultra_app
                             {
                                 switch (c)
                                 {
-                                    case 'n': out.push_back('\n'); break;
-                                    case 'r': break;
-                                    default: out.push_back(c); break;
+                                    case 'n':
+                                        out.push_back('\n');
+                                        break;
+                                    case 'r':
+                                        break;
+                                    default:
+                                        out.push_back(c);
+                                        break;
                                 }
                                 escaped = false;
                                 continue;
@@ -2626,7 +2800,7 @@ namespace vultra_app
                         if (labelPos == std::string_view::npos)
                             return std::string {};
                         const auto begin = line.find('<', labelPos + 6);
-                        const auto end = line.find("|", begin == std::string_view::npos ? labelPos + 6 : begin);
+                        const auto end   = line.find("|", begin == std::string_view::npos ? labelPos + 6 : begin);
                         if (begin == std::string_view::npos || end == std::string_view::npos || end <= begin)
                             return std::string {};
                         return stripDotHtmlLabel(line.substr(begin, end - begin));
@@ -2638,7 +2812,7 @@ namespace vultra_app
                             return {};
                         ++pos;
                         std::string out;
-                        bool escaped = false;
+                        bool        escaped = false;
                         for (; pos < line.size(); ++pos)
                         {
                             const char c = line[pos];
@@ -2665,9 +2839,8 @@ namespace vultra_app
                     };
 
                     auto readDotId = [](std::string_view line, size_t& pos) -> std::string {
-                        while (pos < line.size() &&
-                               (std::isspace(static_cast<unsigned char>(line[pos])) || line[pos] == '{' ||
-                                line[pos] == ';' || line[pos] == ','))
+                        while (pos < line.size() && (std::isspace(static_cast<unsigned char>(line[pos])) ||
+                                                     line[pos] == '{' || line[pos] == ';' || line[pos] == ','))
                             ++pos;
                         if (pos >= line.size())
                             return {};
@@ -2688,11 +2861,11 @@ namespace vultra_app
                             const auto found = line.find(name, search);
                             if (found == std::string_view::npos)
                                 return {};
-                            const bool leftOk = found == 0 ||
-                                                (!std::isalnum(static_cast<unsigned char>(line[found - 1])) &&
-                                                 line[found - 1] != '_');
+                            const bool leftOk =
+                                found == 0 ||
+                                (!std::isalnum(static_cast<unsigned char>(line[found - 1])) && line[found - 1] != '_');
                             const size_t afterName = found + name.size();
-                            size_t p = afterName;
+                            size_t       p         = afterName;
                             while (p < line.size() && std::isspace(static_cast<unsigned char>(line[p])))
                                 ++p;
                             if (leftOk && p < line.size() && line[p] == '=')
@@ -2713,11 +2886,11 @@ namespace vultra_app
                     };
 
                     auto dotKind = [](std::string_view id) -> std::string {
-                        if (id.starts_with("pass:") || (id.size() >= 2 && id[0] == 'P' &&
-                                                        std::isdigit(static_cast<unsigned char>(id[1]))))
+                        if (id.starts_with("pass:") ||
+                            (id.size() >= 2 && id[0] == 'P' && std::isdigit(static_cast<unsigned char>(id[1]))))
                             return "pass";
-                        if (id.starts_with("resource:") || (id.size() >= 2 && id[0] == 'R' &&
-                                                            std::isdigit(static_cast<unsigned char>(id[1]))))
+                        if (id.starts_with("resource:") ||
+                            (id.size() >= 2 && id[0] == 'R' && std::isdigit(static_cast<unsigned char>(id[1]))))
                             return "resource";
                         return {};
                     };
@@ -2737,7 +2910,7 @@ namespace vultra_app
                         addNode(id, label, dotKind(id));
                         if (auto it = nodeById.find(id); it != nodeById.end())
                         {
-                            it->second.imported = fillColor == "lightsteelblue";
+                            it->second.imported   = fillColor == "lightsteelblue";
                             it->second.sideEffect = fillColor == "orange";
                         }
                         dotNodeIds.insert(id);
@@ -2749,24 +2922,24 @@ namespace vultra_app
                     while (dotLineStart < rawDot.size())
                     {
                         const size_t dotLineEnd = rawDot.find('\n', dotLineStart);
-                        auto line = trim(std::string_view {
-                            rawDot.data() + dotLineStart,
-                            dotLineEnd == std::string::npos ? rawDot.size() - dotLineStart : dotLineEnd - dotLineStart});
+                        auto         line =
+                            trim(std::string_view {rawDot.data() + dotLineStart,
+                                                   dotLineEnd == std::string::npos ? rawDot.size() - dotLineStart :
+                                                                                     dotLineEnd - dotLineStart});
 
                         if (!line.empty() && line.front() == '"')
                         {
-                            size_t pos = 0;
-                            auto first = readQuoted(line, pos);
+                            size_t     pos   = 0;
+                            auto       first = readQuoted(line, pos);
                             const auto arrow = line.find("->", pos);
                             if (arrow != std::string_view::npos)
                             {
-                                pos = arrow + 2;
+                                pos         = arrow + 2;
                                 auto second = readQuoted(line, pos);
                                 if (!first.empty() && !second.empty() && first != second &&
                                     !isHiddenRuntimeGraphDebugNode(first, {}) &&
                                     !isHiddenRuntimeGraphDebugNode(second, {}) &&
-                                    !debugCaptureNodeIds.contains(first) &&
-                                    !debugCaptureNodeIds.contains(second))
+                                    !debugCaptureNodeIds.contains(first) && !debugCaptureNodeIds.contains(second))
                                 {
                                     std::string label = readAttribute(line, "label");
                                     if (label.empty())
@@ -2784,8 +2957,7 @@ namespace vultra_app
                             {
                                 if (!first.empty() &&
                                     !isHiddenRuntimeGraphDebugNode(first, readAttribute(line, "label")) &&
-                                    !debugCaptureNodeIds.contains(first) &&
-                                    !dotNodeIds.contains(first))
+                                    !debugCaptureNodeIds.contains(first) && !dotNodeIds.contains(first))
                                 {
                                     auto label = readAttribute(line, "label");
                                     addNode(first, label.empty() ? first : label, dotKind(first));
@@ -2796,7 +2968,7 @@ namespace vultra_app
                         }
                         else if (!line.empty())
                         {
-                            size_t pos = 0;
+                            size_t     pos   = 0;
                             const auto first = readDotId(line, pos);
                             if (isDotRuntimeNodeId(first))
                             {
@@ -2818,7 +2990,7 @@ namespace vultra_app
                                     }
 
                                     std::string label;
-                                    const auto color = readAttribute(line, "color");
+                                    const auto  color = readAttribute(line, "color");
                                     if (color == "orangered")
                                         label = "write";
                                     else if (color == "yellowgreen")
@@ -2851,7 +3023,8 @@ namespace vultra_app
                                 addNode(edge.from, {}, dotKind(edge.from));
                             if (!nodeById.contains(edge.to))
                                 addNode(edge.to, {}, dotKind(edge.to));
-                            dotRuntimeEdges.push_back({std::move(edge.from), std::move(edge.to), std::move(edge.label)});
+                            dotRuntimeEdges.push_back(
+                                {std::move(edge.from), std::move(edge.to), std::move(edge.label)});
                         }
                         edges = std::move(dotRuntimeEdges);
                     }
@@ -2859,9 +3032,7 @@ namespace vultra_app
 
                 if (!dotVisibleNodeIds.empty())
                 {
-                    std::erase_if(nodeById, [&](const auto& item) {
-                        return !dotVisibleNodeIds.contains(item.first);
-                    });
+                    std::erase_if(nodeById, [&](const auto& item) { return !dotVisibleNodeIds.contains(item.first); });
                 }
             }
 
@@ -2872,9 +3043,8 @@ namespace vultra_app
             nodeIds.reserve(nodes.size());
             for (const auto& node : nodes)
                 nodeIds.insert(node.id);
-            std::erase_if(edges, [&](const auto& edge) {
-                return !nodeIds.contains(edge.from) || !nodeIds.contains(edge.to);
-            });
+            std::erase_if(edges,
+                          [&](const auto& edge) { return !nodeIds.contains(edge.from) || !nodeIds.contains(edge.to); });
             std::unordered_map<std::string, size_t> dotNodeRank;
             dotNodeRank.reserve(dotNodeOrder.size());
             for (size_t i = 0; i < dotNodeOrder.size(); ++i)
@@ -2943,7 +3113,7 @@ namespace vultra_app
 
         GraphEditorState()
         {
-            editorContext = ImNodes::EditorContextCreate();
+            editorContext         = ImNodes::EditorContextCreate();
             pipelineEditorContext = ImNodes::EditorContextCreate();
 
             registerBuiltinRenderGraphResources(registry);
@@ -2972,13 +3142,14 @@ namespace vultra_app
         int pinId(std::string_view node, std::string_view slot, bool input)
         {
             const int id = stableId(std::string(input ? "in:" : "out:") + std::string(node) + ":" + std::string(slot));
-            pins[id] = Pin {std::string(node), std::string(slot), input};
+            pins[id]     = Pin {std::string(node), std::string(slot), input};
             return id;
         }
 
         int linkId(std::string_view ref, std::string_view pass, std::string_view slot) const
         {
-            return stableId(std::string("link:") + std::string(ref) + "->" + std::string(pass) + "." + std::string(slot));
+            return stableId(std::string("link:") + std::string(ref) + "->" + std::string(pass) + "." +
+                            std::string(slot));
         }
 
         int flowLinkId(std::string_view from, std::string_view to) const
@@ -2991,19 +3162,17 @@ namespace vultra_app
             return stableId(std::string("pipeline:") + std::string(from) + "->" + std::string(to));
         }
 
-        std::string metaKeyForResource(std::string_view name) const
-        {
-            return "resource:" + std::string(name);
-        }
+        std::string metaKeyForResource(std::string_view name) const { return "resource:" + std::string(name); }
 
         bool isCurrentGraphFeature(std::string_view feature) const
         {
             if (path.empty())
                 return false;
             const auto generic = path.generic_string();
-            const auto pos = generic.find("/resources/");
+            const auto pos     = generic.find("/resources/");
             const auto resPath = pos == std::string::npos ? generic : generic.substr(pos + 11);
-            return feature == "res://" + resPath || feature == resPath || feature.ends_with(path.filename().generic_string());
+            return feature == "res://" + resPath || feature == resPath ||
+                   feature.ends_with(path.filename().generic_string());
         }
 
         std::optional<ImVec2> readNodePos(std::string_view key) const
@@ -3026,7 +3195,7 @@ namespace vultra_app
             auto& nodes = graph.meta["editor"]["nodes"];
             if (!nodes.is_object())
                 nodes = nlohmann::json::object();
-            const ImVec2 pos = ImNodes::GetNodeGridSpacePos(id);
+            const ImVec2 pos               = ImNodes::GetNodeGridSpacePos(id);
             nodes[std::string(key)]["pos"] = nlohmann::json::array({pos.x, pos.y});
         }
 
@@ -3084,7 +3253,7 @@ namespace vultra_app
             if (movedIt == pipelineFeatures.end() || afterIt == pipelineFeatures.end())
                 return false;
 
-            std::string value = std::move(*movedIt);
+            std::string value      = std::move(*movedIt);
             const auto  movedIndex = std::distance(pipelineFeatures.begin(), movedIt);
             const auto  afterIndex = std::distance(pipelineFeatures.begin(), afterIt);
             pipelineFeatures.erase(movedIt);
@@ -3092,7 +3261,7 @@ namespace vultra_app
             pipelineFeatures.insert(insertIt, std::move(value));
             markPipelineDirty();
             applyPositions = true;
-            status = "Updated feature order";
+            status         = "Updated feature order";
             return true;
         }
 
@@ -3171,7 +3340,7 @@ namespace vultra_app
         bool removeSelected()
         {
             ImNodes::EditorContextSet(activeEditorContext());
-            bool removed = false;
+            bool      removed       = false;
             const int selectedLinks = ImNodes::NumSelectedLinks();
             if (selectedLinks > 0)
             {
@@ -3233,13 +3402,13 @@ namespace vultra_app
 
         if (ImGui::Button(ICON_MDI_GRAPH " Preview Runtime Graph"))
         {
-            m_RuntimeGraphPopupOpen = true;
+            m_RuntimeGraphPopupOpen     = true;
             m_SelectRuntimePreviewGraph = true;
             if (m_RuntimeGraph)
             {
                 m_RuntimeGraph->selectedGraphKey.clear();
                 m_RuntimeGraph->selectedGraphIndex = -1;
-                m_RuntimeGraph->snapshotHash = 0;
+                m_RuntimeGraph->snapshotHash       = 0;
             }
             if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
             {
@@ -3267,23 +3436,32 @@ namespace vultra_app
         if (renderService)
         {
             renderService->setFrameGraphTextureCaptureEnabled(true);
-            if (!m_RuntimeTexturePreviewOpen && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
+            if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
             {
-                bool defaultChannels[4] {true, true, true, true};
+                bool       defaultChannels[4] {true, true, true, true};
+                const auto selectedTextureKey =
+                    m_RuntimeTexturePreviewOpen && !m_RuntimeTexturePreviewKey.empty() ?
+                        m_RuntimeTexturePreviewKey :
+                        std::string(vultra::FrameGraphTexturePreviewSettings::kCaptureAllTextures);
+                const uint32_t maxPreviewExtent = m_RuntimeTexturePreviewOpen && !m_RuntimeTexturePreviewKey.empty() ?
+                                                      0u :
+                                                      160u;
                 const auto previewSettings = ui::makeFrameGraphTexturePreviewSettings(
-                    std::string(vultra::FrameGraphTexturePreviewSettings::kCaptureAllTextures),
+                    selectedTextureKey,
                     true,
                     defaultChannels,
                     0,
                     0.1f,
                     1000.0f,
                     0.0f,
-                    1.0f);
+                    1.0f,
+                    maxPreviewExtent);
                 renderService->setFrameGraphTexturePreviewSettings(previewSettings);
             }
         }
-        const std::string snapshot = renderService ? std::string(renderService->lastFrameGraphSnapshot()) : std::string {};
-        auto&             graph = *m_RuntimeGraph;
+        const std::string snapshot =
+            renderService ? std::string(renderService->lastFrameGraphSnapshot()) : std::string {};
+        auto& graph = *m_RuntimeGraph;
         if (m_SelectRuntimePreviewGraph)
             graph.selectedGraphKey.clear();
         graph.parse(snapshot);
@@ -3291,9 +3469,9 @@ namespace vultra_app
             m_SelectRuntimePreviewGraph = false;
         collectRetiredTextureThumbnails(ctx);
 
-        size_t debugTextureCount = 0;
-        size_t capturedTextureCount = 0;
-        size_t graphTextureCount = 0;
+        size_t debugTextureCount         = 0;
+        size_t capturedTextureCount      = 0;
+        size_t graphTextureCount         = 0;
         size_t graphCapturedTextureCount = 0;
         if (renderService)
         {
@@ -3316,18 +3494,18 @@ namespace vultra_app
         {
             const uint32_t runtimePreviewWidth  = std::max(ctx.state.gameViewRenderWidth, 1u);
             const uint32_t runtimePreviewHeight = std::max(ctx.state.gameViewRenderHeight, 1u);
-            const float    runtimePreviewAspect = static_cast<float>(runtimePreviewWidth) /
-                                               static_cast<float>(runtimePreviewHeight);
+            const float    runtimePreviewAspect =
+                static_cast<float>(runtimePreviewWidth) / static_cast<float>(runtimePreviewHeight);
             ensureOverlayRenderTarget(ctx, runtimePreviewWidth, runtimePreviewHeight);
             vultra::rhi::Texture* runtimePreviewTarget =
                 m_OverlayPendingRenderTarget.texture ? &*m_OverlayPendingRenderTarget.texture :
                 m_OverlayActiveRenderTarget.texture  ? &*m_OverlayActiveRenderTarget.texture :
-                                                        nullptr;
+                                                       nullptr;
             if (ctx.services && runtimePreviewTarget)
             {
                 if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
                 {
-                    auto& world = worldService->world();
+                    auto&      world  = worldService->world();
                     const auto camera = findPrimaryCamera(world);
                     if (camera != entt::null)
                     {
@@ -3348,8 +3526,10 @@ namespace vultra_app
         if (!graph.graphLabels.empty())
         {
             ImGui::SetNextItemWidth(240.0f);
-            const char* preview = graph.graphLabels[static_cast<size_t>(
-                std::clamp(graph.selectedGraphIndex, 0, static_cast<int>(graph.graphLabels.size()) - 1))].c_str();
+            const char* preview = graph
+                                      .graphLabels[static_cast<size_t>(std::clamp(
+                                          graph.selectedGraphIndex, 0, static_cast<int>(graph.graphLabels.size()) - 1))]
+                                      .c_str();
             if (ImGui::BeginCombo("##RuntimeGraphCamera", preview))
             {
                 for (int i = 0; i < static_cast<int>(graph.graphLabels.size()); ++i)
@@ -3358,8 +3538,8 @@ namespace vultra_app
                     if (ImGui::Selectable(graph.graphLabels[static_cast<size_t>(i)].c_str(), selected))
                     {
                         graph.selectedGraphIndex = i;
-                        graph.selectedGraphKey = graph.graphKeys[static_cast<size_t>(i)];
-                        graph.snapshotHash = 0;
+                        graph.selectedGraphKey   = graph.graphKeys[static_cast<size_t>(i)];
+                        graph.snapshotHash       = 0;
                         graph.parse(snapshot);
                     }
                     if (selected)
@@ -3392,14 +3572,12 @@ namespace vultra_app
             return;
         }
 
-        ImGui::BeginChild("##RuntimeFrameGraphNodes",
-                          ImGui::GetContentRegionAvail(),
-                          true,
-                          ImGuiWindowFlags_HorizontalScrollbar);
+        ImGui::BeginChild(
+            "##RuntimeFrameGraphNodes", ImGui::GetContentRegionAvail(), true, ImGuiWindowFlags_HorizontalScrollbar);
         const ImVec2 graphViewport = ImGui::GetContentRegionAvail();
 
-        constexpr float nodeWidth = 340.0f;
-        constexpr float graphPixelsPerUnit = 100.0f;
+        constexpr float                                                        nodeWidth          = 340.0f;
+        constexpr float                                                        graphPixelsPerUnit = 100.0f;
         std::unordered_map<std::string, const vultra::FrameGraphDebugTexture*> textureByExactKey;
         std::unordered_map<std::string, const vultra::FrameGraphDebugTexture*> textureByLabel;
         if (renderService)
@@ -3412,10 +3590,7 @@ namespace vultra_app
                 const auto slash = texture.resourceKey.find('/');
                 if (slash != std::string::npos && slash + 1 < texture.resourceKey.size())
                     addTextureLookupKey(
-                        textureByLabel,
-                        std::string_view {texture.resourceKey}.substr(slash + 1),
-                        texture,
-                        replace);
+                        textureByLabel, std::string_view {texture.resourceKey}.substr(slash + 1), texture, replace);
             };
 
             for (const auto& texture : renderService->frameGraphDebugTextures())
@@ -3437,18 +3612,19 @@ namespace vultra_app
                     continue;
 
                 // Frame graph resource ids are local to each camera graph. Only the currently selected graph camera
-                // can use exact resource ids safely; cross-camera preview falls back to labels within the same renderer.
+                // can use exact resource ids safely; cross-camera preview falls back to labels within the same
+                // renderer.
                 addTextureLookupKey(textureByExactKey, texture.key, texture, true);
                 addTextureLookupKey(textureByExactKey, texture.resourceKey, texture, true);
                 addTextureLookupKey(textureByExactKey, texture.transientResourceKey, texture, true);
                 addLabelKeys(texture, true);
             }
         }
-        auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
-        auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
-        const bool anyPopupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
+        auto*      imguiService   = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        const bool anyPopupOpen   = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
 
-        auto findDebugTextureForNode = [&](const RuntimeGraphState::Node& node) -> const vultra::FrameGraphDebugTexture* {
+        auto findDebugTextureForNode =
+            [&](const RuntimeGraphState::Node& node) -> const vultra::FrameGraphDebugTexture* {
             if (node.kind != "resource")
                 return nullptr;
             if (auto it = textureByExactKey.find(normalizedTextureLookupKey(node.id)); it != textureByExactKey.end())
@@ -3467,136 +3643,14 @@ namespace vultra_app
                         return it->second;
                 }
             }
-            if (auto labelIt = textureByLabel.find(normalizedTextureLookupKey(node.label)); labelIt != textureByLabel.end())
+            if (auto labelIt = textureByLabel.find(normalizedTextureLookupKey(node.label));
+                labelIt != textureByLabel.end())
                 return labelIt->second;
             return nullptr;
         };
 
         auto prepareRuntimeTexturePreview = [&](const vultra::FrameGraphDebugTexture& debugTexture) {
-            if (!debugTexture.capturable)
-                return;
-
-            const auto& key = debugTexture.resourceKey;
-            if (renderService && !anyPopupOpen &&
-                !m_RuntimeGraphTextureDefaultPreviewDone.contains(key) &&
-                (!m_RuntimeTexturePreviewOpen || m_RuntimeTexturePreviewOverrideKey != key))
-            {
-                bool channels[4] {true, true, true, false};
-                const int previewMode = ui::defaultTexturePreviewMode(debugTexture);
-                const auto settings = ui::makeFrameGraphTexturePreviewSettings(key,
-                                                                               ui::shouldGammaCorrectTexturePreview(debugTexture),
-                                                                               channels,
-                                                                               previewMode,
-                                                                               std::max(debugTexture.zNear, 0.0001f),
-                                                                               std::max(debugTexture.zFar, debugTexture.zNear + 0.0001f),
-                                                                               0.0f,
-                                                                               1.0f);
-                renderService->setFrameGraphTexturePreviewOverride(key, settings);
-                m_RuntimeGraphTexturePreviewSettings[key] = settings;
-                m_RuntimeGraphTextureDefaultPreviewDone.insert(key);
-            }
-
-            if (debugTexture.texture && renderService && backendService && !anyPopupOpen && ui::isDepthLikeTexture(debugTexture) &&
-                !ui::isShadowLikeTexture(debugTexture))
-            {
-                const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-                if (!m_RuntimeGraphTextureAutoFitDone.contains(key) &&
-                    !m_RuntimeGraphTextureAutoFitNextFrame.contains(key))
-                {
-                    bool channels[4] {true, true, true, false};
-                    const auto settings = ui::makeFrameGraphTexturePreviewSettings(key,
-                                                                                   false,
-                                                                                   channels,
-                                                                                   2,
-                                                                                   std::max(debugTexture.zNear, 0.0001f),
-                                                                                   std::max(debugTexture.zFar, debugTexture.zNear + 0.0001f),
-                                                                                   0.0f,
-                                                                                   1.0f);
-                    renderService->setFrameGraphTexturePreviewOverride(key, settings);
-                    m_RuntimeGraphTexturePreviewSettings[key] = settings;
-                    m_RuntimeGraphTextureAutoFitNextFrame[key] = frame + 3u;
-                    m_RuntimeGraphTextureAutoFitDeadlineFrame[key] = frame + 24u;
-                }
-
-                const auto pendingIt = m_RuntimeGraphTextureAutoFitNextFrame.find(key);
-                if (pendingIt != m_RuntimeGraphTextureAutoFitNextFrame.end() && frame >= pendingIt->second)
-                {
-                    auto clearPending = [&]() {
-                        m_RuntimeGraphTextureAutoFitNextFrame.erase(key);
-                        m_RuntimeGraphTextureAutoFitDeadlineFrame.erase(key);
-                    };
-                    auto fitClamp = [&]() -> bool {
-                        const auto pixels = backendService->renderDevice().readTextureRGBA8(*debugTexture.texture);
-                        if (!pixels)
-                            return false;
-
-                        float minValue = 1.0f;
-                        float maxValue = 0.0f;
-                        bool  found = false;
-                        const auto sampleCountX = std::min<uint32_t>(64u, std::max(debugTexture.extent.width, 1u));
-                        const auto sampleCountY = std::min<uint32_t>(64u, std::max(debugTexture.extent.height, 1u));
-                        for (uint32_t sy = 0; sy < sampleCountY; ++sy)
-                        {
-                            const auto y = std::min(debugTexture.extent.height - 1u,
-                                                    static_cast<uint32_t>((static_cast<uint64_t>(sy) *
-                                                                           debugTexture.extent.height) /
-                                                                          sampleCountY));
-                            for (uint32_t sx = 0; sx < sampleCountX; ++sx)
-                            {
-                                const auto x = std::min(debugTexture.extent.width - 1u,
-                                                        static_cast<uint32_t>((static_cast<uint64_t>(sx) *
-                                                                               debugTexture.extent.width) /
-                                                                              sampleCountX));
-                                const auto offset = (static_cast<uint64_t>(y) * debugTexture.extent.width + x) * 4u;
-                                if (offset >= pixels->size())
-                                    continue;
-                                const float value = static_cast<float>((*pixels)[offset]) / 255.0f;
-                                if (value <= 0.001f || value >= 0.999f)
-                                    continue;
-                                minValue = std::min(minValue, value);
-                                maxValue = std::max(maxValue, value);
-                                found = true;
-                            }
-                        }
-                        if (!found)
-                            return false;
-
-                        const float padding = std::max((maxValue - minValue) * 0.08f, 1.0f / 255.0f);
-                        float clampMin = std::max(0.0f, minValue - padding);
-                        float clampMax = std::min(1.0f, maxValue + padding);
-                        ui::normalizePreviewClamp(clampMin, clampMax);
-                        bool channels[4] {true, true, true, false};
-                        const auto settings = ui::makeFrameGraphTexturePreviewSettings(key,
-                                                                                       false,
-                                                                                       channels,
-                                                                                       2,
-                                                                                       std::max(debugTexture.zNear, 0.0001f),
-                                                                                       std::max(debugTexture.zFar, debugTexture.zNear + 0.0001f),
-                                                                                       clampMin,
-                                                                                       clampMax);
-                        renderService->setFrameGraphTexturePreviewOverride(key, settings);
-                        m_RuntimeGraphTexturePreviewSettings[key] = settings;
-                        return true;
-                    };
-
-                    if (fitClamp())
-                    {
-                        m_RuntimeGraphTextureAutoFitDone.insert(key);
-                        clearPending();
-                    }
-                    else if (auto deadlineIt = m_RuntimeGraphTextureAutoFitDeadlineFrame.find(key);
-                             deadlineIt != m_RuntimeGraphTextureAutoFitDeadlineFrame.end() &&
-                             frame < deadlineIt->second)
-                    {
-                        pendingIt->second = frame + 6u;
-                    }
-                    else
-                    {
-                        m_RuntimeGraphTextureAutoFitDone.insert(key);
-                        clearPending();
-                    }
-                }
-            }
+            (void)debugTexture;
         };
 
         std::unordered_map<std::string, const vultra::FrameGraphDebugTexture*> nodeTextures;
@@ -3633,10 +3687,11 @@ namespace vultra_app
                 {
                     if (edge.to != node.id || edge.label != "write")
                         continue;
-                    auto writer = otherLabel(edge.from);
+                    auto                       writer       = otherLabel(edge.from);
                     constexpr std::string_view uploadPrefix = "Upload";
                     if (writer.starts_with(uploadPrefix) && writer.size() > uploadPrefix.size())
-                        return runtimeGraphNodeDisplayLabel(writer.substr(uploadPrefix.size()), node.kind, node.version);
+                        return runtimeGraphNodeDisplayLabel(
+                            writer.substr(uploadPrefix.size()), node.kind, node.version);
                 }
             }
             else if (node.kind == "pass")
@@ -3645,9 +3700,10 @@ namespace vultra_app
                 {
                     if (edge.from != node.id || edge.label != "write")
                         continue;
-                    if (auto textureIt = nodeTextures.find(edge.to); textureIt != nodeTextures.end() && textureIt->second)
+                    if (auto textureIt = nodeTextures.find(edge.to);
+                        textureIt != nodeTextures.end() && textureIt->second)
                     {
-                        auto name = textureIt->second->name;
+                        auto                       name        = textureIt->second->name;
                         constexpr std::string_view colorSuffix = " Color";
                         if (name.ends_with(colorSuffix))
                             return name.substr(0, name.size() - colorSuffix.size()) + "Pass";
@@ -3674,23 +3730,20 @@ namespace vultra_app
             for (const auto& node : graph.nodes)
             {
                 const bool resourceNode = node.kind == "resource";
-                const bool hasTexture = nodeTextures.contains(node.id);
+                const bool hasTexture   = nodeTextures.contains(node.id);
                 const auto displayLabel = concreteRuntimeGraphNodeLabel(node);
-                const auto fillColor = resourceNode ?
-                                           (node.imported ? "#547ab0" : "#468a94") :
-                                           (node.sideEffect ? "#ac763a" : "#568852");
+                const auto fillColor =
+                    resourceNode ? (node.imported ? "#547ab0" : "#468a94") : (node.sideEffect ? "#ac763a" : "#568852");
                 const auto shape = hasTexture ? "box" : "box";
-                dot << "  \"" << dotEscape(node.id) << "\" [label=\"" << dotEscape(displayLabel)
-                    << "\", fillcolor=\"" << fillColor << "\", color=\"#4e606e\", shape=" << shape << "];\n";
+                dot << "  \"" << dotEscape(node.id) << "\" [label=\"" << dotEscape(displayLabel) << "\", fillcolor=\""
+                    << fillColor << "\", color=\"#4e606e\", shape=" << shape << "];\n";
             }
             dot << "\n";
             for (const auto& edge : graph.edges)
             {
-                const auto color = edge.label == "read" ? "#5299cf" :
-                                   edge.label == "write" ? "#75bd73" :
-                                                           "#a8a8a8";
-                dot << "  \"" << dotEscape(edge.from) << "\" -> \"" << dotEscape(edge.to)
-                    << "\" [color=\"" << color << "\"];\n";
+                const auto color = edge.label == "read" ? "#5299cf" : edge.label == "write" ? "#75bd73" : "#a8a8a8";
+                dot << "  \"" << dotEscape(edge.from) << "\" -> \"" << dotEscape(edge.to) << "\" [color=\"" << color
+                    << "\"];\n";
             }
             dot << "}\n";
             ImGui::SetClipboardText(dot.str().c_str());
@@ -3699,17 +3752,15 @@ namespace vultra_app
         if (ImGui::Button("Copy DOT"))
             copyRuntimeGraphDot();
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(graph.rawDot.empty() ?
-                                  "Copy a reconstructed Graphviz DOT fallback" :
-                                  "Copy the selected runtime graph DOT emitted by FrameGraph");
+            ImGui::SetTooltip(graph.rawDot.empty() ? "Copy a reconstructed Graphviz DOT fallback" :
+                                                     "Copy the selected runtime graph DOT emitted by FrameGraph");
 
         if (ImGuiGraphNode::BeginNodeGraph("RuntimeFrameGraphDot", ImGuiGraphNodeLayout_Dot, graphPixelsPerUnit))
         {
-            const bool useRawDotLayout = !graph.rawDot.empty() && ImGuiGraphNode::NodeGraphLoadDot(graph.rawDot.c_str());
-            ImGuiGraphNode::NodeGraphSetView(graphViewport,
-                                             m_RuntimeGraphPreviewScale,
-                                             m_RuntimeGraphPreviewAutoFit,
-                                             true);
+            const bool useRawDotLayout =
+                !graph.rawDot.empty() && ImGuiGraphNode::NodeGraphLoadDot(graph.rawDot.c_str());
+            ImGuiGraphNode::NodeGraphSetView(
+                graphViewport, m_RuntimeGraphPreviewScale, m_RuntimeGraphPreviewAutoFit, true);
             if (!useRawDotLayout)
             {
                 ImGuiGraphNode::NodeGraphSetGraphAttribute("rankdir", "TB");
@@ -3720,49 +3771,52 @@ namespace vultra_app
             }
             for (const auto& node : graph.nodes)
             {
-                const bool resourceNode = node.kind == "resource";
-                const bool hasTexture = nodeTextures.contains(node.id);
-                const float height = hasTexture ? 276.0f : 36.0f;
-                const ImVec4 titleColor = resourceNode ?
-                                              (node.imported ? ImVec4 {0.33f, 0.48f, 0.69f, 1.0f} : ImVec4 {0.27f, 0.54f, 0.58f, 1.0f}) :
-                                              (node.sideEffect ? ImVec4 {0.67f, 0.46f, 0.23f, 1.0f} : ImVec4 {0.34f, 0.53f, 0.32f, 1.0f});
-                const ImVec4 bodyColor = resourceNode ?
-                                             (node.imported ? ImVec4 {0.10f, 0.13f, 0.19f, 1.0f} : ImVec4 {0.09f, 0.16f, 0.17f, 1.0f}) :
-                                             (node.sideEffect ? ImVec4 {0.19f, 0.15f, 0.09f, 1.0f} : ImVec4 {0.11f, 0.16f, 0.11f, 1.0f});
+                const bool   resourceNode = node.kind == "resource";
+                const bool   hasTexture   = nodeTextures.contains(node.id);
+                const float  height       = hasTexture ? 276.0f : 36.0f;
+                const ImVec4 titleColor =
+                    resourceNode ?
+                        (node.imported ? ImVec4 {0.33f, 0.48f, 0.69f, 1.0f} : ImVec4 {0.27f, 0.54f, 0.58f, 1.0f}) :
+                        (node.sideEffect ? ImVec4 {0.67f, 0.46f, 0.23f, 1.0f} : ImVec4 {0.34f, 0.53f, 0.32f, 1.0f});
+                const ImVec4 bodyColor =
+                    resourceNode ?
+                        (node.imported ? ImVec4 {0.10f, 0.13f, 0.19f, 1.0f} : ImVec4 {0.09f, 0.16f, 0.17f, 1.0f}) :
+                        (node.sideEffect ? ImVec4 {0.19f, 0.15f, 0.09f, 1.0f} : ImVec4 {0.11f, 0.16f, 0.11f, 1.0f});
                 if (!useRawDotLayout)
                 {
-                    ImGuiGraphNode::NodeGraphAddNodeSized(node.id.c_str(),
-                                                           ImVec2 {nodeWidth / graphPixelsPerUnit, height / graphPixelsPerUnit},
-                                                           titleColor,
-                                                           bodyColor);
+                    ImGuiGraphNode::NodeGraphAddNodeSized(
+                        node.id.c_str(),
+                        ImVec2 {nodeWidth / graphPixelsPerUnit, height / graphPixelsPerUnit},
+                        titleColor,
+                        bodyColor);
                 }
 
-                const auto displayLabel = concreteRuntimeGraphNodeLabel(node);
-                const auto title = runtimeGraphDisplayLabel(displayLabel);
-                const char* inputLabel = resourceNode ? (node.imported ? "import" : "read") :
-                                          node.sideEffect ? "in\nside effect" :
-                                                            "in";
-                const char* outputLabel = resourceNode ? "use" : (node.sideEffect ? "side" : "out");
-                const auto titleColorU32 = resourceNode ?
-                                               (node.imported ? IM_COL32(84, 122, 176, 255) : IM_COL32(70, 138, 148, 255)) :
-                                               (node.sideEffect ? IM_COL32(172, 118, 58, 255) : IM_COL32(86, 136, 82, 255));
+                const auto  displayLabel = concreteRuntimeGraphNodeLabel(node);
+                const auto  title        = runtimeGraphDisplayLabel(displayLabel);
+                const char* inputLabel   = resourceNode    ? (node.imported ? "import" : "read") :
+                                           node.sideEffect ? "in\nside effect" :
+                                                             "in";
+                const char* outputLabel  = resourceNode ? "use" : (node.sideEffect ? "side" : "out");
+                const auto  titleColorU32 =
+                    resourceNode ? (node.imported ? IM_COL32(84, 122, 176, 255) : IM_COL32(70, 138, 148, 255)) :
+                                    (node.sideEffect ? IM_COL32(172, 118, 58, 255) : IM_COL32(86, 136, 82, 255));
                 const auto bodyColorU32 = resourceNode ?
                                               (node.imported ? IM_COL32(26, 34, 48, 255) : IM_COL32(24, 42, 44, 255)) :
                                               (node.sideEffect ? IM_COL32(48, 37, 24, 255) : IM_COL32(29, 42, 29, 255));
 
                 ImGuiGraphNodeRuntimeNodeStyle style {
-                    .id = node.id.c_str(),
-                    .title = title.c_str(),
-                    .tooltip = displayLabel.c_str(),
-                    .inputLabel = inputLabel,
-                    .outputLabel = outputLabel,
-                    .metadata = nullptr,
-                    .titleColor = titleColorU32,
-                    .bodyColor = bodyColorU32,
-                    .borderColor = IM_COL32(78, 96, 110, 220),
-                    .textColor = IM_COL32(235, 242, 248, 255),
+                    .id             = node.id.c_str(),
+                    .title          = title.c_str(),
+                    .tooltip        = displayLabel.c_str(),
+                    .inputLabel     = inputLabel,
+                    .outputLabel    = outputLabel,
+                    .metadata       = nullptr,
+                    .titleColor     = titleColorU32,
+                    .bodyColor      = bodyColorU32,
+                    .borderColor    = IM_COL32(78, 96, 110, 220),
+                    .textColor      = IM_COL32(235, 242, 248, 255),
                     .mutedTextColor = IM_COL32(150, 166, 182, 255),
-                    .pinColor = IM_COL32(74, 148, 220, 255),
+                    .pinColor       = IM_COL32(74, 148, 220, 255),
                 };
 
                 std::string metadata;
@@ -3785,10 +3839,11 @@ namespace vultra_app
                                     m_RetiredTextureThumbnails.push_back(cached);
                                 }
                                 cached.texture = debugTexture->texture;
-                                cached.textureId = imguiService->addTexture(*debugTexture->texture, makeNearestClampSampler(ctx));
+                                cached.textureId =
+                                    imguiService->addTexture(*debugTexture->texture, makeNearestClampSampler(ctx));
                                 cached.retireFrame = 0;
                             }
-                            style.textureId = cached.textureId;
+                            style.textureId  = cached.textureId;
                             style.hasTexture = true;
                         }
                         metadata = debugTexture->camera + " | " + std::to_string(debugTexture->sourceExtent.width) +
@@ -3802,13 +3857,13 @@ namespace vultra_app
             {
                 for (const auto& edge : graph.edges)
                 {
-                    const ImVec4 color = edge.label == "read" ? ImVec4 {0.32f, 0.60f, 0.81f, 0.88f} :
+                    const ImVec4 color = edge.label == "read"  ? ImVec4 {0.32f, 0.60f, 0.81f, 0.88f} :
                                          edge.label == "write" ? ImVec4 {0.46f, 0.74f, 0.45f, 0.92f} :
                                                                  ImVec4 {0.66f, 0.66f, 0.66f, 0.84f};
                     ImGuiGraphNode::NodeGraphAddEdge((edge.from + "->" + edge.to + ":" + edge.label).c_str(),
-                                                      edge.from.c_str(),
-                                                      edge.to.c_str(),
-                                                      color);
+                                                     edge.from.c_str(),
+                                                     edge.to.c_str(),
+                                                     color);
                 }
             }
             ImGuiGraphNode::EndNodeGraph();
@@ -3820,20 +3875,20 @@ namespace vultra_app
             {
                 if (auto textureIt = nodeTextures.find(node.id); textureIt != nodeTextures.end() && textureIt->second)
                 {
-                    m_RuntimeTexturePreviewKey = textureIt->second->resourceKey;
-                    m_RuntimeTexturePreviewTitle = textureIt->second->name;
-                    m_RuntimeTexturePreviewOpen = true;
+                    m_RuntimeTexturePreviewKey         = textureIt->second->resourceKey;
+                    m_RuntimeTexturePreviewTitle       = textureIt->second->name;
+                    m_RuntimeTexturePreviewOpen        = true;
                     m_RuntimeTexturePreviewDefaultsKey = textureIt->second->resourceKey;
                     if (auto settingsIt = m_RuntimeGraphTexturePreviewSettings.find(textureIt->second->resourceKey);
                         settingsIt != m_RuntimeGraphTexturePreviewSettings.end())
                     {
-                        const auto& settings = settingsIt->second;
+                        const auto& settings                = settingsIt->second;
                         m_RuntimeTexturePreviewGammaCorrect = settings.gammaCorrect;
-                        m_RuntimeTexturePreviewMode = settings.previewMode;
-                        m_RuntimeTexturePreviewDepthNear = settings.depthNear;
-                        m_RuntimeTexturePreviewDepthFar = settings.depthFar;
-                        m_RuntimeTexturePreviewClampMin = settings.clampMin;
-                        m_RuntimeTexturePreviewClampMax = settings.clampMax;
+                        m_RuntimeTexturePreviewMode         = settings.previewMode;
+                        m_RuntimeTexturePreviewDepthNear    = settings.depthNear;
+                        m_RuntimeTexturePreviewDepthFar     = settings.depthFar;
+                        m_RuntimeTexturePreviewClampMin     = settings.clampMin;
+                        m_RuntimeTexturePreviewClampMax     = settings.clampMax;
                         for (int i = 0; i < 4; ++i)
                             m_RuntimeTexturePreviewChannels[i] = settings.channels[i];
                     }
@@ -3856,8 +3911,8 @@ namespace vultra_app
 
     void RenderGraphWindow::drawRuntimeTexturePreviewWindow(EditorContext& ctx)
     {
-        auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
-        auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        auto* renderService  = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
+        auto* imguiService   = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
         auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
         if (!m_RuntimeTexturePreviewOpen || m_RuntimeTexturePreviewKey.empty())
         {
@@ -3872,19 +3927,34 @@ namespace vultra_app
                 m_RuntimeTexturePreviewOverrideKey.clear();
             }
             m_PendingRuntimeTexturePreviewAutoFitKey.clear();
-            m_PendingRuntimeTexturePreviewAutoFitTexture = nullptr;
-            m_PendingRuntimeTexturePreviewAutoFitFrame = 0u;
-            m_PendingRuntimeTexturePreviewAutoFitNextTryFrame = 0u;
+            m_PendingRuntimeTexturePreviewAutoFitTexture       = nullptr;
+            m_PendingRuntimeTexturePreviewAutoFitFrame         = 0u;
+            m_PendingRuntimeTexturePreviewAutoFitNextTryFrame  = 0u;
             m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame = 0u;
             return;
         }
         if (!renderService || !imguiService)
             return;
 
+        if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
+        {
+            bool       defaultChannels[4] {true, true, true, true};
+            const auto captureSettings = ui::makeFrameGraphTexturePreviewSettings(m_RuntimeTexturePreviewKey,
+                                                                                  true,
+                                                                                  defaultChannels,
+                                                                                  0,
+                                                                                  0.1f,
+                                                                                  1000.0f,
+                                                                                  0.0f,
+                                                                                  1.0f,
+                                                                                  0u);
+            renderService->setFrameGraphTexturePreviewSettings(captureSettings);
+        }
+
         const vultra::FrameGraphDebugTexture* debugTexture = nullptr;
         for (const auto& texture : renderService->frameGraphDebugTextures())
         {
-            if (texture.resourceKey == m_RuntimeTexturePreviewKey && texture.texture)
+            if (texture.resourceKey == m_RuntimeTexturePreviewKey)
             {
                 debugTexture = &texture;
                 break;
@@ -3903,10 +3973,27 @@ namespace vultra_app
                 m_RuntimeTexturePreviewOverrideKey.clear();
             }
             m_PendingRuntimeTexturePreviewAutoFitKey.clear();
-            m_PendingRuntimeTexturePreviewAutoFitTexture = nullptr;
-            m_PendingRuntimeTexturePreviewAutoFitFrame = 0u;
-            m_PendingRuntimeTexturePreviewAutoFitNextTryFrame = 0u;
+            m_PendingRuntimeTexturePreviewAutoFitTexture       = nullptr;
+            m_PendingRuntimeTexturePreviewAutoFitFrame         = 0u;
+            m_PendingRuntimeTexturePreviewAutoFitNextTryFrame  = 0u;
             m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame = 0u;
+            return;
+        }
+        if (!debugTexture->texture)
+        {
+            std::string title = m_RuntimeTexturePreviewTitle.empty() ? debugTexture->name : m_RuntimeTexturePreviewTitle;
+            title += "##RuntimeTexturePreview";
+            ImGui::SetNextWindowSize(ImVec2 {520.0f, 180.0f}, ImGuiCond_Appearing);
+            if (ImGui::Begin(title.c_str(), &m_RuntimeTexturePreviewOpen, ImGuiWindowFlags_NoCollapse))
+            {
+                ImGui::TextDisabled("%s | %ux%u",
+                                    debugTexture->name.c_str(),
+                                    debugTexture->sourceExtent.width,
+                                    debugTexture->sourceExtent.height);
+                ImGui::Separator();
+                ImGui::TextUnformatted("Capturing selected texture preview...");
+            }
+            ImGui::End();
             return;
         }
 
@@ -3918,8 +4005,8 @@ namespace vultra_app
                 cached.retireFrame = static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
                 m_RetiredTextureThumbnails.push_back(cached);
             }
-            cached.texture = debugTexture->texture;
-            cached.textureId = imguiService->addTexture(*debugTexture->texture, makeNearestClampSampler(ctx));
+            cached.texture     = debugTexture->texture;
+            cached.textureId   = imguiService->addTexture(*debugTexture->texture, makeNearestClampSampler(ctx));
             cached.retireFrame = 0;
         }
 
@@ -3931,32 +4018,33 @@ namespace vultra_app
             if (m_RuntimeTexturePreviewDefaultsKey != debugTexture->resourceKey)
             {
                 m_RuntimeTexturePreviewDepthNear = std::max(debugTexture->zNear, 0.0001f);
-                m_RuntimeTexturePreviewDepthFar = std::max(debugTexture->zFar, m_RuntimeTexturePreviewDepthNear + 0.0001f);
-                m_RuntimeTexturePreviewClampMin = 0.0f;
-                m_RuntimeTexturePreviewClampMax = 1.0f;
-                m_RuntimeTexturePreviewAutoFit = true;
+                m_RuntimeTexturePreviewDepthFar =
+                    std::max(debugTexture->zFar, m_RuntimeTexturePreviewDepthNear + 0.0001f);
+                m_RuntimeTexturePreviewClampMin     = 0.0f;
+                m_RuntimeTexturePreviewClampMax     = 1.0f;
+                m_RuntimeTexturePreviewAutoFit      = true;
                 m_RuntimeTexturePreviewGammaCorrect = ui::shouldGammaCorrectTexturePreview(*debugTexture);
-                m_RuntimeTexturePreviewMode = ui::defaultTexturePreviewMode(*debugTexture);
-                m_RuntimeTexturePreviewChannels[0] = true;
-                m_RuntimeTexturePreviewChannels[1] = true;
-                m_RuntimeTexturePreviewChannels[2] = true;
-                m_RuntimeTexturePreviewChannels[3] = false;
-                m_RuntimeTexturePreviewDefaultsKey = debugTexture->resourceKey;
+                m_RuntimeTexturePreviewMode         = ui::defaultTexturePreviewMode(*debugTexture);
+                m_RuntimeTexturePreviewChannels[0]  = true;
+                m_RuntimeTexturePreviewChannels[1]  = true;
+                m_RuntimeTexturePreviewChannels[2]  = true;
+                m_RuntimeTexturePreviewChannels[3]  = false;
+                m_RuntimeTexturePreviewDefaultsKey  = debugTexture->resourceKey;
                 if (ui::isDepthLikeTexture(*debugTexture) && !ui::isShadowLikeTexture(*debugTexture))
                 {
-                    m_PendingRuntimeTexturePreviewAutoFitKey = debugTexture->resourceKey;
-                    m_PendingRuntimeTexturePreviewAutoFitTexture = debugTexture->texture;
-                    const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-                    m_PendingRuntimeTexturePreviewAutoFitFrame = frame + 3u;
-                    m_PendingRuntimeTexturePreviewAutoFitNextTryFrame = frame + 3u;
+                    m_PendingRuntimeTexturePreviewAutoFitKey           = debugTexture->resourceKey;
+                    m_PendingRuntimeTexturePreviewAutoFitTexture       = debugTexture->texture;
+                    const auto frame                                   = static_cast<uint64_t>(ImGui::GetFrameCount());
+                    m_PendingRuntimeTexturePreviewAutoFitFrame         = frame + 3u;
+                    m_PendingRuntimeTexturePreviewAutoFitNextTryFrame  = frame + 3u;
                     m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame = frame + 24u;
                 }
                 else
                 {
                     m_PendingRuntimeTexturePreviewAutoFitKey.clear();
-                    m_PendingRuntimeTexturePreviewAutoFitTexture = nullptr;
-                    m_PendingRuntimeTexturePreviewAutoFitFrame = 0u;
-                    m_PendingRuntimeTexturePreviewAutoFitNextTryFrame = 0u;
+                    m_PendingRuntimeTexturePreviewAutoFitTexture       = nullptr;
+                    m_PendingRuntimeTexturePreviewAutoFitFrame         = 0u;
+                    m_PendingRuntimeTexturePreviewAutoFitNextTryFrame  = 0u;
                     m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame = 0u;
                 }
             }
@@ -3972,7 +4060,8 @@ namespace vultra_app
             ImGui::SameLine();
             ImGui::BeginDisabled(m_RuntimeTexturePreviewAutoFit);
             ImGui::SetNextItemWidth(130.0f);
-            ImGui::SliderFloat("Scale", &m_RuntimeTexturePreviewScale, 0.1f, 8.0f, "%.2fx", ImGuiSliderFlags_Logarithmic);
+            ImGui::SliderFloat(
+                "Scale", &m_RuntimeTexturePreviewScale, 0.1f, 8.0f, "%.2fx", ImGuiSliderFlags_Logarithmic);
             ImGui::EndDisabled();
             ImGui::SameLine();
             ui::drawSaveFrameGraphTexturePreviewButton(ctx, *debugTexture, "RuntimeGraphSaveTexturePreview");
@@ -3980,8 +4069,7 @@ namespace vultra_app
             static constexpr const char* kPreviewModes[] {
                 "Color", "Raw Depth", "Linear Depth", "Inverted Linear Depth", "Alpha", "Normal"};
             constexpr int kPreviewModeCount = static_cast<int>(sizeof(kPreviewModes) / sizeof(kPreviewModes[0]));
-            m_RuntimeTexturePreviewMode =
-                std::clamp(m_RuntimeTexturePreviewMode, 0, kPreviewModeCount - 1);
+            m_RuntimeTexturePreviewMode     = std::clamp(m_RuntimeTexturePreviewMode, 0, kPreviewModeCount - 1);
             ImGui::SetNextItemWidth(160.0f);
             ImGui::PushID(debugTexture->resourceKey.c_str());
             if (ImGui::BeginCombo("##RuntimeTexturePreviewMode", kPreviewModes[m_RuntimeTexturePreviewMode]))
@@ -4021,16 +4109,17 @@ namespace vultra_app
             if (ImGui::SmallButton("Fit Range"))
             {
                 m_RuntimeTexturePreviewDepthNear = std::max(debugTexture->zNear, 0.0001f);
-                m_RuntimeTexturePreviewDepthFar = std::max(debugTexture->zFar, m_RuntimeTexturePreviewDepthNear + 0.0001f);
+                m_RuntimeTexturePreviewDepthFar =
+                    std::max(debugTexture->zFar, m_RuntimeTexturePreviewDepthNear + 0.0001f);
                 m_RuntimeTexturePreviewClampMin = 0.0f;
                 m_RuntimeTexturePreviewClampMax = 1.0f;
                 if (ui::isDepthLikeTexture(*debugTexture) && !ui::isShadowLikeTexture(*debugTexture))
                 {
-                    m_PendingRuntimeTexturePreviewAutoFitKey = debugTexture->resourceKey;
-                    m_PendingRuntimeTexturePreviewAutoFitTexture = debugTexture->texture;
-                    const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-                    m_PendingRuntimeTexturePreviewAutoFitFrame = frame + 3u;
-                    m_PendingRuntimeTexturePreviewAutoFitNextTryFrame = frame + 3u;
+                    m_PendingRuntimeTexturePreviewAutoFitKey           = debugTexture->resourceKey;
+                    m_PendingRuntimeTexturePreviewAutoFitTexture       = debugTexture->texture;
+                    const auto frame                                   = static_cast<uint64_t>(ImGui::GetFrameCount());
+                    m_PendingRuntimeTexturePreviewAutoFitFrame         = frame + 3u;
+                    m_PendingRuntimeTexturePreviewAutoFitNextTryFrame  = frame + 3u;
                     m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame = frame + 24u;
                 }
             }
@@ -4043,19 +4132,17 @@ namespace vultra_app
             ImGui::DragFloat("Clamp Max", &m_RuntimeTexturePreviewClampMax, 0.001f, 0.0f, 1.0f, "%.4f");
             ui::normalizePreviewClamp(m_RuntimeTexturePreviewClampMin, m_RuntimeTexturePreviewClampMax);
             if (m_RuntimeTexturePreviewMode == 2 || m_RuntimeTexturePreviewMode == 3)
-                ImGui::TextDisabled("Camera z: %.4f - %.1f",
-                                    m_RuntimeTexturePreviewDepthNear,
-                                    m_RuntimeTexturePreviewDepthFar);
+                ImGui::TextDisabled(
+                    "Camera z: %.4f - %.1f", m_RuntimeTexturePreviewDepthNear, m_RuntimeTexturePreviewDepthFar);
 
-            const auto previewSettings = ui::makeFrameGraphTexturePreviewSettings(
-                debugTexture->resourceKey,
-                m_RuntimeTexturePreviewGammaCorrect,
-                m_RuntimeTexturePreviewChannels,
-                m_RuntimeTexturePreviewMode,
-                m_RuntimeTexturePreviewDepthNear,
-                m_RuntimeTexturePreviewDepthFar,
-                m_RuntimeTexturePreviewClampMin,
-                m_RuntimeTexturePreviewClampMax);
+            const auto previewSettings = ui::makeFrameGraphTexturePreviewSettings(debugTexture->resourceKey,
+                                                                                  m_RuntimeTexturePreviewGammaCorrect,
+                                                                                  m_RuntimeTexturePreviewChannels,
+                                                                                  m_RuntimeTexturePreviewMode,
+                                                                                  m_RuntimeTexturePreviewDepthNear,
+                                                                                  m_RuntimeTexturePreviewDepthFar,
+                                                                                  m_RuntimeTexturePreviewClampMin,
+                                                                                  m_RuntimeTexturePreviewClampMax);
             if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup))
             {
                 if (!m_RuntimeTexturePreviewOverrideKey.empty() &&
@@ -4069,9 +4156,9 @@ namespace vultra_app
 
             auto clearPendingAutoFit = [&]() {
                 m_PendingRuntimeTexturePreviewAutoFitKey.clear();
-                m_PendingRuntimeTexturePreviewAutoFitTexture = nullptr;
-                m_PendingRuntimeTexturePreviewAutoFitFrame = 0u;
-                m_PendingRuntimeTexturePreviewAutoFitNextTryFrame = 0u;
+                m_PendingRuntimeTexturePreviewAutoFitTexture       = nullptr;
+                m_PendingRuntimeTexturePreviewAutoFitFrame         = 0u;
+                m_PendingRuntimeTexturePreviewAutoFitNextTryFrame  = 0u;
                 m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame = 0u;
             };
             auto autoFitClamp = [&]() {
@@ -4081,35 +4168,35 @@ namespace vultra_app
                 if (!pixels)
                     return false;
 
-                float minValue = 1.0f;
-                float maxValue = 0.0f;
-                bool  found = false;
+                float      minValue     = 1.0f;
+                float      maxValue     = 0.0f;
+                bool       found        = false;
                 const auto sampleCountX = std::min<uint32_t>(64u, std::max(debugTexture->extent.width, 1u));
                 const auto sampleCountY = std::min<uint32_t>(64u, std::max(debugTexture->extent.height, 1u));
                 for (uint32_t sy = 0; sy < sampleCountY; ++sy)
                 {
-                    const auto y = std::min(debugTexture->extent.height - 1u,
-                                            static_cast<uint32_t>((static_cast<uint64_t>(sy) *
-                                                                   debugTexture->extent.height) /
-                                                                  sampleCountY));
+                    const auto y =
+                        std::min(debugTexture->extent.height - 1u,
+                                 static_cast<uint32_t>((static_cast<uint64_t>(sy) * debugTexture->extent.height) /
+                                                       sampleCountY));
                     for (uint32_t sx = 0; sx < sampleCountX; ++sx)
                     {
-                        const auto x = std::min(debugTexture->extent.width - 1u,
-                                                static_cast<uint32_t>((static_cast<uint64_t>(sx) *
-                                                                       debugTexture->extent.width) /
-                                                                      sampleCountX));
+                        const auto x =
+                            std::min(debugTexture->extent.width - 1u,
+                                     static_cast<uint32_t>((static_cast<uint64_t>(sx) * debugTexture->extent.width) /
+                                                           sampleCountX));
                         const auto offset = (static_cast<uint64_t>(y) * debugTexture->extent.width + x) * 4u;
                         if (offset + 2u >= pixels->size())
                             continue;
-                        const float r = static_cast<float>((*pixels)[offset + 0u]) / 255.0f;
-                        const float g = static_cast<float>((*pixels)[offset + 1u]) / 255.0f;
-                        const float b = static_cast<float>((*pixels)[offset + 2u]) / 255.0f;
+                        const float r            = static_cast<float>((*pixels)[offset + 0u]) / 255.0f;
+                        const float g            = static_cast<float>((*pixels)[offset + 1u]) / 255.0f;
+                        const float b            = static_cast<float>((*pixels)[offset + 2u]) / 255.0f;
                         const float displayValue = (m_RuntimeTexturePreviewMode == 0) ? ((r + g + b) / 3.0f) : r;
                         if (displayValue <= 0.001f || displayValue >= 0.999f)
                             continue;
                         minValue = std::min(minValue, displayValue);
                         maxValue = std::max(maxValue, displayValue);
-                        found = true;
+                        found    = true;
                     }
                 }
 
@@ -4117,25 +4204,23 @@ namespace vultra_app
                     return false;
 
                 const float oldMin = m_RuntimeTexturePreviewClampMin;
-                const float oldRange = std::max(m_RuntimeTexturePreviewClampMax - m_RuntimeTexturePreviewClampMin,
-                                                0.0001f);
-                const float padding = std::max((maxValue - minValue) * 0.08f, 1.0f / 255.0f);
-                const float low = std::max(0.0f, minValue - padding);
-                const float high = std::min(1.0f, maxValue + padding);
+                const float oldRange =
+                    std::max(m_RuntimeTexturePreviewClampMax - m_RuntimeTexturePreviewClampMin, 0.0001f);
+                const float padding             = std::max((maxValue - minValue) * 0.08f, 1.0f / 255.0f);
+                const float low                 = std::max(0.0f, minValue - padding);
+                const float high                = std::min(1.0f, maxValue + padding);
                 m_RuntimeTexturePreviewClampMin = oldMin + low * oldRange;
                 m_RuntimeTexturePreviewClampMax = oldMin + high * oldRange;
                 ui::normalizePreviewClamp(m_RuntimeTexturePreviewClampMin, m_RuntimeTexturePreviewClampMax);
                 return true;
             };
-            const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-            const bool anyPopupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
-            const bool pendingAutoFitReady =
-                m_PendingRuntimeTexturePreviewAutoFitKey == debugTexture->resourceKey &&
-                debugTexture->texture &&
-                !anyPopupOpen &&
-                frame >= m_PendingRuntimeTexturePreviewAutoFitNextTryFrame &&
-                (debugTexture->texture != m_PendingRuntimeTexturePreviewAutoFitTexture ||
-                 frame >= m_PendingRuntimeTexturePreviewAutoFitFrame);
+            const auto frame               = static_cast<uint64_t>(ImGui::GetFrameCount());
+            const bool anyPopupOpen        = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
+            const bool pendingAutoFitReady = m_PendingRuntimeTexturePreviewAutoFitKey == debugTexture->resourceKey &&
+                                             debugTexture->texture && !anyPopupOpen &&
+                                             frame >= m_PendingRuntimeTexturePreviewAutoFitNextTryFrame &&
+                                             (debugTexture->texture != m_PendingRuntimeTexturePreviewAutoFitTexture ||
+                                              frame >= m_PendingRuntimeTexturePreviewAutoFitFrame);
             if (pendingAutoFitReady)
             {
                 if (autoFitClamp())
@@ -4158,9 +4243,9 @@ namespace vultra_app
                               ImGui::GetContentRegionAvail(),
                               true,
                               ImGuiWindowFlags_HorizontalScrollbar);
-            const ImVec2 avail = ImGui::GetContentRegionAvail();
-            const float fitScale = ui::computeTextureFitScale(avail, sourceW, sourceH);
-            const float effectiveScale = m_RuntimeTexturePreviewAutoFit ? fitScale : m_RuntimeTexturePreviewScale;
+            const ImVec2 avail          = ImGui::GetContentRegionAvail();
+            const float  fitScale       = ui::computeTextureFitScale(avail, sourceW, sourceH);
+            const float  effectiveScale = m_RuntimeTexturePreviewAutoFit ? fitScale : m_RuntimeTexturePreviewScale;
             const ImVec2 imageSize {sourceW * effectiveScale, sourceH * effectiveScale};
             if (m_RuntimeTexturePreviewAutoFit)
             {
@@ -4201,17 +4286,17 @@ namespace vultra_app
                 renderService->clearFrameGraphTexturePreviewOverrides();
             }
             m_RuntimeGraph.reset();
-            m_RuntimeGraphPopupOpen = false;
+            m_RuntimeGraphPopupOpen     = false;
             m_RuntimeTexturePreviewOpen = false;
             m_RuntimeTexturePreviewKey.clear();
             m_RuntimeTexturePreviewTitle.clear();
             m_RuntimeTexturePreviewDefaultsKey.clear();
             m_RuntimeTexturePreviewOverrideKey.clear();
             m_PendingRuntimeTexturePreviewAutoFitKey.clear();
-            m_PendingRuntimeTexturePreviewAutoFitTexture = nullptr;
-            m_PendingRuntimeTexturePreviewAutoFitFrame = 0u;
+            m_PendingRuntimeTexturePreviewAutoFitTexture       = nullptr;
+            m_PendingRuntimeTexturePreviewAutoFitFrame         = 0u;
             m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame = 0u;
-            m_PendingRuntimeTexturePreviewAutoFitNextTryFrame = 0u;
+            m_PendingRuntimeTexturePreviewAutoFitNextTryFrame  = 0u;
             m_RuntimeGraphTextureAutoFitDone.clear();
             m_RuntimeGraphTextureDefaultPreviewDone.clear();
             m_RuntimeGraphTexturePreviewSettings.clear();
@@ -4219,10 +4304,10 @@ namespace vultra_app
             m_RuntimeGraphTextureAutoFitDeadlineFrame.clear();
             releaseOverlayRenderTarget(ctx);
 
-            state.loaded = false;
-            state.dirty = false;
+            state.loaded        = false;
+            state.dirty         = false;
             state.pipelineDirty = false;
-            state.runtimeDirty = false;
+            state.runtimeDirty  = false;
             state.path.clear();
             state.pipelinePath.clear();
             state.editingFeatureInternals = true;
@@ -4233,12 +4318,12 @@ namespace vultra_app
         const auto graphPath = ctx.state.currentEditingRenderGraph.ends_with(".vrg.json") ?
                                    assetPathForUri(ctx, ctx.state.currentEditingRenderGraph) :
                                    std::filesystem::path {};
-        auto graphUri = [&]() {
+        auto       graphUri  = [&]() {
             if (ctx.state.currentProject.empty() || state.path.empty())
                 return std::string {};
             std::error_code ec;
-            const auto assetRoot = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
-            const auto rel = std::filesystem::relative(state.path, assetRoot, ec);
+            const auto      assetRoot = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+            const auto      rel = std::filesystem::relative(state.path, assetRoot, ec);
             if (ec || rel.empty())
                 return std::string {};
             return "res://" + rel.generic_string();
@@ -4255,12 +4340,12 @@ namespace vultra_app
             std::string validationError;
             if (!validateRenderGraph(state.registry, state.graph, validationError))
             {
-                state.status = "Validation failed: " + validationError;
+                state.status            = "Validation failed: " + validationError;
                 ctx.state.statusMessage = state.status;
                 return false;
             }
 
-            auto* assetService = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
+            auto* assetService  = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
             auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
             if (!assetService || !renderService)
             {
@@ -4270,8 +4355,8 @@ namespace vultra_app
 
             assetService->setTextAssetOverride(uri, serializedGraph());
             renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
-            state.runtimeDirty = false;
-            state.status = "Applied in memory";
+            state.runtimeDirty      = false;
+            state.status            = "Applied in memory";
             ctx.state.statusMessage = "Applied render graph in memory: " + uri;
             return true;
         };
@@ -4279,7 +4364,7 @@ namespace vultra_app
             std::string validationError;
             if (!validateRenderGraph(state.registry, state.graph, validationError))
             {
-                state.status = "Validation failed: " + validationError;
+                state.status            = "Validation failed: " + validationError;
                 ctx.state.statusMessage = state.status;
                 return false;
             }
@@ -4289,15 +4374,15 @@ namespace vultra_app
 
             if (!writeTextAtomic(state.path, text, error))
             {
-                state.status = error;
+                state.status            = error;
                 ctx.state.statusMessage = error;
                 return false;
             }
 
-            state.dirty = false;
-            state.pipelineDirty = false;
-            state.runtimeDirty = false;
-            state.status = "Saved";
+            state.dirty             = false;
+            state.pipelineDirty     = false;
+            state.runtimeDirty      = false;
+            state.status            = "Saved";
             ctx.state.statusMessage = "Saved render graph: " + state.path.generic_string();
 
             if (auto* assetService = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
@@ -4319,11 +4404,11 @@ namespace vultra_app
         {
             state.path = graphPath;
             state.pipelinePath.clear();
-            state.directGraphAsset = true;
-            state.loaded = false;
-            state.dirty = false;
-            state.pipelineDirty = false;
-            state.runtimeDirty = false;
+            state.directGraphAsset        = true;
+            state.loaded                  = false;
+            state.dirty                   = false;
+            state.pipelineDirty           = false;
+            state.runtimeDirty            = false;
             state.editingFeatureInternals = true;
             state.editingFeature.clear();
             state.status.clear();
@@ -4378,7 +4463,7 @@ namespace vultra_app
             applyRenderGraphAutoLayout(state.registry, state.graph);
             state.markDirty();
             state.applyPositions = true;
-            state.status = "Auto layout applied";
+            state.status         = "Auto layout applied";
         }
         ImGui::SameLine();
         if (ImGui::SmallButton(ICON_MDI_DELETE " Delete Selected") && state.loaded)
@@ -4396,18 +4481,16 @@ namespace vultra_app
             if (!validateRenderGraph(state.registry, state.graph, validationError))
             {
                 bannerMessage = "Graph invalid: " + validationError;
-                bannerError = true;
+                bannerError   = true;
             }
         }
         if (bannerMessage.empty() && !state.status.empty())
         {
             bannerMessage = state.status;
-            bannerError = state.status.find("failed") != std::string::npos ||
-                          state.status.find("Failed") != std::string::npos ||
-                          state.status.find("error") != std::string::npos ||
-                          state.status.find("Error") != std::string::npos ||
-                          state.status.find("Invalid") != std::string::npos ||
-                          state.status.find("invalid") != std::string::npos;
+            bannerError =
+                state.status.find("failed") != std::string::npos || state.status.find("Failed") != std::string::npos ||
+                state.status.find("error") != std::string::npos || state.status.find("Error") != std::string::npos ||
+                state.status.find("Invalid") != std::string::npos || state.status.find("invalid") != std::string::npos;
         }
         drawGraphStatusBanner(bannerMessage, bannerError);
 
@@ -4430,12 +4513,12 @@ namespace vultra_app
                     }
                     state.pipelineFeatures.clear();
                     state.pipelineText.clear();
-                    state.loaded = true;
-                    state.dirty = false;
-                    state.pipelineDirty = false;
-                    state.runtimeDirty = false;
+                    state.loaded         = true;
+                    state.dirty          = false;
+                    state.pipelineDirty  = false;
+                    state.runtimeDirty   = false;
                     state.applyPositions = true;
-                    state.status = "Loaded";
+                    state.status         = "Loaded";
                 }
                 catch (const std::exception& e)
                 {
@@ -4458,9 +4541,9 @@ namespace vultra_app
                 state.storeMeta();
                 state.editingFeatureInternals = false;
                 state.editingFeature.clear();
-                state.applyPositions = true;
+                state.applyPositions      = true;
                 state.focusPipelineEditor = true;
-                drawPipeline = true;
+                drawPipeline              = true;
             }
             if (!drawPipeline)
             {
@@ -4496,14 +4579,14 @@ namespace vultra_app
             if (!ImGui::MenuItem(type.c_str()))
                 return;
 
-            const auto& def = state.registry.get(type);
+            const auto& def    = state.registry.get(type);
             int         suffix = 1;
-            std::string id = type;
+            std::string id     = type;
             while (findPass(state.graph, id))
                 id = type + "_" + std::to_string(suffix++);
 
             vrendergraph::PassDecl pass;
-            pass.id = std::move(id);
+            pass.id   = std::move(id);
             pass.type = type;
             ensureSlots(pass, def);
             state.graph.passes.push_back(std::move(pass));
@@ -4558,13 +4641,12 @@ namespace vultra_app
 
         for (size_t i = 0; i < state.pipelineFeatures.size(); ++i)
         {
-            const auto&       feature = state.pipelineFeatures[i];
-            const std::string nodeKey = "feature:" + feature;
-            const int         id = state.nodeId("feature", feature);
+            const auto&       feature       = state.pipelineFeatures[i];
+            const std::string nodeKey       = "feature:" + feature;
+            const int         id            = state.nodeId("feature", feature);
             const bool        isCustomGraph = state.isCurrentGraphFeature(feature);
-            const float       nodeWidth = std::clamp(std::max(textWidth(feature), textWidth("Double-click to edit internals")) + 58.0f,
-                                                     230.0f,
-                                                     420.0f);
+            const float       nodeWidth     = std::clamp(
+                std::max(textWidth(feature), textWidth("Double-click to edit internals")) + 58.0f, 230.0f, 420.0f);
             pushNodeTitlePalette(isCustomGraph ? IM_COL32(145, 96, 205, 255) : IM_COL32(70, 130, 190, 255));
             ImNodes::BeginNode(id);
             ImNodes::BeginNodeTitleBar();
@@ -4600,10 +4682,8 @@ namespace vultra_app
         for (size_t i = 1; i < state.pipelineFeatures.size(); ++i)
         {
             const std::string from = "feature:" + state.pipelineFeatures[i - 1];
-            const std::string to = "feature:" + state.pipelineFeatures[i];
-            ImNodes::Link(state.pipelineLinkId(from, to),
-                          state.pinId(from, "out", false),
-                          state.pinId(to, "in", true));
+            const std::string to   = "feature:" + state.pipelineFeatures[i];
+            ImNodes::Link(state.pipelineLinkId(from, to), state.pinId(from, "out", false), state.pinId(to, "in", true));
         }
 
         ImNodes::MiniMap(0.2f, ImNodesMiniMapLocation_BottomRight);
@@ -4611,15 +4691,15 @@ namespace vultra_app
         state.applyPositions = false;
 
         int start = 0;
-        int end = 0;
+        int end   = 0;
         if (ImNodes::IsLinkCreated(&start, &end))
         {
             auto fromIt = state.pins.find(start);
-            auto toIt = state.pins.find(end);
+            auto toIt   = state.pins.find(end);
             if (fromIt != state.pins.end() && toIt != state.pins.end())
             {
                 auto from = fromIt->second;
-                auto to = toIt->second;
+                auto to   = toIt->second;
                 if (from.input && !to.input)
                     std::swap(from, to);
                 if (!from.input && to.input && from.node.starts_with("feature:") && to.node.starts_with("feature:"))
@@ -4649,10 +4729,9 @@ namespace vultra_app
                     std::string feature;
                     if (!state.isFeatureNode(node, &feature))
                         continue;
-                    state.pipelineFeatures.erase(std::remove(state.pipelineFeatures.begin(),
-                                                             state.pipelineFeatures.end(),
-                                                             feature),
-                                                 state.pipelineFeatures.end());
+                    state.pipelineFeatures.erase(
+                        std::remove(state.pipelineFeatures.begin(), state.pipelineFeatures.end(), feature),
+                        state.pipelineFeatures.end());
                     state.markPipelineDirty();
                     state.status = "Deleted pipeline feature";
                 }
@@ -4660,7 +4739,7 @@ namespace vultra_app
             }
         }
 
-        int hoveredNode = 0;
+        int        hoveredNode = 0;
         const bool nodeHovered = ImNodes::IsNodeHovered(&hoveredNode);
         if (nodeHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
         {
@@ -4669,8 +4748,8 @@ namespace vultra_app
             {
                 state.storeMeta();
                 state.editingFeatureInternals = true;
-                state.editingFeature = feature;
-                state.applyPositions = true;
+                state.editingFeature          = feature;
+                state.applyPositions          = true;
             }
         }
 
@@ -4699,17 +4778,16 @@ namespace vultra_app
                 {
                     state.storeMeta();
                     state.editingFeatureInternals = true;
-                    state.editingFeature = feature;
-                    state.applyPositions = true;
+                    state.editingFeature          = feature;
+                    state.applyPositions          = true;
                 }
                 if (!isCustomGraph)
                     ImGui::EndDisabled();
                 if (ImGui::MenuItem("Delete Feature"))
                 {
-                    state.pipelineFeatures.erase(std::remove(state.pipelineFeatures.begin(),
-                                                             state.pipelineFeatures.end(),
-                                                             feature),
-                                                 state.pipelineFeatures.end());
+                    state.pipelineFeatures.erase(
+                        std::remove(state.pipelineFeatures.begin(), state.pipelineFeatures.end(), feature),
+                        state.pipelineFeatures.end());
                     state.markPipelineDirty();
                     state.status = "Deleted pipeline feature";
                 }
@@ -4719,7 +4797,7 @@ namespace vultra_app
 
         drawGraphEditorAddPopup(ctx);
 
-        const ImVec2 childPos = ImGui::GetWindowPos();
+        const ImVec2 childPos  = ImGui::GetWindowPos();
         const ImVec2 childSize = ImGui::GetWindowSize();
         ImGui::EndChild();
         drawGameViewOverlay(ctx, childPos, ImVec2 {childPos.x + childSize.x, childPos.y + childSize.y});
@@ -4731,7 +4809,10 @@ namespace vultra_app
         state.pins.clear();
         ImNodes::EditorContextSet(state.editorContext);
 
-        ImGui::BeginChild("##RenderGraphNodeEditor", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        ImGui::BeginChild("##RenderGraphNodeEditor",
+                          ImVec2(0, 0),
+                          true,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         ImNodes::BeginNodeEditor();
 
         size_t passIndex = 0;
@@ -4744,11 +4825,11 @@ namespace vultra_app
             ensureSlots(pass, def);
             ensureParamDefaults(pass, def);
 
-            const int id = state.nodeId("pass", pass.id);
-            const float nodeWidth = passNodeWidth(ctx, pass, def);
+            const int   id              = state.nodeId("pass", pass.id);
+            const float nodeWidth       = passNodeWidth(ctx, pass, def);
             const float paramLabelWidth = std::clamp(nodeWidth * 0.38f, 92.0f, 190.0f);
             const float paramValueWidth = std::clamp(nodeWidth - paramLabelWidth - 58.0f, 150.0f, 300.0f);
-            const ImU32 passTitle = vrgNodeColorFromType(pass.type, false);
+            const ImU32 passTitle       = vrgNodeColorFromType(pass.type, false);
             pushNodeTitlePalette(passTitle);
             ImNodes::BeginNode(id);
             ImNodes::BeginNodeTitleBar();
@@ -4834,10 +4915,9 @@ namespace vultra_app
                     continue;
 
                 const int from = state.pinId(parsed->node, parsed->slot, false);
-                const int to = state.pinId(pass.id, slot, true);
+                const int to   = state.pinId(pass.id, slot, true);
                 ImNodes::Link(state.linkId(ref, pass.id, slot), from, to);
             }
-
         }
 
         ImNodes::MiniMap(0.2f, ImNodesMiniMapLocation_BottomRight);
@@ -4845,15 +4925,15 @@ namespace vultra_app
         state.applyPositions = false;
 
         int start = 0;
-        int end = 0;
+        int end   = 0;
         if (ImNodes::IsLinkCreated(&start, &end))
         {
             auto fromIt = state.pins.find(start);
-            auto toIt = state.pins.find(end);
+            auto toIt   = state.pins.find(end);
             if (fromIt != state.pins.end() && toIt != state.pins.end())
             {
                 auto from = fromIt->second;
-                auto to = toIt->second;
+                auto to   = toIt->second;
                 if (from.input && !to.input)
                     std::swap(from, to);
 
@@ -4880,8 +4960,8 @@ namespace vultra_app
         if (canvasFocused && ImGui::IsKeyPressed(ImGuiKey_Delete))
             state.removeSelected();
 
-        int hoveredNode = 0;
-        int hoveredLink = 0;
+        int        hoveredNode = 0;
+        int        hoveredLink = 0;
         const bool nodeHovered = ImNodes::IsNodeHovered(&hoveredNode);
         const bool linkHovered = ImNodes::IsLinkHovered(&hoveredLink);
         if (canvasHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
@@ -4932,15 +5012,13 @@ namespace vultra_app
 
         drawGraphEditorAddPopup(ctx);
 
-        const ImVec2 childPos = ImGui::GetWindowPos();
+        const ImVec2 childPos  = ImGui::GetWindowPos();
         const ImVec2 childSize = ImGui::GetWindowSize();
         ImGui::EndChild();
         drawGameViewOverlay(ctx, childPos, ImVec2 {childPos.x + childSize.x, childPos.y + childSize.y});
     }
 
-    void RenderGraphWindow::drawGameViewOverlay(EditorContext& ctx,
-                                                const ImVec2    childMin,
-                                                const ImVec2    childMax)
+    void RenderGraphWindow::drawGameViewOverlay(EditorContext& ctx, const ImVec2 childMin, const ImVec2 childMax)
     {
         if (ctx.state.gameViewVisibleLastFrame)
             return;
@@ -4950,27 +5028,27 @@ namespace vultra_app
         if (childSize.x < 220.0f || childSize.y < 160.0f)
             return;
 
-        const float aspect = 16.0f / 9.0f;
-        m_OverlayZoom = std::clamp(m_OverlayZoom, kOverlayZoomMin, kOverlayZoomMax);
-        const float baseWidth = std::min(320.0f, std::max(180.0f, childSize.x * 0.22f));
-        const float width = std::min(childSize.x - 32.0f, baseWidth * m_OverlayZoom);
-        const float height = width / aspect;
-        const uint32_t renderWidth = static_cast<uint32_t>(std::max(1.0f, width));
+        const float aspect          = 16.0f / 9.0f;
+        m_OverlayZoom               = std::clamp(m_OverlayZoom, kOverlayZoomMin, kOverlayZoomMax);
+        const float    baseWidth    = std::min(320.0f, std::max(180.0f, childSize.x * 0.22f));
+        const float    width        = std::min(childSize.x - 32.0f, baseWidth * m_OverlayZoom);
+        const float    height       = width / aspect;
+        const uint32_t renderWidth  = static_cast<uint32_t>(std::max(1.0f, width));
         const uint32_t renderHeight = static_cast<uint32_t>(std::max(1.0f, height));
         ensureOverlayRenderTarget(ctx, renderWidth, renderHeight);
 
         vultra::rhi::Texture* renderTarget =
             m_OverlayPendingRenderTarget.texture ? &*m_OverlayPendingRenderTarget.texture :
             m_OverlayActiveRenderTarget.texture  ? &*m_OverlayActiveRenderTarget.texture :
-                                                    nullptr;
+                                                   nullptr;
 
         bool hasPrimaryCamera = false;
         if (ctx.services && renderTarget)
         {
             if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
             {
-                auto& world = worldService->world();
-                auto  camera = findPrimaryCamera(world);
+                auto& world      = worldService->world();
+                auto  camera     = findPrimaryCamera(world);
                 hasPrimaryCamera = camera != entt::null;
                 if (hasPrimaryCamera)
                 {
@@ -4987,17 +5065,16 @@ namespace vultra_app
             }
         }
 
-        const ImVec2 padding {14.0f, 14.0f};
+        const ImVec2    padding {14.0f, 14.0f};
         constexpr float controlHeight = 30.0f;
-        const ImVec2 panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
-        const ImVec2 panelMin {childMin.x + 16.0f, childMin.y + childSize.y - panelSize.y - 16.0f};
-        const ImVec2 panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
-        const ImVec2 imageMin {panelMin.x + padding.x, panelMin.y + padding.y + 22.0f};
-        const ImVec2 imageMax {imageMin.x + width, imageMin.y + height};
-        const ImVec2 controlsMin {imageMin.x, imageMax.y + 8.0f};
-        const ImVec2 mouse = ImGui::GetIO().MousePos;
-        const auto contains = [&](const ImVec2& min, const ImVec2& max)
-        {
+        const ImVec2    panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
+        const ImVec2    panelMin {childMin.x + 16.0f, childMin.y + childSize.y - panelSize.y - 16.0f};
+        const ImVec2    panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
+        const ImVec2    imageMin {panelMin.x + padding.x, panelMin.y + padding.y + 22.0f};
+        const ImVec2    imageMax {imageMin.x + width, imageMin.y + height};
+        const ImVec2    controlsMin {imageMin.x, imageMax.y + 8.0f};
+        const ImVec2    mouse    = ImGui::GetIO().MousePos;
+        const auto      contains = [&](const ImVec2& min, const ImVec2& max) {
             return mouse.x >= min.x && mouse.x <= max.x && mouse.y >= min.y && mouse.y <= max.y;
         };
         const ImVec2 minusMin {controlsMin.x, controlsMin.y};
@@ -5017,55 +5094,45 @@ namespace vultra_app
             ImGui::SetNextFrameWantCaptureMouse(true);
         }
 
-        ImDrawList* drawList = anyPopupOpen ?
-                                   ImGui::GetWindowDrawList() :
-                                   ImGui::GetForegroundDrawList(ImGui::GetWindowViewport());
+        ImDrawList* drawList =
+            anyPopupOpen ? ImGui::GetWindowDrawList() : ImGui::GetForegroundDrawList(ImGui::GetWindowViewport());
         drawList->PushClipRect(childMin, childMax, true);
         drawList->AddRectFilled(panelMin, panelMax, IM_COL32(10, 14, 18, 255), 7.0f);
         drawList->AddRect(panelMin, panelMax, IM_COL32(68, 86, 105, 255), 7.0f);
-        drawList->AddText(ImVec2(panelMin.x + padding.x, panelMin.y + 8.0f),
-                          IM_COL32(190, 204, 218, 255),
-                          "Preview");
+        drawList->AddText(ImVec2(panelMin.x + padding.x, panelMin.y + 8.0f), IM_COL32(190, 204, 218, 255), "Preview");
         char zoomLabel[16] {};
         std::snprintf(zoomLabel, sizeof(zoomLabel), "%.0f%%", m_OverlayZoom * 100.0f);
         const ImVec2 zoomSize = ImGui::CalcTextSize(zoomLabel);
-        drawList->AddText(ImVec2(panelMax.x - padding.x - zoomSize.x, panelMin.y + 8.0f),
-                          IM_COL32(126, 142, 158, 255),
-                          zoomLabel);
+        drawList->AddText(
+            ImVec2(panelMax.x - padding.x - zoomSize.x, panelMin.y + 8.0f), IM_COL32(126, 142, 158, 255), zoomLabel);
 
         if (m_OverlayActiveRenderTarget.textureId && hasPrimaryCamera)
         {
             drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), 3.0f);
-            drawList->AddImage(m_OverlayActiveRenderTarget.textureId,
-                               imageMin,
-                               imageMax,
-                               ImVec2(0.0f, 0.0f),
-                               ImVec2(1.0f, 1.0f));
+            drawList->AddImage(
+                m_OverlayActiveRenderTarget.textureId, imageMin, imageMax, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
         }
         else
         {
             drawList->AddRectFilled(imageMin, imageMax, IM_COL32(16, 19, 24, 255), 3.0f);
-            const char* label = hasPrimaryCamera ? "Preparing preview" : "No primary camera";
+            const char*  label    = hasPrimaryCamera ? "Preparing preview" : "No primary camera";
             const ImVec2 textSize = ImGui::CalcTextSize(label);
-            drawList->AddText(ImVec2((imageMin.x + imageMax.x - textSize.x) * 0.5f,
-                                     (imageMin.y + imageMax.y - textSize.y) * 0.5f),
-                              IM_COL32(140, 152, 166, 255),
-                              label);
+            drawList->AddText(
+                ImVec2((imageMin.x + imageMax.x - textSize.x) * 0.5f, (imageMin.y + imageMax.y - textSize.y) * 0.5f),
+                IM_COL32(140, 152, 166, 255),
+                label);
         }
         drawList->AddRect(imageMin, imageMax, IM_COL32(72, 86, 104, 255), 3.0f);
-        const auto buttonColor = [](bool hovered)
-        {
+        const auto buttonColor = [](bool hovered) {
             return hovered ? IM_COL32(42, 50, 62, 255) : IM_COL32(26, 31, 39, 255);
         };
         drawList->AddRectFilled(minusMin, minusMax, buttonColor(minusHovered), 5.0f);
-        drawList->AddText(ImVec2(minusMin.x + 4.0f, minusMin.y + 4.0f),
-                          IM_COL32(184, 198, 214, 255),
-                          ICON_MDI_MAGNIFY_MINUS);
+        drawList->AddText(
+            ImVec2(minusMin.x + 4.0f, minusMin.y + 4.0f), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_MINUS);
         drawList->AddText(labelMin, IM_COL32(126, 142, 158, 255), zoomLabel);
         drawList->AddRectFilled(plusMin, plusMax, buttonColor(plusHovered), 5.0f);
-        drawList->AddText(ImVec2(plusMin.x + 4.0f, plusMin.y + 4.0f),
-                          IM_COL32(184, 198, 214, 255),
-                          ICON_MDI_MAGNIFY_PLUS);
+        drawList->AddText(
+            ImVec2(plusMin.x + 4.0f, plusMin.y + 4.0f), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_PLUS);
         drawList->PopClipRect();
     }
 
@@ -5093,7 +5160,7 @@ namespace vultra_app
         if (!backendService || !imguiService)
             return;
 
-        auto& rd = backendService->renderDevice();
+        auto& rd     = backendService->renderDevice();
         auto  format = backendService->backbuffer().getPixelFormat();
         if (format == vultra::rhi::PixelFormat::eUndefined)
             format = vultra::rhi::PixelFormat::eRGBA8_UNorm;
@@ -5106,7 +5173,7 @@ namespace vultra_app
                 .setNumMipLevels(1)
                 .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
                 .build(rd);
-        m_OverlayPendingRenderTarget.textureId = imguiService->addTexture(*m_OverlayPendingRenderTarget.texture);
+        m_OverlayPendingRenderTarget.textureId    = imguiService->addTexture(*m_OverlayPendingRenderTarget.texture);
         m_OverlayPendingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
         m_OverlayPendingRenderTarget.releaseFrame = 0;
     }
@@ -5118,7 +5185,7 @@ namespace vultra_app
             return;
 
         retireOverlayRenderTarget(m_OverlayActiveRenderTarget);
-        m_OverlayActiveRenderTarget = std::move(m_OverlayPendingRenderTarget);
+        m_OverlayActiveRenderTarget  = std::move(m_OverlayPendingRenderTarget);
         m_OverlayPendingRenderTarget = {};
     }
 
@@ -5134,8 +5201,8 @@ namespace vultra_app
 
     void RenderGraphWindow::collectRetiredOverlayRenderTargets(EditorContext& ctx)
     {
-        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-        auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        const auto frame        = static_cast<uint64_t>(ImGui::GetFrameCount());
+        auto*      imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
 
         std::size_t out = 0;
         for (auto& slot : m_OverlayRetiredRenderTargets)
@@ -5171,15 +5238,15 @@ namespace vultra_app
                 }
             }
         }
-        m_OverlayActiveRenderTarget = {};
+        m_OverlayActiveRenderTarget  = {};
         m_OverlayPendingRenderTarget = {};
         m_OverlayRetiredRenderTargets.clear();
     }
 
     void RenderGraphWindow::collectRetiredTextureThumbnails(EditorContext& ctx)
     {
-        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-        auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        const auto frame        = static_cast<uint64_t>(ImGui::GetFrameCount());
+        auto*      imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
 
         std::size_t out = 0;
         for (auto& entry : m_RetiredTextureThumbnails)

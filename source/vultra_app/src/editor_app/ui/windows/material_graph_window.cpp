@@ -9,8 +9,8 @@
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/shader_service.hpp>
-#include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
+#include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
@@ -40,7 +40,7 @@ namespace vultra_app
 {
     namespace
     {
-        constexpr uint64_t kRenderTargetReleaseDelayFrames = 4u;
+        constexpr uint64_t  kRenderTargetReleaseDelayFrames = 4u;
         constexpr glm::vec3 kPreviewWorldUp {0.0f, 1.0f, 0.0f};
 
         struct Bounds
@@ -51,13 +51,13 @@ namespace vultra_app
 
             void include(const glm::vec3& p)
             {
-                min = valid ? glm::min(min, p) : p;
-                max = valid ? glm::max(max, p) : p;
+                min   = valid ? glm::min(min, p) : p;
+                max   = valid ? glm::max(max, p) : p;
                 valid = true;
             }
 
             [[nodiscard]] glm::vec3 center() const { return (min + max) * 0.5f; }
-            [[nodiscard]] float radius() const { return valid ? glm::length((max - min) * 0.5f) : 0.0f; }
+            [[nodiscard]] float     radius() const { return valid ? glm::length((max - min) * 0.5f) : 0.0f; }
         };
 
         void applyMaterialGraphAutoLayout(vultra::material_graph::Graph& graph)
@@ -68,13 +68,15 @@ namespace vultra_app
             {
                 const auto& node = graph.nodes[i];
                 nodes.push_back(GraphLayoutNode {
-                    .id = node.id,
-                    .order = static_cast<int>(i),
-                    .inputCount = static_cast<int>(node.inputs.size()),
+                    .id          = node.id,
+                    .order       = static_cast<int>(i),
+                    .inputCount  = static_cast<int>(node.inputs.size()),
                     .outputCount = static_cast<int>(node.outputs.size()),
-                    .heightLanes = std::max(1.0f,
-                                            (56.0f + static_cast<float>(node.inputs.size() + node.outputs.size() + node.params.size()) * 24.0f) /
-                                                120.0f),
+                    .heightLanes = std::max(
+                        1.0f,
+                        (56.0f +
+                         static_cast<float>(node.inputs.size() + node.outputs.size() + node.params.size()) * 24.0f) /
+                            120.0f),
                     .sink = node.typeId == "vultra.output.surface",
                 });
             }
@@ -86,9 +88,8 @@ namespace vultra_app
                 int fromOrder = 0;
                 if (const auto* source = vultra::material_graph::findNode(graph, link.from.nodeId))
                 {
-                    const auto it = std::ranges::find_if(source->outputs, [&](const auto& pin) {
-                        return pin.name == link.from.pin;
-                    });
+                    const auto it = std::ranges::find_if(source->outputs,
+                                                         [&](const auto& pin) { return pin.name == link.from.pin; });
                     if (it != source->outputs.end())
                         fromOrder = static_cast<int>(std::distance(source->outputs.begin(), it));
                 }
@@ -96,29 +97,27 @@ namespace vultra_app
                 int toOrder = 0;
                 if (const auto* target = vultra::material_graph::findNode(graph, link.to.nodeId))
                 {
-                    const auto it = std::ranges::find_if(target->inputs, [&](const auto& pin) {
-                        return pin.name == link.to.pin;
-                    });
+                    const auto it =
+                        std::ranges::find_if(target->inputs, [&](const auto& pin) { return pin.name == link.to.pin; });
                     if (it != target->inputs.end())
                         toOrder = static_cast<int>(std::distance(target->inputs.begin(), it));
                 }
                 edges.push_back({
-                    .from = link.from.nodeId,
-                    .to = link.to.nodeId,
+                    .from      = link.from.nodeId,
+                    .to        = link.to.nodeId,
                     .fromOrder = fromOrder,
-                    .toOrder = toOrder,
+                    .toOrder   = toOrder,
                 });
             }
 
-            const auto layout = computeLayeredGraphLayout(
-                nodes,
-                edges,
-                GraphLayoutConfig {
-                    .origin = {-760.0f, -120.0f},
-                    .columnSpacing = 260.0f,
-                    .rowSpacing = 120.0f,
-                    .sinkExtraSpacing = 400.0f,
-                });
+            const auto layout = computeLayeredGraphLayout(nodes,
+                                                          edges,
+                                                          GraphLayoutConfig {
+                                                              .origin           = {-760.0f, -120.0f},
+                                                              .columnSpacing    = 260.0f,
+                                                              .rowSpacing       = 120.0f,
+                                                              .sinkExtraSpacing = 400.0f,
+                                                          });
 
             for (auto& node : graph.nodes)
             {
@@ -129,12 +128,12 @@ namespace vultra_app
 
         glm::vec3 mapPreviewArcballPoint(const ImVec2& mouse, const ImVec2& min, const ImVec2& max)
         {
-            const float width = std::max(1.0f, max.x - min.x);
-            const float height = std::max(1.0f, max.y - min.y);
+            const float width    = std::max(1.0f, max.x - min.x);
+            const float height   = std::max(1.0f, max.y - min.y);
             const float diameter = std::max(1.0f, std::min(width, height));
-            const float x = (2.0f * (mouse.x - (min.x + width * 0.5f))) / diameter;
-            const float y = (-2.0f * (mouse.y - (min.y + height * 0.5f))) / diameter;
-            const float len2 = x * x + y * y;
+            const float x        = (2.0f * (mouse.x - (min.x + width * 0.5f))) / diameter;
+            const float y        = (-2.0f * (mouse.y - (min.y + height * 0.5f))) / diameter;
+            const float len2     = x * x + y * y;
 
             if (len2 <= 1.0f)
                 return glm::normalize(glm::vec3 {x, y, std::sqrt(std::max(0.0f, 1.0f - len2))});
@@ -145,7 +144,7 @@ namespace vultra_app
 
         glm::quat arcballDelta(const glm::vec3& from, const glm::vec3& to)
         {
-            const glm::vec3 axis = glm::cross(from, to);
+            const glm::vec3 axis     = glm::cross(from, to);
             const float     axisLen2 = glm::dot(axis, axis);
             if (axisLen2 <= 1e-8f)
                 return glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
@@ -170,7 +169,7 @@ namespace vultra_app
         std::string uriForPath(const EditorContext& ctx, const std::filesystem::path& path)
         {
             std::error_code ec;
-            const auto rel = std::filesystem::relative(path.lexically_normal(), assetRoot(ctx), ec);
+            const auto      rel = std::filesystem::relative(path.lexically_normal(), assetRoot(ctx), ec);
             if (ec || rel.empty())
                 return {};
             return "res://" + rel.generic_string();
@@ -179,7 +178,7 @@ namespace vultra_app
         std::vector<std::string> collectGraphs(const EditorContext& ctx)
         {
             std::vector<std::string> out;
-            const auto root = assetRoot(ctx);
+            const auto               root = assetRoot(ctx);
             if (root.empty() || !std::filesystem::exists(root))
                 return out;
 
@@ -199,18 +198,17 @@ namespace vultra_app
             return out;
         }
 
-        vultra::material_graph::Node makeNode(const vultra::material_graph::NodeDescriptor& desc,
-                                              std::string id,
-                                              ImVec2 pos)
+        vultra::material_graph::Node
+        makeNode(const vultra::material_graph::NodeDescriptor& desc, std::string id, ImVec2 pos)
         {
             vultra::material_graph::Node node;
-            node.typeId = desc.typeId;
-            node.id = std::move(id);
+            node.typeId      = desc.typeId;
+            node.id          = std::move(id);
             node.displayName = desc.displayName;
-            node.inputs = desc.inputs;
-            node.outputs = desc.outputs;
-            node.params = desc.defaultParams;
-            node.editor = {{"pos", {pos.x, pos.y}}};
+            node.inputs      = desc.inputs;
+            node.outputs     = desc.outputs;
+            node.params      = desc.defaultParams;
+            node.editor      = {{"pos", {pos.x, pos.y}}};
             return node;
         }
 
@@ -229,23 +227,22 @@ namespace vultra_app
         void drawControlLabel(const char* label)
         {
             constexpr float kPropertyLabelWidth = 92.0f;
-            const float     startX = ImGui::GetCursorPosX();
+            const float     startX              = ImGui::GetCursorPosX();
             ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(label);
             ImGui::SameLine();
             ImGui::SetCursorPosX(startX + kPropertyLabelWidth);
         }
 
-        bool drawJsonValue(EditorContext&                         ctx,
-                           ui::TextureSelectorState&              textureSelector,
-                           vultra::material_graph::ValueType      type,
-                           nlohmann::json&                        value,
-                           const char*                            label)
+        bool drawJsonValue(EditorContext&                    ctx,
+                           ui::TextureSelectorState&         textureSelector,
+                           vultra::material_graph::ValueType type,
+                           nlohmann::json&                   value,
+                           const char*                       label)
         {
             switch (type)
             {
-                case vultra::material_graph::ValueType::eBool:
-                {
+                case vultra::material_graph::ValueType::eBool: {
                     bool v = value.is_boolean() ? value.get<bool>() : false;
                     drawControlLabel(label);
                     if (ImGui::Checkbox("##value", &v))
@@ -255,8 +252,7 @@ namespace vultra_app
                     }
                     return false;
                 }
-                case vultra::material_graph::ValueType::eInt:
-                {
+                case vultra::material_graph::ValueType::eInt: {
                     int v = value.is_number_integer() ? value.get<int>() : 0;
                     drawControlLabel(label);
                     ImGui::SetNextItemWidth(92.0f);
@@ -267,8 +263,7 @@ namespace vultra_app
                     }
                     return false;
                 }
-                case vultra::material_graph::ValueType::eFloat:
-                {
+                case vultra::material_graph::ValueType::eFloat: {
                     float v = jsonFloat(value, 0.0f);
                     drawControlLabel(label);
                     ImGui::SetNextItemWidth(104.0f);
@@ -279,8 +274,7 @@ namespace vultra_app
                     }
                     return false;
                 }
-                case vultra::material_graph::ValueType::eVec2:
-                {
+                case vultra::material_graph::ValueType::eVec2: {
                     float v[2] {0.0f, 0.0f};
                     if (value.is_array())
                         for (int i = 0; i < 2 && i < static_cast<int>(value.size()); ++i)
@@ -294,8 +288,7 @@ namespace vultra_app
                     }
                     return false;
                 }
-                case vultra::material_graph::ValueType::eVec3:
-                {
+                case vultra::material_graph::ValueType::eVec3: {
                     float v[3] {0.0f, 0.0f, 0.0f};
                     if (value.is_array())
                         for (int i = 0; i < 3 && i < static_cast<int>(value.size()); ++i)
@@ -310,17 +303,18 @@ namespace vultra_app
                     return false;
                 }
                 case vultra::material_graph::ValueType::eColor:
-                case vultra::material_graph::ValueType::eVec4:
-                {
+                case vultra::material_graph::ValueType::eVec4: {
                     float v[4] {1.0f, 1.0f, 1.0f, 1.0f};
                     if (value.is_array())
                         for (int i = 0; i < 4 && i < static_cast<int>(value.size()); ++i)
                             v[i] = jsonFloat(value[i], 1.0f);
                     drawControlLabel(label);
                     ImGui::SetNextItemWidth(type == vultra::material_graph::ValueType::eColor ? 92.0f : 188.0f);
-                    const bool changed = type == vultra::material_graph::ValueType::eColor ?
-                                             ImGui::ColorEdit4("##value", v, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar) :
-                                             ImGui::DragFloat4("##value", v, 0.01f);
+                    const bool changed =
+                        type == vultra::material_graph::ValueType::eColor ?
+                            ImGui::ColorEdit4(
+                                "##value", v, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar) :
+                            ImGui::DragFloat4("##value", v, 0.01f);
                     if (changed)
                     {
                         setJsonVec(value, v, 4);
@@ -328,19 +322,18 @@ namespace vultra_app
                     }
                     return false;
                 }
-                case vultra::material_graph::ValueType::eTexture2D:
-                {
+                case vultra::material_graph::ValueType::eTexture2D: {
                     std::string uri = value.is_string() ? value.get<std::string>() : std::string {};
                     drawControlLabel(label);
-                    if (ui::drawTextureUriSelector(ctx, "TextureSelectorPopup", uri, textureSelector, ImVec2(184.0f, 40.0f)))
+                    if (ui::drawTextureUriSelector(
+                            ctx, "TextureSelectorPopup", uri, textureSelector, ImVec2(184.0f, 40.0f)))
                     {
                         value = uri;
                         return true;
                     }
                     return false;
                 }
-                case vultra::material_graph::ValueType::eString:
-                {
+                case vultra::material_graph::ValueType::eString: {
                     std::array<char, 256> buffer {};
                     if (value.is_string())
                         std::snprintf(buffer.data(), buffer.size(), "%s", value.get<std::string>().c_str());
@@ -361,7 +354,8 @@ namespace vultra_app
 
         bool drawStringCombo(nlohmann::json& value, const char* label, std::span<const char* const> options)
         {
-            std::string current = value.is_string() ? value.get<std::string>() : std::string(options.empty() ? "" : options.front());
+            std::string current =
+                value.is_string() ? value.get<std::string>() : std::string(options.empty() ? "" : options.front());
             bool changed = false;
             drawControlLabel(label);
             ImGui::SetNextItemWidth(156.0f);
@@ -373,7 +367,7 @@ namespace vultra_app
                     if (ImGui::Selectable(option, selected))
                     {
                         current = option;
-                        value = current;
+                        value   = current;
                         changed = true;
                     }
                     if (selected)
@@ -415,7 +409,7 @@ namespace vultra_app
         }
 
         vultra::material_graph::ValueType parameterTypeForKey(const vultra::material_graph::NodeDescriptor& desc,
-                                                              const std::string& key)
+                                                              const std::string&                            key)
         {
             auto inputIt = std::ranges::find_if(desc.inputs, [&](const auto& pin) { return pin.name == key; });
             if (inputIt != desc.inputs.end())
@@ -508,23 +502,23 @@ namespace vultra_app
             return bounds;
         }
 
-        vultra::RenderCamera makePreviewCamera(const glm::vec3& position,
-                                               const glm::vec3& targetPosition,
-                                               const float      fovY,
-                                               const float      aspect,
+        vultra::RenderCamera makePreviewCamera(const glm::vec3&      position,
+                                               const glm::vec3&      targetPosition,
+                                               const float           fovY,
+                                               const float           aspect,
                                                vultra::rhi::Texture* target,
-                                               const bool       useSkybox)
+                                               const bool            useSkybox)
         {
             vultra::RenderCamera cam {};
-            cam.name = "Material Graph Preview";
-            cam.view = glm::lookAt(position, targetPosition, kPreviewWorldUp);
-            cam.projection = glm::perspectiveRH_ZO(glm::radians(fovY), std::max(aspect, 0.0001f), 0.05f, 1000.0f);
-            cam.zNear = 0.05f;
-            cam.zFar = 1000.0f;
-            cam.fovY = glm::radians(fovY);
-            cam.target = target;
-            cam.clearValue = {0.035f, 0.04f, 0.047f, 1.0f};
-            cam.clearMode = useSkybox ? 1u : 0u;
+            cam.name        = "Material Graph Preview";
+            cam.view        = glm::lookAt(position, targetPosition, kPreviewWorldUp);
+            cam.projection  = glm::perspectiveRH_ZO(glm::radians(fovY), std::max(aspect, 0.0001f), 0.05f, 1000.0f);
+            cam.zNear       = 0.05f;
+            cam.zFar        = 1000.0f;
+            cam.fovY        = glm::radians(fovY);
+            cam.target      = target;
+            cam.clearValue  = {0.035f, 0.04f, 0.047f, 1.0f};
+            cam.clearMode   = useSkybox ? 1u : 0u;
             cam.renderImGui = false;
             cam.rendererKey = "universal";
             return cam;
@@ -532,8 +526,7 @@ namespace vultra_app
     } // namespace
 
     MaterialGraphWindow::MaterialGraphWindow() :
-        EditorWindow("Material Graph", ICON_MDI_MOLECULE),
-        m_Registry(vultra::material_graph::makeBuiltinNodeRegistry())
+        EditorWindow("Material Graph", ICON_MDI_MOLECULE), m_Registry(vultra::material_graph::makeBuiltinNodeRegistry())
     {
         m_NodeEditor = ImNodes::EditorContextCreate();
     }
@@ -562,8 +555,12 @@ namespace vultra_app
         ImGui::Separator();
 
         const float rightWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.30f, 320.0f, 460.0f);
-        const float leftWidth = std::max(240.0f, ImGui::GetContentRegionAvail().x - rightWidth - ImGui::GetStyle().ItemSpacing.x);
-        ImGui::BeginChild("##MaterialGraphCanvas", ImVec2(leftWidth, 0.0f), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        const float leftWidth =
+            std::max(240.0f, ImGui::GetContentRegionAvail().x - rightWidth - ImGui::GetStyle().ItemSpacing.x);
+        ImGui::BeginChild("##MaterialGraphCanvas",
+                          ImVec2(leftWidth, 0.0f),
+                          true,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         drawNodeEditor(ctx);
         ImGui::EndChild();
         ImGui::SameLine();
@@ -598,16 +595,17 @@ namespace vultra_app
 
     void MaterialGraphWindow::newGraph(EditorContext& ctx)
     {
-        m_Graph = {};
-        m_Graph.name = "Default Material Graph";
-        m_CurrentUri = "res://materials/default.vmatgraph.json";
-        const auto* color = m_Registry.find("vultra.param.color");
+        m_Graph            = {};
+        m_Graph.name       = "Default Material Graph";
+        m_CurrentUri       = "res://materials/default.vmatgraph.json";
+        const auto* color  = m_Registry.find("vultra.param.color");
         const auto* output = m_Registry.find("vultra.output.surface");
         if (color && output)
         {
             m_Graph.nodes.push_back(makeNode(*color, "Color", ImVec2(-220.0f, 20.0f)));
             m_Graph.nodes.push_back(makeNode(*output, "Surface", ImVec2(160.0f, 0.0f)));
-            m_Graph.links.push_back({.from = {.nodeId = "Color", .pin = "value"}, .to = {.nodeId = "Surface", .pin = "baseColor"}});
+            m_Graph.links.push_back(
+                {.from = {.nodeId = "Color", .pin = "value"}, .to = {.nodeId = "Surface", .pin = "baseColor"}});
         }
         markDirty(ctx);
     }
@@ -621,7 +619,7 @@ namespace vultra_app
         if (!text)
             return false;
         std::vector<vultra::material_graph::Diagnostic> diagnostics;
-        auto graph = vultra::material_graph::loadGraphFromText(text.value(), &diagnostics);
+        auto graph    = vultra::material_graph::loadGraphFromText(text.value(), &diagnostics);
         m_Diagnostics = std::move(diagnostics);
         if (!graph)
             return false;
@@ -629,8 +627,8 @@ namespace vultra_app
         for (auto& node : m_Graph.nodes)
             ensureNodePorts(node);
         m_CurrentUri = std::move(uri);
-        m_Dirty = false;
-        m_Status = "Loaded";
+        m_Dirty      = false;
+        m_Status     = "Loaded";
         return true;
     }
 
@@ -653,7 +651,7 @@ namespace vultra_app
             assets->clearTextAssetOverride(m_CurrentUri);
             assets->reimportAsset(m_CurrentUri, true);
         }
-        m_Dirty = false;
+        m_Dirty  = false;
         m_Status = "Saved";
         if (m_LiveApply)
             compileGraph(ctx);
@@ -662,21 +660,24 @@ namespace vultra_app
 
     bool MaterialGraphWindow::compileGraph(EditorContext& ctx)
     {
-        vultra::material_graph::MaterialGraphCompiler compiler {m_Registry};
+        vultra::material_graph::MaterialGraphCompiler  compiler {m_Registry};
         vultra::material_graph::SurfaceFunctionBackend backend;
-        const auto shaderId = vultra::material_graph::sanitizeShaderId(std::filesystem::path(m_CurrentUri).stem().generic_string());
-        auto result = compiler.compile({.graph = m_Graph, .shaderId = shaderId, .graphId = vultra::material_graph::stableGraphId(m_CurrentUri)}, backend);
+        const auto                                     shaderId =
+            vultra::material_graph::sanitizeShaderId(std::filesystem::path(m_CurrentUri).stem().generic_string());
+        auto result = compiler.compile(
+            {.graph = m_Graph, .shaderId = shaderId, .graphId = vultra::material_graph::stableGraphId(m_CurrentUri)},
+            backend);
         if (!result)
         {
             m_Diagnostics = result.error();
-            m_Status = "Compile failed";
+            m_Status      = "Compile failed";
             return false;
         }
         m_Diagnostics = result->diagnostics;
 
         const auto outDir = assetRoot(ctx) / "shaders" / "generated" / "material_graph";
         std::filesystem::create_directories(outDir);
-        const auto outPath = outDir / (shaderId + ".frag.vshader");
+        const auto    outPath = outDir / (shaderId + ".frag.vshader");
         std::ofstream file(outPath, std::ios::binary | std::ios::trunc);
         if (!file)
         {
@@ -690,7 +691,8 @@ namespace vultra_app
         file << result->vshaderSource << "\n";
         file << "layout(location = 0) out vec4 FragColor;\n";
         file << "void main()\n{\n";
-        file << "    MaterialGraphSurface surface = eval_material_graph_" << vultra::material_graph::sanitizeShaderId(shaderId)
+        file << "    MaterialGraphSurface surface = eval_material_graph_"
+             << vultra::material_graph::sanitizeShaderId(shaderId)
              << "(0u, vec2(0.0), vec3(0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), 0.0);\n";
         file << "    FragColor = surface.baseColor;\n";
         file << "}\n";
@@ -762,16 +764,18 @@ namespace vultra_app
 
             for (const auto& [key, raw] : node.params.items())
             {
-                if (std::ranges::any_of(node.inputs, [&](const auto& pin) { return pin.name == key && hasInputLink(m_Graph, node.id, pin.name); }))
+                if (std::ranges::any_of(node.inputs, [&](const auto& pin) {
+                        return pin.name == key && hasInputLink(m_Graph, node.id, pin.name);
+                    }))
                     continue;
-                auto* desc = m_Registry.find(node.typeId);
+                auto*                             desc = m_Registry.find(node.typeId);
                 vultra::material_graph::ValueType type = vultra::material_graph::ValueType::eUnknown;
                 if (desc)
                     type = parameterTypeForKey(*desc, key);
                 auto& value = node.params[key];
                 ImGui::PushID(key.c_str());
-                const bool changed =
-                    drawKnownEnumParam(node, key, value) || drawJsonValue(ctx, m_TextureSelector, type, value, key.c_str());
+                const bool changed = drawKnownEnumParam(node, key, value) ||
+                                     drawJsonValue(ctx, m_TextureSelector, type, value, key.c_str());
                 ImGui::PopID();
                 if (changed)
                     markDirty(ctx);
@@ -795,18 +799,19 @@ namespace vultra_app
         }
 
         for (const auto& link : m_Graph.links)
-            ImNodes::Link(linkId(link), pinId(link.from.nodeId, link.from.pin, false), pinId(link.to.nodeId, link.to.pin, true));
+            ImNodes::Link(
+                linkId(link), pinId(link.from.nodeId, link.from.pin, false), pinId(link.to.nodeId, link.to.pin, true));
         ImNodes::MiniMap(0.18f, ImNodesMiniMapLocation_BottomRight);
         ImNodes::EndNodeEditor();
 
         for (auto& node : m_Graph.nodes)
         {
-            const auto pos = ImNodes::GetNodeGridSpacePos(nodeId(node.id));
+            const auto pos     = ImNodes::GetNodeGridSpacePos(nodeId(node.id));
             node.editor["pos"] = {pos.x, pos.y};
         }
 
         int start = 0;
-        int end = 0;
+        int end   = 0;
         if (ImNodes::IsLinkCreated(&start, &end))
         {
             auto a = m_Pins.find(start);
@@ -814,13 +819,15 @@ namespace vultra_app
             if (a != m_Pins.end() && b != m_Pins.end())
             {
                 auto from = a->second;
-                auto to = b->second;
+                auto to   = b->second;
                 if (from.input)
                     std::swap(from, to);
                 if (!from.input && to.input)
                 {
-                    std::erase_if(m_Graph.links, [&](const auto& link) { return link.to.nodeId == to.node && link.to.pin == to.pin; });
-                    m_Graph.links.push_back({.from = {.nodeId = from.node, .pin = from.pin}, .to = {.nodeId = to.node, .pin = to.pin}});
+                    std::erase_if(m_Graph.links,
+                                  [&](const auto& link) { return link.to.nodeId == to.node && link.to.pin == to.pin; });
+                    m_Graph.links.push_back(
+                        {.from = {.nodeId = from.node, .pin = from.pin}, .to = {.nodeId = to.node, .pin = to.pin}});
                     markDirty(ctx);
                 }
             }
@@ -852,7 +859,9 @@ namespace vultra_app
                             node = item.second.node;
                     if (!node.empty() && node != "Surface")
                     {
-                        std::erase_if(m_Graph.links, [&](const auto& link) { return link.from.nodeId == node || link.to.nodeId == node; });
+                        std::erase_if(m_Graph.links, [&](const auto& link) {
+                            return link.from.nodeId == node || link.to.nodeId == node;
+                        });
                         std::erase_if(m_Graph.nodes, [&](const auto& n) { return n.id == node; });
                         markDirty(ctx);
                     }
@@ -860,7 +869,7 @@ namespace vultra_app
             }
         }
 
-        int        hovered = 0;
+        int        hovered     = 0;
         const bool nodeHovered = ImNodes::IsNodeHovered(&hovered);
         if (canvasHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
         {
@@ -884,7 +893,8 @@ namespace vultra_app
                         node = item.second.node;
                 if (!node.empty() && node != "Surface")
                 {
-                    std::erase_if(m_Graph.links, [&](const auto& link) { return link.from.nodeId == node || link.to.nodeId == node; });
+                    std::erase_if(m_Graph.links,
+                                  [&](const auto& link) { return link.from.nodeId == node || link.to.nodeId == node; });
                     std::erase_if(m_Graph.nodes, [&](const auto& n) { return n.id == node; });
                     markDirty(ctx);
                 }
@@ -904,7 +914,8 @@ namespace vultra_app
             const ImVec4 color = diag.severity == vultra::material_graph::Diagnostic::Severity::eError ?
                                      ImVec4(1.0f, 0.35f, 0.35f, 1.0f) :
                                      ImVec4(1.0f, 0.75f, 0.25f, 1.0f);
-            ImGui::TextColored(color, "%s%s%s", diag.message.c_str(), diag.nodeId.empty() ? "" : " @ ", diag.nodeId.c_str());
+            ImGui::TextColored(
+                color, "%s%s%s", diag.message.c_str(), diag.nodeId.empty() ? "" : " @ ", diag.nodeId.c_str());
         }
     }
 
@@ -913,12 +924,12 @@ namespace vultra_app
         if (!m_PreviewFocusActive)
             return;
 
-        const float dt = std::max(ImGui::GetIO().DeltaTime, 0.0f);
-        m_PreviewFocusElapsed = std::min(m_PreviewFocusElapsed + dt, m_PreviewFocusDuration);
-        const float t = m_PreviewFocusDuration > 0.0f ?
-                            std::clamp(m_PreviewFocusElapsed / m_PreviewFocusDuration, 0.0f, 1.0f) :
-                            1.0f;
-        const float eased = 1.0f - std::pow(1.0f - t, 3.0f);
+        const float dt          = std::max(ImGui::GetIO().DeltaTime, 0.0f);
+        m_PreviewFocusElapsed   = std::min(m_PreviewFocusElapsed + dt, m_PreviewFocusDuration);
+        const float t           = m_PreviewFocusDuration > 0.0f ?
+                                      std::clamp(m_PreviewFocusElapsed / m_PreviewFocusDuration, 0.0f, 1.0f) :
+                                      1.0f;
+        const float eased       = 1.0f - std::pow(1.0f - t, 3.0f);
         m_PreviewCameraPosition = glm::mix(m_PreviewFocusStartPosition, m_PreviewFocusTargetPosition, eased);
 
         if (t >= 1.0f)
@@ -934,27 +945,28 @@ namespace vultra_app
         if (resetAngle)
         {
             m_PreviewObjectRotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
-            m_PreviewArcballActive = false;
-            m_PreviewDistanceScale = 1.0f;
+            m_PreviewArcballActive  = false;
+            m_PreviewDistanceScale  = 1.0f;
         }
 
-        m_PreviewBoundsCenter = bounds.center();
-        const float radius = std::max(bounds.radius(), 0.25f);
-        const float fovY = glm::radians(std::clamp(m_PreviewCameraFovY, 5.0f, 160.0f));
-        const float safeAspect = std::max(aspect, 0.0001f);
-        const float tanY = std::tan(fovY * 0.5f);
-        const float tanX = tanY * safeAspect;
-        const float fitDistance = radius / std::max(std::min(tanX, tanY), 0.0001f);
-        m_PreviewFitDistance = std::max(fitDistance * 1.08f, radius + 0.35f);
+        m_PreviewBoundsCenter          = bounds.center();
+        const float radius             = std::max(bounds.radius(), 0.25f);
+        const float fovY               = glm::radians(std::clamp(m_PreviewCameraFovY, 5.0f, 160.0f));
+        const float safeAspect         = std::max(aspect, 0.0001f);
+        const float tanY               = std::tan(fovY * 0.5f);
+        const float tanX               = tanY * safeAspect;
+        const float fitDistance        = radius / std::max(std::min(tanX, tanY), 0.0001f);
+        m_PreviewFitDistance           = std::max(fitDistance * 1.08f, radius + 0.35f);
         const glm::vec3 orbitDirection = glm::normalize(glm::vec3 {0.55f, 0.32f, 0.74f});
-        const glm::vec3 targetPosition = m_PreviewBoundsCenter + orbitDirection * m_PreviewFitDistance * m_PreviewDistanceScale;
+        const glm::vec3 targetPosition =
+            m_PreviewBoundsCenter + orbitDirection * m_PreviewFitDistance * m_PreviewDistanceScale;
 
-        m_PreviewFocusStartPosition = resetAngle ? targetPosition : m_PreviewCameraPosition;
+        m_PreviewFocusStartPosition  = resetAngle ? targetPosition : m_PreviewCameraPosition;
         m_PreviewFocusTargetPosition = targetPosition;
-        m_PreviewFocusElapsed = 0.0f;
-        m_PreviewFocusDuration = resetAngle ? 0.0f : 0.28f;
-        m_PreviewFocusActive = !resetAngle &&
-                               glm::length(m_PreviewFocusTargetPosition - m_PreviewFocusStartPosition) > 0.0001f;
+        m_PreviewFocusElapsed        = 0.0f;
+        m_PreviewFocusDuration       = resetAngle ? 0.0f : 0.28f;
+        m_PreviewFocusActive =
+            !resetAngle && glm::length(m_PreviewFocusTargetPosition - m_PreviewFocusStartPosition) > 0.0001f;
         if (!m_PreviewFocusActive)
             m_PreviewCameraPosition = m_PreviewFocusTargetPosition;
         return true;
@@ -968,18 +980,18 @@ namespace vultra_app
             auto& reg = m_PreviewWorld.registry();
             if (auto* mesh = m_PreviewWorld.registry().try_get<vultra::MeshComponent>(m_PreviewSphere))
             {
-                mesh->mesh = m_PreviewMesh;
+                mesh->mesh            = m_PreviewMesh;
                 mesh->builtinGeometry = m_PreviewMesh.valid() ? UINT32_MAX : 2u;
                 if (mesh->materialOverrides.empty())
                     mesh->materialOverrides.push_back({});
-                mesh->materialOverrides.front().slot = 0u;
+                mesh->materialOverrides.front().slot          = 0u;
                 mesh->materialOverrides.front().materialGraph = m_CurrentUri;
             }
             if (auto* tr = reg.try_get<vultra::TransformComponent>(m_PreviewSphere))
             {
-                tr->rotation = m_PreviewObjectRotation;
-                tr->position = glm::vec3 {0.0f};
-                tr->scale = glm::vec3 {1.0f};
+                tr->rotation    = m_PreviewObjectRotation;
+                tr->position    = glm::vec3 {0.0f};
+                tr->scale       = glm::vec3 {1.0f};
                 tr->worldMatrix = glm::translate(glm::mat4 {1.0f}, m_PreviewBoundsCenter) *
                                   glm::mat4_cast(tr->rotation) *
                                   glm::translate(glm::mat4 {1.0f}, -m_PreviewBoundsCenter);
@@ -989,16 +1001,16 @@ namespace vultra_app
             {
                 if (auto* environment = reg.try_get<vultra::EnvironmentComponent>(m_PreviewEnvironment))
                 {
-                    environment->skybox = m_PreviewSkybox;
-                    environment->ambientColor = glm::vec3 {0.28f, 0.30f, 0.34f};
+                    environment->skybox           = m_PreviewSkybox;
+                    environment->ambientColor     = glm::vec3 {0.28f, 0.30f, 0.34f};
                     environment->ambientIntensity = 1.6f;
-                    environment->enableIBL = m_PreviewSkybox.valid();
-                    environment->iblColor = glm::vec3 {0.45f, 0.48f, 0.52f};
-                    environment->iblIntensity = 1.2f;
+                    environment->enableIBL        = m_PreviewSkybox.valid();
+                    environment->iblColor         = glm::vec3 {0.45f, 0.48f, 0.52f};
+                    environment->iblIntensity     = 1.2f;
                 }
             }
         }
-        const float size = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
+        const float size   = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
         const float aspect = 1.0f;
         if (m_LastPreviewMesh != m_PreviewMesh)
         {
@@ -1009,7 +1021,8 @@ namespace vultra_app
         if (!m_PreviewFocusActive)
         {
             const glm::vec3 orbitDirection = glm::normalize(glm::vec3 {0.55f, 0.32f, 0.74f});
-            m_PreviewCameraPosition = m_PreviewBoundsCenter + orbitDirection * m_PreviewFitDistance * m_PreviewDistanceScale;
+            m_PreviewCameraPosition =
+                m_PreviewBoundsCenter + orbitDirection * m_PreviewFitDistance * m_PreviewDistanceScale;
         }
 
         if (m_PreviewLight != entt::null && m_PreviewWorld.registry().valid(m_PreviewLight))
@@ -1017,17 +1030,18 @@ namespace vultra_app
             if (auto* lightTransform = m_PreviewWorld.registry().try_get<vultra::TransformComponent>(m_PreviewLight))
             {
                 const glm::vec3 lightDirection = glm::normalize(m_PreviewBoundsCenter - m_PreviewCameraPosition);
-                lightTransform->rotation = glm::quatLookAt(lightDirection, kPreviewWorldUp);
-                lightTransform->dirty = true;
+                lightTransform->rotation       = glm::quatLookAt(lightDirection, kPreviewWorldUp);
+                lightTransform->dirty          = true;
             }
         }
 
-        ensurePreviewRenderTarget(ctx, static_cast<uint32_t>(std::max(size, 32.0f)), static_cast<uint32_t>(std::max(size, 32.0f)));
+        ensurePreviewRenderTarget(
+            ctx, static_cast<uint32_t>(std::max(size, 32.0f)), static_cast<uint32_t>(std::max(size, 32.0f)));
         if (ctx.services && m_PreviewTarget.texture)
         {
             if (auto* cameras = ctx.services->tryGet<vultra::ICameraService>())
             {
-                auto cam = makePreviewCamera(m_PreviewCameraPosition,
+                auto cam          = makePreviewCamera(m_PreviewCameraPosition,
                                              m_PreviewBoundsCenter,
                                              m_PreviewCameraFovY,
                                              aspect,
@@ -1065,14 +1079,15 @@ namespace vultra_app
             if (m_PreviewArcballActive && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
             {
                 const glm::vec3 next = mapPreviewArcballPoint(ImGui::GetIO().MousePos, imageMin, imageMax);
-                m_PreviewObjectRotation = glm::normalize(arcballDelta(m_PreviewArcballVector, next) * m_PreviewObjectRotation);
+                m_PreviewObjectRotation =
+                    glm::normalize(arcballDelta(m_PreviewArcballVector, next) * m_PreviewObjectRotation);
                 m_PreviewArcballVector = next;
             }
 
             const float wheel = ImGui::GetIO().MouseWheel;
             if (std::abs(wheel) > 0.0f)
             {
-                m_PreviewFocusActive = false;
+                m_PreviewFocusActive   = false;
                 m_PreviewDistanceScale = std::clamp(m_PreviewDistanceScale * std::exp(-wheel * 0.16f), 0.08f, 8.0f);
             }
         }
@@ -1097,14 +1112,15 @@ namespace vultra_app
             if (!ImGui::MenuItem(desc.displayName.c_str()))
                 return;
 
-            const std::string stem = nodeIdStem(desc);
+            const std::string stem   = nodeIdStem(desc);
             std::string       unique = stem;
             int               suffix = 1;
             while (findNode(unique))
                 unique = stem + std::to_string(++suffix);
             const ImVec2 panning = ImNodes::EditorContextGetPanning();
-            const float  offset = static_cast<float>(m_Graph.nodes.size() % 6u) * 32.0f;
-            m_Graph.nodes.push_back(makeNode(desc, unique, ImVec2(-panning.x + 80.0f + offset, -panning.y + 80.0f + offset)));
+            const float  offset  = static_cast<float>(m_Graph.nodes.size() % 6u) * 32.0f;
+            m_Graph.nodes.push_back(
+                makeNode(desc, unique, ImVec2(-panning.x + 80.0f + offset, -panning.y + 80.0f + offset)));
             markDirty(ctx);
         };
 
@@ -1212,31 +1228,34 @@ namespace vultra_app
         m_PreviewLight = m_PreviewWorld.createEntity();
         reg.emplace_or_replace<vultra::NameComponent>(m_PreviewLight, vultra::NameComponent {"Preview Key Light"});
         auto& lightTransform = reg.get<vultra::TransformComponent>(m_PreviewLight);
-        lightTransform.rotation = glm::quatLookAt(glm::normalize(glm::vec3(0.4f, -0.8f, 0.35f)), glm::vec3(0.0f, 1.0f, 0.0f));
+        lightTransform.rotation =
+            glm::quatLookAt(glm::normalize(glm::vec3(0.4f, -0.8f, 0.35f)), glm::vec3(0.0f, 1.0f, 0.0f));
         lightTransform.worldMatrix = glm::mat4_cast(lightTransform.rotation);
-        auto& l = reg.emplace_or_replace<vultra::LightComponent>(m_PreviewLight);
-        l.kind = 0u;
-        l.intensity = 6.0f;
-        l.castsShadow = false;
+        auto& l                    = reg.emplace_or_replace<vultra::LightComponent>(m_PreviewLight);
+        l.kind                     = 0u;
+        l.intensity                = 6.0f;
+        l.castsShadow              = false;
 
         m_PreviewEnvironment = m_PreviewWorld.createEntity();
-        reg.emplace_or_replace<vultra::NameComponent>(m_PreviewEnvironment, vultra::NameComponent {"Preview Environment"});
+        reg.emplace_or_replace<vultra::NameComponent>(m_PreviewEnvironment,
+                                                      vultra::NameComponent {"Preview Environment"});
         reg.emplace_or_replace<vultra::EnvironmentComponent>(m_PreviewEnvironment,
                                                              vultra::EnvironmentComponent {
-                                                                 .ambientColor = glm::vec3 {0.28f, 0.30f, 0.34f},
+                                                                 .ambientColor     = glm::vec3 {0.28f, 0.30f, 0.34f},
                                                                  .ambientIntensity = 1.6f,
-                                                                 .enableIBL = false,
-                                                                 .iblColor = glm::vec3 {0.45f, 0.48f, 0.52f},
-                                                                 .iblIntensity = 1.2f,
+                                                                 .enableIBL        = false,
+                                                                 .iblColor         = glm::vec3 {0.45f, 0.48f, 0.52f},
+                                                                 .iblIntensity     = 1.2f,
                                                              });
 
         m_PreviewSphere = m_PreviewWorld.createEntity();
         reg.emplace_or_replace<vultra::NameComponent>(m_PreviewSphere, vultra::NameComponent {"Preview Sphere"});
-        reg.emplace_or_replace<vultra::MeshComponent>(m_PreviewSphere,
-                                                      vultra::MeshComponent {
-                                                          .builtinGeometry = 2u,
-                                                          .materialOverrides = {{.slot = 0u, .materialGraph = m_CurrentUri}},
-                                                      });
+        reg.emplace_or_replace<vultra::MeshComponent>(
+            m_PreviewSphere,
+            vultra::MeshComponent {
+                .builtinGeometry   = 2u,
+                .materialOverrides = {{.slot = 0u, .materialGraph = m_CurrentUri}},
+            });
     }
 
     void MaterialGraphWindow::ensurePreviewRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height)
@@ -1244,23 +1263,25 @@ namespace vultra_app
         if (!ctx.services || width == 0u || height == 0u)
             return;
         collectRetiredPreviewTargets(ctx);
-        if (m_PreviewTarget.texture && m_PreviewTarget.extent.width == width && m_PreviewTarget.extent.height == height && m_PreviewTarget.textureId)
+        if (m_PreviewTarget.texture && m_PreviewTarget.extent.width == width &&
+            m_PreviewTarget.extent.height == height && m_PreviewTarget.textureId)
             return;
         releasePreviewRenderTarget(ctx);
         auto* backend = ctx.services->tryGet<vultra::IRenderBackendService>();
-        auto* imgui = ctx.services->tryGet<vultra::IImGuiService>();
+        auto* imgui   = ctx.services->tryGet<vultra::IImGuiService>();
         if (!backend || !imgui)
             return;
         auto format = backend->backbuffer().getPixelFormat();
         if (format == vultra::rhi::PixelFormat::eUndefined)
             format = vultra::rhi::PixelFormat::eRGBA8_UNorm;
         m_PreviewTarget.extent = {width, height};
-        m_PreviewTarget.texture = vultra::rhi::Texture::Builder {}
-                                      .setExtent(m_PreviewTarget.extent)
-                                      .setPixelFormat(format)
-                                      .setNumMipLevels(1)
-                                      .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
-                                      .build(backend->renderDevice());
+        m_PreviewTarget.texture =
+            vultra::rhi::Texture::Builder {}
+                .setExtent(m_PreviewTarget.extent)
+                .setPixelFormat(format)
+                .setNumMipLevels(1)
+                .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
+                .build(backend->renderDevice());
         m_PreviewTarget.textureId = imgui->addTexture(*m_PreviewTarget.texture);
     }
 
@@ -1275,9 +1296,9 @@ namespace vultra_app
 
     void MaterialGraphWindow::collectRetiredPreviewTargets(EditorContext& ctx)
     {
-        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
-        auto* imgui = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
-        std::size_t out = 0;
+        const auto  frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+        auto*       imgui = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        std::size_t out   = 0;
         for (auto& slot : m_RetiredPreviewTargets)
         {
             if (frame >= slot.releaseFrame)
@@ -1298,8 +1319,8 @@ namespace vultra_app
     int MaterialGraphWindow::pinId(std::string_view node, std::string_view pin, bool input)
     {
         const std::string key = std::string(input ? "in:" : "out:") + std::string(node) + ":" + std::string(pin);
-        const int id = stableImNodesId(key);
-        m_Pins[id] = {std::string(node), std::string(pin), input};
+        const int         id  = stableImNodesId(key);
+        m_Pins[id]            = {std::string(node), std::string(pin), input};
         return id;
     }
 
@@ -1327,8 +1348,8 @@ namespace vultra_app
         if (!desc)
             return;
         node.displayName = node.displayName.empty() ? desc->displayName : node.displayName;
-        node.inputs = desc->inputs;
-        node.outputs = desc->outputs;
+        node.inputs      = desc->inputs;
+        node.outputs     = desc->outputs;
         for (const auto& [key, value] : desc->defaultParams.items())
             if (!node.params.contains(key))
                 node.params[key] = value;

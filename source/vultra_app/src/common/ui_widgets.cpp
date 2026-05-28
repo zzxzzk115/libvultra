@@ -16,10 +16,9 @@ namespace vultra_app::ui
         bool hasExtension(const std::filesystem::path& path, std::initializer_list<const char*> exts)
         {
             auto ext = path.extension().generic_string();
-            std::transform(ext.begin(),
-                           ext.end(),
-                           ext.begin(),
-                           [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
             return std::any_of(exts.begin(), exts.end(), [&](const char* candidate) { return ext == candidate; });
         }
 
@@ -93,7 +92,7 @@ namespace vultra_app::ui
         const ImVec2 start = ImGui::GetCursorScreenPos();
         const ImVec2 center {start.x + avail.x * 0.5f, start.y + avail.y * 0.5f};
 
-        auto* drawList = ImGui::GetWindowDrawList();
+        auto* drawList  = ImGui::GetWindowDrawList();
         namespace theme = vultra::imgui_theme;
         drawList->AddCircleFilled(center, 38.0f, theme::u32(theme::withAlpha(theme::accent(), 14.0f / 255.0f)), 48);
         const ImVec2 iconSize = ImGui::CalcTextSize(icon);

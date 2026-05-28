@@ -67,8 +67,8 @@ namespace vultra_app
             static std::vector<double> x;
             static std::vector<double> cpu;
             static std::vector<double> gpu;
-            constexpr size_t kMaxVisibleSamples = 180;
-            const size_t firstSample = history.size() > kMaxVisibleSamples ? history.size() - kMaxVisibleSamples : 0u;
+            constexpr size_t           kMaxVisibleSamples = 180;
+            const size_t firstSample  = history.size() > kMaxVisibleSamples ? history.size() - kMaxVisibleSamples : 0u;
             const size_t visibleCount = history.size() - firstSample;
             x.resize(visibleCount);
             cpu.resize(visibleCount);
@@ -184,7 +184,9 @@ namespace vultra_app
 
             if (ImGui::BeginTabItem("CPU"))
             {
-                if (ImGui::BeginTable("##ProfilerCpuTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+                if (ImGui::BeginTable("##ProfilerCpuTable",
+                                      4,
+                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
                 {
                     ImGui::TableSetupColumn("Scope");
                     ImGui::TableSetupColumn("Total ms");
@@ -199,7 +201,9 @@ namespace vultra_app
 
             if (ImGui::BeginTabItem("GPU"))
             {
-                if (ImGui::BeginTable("##ProfilerGpuTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+                if (ImGui::BeginTable("##ProfilerGpuTable",
+                                      4,
+                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
                 {
                     ImGui::TableSetupColumn("Scope");
                     ImGui::TableSetupColumn("Total ms");

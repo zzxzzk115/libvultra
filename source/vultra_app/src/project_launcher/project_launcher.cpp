@@ -26,8 +26,7 @@ namespace vultra_app
         {
             name.erase(std::remove_if(name.begin(),
                                       name.end(),
-                                      [](unsigned char ch)
-                                      {
+                                      [](unsigned char ch) {
                                           return ch < 32 || ch == '<' || ch == '>' || ch == ':' || ch == '"' ||
                                                  ch == '/' || ch == '\\' || ch == '|' || ch == '?' || ch == '*';
                                       }),
@@ -55,13 +54,9 @@ namespace vultra_app
 
         std::string toLower(std::string text)
         {
-            std::transform(text.begin(),
-                           text.end(),
-                           text.begin(),
-                           [](unsigned char ch)
-                           {
-                               return static_cast<char>(std::tolower(ch));
-                           });
+            std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
             return text;
         }
 
@@ -82,7 +77,8 @@ namespace vultra_app
             fs::create_directories(path.parent_path(), ec);
             if (ec)
             {
-                errorMessage = "failed to create directory '" + path.parent_path().generic_string() + "': " + ec.message();
+                errorMessage =
+                    "failed to create directory '" + path.parent_path().generic_string() + "': " + ec.message();
                 return false;
             }
 
@@ -515,8 +511,10 @@ This directory is an index, not the runtime asset root.
                    writeTextFile(projectDir / "ai" / "game.md", kProjectGameBrief, errorMessage) &&
                    writeTextFile(projectDir / "ai" / "specs" / "README.md", kProjectSpecsReadme, errorMessage) &&
                    writeTextFile(projectDir / "ai" / "tasks" / "README.md", kProjectTasksReadme, errorMessage) &&
-                   writeTextFile(projectDir / "ai" / "workspace" / "README.md", kProjectWorkspaceReadme, errorMessage) &&
-                   writeTextFile(projectDir / "ai" / "knowledge" / "README.md", kProjectKnowledgeReadme, errorMessage) &&
+                   writeTextFile(
+                       projectDir / "ai" / "workspace" / "README.md", kProjectWorkspaceReadme, errorMessage) &&
+                   writeTextFile(
+                       projectDir / "ai" / "knowledge" / "README.md", kProjectKnowledgeReadme, errorMessage) &&
                    writeTextFile(projectDir / "ai" / "agents" / "README.md", kProjectAgentsReadme, errorMessage) &&
                    writeTextFile(projectDir / "ai" / "generated" / "README.md", kProjectGeneratedReadme, errorMessage);
         }
@@ -590,26 +588,25 @@ This directory is an index, not the runtime asset root.
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             ImGui::InvisibleButton(id, size);
 
-            const bool clicked = ImGui::IsItemClicked();
-            const bool hovered = ImGui::IsItemHovered();
-            const ImVec2 min   = ImGui::GetItemRectMin();
-            const ImVec2 max   = ImGui::GetItemRectMax();
+            const bool   clicked = ImGui::IsItemClicked();
+            const bool   hovered = ImGui::IsItemHovered();
+            const ImVec2 min     = ImGui::GetItemRectMin();
+            const ImVec2 max     = ImGui::GetItemRectMax();
 
             if (active || hovered)
             {
-                auto activeFill = vultra::imgui_theme::frameActive();
-                activeFill.w    = 0.90f;
-                auto hoverFill  = vultra::imgui_theme::frame();
-                hoverFill.w     = 0.82f;
-                const ImU32 fill =
-                    active ? vultra::imgui_theme::u32(activeFill) : vultra::imgui_theme::u32(hoverFill);
+                auto activeFill  = vultra::imgui_theme::frameActive();
+                activeFill.w     = 0.90f;
+                auto hoverFill   = vultra::imgui_theme::frame();
+                hoverFill.w      = 0.82f;
+                const ImU32 fill = active ? vultra::imgui_theme::u32(activeFill) : vultra::imgui_theme::u32(hoverFill);
                 drawList->AddRectFilled(min, max, fill, 7.0f);
             }
 
-            const ImU32 iconColor = vultra::imgui_theme::u32(active ? vultra::imgui_theme::accent() :
-                                                                      vultra::imgui_theme::textMuted());
-            const ImU32 textColor = vultra::imgui_theme::u32(active ? vultra::imgui_theme::text() :
-                                                                      vultra::imgui_theme::textMuted());
+            const ImU32 iconColor =
+                vultra::imgui_theme::u32(active ? vultra::imgui_theme::accent() : vultra::imgui_theme::textMuted());
+            const ImU32 textColor =
+                vultra::imgui_theme::u32(active ? vultra::imgui_theme::text() : vultra::imgui_theme::textMuted());
             drawList->AddText(ImVec2(min.x + 18.0f, min.y + 13.0f), iconColor, icon);
             drawList->AddText(ImVec2(min.x + 48.0f, min.y + 13.0f), textColor, label);
             return clicked;
@@ -677,9 +674,9 @@ This directory is an index, not the runtime asset root.
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking);
 
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        const ImVec2 origin  = ImGui::GetWindowPos();
-        const ImVec2 size    = ImGui::GetWindowSize();
+        ImDrawList*  drawList = ImGui::GetWindowDrawList();
+        const ImVec2 origin   = ImGui::GetWindowPos();
+        const ImVec2 size     = ImGui::GetWindowSize();
 
         const float sidebarW = 276.0f;
         drawList->AddRectFilled(origin,
@@ -697,31 +694,33 @@ This directory is an index, not the runtime asset root.
         drawList->AddText(ImVec2(origin.x + 104.0f, origin.y + 58.0f),
                           vultra::imgui_theme::u32(vultra::imgui_theme::text()),
                           "Vultra");
-        drawList->AddText(ImVec2(origin.x + 104.0f, origin.y + 82.0f),
-                          theme::u32(theme::textMuted()),
-                          "Project Launcher");
+        drawList->AddText(
+            ImVec2(origin.x + 104.0f, origin.y + 82.0f), theme::u32(theme::textMuted()), "Project Launcher");
         drawWindowControls(windowService, origin, size);
 
         ImGui::SetCursorScreenPos(ImVec2(origin.x + 28.0f, origin.y + 156.0f));
         drawSidebarButton("##launcher_nav_projects", ICON_MDI_FOLDER_OUTLINE, "Projects", true, ImVec2(220.0f, 48.0f));
         ImGui::SetCursorScreenPos(ImVec2(origin.x + 28.0f, origin.y + 214.0f));
-        if (drawSidebarButton("##launcher_nav_new", ICON_MDI_PLUS_CIRCLE_OUTLINE, "New Project", false, ImVec2(220.0f, 48.0f)))
+        if (drawSidebarButton(
+                "##launcher_nav_new", ICON_MDI_PLUS_CIRCLE_OUTLINE, "New Project", false, ImVec2(220.0f, 48.0f)))
             ImGui::OpenPopup("Create Vultra Project");
         ImGui::SetCursorScreenPos(ImVec2(origin.x + 28.0f, origin.y + 272.0f));
-        if (drawSidebarButton("##launcher_nav_open", ICON_MDI_FOLDER_OPEN_OUTLINE, "Open Existing", false, ImVec2(220.0f, 48.0f)))
+        if (drawSidebarButton(
+                "##launcher_nav_open", ICON_MDI_FOLDER_OPEN_OUTLINE, "Open Existing", false, ImVec2(220.0f, 48.0f)))
             ImGui::OpenPopup("Add Existing Vultra Project");
         ImGui::SetCursorScreenPos(ImVec2(origin.x + 28.0f, origin.y + 330.0f));
-        if (drawSidebarButton("##launcher_nav_blank", ICON_MDI_WINDOW_OPEN, "Blank Editor", false, ImVec2(220.0f, 48.0f)))
+        if (drawSidebarButton(
+                "##launcher_nav_blank", ICON_MDI_WINDOW_OPEN, "Blank Editor", false, ImVec2(220.0f, 48.0f)))
         {
             state.currentProject.clear();
             state.currentProjectName.clear();
             state.selectedSourceAsset.clear();
-            state.currentAssetRoot    = "resources";
-            state.currentDefaultScene = "res://scenes/test.vscn";
+            state.currentAssetRoot          = "resources";
+            state.currentDefaultScene       = "res://scenes/test.vscn";
             state.currentEditingRenderGraph = "res://render/default.vrg.json";
             ++state.projectGeneration;
-            state.mode                = AppMode::Editor;
-            state.statusMessage       = "Opened a blank editor session.";
+            state.mode          = AppMode::Editor;
+            state.statusMessage = "Opened a blank editor session.";
         }
         const float contentX = origin.x + sidebarW + 40.0f;
         const float contentW = std::max(420.0f, size.x - sidebarW - 80.0f);
@@ -771,8 +770,8 @@ This directory is an index, not the runtime asset root.
                           1.0f);
         drawList->AddText(ImVec2(contentX, origin.y + 206.0f), theme::u32(theme::text()), "Recent Projects");
 
-        const std::string query = toLower(m_SearchQuery.data());
-        float             rowY  = origin.y + 244.0f;
+        const std::string query        = toLower(m_SearchQuery.data());
+        float             rowY         = origin.y + 244.0f;
         int               visibleCount = 0;
         const float       rowH         = 82.0f;
         const float       rowGap       = 10.0f;
@@ -787,7 +786,7 @@ This directory is an index, not the runtime asset root.
                 break;
 
             ++visibleCount;
-            const bool selected = i == m_SelectedProject;
+            const bool   selected = i == m_SelectedProject;
             const ImVec2 rowMin(contentX, rowY);
             const ImVec2 rowMax(origin.x + size.x - 40.0f, rowY + rowH);
 
@@ -802,10 +801,9 @@ This directory is an index, not the runtime asset root.
                 openSelectedProject(state);
             }
 
-            const ImU32 rowFill =
-                selected ? theme::u32(theme::withAlpha(theme::frameActive(), 245.0f / 255.0f)) :
-                hovered  ? theme::u32(theme::withAlpha(theme::frameHovered(), 235.0f / 255.0f)) :
-                           theme::u32(theme::withAlpha(theme::frame(), 220.0f / 255.0f));
+            const ImU32 rowFill   = selected ? theme::u32(theme::withAlpha(theme::frameActive(), 245.0f / 255.0f)) :
+                                    hovered  ? theme::u32(theme::withAlpha(theme::frameHovered(), 235.0f / 255.0f)) :
+                                               theme::u32(theme::withAlpha(theme::frame(), 220.0f / 255.0f));
             const ImU32 rowBorder = selected ? theme::u32(theme::accentTransparent(210.0f / 255.0f)) :
                                                theme::u32(theme::withAlpha(theme::border(), 170.0f / 255.0f));
             drawList->AddRectFilled(rowMin, rowMax, rowFill, 7.0f);
@@ -817,23 +815,16 @@ This directory is an index, not the runtime asset root.
             drawList->AddRect(tileMin, tileMax, theme::u32(theme::accentTransparent(190.0f / 255.0f)), 6.0f);
             drawList->AddText(ImVec2(tileMin.x + 19.0f, tileMin.y + 17.0f), theme::u32(theme::accent()), "V");
 
-            drawList->PushClipRect(ImVec2(rowMin.x + 90.0f, rowMin.y),
-                                   ImVec2(rowMax.x - 190.0f, rowMax.y),
-                                   true);
-            drawList->AddText(ImVec2(rowMin.x + 92.0f, rowMin.y + 20.0f),
-                              theme::u32(theme::text()),
-                              project.name.c_str());
+            drawList->PushClipRect(ImVec2(rowMin.x + 90.0f, rowMin.y), ImVec2(rowMax.x - 190.0f, rowMax.y), true);
+            drawList->AddText(
+                ImVec2(rowMin.x + 92.0f, rowMin.y + 20.0f), theme::u32(theme::text()), project.name.c_str());
             drawList->AddText(ImVec2(rowMin.x + 92.0f, rowMin.y + 46.0f),
                               theme::u32(theme::textMuted()),
                               project.path.generic_string().c_str());
             drawList->PopClipRect();
 
-            drawList->AddText(ImVec2(rowMax.x - 166.0f, rowMin.y + 22.0f),
-                              theme::u32(theme::textSoft()),
-                              ".vproject");
-            drawList->AddText(ImVec2(rowMax.x - 166.0f, rowMin.y + 48.0f),
-                              theme::u32(theme::textMuted()),
-                              "Workspace");
+            drawList->AddText(ImVec2(rowMax.x - 166.0f, rowMin.y + 22.0f), theme::u32(theme::textSoft()), ".vproject");
+            drawList->AddText(ImVec2(rowMax.x - 166.0f, rowMin.y + 48.0f), theme::u32(theme::textMuted()), "Workspace");
 
             rowY += rowH + rowGap;
         }
@@ -848,9 +839,8 @@ This directory is an index, not the runtime asset root.
                               ImVec2(origin.x + size.x - 40.0f, origin.y + 338.0f),
                               theme::u32(theme::withAlpha(theme::border(), 150.0f / 255.0f)),
                               7.0f);
-            drawList->AddText(ImVec2(contentX + 24.0f, origin.y + 274.0f),
-                              theme::u32(theme::text()),
-                              "No projects found");
+            drawList->AddText(
+                ImVec2(contentX + 24.0f, origin.y + 274.0f), theme::u32(theme::text()), "No projects found");
             drawList->AddText(ImVec2(contentX + 24.0f, origin.y + 300.0f),
                               theme::u32(theme::textMuted()),
                               "Create a project or add an existing workspace.");
@@ -906,12 +896,11 @@ This directory is an index, not the runtime asset root.
 
     void ProjectLauncher::drawCreateProjectPopup(AppState& state)
     {
-        bool open = true;
+        bool                 open = true;
         ui::ScopedPopupStyle popupStyle;
         ImGui::SetNextWindowSizeConstraints(ImVec2 {420.0f, 0.0f}, ImVec2 {620.0f, 520.0f});
-        if (!ImGui::BeginPopupModal("Create Vultra Project",
-                                    &open,
-                                    ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+        if (!ImGui::BeginPopupModal(
+                "Create Vultra Project", &open, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
             return;
 
         ui::sectionTitle(ICON_MDI_FOLDER_PLUS_OUTLINE, "New Project");
@@ -941,7 +930,7 @@ This directory is an index, not the runtime asset root.
 
     void ProjectLauncher::drawAddExistingProjectPopup(AppState& state)
     {
-        bool open = true;
+        bool                 open = true;
         ui::ScopedPopupStyle popupStyle;
         ImGui::SetNextWindowSizeConstraints(ImVec2 {420.0f, 0.0f}, ImVec2 {620.0f, 460.0f});
         if (!ImGui::BeginPopupModal("Add Existing Vultra Project",
@@ -950,8 +939,7 @@ This directory is an index, not the runtime asset root.
             return;
 
         ui::sectionTitle(ICON_MDI_FOLDER_OPEN, "Existing Project");
-        ImGui::TextColored(ImVec4 {0.62f, 0.70f, 0.80f, 1.0f},
-                           "Select a project root containing a .vproject file.");
+        ImGui::TextColored(ImVec4 {0.62f, 0.70f, 0.80f, 1.0f}, "Select a project root containing a .vproject file.");
         ImGui::Spacing();
         ImGui::Separator();
         ImGui::Spacing();
@@ -996,9 +984,9 @@ This directory is an index, not the runtime asset root.
             addKnownProject(state, projectPath);
         }
 
-        std::sort(m_Projects.begin(),
-                  m_Projects.end(),
-                  [](const ProjectEntry& a, const ProjectEntry& b) { return a.name < b.name; });
+        std::sort(m_Projects.begin(), m_Projects.end(), [](const ProjectEntry& a, const ProjectEntry& b) {
+            return a.name < b.name;
+        });
         m_HasScannedProjects = true;
     }
 
@@ -1020,12 +1008,9 @@ This directory is an index, not the runtime asset root.
         if (projectPath.empty())
             return;
 
-        const auto exists = std::any_of(m_Projects.begin(),
-                                        m_Projects.end(),
-                                        [&](const ProjectEntry& entry)
-                                        {
-                                            return sameProjectPath(entry.path, projectPath);
-                                        });
+        const auto exists = std::any_of(m_Projects.begin(), m_Projects.end(), [&](const ProjectEntry& entry) {
+            return sameProjectPath(entry.path, projectPath);
+        });
         if (exists)
             return;
 
@@ -1061,9 +1046,8 @@ This directory is an index, not the runtime asset root.
         }
         if (!fs::is_empty(projectDir, ec) || ec)
         {
-            state.statusMessage =
-                ec ? "Failed to inspect project folder: " + ec.message() :
-                     "Project folder must be empty: " + projectDir.generic_string();
+            state.statusMessage = ec ? "Failed to inspect project folder: " + ec.message() :
+                                       "Project folder must be empty: " + projectDir.generic_string();
             return false;
         }
 
@@ -1090,10 +1074,10 @@ This directory is an index, not the runtime asset root.
 
         std::string errorMessage;
         VProject    project {
-               .projectDir   = projectDir,
-               .name         = projectName,
-               .assetRoot    = "resources",
-               .defaultScene = "res://scenes/test.vscn",
+               .projectDir         = projectDir,
+               .name               = projectName,
+               .assetRoot          = "resources",
+               .defaultScene       = "res://scenes/test.vscn",
                .editingRenderGraph = "res://render/default.vrg.json",
         };
         if (!saveVProject(project, &errorMessage))
@@ -1109,15 +1093,15 @@ This directory is an index, not the runtime asset root.
 
         addKnownProject(state, projectDir);
         saveKnownProjects(state);
-        state.currentProject      = project.projectDir;
+        state.currentProject = project.projectDir;
         state.selectedSourceAsset.clear();
-        state.currentProjectName  = project.name;
-        state.currentAssetRoot    = project.assetRoot;
-        state.currentDefaultScene = project.defaultScene;
+        state.currentProjectName        = project.name;
+        state.currentAssetRoot          = project.assetRoot;
+        state.currentDefaultScene       = project.defaultScene;
         state.currentEditingRenderGraph = project.editingRenderGraph;
         ++state.projectGeneration;
-        state.mode                = AppMode::Editor;
-        state.statusMessage       = "Created project: " + projectDir.generic_string();
+        state.mode          = AppMode::Editor;
+        state.statusMessage = "Created project: " + projectDir.generic_string();
         return true;
     }
 
@@ -1160,14 +1144,14 @@ This directory is an index, not the runtime asset root.
             return;
         }
 
-        state.currentProject      = project->projectDir;
+        state.currentProject = project->projectDir;
         state.selectedSourceAsset.clear();
-        state.currentProjectName  = project->name;
-        state.currentAssetRoot    = project->assetRoot;
-        state.currentDefaultScene = project->defaultScene;
+        state.currentProjectName        = project->name;
+        state.currentAssetRoot          = project->assetRoot;
+        state.currentDefaultScene       = project->defaultScene;
         state.currentEditingRenderGraph = project->editingRenderGraph;
         ++state.projectGeneration;
-        state.mode                = AppMode::Editor;
-        state.statusMessage       = "Opened project: " + state.currentProject.generic_string();
+        state.mode          = AppMode::Editor;
+        state.statusMessage = "Opened project: " + state.currentProject.generic_string();
     }
 } // namespace vultra_app

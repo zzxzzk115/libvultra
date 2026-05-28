@@ -18,29 +18,29 @@
 #include <vultra/function/world/world.hpp>
 
 #include <ImGuizmo/ImGuizmo.h>
-#include <imoguizmo/imoguizmo.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
+#include <imoguizmo/imoguizmo.hpp>
 
 #include <algorithm>
 #include <array>
-#include <cstdio>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 
 namespace vultra_app
 {
     namespace
     {
-        constexpr uint64_t kRenderTargetReleaseDelayFrames = 3;
-        constexpr float    kOverlayZoomMin                 = 0.5f;
-        constexpr float    kOverlayZoomMax                 = 4.0f;
-        constexpr float    kOverlayZoomStep                = 0.25f;
-        constexpr float    kViewManipulatorSize            = 112.0f;
-        constexpr float    kViewManipulatorMargin          = 14.0f;
+        constexpr uint64_t  kRenderTargetReleaseDelayFrames = 3;
+        constexpr float     kOverlayZoomMin                 = 0.5f;
+        constexpr float     kOverlayZoomMax                 = 4.0f;
+        constexpr float     kOverlayZoomStep                = 0.25f;
+        constexpr float     kViewManipulatorSize            = 112.0f;
+        constexpr float     kViewManipulatorMargin          = 14.0f;
         constexpr glm::vec3 kWorldUp {0.0f, 1.0f, 0.0f};
 
         struct Bounds
@@ -51,13 +51,13 @@ namespace vultra_app
 
             void include(const glm::vec3& p)
             {
-                min = valid ? glm::min(min, p) : p;
-                max = valid ? glm::max(max, p) : p;
+                min   = valid ? glm::min(min, p) : p;
+                max   = valid ? glm::max(max, p) : p;
                 valid = true;
             }
 
             [[nodiscard]] glm::vec3 center() const { return (min + max) * 0.5f; }
-            [[nodiscard]] float radius() const { return valid ? glm::length((max - min) * 0.5f) : 0.0f; }
+            [[nodiscard]] float     radius() const { return valid ? glm::length((max - min) * 0.5f) : 0.0f; }
         };
 
         glm::vec3 makeForward(const float yawDegrees, const float pitchDegrees)
@@ -88,7 +88,7 @@ namespace vultra_app
             auto& reg  = world.registry();
             auto  view = reg.view<vultra::IDComponent, vultra::TransformComponent, vultra::CameraComponent>();
 
-            entt::entity best = entt::null;
+            entt::entity best         = entt::null;
             int          bestPriority = std::numeric_limits<int>::min();
             for (auto e : view)
             {
@@ -126,15 +126,15 @@ namespace vultra_app
                    (static_cast<uint32_t>(pixel[2]) << 16u);
         }
 
-        vultra::RenderCamera makeEditorCamera(const glm::vec3& position,
-                                              const float      yaw,
-                                              const float      pitch,
-                                              const float      fovY,
-                                              const float      aspect,
+        vultra::RenderCamera makeEditorCamera(const glm::vec3&      position,
+                                              const float           yaw,
+                                              const float           pitch,
+                                              const float           fovY,
+                                              const float           aspect,
                                               vultra::rhi::Texture* target,
-                                              std::string_view rendererKey,
-                                              const uint32_t   clearMode,
-                                              const glm::vec4& clearValue)
+                                              std::string_view      rendererKey,
+                                              const uint32_t        clearMode,
+                                              const glm::vec4&      clearValue)
         {
             const auto forward = makeForward(yaw, pitch);
 
@@ -151,7 +151,7 @@ namespace vultra_app
             camera.clearMode   = clearMode;
             camera.renderImGui = false;
             camera.rendererKey = rendererKey.empty() ? "universal" : std::string(rendererKey);
-            camera.debugEntityIdOutput = false;
+            camera.debugEntityIdOutput     = false;
             camera.selectionOutlineEnabled = true;
             return camera;
         }
@@ -169,7 +169,7 @@ namespace vultra_app
             if (!worldService)
                 return {};
 
-            auto& world = worldService->world();
+            auto& world   = worldService->world();
             auto  primary = findPrimaryCamera(world);
             if (primary == entt::null)
                 return {};
@@ -194,7 +194,7 @@ namespace vultra_app
             if (!transform)
                 return glm::mat4 {1.0f};
 
-            const auto local = makeTransformMatrix(*transform);
+            const auto  local     = makeTransformMatrix(*transform);
             const auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(entity);
             if (!hierarchy || hierarchy->parent == entt::null || !reg.valid(hierarchy->parent))
                 return local;
@@ -210,7 +210,7 @@ namespace vultra_app
             return makeWorldTransformMatrix(reg, hierarchy->parent);
         }
 
-        vultra::TransformComponent decomposeTransformMatrix(const glm::mat4& matrix,
+        vultra::TransformComponent decomposeTransformMatrix(const glm::mat4&                  matrix,
                                                             const vultra::TransformComponent& fallback)
         {
             float translation[3] {};
@@ -218,35 +218,34 @@ namespace vultra_app
             float scale[3] {};
             ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(matrix), translation, rotation, scale);
 
-            auto out = fallback;
+            auto out     = fallback;
             out.position = {translation[0], translation[1], translation[2]};
             out.rotation = glm::normalize(glm::quat(glm::radians(glm::vec3 {rotation[0], rotation[1], rotation[2]})));
             out.scale    = {scale[0], scale[1], scale[2]};
             return out;
         }
 
-        bool setLocalTransformFromGizmoMatrix(entt::registry&                  reg,
-                                              const entt::entity               entity,
-                                              vultra::TransformComponent&      transform,
-                                              const glm::mat4&                 worldMatrix,
-                                              const SceneViewWindow::Tool      tool)
+        bool setLocalTransformFromGizmoMatrix(entt::registry&             reg,
+                                              const entt::entity          entity,
+                                              vultra::TransformComponent& transform,
+                                              const glm::mat4&            worldMatrix,
+                                              const SceneViewWindow::Tool tool)
         {
-            const auto parentWorld = makeParentWorldTransformMatrix(reg, entity);
+            const auto parentWorld   = makeParentWorldTransformMatrix(reg, entity);
             const auto parentInverse = glm::inverse(parentWorld);
             switch (tool)
             {
-            case SceneViewWindow::Tool::Move:
-                transform.position =
-                    glm::vec3(parentInverse * glm::vec4(glm::vec3(worldMatrix[3]), 1.0f));
-                break;
-            case SceneViewWindow::Tool::Rotate:
-                transform.rotation = decomposeTransformMatrix(parentInverse * worldMatrix, transform).rotation;
-                break;
-            case SceneViewWindow::Tool::Scale:
-                transform.scale = decomposeTransformMatrix(parentInverse * worldMatrix, transform).scale;
-                break;
-            case SceneViewWindow::Tool::Select:
-                return false;
+                case SceneViewWindow::Tool::Move:
+                    transform.position = glm::vec3(parentInverse * glm::vec4(glm::vec3(worldMatrix[3]), 1.0f));
+                    break;
+                case SceneViewWindow::Tool::Rotate:
+                    transform.rotation = decomposeTransformMatrix(parentInverse * worldMatrix, transform).rotation;
+                    break;
+                case SceneViewWindow::Tool::Scale:
+                    transform.scale = decomposeTransformMatrix(parentInverse * worldMatrix, transform).scale;
+                    break;
+                case SceneViewWindow::Tool::Select:
+                    return false;
             }
 
             transform.dirty = true;
@@ -269,7 +268,7 @@ namespace vultra_app
             if (root == entt::null)
                 return bounds;
 
-            auto& reg = world.registry();
+            auto& reg      = world.registry();
             auto  meshView = reg.view<vultra::TransformComponent, vultra::MeshComponent>();
             for (auto e : meshView)
             {
@@ -294,7 +293,7 @@ namespace vultra_app
                 if (const auto* transform = reg.try_get<vultra::TransformComponent>(root))
                 {
                     const auto worldMatrix = makeWorldTransformMatrix(reg, root);
-                    const auto point = glm::vec3(worldMatrix * glm::vec4 {0.0f, 0.0f, 0.0f, 1.0f});
+                    const auto point       = glm::vec3(worldMatrix * glm::vec4 {0.0f, 0.0f, 0.0f, 1.0f});
                     bounds.include(point);
 
                     const glm::vec3 extent = glm::max(glm::abs(transform->scale), glm::vec3 {0.5f});
@@ -317,36 +316,36 @@ namespace vultra_app
                 return glm::orthoRH_ZO(-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, zNear, zFar);
             }
 
-            return glm::perspectiveRH_ZO(
-                glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
+            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
         }
 
-        vultra::RenderCamera makeGameOverlayCamera(vultra::World&     world,
-                                                   const entt::entity entity,
-                                                   const float        aspect,
+        vultra::RenderCamera makeGameOverlayCamera(vultra::World&        world,
+                                                   const entt::entity    entity,
+                                                   const float           aspect,
                                                    vultra::rhi::Texture* target)
         {
-            auto& reg       = world.registry();
-            auto& id        = reg.get<vultra::IDComponent>(entity);
-            auto& camera    = reg.get<vultra::CameraComponent>(entity);
+            auto& reg    = world.registry();
+            auto& id     = reg.get<vultra::IDComponent>(entity);
+            auto& camera = reg.get<vultra::CameraComponent>(entity);
 
             vultra::RenderCamera out {};
-            out.uuid        = id.uuid;
-            out.name        = reg.all_of<vultra::NameComponent>(entity) ? reg.get<vultra::NameComponent>(entity).name : "Game View";
-            out.priority    = camera.priority;
-            out.view        = glm::inverse(makeWorldTransformMatrix(reg, entity));
-            out.projection  = makeGameProjection(camera, aspect);
-            out.zNear       = std::max(camera.zNear, 0.0001f);
-            out.zFar        = std::max(camera.zFar, out.zNear + 0.0001f);
-            out.fovY        = glm::radians(camera.fovYDegrees);
-            out.target      = target;
-            out.clearValue  = camera.clearColor;
-            out.clearValue.a = 1.0f;
-            out.clearMode = camera.clearMode;
-            out.renderImGui = false;
-            out.debugEntityIdOutput = false;
+            out.uuid = id.uuid;
+            out.name =
+                reg.all_of<vultra::NameComponent>(entity) ? reg.get<vultra::NameComponent>(entity).name : "Game View";
+            out.priority                = camera.priority;
+            out.view                    = glm::inverse(makeWorldTransformMatrix(reg, entity));
+            out.projection              = makeGameProjection(camera, aspect);
+            out.zNear                   = std::max(camera.zNear, 0.0001f);
+            out.zFar                    = std::max(camera.zFar, out.zNear + 0.0001f);
+            out.fovY                    = glm::radians(camera.fovYDegrees);
+            out.target                  = target;
+            out.clearValue              = camera.clearColor;
+            out.clearValue.a            = 1.0f;
+            out.clearMode               = camera.clearMode;
+            out.renderImGui             = false;
+            out.debugEntityIdOutput     = false;
             out.selectionOutlineEnabled = false;
-            out.rendererKey = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
+            out.rendererKey             = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
             return out;
         }
 
@@ -372,7 +371,7 @@ namespace vultra_app
                 ImGui::SetTooltip("%s", text);
         }
 
-        void applyCameraAlignRequest(AppState& state,
+        void applyCameraAlignRequest(AppState&  state,
                                      glm::vec3& cameraPosition,
                                      float&     cameraYaw,
                                      float&     cameraPitch,
@@ -392,14 +391,11 @@ namespace vultra_app
             state.sceneCameraAlignRequest.pending = false;
         }
 
-        void applyViewMatrixToCamera(const glm::mat4& view,
-                                     glm::vec3&       cameraPosition,
-                                     float&           cameraYaw,
-                                     float&           cameraPitch)
+        void
+        applyViewMatrixToCamera(const glm::mat4& view, glm::vec3& cameraPosition, float& cameraYaw, float& cameraPitch)
         {
             const glm::mat4 invView = glm::inverse(view);
-            const glm::vec3 forward =
-                glm::normalize(glm::vec3(invView * glm::vec4 {0.0f, 0.0f, -1.0f, 0.0f}));
+            const glm::vec3 forward = glm::normalize(glm::vec3(invView * glm::vec4 {0.0f, 0.0f, -1.0f, 0.0f}));
 
             cameraPosition = glm::vec3(invView[3]);
             cameraYaw      = glm::degrees(std::atan2(forward.z, forward.x));
@@ -415,12 +411,11 @@ namespace vultra_app
 
             const ImVec2 position {viewportMax.x - kViewManipulatorSize - kViewManipulatorMargin,
                                    viewportMin.y + kViewManipulatorMargin};
-            const ImVec2 center {position.x + kViewManipulatorSize * 0.5f,
-                                 position.y + kViewManipulatorSize * 0.5f};
-            const ImVec2 mouse = ImGui::GetMousePos();
-            const float dx = mouse.x - center.x;
-            const float dy = mouse.y - center.y;
-            const float radius = kViewManipulatorSize * 0.5f;
+            const ImVec2 center {position.x + kViewManipulatorSize * 0.5f, position.y + kViewManipulatorSize * 0.5f};
+            const ImVec2 mouse  = ImGui::GetMousePos();
+            const float  dx     = mouse.x - center.x;
+            const float  dy     = mouse.y - center.y;
+            const float  radius = kViewManipulatorSize * 0.5f;
             return dx * dx + dy * dy <= radius * radius;
         }
 
@@ -436,8 +431,8 @@ namespace vultra_app
             constexpr float padding    = 6.0f;
             constexpr float gap        = 4.0f;
             constexpr int   itemCount  = 5;
-            const ImVec2 panelPos {viewportMin.x + 12.0f, viewportMin.y + 12.0f};
-            const ImVec2 buttonsMin {panelPos.x + padding, panelPos.y + padding};
+            const ImVec2    panelPos {viewportMin.x + 12.0f, viewportMin.y + 12.0f};
+            const ImVec2    buttonsMin {panelPos.x + padding, panelPos.y + padding};
             for (int i = 0; i < itemCount; ++i)
             {
                 const float x = buttonsMin.x + static_cast<float>(i) * (buttonSize + gap);
@@ -459,18 +454,16 @@ namespace vultra_app
             if (viewportSize.x < 220.0f || viewportSize.y < 160.0f)
                 return false;
 
-            constexpr float aspect = 16.0f / 9.0f;
-            const float baseWidth = std::min(320.0f, std::max(180.0f, viewportSize.x * 0.22f));
-            const float width = std::min(viewportSize.x - 32.0f,
-                                         baseWidth * std::clamp(gameOverlayZoom,
-                                                                kOverlayZoomMin,
-                                                                kOverlayZoomMax));
-            const float height = width / aspect;
-            const ImVec2 padding {14.0f, 14.0f};
+            constexpr float aspect    = 16.0f / 9.0f;
+            const float     baseWidth = std::min(320.0f, std::max(180.0f, viewportSize.x * 0.22f));
+            const float     width     = std::min(viewportSize.x - 32.0f,
+                                         baseWidth * std::clamp(gameOverlayZoom, kOverlayZoomMin, kOverlayZoomMax));
+            const float     height    = width / aspect;
+            const ImVec2    padding {14.0f, 14.0f};
             constexpr float controlHeight = 30.0f;
-            const ImVec2 panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
-            const ImVec2 panelMin {viewportMin.x + 16.0f, viewportMax.y - panelSize.y - 16.0f};
-            const ImVec2 panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
+            const ImVec2    panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
+            const ImVec2    panelMin {viewportMin.x + 16.0f, viewportMax.y - panelSize.y - 16.0f};
+            const ImVec2    panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
             return isMouseInRect(panelMin, panelMax);
         }
 
@@ -504,11 +497,11 @@ namespace vultra_app
         if (!m_FocusActive)
             return;
 
-        const float dt = std::max(ImGui::GetIO().DeltaTime, 0.0f);
-        m_FocusElapsed = std::min(m_FocusElapsed + dt, m_FocusDuration);
-        const float t = m_FocusDuration > 0.0f ? std::clamp(m_FocusElapsed / m_FocusDuration, 0.0f, 1.0f) : 1.0f;
+        const float dt    = std::max(ImGui::GetIO().DeltaTime, 0.0f);
+        m_FocusElapsed    = std::min(m_FocusElapsed + dt, m_FocusDuration);
+        const float t     = m_FocusDuration > 0.0f ? std::clamp(m_FocusElapsed / m_FocusDuration, 0.0f, 1.0f) : 1.0f;
         const float eased = 1.0f - std::pow(1.0f - t, 3.0f);
-        m_CameraPosition = glm::mix(m_FocusStartPosition, m_FocusTargetPosition, eased);
+        m_CameraPosition  = glm::mix(m_FocusStartPosition, m_FocusTargetPosition, eased);
 
         if (t >= 1.0f)
             m_FocusActive = false;
@@ -524,8 +517,8 @@ namespace vultra_app
         if (!worldService || !assetService)
             return false;
 
-        auto& world = worldService->world();
-        auto& reg = world.registry();
+        auto& world  = worldService->world();
+        auto& reg    = world.registry();
         auto  entity = findEntityByUUID(world, Selection::lastId());
         if (entity == entt::null || !reg.valid(entity))
             return false;
@@ -534,20 +527,20 @@ namespace vultra_app
         if (!bounds.valid)
             return false;
 
-        const glm::vec3 center = bounds.center();
-        const float radius = std::max(bounds.radius(), 0.25f);
-        const float fovY = glm::radians(std::clamp(m_CameraFovY, 5.0f, 160.0f));
-        const float safeAspect = std::max(aspect, 0.0001f);
-        const float tanY = std::tan(fovY * 0.5f);
-        const float tanX = tanY * safeAspect;
-        const float fitDistance = radius / std::max(std::min(tanX, tanY), 0.0001f);
-        const glm::vec3 forward = makeForward(m_CameraYaw, m_CameraPitch);
+        const glm::vec3 center      = bounds.center();
+        const float     radius      = std::max(bounds.radius(), 0.25f);
+        const float     fovY        = glm::radians(std::clamp(m_CameraFovY, 5.0f, 160.0f));
+        const float     safeAspect  = std::max(aspect, 0.0001f);
+        const float     tanY        = std::tan(fovY * 0.5f);
+        const float     tanX        = tanY * safeAspect;
+        const float     fitDistance = radius / std::max(std::min(tanX, tanY), 0.0001f);
+        const glm::vec3 forward     = makeForward(m_CameraYaw, m_CameraPitch);
 
-        m_FocusStartPosition = m_CameraPosition;
+        m_FocusStartPosition  = m_CameraPosition;
         m_FocusTargetPosition = center - forward * std::max(fitDistance * 1.35f, radius + 0.5f);
-        m_FocusElapsed = 0.0f;
-        m_FocusDuration = 0.35f;
-        m_FocusActive = glm::length(m_FocusTargetPosition - m_FocusStartPosition) > 0.0001f;
+        m_FocusElapsed        = 0.0f;
+        m_FocusDuration       = 0.35f;
+        m_FocusActive         = glm::length(m_FocusTargetPosition - m_FocusStartPosition) > 0.0001f;
         if (!m_FocusActive)
             m_CameraPosition = m_FocusTargetPosition;
         return true;
@@ -589,18 +582,17 @@ namespace vultra_app
         {
             if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
             {
-                auto& rd = backendService->renderDevice();
-                bool hitEntity = false;
-                if (auto pixel = rd.readTexturePixelRGBA8(*m_PickingRenderTarget.texture,
-                                                          ctx.state.scenePicking.x,
-                                                          ctx.state.scenePicking.y))
+                auto& rd        = backendService->renderDevice();
+                bool  hitEntity = false;
+                if (auto pixel = rd.readTexturePixelRGBA8(
+                        *m_PickingRenderTarget.texture, ctx.state.scenePicking.x, ctx.state.scenePicking.y))
                 {
                     const uint32_t pickingId = decodePickingId(*pixel);
                     if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
                     {
-                        auto& world = worldService->world();
-                        auto& reg = world.registry();
-                        auto entity = findEntityByPickingId(world, pickingId);
+                        auto& world  = worldService->world();
+                        auto& reg    = world.registry();
+                        auto  entity = findEntityByPickingId(world, pickingId);
                         if (entity != entt::null && reg.valid(entity))
                         {
                             if (auto* id = reg.try_get<vultra::IDComponent>(entity))
@@ -629,30 +621,28 @@ namespace vultra_app
         dl->AddRect(imageMin, imageMax, IM_COL32(90, 100, 118, 255));
         drawToolbar(imageMin);
 
-        const float aspect = avail.x / std::max(avail.y, 1.0f);
-        auto*       renderTarget =
-            m_PendingRenderTarget.texture ? &*m_PendingRenderTarget.texture :
-                                            (m_ActiveRenderTarget.texture ? &*m_ActiveRenderTarget.texture : nullptr);
-        const auto editorSettings = editorCameraSceneSettings(ctx);
-        auto        editorCamera =
-            makeEditorCamera(
-                m_CameraPosition,
-                m_CameraYaw,
-                m_CameraPitch,
-                m_CameraFovY,
-                aspect,
-                renderTarget,
-                editorSettings.rendererKey,
-                editorSettings.clearMode,
-                editorSettings.clearValue);
+        const float aspect                = avail.x / std::max(avail.y, 1.0f);
+        auto*       renderTarget          = m_PendingRenderTarget.texture ?
+                                                &*m_PendingRenderTarget.texture :
+                                                (m_ActiveRenderTarget.texture ? &*m_ActiveRenderTarget.texture : nullptr);
+        const auto  editorSettings        = editorCameraSceneSettings(ctx);
+        auto        editorCamera          = makeEditorCamera(m_CameraPosition,
+                                             m_CameraYaw,
+                                             m_CameraPitch,
+                                             m_CameraFovY,
+                                             aspect,
+                                             renderTarget,
+                                             editorSettings.rendererKey,
+                                             editorSettings.clearMode,
+                                             editorSettings.clearValue);
         ctx.state.sceneCamera.valid       = true;
         ctx.state.sceneCamera.position    = m_CameraPosition;
         ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
         ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
 
-        const bool mouseOverToolbar        = isMouseOverToolbar(imageMin);
+        const bool mouseOverToolbar         = isMouseOverToolbar(imageMin);
         const bool mouseOverViewManipulator = isMouseOverViewManipulator(imageMin, imageMax);
-        const bool mouseOverGameOverlay    = isMouseOverGameOverlay(ctx, imageMin, imageMax, m_GameOverlayZoom);
+        const bool mouseOverGameOverlay     = isMouseOverGameOverlay(ctx, imageMin, imageMax, m_GameOverlayZoom);
         const bool sceneViewportHovered =
             hovered && !mouseOverToolbar && !mouseOverViewManipulator && !mouseOverGameOverlay;
         const bool flyActive = sceneViewportHovered && ImGui::IsMouseDown(ImGuiMouseButton_Right);
@@ -676,7 +666,7 @@ namespace vultra_app
             {
                 if (flyActive)
                 {
-                    m_FocusActive = false;
+                    m_FocusActive      = false;
                     const ImVec2 delta = ImGui::GetIO().MouseDelta;
                     m_CameraYaw += delta.x * 0.12f;
                     m_CameraPitch = std::clamp(m_CameraPitch - delta.y * 0.12f, -89.0f, 89.0f);
@@ -706,17 +696,16 @@ namespace vultra_app
 
                 if (sceneViewportHovered)
                 {
-                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGuizmo::IsOver() &&
-                        !ImGuizmo::IsUsing())
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing())
                     {
-                        const ImVec2 mouse = ImGui::GetMousePos();
-                        const float localX = std::clamp(mouse.x - imageMin.x, 0.0f, avail.x - 1.0f);
-                        const float localY = std::clamp(mouse.y - imageMin.y, 0.0f, avail.y - 1.0f);
+                        const ImVec2 mouse  = ImGui::GetMousePos();
+                        const float  localX = std::clamp(mouse.x - imageMin.x, 0.0f, avail.x - 1.0f);
+                        const float  localY = std::clamp(mouse.y - imageMin.y, 0.0f, avail.y - 1.0f);
                         if (supportsScenePicking(ctx))
                         {
                             ctx.state.scenePicking.requested = true;
-                            ctx.state.scenePicking.x = static_cast<uint32_t>(localX);
-                            ctx.state.scenePicking.y = static_cast<uint32_t>(localY);
+                            ctx.state.scenePicking.x         = static_cast<uint32_t>(localX);
+                            ctx.state.scenePicking.y         = static_cast<uint32_t>(localY);
                         }
                     }
 
@@ -725,11 +714,11 @@ namespace vultra_app
                         const ImVec2 delta = ImGui::GetIO().MouseDelta;
                         if (delta.x != 0.0f || delta.y != 0.0f)
                         {
-                            m_FocusActive = false;
-                            const auto forward = makeForward(m_CameraYaw, m_CameraPitch);
-                            const auto right   = glm::normalize(glm::cross(forward, kWorldUp));
-                            const auto up      = glm::normalize(glm::cross(right, forward));
-                            const float scale  = std::max(0.01f, m_CameraFovY / 60.0f) * 0.012f;
+                            m_FocusActive       = false;
+                            const auto  forward = makeForward(m_CameraYaw, m_CameraPitch);
+                            const auto  right   = glm::normalize(glm::cross(forward, kWorldUp));
+                            const auto  up      = glm::normalize(glm::cross(right, forward));
+                            const float scale   = std::max(0.01f, m_CameraFovY / 60.0f) * 0.012f;
                             m_CameraPosition += (-right * delta.x + up * delta.y) * scale;
                         }
                     }
@@ -743,17 +732,15 @@ namespace vultra_app
                 }
             }
 
-            editorCamera =
-                makeEditorCamera(
-                    m_CameraPosition,
-                    m_CameraYaw,
-                    m_CameraPitch,
-                    m_CameraFovY,
-                    aspect,
-                    renderTarget,
-                    editorSettings.rendererKey,
-                    editorSettings.clearMode,
-                    editorSettings.clearValue);
+            editorCamera                      = makeEditorCamera(m_CameraPosition,
+                                            m_CameraYaw,
+                                            m_CameraPitch,
+                                            m_CameraFovY,
+                                            aspect,
+                                            renderTarget,
+                                            editorSettings.rendererKey,
+                                            editorSettings.clearMode,
+                                            editorSettings.clearValue);
             ctx.state.sceneCamera.position    = m_CameraPosition;
             ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
             ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
@@ -761,17 +748,15 @@ namespace vultra_app
             if (drawViewManipulator(imageMin, imageMax, editorCamera.view, editorCamera.projection))
             {
                 applyViewMatrixToCamera(editorCamera.view, m_CameraPosition, m_CameraYaw, m_CameraPitch);
-                editorCamera =
-                    makeEditorCamera(
-                        m_CameraPosition,
-                        m_CameraYaw,
-                        m_CameraPitch,
-                        m_CameraFovY,
-                        aspect,
-                        renderTarget,
-                        editorSettings.rendererKey,
-                        editorSettings.clearMode,
-                        editorSettings.clearValue);
+                editorCamera                      = makeEditorCamera(m_CameraPosition,
+                                                m_CameraYaw,
+                                                m_CameraPitch,
+                                                m_CameraFovY,
+                                                aspect,
+                                                renderTarget,
+                                                editorSettings.rendererKey,
+                                                editorSettings.clearMode,
+                                                editorSettings.clearValue);
                 ctx.state.sceneCamera.position    = m_CameraPosition;
                 ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
                 ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
@@ -787,7 +772,7 @@ namespace vultra_app
                         ensurePickingRenderTarget(ctx, static_cast<uint32_t>(avail.x), static_cast<uint32_t>(avail.y));
                         if (m_PickingRenderTarget.texture)
                         {
-                            auto pickingCamera = makeEditorCamera(m_CameraPosition,
+                            auto pickingCamera                    = makeEditorCamera(m_CameraPosition,
                                                                   m_CameraYaw,
                                                                   m_CameraPitch,
                                                                   m_CameraFovY,
@@ -796,9 +781,9 @@ namespace vultra_app
                                                                   "universal",
                                                                   0u,
                                                                   glm::vec4 {0.035f, 0.04f, 0.052f, 1.0f});
-                            pickingCamera.name = "Scene Picking";
-                            pickingCamera.priority = editorCamera.priority + 1;
-                            pickingCamera.debugEntityIdOutput = true;
+                            pickingCamera.name                    = "Scene Picking";
+                            pickingCamera.priority                = editorCamera.priority + 1;
+                            pickingCamera.debugEntityIdOutput     = true;
                             pickingCamera.selectionOutlineEnabled = false;
                             cameraService->addManualCamera(pickingCamera);
                         }
@@ -839,7 +824,7 @@ namespace vultra_app
 
         if (ctx.state.scenePicking.requested && sceneViewportHovered)
         {
-            ctx.state.scenePicking.requested = false;
+            ctx.state.scenePicking.requested       = false;
             ctx.state.scenePicking.readbackPending = true;
         }
         else if (ctx.state.scenePicking.requested && !sceneViewportHovered)
@@ -850,9 +835,9 @@ namespace vultra_app
         ImGui::End();
     }
 
-    bool SceneViewWindow::drawViewManipulator(const ImVec2& viewportMin,
-                                              const ImVec2& viewportMax,
-                                              glm::mat4&    view,
+    bool SceneViewWindow::drawViewManipulator(const ImVec2&    viewportMin,
+                                              const ImVec2&    viewportMax,
+                                              glm::mat4&       view,
                                               const glm::mat4& projection)
     {
         const ImVec2 viewportSize {viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y};
@@ -879,18 +864,16 @@ namespace vultra_app
 
     void SceneViewWindow::drawToolbar(const ImVec2& viewportMin)
     {
-        const ImVec2 panelPos {viewportMin.x + 12.0f, viewportMin.y + 12.0f};
+        const ImVec2    panelPos {viewportMin.x + 12.0f, viewportMin.y + 12.0f};
         constexpr float buttonSize = 28.0f;
         constexpr float padding    = 6.0f;
         constexpr float gap        = 4.0f;
         constexpr int   itemCount  = 5;
-        const ImVec2 panelSize {padding * 2.0f + buttonSize * itemCount + gap * (itemCount - 1), 40.0f};
+        const ImVec2    panelSize {padding * 2.0f + buttonSize * itemCount + gap * (itemCount - 1), 40.0f};
 
         auto* drawList = ImGui::GetWindowDrawList();
-        drawList->AddRectFilled(panelPos,
-                                ImVec2 {panelPos.x + panelSize.x, panelPos.y + panelSize.y},
-                                IM_COL32(20, 23, 28, 218),
-                                10.0f);
+        drawList->AddRectFilled(
+            panelPos, ImVec2 {panelPos.x + panelSize.x, panelPos.y + panelSize.y}, IM_COL32(20, 23, 28, 218), 10.0f);
         drawList->AddRect(ImVec2 {panelPos.x + 0.5f, panelPos.y + 0.5f},
                           ImVec2 {panelPos.x + panelSize.x - 0.5f, panelPos.y + panelSize.y - 0.5f},
                           IM_COL32(255, 255, 255, 32),
@@ -901,8 +884,7 @@ namespace vultra_app
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2 {0.0f, 0.0f});
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2 {gap, 0.0f});
 
-        auto toolButton = [&](const char* icon, const char* label, Tool tool)
-        {
+        auto toolButton = [&](const char* icon, const char* label, Tool tool) {
             const bool selected = m_Tool == tool;
             if (selected)
             {
@@ -948,27 +930,26 @@ namespace vultra_app
         if (viewportSize.x < 220.0f || viewportSize.y < 160.0f)
             return;
 
-        const float aspect = 16.0f / 9.0f;
-        m_GameOverlayZoom = std::clamp(m_GameOverlayZoom, kOverlayZoomMin, kOverlayZoomMax);
+        const float aspect    = 16.0f / 9.0f;
+        m_GameOverlayZoom     = std::clamp(m_GameOverlayZoom, kOverlayZoomMin, kOverlayZoomMax);
         const float baseWidth = std::min(320.0f, std::max(180.0f, viewportSize.x * 0.22f));
-        const float width = std::min(viewportSize.x - 32.0f, baseWidth * m_GameOverlayZoom);
-        const float height = width / aspect;
-        ensureGameOverlayRenderTarget(ctx,
-                                      static_cast<uint32_t>(std::max(1.0f, width)),
-                                      static_cast<uint32_t>(std::max(1.0f, height)));
+        const float width     = std::min(viewportSize.x - 32.0f, baseWidth * m_GameOverlayZoom);
+        const float height    = width / aspect;
+        ensureGameOverlayRenderTarget(
+            ctx, static_cast<uint32_t>(std::max(1.0f, width)), static_cast<uint32_t>(std::max(1.0f, height)));
 
         vultra::rhi::Texture* renderTarget =
             m_GameOverlayPendingRenderTarget.texture ? &*m_GameOverlayPendingRenderTarget.texture :
             m_GameOverlayActiveRenderTarget.texture  ? &*m_GameOverlayActiveRenderTarget.texture :
-                                                        nullptr;
+                                                       nullptr;
 
         bool hasPrimaryCamera = false;
         if (ctx.services && renderTarget)
         {
             if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
             {
-                auto& world = worldService->world();
-                auto  camera = findPrimaryCamera(world);
+                auto& world      = worldService->world();
+                auto  camera     = findPrimaryCamera(world);
                 hasPrimaryCamera = camera != entt::null;
                 if (hasPrimaryCamera)
                 {
@@ -978,17 +959,16 @@ namespace vultra_app
             }
         }
 
-        const ImVec2 padding {14.0f, 14.0f};
+        const ImVec2    padding {14.0f, 14.0f};
         constexpr float controlHeight = 30.0f;
-        const ImVec2 panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
-        const ImVec2 panelMin {viewportMin.x + 16.0f, viewportMax.y - panelSize.y - 16.0f};
-        const ImVec2 panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
-        const ImVec2 imageMin {panelMin.x + padding.x, panelMin.y + padding.y + 22.0f};
-        const ImVec2 imageMax {imageMin.x + width, imageMin.y + height};
-        const ImVec2 controlsMin {imageMin.x, imageMax.y + 8.0f};
-        const ImVec2 mouse = ImGui::GetIO().MousePos;
-        const auto contains = [&](const ImVec2& min, const ImVec2& max)
-        {
+        const ImVec2    panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
+        const ImVec2    panelMin {viewportMin.x + 16.0f, viewportMax.y - panelSize.y - 16.0f};
+        const ImVec2    panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
+        const ImVec2    imageMin {panelMin.x + padding.x, panelMin.y + padding.y + 22.0f};
+        const ImVec2    imageMax {imageMin.x + width, imageMin.y + height};
+        const ImVec2    controlsMin {imageMin.x, imageMax.y + 8.0f};
+        const ImVec2    mouse    = ImGui::GetIO().MousePos;
+        const auto      contains = [&](const ImVec2& min, const ImVec2& max) {
             return mouse.x >= min.x && mouse.x <= max.x && mouse.y >= min.y && mouse.y <= max.y;
         };
         const ImVec2 minusMin {controlsMin.x, controlsMin.y};
@@ -1002,11 +982,9 @@ namespace vultra_app
         if ((minusHovered || plusHovered) && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {
             if (minusHovered)
-                m_GameOverlayZoom =
-                    std::clamp(m_GameOverlayZoom - kOverlayZoomStep, kOverlayZoomMin, kOverlayZoomMax);
+                m_GameOverlayZoom = std::clamp(m_GameOverlayZoom - kOverlayZoomStep, kOverlayZoomMin, kOverlayZoomMax);
             else
-                m_GameOverlayZoom =
-                    std::clamp(m_GameOverlayZoom + kOverlayZoomStep, kOverlayZoomMin, kOverlayZoomMax);
+                m_GameOverlayZoom = std::clamp(m_GameOverlayZoom + kOverlayZoomStep, kOverlayZoomMin, kOverlayZoomMax);
             ImGui::SetNextFrameWantCaptureMouse(true);
         }
 
@@ -1017,47 +995,38 @@ namespace vultra_app
         drawList->PushClipRect(viewportMin, viewportMax, true);
         drawList->AddRectFilled(panelMin, panelMax, IM_COL32(10, 14, 18, 255), 7.0f);
         drawList->AddRect(panelMin, panelMax, IM_COL32(68, 86, 105, 255), 7.0f);
-        drawList->AddText(ImVec2(panelMin.x + padding.x, panelMin.y + 8.0f),
-                          IM_COL32(190, 204, 218, 255),
-                          "Game View");
+        drawList->AddText(ImVec2(panelMin.x + padding.x, panelMin.y + 8.0f), IM_COL32(190, 204, 218, 255), "Game View");
         const ImVec2 zoomSize = ImGui::CalcTextSize(zoomLabel);
-        drawList->AddText(ImVec2(panelMax.x - padding.x - zoomSize.x, panelMin.y + 8.0f),
-                          IM_COL32(126, 142, 158, 255),
-                          zoomLabel);
+        drawList->AddText(
+            ImVec2(panelMax.x - padding.x - zoomSize.x, panelMin.y + 8.0f), IM_COL32(126, 142, 158, 255), zoomLabel);
 
         if (m_GameOverlayActiveRenderTarget.textureId && hasPrimaryCamera)
         {
             drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), 3.0f);
-            drawList->AddImage(m_GameOverlayActiveRenderTarget.textureId,
-                               imageMin,
-                               imageMax,
-                               ImVec2(0.0f, 0.0f),
-                               ImVec2(1.0f, 1.0f));
+            drawList->AddImage(
+                m_GameOverlayActiveRenderTarget.textureId, imageMin, imageMax, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
         }
         else
         {
             drawList->AddRectFilled(imageMin, imageMax, IM_COL32(16, 19, 24, 255), 3.0f);
-            const char* label = hasPrimaryCamera ? "Preparing preview" : "No primary camera";
+            const char*  label    = hasPrimaryCamera ? "Preparing preview" : "No primary camera";
             const ImVec2 textSize = ImGui::CalcTextSize(label);
-            drawList->AddText(ImVec2((imageMin.x + imageMax.x - textSize.x) * 0.5f,
-                                     (imageMin.y + imageMax.y - textSize.y) * 0.5f),
-                              IM_COL32(140, 152, 166, 255),
-                              label);
+            drawList->AddText(
+                ImVec2((imageMin.x + imageMax.x - textSize.x) * 0.5f, (imageMin.y + imageMax.y - textSize.y) * 0.5f),
+                IM_COL32(140, 152, 166, 255),
+                label);
         }
         drawList->AddRect(imageMin, imageMax, IM_COL32(72, 86, 104, 255), 3.0f);
-        const auto buttonColor = [](bool hovered)
-        {
+        const auto buttonColor = [](bool hovered) {
             return hovered ? IM_COL32(42, 50, 62, 255) : IM_COL32(26, 31, 39, 255);
         };
         drawList->AddRectFilled(minusMin, minusMax, buttonColor(minusHovered), 5.0f);
-        drawList->AddText(ImVec2(minusMin.x + 4.0f, minusMin.y + 4.0f),
-                          IM_COL32(184, 198, 214, 255),
-                          ICON_MDI_MAGNIFY_MINUS);
+        drawList->AddText(
+            ImVec2(minusMin.x + 4.0f, minusMin.y + 4.0f), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_MINUS);
         drawList->AddText(labelMin, IM_COL32(126, 142, 158, 255), zoomLabel);
         drawList->AddRectFilled(plusMin, plusMax, buttonColor(plusHovered), 5.0f);
-        drawList->AddText(ImVec2(plusMin.x + 4.0f, plusMin.y + 4.0f),
-                          IM_COL32(184, 198, 214, 255),
-                          ICON_MDI_MAGNIFY_PLUS);
+        drawList->AddText(
+            ImVec2(plusMin.x + 4.0f, plusMin.y + 4.0f), IM_COL32(184, 198, 214, 255), ICON_MDI_MAGNIFY_PLUS);
         drawList->PopClipRect();
     }
 
@@ -1075,8 +1044,7 @@ namespace vultra_app
             promotePendingRenderTarget(ctx);
         }
 
-        const auto& currentTarget =
-            m_PendingRenderTarget.texture ? m_PendingRenderTarget : m_ActiveRenderTarget;
+        const auto& currentTarget = m_PendingRenderTarget.texture ? m_PendingRenderTarget : m_ActiveRenderTarget;
         if (currentTarget.texture && currentTarget.extent.width == width && currentTarget.extent.height == height &&
             currentTarget.textureId)
             return;
@@ -1103,9 +1071,9 @@ namespace vultra_app
                 .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled |
                                vultra::rhi::ImageUsage::eTransferSrc)
                 .build(rd);
-        m_PendingRenderTarget.textureId     = imguiService->addTexture(*m_PendingRenderTarget.texture);
-        m_PendingRenderTarget.frameCreated  = static_cast<uint64_t>(ImGui::GetFrameCount());
-        m_PendingRenderTarget.releaseFrame  = 0;
+        m_PendingRenderTarget.textureId    = imguiService->addTexture(*m_PendingRenderTarget.texture);
+        m_PendingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
+        m_PendingRenderTarget.releaseFrame = 0;
     }
 
     void SceneViewWindow::ensurePickingRenderTarget(EditorContext& ctx, const uint32_t width, const uint32_t height)
@@ -1126,7 +1094,7 @@ namespace vultra_app
         if (!backendService)
             return;
 
-        auto& rd = backendService->renderDevice();
+        auto& rd                     = backendService->renderDevice();
         m_PickingRenderTarget.extent = {width, height};
         m_PickingRenderTarget.texture =
             vultra::rhi::Texture::Builder {}
@@ -1151,8 +1119,8 @@ namespace vultra_app
             promotePendingGameOverlayRenderTarget(ctx);
         }
 
-        const auto& currentTarget =
-            m_GameOverlayPendingRenderTarget.texture ? m_GameOverlayPendingRenderTarget : m_GameOverlayActiveRenderTarget;
+        const auto& currentTarget = m_GameOverlayPendingRenderTarget.texture ? m_GameOverlayPendingRenderTarget :
+                                                                               m_GameOverlayActiveRenderTarget;
         if (currentTarget.texture && currentTarget.extent.width == width && currentTarget.extent.height == height &&
             currentTarget.textureId)
             return;
@@ -1178,7 +1146,8 @@ namespace vultra_app
                 .setNumMipLevels(1)
                 .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
                 .build(rd);
-        m_GameOverlayPendingRenderTarget.textureId = imguiService->addTexture(*m_GameOverlayPendingRenderTarget.texture);
+        m_GameOverlayPendingRenderTarget.textureId =
+            imguiService->addTexture(*m_GameOverlayPendingRenderTarget.texture);
         m_GameOverlayPendingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
         m_GameOverlayPendingRenderTarget.releaseFrame = 0;
     }
@@ -1201,7 +1170,7 @@ namespace vultra_app
             return;
 
         retireGameOverlayRenderTarget(m_GameOverlayActiveRenderTarget);
-        m_GameOverlayActiveRenderTarget = std::move(m_GameOverlayPendingRenderTarget);
+        m_GameOverlayActiveRenderTarget  = std::move(m_GameOverlayPendingRenderTarget);
         m_GameOverlayPendingRenderTarget = {};
     }
 
@@ -1237,7 +1206,7 @@ namespace vultra_app
 
     void SceneViewWindow::collectRetiredRenderTargets(EditorContext& ctx)
     {
-        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+        const auto frame        = static_cast<uint64_t>(ImGui::GetFrameCount());
         auto*      imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
 
         std::size_t out = 0;
@@ -1278,7 +1247,7 @@ namespace vultra_app
 
     void SceneViewWindow::collectRetiredGameOverlayRenderTargets(EditorContext& ctx)
     {
-        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+        const auto frame        = static_cast<uint64_t>(ImGui::GetFrameCount());
         auto*      imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
 
         std::size_t out = 0;
@@ -1343,7 +1312,7 @@ namespace vultra_app
                 }
             }
         }
-        m_GameOverlayActiveRenderTarget = {};
+        m_GameOverlayActiveRenderTarget  = {};
         m_GameOverlayPendingRenderTarget = {};
         m_GameOverlayRetiredRenderTargets.clear();
     }
@@ -1358,7 +1327,7 @@ namespace vultra_app
         retirePickingRenderTarget(m_PickingRenderTarget);
         retireGameOverlayRenderTarget(m_GameOverlayActiveRenderTarget);
         retireGameOverlayRenderTarget(m_GameOverlayPendingRenderTarget);
-        m_ProjectGeneration = ctx.state.projectGeneration;
+        m_ProjectGeneration          = ctx.state.projectGeneration;
         m_CameraInitializedFromScene = false;
     }
 
@@ -1371,24 +1340,24 @@ namespace vultra_app
         if (!worldService)
             return;
 
-        auto& world = worldService->world();
-        auto& reg   = world.registry();
+        auto&      world  = worldService->world();
+        auto&      reg    = world.registry();
         const auto entity = findPrimaryCamera(world);
         if (entity == entt::null || !reg.valid(entity) ||
             !reg.all_of<vultra::TransformComponent, vultra::CameraComponent>(entity))
             return;
 
-        const auto& camera = reg.get<vultra::CameraComponent>(entity);
+        const auto& camera         = reg.get<vultra::CameraComponent>(entity);
         const auto  worldTransform = makeWorldTransformMatrix(reg, entity);
-        const auto  rotation = glm::normalize(glm::quat_cast(worldTransform));
+        const auto  rotation       = glm::normalize(glm::quat_cast(worldTransform));
 
         m_CameraPosition = glm::vec3(worldTransform[3]);
         if (camera.projection == 0u)
             m_CameraFovY = camera.fovYDegrees;
 
-        const auto forward = glm::normalize(rotation * glm::vec3 {0.0f, 0.0f, -1.0f});
-        m_CameraYaw        = glm::degrees(std::atan2(forward.z, forward.x));
-        m_CameraPitch      = glm::degrees(std::asin(std::clamp(forward.y, -1.0f, 1.0f)));
+        const auto forward           = glm::normalize(rotation * glm::vec3 {0.0f, 0.0f, -1.0f});
+        m_CameraYaw                  = glm::degrees(std::atan2(forward.z, forward.x));
+        m_CameraPitch                = glm::degrees(std::asin(std::clamp(forward.y, -1.0f, 1.0f)));
         m_CameraInitializedFromScene = true;
     }
 } // namespace vultra_app

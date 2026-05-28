@@ -29,5 +29,6 @@ namespace vultra_app::ui
         float              depthNear,
         float              depthFar,
         float              clampMin,
-        float              clampMax);
+        float              clampMax,
+        uint32_t           maxPreviewExtent = 0);
 } // namespace vultra_app::ui

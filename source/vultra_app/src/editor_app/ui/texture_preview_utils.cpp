@@ -119,13 +119,13 @@ namespace vultra_app::ui
                                  const float  sourceHeight,
                                  const float  maxScale)
     {
-        return std::clamp(std::min(available.x / std::max(sourceWidth, 1.0f),
-                                   available.y / std::max(sourceHeight, 1.0f)),
-                          0.05f,
-                          maxScale);
+        return std::clamp(
+            std::min(available.x / std::max(sourceWidth, 1.0f), available.y / std::max(sourceHeight, 1.0f)),
+            0.05f,
+            maxScale);
     }
 
-    bool drawSaveFrameGraphTexturePreviewButton(EditorContext&                         ctx,
+    bool drawSaveFrameGraphTexturePreviewButton(EditorContext&                        ctx,
                                                 const vultra::FrameGraphDebugTexture& texture,
                                                 const char*                           dialogKey)
     {
@@ -133,30 +133,27 @@ namespace vultra_app::ui
         if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Preview"))
         {
             IGFD::FileDialogConfig config;
-            config.path = ".";
+            config.path     = ".";
             config.fileName = sanitizedFileName(texture.name) + ".png";
-            config.flags = ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
+            config.flags    = ImGuiFileDialogFlags_Modal | ImGuiFileDialogFlags_HideColumnType |
                            ImGuiFileDialogFlags_HideColumnSize | ImGuiFileDialogFlags_HideColumnDate |
                            ImGuiFileDialogFlags_DontShowHiddenFiles |
                            ImGuiFileDialogFlags_CaseInsensitiveExtentionFiltering |
-                           ImGuiFileDialogFlags_NaturalSorting |
-                           ImGuiFileDialogFlags_DisableThumbnailMode;
+                           ImGuiFileDialogFlags_NaturalSorting | ImGuiFileDialogFlags_DisableThumbnailMode;
             ImGuiFileDialog::Instance()->OpenDialog(dialogKey, "Save Texture Preview", ".png", config);
         }
 
-        if (ImGuiFileDialog::Instance()->Display(dialogKey,
-                                                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
-                                                 ImVec2 {520.0f, 360.0f}))
+        if (ImGuiFileDialog::Instance()->Display(
+                dialogKey, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings, ImVec2 {520.0f, 360.0f}))
         {
             if (ImGuiFileDialog::Instance()->IsOk())
             {
                 auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
-                const auto path = ensurePngExtension(std::filesystem::path(
-                    ImGuiFileDialog::Instance()->GetFilePathName(IGFD_ResultMode_KeepInputFile)));
+                const auto path      = ensurePngExtension(
+                    std::filesystem::path(ImGuiFileDialog::Instance()->GetFilePathName(IGFD_ResultMode_KeepInputFile)));
                 saved = backendService && texture.texture &&
-                        backendService->renderDevice().saveTextureToFile(*texture.texture,
-                                                                         path.generic_string(),
-                                                                         vultra::rhi::ImageAspect::eColor);
+                        backendService->renderDevice().saveTextureToFile(
+                            *texture.texture, path.generic_string(), vultra::rhi::ImageAspect::eColor);
                 ctx.state.statusMessage = saved ? "Saved texture preview: " + path.generic_string() :
                                                   "Failed to save texture preview: " + path.generic_string();
             }
@@ -165,23 +162,24 @@ namespace vultra_app::ui
         return saved;
     }
 
-    vultra::FrameGraphTexturePreviewSettings makeFrameGraphTexturePreviewSettings(
-        const std::string& selectedTextureKey,
-        const bool         gammaCorrect,
-        const bool         channels[4],
-        const int          previewMode,
-        const float        depthNear,
-        const float        depthFar,
-        const float        clampMin,
-        const float        clampMax)
+    vultra::FrameGraphTexturePreviewSettings makeFrameGraphTexturePreviewSettings(const std::string& selectedTextureKey,
+                                                                                  const bool         gammaCorrect,
+                                                                                  const bool         channels[4],
+                                                                                  const int          previewMode,
+                                                                                  const float        depthNear,
+                                                                                  const float        depthFar,
+                                                                                  const float        clampMin,
+                                                                                  const float        clampMax,
+                                                                                  const uint32_t     maxPreviewExtent)
     {
         vultra::FrameGraphTexturePreviewSettings settings {};
         settings.gammaCorrect = gammaCorrect;
-        settings.previewMode = previewMode;
-        settings.depthNear = depthNear;
-        settings.depthFar = depthFar;
-        settings.clampMin = clampMin;
-        settings.clampMax = clampMax;
+        settings.previewMode  = previewMode;
+        settings.depthNear    = depthNear;
+        settings.depthFar     = depthFar;
+        settings.clampMin     = clampMin;
+        settings.clampMax     = clampMax;
+        settings.maxPreviewExtent = maxPreviewExtent;
         for (int i = 0; i < 4; ++i)
             settings.channels[i] = channels[i];
         settings.selectedTextureKey = selectedTextureKey;

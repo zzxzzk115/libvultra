@@ -25,8 +25,8 @@ namespace vultra_app
     }
 
     std::vector<std::string> collectProjectAssetUrisWithExtension(const std::filesystem::path& projectRoot,
-                                                                  std::string_view              assetRootName,
-                                                                  std::string_view              extension)
+                                                                  std::string_view             assetRootName,
+                                                                  std::string_view             extension)
     {
         std::vector<std::string> uris;
         const auto               assetRoot = projectAssetRootPath(projectRoot, assetRootName);
@@ -54,8 +54,8 @@ namespace vultra_app
     }
 
     std::vector<std::string> collectProjectAssetUrisWithSuffix(const std::filesystem::path& projectRoot,
-                                                               std::string_view              assetRootName,
-                                                               std::string_view              suffix)
+                                                               std::string_view             assetRootName,
+                                                               std::string_view             suffix)
     {
         std::vector<std::string> uris;
         const auto               assetRoot = projectAssetRootPath(projectRoot, assetRootName);
@@ -85,8 +85,8 @@ namespace vultra_app
     }
 
     std::vector<std::filesystem::path> collectProjectAssetFilesWithSuffix(const std::filesystem::path& projectRoot,
-                                                                          std::string_view              assetRootName,
-                                                                          std::string_view              suffix)
+                                                                          std::string_view             assetRootName,
+                                                                          std::string_view             suffix)
     {
         std::vector<std::filesystem::path> files;
         const auto                         assetRoot = projectAssetRootPath(projectRoot, assetRootName);
@@ -114,4 +114,4 @@ namespace vultra_app
         files.erase(std::unique(files.begin(), files.end()), files.end());
         return files;
     }
-}
+} // namespace vultra_app
