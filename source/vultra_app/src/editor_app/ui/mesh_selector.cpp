@@ -21,7 +21,7 @@ namespace vultra_app::ui
         {
             if (needle.empty())
                 return true;
-            const auto lower = [](unsigned char c) { return static_cast<char>(std::tolower(c)); };
+            const auto  lower = [](unsigned char c) { return static_cast<char>(std::tolower(c)); };
             std::string haystack(text);
             std::string query(needle);
             std::ranges::transform(haystack, haystack.begin(), lower);
@@ -48,10 +48,8 @@ namespace vultra_app::ui
             return name;
         }
 
-        ImTextureID thumbnailFor(EditorContext& ctx,
-                                 MeshSelectorState& state,
-                                 const MeshSelection& mesh,
-                                 const float iconSize)
+        ImTextureID
+        thumbnailFor(EditorContext& ctx, MeshSelectorState& state, const MeshSelection& mesh, const float iconSize)
         {
             static_cast<void>(iconSize);
             if (!ctx.thumbnails)
@@ -60,9 +58,9 @@ namespace vultra_app::ui
             if (thumbnail.status != AssetThumbnailStatus::Ready)
                 return {};
 
-            const bool cached = state.previewCache.hasCachedImageFilePreview(ctx, thumbnail.outputPath);
+            const bool cached    = state.previewCache.hasCachedImageFilePreview(ctx, thumbnail.outputPath);
             const bool allowLoad = cached || state.remainingPreviewLoads > 0;
-            auto id = state.previewCache.getImageFilePreview(ctx, thumbnail.outputPath, allowLoad);
+            auto       id        = state.previewCache.getImageFilePreview(ctx, thumbnail.outputPath, allowLoad);
             if (!cached && id)
                 --state.remainingPreviewLoads;
             return id;
@@ -100,8 +98,8 @@ namespace vultra_app::ui
             if (ImGui::CalcTextSize(out.c_str()).x <= maxWidth)
                 return out;
 
-            constexpr const char* ellipsis = "...";
-            const float ellipsisWidth = ImGui::CalcTextSize(ellipsis).x;
+            constexpr const char* ellipsis      = "...";
+            const float           ellipsisWidth = ImGui::CalcTextSize(ellipsis).x;
             if (ellipsisWidth >= maxWidth)
                 return ellipsis;
 
@@ -122,21 +120,21 @@ namespace vultra_app::ui
                                        std::string_view secondary,
                                        const ImVec2     size)
         {
-            const ImVec2 pos = ImGui::GetCursorScreenPos();
-            const bool pressed = ImGui::InvisibleButton(id, size);
-            const bool hovered = ImGui::IsItemHovered();
-            const bool held = ImGui::IsItemActive();
+            const ImVec2 pos     = ImGui::GetCursorScreenPos();
+            const bool   pressed = ImGui::InvisibleButton(id, size);
+            const bool   hovered = ImGui::IsItemHovered();
+            const bool   held    = ImGui::IsItemActive();
 
-            const ImVec4 fill = held ? vultra::imgui_theme::frameActive() :
-                                hovered ? vultra::imgui_theme::frameHovered() :
-                                          vultra::imgui_theme::frame();
-            auto* drawList = ImGui::GetWindowDrawList();
+            const ImVec4 fill     = held    ? vultra::imgui_theme::frameActive() :
+                                    hovered ? vultra::imgui_theme::frameHovered() :
+                                              vultra::imgui_theme::frame();
+            auto*        drawList = ImGui::GetWindowDrawList();
             const ImVec2 max {pos.x + size.x, pos.y + size.y};
             drawList->AddRectFilled(pos, max, ImGui::GetColorU32(fill), 4.0f);
             drawList->AddRect(pos, max, ImGui::GetColorU32(vultra::imgui_theme::border()), 4.0f);
 
-            const float pad = 4.0f;
-            const float previewSize = std::max(1.0f, size.y - pad * 2.0f);
+            const float  pad         = 4.0f;
+            const float  previewSize = std::max(1.0f, size.y - pad * 2.0f);
             const ImVec2 imageMin {pos.x + pad, pos.y + pad};
             const ImVec2 imageMax {imageMin.x + previewSize, imageMin.y + previewSize};
             drawList->AddRectFilled(imageMin, imageMax, ImGui::GetColorU32(vultra::imgui_theme::panel()), 3.0f);
@@ -154,12 +152,12 @@ namespace vultra_app::ui
             }
             drawList->AddRect(imageMin, imageMax, ImGui::GetColorU32(vultra::imgui_theme::separator()), 3.0f);
 
-            const float textX = imageMax.x + 8.0f;
-            const float textRight = max.x - 8.0f;
-            const float textWidth = std::max(1.0f, textRight - textX);
-            const ImVec2 clipMin {textX, pos.y + 3.0f};
-            const ImVec2 clipMax {textRight, max.y - 3.0f};
-            const std::string primaryText = primary.empty() ? std::string {"<sphere>"} : std::string {primary};
+            const float       textX     = imageMax.x + 8.0f;
+            const float       textRight = max.x - 8.0f;
+            const float       textWidth = std::max(1.0f, textRight - textX);
+            const ImVec2      clipMin {textX, pos.y + 3.0f};
+            const ImVec2      clipMax {textRight, max.y - 3.0f};
+            const std::string primaryText    = primary.empty() ? std::string {"<none>"} : std::string {primary};
             const std::string primaryDisplay = ellipsizeText(primaryText, textWidth);
             drawList->PushClipRect(clipMin, clipMax, true);
             drawList->AddText(ImVec2 {textX, pos.y + 6.0f},
@@ -189,7 +187,7 @@ namespace vultra_app::ui
     std::vector<MeshSelection> collectProjectMeshes(EditorContext& ctx)
     {
         std::vector<MeshSelection> out;
-        auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
+        auto*                      assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
         if (!assets)
             return out;
 
@@ -200,7 +198,7 @@ namespace vultra_app::ui
             MeshSelection mesh;
             if (!parseUuid(uuidText, mesh.uuid))
                 continue;
-            mesh.name = meshNameFor(entry);
+            mesh.name         = meshNameFor(entry);
             mesh.importedPath = entry.importedPath;
             out.push_back(std::move(mesh));
         }
@@ -210,11 +208,11 @@ namespace vultra_app::ui
         return out;
     }
 
-    bool drawMeshSelectorPopup(EditorContext&       ctx,
-                               const char*          popupId,
-                               MeshSelectorState&   state,
+    bool drawMeshSelectorPopup(EditorContext&          ctx,
+                               const char*             popupId,
+                               MeshSelectorState&      state,
                                const vultra::CoreUUID& selected,
-                               MeshSelection*       selection)
+                               MeshSelection*          selection)
     {
         if (state.observedProjectGeneration != ctx.state.projectGeneration)
         {
@@ -236,10 +234,10 @@ namespace vultra_app::ui
         ImGui::Separator();
 
         state.remainingPreviewLoads = 24;
-        const auto meshes = collectProjectMeshes(ctx);
-        const float iconSize = state.iconSize;
-        const float cellWidth = iconSize + 24.0f;
-        const int columns = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / cellWidth));
+        const auto  meshes          = collectProjectMeshes(ctx);
+        const float iconSize        = state.iconSize;
+        const float cellWidth       = iconSize + 24.0f;
+        const int   columns         = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / cellWidth));
 
         if (ImGui::BeginChild("##MeshSelectorGrid", ImVec2(0.0f, 320.0f), true))
         {
@@ -254,8 +252,8 @@ namespace vultra_app::ui
                 any = true;
                 ImGui::PushID(mesh.uuid.toString().c_str());
                 ImGui::BeginGroup();
-                const bool isSelected = mesh.uuid == selected;
-                const ImVec2 start = ImGui::GetCursorScreenPos();
+                const bool   isSelected = mesh.uuid == selected;
+                const ImVec2 start      = ImGui::GetCursorScreenPos();
                 if (auto preview = thumbnailFor(ctx, state, mesh, iconSize))
                     ImGui::Image(preview, ImVec2(iconSize, iconSize));
                 else
@@ -263,7 +261,8 @@ namespace vultra_app::ui
 
                 const ImVec2 end {start.x + iconSize, start.y + iconSize};
                 if (isSelected)
-                    ImGui::GetWindowDrawList()->AddRect(start, end, ImGui::GetColorU32(ImGuiCol_ButtonActive), 4.0f, 0, 2.0f);
+                    ImGui::GetWindowDrawList()->AddRect(
+                        start, end, ImGui::GetColorU32(ImGuiCol_ButtonActive), 4.0f, 0, 2.0f);
 
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 {
@@ -273,7 +272,8 @@ namespace vultra_app::ui
                     ImGui::CloseCurrentPopup();
                 }
 
-                if (ImGui::Selectable(mesh.name.c_str(), isSelected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(iconSize, 0.0f)))
+                if (ImGui::Selectable(
+                        mesh.name.c_str(), isSelected, ImGuiSelectableFlags_AllowDoubleClick, ImVec2(iconSize, 0.0f)))
                 {
                     if (selection)
                         *selection = mesh;
@@ -305,29 +305,31 @@ namespace vultra_app::ui
 
     bool drawMeshUuidField(EditorContext& ctx, const char* label, vultra::CoreUUID& uuid, MeshSelectorState& state)
     {
-        bool changed = false;
-        const auto uri = meshUriForUuid(ctx, uuid);
+        bool       changed = false;
+        const auto uri     = meshUriForUuid(ctx, uuid);
         ImGui::TextUnformatted(label);
         ImGui::PushID(label);
-        const float fieldHeight = 40.0f;
+        const float fieldHeight     = 40.0f;
         const float clearButtonSize = ImGui::GetFrameHeight();
-        const float width = std::max(1.0f, ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);
+        const float width =
+            std::max(1.0f, ImGui::GetContentRegionAvail().x - clearButtonSize - ImGui::GetStyle().ItemSpacing.x);
         const auto current = meshSelectionForUuid(ctx, uuid);
         const auto preview = current.uuid.valid() ? thumbnailFor(ctx, state, current, fieldHeight) : ImTextureID {};
-        const std::string primary = current.name.empty() ? std::string {} : current.name;
+        const std::string primary   = current.name.empty() ? std::string {} : current.name;
         const std::string secondary = uri.empty() ? current.importedPath : uri;
-        if (drawPreviewSelectorButton("##MeshField", ICON_MDI_CUBE_OUTLINE, preview, primary, secondary, ImVec2(width, fieldHeight)))
+        if (drawPreviewSelectorButton(
+                "##MeshField", ICON_MDI_CUBE_OUTLINE, preview, primary, secondary, ImVec2(width, fieldHeight)))
             ImGui::OpenPopup("MeshSelectorPopup");
         MeshSelection selection;
         if (drawMeshSelectorPopup(ctx, "MeshSelectorPopup", state, uuid, &selection))
         {
-            uuid = selection.uuid;
+            uuid    = selection.uuid;
             changed = true;
         }
         ImGui::SameLine();
         if (ImGui::SmallButton(ICON_MDI_CLOSE) && uuid.valid())
         {
-            uuid = {};
+            uuid    = {};
             changed = true;
         }
         ImGui::PopID();

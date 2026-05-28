@@ -34,17 +34,19 @@ namespace vultra
         [[nodiscard]] rhi::VertexAttributes geometryVertexAttributes()
         {
             rhi::VertexAttributes attrs;
-            attrs[0] = rhi::VertexAttribute {0, rhi::VertexAttribute::Type::eFloat3, offsetof(GeometryVertex, position)};
+            attrs[0] =
+                rhi::VertexAttribute {0, rhi::VertexAttribute::Type::eFloat3, offsetof(GeometryVertex, position)};
             attrs[1] = rhi::VertexAttribute {1, rhi::VertexAttribute::Type::eFloat3, offsetof(GeometryVertex, normal)};
-            attrs[3] = rhi::VertexAttribute {3, rhi::VertexAttribute::Type::eFloat2, offsetof(GeometryVertex, texCoord0)};
+            attrs[3] =
+                rhi::VertexAttribute {3, rhi::VertexAttribute::Type::eFloat2, offsetof(GeometryVertex, texCoord0)};
             return attrs;
         }
 
-        [[nodiscard]] uint32_t createMesh(IGpuResourceService&                gpuResources,
-                                          rhi::RenderDevice&                  rd,
-                                          const std::vector<GeometryVertex>&  vertices,
-                                          const std::vector<uint32_t>&        indices,
-                                          const uint32_t                      materialIndex)
+        [[nodiscard]] uint32_t createMesh(IGpuResourceService&               gpuResources,
+                                          rhi::RenderDevice&                 rd,
+                                          const std::vector<GeometryVertex>& vertices,
+                                          const std::vector<uint32_t>&       indices,
+                                          const uint32_t                     materialIndex)
         {
             if (vertices.empty() || indices.empty())
                 return std::numeric_limits<uint32_t>::max();
@@ -64,7 +66,7 @@ namespace vultra
             if (meshIndex == std::numeric_limits<uint32_t>::max())
                 return meshIndex;
 
-            auto& mesh = gpuResources.pool().meshes[meshIndex];
+            auto& mesh          = gpuResources.pool().meshes[meshIndex];
             mesh.materialOffset = materialIndex;
             mesh.materialCount  = 1u;
             mesh.subMeshes.push_back(resource::GpuSubMesh {
@@ -77,39 +79,37 @@ namespace vultra
             return meshIndex;
         }
 
-        [[nodiscard]] uint32_t createQuadMesh(IGpuResourceService& gpuResources,
-                                              rhi::RenderDevice&   rd,
-                                              const uint32_t       materialIndex)
+        [[nodiscard]] uint32_t
+        createQuadMesh(IGpuResourceService& gpuResources, rhi::RenderDevice& rd, const uint32_t materialIndex)
         {
             const std::vector<GeometryVertex> vertices {
                 {{-0.5f, 0.0f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
-                {{ 0.5f, 0.0f, -0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
-                {{ 0.5f, 0.0f,  0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
-                {{-0.5f, 0.0f,  0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
+                {{0.5f, 0.0f, -0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+                {{0.5f, 0.0f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
+                {{-0.5f, 0.0f, 0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
             };
             const std::vector<uint32_t> indices {0, 1, 2, 0, 2, 3};
             return createMesh(gpuResources, rd, vertices, indices, materialIndex);
         }
 
-        [[nodiscard]] uint32_t createCubeMesh(IGpuResourceService& gpuResources,
-                                              rhi::RenderDevice&   rd,
-                                              const uint32_t       materialIndex)
+        [[nodiscard]] uint32_t
+        createCubeMesh(IGpuResourceService& gpuResources, rhi::RenderDevice& rd, const uint32_t materialIndex)
         {
-            const std::array<glm::vec3, 6> normals {{
-                { 1.0f,  0.0f,  0.0f},
-                {-1.0f,  0.0f,  0.0f},
-                { 0.0f,  1.0f,  0.0f},
-                { 0.0f, -1.0f,  0.0f},
-                { 0.0f,  0.0f,  1.0f},
-                { 0.0f,  0.0f, -1.0f},
+            const std::array<glm::vec3, 6>                normals {{
+                {1.0f, 0.0f, 0.0f},
+                {-1.0f, 0.0f, 0.0f},
+                {0.0f, 1.0f, 0.0f},
+                {0.0f, -1.0f, 0.0f},
+                {0.0f, 0.0f, 1.0f},
+                {0.0f, 0.0f, -1.0f},
             }};
             const std::array<std::array<glm::vec3, 4>, 6> faces {{
-                {{{ 0.5f, -0.5f, -0.5f}, { 0.5f, -0.5f,  0.5f}, { 0.5f,  0.5f,  0.5f}, { 0.5f,  0.5f, -0.5f}}},
-                {{{-0.5f, -0.5f,  0.5f}, {-0.5f, -0.5f, -0.5f}, {-0.5f,  0.5f, -0.5f}, {-0.5f,  0.5f,  0.5f}}},
-                {{{-0.5f,  0.5f, -0.5f}, { 0.5f,  0.5f, -0.5f}, { 0.5f,  0.5f,  0.5f}, {-0.5f,  0.5f,  0.5f}}},
-                {{{-0.5f, -0.5f,  0.5f}, { 0.5f, -0.5f,  0.5f}, { 0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f}}},
-                {{{ 0.5f, -0.5f,  0.5f}, {-0.5f, -0.5f,  0.5f}, {-0.5f,  0.5f,  0.5f}, { 0.5f,  0.5f,  0.5f}}},
-                {{{-0.5f, -0.5f, -0.5f}, { 0.5f, -0.5f, -0.5f}, { 0.5f,  0.5f, -0.5f}, {-0.5f,  0.5f, -0.5f}}},
+                {{{0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, -0.5f}}},
+                {{{-0.5f, -0.5f, 0.5f}, {-0.5f, -0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, 0.5f}}},
+                {{{-0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}}},
+                {{{-0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f}}},
+                {{{0.5f, -0.5f, 0.5f}, {-0.5f, -0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}}},
+                {{{-0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}}},
             }};
 
             std::vector<GeometryVertex> vertices;
@@ -128,9 +128,8 @@ namespace vultra
             return createMesh(gpuResources, rd, vertices, indices, materialIndex);
         }
 
-        [[nodiscard]] uint32_t createSphereMesh(IGpuResourceService& gpuResources,
-                                                rhi::RenderDevice&   rd,
-                                                const uint32_t       materialIndex)
+        [[nodiscard]] uint32_t
+        createSphereMesh(IGpuResourceService& gpuResources, rhi::RenderDevice& rd, const uint32_t materialIndex)
         {
             constexpr uint32_t kSegments = 32u;
             constexpr uint32_t kRings    = 16u;
@@ -148,7 +147,7 @@ namespace vultra
                 {
                     const float u   = static_cast<float>(x) / static_cast<float>(kSegments);
                     const float phi = u * kPi * 2.0f;
-                    glm::vec3 normal {
+                    glm::vec3   normal {
                         std::sin(theta) * std::cos(phi),
                         std::cos(theta),
                         std::sin(theta) * std::sin(phi),
@@ -163,21 +162,21 @@ namespace vultra
                 {
                     const uint32_t row0 = y * (kSegments + 1u);
                     const uint32_t row1 = (y + 1u) * (kSegments + 1u);
-                    indices.insert(indices.end(), {row0 + x, row1 + x, row1 + x + 1u, row0 + x, row1 + x + 1u, row0 + x + 1u});
+                    indices.insert(indices.end(),
+                                   {row0 + x, row1 + x, row1 + x + 1u, row0 + x, row1 + x + 1u, row0 + x + 1u});
                 }
             }
             return createMesh(gpuResources, rd, vertices, indices, materialIndex);
         }
 
-        [[nodiscard]] uint32_t createCapsuleMesh(IGpuResourceService& gpuResources,
-                                                 rhi::RenderDevice&   rd,
-                                                 const uint32_t       materialIndex)
+        [[nodiscard]] uint32_t
+        createCapsuleMesh(IGpuResourceService& gpuResources, rhi::RenderDevice& rd, const uint32_t materialIndex)
         {
-            constexpr uint32_t kSegments       = 32u;
+            constexpr uint32_t kSegments        = 32u;
             constexpr uint32_t kHemisphereRings = 8u;
-            constexpr float    kPi             = 3.14159265358979323846f;
-            constexpr float    kRadius         = 0.5f;
-            constexpr float    kHalfCylinder   = 0.5f;
+            constexpr float    kPi              = 3.14159265358979323846f;
+            constexpr float    kRadius          = 0.5f;
+            constexpr float    kHalfCylinder    = 0.5f;
 
             std::vector<GeometryVertex> vertices;
             std::vector<uint32_t>       indices;
@@ -188,8 +187,8 @@ namespace vultra
                 {
                     const float u   = static_cast<float>(x) / static_cast<float>(kSegments);
                     const float phi = u * kPi * 2.0f;
-                    glm::vec3 radial {std::cos(phi), 0.0f, std::sin(phi)};
-                    glm::vec3 normal = glm::normalize(glm::vec3 {radial.x * radius, normalY, radial.z * radius});
+                    glm::vec3   radial {std::cos(phi), 0.0f, std::sin(phi)};
+                    glm::vec3   normal = glm::normalize(glm::vec3 {radial.x * radius, normalY, radial.z * radius});
                     vertices.push_back({{radial.x * radius, y, radial.z * radius}, normal, {u, v}});
                 }
                 return base;
@@ -200,9 +199,9 @@ namespace vultra
             {
                 const float t     = static_cast<float>(ring) / static_cast<float>(kHemisphereRings);
                 const float angle = t * kPi * 0.5f;
-                const float y     = kHalfCylinder + std::sin(angle) * kRadius;
-                const float r     = std::cos(angle) * kRadius;
-                rings.push_back(appendRing(y, r, std::sin(angle), t * 0.25f));
+                const float y     = kHalfCylinder + std::cos(angle) * kRadius;
+                const float r     = std::sin(angle) * kRadius;
+                rings.push_back(appendRing(y, r, std::cos(angle), t * 0.25f));
             }
             rings.push_back(appendRing(-kHalfCylinder, kRadius, 0.0f, 0.5f));
             for (uint32_t ring = 1; ring <= kHemisphereRings; ++ring)
@@ -220,7 +219,8 @@ namespace vultra
                 const uint32_t row1 = rings[ring + 1u];
                 for (uint32_t x = 0; x < kSegments; ++x)
                 {
-                    indices.insert(indices.end(), {row0 + x, row1 + x, row1 + x + 1u, row0 + x, row1 + x + 1u, row0 + x + 1u});
+                    indices.insert(indices.end(),
+                                   {row0 + x, row1 + x, row1 + x + 1u, row0 + x, row1 + x + 1u, row0 + x + 1u});
                 }
             }
             return createMesh(gpuResources, rd, vertices, indices, materialIndex);
@@ -250,7 +250,7 @@ namespace vultra
         return m_UnlitMaterialIndex;
     }
 
-    uint32_t GeometryFactory::getOrCreateMeshIndex(BuiltinGeometryKind kind,
+    uint32_t GeometryFactory::getOrCreateMeshIndex(BuiltinGeometryKind  kind,
                                                    IGpuResourceService& gpuResources,
                                                    rhi::RenderDevice&   rd)
     {
