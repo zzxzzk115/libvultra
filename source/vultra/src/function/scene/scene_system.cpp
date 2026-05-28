@@ -446,7 +446,8 @@ namespace vultra
 
     std::shared_ptr<const SceneDocument> SceneSystem::loadSceneSync(std::string_view uri)
     {
-        const std::string key = toPath(uri).lexically_normal().generic_string();
+        const auto        resolvedPath = toPath(uri).lexically_normal();
+        const std::string key          = resolvedPath.generic_string();
         if (auto it = m_Cache.find(key); it != m_Cache.end())
             return it->second;
 
@@ -458,6 +459,11 @@ namespace vultra
         }
 
         SceneDocument doc = VscnReader::readFromText(textRes.value(), uri_base_dir(uri));
+        if (!doc.root)
+        {
+            VULTRA_CORE_ERROR("[SceneSystem] Scene reader returned document without root: {}", uri);
+            return {};
+        }
 
         auto sp      = std::make_shared<SceneDocument>(std::move(doc));
         m_Cache[key] = sp;

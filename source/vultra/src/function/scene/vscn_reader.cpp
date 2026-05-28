@@ -325,7 +325,13 @@ namespace vultra
         }
 
         if (nodes.empty())
+        {
+            doc.syntheticRoot = true;
+            doc.root          = std::make_unique<SceneNode>();
+            doc.root->id      = CoreUUIDHelper::getFromName("SceneRoot:synthetic");
+            doc.root->name    = "SceneRoot";
             return doc;
+        }
 
         // Build adjacency list: parentId -> [childIds]
         std::unordered_map<int, std::vector<int>> children;
