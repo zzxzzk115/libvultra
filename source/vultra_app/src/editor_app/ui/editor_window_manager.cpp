@@ -2,21 +2,30 @@
 
 #include "editor_app/ui/windows/scene_view_window.hpp"
 
+#include <vultra/function/rendering/runtime_profiler.hpp>
+
 #include <imgui.h>
+
+#include <string>
 
 namespace vultra_app
 {
     void EditorWindowManager::tick(EditorContext& ctx)
     {
+        vultra::RuntimeProfiler::ExternalScope perf {"EditorWindowManager::tick"};
         for (auto& window : m_Windows)
         {
             if (window->open())
+            {
+                vultra::RuntimeProfiler::ExternalScope scope {std::string("EditorWindow::tick/") + window->name()};
                 window->tick(ctx);
+            }
         }
     }
 
     void EditorWindowManager::draw(EditorContext& ctx)
     {
+        vultra::RuntimeProfiler::ExternalScope perf {"EditorWindowManager::draw"};
         if (m_WasOpen.size() != m_Windows.size())
         {
             m_WasOpen.resize(m_Windows.size(), false);
@@ -61,6 +70,7 @@ namespace vultra_app
             {
                 if (focusRequested)
                     ImGui::SetNextWindowFocus();
+                vultra::RuntimeProfiler::ExternalScope scope {std::string("EditorWindow::draw/") + window->name()};
                 window->draw(ctx);
             }
             else if (m_WasOpen[i])

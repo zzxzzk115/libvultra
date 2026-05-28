@@ -31,6 +31,12 @@ namespace vultra_app
             uint64_t                            releaseFrame {0};
         };
 
+        struct ResizeRequest
+        {
+            vultra::rhi::Extent2D extent {};
+            uint64_t              firstSeenFrame {0};
+        };
+
         void drawToolbar(EditorContext& ctx);
         void drawMetricsOverlay(EditorContext& ctx, const ImVec2& imageMin, const ImVec2& imageMax);
         ImVec2 computeRenderSize(const ImVec2& avail) const;
@@ -51,6 +57,7 @@ namespace vultra_app
         RenderTargetSlot              m_ActiveRenderTarget;
         RenderTargetSlot              m_PendingRenderTarget;
         std::vector<RenderTargetSlot> m_RetiredRenderTargets;
+        ResizeRequest                 m_RenderTargetResizeRequest;
         std::array<const vultra::rhi::Texture*, 2>   m_XRMirrorTextures {nullptr, nullptr};
         std::array<vultra::IImGuiService::TextureID, 2> m_XRMirrorTextureIds {};
         uint64_t                      m_ProjectGeneration {0};

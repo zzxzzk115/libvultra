@@ -120,10 +120,16 @@ namespace vultra_app
         bool                  editorStepRequested {false};
         bool                  codeEditorOpenRequested {false};
         bool                  editorShutdownRequested {false};
+        bool                  sceneViewVisible {false};
+        bool                  sceneViewVisibleLastFrame {false};
         bool                  gameViewVisible {false};
         bool                  gameViewVisibleLastFrame {false};
+        bool                  gameViewRenderTargetAvailable {false};
+        bool                  gameViewRenderTargetAvailableLastFrame {false};
         uint32_t              gameViewRenderWidth {1280};
         uint32_t              gameViewRenderHeight {720};
+        uint32_t              gameViewLastRenderTargetWidth {1280};
+        uint32_t              gameViewLastRenderTargetHeight {720};
         bool                  metricsOverlayVisible {false};
         bool                  projectSettingsOpen {false};
         bool                  editorSettingsOpen {false};

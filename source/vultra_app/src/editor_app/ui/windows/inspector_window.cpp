@@ -1966,7 +1966,11 @@ namespace vultra_app
             else if (key == "Light")
                 reg.remove<vultra::LightComponent>(entity);
             else if (key == "Camera")
+            {
                 reg.remove<vultra::CameraComponent>(entity);
+                if (reg.all_of<vultra::XRViewComponent>(entity))
+                    reg.remove<vultra::XRViewComponent>(entity);
+            }
             else if (key == "XRView")
                 reg.remove<vultra::XRViewComponent>(entity);
             else if (key == "Script")
@@ -2367,6 +2371,10 @@ namespace vultra_app
                     continue;
 
                 any = true;
+                const bool xrViewRequiresCamera =
+                    desc.key && std::strcmp(desc.key, "XRView") == 0 && !reg.all_of<vultra::CameraComponent>(entity);
+                if (xrViewRequiresCamera)
+                    ImGui::BeginDisabled();
                 if (ImGui::MenuItem(desc.label))
                 {
                     desc.add(reg, entity);
@@ -2378,6 +2386,12 @@ namespace vultra_app
                     if (ctx.history)
                         ctx.history->setNextLabel(ctx.state.statusMessage);
                     ImGui::CloseCurrentPopup();
+                }
+                if (xrViewRequiresCamera)
+                {
+                    ImGui::EndDisabled();
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        ImGui::SetTooltip("XR View can only be added to an entity with a Camera component.");
                 }
             }
 
@@ -2705,6 +2719,11 @@ namespace vultra_app
 
     void InspectorWindow::releaseModelPreviewRenderTarget(EditorContext& ctx)
     {
+        if (m_ModelPreviewTarget.texture || !m_RetiredModelPreviewTargets.empty())
+        {
+            if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+                backendService->renderDevice().waitIdle();
+        }
         if (ctx.services)
         {
             if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())

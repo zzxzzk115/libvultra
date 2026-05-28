@@ -67,7 +67,7 @@ namespace vultra_app
             std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
                 return static_cast<char>(std::tolower(ch));
             });
-            if (ext == ".vmanifest" || ext == ".vimport" || ext == ".vpk" || ext == ".bin")
+            if (ext == ".vmanifest" || ext == ".vimport" || ext == ".vpk" || ext == ".bin" || ext == ".log")
                 return false;
 
             return true;

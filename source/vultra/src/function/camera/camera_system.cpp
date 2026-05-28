@@ -118,6 +118,7 @@ namespace vultra
                                                    const glm::mat4&                        originTransform)
         {
             RenderCamera    eyeCam        = base;
+            // The camera entity is the XR rig/tracking origin; the runtime pose stays local to that origin.
             const glm::mat4 eyeWorld      = originTransform * eyeView.pose;
             eyeCam.view                   = glm::inverse(eyeWorld);
             eyeCam.projection             = eyeView.projection;

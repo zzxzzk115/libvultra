@@ -50,7 +50,9 @@ namespace vultra_app
         void drawGraphEditorAddPopup(EditorContext& ctx);
         void drawGraphEditorCanvas(EditorContext& ctx);
         void drawPipelineEditorCanvas(EditorContext& ctx);
+        void onClosed(EditorContext& ctx) override;
         void onDestroy(EditorContext& ctx) override;
+        bool ensureRenderGraphPreviewCamera(EditorContext& ctx);
         void drawGameViewOverlay(EditorContext& ctx, ImVec2 childMin, ImVec2 childMax);
         void ensureOverlayRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height);
         void promotePendingOverlayRenderTarget(EditorContext& ctx);
@@ -60,6 +62,7 @@ namespace vultra_app
         void collectRetiredTextureThumbnails(EditorContext& ctx);
         void releaseTextureThumbnails(EditorContext& ctx);
         void resetOverlayRenderTargetForProject(EditorContext& ctx);
+        void suspendRuntimeGraphWindows(EditorContext& ctx);
 
         std::unique_ptr<RuntimeGraphState> m_RuntimeGraph;
         std::unique_ptr<GraphEditorState> m_GraphEditor;
@@ -95,8 +98,15 @@ namespace vultra_app
         std::unordered_map<std::string, vultra::FrameGraphTexturePreviewSettings> m_RuntimeGraphTexturePreviewSettings;
         std::unordered_map<std::string, uint64_t> m_RuntimeGraphTextureAutoFitNextFrame;
         std::unordered_map<std::string, uint64_t> m_RuntimeGraphTextureAutoFitDeadlineFrame;
+        std::vector<std::string> m_RenderGraphAssetUris;
+        std::filesystem::path    m_RenderGraphAssetProject;
+        std::string              m_RenderGraphAssetRoot;
+        uint64_t                 m_RenderGraphAssetProjectGeneration {0};
+        std::filesystem::path    m_RenderGraphPassCatalogProject;
+        std::string              m_RenderGraphPassCatalogAssetRoot;
+        uint64_t                 m_RenderGraphPassCatalogProjectGeneration {0};
         bool m_RuntimeGraphPopupOpen {false};
         bool m_RuntimeTexturePreviewOpen {false};
-        bool m_SelectRuntimePreviewGraph {false};
+        bool m_RuntimeGraphSuspended {false};
     };
 } // namespace vultra_app

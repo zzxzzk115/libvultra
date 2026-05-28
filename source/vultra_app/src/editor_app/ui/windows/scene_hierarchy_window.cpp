@@ -48,7 +48,7 @@ namespace vultra_app
         const char* entityIcon(vultra::World& world, entt::entity entity)
         {
             auto& reg = world.registry();
-            if (reg.all_of<vultra::XRViewComponent>(entity))
+            if (reg.all_of<vultra::CameraComponent, vultra::XRViewComponent>(entity))
                 return ICON_MDI_VIRTUAL_REALITY;
             if (reg.all_of<vultra::CameraComponent>(entity))
                 return ICON_MDI_CAMERA;

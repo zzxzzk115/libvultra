@@ -67,23 +67,6 @@ namespace vultra_app
             return pressed;
         }
 
-        bool toolbarToggleButton(const char*  label,
-                                 const bool   active,
-                                 const char*  tooltip = nullptr,
-                                 const ImVec2 size    = ImVec2 {0.0f, 0.0f})
-        {
-            pushToolbarButtonStyle();
-            if (active)
-                ImGui::PushStyleColor(ImGuiCol_Button, vultra::imgui_theme::accentButton());
-            const bool pressed = ImGui::Button(label, size);
-            if (active)
-                ImGui::PopStyleColor();
-            popToolbarButtonStyle();
-            if (tooltip)
-                setTooltip(tooltip);
-            return pressed;
-        }
-
         bool titleMenuButton(const char* label)
         {
             const ImVec2 menuPos = ImGui::GetCursorScreenPos();
@@ -321,7 +304,6 @@ namespace vultra_app
             {
                 if (ImGui::MenuItem("Reset Layout") && actions.resetLayout)
                     actions.resetLayout(ctx);
-                ImGui::MenuItem("Metrics Overlay", nullptr, &ctx.state.metricsOverlayVisible);
                 ImGui::Separator();
 
                 for (const auto& window : windows)
@@ -420,13 +402,6 @@ namespace vultra_app
                 actions.buildAndRun)
             {
                 actions.buildAndRun(ctx);
-            }
-
-            ImGui::SameLine(0.0f, 8.0f);
-            if (toolbarToggleButton(
-                    ICON_MDI_CHART_LINE, ctx.state.metricsOverlayVisible, "Metrics overlay", ImVec2 {34.0f, 0.0f}))
-            {
-                ctx.state.metricsOverlayVisible = !ctx.state.metricsOverlayVisible;
             }
 
             ImGui::SameLine(0.0f, 12.0f);

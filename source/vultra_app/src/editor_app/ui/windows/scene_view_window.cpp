@@ -42,6 +42,7 @@ namespace vultra_app
     namespace
     {
         constexpr uint64_t  kRenderTargetReleaseDelayFrames = 3;
+        constexpr uint64_t  kRenderTargetResizeStableFrames = 3;
         constexpr float     kOverlayZoomMin                 = 0.5f;
         constexpr float     kOverlayZoomMax                 = 4.0f;
         constexpr float     kOverlayZoomStep                = 0.25f;
@@ -555,14 +556,14 @@ namespace vultra_app
     void SceneViewWindow::onClosed(EditorContext& ctx)
     {
         releaseRenderTarget(ctx);
-        releasePickingRenderTarget();
+        releasePickingRenderTarget(ctx);
         releaseGameOverlayRenderTarget(ctx);
     }
 
     void SceneViewWindow::onDestroy(EditorContext& ctx)
     {
         releaseRenderTarget(ctx);
-        releasePickingRenderTarget();
+        releasePickingRenderTarget(ctx);
         releaseGameOverlayRenderTarget(ctx);
     }
 
@@ -679,8 +680,13 @@ namespace vultra_app
 
         const bool visible =
             ImGui::Begin(title().c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-        if (!visible)
+        const bool collapsed            = visible && ImGui::IsWindowCollapsed();
+        ctx.state.sceneViewVisible      = visible && !collapsed;
+        if (!visible || collapsed)
         {
+            releaseRenderTarget(ctx);
+            releasePickingRenderTarget(ctx);
+            ctx.state.sceneCamera.valid = false;
             ImGui::End();
             return;
         }
@@ -1191,7 +1197,25 @@ namespace vultra_app
         const auto& currentTarget = m_PendingRenderTarget.texture ? m_PendingRenderTarget : m_ActiveRenderTarget;
         if (currentTarget.texture && currentTarget.extent.width == width && currentTarget.extent.height == height &&
             currentTarget.textureId)
+        {
+            m_RenderTargetResizeRequest = {};
             return;
+        }
+
+        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+        if (currentTarget.texture)
+        {
+            if (m_RenderTargetResizeRequest.extent.width != width ||
+                m_RenderTargetResizeRequest.extent.height != height)
+            {
+                m_RenderTargetResizeRequest.extent         = {width, height};
+                m_RenderTargetResizeRequest.firstSeenFrame = frame;
+                return;
+            }
+
+            if (frame < m_RenderTargetResizeRequest.firstSeenFrame + kRenderTargetResizeStableFrames)
+                return;
+        }
 
         if (m_PendingRenderTarget.texture)
             retireRenderTarget(m_PendingRenderTarget);
@@ -1216,6 +1240,7 @@ namespace vultra_app
         m_PendingRenderTarget.textureId    = imguiService->addTexture(*m_PendingRenderTarget.texture);
         m_PendingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
         m_PendingRenderTarget.releaseFrame = 0;
+        m_RenderTargetResizeRequest        = {};
     }
 
     void SceneViewWindow::ensurePickingRenderTarget(EditorContext& ctx, const uint32_t width, const uint32_t height)
@@ -1411,6 +1436,13 @@ namespace vultra_app
 
     void SceneViewWindow::releaseRenderTarget(EditorContext& ctx)
     {
+        const bool hasOwnedRenderTargets = m_ActiveRenderTarget.texture || m_PendingRenderTarget.texture ||
+                                           !m_RetiredRenderTargets.empty();
+        if (hasOwnedRenderTargets)
+        {
+            if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+                backendService->renderDevice().waitIdle();
+        }
         if (ctx.services)
         {
             if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
@@ -1429,16 +1461,30 @@ namespace vultra_app
         m_ActiveRenderTarget  = {};
         m_PendingRenderTarget = {};
         m_RetiredRenderTargets.clear();
+        m_RenderTargetResizeRequest = {};
     }
 
-    void SceneViewWindow::releasePickingRenderTarget()
+    void SceneViewWindow::releasePickingRenderTarget(EditorContext& ctx)
     {
+        if (m_PickingRenderTarget.texture || !m_RetiredPickingRenderTargets.empty())
+        {
+            if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+                backendService->renderDevice().waitIdle();
+        }
         m_PickingRenderTarget = {};
         m_RetiredPickingRenderTargets.clear();
     }
 
     void SceneViewWindow::releaseGameOverlayRenderTarget(EditorContext& ctx)
     {
+        const bool hasOwnedRenderTargets = m_GameOverlayActiveRenderTarget.texture ||
+                                           m_GameOverlayPendingRenderTarget.texture ||
+                                           !m_GameOverlayRetiredRenderTargets.empty();
+        if (hasOwnedRenderTargets)
+        {
+            if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+                backendService->renderDevice().waitIdle();
+        }
         if (ctx.services)
         {
             if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
@@ -1469,6 +1515,7 @@ namespace vultra_app
         retirePickingRenderTarget(m_PickingRenderTarget);
         retireGameOverlayRenderTarget(m_GameOverlayActiveRenderTarget);
         retireGameOverlayRenderTarget(m_GameOverlayPendingRenderTarget);
+        m_RenderTargetResizeRequest = {};
         m_ProjectGeneration          = ctx.state.projectGeneration;
         m_CameraInitializedFromScene = false;
     }

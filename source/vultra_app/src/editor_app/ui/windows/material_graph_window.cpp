@@ -1347,11 +1347,17 @@ namespace vultra_app
 
     void MaterialGraphWindow::releasePreviewRenderTarget(EditorContext& ctx)
     {
+        if (m_PreviewTarget.texture || !m_RetiredPreviewTargets.empty())
+        {
+            if (auto* backend = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+                backend->renderDevice().waitIdle();
+        }
         if (ctx.services)
             if (auto* imgui = ctx.services->tryGet<vultra::IImGuiService>())
                 if (m_PreviewTarget.textureId)
                     imgui->removeTexture(m_PreviewTarget.textureId);
         m_PreviewTarget = {};
+        m_RetiredPreviewTargets.clear();
     }
 
     void MaterialGraphWindow::collectRetiredPreviewTargets(EditorContext& ctx)

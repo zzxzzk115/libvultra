@@ -1,5 +1,6 @@
 #include "common/asset_preview_cache.hpp"
 
+#include <vultra/core/rhi/structs/sampler_info.hpp>
 #include <vultra/core/rhi/util.hpp>
 #include <vultra/function/resource/vtexture_loader.hpp>
 #include <vultra/function/services/asset_service.hpp>
@@ -85,6 +86,18 @@ namespace vultra_app::ui
                 return {};
             return data;
         }
+
+        vultra::rhi::Sampler makeLinearClampSampler(vultra::rhi::RenderDevice& rd)
+        {
+            return rd.getSampler(vultra::rhi::SamplerInfo {
+                .magFilter    = vultra::rhi::TexelFilter::eLinear,
+                .minFilter    = vultra::rhi::TexelFilter::eLinear,
+                .mipmapMode   = vultra::rhi::MipmapMode::eLinear,
+                .addressModeS = vultra::rhi::SamplerAddressMode::eClampToEdge,
+                .addressModeT = vultra::rhi::SamplerAddressMode::eClampToEdge,
+                .addressModeR = vultra::rhi::SamplerAddressMode::eClampToEdge,
+            });
+        }
     } // namespace
 
     bool isTextureSourceAsset(const std::filesystem::path& path)
@@ -137,10 +150,11 @@ namespace vultra_app::ui
             return {};
         }
 
-        auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
-        auto* gpuService   = ctx.services->tryGet<vultra::IGpuResourceService>();
-        auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>();
-        if (!assetService || !gpuService || !imguiService)
+        auto* assetService         = ctx.services->tryGet<vultra::IAssetService>();
+        auto* gpuService           = ctx.services->tryGet<vultra::IGpuResourceService>();
+        auto* imguiService         = ctx.services->tryGet<vultra::IImGuiService>();
+        auto* renderBackendService = ctx.services->tryGet<vultra::IRenderBackendService>();
+        if (!assetService || !gpuService || !imguiService || !renderBackendService)
         {
             m_LastError = "Texture preview services are not available.";
             return {};
@@ -191,7 +205,9 @@ namespace vultra_app::ui
                 m_LastError = "Texture preview deferred.";
                 return {};
             }
-            previewId = imguiService->addTexture(*pool.textures[handle.gpuIndex()].texture);
+            auto& rd  = renderBackendService->renderDevice();
+            previewId =
+                imguiService->addTexture(*pool.textures[handle.gpuIndex()].texture, makeLinearClampSampler(rd));
             m_LruUris.push_back(uri);
         }
 
@@ -280,7 +296,7 @@ namespace vultra_app::ui
         }
 
         cached.texture   = std::move(result.value());
-        cached.textureId = imguiService->addTexture(*cached.texture);
+        cached.textureId = imguiService->addTexture(*cached.texture, makeLinearClampSampler(rd));
         return cached.textureId;
     }
 
@@ -320,12 +336,18 @@ namespace vultra_app::ui
         }
 
         cached.texture   = std::move(result.value());
-        cached.textureId = imguiService->addTexture(*cached.texture);
+        cached.textureId = imguiService->addTexture(*cached.texture, makeLinearClampSampler(rd));
         return cached.textureId;
     }
 
     void AssetPreviewCache::clear(EditorContext& ctx)
     {
+        if (!m_TexturePreviewIds.empty() || !m_ImageFilePreviews.empty() || !m_BuiltinIcons.empty())
+        {
+            if (auto* backend = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+                backend->renderDevice().waitIdle();
+        }
+
         if (ctx.services)
         {
             if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
@@ -370,6 +392,9 @@ namespace vultra_app::ui
     {
         if (m_TexturePreviewIds.size() <= maxPreviewCount)
             return;
+
+        if (auto* backend = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+            backend->renderDevice().waitIdle();
 
         auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
         while (m_TexturePreviewIds.size() > maxPreviewCount && !m_LruUris.empty())

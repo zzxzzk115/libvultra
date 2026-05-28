@@ -44,6 +44,12 @@ namespace vultra_app
             uint64_t                            releaseFrame {0};
         };
 
+        struct ResizeRequest
+        {
+            vultra::rhi::Extent2D extent {};
+            uint64_t              firstSeenFrame {0};
+        };
+
         void drawToolbar(const ImVec2& viewportMin);
         bool drawViewManipulator(const ImVec2& viewportMin,
                                  const ImVec2& viewportMax,
@@ -62,7 +68,7 @@ namespace vultra_app
         void collectRetiredPickingRenderTargets();
         void collectRetiredGameOverlayRenderTargets(EditorContext& ctx);
         void releaseRenderTarget(EditorContext& ctx);
-        void releasePickingRenderTarget();
+        void releasePickingRenderTarget(EditorContext& ctx);
         void releaseGameOverlayRenderTarget(EditorContext& ctx);
         void resetRenderTargetsForProject(EditorContext& ctx);
         void initializeCameraFromPrimaryCamera(EditorContext& ctx);
@@ -75,6 +81,7 @@ namespace vultra_app
         RenderTargetSlot              m_ActiveRenderTarget;
         RenderTargetSlot              m_PendingRenderTarget;
         std::vector<RenderTargetSlot> m_RetiredRenderTargets;
+        ResizeRequest                 m_RenderTargetResizeRequest;
         RenderTargetSlot              m_PickingRenderTarget;
         std::vector<RenderTargetSlot> m_RetiredPickingRenderTargets;
         RenderTargetSlot              m_GameOverlayActiveRenderTarget;

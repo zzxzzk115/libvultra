@@ -33,6 +33,9 @@ namespace vultra_app
     namespace
     {
         constexpr uint64_t kRenderTargetReleaseDelayFrames = 3;
+        constexpr uint64_t kRenderTargetResizeStableFrames  = 3;
+        constexpr uint32_t kDetachedGamePreviewWidth        = 640u;
+        constexpr uint32_t kDetachedGamePreviewHeight       = 360u;
 
         glm::mat4 makeTransformMatrix(const vultra::TransformComponent& transform)
         {
@@ -185,6 +188,7 @@ namespace vultra_app
         ctx.state.gameViewVisible = visible && !collapsed;
         if (!visible || collapsed)
         {
+            releaseRenderTarget(ctx);
             ImGui::End();
             return;
         }
@@ -197,9 +201,62 @@ namespace vultra_app
         m_LastViewportAvail = avail;
 
         const ImVec2 outputSize        = computeRenderSize(avail);
-        ctx.state.gameViewRenderWidth  = static_cast<uint32_t>(std::max(outputSize.x, 1.0f));
-        ctx.state.gameViewRenderHeight = static_cast<uint32_t>(std::max(outputSize.y, 1.0f));
-        ensureRenderTarget(ctx, static_cast<uint32_t>(outputSize.x), static_cast<uint32_t>(outputSize.y));
+
+        bool  primaryCameraWantsXR = false;
+        bool  xrBackendEnabled     = false;
+        bool  xrMirrorReady        = false;
+        bool  hasPrimaryCamera     = false;
+        auto* backendService       = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+        auto* imguiService         = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+        entt::entity primaryCamera = entt::null;
+        if (ctx.services)
+        {
+            if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+            {
+                auto& world      = worldService->world();
+                primaryCamera    = findPrimaryCamera(world);
+                hasPrimaryCamera = primaryCamera != entt::null;
+                if (hasPrimaryCamera)
+                {
+                    auto& reg = world.registry();
+                    if (const auto* xrView = reg.try_get<vultra::XRViewComponent>(primaryCamera);
+                        xrView && xrView->enabled)
+                    {
+                        primaryCameraWantsXR = true;
+                    }
+                }
+            }
+        }
+        xrBackendEnabled                 = backendService && backendService->isXREnabled();
+        const bool useXrMirrorPreview    = primaryCameraWantsXR && xrBackendEnabled;
+        if (useXrMirrorPreview)
+        {
+            retireRenderTarget(m_ActiveRenderTarget);
+            retireRenderTarget(m_PendingRenderTarget);
+            collectRetiredRenderTargets(ctx);
+            m_RenderTargetResizeRequest              = {};
+            ctx.state.gameViewRenderWidth            = kDetachedGamePreviewWidth;
+            ctx.state.gameViewRenderHeight           = kDetachedGamePreviewHeight;
+            ctx.state.gameViewRenderTargetAvailable  = false;
+        }
+        else
+        {
+            ensureRenderTarget(ctx, static_cast<uint32_t>(outputSize.x), static_cast<uint32_t>(outputSize.y));
+            const auto& currentTarget = m_PendingRenderTarget.texture ? m_PendingRenderTarget : m_ActiveRenderTarget;
+            ctx.state.gameViewRenderTargetAvailable = currentTarget.texture.has_value();
+            if (ctx.state.gameViewRenderTargetAvailable)
+            {
+                ctx.state.gameViewRenderWidth  = std::max(currentTarget.extent.width, 1u);
+                ctx.state.gameViewRenderHeight = std::max(currentTarget.extent.height, 1u);
+                ctx.state.gameViewLastRenderTargetWidth  = ctx.state.gameViewRenderWidth;
+                ctx.state.gameViewLastRenderTargetHeight = ctx.state.gameViewRenderHeight;
+            }
+            else
+            {
+                ctx.state.gameViewRenderWidth  = static_cast<uint32_t>(std::max(outputSize.x, 1.0f));
+                ctx.state.gameViewRenderHeight = static_cast<uint32_t>(std::max(outputSize.y, 1.0f));
+            }
+        }
 
         m_MinZoom         = m_SelectedResolution == 0 ? 1.0f : computeFitZoom(avail, outputSize);
         m_UserZoom        = std::clamp(m_UserZoom, m_MinZoom, 4.0f);
@@ -212,13 +269,7 @@ namespace vultra_app
             cursor.y += (avail.y - displaySize.y) * 0.5f;
         ImGui::SetCursorPos(cursor);
 
-        bool  primaryCameraWantsXR = false;
-        bool  xrBackendEnabled     = false;
-        bool  xrMirrorReady        = false;
-        auto* backendService       = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
-        auto* imguiService         = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
-
-        if (m_ActiveRenderTarget.textureId)
+        if (!useXrMirrorPreview && m_ActiveRenderTarget.textureId)
             ImGui::Image(m_ActiveRenderTarget.textureId, displaySize, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
         else
             ImGui::InvisibleButton("##GameViewCanvas", displaySize);
@@ -228,30 +279,18 @@ namespace vultra_app
         auto*      dl  = ImGui::GetWindowDrawList();
         dl->AddRect(min, max, IM_COL32(70, 78, 90, 255));
 
-        bool hasPrimaryCamera = false;
         if (ctx.services)
         {
             if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
             {
-                auto& world      = worldService->world();
-                auto  cam        = findPrimaryCamera(world);
-                hasPrimaryCamera = cam != entt::null;
-                if (hasPrimaryCamera)
-                {
-                    auto& reg = world.registry();
-                    if (const auto* xrView = reg.try_get<vultra::XRViewComponent>(cam); xrView && xrView->enabled)
-                        primaryCameraWantsXR = true;
-                }
-                xrBackendEnabled = backendService && backendService->isXREnabled();
-
+                auto& world = worldService->world();
                 auto* renderTarget = m_PendingRenderTarget.texture ?
                                          &*m_PendingRenderTarget.texture :
                                          (m_ActiveRenderTarget.texture ? &*m_ActiveRenderTarget.texture : nullptr);
-                const bool useXrMirrorPreview = primaryCameraWantsXR && xrBackendEnabled;
                 if (hasPrimaryCamera && renderTarget != nullptr && !useXrMirrorPreview)
                 {
                     const float aspect       = outputSize.x / std::max(outputSize.y, 1.0f);
-                    auto        renderCamera = makeGameCamera(world, cam, aspect, renderTarget);
+                    auto        renderCamera = makeGameCamera(world, primaryCamera, aspect, renderTarget);
                     if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
                         cameraService->addManualCamera(renderCamera);
                 }
@@ -378,9 +417,6 @@ namespace vultra_app
         if (!ctx.state.metricsOverlayVisible)
             return;
 
-        if (profiler && !profiler->isEnabled())
-            profiler->setEnabled(true);
-
         const ImGuiIO& io      = ImGui::GetIO();
         const float    fps     = io.Framerate;
         const float    frameMs = fps > 0.0f ? 1000.0f / fps : 0.0f;
@@ -460,6 +496,15 @@ namespace vultra_app
                                   ImVec2(0.0f, 0.0f);
         ImGui::TextDisabled("Res: %dx%d", static_cast<int>(target.x), static_cast<int>(target.y));
 
+        ImGui::SameLine(0.0f, 14.0f);
+        const bool metricsActive = ctx.state.metricsOverlayVisible;
+        if (metricsActive)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (ImGui::SmallButton(ICON_MDI_CHART_LINE " Metrics"))
+            ctx.state.metricsOverlayVisible = !ctx.state.metricsOverlayVisible;
+        if (metricsActive)
+            ImGui::PopStyleColor();
+
         if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
         {
             ImGui::SameLine(0.0f, 14.0f);
@@ -517,7 +562,25 @@ namespace vultra_app
         const auto& currentTarget = m_PendingRenderTarget.texture ? m_PendingRenderTarget : m_ActiveRenderTarget;
         if (currentTarget.texture && currentTarget.extent.width == width && currentTarget.extent.height == height &&
             currentTarget.textureId)
+        {
+            m_RenderTargetResizeRequest = {};
             return;
+        }
+
+        const auto frame = static_cast<uint64_t>(ImGui::GetFrameCount());
+        if (currentTarget.texture)
+        {
+            if (m_RenderTargetResizeRequest.extent.width != width ||
+                m_RenderTargetResizeRequest.extent.height != height)
+            {
+                m_RenderTargetResizeRequest.extent         = {width, height};
+                m_RenderTargetResizeRequest.firstSeenFrame = frame;
+                return;
+            }
+
+            if (frame < m_RenderTargetResizeRequest.firstSeenFrame + kRenderTargetResizeStableFrames)
+                return;
+        }
 
         if (m_PendingRenderTarget.texture)
             retireRenderTarget(m_PendingRenderTarget);
@@ -543,6 +606,7 @@ namespace vultra_app
         m_PendingRenderTarget.textureId    = imguiService->addTexture(*m_PendingRenderTarget.texture);
         m_PendingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
         m_PendingRenderTarget.releaseFrame = 0;
+        m_RenderTargetResizeRequest        = {};
     }
 
     void GameViewWindow::promotePendingRenderTarget(EditorContext& ctx)
@@ -591,6 +655,13 @@ namespace vultra_app
     void GameViewWindow::releaseRenderTarget(EditorContext& ctx)
     {
         clearXRMirrorPreview(ctx);
+        const bool hasOwnedRenderTargets = m_ActiveRenderTarget.texture || m_PendingRenderTarget.texture ||
+                                           !m_RetiredRenderTargets.empty();
+        if (hasOwnedRenderTargets)
+        {
+            if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+                backendService->renderDevice().waitIdle();
+        }
         if (ctx.services)
         {
             if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
@@ -609,10 +680,19 @@ namespace vultra_app
         m_ActiveRenderTarget  = {};
         m_PendingRenderTarget = {};
         m_RetiredRenderTargets.clear();
+        m_RenderTargetResizeRequest = {};
     }
 
     void GameViewWindow::clearXRMirrorPreview(EditorContext& ctx)
     {
+        const bool hasMirrorTextures = m_XRMirrorTextureIds[0] || m_XRMirrorTextureIds[1] || m_XRMirrorTextures[0] ||
+                                       m_XRMirrorTextures[1];
+        if (hasMirrorTextures)
+        {
+            if (auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr)
+                backendService->renderDevice().waitIdle();
+        }
+
         auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
         if (imguiService)
         {
@@ -634,6 +714,7 @@ namespace vultra_app
 
         retireRenderTarget(m_ActiveRenderTarget);
         retireRenderTarget(m_PendingRenderTarget);
+        m_RenderTargetResizeRequest = {};
         m_ProjectGeneration = ctx.state.projectGeneration;
     }
 } // namespace vultra_app
