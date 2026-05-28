@@ -2,9 +2,9 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/rhi/backends/vk/conversions.hpp"
 #include "vultra/core/rhi/backends/vk/handle_utils.hpp"
-#include "vultra/core/rhi/structs/extent2d.hpp"
-#include "vultra/core/rhi/render_device.hpp"
 #include "vultra/core/rhi/backends/vk/vulkan_render_device_access.hpp"
+#include "vultra/core/rhi/render_device.hpp"
+#include "vultra/core/rhi/structs/extent2d.hpp"
 #include "vultra/function/openxr/xr_device.hpp"
 #include "vultra/function/openxr/xr_helper.hpp"
 
@@ -31,11 +31,13 @@ namespace vultra
 
             // Create an OpenXR session
             XrGraphicsBindingVulkan2KHR graphicsBinding {};
-            graphicsBinding.type             = XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR;
-            graphicsBinding.device = reinterpret_cast<VkDevice>(rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice));
-            graphicsBinding.instance = reinterpret_cast<VkInstance>(rhi::VulkanRenderDeviceAccess::getInstanceHandle(m_RenderDevice));
-            graphicsBinding.physicalDevice =
-                reinterpret_cast<VkPhysicalDevice>(rhi::VulkanRenderDeviceAccess::getPhysicalDeviceHandle(m_RenderDevice));
+            graphicsBinding.type = XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR;
+            graphicsBinding.device =
+                reinterpret_cast<VkDevice>(rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice));
+            graphicsBinding.instance =
+                reinterpret_cast<VkInstance>(rhi::VulkanRenderDeviceAccess::getInstanceHandle(m_RenderDevice));
+            graphicsBinding.physicalDevice = reinterpret_cast<VkPhysicalDevice>(
+                rhi::VulkanRenderDeviceAccess::getPhysicalDeviceHandle(m_RenderDevice));
             graphicsBinding.queueFamilyIndex = rhi::VulkanRenderDeviceAccess::getQueueFamilyIndex(m_RenderDevice);
             graphicsBinding.queueIndex       = 0u;
 
@@ -139,8 +141,7 @@ namespace vultra
                     throw std::runtime_error("OpenXR swapchain format negotiation failed");
                 }
 
-                VULTRA_CORE_INFO("[XRHeadset] Using swapchain format: {}",
-                                 rhi::toString(m_SwapchainPixelFormat));
+                VULTRA_CORE_INFO("[XRHeadset] Using swapchain format: {}", rhi::toString(m_SwapchainPixelFormat));
             }
 
             // Create a swapchain and render targets
@@ -189,10 +190,10 @@ namespace vultra
                 for (size_t i = 0u; i < m_SwapchainImages.size(); ++i)
                 {
                     const XrSwapchainImageVulkan2KHR& swapchainImage = m_SwapchainImages[i];
-                    const auto deviceHandle = rhi::TextureDeviceHandle {
-                        rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice)};
-                    const auto imageHandle  = rhi::TextureImageHandle {
-                        static_cast<std::uintptr_t>(rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image)))};
+                    const auto                        deviceHandle =
+                        rhi::TextureDeviceHandle {rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice)};
+                    const auto imageHandle = rhi::TextureImageHandle {static_cast<std::uintptr_t>(
+                        rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image)))};
 
                     m_SwapchainStereoRenderTargetViews[i].stereo =
                         rhi::Texture {deviceHandle,

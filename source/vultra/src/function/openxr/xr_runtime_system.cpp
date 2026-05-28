@@ -49,12 +49,12 @@ namespace vultra
         if (!worldService)
             return false;
 
-        auto& reg = worldService->world().registry();
+        auto& reg     = worldService->world().registry();
         auto  cameras = reg.view<CameraComponent>();
 
         bool hasPrimaryCamera = false;
-        int  bestPriority = std::numeric_limits<int>::min();
-        bool bestWantsXR  = false;
+        int  bestPriority     = std::numeric_limits<int>::min();
+        bool bestWantsXR      = false;
 
         for (auto entity : cameras)
         {
@@ -65,7 +65,7 @@ namespace vultra
                 continue;
 
             const auto* xrView = reg.try_get<XRViewComponent>(entity);
-            hasPrimaryCamera = true;
+            hasPrimaryCamera   = true;
             if (camera.priority >= bestPriority)
             {
                 bestPriority = camera.priority;

@@ -19,9 +19,12 @@ implemented in this slice.
   `XRRuntimeSystem` scan the active world for enabled XR camera views, request
   the backend session when needed, and release it when XR content is no longer
   present.
-- Editor Scene View does not start OpenXR just because an `XRViewComponent`
-  exists. Editor startup disables scene-driven XR auto-start; Game View is the
-  explicit XR preview request source.
+- Editor and runtime sessions both use `XRRuntimeSystem` scene scanning. An
+  enabled XR camera can request OpenXR even when Game View is closed; Game View
+  is only a mirror/preview surface.
+- Editor camera cooking separates regular world cameras from world XR cameras:
+  editor UI keeps normal world cameras disabled for the backbuffer, while
+  enabled XR scene cameras still cook stereo eye cameras for the headset.
 - Added `--xr`, `--no-xr`, `--xr-mirror`, and `--no-xr-mirror` launch options.
 - Extended backend XR eye view data with pose, FOV, IPD, predicted display time,
   and tracking/validity flags.
@@ -34,10 +37,10 @@ implemented in this slice.
   cameras when XR pose data is unavailable.
 - Added `StereoRenderMode` to `RenderView` and blackboard-visible
   `StereoViewData` for stereo graph consumers.
-- Game View requests editor XR preview for a primary camera with
-  `XRViewComponent` and displays the previous frame's left/right XR mirror
-  textures when OpenXR is active. Packaged runtime sessions remain driven by
-  `XRRuntimeSystem`.
+- Game View displays the previous frame's left/right XR mirror textures when
+  OpenXR is active, but no longer owns XR session start/stop.
+- Game View mirror preview uses explicit per-eye slots and contain-fit
+  letterboxing so mirror textures keep their native aspect ratio.
 - XR mirror previews use the same shader preview path as Frame Texture Debug
   when gamma correction is enabled, and gamma correction is on by default. Game
   View exposes the same shared `Gamma` toggle as the renderer mirror panel.
@@ -71,6 +74,13 @@ implemented in this slice.
   adding the Game View gamma toggle; passed.
 - Re-ran `xmake build -y vultra-app` after splitting editor Game View XR preview
   requests from runtime scene auto-start; passed.
+- Re-ran `xmake build -y vultra-app` after moving editor XR session ownership
+  back to scene-driven `XRRuntimeSystem` and removing Game View session
+  start/stop calls; passed.
+- Re-ran `xmake build -y vultra-app` after changing Game View XR mirror drawing
+  to aspect-preserving slot layout; passed.
+- Re-ran `xmake build -y vultra-app` after decoupling editor world-XR camera
+  cooking from normal world-camera rendering; passed.
 
 ## How To Exercise In Editor
 
@@ -80,9 +90,9 @@ implemented in this slice.
 3. Add `XR View` in the Inspector, keep `Enabled` and `Fallback Mono` on.
 4. Switch the editable render graph to `res://render/stereo_vr.vrg.json` if the
    project has the generated stereo template.
-5. Scene View editing does not start an OpenXR session. Open Game View to start
-   editor XR preview and inspect the left/right mirror views when mirror mode is
-   enabled; otherwise Game View shows an explicit disabled/waiting state.
+5. An enabled XR camera starts and renders the editor OpenXR session even if
+   Game View is closed or unfocused. Open Game View only when you want to
+   inspect the left/right mirror views.
 
 ## Notes
 

@@ -219,8 +219,8 @@ namespace vultra
         {
             // Get the XrSystemId from the instance and the supplied XrFormFactor.
             XrSystemGetInfo systemGI {};
-            systemGI.type       = XR_TYPE_SYSTEM_GET_INFO;
-            systemGI.formFactor = m_XrFormFactor;
+            systemGI.type               = XR_TYPE_SYSTEM_GET_INFO;
+            systemGI.formFactor         = m_XrFormFactor;
             const XrResult systemResult = xrGetSystem(m_XrInstance, &systemGI, &m_XrSystemId);
             if (XR_FAILED(systemResult))
             {

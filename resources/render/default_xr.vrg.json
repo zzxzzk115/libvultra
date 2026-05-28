@@ -178,7 +178,7 @@
       "viewMode": "inherit"
     },
     {
-      "enabled": false,
+      "enabled": true,
       "id": "XrViewSynthesis",
       "inputs": {
         "depth": "DirectGBuffer.depth",
@@ -189,10 +189,10 @@
       },
       "params": {
         "baseGridSize": 16,
-        "depthThreshold": 0.02,
+        "depthThreshold": 0.015,
         "inpaintingBackend": "pull_push",
-        "maxSubdivision": 2,
-        "sideLengthThreshold": 0.12,
+        "maxSubdivision": 3,
+        "sideLengthThreshold": 0.1,
         "sourceView": "left",
         "targetView": "right",
         "warpingBackend": "adaptive_mesh_graphics"
@@ -206,7 +206,7 @@
       "inputs": {
         "depth": "DirectGBuffer.depth",
         "entityId": "DirectGBuffer.entityId",
-        "source": "Fxaa.color"
+        "source": "XrViewSynthesis.color"
       },
       "outputs": {
         "color": "SelectionOutline.color"
