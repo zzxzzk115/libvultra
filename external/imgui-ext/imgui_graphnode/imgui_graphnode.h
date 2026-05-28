@@ -44,6 +44,7 @@ namespace IMGUI_GRAPHNODE_NAMESPACE
 {
     IMGUI_API void CreateContext();
     IMGUI_API void DestroyContext();
+    IMGUI_API void ClearNodeGraphCaches();
     IMGUI_API bool BeginNodeGraph(char const * id, ImGuiGraphNodeLayout layout = ImGuiGraphNodeLayout_Dot, float pixel_per_unit = 100.f);
     IMGUI_API bool NodeGraphLoadDot(char const* dot);
     IMGUI_API void NodeGraphSetView(ImVec2 viewport, float scale, bool auto_fit, bool center);

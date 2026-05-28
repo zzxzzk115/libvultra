@@ -19,6 +19,7 @@ target("graphviz")
     add_includedirs("lib/xdot")
     add_includedirs("plugin/core")
     add_includedirs("plugin/dot_layout")
+    add_packages("expat")
 
     if is_plat("windows") then
         add_includedirs("windows/include/unistd")

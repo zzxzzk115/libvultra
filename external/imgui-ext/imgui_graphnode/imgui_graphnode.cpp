@@ -258,6 +258,12 @@ void IMGUI_GRAPHNODE_NAMESPACE::DestroyContext()
     g_ctx.graph_caches.clear();
 }
 
+void IMGUI_GRAPHNODE_NAMESPACE::ClearNodeGraphCaches()
+{
+    g_ctx.graph_caches.clear();
+    g_ctx.lastid = 0;
+}
+
 bool IMGUI_GRAPHNODE_NAMESPACE::BeginNodeGraph(char const * id, ImGuiGraphNodeLayout layout, float pixel_per_unit)
 {
     g_ctx.lastid = ImGui::GetID(id);

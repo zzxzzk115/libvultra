@@ -8,6 +8,7 @@ else
 end
 
 add_requires("zlib")
+add_requires("expat", {configs = {runtimes = "MT"}})
 
 includes("graphviz")
 
