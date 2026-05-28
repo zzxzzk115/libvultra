@@ -1,12 +1,12 @@
 [vimport]
 version=1
-importer="scene"
-uid="1649bf55389482fb8b3aa7229e36f6fc"
+importer="scene_manifest"
+uid="ab252d9dc9df553c37dfc89a0cedc8bd"
 
 [source]
-file="scenes/test.vscn"
+file="scenes/test.vmanifest"
 
 [output]
-file="imported/scene/scenes/test.vscn"
+file="imported/scene_manifest/scenes/test.vmanifest"
 
 [params]

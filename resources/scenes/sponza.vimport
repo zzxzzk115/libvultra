@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="scene"
+uid="9c7f516d1528f802017434cabba26bc7"
+
+[source]
+file="scenes/sponza.vscn"
+
+[output]
+file="imported/scene/scenes/sponza.vscn"
+
+[params]
