@@ -773,6 +773,7 @@ namespace vultra_app
                                      topBarCtx.state.editorPaused            = false;
                                      topBarCtx.state.editorStepRequested     = false;
                                      topBarCtx.state.codeEditorOpenRequested = false;
+                                     topBarCtx.state.runtimeFrameGraphViewerOpenRequested = false;
                                      topBarCtx.state.materialGraphOpenRequested = false;
                                      topBarCtx.state.editorShutdownRequested = true;
                                      topBarCtx.state.sceneDirty              = false;
@@ -1362,6 +1363,7 @@ namespace vultra_app
         ctx.state.editorStepRequested = false;
         ctx.state.pendingEditorCommands.clear();
         ctx.state.renderGraphOpenRequested   = false;
+        ctx.state.runtimeFrameGraphViewerOpenRequested = false;
         ctx.state.materialGraphOpenRequested = false;
         ctx.state.sceneViewVisible          = false;
         ctx.state.sceneViewVisibleLastFrame = false;

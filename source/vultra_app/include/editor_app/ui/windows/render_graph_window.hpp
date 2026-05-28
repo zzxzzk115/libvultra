@@ -24,6 +24,8 @@ namespace vultra_app
         ~RenderGraphWindow() override;
 
         void draw(EditorContext& ctx) override;
+        void requestRuntimeFrameGraphViewer();
+        void drawRuntimeFrameGraphViewer(EditorContext& ctx);
 
     private:
         struct GraphEditorState;
@@ -52,7 +54,7 @@ namespace vultra_app
         void drawPipelineEditorCanvas(EditorContext& ctx);
         void onClosed(EditorContext& ctx) override;
         void onDestroy(EditorContext& ctx) override;
-        bool ensureRenderGraphPreviewCamera(EditorContext& ctx);
+        bool ensureRenderGraphPreviewCamera(EditorContext& ctx, uint32_t width, uint32_t height);
         void drawGameViewOverlay(EditorContext& ctx, ImVec2 childMin, ImVec2 childMax);
         void ensureOverlayRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height);
         void promotePendingOverlayRenderTarget(EditorContext& ctx);
@@ -93,6 +95,7 @@ namespace vultra_app
         uint64_t m_PendingRuntimeTexturePreviewAutoFitFrame {0};
         uint64_t m_PendingRuntimeTexturePreviewAutoFitDeadlineFrame {0};
         uint64_t m_PendingRuntimeTexturePreviewAutoFitNextTryFrame {0};
+        uint64_t m_RuntimeGraphTextureCaptureReadyFrame {0};
         std::unordered_set<std::string> m_RuntimeGraphTextureAutoFitDone;
         std::unordered_set<std::string> m_RuntimeGraphTextureDefaultPreviewDone;
         std::unordered_map<std::string, vultra::FrameGraphTexturePreviewSettings> m_RuntimeGraphTexturePreviewSettings;
@@ -106,7 +109,10 @@ namespace vultra_app
         std::string              m_RenderGraphPassCatalogAssetRoot;
         uint64_t                 m_RenderGraphPassCatalogProjectGeneration {0};
         bool m_RuntimeGraphPopupOpen {false};
+        bool m_RuntimeGraphPopupPendingOpen {false};
         bool m_RuntimeTexturePreviewOpen {false};
+        bool m_RuntimeTexturePreviewPopupPendingOpen {false};
+        bool m_RuntimeGraphCleanupPending {false};
         bool m_RuntimeGraphSuspended {false};
     };
 } // namespace vultra_app

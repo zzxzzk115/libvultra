@@ -321,6 +321,8 @@ namespace vultra_app
                     ctx.state.profilerWindowOpenRequested = true;
                 if (ImGui::MenuItem("Frame Debugger"))
                     ctx.state.frameDebuggerWindowOpenRequested = true;
+                if (ImGui::MenuItem("Runtime Frame Graph Viewer"))
+                    ctx.state.runtimeFrameGraphViewerOpenRequested = true;
                 drawRenderDocMenu(ctx);
                 ImGui::EndPopup();
             }

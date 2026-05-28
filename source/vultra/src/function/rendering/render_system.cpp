@@ -610,7 +610,8 @@ namespace vultra
 
             static std::string resourceId(const ResourceNode& resource)
             {
-                return "resource:" + std::to_string(resource.getId());
+                return "resource:" + std::to_string(resource.getResourceId()) + "_v" +
+                       std::to_string(resource.getVersion());
             }
 
             static const ResourceNode* findResource(const std::vector<ResourceNode>& resources, FrameGraphResource id)
@@ -1628,6 +1629,8 @@ namespace vultra
         struct CaptureCandidate
         {
             FrameGraphResource resource {};
+            uint32_t           resourceNodeId {0};
+            uint32_t           resourceVersion {0};
             std::string        name;
             rhi::ImageAspect   aspect {rhi::ImageAspect::eColor};
             uint32_t           layer {0};
@@ -1723,13 +1726,15 @@ namespace vultra
                                      layer == 1u ? " [Right Eye]" :
                                                    " [Layer " + std::to_string(layer) + "]";
                     candidates.push_back(CaptureCandidate {
-                        .resource   = static_cast<FrameGraphResource>(resource.getId()),
-                        .name       = std::move(layerName),
-                        .aspect     = imageAspectFor(desc.format),
-                        .layer      = layer,
-                        .layerCount = layerCount,
-                        .imported   = entry.isImported(),
-                        .capturable = capturable,
+                        .resource        = static_cast<FrameGraphResource>(resource.getId()),
+                        .resourceNodeId  = resource.getResourceId(),
+                        .resourceVersion = resource.getVersion(),
+                        .name            = std::move(layerName),
+                        .aspect          = imageAspectFor(desc.format),
+                        .layer           = layer,
+                        .layerCount      = layerCount,
+                        .imported        = entry.isImported(),
+                        .capturable      = capturable,
                     });
                 }
             }
@@ -1753,8 +1758,9 @@ namespace vultra
 
             std::string cameraName {camera.name.empty() ? std::string {"Camera"} : camera.name};
             std::string slotKey = cameraName + "/" + candidate.name + "/layer:" + std::to_string(candidate.layer);
-            std::string transientResourceKey =
-                "resource:" + std::to_string(candidate.resource) + "/layer:" + std::to_string(candidate.layer);
+            std::string transientResourceKey = "R" + std::to_string(candidate.resourceNodeId) + "_" +
+                                               std::to_string(candidate.resourceVersion) + "/layer:" +
+                                               std::to_string(candidate.layer);
             const auto overrideIt          = m_FrameGraphTexturePreviewOverrides.find(slotKey);
             const auto previewSettings     = overrideIt != m_FrameGraphTexturePreviewOverrides.end() ?
                                                  overrideIt->second :

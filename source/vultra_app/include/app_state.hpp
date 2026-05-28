@@ -137,6 +137,7 @@ namespace vultra_app
         bool                  profilerWindowOpenRequested {false};
         bool                  frameDebuggerWindowOpenRequested {false};
         bool                  renderGraphOpenRequested {false};
+        bool                  runtimeFrameGraphViewerOpenRequested {false};
         bool                  materialGraphOpenRequested {false};
         uint64_t              projectGeneration {0};
         uint64_t              assetFileGeneration {0};

@@ -1,5 +1,6 @@
 #include "editor_app/ui/editor_window_manager.hpp"
 
+#include "editor_app/ui/windows/render_graph_window.hpp"
 #include "editor_app/ui/windows/scene_view_window.hpp"
 
 #include <vultra/function/rendering/runtime_profiler.hpp>
@@ -32,6 +33,26 @@ namespace vultra_app
             for (std::size_t i = 0; i < m_Windows.size(); ++i)
                 m_WasOpen[i] = m_Windows[i]->open();
         }
+
+        RenderGraphWindow* renderGraphWindow = nullptr;
+        for (auto& window : m_Windows)
+        {
+            if (auto* candidate = dynamic_cast<RenderGraphWindow*>(window.get()))
+            {
+                renderGraphWindow = candidate;
+                break;
+            }
+        }
+
+        auto consumeRuntimeFrameGraphRequest = [&]() {
+            if (ctx.state.runtimeFrameGraphViewerOpenRequested && renderGraphWindow)
+            {
+                renderGraphWindow->requestRuntimeFrameGraphViewer();
+                ctx.state.runtimeFrameGraphViewerOpenRequested = false;
+            }
+        };
+
+        consumeRuntimeFrameGraphRequest();
 
         for (std::size_t i = 0; i < m_Windows.size(); ++i)
         {
@@ -79,6 +100,10 @@ namespace vultra_app
             }
             m_WasOpen[i] = window->open();
         }
+
+        consumeRuntimeFrameGraphRequest();
+        if (renderGraphWindow)
+            renderGraphWindow->drawRuntimeFrameGraphViewer(ctx);
     }
 
     void EditorWindowManager::destroy(EditorContext& ctx)

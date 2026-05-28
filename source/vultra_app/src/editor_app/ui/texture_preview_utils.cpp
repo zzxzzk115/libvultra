@@ -83,6 +83,14 @@ namespace vultra_app::ui
             return false;
 
         const auto key = lower(texture.name + " " + texture.resourceKey);
+        if (key.find("backbuffer") != std::string::npos || key.find("fxaa") != std::string::npos ||
+            key.find("tone") != std::string::npos || key.find("final") != std::string::npos ||
+            key.find("composition") != std::string::npos || key.find("lightingoutput") != std::string::npos ||
+            key.find("basecolor") != std::string::npos)
+        {
+            return true;
+        }
+
         if (isNormalLikeTexture(texture) || key.find("material") != std::string::npos ||
             key.find("roughness") != std::string::npos || key.find("metallic") != std::string::npos ||
             key.find("metalness") != std::string::npos || key.find("ao") != std::string::npos ||
