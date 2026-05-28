@@ -2,5 +2,5 @@
 version = 1
 name = "example"
 asset_root = "resources"
-default_scene = "res://scenes/test.vscn"
-editing_rendergraph = "res://render/default.vrg.json"
+default_scene = "res://scenes/3dgs_example.vscn"
+editing_rendergraph = "res://render/default_xr.vrg.json"

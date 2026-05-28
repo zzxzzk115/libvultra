@@ -60,20 +60,7 @@ LightComponent/outerConeDegrees = 30.000000
 LightComponent/castsShadow = true
 LightComponent/twoSided = false
 
-[node id=4 name="LizardSplat" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0caa"]
-NameComponent/name = "LizardSplat"
-EntityStatusComponent/active = true
-EntityStatusComponent/visible = false
-EntityStatusComponent/locked = false
-EntityStatusComponent/selectable = true
-TransformComponent/position = (0, 1.52067, -1)
-TransformComponent/rotation = (0, 0, 0, 1)
-TransformComponent/scale = (1, 1, 1)
-GaussianSplatComponent/gaussianSplat = "3acfb36237062821a78452d799871ba6"
-ScriptComponent/scriptUri = "res://scripts/test_move.lua"
-ScriptComponent/enabled = true
-
-[node id=5 name="BindingProbe" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0ca9"]
+[node id=4 name="BindingProbe" parent=0 uuid="206733c1f880193cbd1dd2b65e0d0ca9"]
 NameComponent/name = "BindingProbe"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -85,7 +72,7 @@ TransformComponent/scale = (1, 1, 1)
 ScriptComponent/scriptUri = "res://scripts/binding_probe.lua"
 ScriptComponent/enabled = true
 
-[node id=6 name="DamagedHelmet" parent=0 uuid="568100f9ffd6e92a4b73e57e56f45caf"]
+[node id=5 name="DamagedHelmet" parent=0 uuid="568100f9ffd6e92a4b73e57e56f45caf"]
 NameComponent/name = "DamagedHelmet"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -97,7 +84,7 @@ TransformComponent/scale = (0.3, 0.3, 0.3)
 ScriptComponent/scriptUri = "res://scripts/test_move.lua"
 ScriptComponent/enabled = true
 
-[node id=7 name="mesh_helmet_LP_13930damagedHelmet" parent=6 uuid="222ac3215357aa18bed9a31685759dd9"]
+[node id=6 name="mesh_helmet_LP_13930damagedHelmet" parent=5 uuid="222ac3215357aa18bed9a31685759dd9"]
 NameComponent/name = "mesh_helmet_LP_13930damagedHelmet"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -111,7 +98,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=8 name="Sponza" parent=0 uuid="8f8e4a7ad73c61e70c452bff794ed5e8"]
+[node id=7 name="Sponza" parent=0 uuid="8f8e4a7ad73c61e70c452bff794ed5e8"]
 NameComponent/name = "Sponza"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -121,7 +108,7 @@ TransformComponent/position = (0, 0, 0)
 TransformComponent/rotation = (0, 0, 0, 1)
 TransformComponent/scale = (1, 1, 1)
 
-[node id=9 name="meshes[0]-0" parent=8 uuid="0a0ac4f75a20600196f9a140fcaad3c6"]
+[node id=8 name="meshes[0]-0" parent=7 uuid="0a0ac4f75a20600196f9a140fcaad3c6"]
 NameComponent/name = "meshes[0]-0"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -135,7 +122,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=10 name="meshes[0]-1" parent=8 uuid="9ce737492246d599019ddf2eb444485e"]
+[node id=9 name="meshes[0]-1" parent=7 uuid="9ce737492246d599019ddf2eb444485e"]
 NameComponent/name = "meshes[0]-1"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -149,7 +136,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=11 name="meshes[0]-2" parent=8 uuid="741ebe99d919617968d5a79e7fb3d47e"]
+[node id=10 name="meshes[0]-2" parent=7 uuid="741ebe99d919617968d5a79e7fb3d47e"]
 NameComponent/name = "meshes[0]-2"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -163,7 +150,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=12 name="meshes[0]-3" parent=8 uuid="ca08b2c393f980a9d6fb53b43a93f32e"]
+[node id=11 name="meshes[0]-3" parent=7 uuid="ca08b2c393f980a9d6fb53b43a93f32e"]
 NameComponent/name = "meshes[0]-3"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -177,7 +164,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=13 name="meshes[0]-4" parent=8 uuid="12f4e8186bcd81c18fef8e61e2fff406"]
+[node id=12 name="meshes[0]-4" parent=7 uuid="12f4e8186bcd81c18fef8e61e2fff406"]
 NameComponent/name = "meshes[0]-4"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -191,7 +178,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=14 name="meshes[0]-5" parent=8 uuid="c9f401f91ecc2099d6e0e47eb1c1135e"]
+[node id=13 name="meshes[0]-5" parent=7 uuid="c9f401f91ecc2099d6e0e47eb1c1135e"]
 NameComponent/name = "meshes[0]-5"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -205,7 +192,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=15 name="meshes[0]-6" parent=8 uuid="72d60b8153dc85a96f8eeaf6faeef82e"]
+[node id=14 name="meshes[0]-6" parent=7 uuid="72d60b8153dc85a96f8eeaf6faeef82e"]
 NameComponent/name = "meshes[0]-6"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -219,7 +206,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=16 name="meshes[0]-7" parent=8 uuid="b5565960efb992192a0d3cd966d385de"]
+[node id=15 name="meshes[0]-7" parent=7 uuid="b5565960efb992192a0d3cd966d385de"]
 NameComponent/name = "meshes[0]-7"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -233,7 +220,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=17 name="meshes[0]-8" parent=8 uuid="c4b4df9cfc6df431d9af869d521f67b6"]
+[node id=16 name="meshes[0]-8" parent=7 uuid="c4b4df9cfc6df431d9af869d521f67b6"]
 NameComponent/name = "meshes[0]-8"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -247,7 +234,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=18 name="meshes[0]-9" parent=8 uuid="db88b16304db99b9c07b54d74bf18c3e"]
+[node id=17 name="meshes[0]-9" parent=7 uuid="db88b16304db99b9c07b54d74bf18c3e"]
 NameComponent/name = "meshes[0]-9"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -261,7 +248,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=19 name="meshes[0]-10" parent=8 uuid="d3b70d57968a61b1c8ade9203800d436"]
+[node id=18 name="meshes[0]-10" parent=7 uuid="d3b70d57968a61b1c8ade9203800d436"]
 NameComponent/name = "meshes[0]-10"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -275,7 +262,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=20 name="meshes[0]-11" parent=8 uuid="5fb4683400922dab7caf0e04563b202c"]
+[node id=19 name="meshes[0]-11" parent=7 uuid="5fb4683400922dab7caf0e04563b202c"]
 NameComponent/name = "meshes[0]-11"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -289,7 +276,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=21 name="meshes[0]-12" parent=8 uuid="5a6589220dee8039471e6d16409cf3be"]
+[node id=20 name="meshes[0]-12" parent=7 uuid="5a6589220dee8039471e6d16409cf3be"]
 NameComponent/name = "meshes[0]-12"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -303,7 +290,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=22 name="meshes[0]-13" parent=8 uuid="2298a4a1bb6ce8efbf4b41961d1e5cf0"]
+[node id=21 name="meshes[0]-13" parent=7 uuid="2298a4a1bb6ce8efbf4b41961d1e5cf0"]
 NameComponent/name = "meshes[0]-13"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -317,7 +304,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=23 name="meshes[0]-14" parent=8 uuid="599449b2fe6572f9464f2c875067e6fe"]
+[node id=22 name="meshes[0]-14" parent=7 uuid="599449b2fe6572f9464f2c875067e6fe"]
 NameComponent/name = "meshes[0]-14"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -331,7 +318,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=24 name="meshes[0]-15" parent=8 uuid="dc7771156ca8cbb3c16c1562e222be34"]
+[node id=23 name="meshes[0]-15" parent=7 uuid="dc7771156ca8cbb3c16c1562e222be34"]
 NameComponent/name = "meshes[0]-15"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -345,7 +332,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=25 name="meshes[0]-16" parent=8 uuid="7988f0266a24b311667b9613eca6a6d6"]
+[node id=24 name="meshes[0]-16" parent=7 uuid="7988f0266a24b311667b9613eca6a6d6"]
 NameComponent/name = "meshes[0]-16"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -359,7 +346,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=26 name="meshes[0]-17" parent=8 uuid="8d163fb3766f053f11cd2684d81c7880"]
+[node id=25 name="meshes[0]-17" parent=7 uuid="8d163fb3766f053f11cd2684d81c7880"]
 NameComponent/name = "meshes[0]-17"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -373,7 +360,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=27 name="meshes[0]-18" parent=8 uuid="bbacfa353da14b0120a79c02932a3ec6"]
+[node id=26 name="meshes[0]-18" parent=7 uuid="bbacfa353da14b0120a79c02932a3ec6"]
 NameComponent/name = "meshes[0]-18"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -387,7 +374,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=28 name="meshes[0]-19" parent=8 uuid="df00424cb2c8fe3bc3f3242d25c271bc"]
+[node id=27 name="meshes[0]-19" parent=7 uuid="df00424cb2c8fe3bc3f3242d25c271bc"]
 NameComponent/name = "meshes[0]-19"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -401,7 +388,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=29 name="meshes[0]-20" parent=8 uuid="bd1721eeaf95a37f21cdc44b21379640"]
+[node id=28 name="meshes[0]-20" parent=7 uuid="bd1721eeaf95a37f21cdc44b21379640"]
 NameComponent/name = "meshes[0]-20"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -415,7 +402,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=30 name="meshes[0]-21" parent=8 uuid="fb0c085d6e38ed59e7f8eddae052609e"]
+[node id=29 name="meshes[0]-21" parent=7 uuid="fb0c085d6e38ed59e7f8eddae052609e"]
 NameComponent/name = "meshes[0]-21"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -429,7 +416,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=31 name="meshes[0]-22" parent=8 uuid="1522d9ddda5bdaef89d1bc5a7c714ef0"]
+[node id=30 name="meshes[0]-22" parent=7 uuid="1522d9ddda5bdaef89d1bc5a7c714ef0"]
 NameComponent/name = "meshes[0]-22"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -443,7 +430,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=32 name="meshes[0]-23" parent=8 uuid="155e9840b12e610d8a157e39275cd4d2"]
+[node id=31 name="meshes[0]-23" parent=7 uuid="155e9840b12e610d8a157e39275cd4d2"]
 NameComponent/name = "meshes[0]-23"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -457,7 +444,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=33 name="meshes[0]-24" parent=8 uuid="3094cc0655508d17ad4faa73fb7a80d8"]
+[node id=32 name="meshes[0]-24" parent=7 uuid="3094cc0655508d17ad4faa73fb7a80d8"]
 NameComponent/name = "meshes[0]-24"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -471,7 +458,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=34 name="meshes[0]-25" parent=8 uuid="c7f9284318adeb99d4ebce34bfdf5e5e"]
+[node id=33 name="meshes[0]-25" parent=7 uuid="c7f9284318adeb99d4ebce34bfdf5e5e"]
 NameComponent/name = "meshes[0]-25"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -485,7 +472,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=35 name="meshes[0]-26" parent=8 uuid="bfea587de686bf37dc993dfa6804b2b8"]
+[node id=34 name="meshes[0]-26" parent=7 uuid="bfea587de686bf37dc993dfa6804b2b8"]
 NameComponent/name = "meshes[0]-26"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -499,7 +486,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=36 name="meshes[0]-27" parent=8 uuid="bcc2de398d97483521b1b83ec3343bba"]
+[node id=35 name="meshes[0]-27" parent=7 uuid="bcc2de398d97483521b1b83ec3343bba"]
 NameComponent/name = "meshes[0]-27"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -513,7 +500,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=37 name="meshes[0]-28" parent=8 uuid="d8043c3739888f0fc4f0da009f0282d0"]
+[node id=36 name="meshes[0]-28" parent=7 uuid="d8043c3739888f0fc4f0da009f0282d0"]
 NameComponent/name = "meshes[0]-28"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -527,7 +514,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=38 name="meshes[0]-29" parent=8 uuid="12848658ec6347a98f7f602162683a2e"]
+[node id=37 name="meshes[0]-29" parent=7 uuid="12848658ec6347a98f7f602162683a2e"]
 NameComponent/name = "meshes[0]-29"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -541,7 +528,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=39 name="meshes[0]-30" parent=8 uuid="491139ec21d417a955c3dc4db4f90a2e"]
+[node id=38 name="meshes[0]-30" parent=7 uuid="491139ec21d417a955c3dc4db4f90a2e"]
 NameComponent/name = "meshes[0]-30"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -555,7 +542,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=40 name="meshes[0]-31" parent=8 uuid="334e0a8fc7e3870ba806ebe80ee9facc"]
+[node id=39 name="meshes[0]-31" parent=7 uuid="334e0a8fc7e3870ba806ebe80ee9facc"]
 NameComponent/name = "meshes[0]-31"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -569,7 +556,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=41 name="meshes[0]-32" parent=8 uuid="3d013ef6ef03ed31a1f22743618960b6"]
+[node id=40 name="meshes[0]-32" parent=7 uuid="3d013ef6ef03ed31a1f22743618960b6"]
 NameComponent/name = "meshes[0]-32"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -583,7 +570,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=42 name="meshes[0]-33" parent=8 uuid="b2f758df653f7d1f2fec3d58eb4df0a0"]
+[node id=41 name="meshes[0]-33" parent=7 uuid="b2f758df653f7d1f2fec3d58eb4df0a0"]
 NameComponent/name = "meshes[0]-33"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -597,7 +584,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=43 name="meshes[0]-34" parent=8 uuid="bd2a495e842aa14121d92cdbcaa09486"]
+[node id=42 name="meshes[0]-34" parent=7 uuid="bd2a495e842aa14121d92cdbcaa09486"]
 NameComponent/name = "meshes[0]-34"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -611,7 +598,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=44 name="meshes[0]-35" parent=8 uuid="13f131ead733168388e3d44f79580944"]
+[node id=43 name="meshes[0]-35" parent=7 uuid="13f131ead733168388e3d44f79580944"]
 NameComponent/name = "meshes[0]-35"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -625,7 +612,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=45 name="meshes[0]-36" parent=8 uuid="b5b2bace414a9e192aa15bab974091de"]
+[node id=44 name="meshes[0]-36" parent=7 uuid="b5b2bace414a9e192aa15bab974091de"]
 NameComponent/name = "meshes[0]-36"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -639,7 +626,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=46 name="meshes[0]-37" parent=8 uuid="ffc71468d2af36df9cbdf1d105dc2ae0"]
+[node id=45 name="meshes[0]-37" parent=7 uuid="ffc71468d2af36df9cbdf1d105dc2ae0"]
 NameComponent/name = "meshes[0]-37"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -653,7 +640,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=47 name="meshes[0]-38" parent=8 uuid="387612e31eed7019a56ef354b19fe3de"]
+[node id=46 name="meshes[0]-38" parent=7 uuid="387612e31eed7019a56ef354b19fe3de"]
 NameComponent/name = "meshes[0]-38"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -667,7 +654,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=48 name="meshes[0]-39" parent=8 uuid="2b2fb1810eddb22bb02454f941efa5ac"]
+[node id=47 name="meshes[0]-39" parent=7 uuid="2b2fb1810eddb22bb02454f941efa5ac"]
 NameComponent/name = "meshes[0]-39"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -681,7 +668,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=49 name="meshes[0]-40" parent=8 uuid="baed31f29f9d61f327e7d447312fd5f4"]
+[node id=48 name="meshes[0]-40" parent=7 uuid="baed31f29f9d61f327e7d447312fd5f4"]
 NameComponent/name = "meshes[0]-40"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -695,7 +682,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=50 name="meshes[0]-41" parent=8 uuid="6f90b64f032665856c43502b55a4d84a"]
+[node id=49 name="meshes[0]-41" parent=7 uuid="6f90b64f032665856c43502b55a4d84a"]
 NameComponent/name = "meshes[0]-41"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -709,7 +696,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=51 name="meshes[0]-42" parent=8 uuid="9caebc5a9c82a3f301a559df320897f4"]
+[node id=50 name="meshes[0]-42" parent=7 uuid="9caebc5a9c82a3f301a559df320897f4"]
 NameComponent/name = "meshes[0]-42"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -723,7 +710,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=52 name="meshes[0]-43" parent=8 uuid="a5e2bc89c483e9993a9159ee0a095c5e"]
+[node id=51 name="meshes[0]-43" parent=7 uuid="a5e2bc89c483e9993a9159ee0a095c5e"]
 NameComponent/name = "meshes[0]-43"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -737,7 +724,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=53 name="meshes[0]-44" parent=8 uuid="6fba660d2fdfeb4b6ca9006aa6ed5e8c"]
+[node id=52 name="meshes[0]-44" parent=7 uuid="6fba660d2fdfeb4b6ca9006aa6ed5e8c"]
 NameComponent/name = "meshes[0]-44"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -751,7 +738,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=54 name="meshes[0]-45" parent=8 uuid="459e64e927bd73d55a55014eaecfe61a"]
+[node id=53 name="meshes[0]-45" parent=7 uuid="459e64e927bd73d55a55014eaecfe61a"]
 NameComponent/name = "meshes[0]-45"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -765,7 +752,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=55 name="meshes[0]-46" parent=8 uuid="58cf20720422171b4585c5c64aab0adc"]
+[node id=54 name="meshes[0]-46" parent=7 uuid="58cf20720422171b4585c5c64aab0adc"]
 NameComponent/name = "meshes[0]-46"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -779,7 +766,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=56 name="meshes[0]-47" parent=8 uuid="d573f4b7e458bd81ca6091806a72b046"]
+[node id=55 name="meshes[0]-47" parent=7 uuid="d573f4b7e458bd81ca6091806a72b046"]
 NameComponent/name = "meshes[0]-47"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -793,7 +780,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=57 name="meshes[0]-48" parent=8 uuid="2115a738461360c3bdce4f0188b9d304"]
+[node id=56 name="meshes[0]-48" parent=7 uuid="2115a738461360c3bdce4f0188b9d304"]
 NameComponent/name = "meshes[0]-48"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -807,7 +794,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=58 name="meshes[0]-49" parent=8 uuid="13c3d74c5936e83588b0bf2dff545bba"]
+[node id=57 name="meshes[0]-49" parent=7 uuid="13c3d74c5936e83588b0bf2dff545bba"]
 NameComponent/name = "meshes[0]-49"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -821,7 +808,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=59 name="meshes[0]-50" parent=8 uuid="500f65aba6ec07594cc4008c29e17a9e"]
+[node id=58 name="meshes[0]-50" parent=7 uuid="500f65aba6ec07594cc4008c29e17a9e"]
 NameComponent/name = "meshes[0]-50"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -835,7 +822,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=60 name="meshes[0]-51" parent=8 uuid="1213f53ce84367538ec0913d6e49da94"]
+[node id=59 name="meshes[0]-51" parent=7 uuid="1213f53ce84367538ec0913d6e49da94"]
 NameComponent/name = "meshes[0]-51"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -849,7 +836,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=61 name="meshes[0]-52" parent=8 uuid="6a6f6d8ee9ecd151776408eb6c9e4496"]
+[node id=60 name="meshes[0]-52" parent=7 uuid="6a6f6d8ee9ecd151776408eb6c9e4496"]
 NameComponent/name = "meshes[0]-52"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -863,7 +850,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=62 name="meshes[0]-53" parent=8 uuid="6a2d452c13152b677726210c45b61e68"]
+[node id=61 name="meshes[0]-53" parent=7 uuid="6a2d452c13152b677726210c45b61e68"]
 NameComponent/name = "meshes[0]-53"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -877,7 +864,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=63 name="meshes[0]-54" parent=8 uuid="1d1815915178c20181ccf0e68712b5c6"]
+[node id=62 name="meshes[0]-54" parent=7 uuid="1d1815915178c20181ccf0e68712b5c6"]
 NameComponent/name = "meshes[0]-54"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -891,7 +878,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=64 name="meshes[0]-55" parent=8 uuid="85aca7548e15263b1aa74f25c0b619bc"]
+[node id=63 name="meshes[0]-55" parent=7 uuid="85aca7548e15263b1aa74f25c0b619bc"]
 NameComponent/name = "meshes[0]-55"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -905,7 +892,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=65 name="meshes[0]-56" parent=8 uuid="11eebb87c66c8dc98ee55af0081e800e"]
+[node id=64 name="meshes[0]-56" parent=7 uuid="11eebb87c66c8dc98ee55af0081e800e"]
 NameComponent/name = "meshes[0]-56"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -919,7 +906,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=66 name="meshes[0]-57" parent=8 uuid="150fb3cc1f56bc3789c452adb174afb8"]
+[node id=65 name="meshes[0]-57" parent=7 uuid="150fb3cc1f56bc3789c452adb174afb8"]
 NameComponent/name = "meshes[0]-57"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -933,7 +920,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=67 name="meshes[0]-58" parent=8 uuid="6787e3a7251661a9747c8290abb4d42e"]
+[node id=66 name="meshes[0]-58" parent=7 uuid="6787e3a7251661a9747c8290abb4d42e"]
 NameComponent/name = "meshes[0]-58"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -947,7 +934,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=68 name="meshes[0]-59" parent=8 uuid="2d008f8572357963b1f376f2e457ec64"]
+[node id=67 name="meshes[0]-59" parent=7 uuid="2d008f8572357963b1f376f2e457ec64"]
 NameComponent/name = "meshes[0]-59"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -961,7 +948,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=69 name="meshes[0]-60" parent=8 uuid="081cb42d9e0f7a1f94d7520a30bdeda0"]
+[node id=68 name="meshes[0]-60" parent=7 uuid="081cb42d9e0f7a1f94d7520a30bdeda0"]
 NameComponent/name = "meshes[0]-60"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -975,7 +962,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=70 name="meshes[0]-61" parent=8 uuid="92200c4527ce8d390ed4ea32aefc80be"]
+[node id=69 name="meshes[0]-61" parent=7 uuid="92200c4527ce8d390ed4ea32aefc80be"]
 NameComponent/name = "meshes[0]-61"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -989,7 +976,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=71 name="meshes[0]-62" parent=8 uuid="887361de00b37d3f1560045a57d9f080"]
+[node id=70 name="meshes[0]-62" parent=7 uuid="887361de00b37d3f1560045a57d9f080"]
 NameComponent/name = "meshes[0]-62"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1003,7 +990,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=72 name="meshes[0]-63" parent=8 uuid="9e2fab3a5a9e1b5d03244b3ffc2f0e62"]
+[node id=71 name="meshes[0]-63" parent=7 uuid="9e2fab3a5a9e1b5d03244b3ffc2f0e62"]
 NameComponent/name = "meshes[0]-63"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1017,7 +1004,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=73 name="meshes[0]-64" parent=8 uuid="54d0ffb70b67add74983e6834d65a018"]
+[node id=72 name="meshes[0]-64" parent=7 uuid="54d0ffb70b67add74983e6834d65a018"]
 NameComponent/name = "meshes[0]-64"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1031,7 +1018,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=74 name="meshes[0]-65" parent=8 uuid="0ab6181c79fdb81997aefe1ddc8fabde"]
+[node id=73 name="meshes[0]-65" parent=7 uuid="0ab6181c79fdb81997aefe1ddc8fabde"]
 NameComponent/name = "meshes[0]-65"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1045,7 +1032,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=75 name="meshes[0]-66" parent=8 uuid="68fb21390feb944775e9c50146e18788"]
+[node id=74 name="meshes[0]-66" parent=7 uuid="68fb21390feb944775e9c50146e18788"]
 NameComponent/name = "meshes[0]-66"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1059,7 +1046,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=76 name="meshes[0]-67" parent=8 uuid="122d92acbcdd99458f26738d13ef8c8a"]
+[node id=75 name="meshes[0]-67" parent=7 uuid="122d92acbcdd99458f26738d13ef8c8a"]
 NameComponent/name = "meshes[0]-67"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1073,7 +1060,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=77 name="meshes[0]-68" parent=8 uuid="3f7e712a75f4538f5c75150fd896c650"]
+[node id=76 name="meshes[0]-68" parent=7 uuid="3f7e712a75f4538f5c75150fd896c650"]
 NameComponent/name = "meshes[0]-68"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1087,7 +1074,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=78 name="meshes[0]-69" parent=8 uuid="1e40dcefa792d5698333b9482938486e"]
+[node id=77 name="meshes[0]-69" parent=7 uuid="1e40dcefa792d5698333b9482938486e"]
 NameComponent/name = "meshes[0]-69"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1101,7 +1088,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=79 name="meshes[0]-70" parent=8 uuid="e17cce16b02b3981fe77a86326a02c46"]
+[node id=78 name="meshes[0]-70" parent=7 uuid="e17cce16b02b3981fe77a86326a02c46"]
 NameComponent/name = "meshes[0]-70"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1115,7 +1102,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=80 name="meshes[0]-71" parent=8 uuid="3fd56735fcaa76635c8e0f025220e964"]
+[node id=79 name="meshes[0]-71" parent=7 uuid="3fd56735fcaa76635c8e0f025220e964"]
 NameComponent/name = "meshes[0]-71"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1129,7 +1116,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=81 name="meshes[0]-72" parent=8 uuid="78fb9c9e2b1fb8f965e8799badadacfe"]
+[node id=80 name="meshes[0]-72" parent=7 uuid="78fb9c9e2b1fb8f965e8799badadacfe"]
 NameComponent/name = "meshes[0]-72"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1143,7 +1130,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=82 name="meshes[0]-73" parent=8 uuid="d360f68777f12547c8139ff0de9a1888"]
+[node id=81 name="meshes[0]-73" parent=7 uuid="d360f68777f12547c8139ff0de9a1888"]
 NameComponent/name = "meshes[0]-73"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1157,7 +1144,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=83 name="meshes[0]-74" parent=8 uuid="7556095d869903f96a0eecdac83277fe"]
+[node id=82 name="meshes[0]-74" parent=7 uuid="7556095d869903f96a0eecdac83277fe"]
 NameComponent/name = "meshes[0]-74"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1171,7 +1158,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=84 name="meshes[0]-75" parent=8 uuid="71bbfd3dfff022fb6ea8993a569d16fc"]
+[node id=83 name="meshes[0]-75" parent=7 uuid="71bbfd3dfff022fb6ea8993a569d16fc"]
 NameComponent/name = "meshes[0]-75"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1185,7 +1172,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=85 name="meshes[0]-76" parent=8 uuid="2136983365ef4901be2d7e04e89c3cc6"]
+[node id=84 name="meshes[0]-76" parent=7 uuid="2136983365ef4901be2d7e04e89c3cc6"]
 NameComponent/name = "meshes[0]-76"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1199,7 +1186,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=86 name="meshes[0]-77" parent=8 uuid="4033b24ec75e4fc75d20542b096cc208"]
+[node id=85 name="meshes[0]-77" parent=7 uuid="4033b24ec75e4fc75d20542b096cc208"]
 NameComponent/name = "meshes[0]-77"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1213,7 +1200,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=87 name="meshes[0]-78" parent=8 uuid="0a83d76c899091119770becdcf3a84d6"]
+[node id=86 name="meshes[0]-78" parent=7 uuid="0a83d76c899091119770becdcf3a84d6"]
 NameComponent/name = "meshes[0]-78"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1227,7 +1214,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=88 name="meshes[0]-79" parent=8 uuid="6e6af9d45e81d3c373199ca5f00b4604"]
+[node id=87 name="meshes[0]-79" parent=7 uuid="6e6af9d45e81d3c373199ca5f00b4604"]
 NameComponent/name = "meshes[0]-79"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1241,7 +1228,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=89 name="meshes[0]-80" parent=8 uuid="de28af418f138a0bc2db5736c1b9fdcc"]
+[node id=88 name="meshes[0]-80" parent=7 uuid="de28af418f138a0bc2db5736c1b9fdcc"]
 NameComponent/name = "meshes[0]-80"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1255,7 +1242,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=90 name="meshes[0]-81" parent=8 uuid="f41b749de92c8a4de8c8119a6f5efd92"]
+[node id=89 name="meshes[0]-81" parent=7 uuid="f41b749de92c8a4de8c8119a6f5efd92"]
 NameComponent/name = "meshes[0]-81"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1269,7 +1256,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=91 name="meshes[0]-82" parent=8 uuid="5dfa85912c91b94b42e960e6a23bac8c"]
+[node id=90 name="meshes[0]-82" parent=7 uuid="5dfa85912c91b94b42e960e6a23bac8c"]
 NameComponent/name = "meshes[0]-82"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1283,7 +1270,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=92 name="meshes[0]-83" parent=8 uuid="e7fde1a8b650d331f4f68491187a46b6"]
+[node id=91 name="meshes[0]-83" parent=7 uuid="e7fde1a8b650d331f4f68491187a46b6"]
 NameComponent/name = "meshes[0]-83"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1297,7 +1284,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=93 name="meshes[0]-84" parent=8 uuid="becbd69c9e63198323b8bf9d30680c44"]
+[node id=92 name="meshes[0]-84" parent=7 uuid="becbd69c9e63198323b8bf9d30680c44"]
 NameComponent/name = "meshes[0]-84"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1311,7 +1298,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=94 name="meshes[0]-85" parent=8 uuid="68346c104b82eb1d752f0a698d085ea2"]
+[node id=93 name="meshes[0]-85" parent=7 uuid="68346c104b82eb1d752f0a698d085ea2"]
 NameComponent/name = "meshes[0]-85"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1325,7 +1312,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=95 name="meshes[0]-86" parent=8 uuid="aaca391a9a01657337badd1f3c8bd874"]
+[node id=94 name="meshes[0]-86" parent=7 uuid="aaca391a9a01657337badd1f3c8bd874"]
 NameComponent/name = "meshes[0]-86"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1339,7 +1326,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=96 name="meshes[0]-87" parent=8 uuid="60af5d80089784197da438f84e35f7de"]
+[node id=95 name="meshes[0]-87" parent=7 uuid="60af5d80089784197da438f84e35f7de"]
 NameComponent/name = "meshes[0]-87"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1353,7 +1340,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=97 name="meshes[0]-88" parent=8 uuid="d640d632d63c1e1bcb33b007785111dc"]
+[node id=96 name="meshes[0]-88" parent=7 uuid="d640d632d63c1e1bcb33b007785111dc"]
 NameComponent/name = "meshes[0]-88"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1367,7 +1354,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=98 name="meshes[0]-89" parent=8 uuid="e34a3d94e618381df83ad8e568b52ba2"]
+[node id=97 name="meshes[0]-89" parent=7 uuid="e34a3d94e618381df83ad8e568b52ba2"]
 NameComponent/name = "meshes[0]-89"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1381,7 +1368,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=99 name="meshes[0]-90" parent=8 uuid="d35162796a480831c80203feec457bb6"]
+[node id=98 name="meshes[0]-90" parent=7 uuid="d35162796a480831c80203feec457bb6"]
 NameComponent/name = "meshes[0]-90"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1395,7 +1382,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=100 name="meshes[0]-91" parent=8 uuid="dd2c358b82ee9a6bc1d8d0ecd59c8d6c"]
+[node id=99 name="meshes[0]-91" parent=7 uuid="dd2c358b82ee9a6bc1d8d0ecd59c8d6c"]
 NameComponent/name = "meshes[0]-91"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1409,7 +1396,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=101 name="meshes[0]-92" parent=8 uuid="18bbb4990c250af985a851e142a67efe"]
+[node id=100 name="meshes[0]-92" parent=7 uuid="18bbb4990c250af985a851e142a67efe"]
 NameComponent/name = "meshes[0]-92"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1423,7 +1410,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=102 name="meshes[0]-93" parent=8 uuid="bdcf2b7a4ae40edf2285caff8de902e0"]
+[node id=101 name="meshes[0]-93" parent=7 uuid="bdcf2b7a4ae40edf2285caff8de902e0"]
 NameComponent/name = "meshes[0]-93"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1437,7 +1424,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=103 name="meshes[0]-94" parent=8 uuid="477e3c46233dd1595476da33b54f449e"]
+[node id=102 name="meshes[0]-94" parent=7 uuid="477e3c46233dd1595476da33b54f449e"]
 NameComponent/name = "meshes[0]-94"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1451,7 +1438,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=104 name="meshes[0]-95" parent=8 uuid="70efa7fb2bff22d36de44e7ca28c1514"]
+[node id=103 name="meshes[0]-95" parent=7 uuid="70efa7fb2bff22d36de44e7ca28c1514"]
 NameComponent/name = "meshes[0]-95"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1465,7 +1452,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=105 name="meshes[0]-96" parent=8 uuid="608aa8d01835d5517d794da9be574896"]
+[node id=104 name="meshes[0]-96" parent=7 uuid="608aa8d01835d5517d794da9be574896"]
 NameComponent/name = "meshes[0]-96"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1479,7 +1466,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=106 name="meshes[0]-97" parent=8 uuid="c43b3f37ecf89aafd928270063928d30"]
+[node id=105 name="meshes[0]-97" parent=7 uuid="c43b3f37ecf89aafd928270063928d30"]
 NameComponent/name = "meshes[0]-97"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1493,7 +1480,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=107 name="meshes[0]-98" parent=8 uuid="76de5596f443d6c16b9530e35a494906"]
+[node id=106 name="meshes[0]-98" parent=7 uuid="76de5596f443d6c16b9530e35a494906"]
 NameComponent/name = "meshes[0]-98"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1507,7 +1494,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=108 name="meshes[0]-99" parent=8 uuid="95db6bb255b2d6bb0a880a87f8d8493c"]
+[node id=107 name="meshes[0]-99" parent=7 uuid="95db6bb255b2d6bb0a880a87f8d8493c"]
 NameComponent/name = "meshes[0]-99"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1521,7 +1508,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=109 name="meshes[0]-100" parent=8 uuid="bd2254ecbcb32bb921d1314d13d81e3e"]
+[node id=108 name="meshes[0]-100" parent=7 uuid="bd2254ecbcb32bb921d1314d13d81e3e"]
 NameComponent/name = "meshes[0]-100"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1535,7 +1522,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=110 name="meshes[0]-101" parent=8 uuid="6a6cd7e08a878dc97767be59cc05800e"]
+[node id=109 name="meshes[0]-101" parent=7 uuid="6a6cd7e08a878dc97767be59cc05800e"]
 NameComponent/name = "meshes[0]-101"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true
@@ -1549,7 +1536,7 @@ MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = ""
 
-[node id=111 name="meshes[0]-102" parent=8 uuid="7e8e01e3dd98a7996346e45473329a5e"]
+[node id=110 name="meshes[0]-102" parent=7 uuid="7e8e01e3dd98a7996346e45473329a5e"]
 NameComponent/name = "meshes[0]-102"
 EntityStatusComponent/active = true
 EntityStatusComponent/visible = true

@@ -1,0 +1,35 @@
+[vscn]
+version = 1
+root    = 0
+
+[node id=1 name="Camera" parent=0 uuid="c6bc8d4f5014817f62754b7bf55655f0"]
+NameComponent/name = "Camera"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-0.228212, 1.17197, 2.22333)
+TransformComponent/rotation = (-0.222097, -0.0336899, -0.00767892, 0.974412)
+TransformComponent/scale = (1, 1, 1)
+CameraComponent/primary = true
+CameraComponent/projection = 0
+CameraComponent/fovYDegrees = 60.000000
+CameraComponent/orthographicHeight = 10.000000
+CameraComponent/zNear = 0.100000
+CameraComponent/zFar = 1000.000000
+CameraComponent/clearMode = 0
+CameraComponent/clearColor = (0.02, 0.025, 0.035, 1)
+CameraComponent/priority = 0
+CameraComponent/rendererKey = "universal"
+
+[node id=2 name="hornedlizard" parent=0 uuid="b48c8cf93b6ab2d909ffc56c3150b352"]
+NameComponent/name = "hornedlizard"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+GaussianSplatComponent/gaussianSplat = "3acfb36237062821a78452d799871ba6"
+
