@@ -3,8 +3,10 @@
 #include "vultra/core/base/api.hpp"
 #include "vultra/core/engine/engine_feature.hpp"
 #include "vultra/core/engine/engine_subsystem.hpp"
+#include "vultra/function/rendering/runtime_profiler.hpp"
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
 namespace vultra
@@ -32,33 +34,74 @@ namespace vultra
 
         void tickFrame(fsec dt)
         {
+            RuntimeProfiler::ExternalScope frameScope {"FramePipeline::tickFrame"};
+            auto subsystemLabel = [](const char* phase, EngineSubsystem* subsystem) {
+                return std::string("FramePipeline::") + phase + "/" + (subsystem ? subsystem->name() : "<null>");
+            };
+
             // Update phases
-            for (auto* s : m_Subsystems)
-                s->onPreUpdate(dt);
-            for (auto* s : m_Subsystems)
-                s->onUpdate(dt);
-            for (auto* s : m_Subsystems)
-                s->onPhysics(dt);
-            for (auto* s : m_Subsystems)
-                s->onPostUpdate(dt);
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::PreUpdate"};
+                for (auto* s : m_Subsystems)
+                    s->onPreUpdate(dt);
+            }
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::Update"};
+                for (auto* s : m_Subsystems)
+                {
+                    RuntimeProfiler::ExternalScope scope {subsystemLabel("Update", s)};
+                    s->onUpdate(dt);
+                }
+            }
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::Physics"};
+                for (auto* s : m_Subsystems)
+                    s->onPhysics(dt);
+            }
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::PostUpdate"};
+                for (auto* s : m_Subsystems)
+                    s->onPostUpdate(dt);
+            }
 
             // Feature frame begin
-            for (auto* f : m_Features)
-                f->onBeginFrame();
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::FeatureBeginFrame"};
+                for (auto* f : m_Features)
+                    f->onBeginFrame();
+            }
 
             // Render phases
-            for (auto* s : m_Subsystems)
-                s->onPreRender();
-            for (auto* s : m_Subsystems)
-                s->onRender();
-            for (auto* s : m_Subsystems)
-                s->onPostRender();
-            for (auto* s : m_Subsystems)
-                s->onPresent();
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::PreRender"};
+                for (auto* s : m_Subsystems)
+                    s->onPreRender();
+            }
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::Render"};
+                for (auto* s : m_Subsystems)
+                {
+                    RuntimeProfiler::ExternalScope scope {subsystemLabel("Render", s)};
+                    s->onRender();
+                }
+            }
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::PostRender"};
+                for (auto* s : m_Subsystems)
+                    s->onPostRender();
+            }
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::Present"};
+                for (auto* s : m_Subsystems)
+                    s->onPresent();
+            }
 
             // Feature frame end
-            for (auto* f : m_Features)
-                f->onEndFrame();
+            {
+                RuntimeProfiler::ExternalScope phaseScope {"FramePipeline::FeatureEndFrame"};
+                for (auto* f : m_Features)
+                    f->onEndFrame();
+            }
         }
 
     private:

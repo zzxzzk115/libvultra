@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace vultra
 {
@@ -44,6 +45,11 @@ namespace vultra
             virtual void onMemoryAllocated(RenderMemoryKind kind, uint64_t bytes) = 0;
             virtual void onMemoryFreed(RenderMemoryKind kind, uint64_t bytes)     = 0;
             [[nodiscard]] virtual RenderDeviceMemoryStats getMemoryStats() const  = 0;
+            [[nodiscard]] virtual RenderDeviceMemoryBudget getMemoryBudget() const = 0;
+            virtual void onMemoryResourceAllocated(RenderMemoryResourceDesc desc) = 0;
+            virtual void onMemoryResourceFreed(uint64_t id) = 0;
+            virtual void updateMemoryResource(uint64_t id, std::string label, std::string details = {}) = 0;
+            [[nodiscard]] virtual std::vector<RenderMemoryResourceDesc> getMemoryResources() const = 0;
 
             [[nodiscard]] virtual std::array<float, 2> getLineWidthRange() const { return {1.0f, 1.0f}; }
             [[nodiscard]] virtual float                getMaxSamplerAnisotropy() const { return 1.0f; }

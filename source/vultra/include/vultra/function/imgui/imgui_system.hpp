@@ -9,7 +9,9 @@
 #include <magic_enum/magic_enum.hpp>
 // NOLINTEND
 
+#include <cstdint>
 #include <functional>
+#include <vector>
 
 namespace vultra
 {
@@ -43,10 +45,20 @@ namespace vultra
 
         static void setImGuiStyle();
 
+        void collectRetiredTextures(bool force = false);
+
     private:
+        struct RetiredTexture
+        {
+            std::uintptr_t backendTextureId {0};
+            uint64_t       releaseFrame {0};
+        };
+
         static std::function<void(ImGuiDockNodeFlags)> s_SetDockSpace;
         os::Window::Extent m_LastDisplayExtent {0, 0};
         os::Window::Extent m_LastFramebufferExtent {0, 0};
         bool               m_DisplayMetricsInitialized {false};
+        uint64_t           m_PostRenderFrame {0};
+        std::vector<RetiredTexture> m_RetiredTextures;
     };
 } // namespace vultra

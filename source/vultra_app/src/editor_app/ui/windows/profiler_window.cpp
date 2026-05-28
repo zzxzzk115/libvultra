@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include <implot/implot.h>
 #include <vultra/function/rendering/runtime_profiler.hpp>
+#include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 
 #include <algorithm>
@@ -35,25 +36,107 @@ namespace vultra_app
             return buffer;
         }
 
-        void drawScopeRows(const std::vector<vultra::RuntimeProfiler::ScopeNode>& nodes, const bool gpu)
+        double scopeTotalMs(const vultra::RuntimeProfiler::ScopeNode& node, const bool gpu)
         {
-            for (const auto& node : nodes)
+            return gpu && node.gpuTotalMs >= 0.0 ? node.gpuTotalMs : node.totalMs;
+        }
+
+        double scopeSelfMs(const vultra::RuntimeProfiler::ScopeNode& node, const bool gpu)
+        {
+            return gpu && node.gpuSelfMs >= 0.0 ? node.gpuSelfMs : node.selfMs;
+        }
+
+        int compareScopeNodes(const vultra::RuntimeProfiler::ScopeNode& lhs,
+                              const vultra::RuntimeProfiler::ScopeNode& rhs,
+                              const int                                column,
+                              const bool                               gpu)
+        {
+            switch (column)
             {
-                ImGui::TableNextRow();
-                ImGui::TableNextColumn();
-                ImGui::Indent(static_cast<float>(node.depth) * 12.0f);
-                ImGui::TextUnformatted(node.name.c_str());
-                ImGui::Unindent(static_cast<float>(node.depth) * 12.0f);
-
-                ImGui::TableNextColumn();
-                ImGui::Text("%.3f", gpu && node.gpuTotalMs >= 0.0 ? node.gpuTotalMs : node.totalMs);
-
-                ImGui::TableNextColumn();
-                ImGui::Text("%.3f", gpu && node.gpuSelfMs >= 0.0 ? node.gpuSelfMs : node.selfMs);
-
-                ImGui::TableNextColumn();
-                ImGui::Text("%u", node.callCount);
+                case 0:
+                    return lhs.name.compare(rhs.name);
+                case 1:
+                {
+                    const double a = scopeTotalMs(lhs, gpu);
+                    const double b = scopeTotalMs(rhs, gpu);
+                    return a == b ? 0 : (a < b ? -1 : 1);
+                }
+                case 2:
+                {
+                    const double a = scopeSelfMs(lhs, gpu);
+                    const double b = scopeSelfMs(rhs, gpu);
+                    return a == b ? 0 : (a < b ? -1 : 1);
+                }
+                case 3:
+                    return lhs.callCount == rhs.callCount ? 0 : (lhs.callCount < rhs.callCount ? -1 : 1);
+                default:
+                    return 0;
             }
+        }
+
+        void drawScopeRow(const vultra::RuntimeProfiler::ScopeNode& node, const bool gpu)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::Indent(static_cast<float>(node.depth) * 12.0f);
+            ImGui::TextUnformatted(node.name.c_str());
+            ImGui::Unindent(static_cast<float>(node.depth) * 12.0f);
+
+            ImGui::TableNextColumn();
+            ImGui::Text("%.3f", scopeTotalMs(node, gpu));
+
+            ImGui::TableNextColumn();
+            ImGui::Text("%.3f", scopeSelfMs(node, gpu));
+
+            ImGui::TableNextColumn();
+            ImGui::Text("%u", node.callCount);
+        }
+
+        void drawScopeRowsSorted(const std::vector<vultra::RuntimeProfiler::ScopeNode>& nodes, const bool gpu)
+        {
+            if (nodes.empty())
+                return;
+
+            ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs();
+            const bool           hasSort   = sortSpecs && sortSpecs->SpecsCount > 0;
+            const int            sortColumn = hasSort ? sortSpecs->Specs[0].ColumnIndex : 1;
+            const bool           descending =
+                !hasSort || sortSpecs->Specs[0].SortDirection == ImGuiSortDirection_Descending;
+
+            std::vector<std::vector<size_t>> children(nodes.size());
+            std::vector<size_t>              roots;
+            for (size_t i = 0; i < nodes.size(); ++i)
+            {
+                const int32_t parent = nodes[i].parent;
+                if (parent >= 0 && static_cast<size_t>(parent) < nodes.size())
+                    children[static_cast<size_t>(parent)].push_back(i);
+                else
+                    roots.push_back(i);
+            }
+
+            auto sortIndices = [&](std::vector<size_t>& indices) {
+                std::stable_sort(indices.begin(), indices.end(), [&](const size_t lhsIndex, const size_t rhsIndex) {
+                    const auto& lhs = nodes[lhsIndex];
+                    const auto& rhs = nodes[rhsIndex];
+                    int         cmp = compareScopeNodes(lhs, rhs, sortColumn, gpu);
+                    if (cmp == 0)
+                        cmp = lhs.name.compare(rhs.name);
+                    return descending ? cmp > 0 : cmp < 0;
+                });
+            };
+
+            sortIndices(roots);
+            for (auto& group : children)
+                sortIndices(group);
+
+            auto drawTree = [&](auto&& self, const size_t index) -> void {
+                drawScopeRow(nodes[index], gpu);
+                for (const size_t child : children[index])
+                    self(self, child);
+            };
+
+            for (const size_t root : roots)
+                drawTree(drawTree, root);
         }
 
         void drawFrameTimesPlot(const std::vector<vultra::RuntimeProfiler::FrameStats>& history)
@@ -101,6 +184,139 @@ namespace vultra_app
                     ImPlot::PlotLine("GPU", x.data(), gpu.data(), static_cast<int>(gpu.size()));
                 ImPlot::EndPlot();
             }
+        }
+
+        const char* resourceTypeLabel(const vultra::rhi::RenderMemoryResourceType type)
+        {
+            switch (type)
+            {
+                case vultra::rhi::RenderMemoryResourceType::eBuffer:
+                    return "Buffer";
+                case vultra::rhi::RenderMemoryResourceType::eTexture:
+                    return "Texture";
+            }
+            return "Resource";
+        }
+
+        const char* resourceKindLabel(const vultra::rhi::RenderMemoryKind kind)
+        {
+            switch (kind)
+            {
+                case vultra::rhi::RenderMemoryKind::eCpuCache:
+                    return "CPU";
+                case vultra::rhi::RenderMemoryKind::eGpuDeviceLocal:
+                    return "GPU local";
+                case vultra::rhi::RenderMemoryKind::eGpuHostVisible:
+                    return "Host visible";
+            }
+            return "Memory";
+        }
+
+        void drawMemoryResourcesTable(std::vector<vultra::rhi::RenderMemoryResourceDesc> resources)
+        {
+            std::sort(resources.begin(), resources.end(), [](const auto& a, const auto& b) {
+                if (a.bytes != b.bytes)
+                    return a.bytes > b.bytes;
+                return a.label < b.label;
+            });
+
+            uint64_t textureBytes = 0;
+            uint64_t bufferBytes  = 0;
+            for (const auto& resource : resources)
+            {
+                if (resource.type == vultra::rhi::RenderMemoryResourceType::eTexture)
+                    textureBytes += resource.bytes;
+                else
+                    bufferBytes += resource.bytes;
+            }
+
+            ImGui::Text("Tracked resources: %zu", resources.size());
+            ImGui::SameLine(0.0f, 16.0f);
+            ImGui::Text("Textures %s", formatBytes(textureBytes).c_str());
+            ImGui::SameLine(0.0f, 16.0f);
+            ImGui::Text("Buffers %s", formatBytes(bufferBytes).c_str());
+
+            constexpr ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+                                              ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY |
+                                              ImGuiTableFlags_Sortable;
+            if (ImGui::BeginTable("##ProfilerMemoryResources", 5, flags, ImVec2(0.0f, 0.0f)))
+            {
+                ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_WidthFixed, 96.0f);
+                ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed, 96.0f);
+                ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupScrollFreeze(0, 1);
+                ImGui::TableHeadersRow();
+
+                if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs(); sortSpecs && sortSpecs->SpecsCount > 0)
+                {
+                    const auto& spec = sortSpecs->Specs[0];
+                    std::sort(resources.begin(), resources.end(), [&](const auto& a, const auto& b) {
+                        int cmp = 0;
+                        switch (spec.ColumnIndex)
+                        {
+                            case 0:
+                                cmp = a.bytes == b.bytes ? 0 : (a.bytes < b.bytes ? -1 : 1);
+                                break;
+                            case 1:
+                                cmp = std::string(resourceTypeLabel(a.type)).compare(resourceTypeLabel(b.type));
+                                break;
+                            case 2:
+                                cmp = std::string(resourceKindLabel(a.kind)).compare(resourceKindLabel(b.kind));
+                                break;
+                            case 3:
+                                cmp = a.label.compare(b.label);
+                                break;
+                            case 4:
+                                cmp = a.details.compare(b.details);
+                                break;
+                        }
+                        if (cmp == 0)
+                            cmp = a.label.compare(b.label);
+                        return spec.SortDirection == ImGuiSortDirection_Descending ? cmp > 0 : cmp < 0;
+                    });
+                }
+
+                for (const auto& resource : resources)
+                {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(formatBytes(resource.bytes).c_str());
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(resourceTypeLabel(resource.type));
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(resourceKindLabel(resource.kind));
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(resource.label.c_str());
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(resource.details.c_str());
+                }
+                ImGui::EndTable();
+            }
+        }
+
+        void drawMemoryBudget(const vultra::rhi::RenderDeviceMemoryBudget& budget)
+        {
+            if (budget.available && budget.deviceLocalBudgetBytes > 0u)
+            {
+                const double usageRatio =
+                    static_cast<double>(budget.deviceLocalUsageBytes) /
+                    static_cast<double>(budget.deviceLocalBudgetBytes);
+                ImGui::Text("VRAM budget %s / %s",
+                            formatBytes(budget.deviceLocalUsageBytes).c_str(),
+                            formatBytes(budget.deviceLocalBudgetBytes).c_str());
+                ImGui::SameLine(0.0f, 16.0f);
+                ImGui::Text("Available %s", formatBytes(budget.deviceLocalAvailableBytes).c_str());
+                ImGui::ProgressBar(static_cast<float>(std::clamp(usageRatio, 0.0, 1.0)), ImVec2(-1.0f, 0.0f));
+                if (usageRatio >= 0.90)
+                    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f), "VRAM budget is close to exhaustion.");
+                return;
+            }
+
+            if (budget.deviceLocalHeapBytes > 0u)
+                ImGui::Text("VRAM heap %s", formatBytes(budget.deviceLocalHeapBytes).c_str());
+            ImGui::TextDisabled("Runtime VRAM budget is unavailable on this backend/device.");
         }
     } // namespace
 
@@ -186,14 +402,17 @@ namespace vultra_app
             {
                 if (ImGui::BeginTable("##ProfilerCpuTable",
                                       4,
-                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
+                                          ImGuiTableFlags_Sortable))
                 {
-                    ImGui::TableSetupColumn("Scope");
-                    ImGui::TableSetupColumn("Total ms");
-                    ImGui::TableSetupColumn("Self ms");
-                    ImGui::TableSetupColumn("Calls");
+                    ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Total ms",
+                                            ImGuiTableColumnFlags_DefaultSort |
+                                                ImGuiTableColumnFlags_PreferSortDescending);
+                    ImGui::TableSetupColumn("Self ms", ImGuiTableColumnFlags_PreferSortDescending);
+                    ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_PreferSortDescending);
                     ImGui::TableHeadersRow();
-                    drawScopeRows(frame->cpuScopeTree, false);
+                    drawScopeRowsSorted(frame->cpuScopeTree, false);
                     ImGui::EndTable();
                 }
                 ImGui::EndTabItem();
@@ -203,15 +422,36 @@ namespace vultra_app
             {
                 if (ImGui::BeginTable("##ProfilerGpuTable",
                                       4,
-                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+                                      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
+                                          ImGuiTableFlags_Sortable))
                 {
-                    ImGui::TableSetupColumn("Scope");
-                    ImGui::TableSetupColumn("Total ms");
-                    ImGui::TableSetupColumn("Self ms");
-                    ImGui::TableSetupColumn("Calls");
+                    ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Total ms",
+                                            ImGuiTableColumnFlags_DefaultSort |
+                                                ImGuiTableColumnFlags_PreferSortDescending);
+                    ImGui::TableSetupColumn("Self ms", ImGuiTableColumnFlags_PreferSortDescending);
+                    ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_PreferSortDescending);
                     ImGui::TableHeadersRow();
-                    drawScopeRows(frame->gpuScopeTree, true);
+                    drawScopeRowsSorted(frame->gpuScopeTree, true);
                     ImGui::EndTable();
+                }
+                ImGui::EndTabItem();
+            }
+
+            if (ImGui::BeginTabItem("Memory"))
+            {
+                auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+                if (!backendService)
+                {
+                    ImGui::TextDisabled("Render backend is unavailable.");
+                }
+                else
+                {
+                    const auto budget    = backendService->renderDevice().getMemoryBudget();
+                    auto       resources = backendService->renderDevice().getMemoryResources();
+                    drawMemoryBudget(budget);
+                    ImGui::Separator();
+                    drawMemoryResourcesTable(std::move(resources));
                 }
                 ImGui::EndTabItem();
             }

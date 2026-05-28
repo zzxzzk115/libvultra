@@ -98,7 +98,25 @@ namespace vultra
             bool             m_Active {false};
         };
 
+        class ExternalScope
+        {
+        public:
+            explicit ExternalScope(std::string_view name);
+            ExternalScope(const ExternalScope&)            = delete;
+            ExternalScope& operator=(const ExternalScope&) = delete;
+            ~ExternalScope();
+
+        private:
+            RuntimeProfiler*   m_Profiler {nullptr};
+            std::string        m_Name;
+            std::chrono::steady_clock::time_point m_Start;
+            uint32_t           m_Depth {0};
+        };
+
     public:
+        static RuntimeProfiler* externalSink();
+        static void             setExternalSink(RuntimeProfiler* profiler);
+
         void setEnabled(bool enabled);
         [[nodiscard]] bool isEnabled() const { return m_Enabled; }
 
@@ -111,6 +129,7 @@ namespace vultra
         void               endScope();
         void               endScope(ScopeDomain domain);
         void               endGpuScope() { endScope(ScopeDomain::eGpu); }
+        void               addExternalCpuScope(std::string_view name, double totalMs, double selfMs, uint32_t depth = 1);
 
         void setCpuRenderMs(double ms) { m_Working.cpuRenderMs = ms; }
         void setGpuFrameMs(double ms) { m_Working.gpuFrameMs = ms; }
@@ -187,6 +206,14 @@ namespace vultra
             uint32_t    nodeIndex {0};
             uint64_t    token {0};
         };
+        struct ExternalCpuScope
+        {
+            std::string name;
+            double      totalMs {0.0};
+            double      selfMs {0.0};
+            uint32_t    callCount {0};
+            uint32_t    depth {1};
+        };
 
         void clearWorkingFrame();
         void finalizeTree();
@@ -210,6 +237,7 @@ namespace vultra
         size_t                  m_MaxHistoryFrames {240};
         int                     m_FrozenHistoryIndex {-1};
         std::deque<PendingGpuRecord> m_PendingGpuRecords;
+        std::vector<ExternalCpuScope> m_ExternalCpuScopes;
 
         std::function<uint64_t()>      m_GpuScopeBeginCb;
         std::function<void(uint64_t)>  m_GpuScopeEndCb;

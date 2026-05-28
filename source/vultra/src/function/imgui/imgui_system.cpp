@@ -5,6 +5,7 @@
 #include "vultra/core/rhi/texture.hpp"
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/function/imgui/imgui_theme.hpp"
+#include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #if defined(__ANDROID__)
 #include "vultra/platform/android/android_native_window.hpp"
@@ -143,6 +144,7 @@ namespace vultra
     void ImGuiSystem::onShutdown()
     {
         VULTRA_CORE_INFO("[ImGuiSystem] Shutting down");
+        collectRetiredTextures(true);
         ctx().services.require<IRenderBackendService>().imguiBackend().shutdown(
             ctx().config.writableRoot, ctx().config.imgui.imguiIniFile.c_str());
         shutdownImGui(ctx().config.writableRoot, ctx().config.imgui.imguiIniFile.c_str());
@@ -150,6 +152,7 @@ namespace vultra
 
     void ImGuiSystem::begin()
     {
+        RuntimeProfiler::ExternalScope perf {"ImGuiSystem::begin"};
         auto& window               = ctx().services.require<IWindowService>().window();
         auto& renderBackendService = ctx().services.require<IRenderBackendService>();
         renderBackendService.imguiBackend().beginFrame(window);
@@ -186,6 +189,7 @@ namespace vultra
 
     void ImGuiSystem::render(rhi::CommandBuffer& cb, const rhi::FramebufferInfo& framebufferInfo)
     {
+        RuntimeProfiler::ExternalScope perf {"ImGuiSystem::render"};
         RHI_GPU_ZONE(cb, "ImGuiRenderer::render");
 
         auto&                renderBackendService = ctx().services.require<IRenderBackendService>();
@@ -218,7 +222,13 @@ namespace vultra
 
     void ImGuiSystem::end() {}
 
-    void ImGuiSystem::postRender() { ctx().services.require<IRenderBackendService>().imguiBackend().postRender(); }
+    void ImGuiSystem::postRender()
+    {
+        RuntimeProfiler::ExternalScope perf {"ImGuiSystem::postRender"};
+        ctx().services.require<IRenderBackendService>().imguiBackend().postRender();
+        ++m_PostRenderFrame;
+        collectRetiredTextures();
+    }
 
     IImGuiService::TextureID ImGuiSystem::addTexture(const rhi::Texture& texture, rhi::Sampler sampler)
     {
@@ -233,10 +243,37 @@ namespace vultra
         if (!textureID)
             return;
 
-        auto& renderBackendService = ctx().services.require<IRenderBackendService>();
-        auto  backendTextureId     = fromImGuiTextureId(textureID);
-        renderBackendService.imguiBackend().removeTexture(backendTextureId);
+        constexpr uint64_t kDescriptorReleaseDelayFrames = 4u;
+        const auto         backendTextureId              = fromImGuiTextureId(textureID);
+        m_RetiredTextures.push_back(RetiredTexture {
+            .backendTextureId = backendTextureId,
+            .releaseFrame     = m_PostRenderFrame + kDescriptorReleaseDelayFrames,
+        });
         textureID = 0;
+    }
+
+    void ImGuiSystem::collectRetiredTextures(const bool force)
+    {
+        RuntimeProfiler::ExternalScope perf {"ImGuiSystem::collectRetiredTextures"};
+        if (m_RetiredTextures.empty())
+            return;
+
+        auto& renderBackendService = ctx().services.require<IRenderBackendService>();
+        auto& backend              = renderBackendService.imguiBackend();
+
+        std::size_t out = 0;
+        for (auto& retired : m_RetiredTextures)
+        {
+            if (force || m_PostRenderFrame >= retired.releaseFrame)
+            {
+                backend.removeTexture(retired.backendTextureId);
+            }
+            else
+            {
+                m_RetiredTextures[out++] = retired;
+            }
+        }
+        m_RetiredTextures.resize(out);
     }
 
     void ImGuiSystem::processEvent(const os::GeneralWindowEvent& event)

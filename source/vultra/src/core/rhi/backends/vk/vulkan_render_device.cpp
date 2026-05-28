@@ -476,6 +476,44 @@ namespace vultra
             return token;
         }
 
+        RenderDeviceMemoryBudget VulkanRenderDevice::getMemoryBudget() const
+        {
+            RenderDeviceMemoryBudget out {};
+            if (!m_PhysicalDevice)
+                return out;
+
+            const auto memoryProperties = m_PhysicalDevice.getMemoryProperties();
+            for (uint32_t heapIndex = 0u; heapIndex < memoryProperties.memoryHeapCount; ++heapIndex)
+            {
+                const auto& heap = memoryProperties.memoryHeaps[heapIndex];
+                if (static_cast<bool>(heap.flags & vk::MemoryHeapFlagBits::eDeviceLocal))
+                    out.deviceLocalHeapBytes += heap.size;
+            }
+
+            if (!m_MemoryAllocator || m_SupportedExtensions.count(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0u)
+                return out;
+
+            VmaBudget budgets[VK_MAX_MEMORY_HEAPS] {};
+            vmaGetHeapBudgets(static_cast<VmaAllocator>(m_MemoryAllocator), budgets);
+
+            out.available = true;
+            for (uint32_t heapIndex = 0u; heapIndex < memoryProperties.memoryHeapCount; ++heapIndex)
+            {
+                const auto& heap = memoryProperties.memoryHeaps[heapIndex];
+                if (!static_cast<bool>(heap.flags & vk::MemoryHeapFlagBits::eDeviceLocal))
+                    continue;
+
+                const auto& budget = budgets[heapIndex];
+                out.deviceLocalBudgetBytes += budget.budget;
+                out.deviceLocalUsageBytes += budget.usage;
+            }
+            out.deviceLocalAvailableBytes =
+                out.deviceLocalBudgetBytes > out.deviceLocalUsageBytes ?
+                    out.deviceLocalBudgetBytes - out.deviceLocalUsageBytes :
+                    0u;
+            return out;
+        }
+
         void VulkanRenderDevice::endScopeGpuQuery(const std::uintptr_t commandBufferHandle, const uint64_t scopeToken)
         {
             if (!m_Device || commandBufferHandle == 0 || !m_ScopeTimeQueryPool || scopeToken == 0)
@@ -1193,6 +1231,8 @@ namespace vultra
 
             // NVIDIA's vk_gaussian_splatting sorter backend (vrdx) uses push descriptors.
             extensions.push_back(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
+            if (backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) > 0u)
+                extensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
 
             // === Feature structs ===
             vk::PhysicalDeviceFeatures2        deviceFeatures2 {};
@@ -1445,6 +1485,10 @@ namespace vultra
                               RenderDeviceFeatureReportFlagBits::eBufferDeviceAddress))
             {
                 allocatorInfo.flags |= vma::AllocatorCreateFlagBits::eBufferDeviceAddress;
+            }
+            if (backendOf(m_Backend).m_SupportedExtensions.count(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) > 0u)
+            {
+                allocatorInfo.flags |= vma::AllocatorCreateFlagBits::eExtMemoryBudget;
             }
 
             vma::Allocator allocator;

@@ -5,7 +5,10 @@
 #include <atomic>
 #include <cstdint>
 #include <format>
+#include <mutex>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace vultra
 {
@@ -111,6 +114,31 @@ namespace vultra
             uint64_t gpuHostVisibleBytes {0};
         };
 
+        struct RenderDeviceMemoryBudget
+        {
+            bool     available {false};
+            uint64_t deviceLocalBudgetBytes {0};
+            uint64_t deviceLocalUsageBytes {0};
+            uint64_t deviceLocalAvailableBytes {0};
+            uint64_t deviceLocalHeapBytes {0};
+        };
+
+        enum class RenderMemoryResourceType : uint8_t
+        {
+            eBuffer = 0,
+            eTexture,
+        };
+
+        struct RenderMemoryResourceDesc
+        {
+            uint64_t                 id {0};
+            RenderMemoryResourceType type {RenderMemoryResourceType::eBuffer};
+            RenderMemoryKind         kind {RenderMemoryKind::eGpuDeviceLocal};
+            uint64_t                 bytes {0};
+            std::string              label;
+            std::string              details;
+        };
+
         class RenderDeviceMemoryTracker
         {
         public:
@@ -155,10 +183,58 @@ namespace vultra
                 };
             }
 
+            void addResource(RenderMemoryResourceDesc desc)
+            {
+                if (desc.id == 0u || desc.bytes == 0u)
+                    return;
+
+                std::scoped_lock lock(m_ResourcesMutex);
+                m_Resources[desc.id] = std::move(desc);
+            }
+
+            void removeResource(uint64_t id)
+            {
+                if (id == 0u)
+                    return;
+
+                std::scoped_lock lock(m_ResourcesMutex);
+                m_Resources.erase(id);
+            }
+
+            void updateResource(uint64_t id, std::string label, std::string details = {})
+            {
+                if (id == 0u)
+                    return;
+
+                std::scoped_lock lock(m_ResourcesMutex);
+                auto it = m_Resources.find(id);
+                if (it == m_Resources.end())
+                    return;
+                if (!label.empty())
+                    it->second.label = std::move(label);
+                if (!details.empty())
+                    it->second.details = std::move(details);
+            }
+
+            [[nodiscard]] std::vector<RenderMemoryResourceDesc> resourceSnapshot() const
+            {
+                std::scoped_lock lock(m_ResourcesMutex);
+                std::vector<RenderMemoryResourceDesc> out;
+                out.reserve(m_Resources.size());
+                for (const auto& [_, resource] : m_Resources)
+                {
+                    (void)_;
+                    out.push_back(resource);
+                }
+                return out;
+            }
+
         private:
             std::atomic<uint64_t> m_CpuCacheBytes {0};
             std::atomic<uint64_t> m_GpuDeviceLocalBytes {0};
             std::atomic<uint64_t> m_GpuHostVisibleBytes {0};
+            mutable std::mutex    m_ResourcesMutex;
+            std::unordered_map<uint64_t, RenderMemoryResourceDesc> m_Resources;
         };
 
         struct PhysicalDeviceInfo

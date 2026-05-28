@@ -1959,6 +1959,7 @@ namespace vultra
 
         auto& rd = backendService.renderDevice();
 
+        RuntimeProfiler::setExternalSink(&m_RuntimeProfiler);
         if (m_PendingRenderPipelineReload)
         {
             if (m_PendingRenderPipelineAsset.empty())
@@ -1969,7 +1970,8 @@ namespace vultra
 
         m_RuntimeProfiler.beginFrame(m_FrameCounter);
         m_LastFrameGraphSnapshot.clear();
-        m_FrameGraphDebugTextures.clear();
+        if (m_FrameGraphTextureCaptureEnabled)
+            m_FrameGraphDebugTextures.clear();
         {
             constexpr uint64_t kDebugTextureReleaseDelayFrames = 8u;
             std::size_t        out                             = 0;
@@ -1999,7 +2001,9 @@ namespace vultra
 
         auto&                  cb = backendService.commandBuffer();
         RuntimeProfiler::Scope scopeRenderFrame {m_RuntimeProfiler, "RenderSystem::renderFrame"};
-        if (!isTrackyGpuProfilerEnabled())
+        const bool profilerCaptureEnabled = m_RuntimeProfiler.isEnabled();
+        const bool gpuTimingEnabled       = profilerCaptureEnabled && !isTrackyGpuProfilerEnabled();
+        if (gpuTimingEnabled)
         {
             rd.beginFrameGpuQuery(cb);
         }
@@ -2643,10 +2647,25 @@ namespace vultra
         std::unordered_set<rhi::Texture*> clearedTargetsThisFrame;
         m_RuntimeProfiler.setGpuScopeCpuFallback(rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU);
 
-        if (isTrackyGpuProfilerEnabled())
+        if (!profilerCaptureEnabled)
+        {
+            m_RuntimeProfiler.setGpuScopeCallbacks({}, {}, {});
+            rhi::setBuiltinProfilerGpuScopeCallbacks({}, {});
+        }
+        else if (isTrackyGpuProfilerEnabled())
         {
             m_RuntimeProfiler.setGpuScopeCallbacks(
                 []() { return uint64_t {0}; }, [](const uint64_t) {}, [](const uint64_t) { return -1.0; });
+            rhi::setBuiltinProfilerGpuScopeCallbacks(
+                [](const rhi::BuiltinProfilerGpuScopeContext& ctx) { g_CurrentBuiltinProfilerGpuScopeContext = ctx; },
+                [this](const rhi::BuiltinProfilerGpuScopeContext& ctx, const char* label) {
+                    g_CurrentBuiltinProfilerGpuScopeContext = ctx;
+                    (void)m_RuntimeProfiler.beginGpuScope(label ? label : "GPU Scope");
+                },
+                [this](const rhi::BuiltinProfilerGpuScopeContext& ctx) {
+                    g_CurrentBuiltinProfilerGpuScopeContext = ctx;
+                    m_RuntimeProfiler.endGpuScope();
+                });
         }
         else
         {
@@ -2696,17 +2715,17 @@ namespace vultra
                         return -1.0;
                     return rd.consumeScopeGpuMs(token);
                 });
+            rhi::setBuiltinProfilerGpuScopeCallbacks(
+                [](const rhi::BuiltinProfilerGpuScopeContext& ctx) { g_CurrentBuiltinProfilerGpuScopeContext = ctx; },
+                [this](const rhi::BuiltinProfilerGpuScopeContext& ctx, const char* label) {
+                    g_CurrentBuiltinProfilerGpuScopeContext = ctx;
+                    (void)m_RuntimeProfiler.beginGpuScope(label ? label : "GPU Scope");
+                },
+                [this](const rhi::BuiltinProfilerGpuScopeContext& ctx) {
+                    g_CurrentBuiltinProfilerGpuScopeContext = ctx;
+                    m_RuntimeProfiler.endGpuScope();
+                });
         }
-        rhi::setBuiltinProfilerGpuScopeCallbacks(
-            [](const rhi::BuiltinProfilerGpuScopeContext& ctx) { g_CurrentBuiltinProfilerGpuScopeContext = ctx; },
-            [this](const rhi::BuiltinProfilerGpuScopeContext& ctx, const char* label) {
-                g_CurrentBuiltinProfilerGpuScopeContext = ctx;
-                (void)m_RuntimeProfiler.beginGpuScope(label ? label : "GPU Scope");
-            },
-            [this](const rhi::BuiltinProfilerGpuScopeContext& ctx) {
-                g_CurrentBuiltinProfilerGpuScopeContext = ctx;
-                m_RuntimeProfiler.endGpuScope();
-            });
 
         // TODO: TimeSystem, for now use 0
         const fsec dt {0};
@@ -2765,6 +2784,9 @@ namespace vultra
                 .multiviewMask        = canUseXrMultiview ? 0x3u : 0u,
                 .multiviewCameras     = {&viewCamera, nullptr},
                 .multiviewCameraCount = canUseXrMultiview ? 2u : 0u,
+                .xrStereoTarget       = canUseXrMultiview ? xrEyeViews[0].stereoTarget : nullptr,
+                .xrEyeTargets         = {xrEyeViews.size() > 0u ? xrEyeViews[0].target : nullptr,
+                                         xrEyeViews.size() > 1u ? xrEyeViews[1].target : nullptr},
                 .gpuSceneDatabase     = renderWorld->gpuSceneDatabase,
                 .gpuSceneView         = renderWorld->gpuSceneView,
             };
@@ -3062,12 +3084,15 @@ namespace vultra
 
         // Stop issuing begin/end scope queries after rendering submission building is done,
         // but keep resolve callback alive so endFrame can harvest ready GPU samples.
-        m_RuntimeProfiler.setGpuScopeCallbacks([]() { return uint64_t {0}; },
-                                               [](const uint64_t) {},
-                                               [&rd](const uint64_t token) { return rd.consumeScopeGpuMs(token); });
+        if (gpuTimingEnabled)
+        {
+            m_RuntimeProfiler.setGpuScopeCallbacks([]() { return uint64_t {0}; },
+                                                   [](const uint64_t) {},
+                                                   [&rd](const uint64_t token) { return rd.consumeScopeGpuMs(token); });
+        }
 
         m_TransientResources->update();
-        if (!isTrackyGpuProfilerEnabled())
+        if (gpuTimingEnabled)
         {
             rd.endFrameGpuQuery(cb);
         }
@@ -3085,7 +3110,7 @@ namespace vultra
                                          memoryStats.cpuCacheBytes,
                                          memoryStats.gpuDeviceLocalBytes,
                                          memoryStats.gpuHostVisibleBytes);
-        const double gpuFrameMs = isTrackyGpuProfilerEnabled() ? -1.0 : rd.consumeGpuFrameMs();
+        const double gpuFrameMs = gpuTimingEnabled ? rd.consumeGpuFrameMs() : -1.0;
         m_RuntimeProfiler.setGpuFrameMs(gpuFrameMs);
         const auto renderFrameCpuEnd = std::chrono::steady_clock::now();
         m_RuntimeProfiler.setCpuRenderMs(

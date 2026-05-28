@@ -4,6 +4,40 @@
 
 namespace vultra
 {
+    namespace
+    {
+        RuntimeProfiler* g_ExternalProfilerSink = nullptr;
+        thread_local uint32_t g_ExternalScopeDepth = 0;
+    }
+
+    RuntimeProfiler::ExternalScope::ExternalScope(std::string_view name) : m_Profiler(externalSink()), m_Name(name)
+    {
+        if (m_Profiler && m_Profiler->isEnabled() && !m_Profiler->isPaused())
+        {
+            m_Depth = ++g_ExternalScopeDepth;
+            m_Start = std::chrono::steady_clock::now();
+        }
+        else
+        {
+            m_Profiler = nullptr;
+        }
+    }
+
+    RuntimeProfiler::ExternalScope::~ExternalScope()
+    {
+        if (!m_Profiler)
+            return;
+        const double ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_Start).count();
+        m_Profiler->addExternalCpuScope(m_Name, ms, ms, m_Depth);
+        if (g_ExternalScopeDepth > 0)
+            --g_ExternalScopeDepth;
+    }
+
+    RuntimeProfiler* RuntimeProfiler::externalSink() { return g_ExternalProfilerSink; }
+
+    void RuntimeProfiler::setExternalSink(RuntimeProfiler* profiler) { g_ExternalProfilerSink = profiler; }
+
     void RuntimeProfiler::setEnabled(bool enabled)
     {
         m_Enabled = enabled;
@@ -14,6 +48,7 @@ namespace vultra
             m_CpuScopeStack.clear();
             m_GpuScopeStack.clear();
             m_PendingGpuRecords.clear();
+            m_ExternalCpuScopes.clear();
             clearWorkingFrame();
         }
     }
@@ -96,7 +131,30 @@ namespace vultra
             endScope(ScopeDomain::eGpu);
 
         const auto frameEnd  = Clock::now();
-        m_Working.cpuFrameMs = std::chrono::duration<double, std::milli>(frameEnd - m_FrameStart).count();
+        double externalCpuMs = 0.0;
+        if (!m_Working.cpuScopeTree.empty() && !m_ExternalCpuScopes.empty())
+        {
+            for (const auto& scope : m_ExternalCpuScopes)
+            {
+                if (scope.depth <= 1u)
+                    externalCpuMs += scope.totalMs;
+                m_Working.cpuScopeTree.push_back(ScopeNode {
+                    .name       = scope.name,
+                    .parent     = 0,
+                    .depth      = scope.depth,
+                    .callCount  = scope.callCount,
+                    .totalMs    = scope.totalMs,
+                    .selfMs     = scope.selfMs,
+                    .gpuTotalMs = -1.0,
+                    .gpuSelfMs  = -1.0,
+                    .gpuToken   = 0,
+                });
+            }
+            if (!m_CpuScopeStack.empty())
+                m_CpuScopeStack[0].childMs += externalCpuMs;
+        }
+        m_Working.cpuFrameMs = std::chrono::duration<double, std::milli>(frameEnd - m_FrameStart).count() +
+                               externalCpuMs;
 
         if (!m_Working.cpuScopeTree.empty())
         {
@@ -129,6 +187,7 @@ namespace vultra
         }
 
         harvestPendingGpuRecords();
+        m_ExternalCpuScopes.clear();
     }
 
     bool RuntimeProfiler::beginScope(const std::string_view name) { return beginScope(name, ScopeDomain::eCpu); }
@@ -190,6 +249,36 @@ namespace vultra
     }
 
     void RuntimeProfiler::endScope() { endScope(ScopeDomain::eCpu); }
+
+    void RuntimeProfiler::addExternalCpuScope(const std::string_view name,
+                                              const double           totalMs,
+                                              const double           selfMs,
+                                              const uint32_t         depth)
+    {
+        if (!m_Enabled || m_Paused || name.empty() || totalMs <= 0.0)
+            return;
+
+        if (auto it = std::find_if(m_ExternalCpuScopes.begin(),
+                                   m_ExternalCpuScopes.end(),
+                                   [&](const ExternalCpuScope& scope) {
+                                       return scope.name == name && scope.depth == std::max(depth, 1u);
+                                   });
+            it != m_ExternalCpuScopes.end())
+        {
+            it->totalMs += totalMs;
+            it->selfMs += std::max(0.0, selfMs);
+            ++it->callCount;
+            return;
+        }
+
+        m_ExternalCpuScopes.push_back(ExternalCpuScope {
+            .name      = std::string(name),
+            .totalMs   = totalMs,
+            .selfMs    = std::max(0.0, selfMs),
+            .callCount = 1,
+            .depth     = std::max(depth, 1u),
+        });
+    }
 
     void RuntimeProfiler::endScope(const ScopeDomain domain)
     {

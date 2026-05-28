@@ -1,4 +1,5 @@
 #include "vultra/core/app/app_host.hpp"
+#include "vultra/function/rendering/runtime_profiler.hpp"
 #include "vultra/core/base/common_context.hpp"
 
 #include <algorithm>
@@ -44,16 +45,29 @@ namespace vultra
 
     bool AppHost::stepFrame()
     {
-        onPollEvents();
+        RuntimeProfiler::ExternalScope frameScope {"MainLoop::stepFrame"};
+        {
+            RuntimeProfiler::ExternalScope scope {"MainLoop::pollEvents"};
+            onPollEvents();
+        }
         if (onShouldClose())
         {
             return false;
         }
 
         const fsec dt = onFrameDelta();
-        onBeforeEngineTick(dt);
-        m_Engine.tickFrame(dt);
-        onAfterEngineTick(dt);
+        {
+            RuntimeProfiler::ExternalScope scope {"MainLoop::beforeEngineTick"};
+            onBeforeEngineTick(dt);
+        }
+        {
+            RuntimeProfiler::ExternalScope scope {"MainLoop::engineTick"};
+            m_Engine.tickFrame(dt);
+        }
+        {
+            RuntimeProfiler::ExternalScope scope {"MainLoop::afterEngineTick"};
+            onAfterEngineTick(dt);
+        }
         return true;
     }
 

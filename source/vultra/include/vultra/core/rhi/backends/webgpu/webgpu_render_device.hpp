@@ -106,6 +106,20 @@ namespace vultra
             void onMemoryAllocated(RenderMemoryKind kind, uint64_t bytes) override { m_MemoryTracker.add(kind, bytes); }
             void onMemoryFreed(RenderMemoryKind kind, uint64_t bytes) override { m_MemoryTracker.remove(kind, bytes); }
             [[nodiscard]] RenderDeviceMemoryStats getMemoryStats() const override { return m_MemoryTracker.snapshot(); }
+            [[nodiscard]] RenderDeviceMemoryBudget getMemoryBudget() const override { return {}; }
+            void onMemoryResourceAllocated(RenderMemoryResourceDesc desc) override
+            {
+                m_MemoryTracker.addResource(std::move(desc));
+            }
+            void onMemoryResourceFreed(uint64_t id) override { m_MemoryTracker.removeResource(id); }
+            void updateMemoryResource(uint64_t id, std::string label, std::string details = {}) override
+            {
+                m_MemoryTracker.updateResource(id, std::move(label), std::move(details));
+            }
+            [[nodiscard]] std::vector<RenderMemoryResourceDesc> getMemoryResources() const override
+            {
+                return m_MemoryTracker.resourceSnapshot();
+            }
             WebGPURenderDevice& uploadDrawIndirect(DrawIndirectBuffer& buffer,
                                                    const std::vector<DrawIndirectCommand>& commands);
 

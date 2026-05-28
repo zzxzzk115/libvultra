@@ -4,6 +4,8 @@
 #include "vultra/core/rhi/backends/vk/macro.hpp"
 #include "vultra/core/rhi/interfaces/irender_device.hpp"
 
+#include <format>
+
 namespace vultra::rhi
 {
     namespace
@@ -34,6 +36,20 @@ namespace vultra::rhi
             if (HasFlagValues(usage, BufferUsage::eShaderBindingTable))
                 out |= vk::BufferUsageFlagBits::eShaderBindingTableKHR;
             return out;
+        }
+
+        [[nodiscard]] const char* bufferMemoryKindLabel(const RenderMemoryKind kind)
+        {
+            switch (kind)
+            {
+                case RenderMemoryKind::eCpuCache:
+                    return "CPU";
+                case RenderMemoryKind::eGpuDeviceLocal:
+                    return "GPU";
+                case RenderMemoryKind::eGpuHostVisible:
+                    return "Host";
+            }
+            return "Memory";
         }
     } // namespace
 
@@ -68,6 +84,17 @@ namespace vultra::rhi
         if (m_RenderDevice)
         {
             m_RenderDevice->onMemoryAllocated(m_MemoryKind, m_AllocationSize);
+            m_RenderDevice->onMemoryResourceAllocated(RenderMemoryResourceDesc {
+                .id      = static_cast<uint64_t>(getHandle()),
+                .type    = RenderMemoryResourceType::eBuffer,
+                .kind    = m_MemoryKind,
+                .bytes   = m_AllocationSize,
+                .label   = std::format("{} Buffer 0x{:x}", bufferMemoryKindLabel(m_MemoryKind), getHandle()),
+                .details = std::format("Buffer requested={} allocation={} usage=0x{:x}",
+                                       m_Size,
+                                       m_AllocationSize,
+                                       static_cast<uint32_t>(bufferUsage)),
+            });
         }
     }
 
@@ -124,6 +151,7 @@ namespace vultra::rhi
             m_MemoryAllocator.destroyBuffer(m_Handle, m_Allocation);
             if (m_RenderDevice)
             {
+                m_RenderDevice->onMemoryResourceFreed(static_cast<uint64_t>(getHandle()));
                 m_RenderDevice->onMemoryFreed(m_MemoryKind, m_AllocationSize);
             }
             m_MemoryAllocator = nullptr;

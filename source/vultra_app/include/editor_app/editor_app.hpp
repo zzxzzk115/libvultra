@@ -103,6 +103,7 @@ namespace vultra_app
         void applySplashWindow(EditorContext& ctx);
         void applyEditorWindow(EditorContext& ctx);
         void drawLoadingOverlay(EditorContext& ctx) const;
+        void drawEditorTaskBar(EditorContext& ctx);
         void drawBuildRunConfigurePopup(EditorContext& ctx);
         void drawBuildRunPopup();
         void processEditorCommands(EditorContext& ctx);

@@ -108,6 +108,7 @@ namespace vultra
 
             // @return Used memory (in bytes).
             [[nodiscard]] uint64_t getSize() const;
+            [[nodiscard]] uint64_t getMemoryResourceId() const;
 
             [[nodiscard]] TextureView getImageView(ImageAspectFlags = ImageAspectFlags::eNone) const;
 

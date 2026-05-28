@@ -784,6 +784,13 @@ namespace vultra
 
         resource::GpuTexture out;
         out.texture = createRef<rhi::Texture>(std::move(tr.value()));
+        {
+            std::string uri;
+            m_Resolver.resolve(cpuTex.uuid, uri);
+            const auto label = uri.empty() ? std::string("Asset Texture ") + vbase::to_string(cpuTex.uuid) :
+                                             std::string("Asset Texture ") + uri;
+            m_RenderDevice->updateMemoryResource(out.texture->getMemoryResourceId(), label, cpuTex.toString());
+        }
         return m_GpuResourceService->createTexture(*m_RenderDevice, std::move(out));
     }
 

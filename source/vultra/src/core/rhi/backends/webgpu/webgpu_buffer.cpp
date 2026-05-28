@@ -2,6 +2,7 @@
 #include "vultra/core/rhi/interfaces/irender_device.hpp"
 
 #include <cassert>
+#include <format>
 
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
 #include <webgpu/webgpu.h>
@@ -22,11 +23,20 @@ namespace vultra
             {
                 m_RenderDevice->onMemoryAllocated(RenderMemoryKind::eCpuCache, m_Size);
                 m_RenderDevice->onMemoryAllocated(RenderMemoryKind::eGpuHostVisible, m_Size);
+                m_RenderDevice->onMemoryResourceAllocated(RenderMemoryResourceDesc {
+                    .id      = static_cast<uint64_t>(m_Handle),
+                    .type    = RenderMemoryResourceType::eBuffer,
+                    .kind    = RenderMemoryKind::eGpuHostVisible,
+                    .bytes   = m_Size,
+                    .label   = std::format("WebGPU Buffer 0x{:x}", m_Handle),
+                    .details = std::format("Buffer requested={} hostMirror={}", m_Size, m_Data.size()),
+                });
             }
         }
 
         WebGPUBuffer::~WebGPUBuffer()
         {
+            const auto resourceId = m_Handle;
 #if defined(VULTRA_ENABLE_WEBGPU) && VULTRA_ENABLE_WEBGPU
             if (m_Handle != 0)
             {
@@ -36,6 +46,7 @@ namespace vultra
 #endif
             if (m_RenderDevice)
             {
+                m_RenderDevice->onMemoryResourceFreed(static_cast<uint64_t>(resourceId));
                 m_RenderDevice->onMemoryFreed(RenderMemoryKind::eCpuCache, m_Size);
                 m_RenderDevice->onMemoryFreed(RenderMemoryKind::eGpuHostVisible, m_Size);
                 m_RenderDevice = nullptr;

@@ -504,6 +504,24 @@ namespace vultra
             return m_Backend->getMemoryStats();
         }
 
+        RenderDeviceMemoryBudget RenderDevice::getMemoryBudget() const
+        {
+            assert(m_Backend);
+            return m_Backend->getMemoryBudget();
+        }
+
+        std::vector<RenderMemoryResourceDesc> RenderDevice::getMemoryResources() const
+        {
+            assert(m_Backend);
+            return m_Backend->getMemoryResources();
+        }
+
+        void RenderDevice::updateMemoryResource(uint64_t id, std::string label, std::string details) const
+        {
+            assert(m_Backend);
+            m_Backend->updateMemoryResource(id, std::move(label), std::move(details));
+        }
+
         RenderDevice::RenderDevice(const RenderDeviceFeatureFlagBits  featureFlag,
                                    const std::string_view             appName,
                                    const std::span<const char* const> requiredInstanceExtensions,

@@ -113,6 +113,9 @@ namespace vultra
             void                   endScopeGpuQuery(std::uintptr_t commandBufferHandle, uint64_t scopeToken);
             [[nodiscard]] double   consumeScopeGpuMs(uint64_t scopeToken);
             [[nodiscard]] RenderDeviceMemoryStats getMemoryStats() const;
+            [[nodiscard]] RenderDeviceMemoryBudget getMemoryBudget() const;
+            [[nodiscard]] std::vector<RenderMemoryResourceDesc> getMemoryResources() const;
+            void updateMemoryResource(uint64_t id, std::string label, std::string details = {}) const;
 
             [[nodiscard]] std::array<float, 2> getLineWidthRange() const;
             [[nodiscard]] float                getMaxSamplerAnisotropy() const;

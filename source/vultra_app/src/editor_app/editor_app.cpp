@@ -22,6 +22,7 @@
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/asset/asset_system.hpp>
 #include <vultra/function/imgui/imgui_theme.hpp>
+#include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
@@ -322,6 +323,25 @@ namespace vultra_app
         }
 
         int runCommand(const std::string& command) { return std::system(command.c_str()); }
+
+        std::string formatBytes(const uint64_t bytes)
+        {
+            constexpr const char* kUnits[] = {"B", "KB", "MB", "GB"};
+            double                value    = static_cast<double>(bytes);
+            size_t                unit     = 0;
+            while (value >= 1024.0 && unit + 1 < (sizeof(kUnits) / sizeof(kUnits[0])))
+            {
+                value /= 1024.0;
+                ++unit;
+            }
+
+            char buffer[64] {};
+            if (unit == 0)
+                std::snprintf(buffer, sizeof(buffer), "%.0f %s", value, kUnits[unit]);
+            else
+                std::snprintf(buffer, sizeof(buffer), "%.1f %s", value, kUnits[unit]);
+            return buffer;
+        }
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
         int runAssetTool(std::vector<std::string> args)
@@ -678,9 +698,13 @@ namespace vultra_app
 
     void EditorApp::draw(EditorContext& ctx)
     {
+        vultra::RuntimeProfiler::ExternalScope perf {"EditorApp::draw"};
         ctx.thumbnails = &m_ThumbnailService;
         ctx.history    = &m_History;
-        ui::applyEditorSettingsRuntime(ctx.state.editorSettings);
+        {
+            vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::applySettings"};
+            ui::applyEditorSettingsRuntime(ctx.state.editorSettings);
+        }
         if (m_Loading.phase == LoadingPhase::Complete)
         {
             applyEditorWindow(ctx);
@@ -700,11 +724,17 @@ namespace vultra_app
         }
 
         ensureInitialized();
+        ctx.state.sceneViewVisibleLastFrame = ctx.state.sceneViewVisible;
+        ctx.state.sceneViewVisible          = false;
         ctx.state.gameViewVisibleLastFrame = ctx.state.gameViewVisible;
+        ctx.state.gameViewRenderTargetAvailableLastFrame = ctx.state.gameViewRenderTargetAvailable;
         ctx.state.gameViewVisible          = false;
-        drawEditorTopBar(ctx,
-                         m_WindowManager.windows(),
-                         EditorTopBarActions {
+        ctx.state.gameViewRenderTargetAvailable = false;
+        {
+            vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::topBar"};
+            drawEditorTopBar(ctx,
+                             m_WindowManager.windows(),
+                             EditorTopBarActions {
                              .newBlankScene =
                                  [](EditorContext& topBarCtx) {
                                      auto* worldService = topBarCtx.services ?
@@ -758,7 +788,8 @@ namespace vultra_app
                                  },
                              .resetLayout = [this](EditorContext&) { resetDefaultDockLayout(); },
                              .showAbout   = [this](EditorContext&) { m_ShowAboutPopup = true; },
-                         });
+                             });
+        }
         if (ctx.state.mode != AppMode::Editor)
             return;
 
@@ -774,23 +805,42 @@ namespace vultra_app
         if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
             renderService->setFrameGraphTextureCaptureEnabled(false);
 
-        beginDockSpace();
-        buildDefaultDockLayout();
-        m_WindowManager.draw(ctx);
-        endDockSpace();
-        processEditorCommands(ctx);
-        m_History.observeScene(ctx);
+        {
+            vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::taskBar"};
+            drawEditorTaskBar(ctx);
+        }
+        {
+            vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::dockSpace"};
+            beginDockSpace();
+            buildDefaultDockLayout();
+        }
+        {
+            vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::windowManager"};
+            m_WindowManager.draw(ctx);
+        }
+        {
+            vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::endDockSpace"};
+            endDockSpace();
+        }
+        {
+            vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::commandsAndHistory"};
+            processEditorCommands(ctx);
+            m_History.observeScene(ctx);
+        }
 
         if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
             renderService->builtinRenderSettings().selectionOutline.selectedEntityId = selectedEntityPickingId(ctx);
 
-        syncPlaybackState(ctx);
-        drawBuildRunConfigurePopup(ctx);
-        drawBuildRunPopup();
-        drawProjectSettingsPopup(ctx);
-        drawEditorSettingsPopup(ctx);
-        drawBuildSettingsPopup(ctx);
-        drawOpenSceneConfirmPopup(ctx);
+        {
+            vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::playbackAndPopups"};
+            syncPlaybackState(ctx);
+            drawBuildRunConfigurePopup(ctx);
+            drawBuildRunPopup();
+            drawProjectSettingsPopup(ctx);
+            drawEditorSettingsPopup(ctx);
+            drawBuildSettingsPopup(ctx);
+            drawOpenSceneConfirmPopup(ctx);
+        }
 
         if (m_ShowAboutPopup)
         {
@@ -1313,9 +1363,15 @@ namespace vultra_app
         ctx.state.pendingEditorCommands.clear();
         ctx.state.renderGraphOpenRequested   = false;
         ctx.state.materialGraphOpenRequested = false;
-        ctx.state.gameViewVisible     = false;
-        ctx.state.gameViewVisibleLastFrame = false;
-        ctx.state.sceneCamera.valid        = false;
+        ctx.state.sceneViewVisible          = false;
+        ctx.state.sceneViewVisibleLastFrame = false;
+        ctx.state.gameViewVisible           = false;
+        ctx.state.gameViewVisibleLastFrame  = false;
+        ctx.state.gameViewRenderTargetAvailable = false;
+        ctx.state.gameViewRenderTargetAvailableLastFrame = false;
+        ctx.state.gameViewLastRenderTargetWidth  = 1280;
+        ctx.state.gameViewLastRenderTargetHeight = 720;
+        ctx.state.sceneCamera.valid         = false;
         ctx.state.sceneCameraAlignRequest.pending = false;
         ctx.state.scenePicking             = {};
         m_Loading.releasedEditorState = true;
@@ -1809,13 +1865,93 @@ namespace vultra_app
         m_SplashWindowApplied        = false;
         m_EditorWindowApplied        = false;
         Selection::clear();
-        ctx.state.sceneCamera.valid        = false;
-        ctx.state.gameViewVisible          = false;
-        ctx.state.gameViewVisibleLastFrame = false;
-        ctx.state.editorPlaying            = false;
-        ctx.state.editorPaused             = false;
-        ctx.state.editorShutdownRequested  = false;
-        ctx.state.editorStepRequested      = false;
+        ctx.state.sceneCamera.valid         = false;
+        ctx.state.sceneViewVisible          = false;
+        ctx.state.sceneViewVisibleLastFrame = false;
+        ctx.state.gameViewVisible           = false;
+        ctx.state.gameViewVisibleLastFrame  = false;
+        ctx.state.gameViewRenderTargetAvailable = false;
+        ctx.state.gameViewRenderTargetAvailableLastFrame = false;
+        ctx.state.gameViewLastRenderTargetWidth  = 1280;
+        ctx.state.gameViewLastRenderTargetHeight = 720;
+        ctx.state.editorPlaying             = false;
+        ctx.state.editorPaused              = false;
+        ctx.state.editorShutdownRequested   = false;
+        ctx.state.editorStepRequested       = false;
+    }
+
+    void EditorApp::drawEditorTaskBar(EditorContext& ctx)
+    {
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        if (!viewport)
+            return;
+
+        constexpr float barHeight = 26.0f;
+        ImGuiWindowFlags flags    = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
+                                 ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove |
+                                 ImGuiWindowFlags_NoDocking;
+
+        if (!ImGui::BeginViewportSideBar("##VultraEditorTaskBar", viewport, ImGuiDir_Down, barHeight, flags))
+            return;
+
+        auto* renderService        = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
+        auto* renderBackendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+        auto* assetService         = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
+        auto* profiler             = renderService ? renderService->runtimeProfiler() : nullptr;
+
+        const auto* frame = profiler ? profiler->selectedFrame() : nullptr;
+        const float fps   = ImGui::GetIO().Framerate;
+        const auto  renderMemoryStats =
+            renderBackendService ? renderBackendService->renderDevice().getMemoryStats() :
+                                   vultra::rhi::RenderDeviceMemoryStats {};
+        const auto renderMemoryBudget =
+            renderBackendService ? renderBackendService->renderDevice().getMemoryBudget() :
+                                   vultra::rhi::RenderDeviceMemoryBudget {};
+        const auto assetMemoryStats = assetService ? assetService->memoryStats() : vultra::AssetMemoryStats {};
+
+        std::vector<std::string> labels;
+        char                     fpsText[32] {};
+        std::snprintf(fpsText, sizeof(fpsText), "FPS %.1f", fps);
+        labels.emplace_back(fpsText);
+
+        const uint64_t cpuCacheBytes =
+            frame ? frame->assetCpuCacheBytes + frame->renderCpuCacheBytes :
+                    assetMemoryStats.cpuCacheBytes + renderMemoryStats.cpuCacheBytes;
+        const uint64_t gpuBytes = frame ? frame->gpuDeviceLocalBytes : renderMemoryStats.gpuDeviceLocalBytes;
+        labels.emplace_back("CPU cache " + formatBytes(cpuCacheBytes));
+        if (renderMemoryBudget.available && renderMemoryBudget.deviceLocalBudgetBytes > 0u)
+        {
+            labels.emplace_back("VRAM " + formatBytes(renderMemoryBudget.deviceLocalUsageBytes) + " / " +
+                                formatBytes(renderMemoryBudget.deviceLocalBudgetBytes));
+        }
+        else
+        {
+            labels.emplace_back("VRAM " + formatBytes(gpuBytes));
+        }
+
+        const float separatorWidth = ImGui::CalcTextSize("|").x + 16.0f;
+        float       totalWidth     = 0.0f;
+        for (size_t i = 0; i < labels.size(); ++i)
+        {
+            totalWidth += ImGui::CalcTextSize(labels[i].c_str()).x;
+            if (i + 1 < labels.size())
+                totalWidth += separatorWidth;
+        }
+
+        ImGui::SetCursorPosY((barHeight - ImGui::GetTextLineHeight()) * 0.5f);
+        ImGui::SetCursorPosX(std::max(8.0f, ImGui::GetWindowWidth() - totalWidth - 12.0f));
+        for (size_t i = 0; i < labels.size(); ++i)
+        {
+            if (i > 0)
+            {
+                ImGui::SameLine(0.0f, 8.0f);
+                ImGui::TextDisabled("|");
+                ImGui::SameLine(0.0f, 8.0f);
+            }
+            ImGui::TextDisabled("%s", labels[i].c_str());
+        }
+
+        ImGui::End();
     }
 
     void EditorApp::beginDockSpace()

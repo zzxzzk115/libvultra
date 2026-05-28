@@ -15,6 +15,7 @@
 #include <vultra/core/app/demo_app_host.hpp>
 #include <vultra/core/base/common_context.hpp>
 #include <vultra/core/services/window_service.hpp>
+#include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_renderer.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_rt_renderer.hpp>
@@ -133,6 +134,7 @@ namespace
 
         void onImGui() override
         {
+            vultra::RuntimeProfiler::ExternalScope perf {"EditorShell::onImGui"};
             if (auto* services = getServices())
             {
                 auto* cameraService        = services->tryGet<vultra::ICameraService>();
@@ -160,17 +162,27 @@ namespace
                 };
 
                 if (cameraService)
+                {
+                    vultra::RuntimeProfiler::ExternalScope scope {"EditorShell::clearManualCameras"};
                     cameraService->clearManualCameras();
+                }
 
                 if (m_State.mode == vultra_app::AppMode::Editor)
                 {
                     vultra_app::EditorContext ctx {.state = m_State, .services = services};
+                    vultra::RuntimeProfiler::ExternalScope scope {"EditorShell::editorDraw"};
                     m_Editor.draw(ctx);
                 }
                 else
+                {
+                    vultra::RuntimeProfiler::ExternalScope scope {"EditorShell::launcherDraw"};
                     m_Launcher.draw(m_State, windowService);
+                }
 
-                addEditorShellCamera();
+                {
+                    vultra::RuntimeProfiler::ExternalScope scope {"EditorShell::addShellCamera"};
+                    addEditorShellCamera();
+                }
                 return;
             }
 

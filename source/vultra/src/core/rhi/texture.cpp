@@ -17,6 +17,8 @@
 #include <vk_mem_alloc.hpp>
 #endif
 
+#include <format>
+
 namespace vultra
 {
     namespace rhi
@@ -25,6 +27,42 @@ namespace vultra
         {
             constexpr auto kSwapchainDefaultUsageFlags =
                 ImageUsage::eSampled | ImageUsage::eTransfer | ImageUsage::eRenderTarget;
+
+            [[nodiscard]] const char* textureTypeLabel(const TextureType type)
+            {
+                switch (type)
+                {
+                    case TextureType::eTexture2D:
+                        return "Texture2D";
+                    case TextureType::eTexture2DArray:
+                        return "Texture2DArray";
+                    case TextureType::eTexture3D:
+                        return "Texture3D";
+                    case TextureType::eTextureCube:
+                        return "TextureCube";
+                    default:
+                        return "Texture";
+                }
+            }
+
+            [[nodiscard]] std::string makeTextureMemoryDetails(const TextureType  type,
+                                                               const Extent2D     extent,
+                                                               const uint32_t     depth,
+                                                               const uint32_t     layerFaces,
+                                                               const uint32_t     mipLevels,
+                                                               const PixelFormat  format,
+                                                               const ImageUsage   usage)
+            {
+                return std::format("{} {}x{}x{} layers={} mips={} format={} usage=0x{:x}",
+                                   textureTypeLabel(type),
+                                   extent.width,
+                                   extent.height,
+                                   std::max(depth, 1u),
+                                   std::max(layerFaces, 1u),
+                                   std::max(mipLevels, 1u),
+                                   static_cast<uint32_t>(format),
+                                   static_cast<uint32_t>(usage));
+            }
 
             [[nodiscard]] auto findTextureType(const Extent2D extent,
                                                const uint32_t depth,
@@ -319,6 +357,8 @@ namespace vultra
 
             return totalBytes;
         }
+
+        uint64_t Texture::getMemoryResourceId() const { return static_cast<uint64_t>(getImageHandle()); }
 
         TextureView Texture::getImageView(const ImageAspectFlags aspectMask) const
         {
@@ -638,6 +678,15 @@ namespace vultra
             if (m_RenderDevice)
             {
                 m_RenderDevice->onMemoryAllocated(RenderMemoryKind::eGpuDeviceLocal, getSize());
+                m_RenderDevice->onMemoryResourceAllocated(RenderMemoryResourceDesc {
+                    .id      = static_cast<uint64_t>(getImageHandle()),
+                    .type    = RenderMemoryResourceType::eTexture,
+                    .kind    = RenderMemoryKind::eGpuDeviceLocal,
+                    .bytes   = getSize(),
+                    .label   = std::format("{} 0x{:x}", textureTypeLabel(m_Type), getImageHandle()),
+                    .details = makeTextureMemoryDetails(
+                        m_Type, m_Extent, m_Depth, m_LayerFaces, m_NumMipLevels, m_Format, m_UsageFlags),
+                });
             }
 #endif
         }
@@ -753,6 +802,15 @@ namespace vultra
             if (m_OwnsImage && m_RenderDevice)
             {
                 m_RenderDevice->onMemoryAllocated(RenderMemoryKind::eGpuDeviceLocal, getSize());
+                m_RenderDevice->onMemoryResourceAllocated(RenderMemoryResourceDesc {
+                    .id      = static_cast<uint64_t>(getImageHandle()),
+                    .type    = RenderMemoryResourceType::eTexture,
+                    .kind    = RenderMemoryKind::eGpuDeviceLocal,
+                    .bytes   = getSize(),
+                    .label   = std::format("{} 0x{:x}", textureTypeLabel(m_Type), getImageHandle()),
+                    .details = makeTextureMemoryDetails(
+                        m_Type, m_Extent, m_Depth, m_LayerFaces, m_NumMipLevels, m_Format, m_UsageFlags),
+                });
             }
         }
 
@@ -763,6 +821,7 @@ namespace vultra
 
             if (m_OwnsImage && m_RenderDevice)
             {
+                m_RenderDevice->onMemoryResourceFreed(static_cast<uint64_t>(getImageHandle()));
                 m_RenderDevice->onMemoryFreed(RenderMemoryKind::eGpuDeviceLocal, getSize());
             }
 
