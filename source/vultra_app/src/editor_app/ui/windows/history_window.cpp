@@ -66,8 +66,10 @@ namespace vultra_app
                 const auto& entry    = entries[index];
                 const bool  selected = index == history->currentIndex();
                 const auto  label    = entry.dirty ? entry.label + " *" : entry.label;
+                ImGui::PushID(row);
                 if (ImGui::Selectable(label.c_str(), selected))
                     history->jumpTo(ctx, index);
+                ImGui::PopID();
             }
         }
 
