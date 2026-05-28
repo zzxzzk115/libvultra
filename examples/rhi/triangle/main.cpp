@@ -106,7 +106,7 @@ void main() {
         if (!swapchain)
             continue;
 
-        bool  acquiredNextFrame = frameController.acquireNextFrame();
+        bool acquiredNextFrame = frameController.acquireNextFrame();
         if (!acquiredNextFrame)
         {
             continue;

@@ -170,7 +170,7 @@ int main()
         if (!swapchain)
             continue;
 
-        bool  acquiredNextFrame = frameController.acquireNextFrame();
+        bool acquiredNextFrame = frameController.acquireNextFrame();
         if (!acquiredNextFrame)
         {
             continue;
@@ -196,7 +196,7 @@ int main()
             FrameRenderData frameData {};
             ViewRenderData  viewData {};
 
-            viewData.view.extent = swapchain.getExtent();
+            viewData.view.extent     = swapchain.getExtent();
             viewData.framebufferInfo = rhi::FramebufferInfo {
                 .area = rhi::Rect2D {.extent = swapchain.getExtent()},
                 .colorAttachments =

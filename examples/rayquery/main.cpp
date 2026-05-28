@@ -190,11 +190,11 @@ public:
 
         RHI_GPU_ZONE(cb, "RayQuery");
         cb.beginRendering({
-                .area = {.extent = target->getExtent()},
-                .colorAttachments =
-                    {rhi::AttachmentInfo {.target = target, .clearValue = glm::vec4 {0.08f, 0.09f, 0.11f, 1.0f}}},
-                .depthAttachment = rhi::AttachmentInfo {.target = &m_DepthTexture, .clearValue = 1.0f},
-            });
+            .area             = {.extent = target->getExtent()},
+            .colorAttachments = {rhi::AttachmentInfo {.target     = target,
+                                                      .clearValue = glm::vec4 {0.08f, 0.09f, 0.11f, 1.0f}}},
+            .depthAttachment  = rhi::AttachmentInfo {.target = &m_DepthTexture, .clearValue = 1.0f},
+        });
 
         for (const auto& drawMesh : m_DrawMeshes)
         {
@@ -312,7 +312,7 @@ private:
                 return &variant.pipeline;
         }
 
-        auto& backendService = getServices()->require<IRenderBackendService>();
+        auto&           backendService = getServices()->require<IRenderBackendService>();
         PipelineVariant variant {
             .attributes  = mesh.vertexAttributes,
             .strideBytes = mesh.vertexStrideBytes,
@@ -354,7 +354,7 @@ private:
         auto& pool  = gpuResources.pool();
 
         std::vector<rhi::RayTracingInstance> tlasInstances;
-        auto view = reg.view<TransformComponent, MeshComponent>();
+        auto                                 view = reg.view<TransformComponent, MeshComponent>();
         for (auto entity : view)
         {
             const auto& transform = view.get<TransformComponent>(entity);
@@ -362,7 +362,7 @@ private:
             if (!meshComp.mesh.valid())
                 continue;
 
-            auto handle = assetService.loadMeshSync(meshComp.mesh);
+            auto       handle    = assetService.loadMeshSync(meshComp.mesh);
             const auto meshIndex = handle.gpuIndex();
             if (!handle.ready() || meshIndex == std::numeric_limits<uint32_t>::max() || meshIndex >= pool.meshes.size())
                 continue;

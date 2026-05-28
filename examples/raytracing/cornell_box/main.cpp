@@ -271,7 +271,8 @@ void main()
 }
 )";
 
-    void addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
+    void
+    addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
     {
         reg.emplace<NameComponent>(entity, NameComponent {name});
         reg.emplace<TransformComponent>(entity, transform);
@@ -288,7 +289,7 @@ public:
 
     void render(ImmediateRenderContext& ctx) override
     {
-        auto* db = ctx.view().gpuSceneDatabase;
+        auto* db     = ctx.view().gpuSceneDatabase;
         auto* target = ctx.view().target;
         if (!db || !target || !db->rayTracingTlas || !db->rayTracingGeometryNodeBuffer ||
             !db->rayTracingInstanceBuffer || !db->resources || !db->resources->materialParams.gpu ||
@@ -305,7 +306,7 @@ public:
                                  .bind(0, rhi::bindings::AccelerationStructureKHR {.as = &db->rayTracingTlas})
                                  .bind(1,
                                        rhi::bindings::StorageImage {
-                                           .texture = &m_OutputImage,
+                                           .texture     = &m_OutputImage,
                                            .imageAspect = rhi::ImageAspect::eColor,
                                        })
                                  .bind(2,
@@ -344,17 +345,15 @@ public:
         if (ctx.rd.getBackendApi() == rhi::RenderBackendApi::eVulkan)
             projection[1][1] *= -1.0f;
         pc.invViewProj = glm::inverse(projection * camera->view);
-        pc.camPos = glm::vec3(camera->inverseView[3]);
-        pc.missColor = {0.2f, 0.3f, 0.3f, 1.0f};
+        pc.camPos      = glm::vec3(camera->inverseView[3]);
+        pc.missColor   = {0.2f, 0.3f, 0.3f, 1.0f};
         fillLightConstants(pc.lightColorIntensity, pc.lightVertices);
 
         ctx.cb.bindPipeline(m_Pipeline)
             .bindDescriptorSet(0, descriptorSet)
-            .pushConstants(rhi::ShaderStages::eRayGen | rhi::ShaderStages::eMiss | rhi::ShaderStages::eClosestHit,
-                           0,
-                           &pc)
-            .traceRays(*m_Pipeline.getSBT(ctx.rd),
-                       {target->getExtent().width, target->getExtent().height, 1u});
+            .pushConstants(
+                rhi::ShaderStages::eRayGen | rhi::ShaderStages::eMiss | rhi::ShaderStages::eClosestHit, 0, &pc)
+            .traceRays(*m_Pipeline.getSBT(ctx.rd), {target->getExtent().width, target->getExtent().height, 1u});
 
         rhi::prepareForReading(ctx.cb, m_OutputImage);
         rhi::prepareForAttachment(ctx.cb, *target, false);
@@ -375,7 +374,7 @@ public:
 
     void onResize(uint32_t width, uint32_t height) override
     {
-        m_OutputImage = {};
+        m_OutputImage  = {};
         m_OutputExtent = {width, height};
     }
 
@@ -404,7 +403,7 @@ private:
             return;
 
         m_OutputExtent = extent;
-        m_OutputImage = rhi::Texture::Builder {}
+        m_OutputImage  = rhi::Texture::Builder {}
                             .setExtent(extent)
                             .setPixelFormat(rhi::PixelFormat::eRGBA16F)
                             .setNumMipLevels(1)
@@ -418,28 +417,28 @@ private:
     {
         glm::vec3 pos {-0.005f, 1.98f, -0.03f};
         glm::vec3 color {1.0f, 0.95f, 0.85f};
-        float intensity = 12.0f;
-        float width = 0.47f;
-        float height = 0.38f;
+        float     intensity = 12.0f;
+        float     width     = 0.47f;
+        float     height    = 0.38f;
 
         if (auto* services = getServices())
         {
             if (auto* worldService = services->tryGet<IWorldService>())
             {
-                auto& reg = worldService->world().registry();
-                auto view = reg.view<NameComponent, TransformComponent, LightComponent>();
+                auto& reg  = worldService->world().registry();
+                auto  view = reg.view<NameComponent, TransformComponent, LightComponent>();
                 for (auto entity : view)
                 {
                     auto& name = view.get<NameComponent>(entity);
                     if (name.name != "Ceiling Light")
                         continue;
                     auto& transform = view.get<TransformComponent>(entity);
-                    auto& light = view.get<LightComponent>(entity);
-                    pos = transform.position;
-                    color = light.color;
-                    intensity = light.intensity;
-                    width = light.width;
-                    height = light.height;
+                    auto& light     = view.get<LightComponent>(entity);
+                    pos             = transform.position;
+                    color           = light.color;
+                    intensity       = light.intensity;
+                    width           = light.width;
+                    height          = light.height;
                     break;
                 }
             }
@@ -470,10 +469,7 @@ protected:
         return rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline;
     }
 
-    Ref<Renderer> makeRenderer() const override
-    {
-        return createRef<CornellBoxRenderer>();
-    }
+    Ref<Renderer> makeRenderer() const override { return createRef<CornellBoxRenderer>(); }
 
     FPSCameraController makeFPSCameraController() const override
     {
@@ -489,9 +485,9 @@ protected:
     void onPostConfigureDemo(Engine& engine) override
     {
         auto& renderService = engine.ctx().services.require<IRenderService>();
-        auto& sceneService = engine.ctx().services.require<ISceneService>();
-        auto& world = engine.ctx().services.require<IWorldService>().world();
-        auto& reg   = world.registry();
+        auto& sceneService  = engine.ctx().services.require<ISceneService>();
+        auto& world         = engine.ctx().services.require<IWorldService>().world();
+        auto& reg           = world.registry();
 
         auto box = sceneService.instantiateScene(world, kCornellBoxUri);
         if (box == entt::null)
@@ -506,7 +502,7 @@ protected:
         addNamedTransform(reg,
                           light,
                           "Ceiling Light",
-                              TransformComponent {
+                          TransformComponent {
                               .position = {-0.005f, 1.98f, -0.03f},
                               .rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f},
                               .scale    = {1.0f, 1.0f, 1.0f},
@@ -521,7 +517,7 @@ protected:
                                         .height    = 0.38f,
                                     });
 
-        auto& settings = renderService.builtinRenderSettings();
+        auto& settings                        = renderService.builtinRenderSettings();
         settings.pbrLighting.enableIBL        = false;
         settings.pbrLighting.ambientIntensity = 0.15f;
     }

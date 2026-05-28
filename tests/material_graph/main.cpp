@@ -33,29 +33,29 @@ namespace
         graph.domain  = Domain::eSurface;
         graph.name    = "Color Only";
         graph.nodes.push_back(Node {
-            .typeId = "vultra.param.color",
-            .id = "color",
+            .typeId      = "vultra.param.color",
+            .id          = "color",
             .displayName = "Color",
-            .params = {{"value", {0.25f, 0.5f, 0.75f, 1.0f}}},
+            .params      = {{"value", {0.25f, 0.5f, 0.75f, 1.0f}}},
         });
         graph.nodes.push_back(Node {
-            .typeId = "vultra.output.surface",
-            .id = "out",
+            .typeId      = "vultra.output.surface",
+            .id          = "out",
             .displayName = "Surface Output",
-            .params = {{"shadingModel", "Unlit"}, {"alphaMode", "Mask"}, {"alphaCutoff", 0.4f}},
+            .params      = {{"shadingModel", "Unlit"}, {"alphaMode", "Mask"}, {"alphaCutoff", 0.4f}},
         });
         graph.links.push_back(Link {
             .from = {.nodeId = "color", .pin = "value"},
-            .to = {.nodeId = "out", .pin = "baseColor"},
+            .to   = {.nodeId = "out", .pin = "baseColor"},
         });
         return graph;
     }
-}
+} // namespace
 
 int main()
 {
     {
-        const auto text = R"json({
+        const auto              text = R"json({
             "version": 1,
             "domain": "surface",
             "name": "Roundtrip",
@@ -65,7 +65,7 @@ int main()
             "futureField": {"kept": true}
         })json";
         std::vector<Diagnostic> diagnostics;
-        auto graph = loadGraphFromText(text, &diagnostics);
+        auto                    graph = loadGraphFromText(text, &diagnostics);
         require(graph.has_value(), "valid graph JSON should load");
         require(graph->unknown.contains("futureField"), "unknown root fields should be preserved");
 
@@ -77,8 +77,10 @@ int main()
 
     {
         NodeRegistry registry;
-        require(registry.registerNode({.typeId = "test.node", .displayName = "Test"}), "first node registration should pass");
-        require(!registry.registerNode({.typeId = "test.node", .displayName = "Duplicate"}), "duplicate node registration should fail");
+        require(registry.registerNode({.typeId = "test.node", .displayName = "Test"}),
+                "first node registration should pass");
+        require(!registry.registerNode({.typeId = "test.node", .displayName = "Duplicate"}),
+                "duplicate node registration should fail");
 
         Graph graph = makeColorOnlyGraph();
         graph.nodes.push_back(Node {.typeId = "test.unknown", .id = "unknown"});
@@ -87,14 +89,16 @@ int main()
     }
 
     {
-        MaterialGraphCompiler compiler;
+        MaterialGraphCompiler  compiler;
         SurfaceFunctionBackend backend;
-        const auto graphId = stableGraphId("res://materials/color-only.vmatgraph");
-        auto result = compiler.compile(CompileInput {
-            .graph = makeColorOnlyGraph(),
-            .shaderId = "folder/color-only.vmatgraph",
-            .graphId = graphId,
-        }, backend);
+        const auto             graphId = stableGraphId("res://materials/color-only.vmatgraph");
+        auto                   result  = compiler.compile(
+            CompileInput {
+                                   .graph    = makeColorOnlyGraph(),
+                                   .shaderId = "folder/color-only.vmatgraph",
+                                   .graphId  = graphId,
+            },
+            backend);
         require(result.has_value(), "color-only graph should compile");
         require(result->vshaderSource.find("eval_material_graph_folder_color_only_vmatgraph") != std::string::npos,
                 "shader id should be sanitized into a GLSL-safe function name");

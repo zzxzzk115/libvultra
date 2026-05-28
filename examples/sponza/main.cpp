@@ -25,7 +25,8 @@ namespace
 {
     constexpr const char* kModelUri = "res://models/Sponza/Sponza.gltf";
 
-    void addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
+    void
+    addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
     {
         reg.emplace<NameComponent>(entity, NameComponent {name});
         reg.emplace<TransformComponent>(entity, transform);
@@ -46,13 +47,11 @@ protected:
 
     Ref<Renderer> makeRenderer() const override
     {
-        return createRef<examples::ExampleUniversalRenderer>(
-            "Sponza Example",
-            [](Services services) {
-                ImGui::TextUnformatted("This example renders the Sponza scene with the SRP renderer.");
-                examples::drawNamedLightControls(services, "Warm Point Light");
-                examples::drawExampleRenderSettings(services);
-            });
+        return createRef<examples::ExampleUniversalRenderer>("Sponza Example", [](Services services) {
+            ImGui::TextUnformatted("This example renders the Sponza scene with the SRP renderer.");
+            examples::drawNamedLightControls(services, "Warm Point Light");
+            examples::drawExampleRenderSettings(services);
+        });
     }
 
     FPSCameraController makeFPSCameraController() const override
@@ -70,9 +69,9 @@ protected:
     void onPostConfigureDemo(Engine& engine) override
     {
         auto& renderService = engine.ctx().services.require<IRenderService>();
-        auto& sceneService = engine.ctx().services.require<ISceneService>();
-        auto& world = engine.ctx().services.require<IWorldService>().world();
-        auto& reg   = world.registry();
+        auto& sceneService  = engine.ctx().services.require<ISceneService>();
+        auto& world         = engine.ctx().services.require<IWorldService>().world();
+        auto& reg           = world.registry();
 
         auto model = sceneService.instantiateScene(world, kModelUri);
         if (model == entt::null)
@@ -100,7 +99,7 @@ protected:
                                         .range     = 5.0f,
                                     });
 
-        auto& settings = renderService.builtinRenderSettings();
+        auto& settings                        = renderService.builtinRenderSettings();
         settings.pbrLighting.enableIBL        = false;
         settings.pbrLighting.ambientIntensity = 0.35f;
         settings.shadow.coverageRadius        = 35.0f;

@@ -9,8 +9,9 @@ int main()
 {
     auto window = os::Window::Builder {}.setTitle("Empty Vultra Window").setExtent({1024, 768}).build();
 
-    rhi::RenderDevice renderDevice(
-        rhi::RenderDeviceFeatureFlagBits::eNormal, "Empty Vultra Window", window->getRequiredVulkanInstanceExtensions());
+    rhi::RenderDevice renderDevice(rhi::RenderDeviceFeatureFlagBits::eNormal,
+                                   "Empty Vultra Window",
+                                   window->getRequiredVulkanInstanceExtensions());
 
     VULTRA_CLIENT_INFO("RenderDevice Name: {}", renderDevice.getName());
     VULTRA_CLIENT_INFO("RenderDevice PhysicalDeviceInfo: {}", renderDevice.getPhysicalDeviceInfo().toString());
@@ -30,7 +31,7 @@ int main()
         if (!swapchain)
             continue;
 
-        bool  acquiredNextFrame = frameController.acquireNextFrame();
+        bool acquiredNextFrame = frameController.acquireNextFrame();
         if (!acquiredNextFrame)
         {
             continue;

@@ -20,7 +20,8 @@ namespace
 {
     constexpr const char* kSponzaUri = "res://models/Sponza/Sponza.gltf";
 
-    void addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
+    void
+    addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
     {
         reg.emplace<NameComponent>(entity, NameComponent {name});
         reg.emplace<TransformComponent>(entity, transform);
@@ -51,9 +52,9 @@ protected:
     void onPostConfigureDemo(Engine& engine) override
     {
         auto& renderService = engine.ctx().services.require<IRenderService>();
-        auto& sceneService = engine.ctx().services.require<ISceneService>();
-        auto& world = engine.ctx().services.require<IWorldService>().world();
-        auto& reg   = world.registry();
+        auto& sceneService  = engine.ctx().services.require<ISceneService>();
+        auto& world         = engine.ctx().services.require<IWorldService>().world();
+        auto& reg           = world.registry();
 
         auto model = sceneService.instantiateScene(world, kSponzaUri);
         if (model == entt::null)
@@ -81,7 +82,7 @@ protected:
                                         .range     = 5.0f,
                                     });
 
-        auto& settings = renderService.builtinRenderSettings();
+        auto& settings                        = renderService.builtinRenderSettings();
         settings.pbrLighting.enableIBL        = false;
         settings.pbrLighting.ambientIntensity = 0.35f;
         settings.shadow.coverageRadius        = 35.0f;

@@ -22,7 +22,7 @@ constexpr auto kTriangle = std::array {
     SimpleVertex {{0.5f, 0.5f, 0.0f}},
 };
 
-constexpr auto kIndices = std::array {0u, 1u, 2u};
+constexpr auto      kIndices = std::array {0u, 1u, 2u};
 constexpr glm::mat4 kTransform {1.0f};
 
 const char* const raygenCode = R"(
@@ -85,10 +85,9 @@ try
 {
     auto window = os::Window::Builder {}.setExtent({1024, 768}).setTitle("Raytracing Triangle Example").build();
 
-    rhi::RenderDevice renderDevice(
-        rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline,
-        "Raytracing Triangle Example",
-        window->getRequiredVulkanInstanceExtensions());
+    rhi::RenderDevice renderDevice(rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline,
+                                   "Raytracing Triangle Example",
+                                   window->getRequiredVulkanInstanceExtensions());
 
     VULTRA_CLIENT_INFO("RenderDevice Name: {}", renderDevice.getName());
     window->setTitle(std::format("Raytracing Triangle ({})", renderDevice.getName()));
@@ -104,9 +103,9 @@ try
     renderDevice.uploadS(indexBuffer, 0, sizeof(uint32_t) * kIndices.size(), kIndices.data());
     const auto indexBufferAddress = renderDevice.getBufferDeviceAddress(indexBuffer);
 
-    auto transformBuffer = renderDevice.createTransformBuffer();
-    auto rowMajor = glm::transpose(kTransform);
-    void* mapped = transformBuffer.map();
+    auto  transformBuffer = renderDevice.createTransformBuffer();
+    auto  rowMajor        = glm::transpose(kTransform);
+    void* mapped          = transformBuffer.map();
     std::memcpy(mapped, &rowMajor, sizeof(rowMajor));
     transformBuffer.unmap();
     const auto transformBufferAddress = renderDevice.getBufferDeviceAddress(transformBuffer);

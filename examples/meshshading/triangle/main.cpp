@@ -13,10 +13,9 @@ try
 {
     auto window = os::Window::Builder {}.setExtent({1024, 768}).build();
 
-    rhi::RenderDevice renderDevice(
-        rhi::RenderDeviceFeatureFlagBits::eMeshShader,
-        "MeshShading Triangle",
-        window->getRequiredVulkanInstanceExtensions());
+    rhi::RenderDevice renderDevice(rhi::RenderDeviceFeatureFlagBits::eMeshShader,
+                                   "MeshShading Triangle",
+                                   window->getRequiredVulkanInstanceExtensions());
 
     VULTRA_CLIENT_INFO("RenderDevice Name: {}", renderDevice.getName());
     VULTRA_CLIENT_INFO("RenderDevice PhysicalDeviceInfo: {}", renderDevice.getPhysicalDeviceInfo().toString());
@@ -114,7 +113,7 @@ void main()
         if (!swapchain)
             continue;
 
-        bool  acquiredNextFrame = frameController.acquireNextFrame();
+        bool acquiredNextFrame = frameController.acquireNextFrame();
         if (!acquiredNextFrame)
         {
             continue;

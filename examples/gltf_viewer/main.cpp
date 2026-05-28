@@ -24,10 +24,11 @@ using namespace vultra;
 
 namespace
 {
-    constexpr const char* kModelUri = "res://models/DamagedHelmet/DamagedHelmet.gltf";
+    constexpr const char* kModelUri          = "res://models/DamagedHelmet/DamagedHelmet.gltf";
     constexpr const char* kEnvironmentMapUri = "res://textures/environment_maps/citrus_orchard_puresky_1k.hdr";
 
-    void addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
+    void
+    addNamedTransform(entt::registry& reg, entt::entity entity, const char* name, const TransformComponent& transform)
     {
         reg.emplace<NameComponent>(entity, NameComponent {name});
         reg.emplace<TransformComponent>(entity, transform);
@@ -43,13 +44,11 @@ protected:
 
     Ref<Renderer> makeRenderer() const override
     {
-        return createRef<examples::ExampleUniversalRenderer>(
-            "GLTF Viewer",
-            [](Services services) {
-                ImGui::TextUnformatted("This example renders the Damaged Helmet glTF asset.");
-                examples::drawNamedLightControls(services, "Key Light");
-                examples::drawExampleRenderSettings(services);
-            });
+        return createRef<examples::ExampleUniversalRenderer>("GLTF Viewer", [](Services services) {
+            ImGui::TextUnformatted("This example renders the Damaged Helmet glTF asset.");
+            examples::drawNamedLightControls(services, "Key Light");
+            examples::drawExampleRenderSettings(services);
+        });
     }
 
     FPSCameraController makeFPSCameraController() const override
@@ -65,12 +64,12 @@ protected:
 
     void onPostConfigureDemo(Engine& engine) override
     {
-        auto& assetService = engine.ctx().services.require<IAssetService>();
-        auto& gpuResources = engine.ctx().services.require<IGpuResourceService>();
+        auto& assetService  = engine.ctx().services.require<IAssetService>();
+        auto& gpuResources  = engine.ctx().services.require<IGpuResourceService>();
         auto& renderService = engine.ctx().services.require<IRenderService>();
-        auto& sceneService = engine.ctx().services.require<ISceneService>();
-        auto& world = engine.ctx().services.require<IWorldService>().world();
-        auto& reg   = world.registry();
+        auto& sceneService  = engine.ctx().services.require<ISceneService>();
+        auto& world         = engine.ctx().services.require<IWorldService>().world();
+        auto& reg           = world.registry();
 
         auto model = sceneService.instantiateScene(world, kModelUri);
         if (model == entt::null)
@@ -105,7 +104,7 @@ protected:
                                         .castsShadow = true,
                                     });
 
-        auto& settings = renderService.builtinRenderSettings();
+        auto& settings                        = renderService.builtinRenderSettings();
         settings.pbrLighting.enableIBL        = true;
         settings.pbrLighting.iblColor         = {1.0f, 1.0f, 1.0f};
         settings.pbrLighting.iblIntensity     = 1.0f;
@@ -116,18 +115,18 @@ protected:
             settings.pbrLighting.environmentMap =
                 gpuResources.pool().textures[m_EnvironmentMap.gpuIndex()].texture.get();
         }
-        settings.ssr.enabled          = true;
-        settings.ssr.reflectionFactor = 0.6f;
-        settings.ssr.maxSteps         = 48;
-        settings.ssr.binaryRefinement = 5;
-        settings.ssr.stride           = 0.12f;
-        settings.ssr.thickness        = 0.35f;
-        settings.ssao.enabled         = true;
-        settings.ssao.radius          = 1.2f;
-        settings.ssao.bias            = 0.04f;
-        settings.ssao.intensity       = 1.2f;
-        settings.ssao.stepCount       = 4;
-        settings.ssao.directionCount  = 8;
+        settings.ssr.enabled           = true;
+        settings.ssr.reflectionFactor  = 0.6f;
+        settings.ssr.maxSteps          = 48;
+        settings.ssr.binaryRefinement  = 5;
+        settings.ssr.stride            = 0.12f;
+        settings.ssr.thickness         = 0.35f;
+        settings.ssao.enabled          = true;
+        settings.ssao.radius           = 1.2f;
+        settings.ssao.bias             = 0.04f;
+        settings.ssao.intensity        = 1.2f;
+        settings.ssao.stepCount        = 4;
+        settings.ssao.directionCount   = 8;
         settings.shadow.coverageRadius = 20.0f;
     }
 

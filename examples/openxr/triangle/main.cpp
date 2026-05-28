@@ -111,8 +111,8 @@ public:
         if (!target)
             return;
 
-        const rhi::GraphicsPipeline* pipeline = ctx.view().enableMultiview ? &m_XrMultiviewGraphicsPipeline :
-                                                                          &m_FallbackSrgbPipeline;
+        const rhi::GraphicsPipeline* pipeline =
+            ctx.view().enableMultiview ? &m_XrMultiviewGraphicsPipeline : &m_FallbackSrgbPipeline;
         if (!ctx.view().enableMultiview && target->getPixelFormat() == rhi::PixelFormat::eBGRA8_sRGB)
             pipeline = &m_SwapchainPipeline;
         else if (!ctx.view().enableMultiview && target->getPixelFormat() == rhi::PixelFormat::eRGBA8_sRGB)
@@ -121,8 +121,8 @@ public:
         rhi::prepareForAttachment(cb, *target, false);
         RHI_GPU_ZONE(cb, "OpenXR Triangle");
         cb.beginRendering({
-                              .area = {.extent = target->getExtent()},
-                              .layers = ctx.view().enableMultiview ? 2u : 1u,
+                              .area     = {.extent = target->getExtent()},
+                              .layers   = ctx.view().enableMultiview ? 2u : 1u,
                               .viewMask = ctx.view().enableMultiview ? 0x3u : 0u,
                               .colorAttachments =
                                   {
@@ -163,7 +163,8 @@ public:
                         XR_VERSION_PATCH(xrInstanceProperties.runtimeVersion));
         }
 
-        if (auto* frameDebugger = services.tryGet<IFrameDebuggerService>(); frameDebugger && frameDebugger->isAvailable())
+        if (auto* frameDebugger = services.tryGet<IFrameDebuggerService>();
+            frameDebugger && frameDebugger->isAvailable())
         {
             if (ImGui::Button("Capture One Frame"))
                 frameDebugger->captureSingleFrame();
@@ -174,11 +175,11 @@ public:
     }
 
 private:
-    rhi::VertexBuffer     m_VertexBuffer;
-    rhi::GraphicsPipeline m_XrGraphicsPipeline;
-    rhi::GraphicsPipeline m_XrMultiviewGraphicsPipeline;
-    rhi::GraphicsPipeline m_SwapchainPipeline;
-    rhi::GraphicsPipeline m_FallbackSrgbPipeline;
+    rhi::VertexBuffer              m_VertexBuffer;
+    rhi::GraphicsPipeline          m_XrGraphicsPipeline;
+    rhi::GraphicsPipeline          m_XrMultiviewGraphicsPipeline;
+    rhi::GraphicsPipeline          m_SwapchainPipeline;
+    rhi::GraphicsPipeline          m_FallbackSrgbPipeline;
     examples::ExampleXrMirrorPanel m_XrMirror;
 };
 

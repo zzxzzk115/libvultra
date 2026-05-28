@@ -76,9 +76,8 @@ namespace
         return normalized;
     }
 
-    std::optional<std::string_view> takeOptionValue(std::span<const std::string> args,
-                                                    size_t&                      index,
-                                                    const std::string_view       option)
+    std::optional<std::string_view>
+    takeOptionValue(std::span<const std::string> args, size_t& index, const std::string_view option)
     {
         const std::string_view arg = args[index];
         if (arg == option)
@@ -155,8 +154,7 @@ namespace
             return "res://models/3dgs/hornedlizard.spz";
         if (normalized == "racoonfamily")
             return "res://models/3dgs/racoonfamily.spz";
-        if (normalized == "train" || normalized == "truck" || normalized == "drjohnson" ||
-            normalized == "playroom")
+        if (normalized == "train" || normalized == "truck" || normalized == "drjohnson" || normalized == "playroom")
         {
             return "res://models/3dgs/" + normalized + "/" + normalized + "_clod.ply";
         }
@@ -333,11 +331,9 @@ namespace
 
     bool hasGazeRenderingParameterOverride(const GaussianDemoOptions& options)
     {
-        return options.foveatedRenderMode.has_value() ||
-               options.gazeX.has_value() || options.gazeY.has_value() ||
-               options.foveaDegrees.has_value() || options.midDegrees.has_value() ||
-               options.foveaLod.has_value() || options.midLod.has_value() ||
-               options.outerLod.has_value() || options.foveaResolutionScale.has_value() ||
+        return options.foveatedRenderMode.has_value() || options.gazeX.has_value() || options.gazeY.has_value() ||
+               options.foveaDegrees.has_value() || options.midDegrees.has_value() || options.foveaLod.has_value() ||
+               options.midLod.has_value() || options.outerLod.has_value() || options.foveaResolutionScale.has_value() ||
                options.midResolutionScale.has_value() || options.outerResolutionScale.has_value() ||
                options.transitionDegrees.has_value() || options.adaptiveBudgetEnabled.has_value() ||
                options.targetFrameMs.has_value() || options.budgetAdjustRate.has_value();
@@ -378,8 +374,7 @@ namespace
             settings.foveatedRingDegrees.x = std::max(*options.foveaDegrees, 0.0f);
         if (options.midDegrees)
             settings.foveatedRingDegrees.y = std::max(*options.midDegrees, 0.0f);
-        settings.foveatedRingDegrees.y =
-            std::max(settings.foveatedRingDegrees.y, settings.foveatedRingDegrees.x);
+        settings.foveatedRingDegrees.y = std::max(settings.foveatedRingDegrees.y, settings.foveatedRingDegrees.x);
         if (options.foveaLod)
             settings.foveatedRingLevels.x = std::clamp(*options.foveaLod, 0.0f, 1.0f);
         if (options.midLod)
@@ -407,10 +402,7 @@ namespace
 class GaussianSplattingDemoApp final : public DemoAppHost
 {
 protected:
-    std::string_view demoWindowTitle() const override
-    {
-        return "Gaussian Splatting Demo";
-    }
+    std::string_view demoWindowTitle() const override { return "Gaussian Splatting Demo"; }
 
     bool demoEnableExperimentalWebGPUContent() const override { return true; }
 
@@ -418,8 +410,8 @@ protected:
     {
         m_Options = parseDemoOptions(commandLineArgs());
 
-        auto& sceneService = engine.ctx().services.require<ISceneService>();
-        auto& worldService = engine.ctx().services.require<IWorldService>();
+        auto& sceneService  = engine.ctx().services.require<ISceneService>();
+        auto& worldService  = engine.ctx().services.require<IWorldService>();
         auto& renderService = engine.ctx().services.require<IRenderService>();
         m_RenderService     = &renderService;
 
@@ -444,8 +436,10 @@ protected:
                 m_Profiler = profiler;
                 VULTRA_CLIENT_INFO(
                     "Gaussian benchmark enabled: mode={}, gaze_render_mode={}, frames={}, warmup={}, output={}",
-                    gaussianModeLabel(settings.baselineMode), foveatedRenderModeLabel(settings.foveatedRenderMode),
-                    m_Options.benchmarkFrames, m_Options.warmupFrames,
+                    gaussianModeLabel(settings.baselineMode),
+                    foveatedRenderModeLabel(settings.foveatedRenderMode),
+                    m_Options.benchmarkFrames,
+                    m_Options.warmupFrames,
                     m_Options.outputPath.string());
             }
             else
@@ -457,10 +451,7 @@ protected:
         VULTRA_CLIENT_INFO("Loaded world from scene manifest: \"res://scenes/3dgs_example.vmanifest\"");
     }
 
-    bool onShouldClose() const override
-    {
-        return m_BenchmarkExitRequested || DemoAppHost::onShouldClose();
-    }
+    bool onShouldClose() const override { return m_BenchmarkExitRequested || DemoAppHost::onShouldClose(); }
 
     void onAfterEngineTick(fsec dt) override
     {
@@ -480,8 +471,8 @@ protected:
         if (frame->frameIndex != m_LastCollectedFrame)
         {
             m_LastCollectedFrame = frame->frameIndex;
-            m_Samples.push_back(makeBenchmarkSample(static_cast<uint32_t>(m_Samples.size()), dt, *frame,
-                                                    m_RenderService->gaussianSplatFrameStats()));
+            m_Samples.push_back(makeBenchmarkSample(
+                static_cast<uint32_t>(m_Samples.size()), dt, *frame, m_RenderService->gaussianSplatFrameStats()));
         }
 
         const bool collectedEnough = m_Samples.size() >= m_Options.benchmarkFrames;
@@ -492,7 +483,8 @@ protected:
         {
             if (timedOut && !collectedEnough)
             {
-                VULTRA_CLIENT_WARN("Gaussian benchmark stopped early: collected {}/{} samples", m_Samples.size(),
+                VULTRA_CLIENT_WARN("Gaussian benchmark stopped early: collected {}/{} samples",
+                                   m_Samples.size(),
                                    m_Options.benchmarkFrames);
             }
             finishBenchmark();
@@ -501,10 +493,7 @@ protected:
         }
     }
 
-    void onBeforeShutdown(Engine& /*engine*/) override
-    {
-        finishBenchmark();
-    }
+    void onBeforeShutdown(Engine& /*engine*/) override { finishBenchmark(); }
 
 private:
     void finishBenchmark()
@@ -521,12 +510,11 @@ private:
 
         writeBenchmarkCsv(m_Options.outputPath, m_Samples);
 
-        const auto cpuFrameStats  = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::cpuFrameMs));
-        const auto gpuFrameStats  = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuFrameMs));
+        const auto cpuFrameStats = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::cpuFrameMs));
+        const auto gpuFrameStats = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuFrameMs));
         const auto gpuPreprocess =
             summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuPreprocessPassMs));
-        const auto gpuRenderPass =
-            summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuRenderPassMs));
+        const auto gpuRenderPass = summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::gpuRenderPassMs));
         const auto cpuClodSelect =
             summarizeSeries(collectSeries(m_Samples, &GaussianBenchmarkSample::cpuClodSelectionMs));
 
@@ -537,8 +525,7 @@ private:
                   << "  mode: " << gaussianModeLabel(last.baselineMode) << "\n"
                   << "  gaze_rendering: " << (last.foveatedClodEnabled ? "yes" : "no") << "\n"
                   << "  gaze_render_mode: " << foveatedRenderModeLabel(last.foveatedRenderMode) << "\n"
-                  << "  layered_compositor: "
-                  << (last.foveatedLayeredCompositeEnabled ? "yes" : "no") << "\n"
+                  << "  layered_compositor: " << (last.foveatedLayeredCompositeEnabled ? "yes" : "no") << "\n"
                   << "  adaptive_budget: " << (last.adaptiveBudgetEnabled ? "yes" : "no") << "\n"
                   << "  ring_lod: " << last.foveaLod << ", " << last.midLod << ", " << last.outerLod << "\n"
                   << "  ring_res: " << last.foveaResolutionScale << ", " << last.midResolutionScale << ", "
@@ -552,18 +539,19 @@ private:
                   << "  GPU render pass: " << statsText(gpuRenderPass) << "\n"
                   << "  CPU CLOD prefix build: " << statsText(cpuClodSelect) << "\n\n";
 
-        VULTRA_CLIENT_INFO("Gaussian benchmark wrote {} samples to {}", m_Samples.size(), m_Options.outputPath.string());
+        VULTRA_CLIENT_INFO(
+            "Gaussian benchmark wrote {} samples to {}", m_Samples.size(), m_Options.outputPath.string());
     }
 
 private:
-    GaussianDemoOptions                   m_Options {};
-    IRenderService*                       m_RenderService {nullptr};
-    RuntimeProfiler*                      m_Profiler {nullptr};
-    std::vector<GaussianBenchmarkSample>  m_Samples;
-    uint64_t                              m_BenchmarkTicks {0};
-    uint64_t                              m_LastCollectedFrame {std::numeric_limits<uint64_t>::max()};
-    bool                                  m_BenchmarkFinished {false};
-    bool                                  m_BenchmarkExitRequested {false};
+    GaussianDemoOptions                  m_Options {};
+    IRenderService*                      m_RenderService {nullptr};
+    RuntimeProfiler*                     m_Profiler {nullptr};
+    std::vector<GaussianBenchmarkSample> m_Samples;
+    uint64_t                             m_BenchmarkTicks {0};
+    uint64_t                             m_LastCollectedFrame {std::numeric_limits<uint64_t>::max()};
+    bool                                 m_BenchmarkFinished {false};
+    bool                                 m_BenchmarkExitRequested {false};
 };
 
 int main(int argc, char** argv)
