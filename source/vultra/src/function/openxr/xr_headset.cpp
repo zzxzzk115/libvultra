@@ -144,99 +144,12 @@ namespace vultra
                 VULTRA_CORE_INFO("[XRHeadset] Using swapchain format: {}", rhi::toString(m_SwapchainPixelFormat));
             }
 
-            // Create a swapchain and render targets
-            {
-                const XrViewConfigurationView& eyeImageInfo = m_EyeImageInfos.at(0u);
-
-                // Create a swapchain
-                XrSwapchainCreateInfo swapchainCreateInfo {};
-                swapchainCreateInfo.type        = XR_TYPE_SWAPCHAIN_CREATE_INFO;
-                swapchainCreateInfo.format      = static_cast<int64_t>(rhi::toVk(m_SwapchainPixelFormat));
-                swapchainCreateInfo.sampleCount = eyeImageInfo.recommendedSwapchainSampleCount;
-                swapchainCreateInfo.width       = eyeImageInfo.recommendedImageRectWidth;
-                swapchainCreateInfo.height      = eyeImageInfo.recommendedImageRectHeight;
-                swapchainCreateInfo.arraySize   = static_cast<uint32_t>(m_EyeCount);
-                swapchainCreateInfo.faceCount   = 1u;
-                swapchainCreateInfo.mipCount    = 1u;
-                swapchainCreateInfo.usageFlags  = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
-                                                 XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT |
-                                                 XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
-
-                OPENXR_CHECK(xrCreateSwapchain(m_Session, &swapchainCreateInfo, &m_Swapchain),
-                             "Failed to create swapchain!");
-
-                // Get the number of swapchain images
-                uint32_t swapchainImageCount;
-                OPENXR_CHECK(xrEnumerateSwapchainImages(m_Swapchain, 0u, &swapchainImageCount, nullptr),
-                             "Failed to enumerate swapchains");
-
-                // Retrieve the swapchain images
-                m_SwapchainImages.resize(swapchainImageCount);
-                for (XrSwapchainImageVulkan2KHR& swapchainImage : m_SwapchainImages)
-                {
-                    swapchainImage.type = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN2_KHR;
-                }
-
-                XrSwapchainImageBaseHeader* data =
-                    reinterpret_cast<XrSwapchainImageBaseHeader*>(m_SwapchainImages.data());
-
-                OPENXR_CHECK(
-                    xrEnumerateSwapchainImages(
-                        m_Swapchain, static_cast<uint32_t>(m_SwapchainImages.size()), &swapchainImageCount, data),
-                    "Failed to enumerate swapchains");
-
-                // Create swapchain render target views
-                m_SwapchainStereoRenderTargetViews.resize(m_SwapchainImages.size());
-                for (size_t i = 0u; i < m_SwapchainImages.size(); ++i)
-                {
-                    const XrSwapchainImageVulkan2KHR& swapchainImage = m_SwapchainImages[i];
-                    const auto                        deviceHandle =
-                        rhi::TextureDeviceHandle {rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice)};
-                    const auto imageHandle = rhi::TextureImageHandle {static_cast<std::uintptr_t>(
-                        rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image)))};
-
-                    m_SwapchainStereoRenderTargetViews[i].stereo =
-                        rhi::Texture {deviceHandle,
-                                      imageHandle,
-                                      {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
-                                       static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
-                                      m_SwapchainPixelFormat,
-                                      0,
-                                      static_cast<uint32_t>(m_EyeCount)};
-
-                    m_SwapchainStereoRenderTargetViews[i].left =
-                        rhi::Texture {deviceHandle,
-                                      imageHandle,
-                                      {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
-                                       static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
-                                      m_SwapchainPixelFormat,
-                                      0};
-
-                    m_SwapchainStereoRenderTargetViews[i].right =
-                        rhi::Texture {deviceHandle,
-                                      imageHandle,
-                                      {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
-                                       static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)},
-                                      m_SwapchainPixelFormat,
-                                      1};
-                }
-            }
-
             m_EyeRenderInfos.resize(m_EyeCount);
             for (size_t eyeIndex = 0u; eyeIndex < m_EyeRenderInfos.size(); ++eyeIndex)
             {
                 XrCompositionLayerProjectionView& eyeRenderInfo = m_EyeRenderInfos.at(eyeIndex);
                 eyeRenderInfo.type                              = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
                 eyeRenderInfo.next                              = nullptr;
-
-                // Associate this eye with the swapchain
-                const XrViewConfigurationView& eyeImageInfo = m_EyeImageInfos.at(eyeIndex);
-                eyeRenderInfo.subImage.swapchain            = m_Swapchain;
-                eyeRenderInfo.subImage.imageArrayIndex      = static_cast<uint32_t>(eyeIndex);
-                eyeRenderInfo.subImage.imageRect.offset     = {0, 0};
-                eyeRenderInfo.subImage.imageRect.extent     = {
-                    static_cast<int32_t>(eyeImageInfo.recommendedImageRectWidth),
-                    static_cast<int32_t>(eyeImageInfo.recommendedImageRectHeight)};
             }
 
             m_EyeViewMatrices.resize(m_EyeCount);
@@ -247,15 +160,13 @@ namespace vultra
         XRHeadset::~XRHeadset()
         {
             // Clean up OpenXR
-            if (m_Session)
+            if (m_SessionRunning)
             {
                 xrEndSession(m_Session);
+                m_SessionRunning = false;
             }
 
-            if (m_Swapchain)
-            {
-                xrDestroySwapchain(m_Swapchain);
-            }
+            destroySwapchain();
 
             if (m_Space)
             {
@@ -390,6 +301,16 @@ namespace vultra
                 return BeginFrameResult::eError;
             }
 
+            if (!m_FrameState.shouldRender)
+            {
+                return BeginFrameResult::eSkipRender;
+            }
+
+            if (!ensureSwapchain())
+            {
+                return BeginFrameResult::eError;
+            }
+
             // Update the eye render infos, view and projection matrices
             for (size_t eyeIndex = 0u; eyeIndex < m_EyeCount; ++eyeIndex)
             {
@@ -428,11 +349,6 @@ namespace vultra
                 VULTRA_CORE_ERROR("[XRHeadset] xrWaitSwapchainImage failed: {}",
                                   xrutils::resultToString(instance, result));
                 return BeginFrameResult::eError;
-            }
-
-            if (!m_FrameState.shouldRender)
-            {
-                return BeginFrameResult::eSkipRender;
             }
 
             return BeginFrameResult::eNormal;
@@ -548,7 +464,112 @@ namespace vultra
 
         rhi::PixelFormat XRHeadset::getSwapchainPixelFormat() const { return m_SwapchainPixelFormat; }
 
-        bool XRHeadset::beginSession() const
+        bool XRHeadset::ensureSwapchain()
+        {
+            if (m_Swapchain)
+                return true;
+
+            const XrViewConfigurationView& eyeImageInfo = m_EyeImageInfos.at(0u);
+
+            XrSwapchainCreateInfo swapchainCreateInfo {};
+            swapchainCreateInfo.type        = XR_TYPE_SWAPCHAIN_CREATE_INFO;
+            swapchainCreateInfo.format      = static_cast<int64_t>(rhi::toVk(m_SwapchainPixelFormat));
+            swapchainCreateInfo.sampleCount = eyeImageInfo.recommendedSwapchainSampleCount;
+            swapchainCreateInfo.width       = eyeImageInfo.recommendedImageRectWidth;
+            swapchainCreateInfo.height      = eyeImageInfo.recommendedImageRectHeight;
+            swapchainCreateInfo.arraySize   = static_cast<uint32_t>(m_EyeCount);
+            swapchainCreateInfo.faceCount   = 1u;
+            swapchainCreateInfo.mipCount    = 1u;
+            swapchainCreateInfo.usageFlags  = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
+                                             XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT |
+                                             XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+
+            XrResult result = xrCreateSwapchain(m_Session, &swapchainCreateInfo, &m_Swapchain);
+            if (XR_FAILED(result))
+            {
+                VULTRA_CORE_ERROR("[XRHeadset] xrCreateSwapchain failed: {}",
+                                  xrutils::resultToString(m_Device.m_XrInstance, result));
+                return false;
+            }
+
+            uint32_t swapchainImageCount = 0u;
+            result = xrEnumerateSwapchainImages(m_Swapchain, 0u, &swapchainImageCount, nullptr);
+            if (XR_FAILED(result))
+            {
+                VULTRA_CORE_ERROR("[XRHeadset] xrEnumerateSwapchainImages failed: {}",
+                                  xrutils::resultToString(m_Device.m_XrInstance, result));
+                destroySwapchain();
+                return false;
+            }
+
+            m_SwapchainImages.resize(swapchainImageCount);
+            for (XrSwapchainImageVulkan2KHR& swapchainImage : m_SwapchainImages)
+                swapchainImage.type = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN2_KHR;
+
+            auto* data = reinterpret_cast<XrSwapchainImageBaseHeader*>(m_SwapchainImages.data());
+            result = xrEnumerateSwapchainImages(
+                m_Swapchain, static_cast<uint32_t>(m_SwapchainImages.size()), &swapchainImageCount, data);
+            if (XR_FAILED(result))
+            {
+                VULTRA_CORE_ERROR("[XRHeadset] xrEnumerateSwapchainImages failed: {}",
+                                  xrutils::resultToString(m_Device.m_XrInstance, result));
+                destroySwapchain();
+                return false;
+            }
+
+            m_SwapchainStereoRenderTargetViews.resize(m_SwapchainImages.size());
+            for (size_t i = 0u; i < m_SwapchainImages.size(); ++i)
+            {
+                const auto& swapchainImage = m_SwapchainImages[i];
+                const auto  deviceHandle =
+                    rhi::TextureDeviceHandle {rhi::VulkanRenderDeviceAccess::getDeviceHandle(m_RenderDevice)};
+                const auto imageHandle = rhi::TextureImageHandle {static_cast<std::uintptr_t>(
+                    rhi::getVulkanHandleId(static_cast<VkImage>(swapchainImage.image)))};
+                const rhi::Extent2D extent {static_cast<uint32_t>(eyeImageInfo.recommendedImageRectWidth),
+                                            static_cast<uint32_t>(eyeImageInfo.recommendedImageRectHeight)};
+
+                m_SwapchainStereoRenderTargetViews[i].stereo =
+                    rhi::Texture {deviceHandle, imageHandle, extent, m_SwapchainPixelFormat, 0, static_cast<uint32_t>(m_EyeCount)};
+                m_SwapchainStereoRenderTargetViews[i].left =
+                    rhi::Texture {deviceHandle, imageHandle, extent, m_SwapchainPixelFormat, 0};
+                m_SwapchainStereoRenderTargetViews[i].right =
+                    rhi::Texture {deviceHandle, imageHandle, extent, m_SwapchainPixelFormat, 1};
+            }
+
+            for (size_t eyeIndex = 0u; eyeIndex < m_EyeRenderInfos.size(); ++eyeIndex)
+            {
+                const auto& eyeInfo                    = m_EyeImageInfos.at(eyeIndex);
+                auto&       eyeRenderInfo              = m_EyeRenderInfos.at(eyeIndex);
+                eyeRenderInfo.subImage.swapchain       = m_Swapchain;
+                eyeRenderInfo.subImage.imageArrayIndex = static_cast<uint32_t>(eyeIndex);
+                eyeRenderInfo.subImage.imageRect.offset = {0, 0};
+                eyeRenderInfo.subImage.imageRect.extent = {static_cast<int32_t>(eyeInfo.recommendedImageRectWidth),
+                                                           static_cast<int32_t>(eyeInfo.recommendedImageRectHeight)};
+            }
+
+            VULTRA_CORE_INFO("[XRHeadset] Created swapchain render targets: {}x{} layers {} images {}",
+                             eyeImageInfo.recommendedImageRectWidth,
+                             eyeImageInfo.recommendedImageRectHeight,
+                             m_EyeCount,
+                             m_SwapchainImages.size());
+            return true;
+        }
+
+        void XRHeadset::destroySwapchain()
+        {
+            m_SwapchainStereoRenderTargetViews.clear();
+            m_SwapchainImages.clear();
+            for (auto& eyeRenderInfo : m_EyeRenderInfos)
+                eyeRenderInfo.subImage.swapchain = XR_NULL_HANDLE;
+
+            if (m_Swapchain)
+            {
+                xrDestroySwapchain(m_Swapchain);
+                m_Swapchain = XR_NULL_HANDLE;
+            }
+        }
+
+        bool XRHeadset::beginSession()
         {
             // Start the session
             XrSessionBeginInfo sessionBeginInfo {};
@@ -563,10 +584,11 @@ namespace vultra
                 return false;
             }
 
+            m_SessionRunning = true;
             return true;
         }
 
-        bool XRHeadset::endSession() const
+        bool XRHeadset::endSession()
         {
             // End the session
             const XrResult result = xrEndSession(m_Session);
@@ -577,6 +599,8 @@ namespace vultra
                 return false;
             }
 
+            m_SessionRunning = false;
+            destroySwapchain();
             return true;
         }
     } // namespace openxr

@@ -79,8 +79,10 @@ namespace vultra
             [[nodiscard]] rhi::PixelFormat getSwapchainPixelFormat() const;
 
         private:
-            bool beginSession() const;
-            bool endSession() const;
+            bool beginSession();
+            bool endSession();
+            bool ensureSwapchain();
+            void destroySwapchain();
 
             vk::Image getSwapchainImage(size_t swapchainImageIndex) const
             {
@@ -112,6 +114,7 @@ namespace vultra
 
             std::vector<StereoRenderTargetView> m_SwapchainStereoRenderTargetViews;
 
+            bool m_SessionRunning {false};
             bool m_ExitRequested {false};
         };
     } // namespace openxr

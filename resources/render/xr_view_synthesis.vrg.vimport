@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="render_graph_json"
+uid="22de9b255cb4dfc4bf957b12f3d65205"
+
+[source]
+file="render/xr_view_synthesis.vrg.json"
+
+[output]
+file="imported/render_graph_json/render/xr_view_synthesis.vrg.json"
+
+[params]

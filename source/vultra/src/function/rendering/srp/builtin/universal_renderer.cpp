@@ -13,7 +13,6 @@
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/render_service.hpp"
-#include "vultra/function/services/scene_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
@@ -665,10 +664,9 @@ namespace vultra
             if (!ImGui::CollapsingHeader("Scene Lights", ImGuiTreeNodeFlags_DefaultOpen))
                 return;
 
-            auto& world        = services.require<IWorldService>().world();
-            auto& sceneService = services.require<ISceneService>();
-            auto& registry     = world.registry();
-            auto  lightView    = registry.view<LightComponent>();
+            auto& world     = services.require<IWorldService>().world();
+            auto& registry  = world.registry();
+            auto  lightView = registry.view<LightComponent>();
 
             size_t lightCount = 0;
             for ([[maybe_unused]] auto entity : lightView)
@@ -713,28 +711,6 @@ namespace vultra
                 ImGui::PopID();
             }
 
-            ImGui::SeparatorText("Save Scene");
-            static char        savePath[256] = "res://scenes/test_saved.vscn";
-            static std::string saveStatus;
-
-            ImGui::InputText("VSCN Path", savePath, sizeof(savePath));
-            const std::string path {savePath};
-            const bool        isVscn = path.size() >= 5 && path.substr(path.size() - 5) == ".vscn";
-            if (!isVscn)
-                ImGui::TextUnformatted("Only .vscn snapshots are saved here. .vmanifest needs manifest-authoring support.");
-
-            if (!isVscn)
-                ImGui::BeginDisabled();
-            if (ImGui::Button("Save VSCN"))
-            {
-                const bool saved = sceneService.saveWorldAsSceneSync(path, world);
-                saveStatus      = saved ? "Saved." : "Save failed.";
-            }
-            if (!isVscn)
-                ImGui::EndDisabled();
-
-            if (!saveStatus.empty())
-                ImGui::TextUnformatted(saveStatus.c_str());
         }
 
         void drawHintRow(const char* icon, const char* text)

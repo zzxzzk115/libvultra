@@ -1,100 +1,59 @@
 # XR View Synthesis Render Graph
 
-Date: 2026-05-27
+Date: 2026-05-28
 
 ## Intent
 
-Vultra render graphs need an XR view synthesis stage that can render a source
-view, synthesize another stereo view through image-space warping, and repair
-disocclusion holes through configurable inpainting.
+Vultra XR rendering uses two graph shapes:
 
-The implementation must be research-friendly:
+- Normal render graphs implicitly compose to the current render target. In XR
+  single-graph stereo this target is the stereo swapchain image, and passes must
+  preserve multiview texture shape and `viewMask`.
+- XR view synthesis graphs explicitly compose to the left or right eye
+  backbuffer. They are reserved for stereo synthesis chains assembled from small
+  atomic passes.
 
-- render graph files select algorithms through readable parameters;
-- C++ code exposes extension points for warping and inpainting backends;
-- the default backend is replaceable rather than baked into the graph runtime;
-- geometry shader paths are avoided; adaptive mesh generation is compute-driven.
+The old graph-facing `XrViewSynthesis` wrapper pass is removed from the public
+render graph registry. Future synthesis work must not reintroduce one large
+backend-selecting pass.
 
-## Target Architecture
+## Backbuffer Selection
 
-The graph-facing abstraction is `XrViewSynthesis`.
+Schema v0.3 is sufficient. Vultra interprets existing `ResourceRef.selector`
+data for final composition outputs:
 
-The intended implementation owns two backend categories:
+- no selector, `target`, or `backbuffer`: compose to the current render target;
+- `left_backbuffer`, or `{ "resource": "backbuffer", "view": "left" }`:
+  compose to the left XR eye target;
+- `right_backbuffer`, or `{ "resource": "backbuffer", "view": "right" }`:
+  compose to the right XR eye target.
 
-- `IXrWarpingBackend`: consumes source color/depth and produces a warped image
-  plus validity metadata.
-- `IXrInpaintingBackend`: consumes the warped image and repairs holes.
+If an explicit eye target is requested when XR targets are unavailable, the
+renderer logs a clear error and skips that final pass.
 
-The planned default backend pair is:
+`resources/render/xr_view_synthesis.vrg.json` is a reserved design graph until
+atomic synthesis passes exist. Its composition passes must stay disabled so
+selecting it cannot execute placeholder resources.
 
-- `adaptive_mesh_graphics`: compute shader builds an adaptive screen-space mesh
-  and a graphics pass rasterizes the generated vertex buffer.
-- `pull_push`: a pull/push pyramid repair backend using the alpha validity
-  convention produced by the warping backend.
+## Atomic Pass Direction
 
-## Render Graph Parameters
+Future synthesis graphs should be built from atomic passes:
 
-`XrViewSynthesis` parameters should stay algorithm-oriented:
+- `XrGeometryWarp`: non-adaptive geometry-based warping from source color/depth
+  to target-view warped color/validity.
+- `XrDepthAwarePullPush`: depth-aware repair of invalid/hole regions.
 
-- `warpingBackend`: default `adaptive_mesh_graphics`.
-- `inpaintingBackend`: default `pull_push`.
-- `sourceView`: registered source-view role.
-- `targetView`: registered target-view role.
-- `baseGridSize`: coarse image-space grid cell size in pixels.
-- `maxSubdivision`: maximum adaptive subdivision level per cell.
-- `sideLengthThreshold`: projected triangle stretch threshold.
-- `depthThreshold`: depth discontinuity/inpainting threshold.
+Adaptive mesh warping is intentionally out of scope for the first atomic pass
+version because the previous implementation caused stability risk.
 
-Backend-specific parameters may be accepted, but the render graph should not
-name shader files or pipeline internals.
+## Multiview Contract
 
-## Planned Default Backend Notes
+Normal graph passes must be multiview-first:
 
-The default adaptive mesh backend should follow Didyk-style image-space stereo
-view synthesis with compute-generated mesh data:
+- camera-sized transient outputs inherit input layers and `viewMask`;
+- graphics pipelines are keyed by framebuffer `viewMask`;
+- fullscreen project passes that read multiview inputs must preserve multiview
+  output shape or warn.
 
-1. Read source color/depth and stereo camera matrices.
-2. For each coarse screen-space grid cell, evaluate projected corner positions.
-3. Subdivide cells when projected edge length or depth discontinuity exceeds
-   thresholds.
-4. Emit triangle-list vertices into a storage buffer. The first implementation
-   uses a fixed upper bound per coarse cell and writes inactive slots as
-   degenerate triangles; a later optimization may add indirect count emission.
-5. Rasterize the generated adaptive mesh in a standard graphics pass.
-6. Encode valid/invalid/hole information in alpha for inpainting.
-
-This keeps the adaptive grid model portable and avoids geometry shader
-dependencies.
-
-## Extension Points
-
-Custom warping backends may implement:
-
-- pixel splatting;
-- mesh shader generated warps;
-- optical-flow-based warps;
-- temporal reprojection;
-- stereo warping with history, HiZ, or TAA data.
-
-Custom inpainting backends may implement:
-
-- pull-push;
-- depth-aware neighborhood filling;
-- ray traced completion;
-- neural or external upscaler/inpainting integrations.
-
-The render graph contract stays stable as long as the backend consumes the same
-inputs and publishes a final color resource.
-
-## Current Integration Boundary
-
-The first concrete implementation registers graph-facing warping, inpainting,
-and view-role catalogs. `adaptive_mesh_graphics` and `none` are selectable
-warping backends; `pull_push` and `none` are selectable inpainting backends.
-`adaptive_mesh_graphics` is implemented as a compute mesh build pass followed
-by graphics rasterization.
-
-`viewMode` in schema v0.3 currently documents graph intent and is evaluated only
-for pass-level `when` conditions. Future work should add first-class execution
-semantics for view-role and history resources so graphs can explicitly express
-synthesis direction without changing pass structure.
+This lets the default XR graph render through the normal chain without manually
+declaring eye-specific backbuffers.

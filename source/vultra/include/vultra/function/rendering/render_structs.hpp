@@ -343,7 +343,7 @@ namespace vultra
         };
 
         bool      enabled {true};
-        uint32_t resolution {4096};
+        uint32_t resolution {2048};
         uint32_t cascadeCount {4};
         float     coverageRadius {75.0f};
         float     lightDistance {200.0f};

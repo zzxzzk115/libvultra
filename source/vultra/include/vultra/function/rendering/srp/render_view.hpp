@@ -35,6 +35,8 @@ namespace vultra
         uint32_t                           multiviewMask {0};
         std::array<const RenderCamera*, 2> multiviewCameras {nullptr, nullptr};
         uint32_t                           multiviewCameraCount {0};
+        rhi::Texture*                      xrStereoTarget {nullptr};
+        std::array<rhi::Texture*, 2>       xrEyeTargets {nullptr, nullptr};
 
         resource::GpuSceneDatabase* gpuSceneDatabase {nullptr};
         resource::GpuSceneView*     gpuSceneView {nullptr};

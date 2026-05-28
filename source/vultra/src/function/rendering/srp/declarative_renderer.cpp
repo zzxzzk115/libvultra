@@ -39,7 +39,6 @@
 #include "vultra/function/rendering/srp/builtin/passes/thin_gbuffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
-#include "vultra/function/rendering/srp/builtin/passes/xr_view_synthesis_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 #include "vultra/function/services/asset_service.hpp"
@@ -54,6 +53,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -128,6 +128,142 @@ namespace vultra
             return std::string(node) + "." + std::string(slot);
         }
 
+        enum class RenderGraphBackbufferView : uint8_t
+        {
+            eCurrent,
+            eLeft,
+            eRight,
+        };
+
+        [[nodiscard]] std::optional<std::string> selectorString(const nlohmann::json& selector, const char* key)
+        {
+            if (!selector.is_object())
+                return std::nullopt;
+            const auto it = selector.find(key);
+            if (it != selector.end() && it->is_string())
+                return it->get<std::string>();
+            const auto descIt = selector.find("desc");
+            if (descIt == selector.end() || !descIt->is_object())
+                return std::nullopt;
+            const auto nestedIt = descIt->find(key);
+            if (nestedIt == descIt->end() || !nestedIt->is_string())
+                return std::nullopt;
+            return nestedIt->get<std::string>();
+        }
+
+        [[nodiscard]] RenderGraphBackbufferView backbufferViewFromResource(std::string_view name)
+        {
+            const auto normalized = normalizeId(std::string(name));
+            if (normalized == "left_backbuffer" || normalized == "backbuffer_left" || normalized == "left_target" ||
+                normalized == "target_left")
+                return RenderGraphBackbufferView::eLeft;
+            if (normalized == "right_backbuffer" || normalized == "backbuffer_right" || normalized == "right_target" ||
+                normalized == "target_right")
+                return RenderGraphBackbufferView::eRight;
+            return RenderGraphBackbufferView::eCurrent;
+        }
+
+        [[nodiscard]] RenderGraphBackbufferView backbufferViewFromSelector(const nlohmann::json& selector,
+                                                                           const RenderGraphBackbufferView fallback)
+        {
+            const auto view = selectorString(selector, "view");
+            if (!view)
+                return fallback;
+
+            const auto normalized = normalizeId(*view);
+            if (normalized == "left" || normalized == "eye0" || normalized == "eye_0")
+                return RenderGraphBackbufferView::eLeft;
+            if (normalized == "right" || normalized == "eye1" || normalized == "eye_1")
+                return RenderGraphBackbufferView::eRight;
+            return fallback;
+        }
+
+        [[nodiscard]] bool isBackbufferResource(std::string_view name)
+        {
+            const auto normalized = normalizeId(std::string(name));
+            return normalized == "backbuffer" || normalized == "target" || normalized == "left_backbuffer" ||
+                   normalized == "backbuffer_left" || normalized == "left_target" || normalized == "target_left" ||
+                   normalized == "right_backbuffer" || normalized == "backbuffer_right" ||
+                   normalized == "right_target" || normalized == "target_right";
+        }
+
+        void warnMissingBackbufferOnce(std::string_view resourceName, const RenderGraphBackbufferView view)
+        {
+            static std::array<bool, 3> warned {};
+            const auto                 index = static_cast<size_t>(view);
+            if (index < warned.size() && warned[index])
+                return;
+            if (index < warned.size())
+                warned[index] = true;
+
+            const char* label = "current";
+            if (view == RenderGraphBackbufferView::eLeft)
+                label = "left";
+            else if (view == RenderGraphBackbufferView::eRight)
+                label = "right";
+
+            VULTRA_CORE_ERROR("[DeclarativeRenderer] Render graph requested {} backbuffer '{}' but no target is "
+                              "available for the current view.",
+                              label,
+                              resourceName);
+        }
+
+        void warnFullscreenMultiviewContractOnce(std::string_view passName)
+        {
+            static std::unordered_set<std::string> warned;
+            const auto                             key = std::string(passName);
+            if (!warned.insert(key).second)
+                return;
+            VULTRA_CORE_WARN("[DeclarativeRenderer] Fullscreen pass '{}' reads multiview input but its output does not "
+                             "preserve viewMask.",
+                             passName);
+        }
+
+        void warnMissingPassInputOnce(std::string_view graphPass, std::string_view slot)
+        {
+            static std::unordered_set<std::string> warned;
+            const auto                             key = std::string(graphPass) + ":" + std::string(slot);
+            if (!warned.insert(key).second)
+                return;
+
+            VULTRA_CORE_ERROR("[DeclarativeRenderer] Render graph pass '{}' input '{}' is unavailable; skipping pass.",
+                              graphPass,
+                              slot);
+        }
+
+        [[nodiscard]] FrameGraphResource importRenderGraphBackbuffer(FrameGraph&                       fg,
+                                                                     const RenderView&                 view,
+                                                                     std::string_view                  resourceName,
+                                                                     const nlohmann::json&             selector,
+                                                                     const std::string_view            importName)
+        {
+            const auto requestedView =
+                backbufferViewFromSelector(selector, backbufferViewFromResource(resourceName));
+
+            rhi::Texture* target   = view.target;
+            uint32_t      viewMask = view.renderTargetViewMask();
+            if (requestedView == RenderGraphBackbufferView::eLeft ||
+                requestedView == RenderGraphBackbufferView::eRight)
+            {
+                const auto eyeIndex = requestedView == RenderGraphBackbufferView::eLeft ? 0u : 1u;
+                target              = view.xrEyeTargets[eyeIndex];
+                viewMask            = 0u;
+            }
+
+            if (!target)
+            {
+                warnMissingBackbufferOnce(resourceName, requestedView);
+                return {};
+            }
+
+            std::string name {importName};
+            if (requestedView == RenderGraphBackbufferView::eLeft)
+                name += "/Left";
+            else if (requestedView == RenderGraphBackbufferView::eRight)
+                name += "/Right";
+            return framegraph::importTexture(fg, name, target, viewMask);
+        }
+
         [[nodiscard]] bool renderGraphConditionTokenMatches(std::string_view token, const RenderView& view)
         {
             auto normalized = normalizeId(std::string(token));
@@ -193,6 +329,19 @@ namespace vultra
                 orBegin = orEnd + 2;
             }
             return false;
+        }
+
+        [[nodiscard]] bool renderGraphViewModeMatches(std::string_view viewMode, const RenderView& view)
+        {
+            const auto normalized = normalizeId(std::string(viewMode));
+            if (normalized.empty() || normalized == "inherit" || normalized == "any" || normalized == "always")
+                return true;
+            if (normalized == "xr" || normalized == "vr" || normalized == "stereo" ||
+                normalized == "single_graph_stereo")
+                return view.usesSingleGraphStereo();
+            if (normalized == "mono" || normalized == "non_xr" || normalized == "non_vr")
+                return !view.usesSingleGraphStereo();
+            return true;
         }
 
         struct RenderGraphPassPorts
@@ -324,13 +473,27 @@ namespace vultra
             const auto         outputKey  = resourceKeyFor(m_Desc.output);
             const auto         input      = directInput ? directInput : ctx.data.tryGet(inputKey);
             const auto         outputDesc = makeOutputDesc(ctx, input);
-            FrameGraphResource output =
-                directOutput ?
-                    directOutput :
-                normalizeId(m_Desc.output) == "backbuffer" || normalizeId(m_Desc.output) == "target" ?
-                    framegraph::importTexture(
-                        ctx.fg, "DeclarativeBackbuffer", ctx.view().target, ctx.view().renderTargetViewMask()) :
-                    FrameGraphResource {};
+            FrameGraphResource output {};
+            if (directOutput)
+                output = directOutput;
+            else if (isBackbufferResource(m_Desc.output))
+            {
+                output = importRenderGraphBackbuffer(ctx.fg,
+                                                     ctx.view(),
+                                                     m_Desc.output,
+                                                     nlohmann::json::object(),
+                                                     "DeclarativeBackbuffer");
+            }
+
+            if (input)
+            {
+                const auto inputDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(input);
+                if (inputDesc.viewMask != 0u && outputDesc.viewMask == 0u && !directOutput &&
+                    !isBackbufferResource(m_Desc.output))
+                {
+                    warnFullscreenMultiviewContractOnce(m_Desc.name);
+                }
+            }
 
             ctx.fg.addCallbackPass<PassData>(
                 m_Desc.name.c_str(),
@@ -393,8 +556,7 @@ namespace vultra
                     rc.cb.beginRendering(framebufferInfo.value()).drawFullScreenTriangle().endRendering();
                 });
 
-            if (publishNamedOutput && output && normalizeId(m_Desc.output) != "backbuffer" &&
-                normalizeId(m_Desc.output) != "target")
+            if (publishNamedOutput && output && !isBackbufferResource(m_Desc.output))
                 ctx.data.set(outputKey, output);
 
             return output;
@@ -534,12 +696,12 @@ namespace vultra
 
             vrendergraph::RenderGraph graph {
                 m_Registry,
-                [&ctx](
-                    FrameGraph& fg, const std::string_view resourceName, const nlohmann::json&) -> FrameGraphResource {
-                    const auto normalized = normalizeId(std::string(resourceName));
-                    if (normalized == "backbuffer" || normalized == "target")
-                        return framegraph::importTexture(
-                            fg, "VRenderGraphBackbuffer", ctx.view().target, ctx.view().renderTargetViewMask());
+                [&ctx](FrameGraph& fg,
+                       const std::string_view resourceName,
+                       const nlohmann::json&  resourceDesc) -> FrameGraphResource {
+                    if (isBackbufferResource(resourceName))
+                        return importRenderGraphBackbuffer(
+                            fg, ctx.view(), resourceName, resourceDesc, "VRenderGraphBackbuffer");
                     return ctx.data.tryGet(resourceKeyFor(resourceName));
                 }};
 
@@ -554,7 +716,8 @@ namespace vultra
         {
             auto       activeDesc   = desc;
             const auto passIsActive = [&view](const vrendergraph::PassDecl& pass) {
-                return pass.enabled && renderGraphConditionMatches(pass.when, view);
+                return pass.enabled && renderGraphViewModeMatches(pass.viewMode, view) &&
+                       renderGraphConditionMatches(pass.when, view);
             };
 
             bool changed = true;
@@ -1185,41 +1348,6 @@ namespace vultra
                             });
 
             registerBuiltin(
-                "XrViewSynthesis",
-                {"source", "depth"},
-                {"color"},
-                [this](FrameGraph&,
-                       FrameGraphBlackboard&,
-                       const vrendergraph::ParamBlock& params,
-                       vrendergraph::PassBuildContext& passCtx) {
-                    auto* ctx = m_Owner.m_CurrentBuildContext;
-                    if (!ctx)
-                        return;
-
-                    XrViewSynthesisSettings settings {};
-                    settings.enabled        = params.get<bool>("enabled", settings.enabled);
-                    settings.warpingBackend = params.get<std::string>("warpingBackend", settings.warpingBackend);
-                    settings.inpaintingBackend =
-                        params.get<std::string>("inpaintingBackend", settings.inpaintingBackend);
-                    settings.sourceView     = params.get<std::string>("sourceView", settings.sourceView);
-                    settings.targetView     = params.get<std::string>("targetView", settings.targetView);
-                    settings.baseGridSize   = static_cast<uint32_t>(std::max(1, params.get<int>("baseGridSize", 16)));
-                    settings.maxSubdivision = static_cast<uint32_t>(std::max(0, params.get<int>("maxSubdivision", 2)));
-                    settings.sideLengthThreshold =
-                        std::max(0.0f, params.get<float>("sideLengthThreshold", settings.sideLengthThreshold));
-                    settings.depthThreshold =
-                        std::max(0.0f, params.get<float>("depthThreshold", settings.depthThreshold));
-
-                    auto color = m_XrViewSynthesisPass.addPass(
-                        *ctx, passCtx.getInput("source"), passCtx.getInput("depth"), settings);
-                    if (color)
-                    {
-                        ctx->data.set(kResKey_FinalCompositionSource, color);
-                        passCtx.setOutput("color", color);
-                    }
-                });
-
-            registerBuiltin(
                 "FinalComposition",
                 {"source"},
                 {"target"},
@@ -1230,11 +1358,21 @@ namespace vultra
                     auto* ctx = m_Owner.m_CurrentBuildContext;
                     if (!ctx || !ctx->view().target)
                         return;
-                    ctx->data.set(kResKey_FinalCompositionSource, passCtx.getInput("source"));
+                    auto source = passCtx.getInput("source");
+                    if (!source)
+                    {
+                        warnMissingPassInputOnce("FinalComposition", "source");
+                        return;
+                    }
+                    const auto* outputRef = passCtx.getOutputRef("target");
+                    const auto  outputName =
+                        outputRef && isBackbufferResource(outputRef->resource) ? outputRef->resource : "target";
+                    const auto outputSelector = outputRef ? outputRef->selector : nlohmann::json::object();
+                    ctx->data.set(kResKey_FinalCompositionSource, source);
                     auto target = m_FinalCompositionPass.compose(
                         *ctx,
-                        framegraph::importTexture(
-                            fg, "VRenderGraphBackbuffer", ctx->view().target, ctx->view().renderTargetViewMask()));
+                        importRenderGraphBackbuffer(
+                            fg, ctx->view(), outputName, outputSelector, "VRenderGraphBackbuffer"));
                     if (target)
                         passCtx.setOutput("target", target);
                 });
@@ -1493,6 +1631,8 @@ namespace vultra
                      "depth",
                      "backbuffer",
                      "target",
+                     "left_backbuffer",
+                     "right_backbuffer",
                      "gbuffer_color",
                      "gbuffer_normal",
                      "gbuffer_material",
@@ -1536,7 +1676,6 @@ namespace vultra
         FxaaPass                                                                m_FxaaPass;
         ToneMappingPass                                                         m_ToneMappingPass;
         SelectionOutlinePass                                                    m_SelectionOutlinePass;
-        XrViewSynthesisPass                                                     m_XrViewSynthesisPass;
         FinalCompositionPass                                                    m_FinalCompositionPass;
         RayTracingPrimaryPass                                                   m_RayTracingPrimaryPass;
         VisibilityBufferPass                                                    m_VisibilityBufferPass;

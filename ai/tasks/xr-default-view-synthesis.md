@@ -1,31 +1,36 @@
-# XR Default View Synthesis
+# XR Render Graph Stereo and View Synthesis Redesign
 
-Date: 2026-05-27
+Date: 2026-05-28
 
 ## Goal
 
-Add a `default_xr.vrg.json` render graph and built-in extension points for
-stereo view synthesis.
+Remove the graph-facing `XrViewSynthesis` wrapper pass and make XR render graph
+composition explicit only where view synthesis needs left/right eye targets.
 
 ## Scope
 
-- Add graph-facing `XrViewSynthesis` pass.
-- Add graph parameters for future warping and inpainting backend selection.
-- Add default backend names as graph-facing configuration values:
-  - `adaptive_mesh_graphics`
-  - `pull_push`
-- Add a default XR graph that routes the existing default renderer through the
-  disabled synthesis stage.
-- Keep the initial C++ pass as a source-forwarding stub until the real backend
-  can be implemented without device-lost failures.
-- Keep unrelated project scene changes untouched.
+- Remove `XrViewSynthesis` from the runtime render graph registry.
+- Remove `XrViewSynthesis` from the Render Graph editor pass catalog.
+- Keep normal graphs implicit: `FinalComposition` without an output selector
+  writes to the current render target, including XR stereo/multiview targets.
+- Add final-composition output selection for `left_backbuffer` and
+  `right_backbuffer` through schema v0.3 `ResourceRef` selectors.
+- Update `default_xr.vrg.json` so it no longer contains synthesis.
+- Add a reserved `xr_view_synthesis.vrg.json` graph that documents explicit
+  left/right final composition outputs for future atomic passes. Its placeholder
+  passes stay disabled until producers exist.
 
 ## Acceptance
 
 - `xmake build -y vultra-app` passes.
-- `resources/render/default_xr.vrg.json` parses as schema v0.3.
-- Existing `default.vrg.json` remains usable for non-XR rendering.
-- The design supports future replacement of warping/inpainting backends without
-  changing graph structure.
-- `XrViewSynthesis` remains disabled by default until a stable implementation is
-  restored.
+- `resources/render/default.vrg.json`, `default_xr.vrg.json`, and
+  `xr_view_synthesis.vrg.json` parse as JSON.
+- Loading an old graph that references `XrViewSynthesis` reports an unknown
+  pass type instead of silently executing a disabled wrapper.
+- XR normal graph rendering remains multiview-first.
+
+## Follow-Up
+
+- Add `XrGeometryWarp` as a non-adaptive atomic pass.
+- Add `XrDepthAwarePullPush` as an atomic repair pass.
+- Keep adaptive geometry warping out of the initial atomic implementation.

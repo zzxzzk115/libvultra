@@ -252,15 +252,26 @@ namespace vultra
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         if (!m_XRSessionRequested && m_XRBackend)
         {
+            m_RenderDevice->waitIdle();
             m_XRBackend.reset();
+            m_XRMirrorTargets.clear();
+            m_XREyeViews.clear();
             m_LastXREyeViews.clear();
+            VULTRA_CORE_INFO("[RenderBackendSystem] XR session released; skipping transition frame");
+            return false;
         }
         if (m_XRSessionRequested && !m_XRBackend && m_RenderDevice->getXRDevice())
         {
             try
             {
+                m_RenderDevice->waitIdle();
                 VULTRA_CORE_INFO("[RenderBackendSystem] Starting XR session on demand");
                 m_XRBackend = std::make_unique<openxr::XRHeadset>(*m_RenderDevice);
+                m_XRMirrorTargets.clear();
+                m_XREyeViews.clear();
+                m_LastXREyeViews.clear();
+                VULTRA_CORE_INFO("[RenderBackendSystem] XR session started; skipping transition frame");
+                return false;
             }
             catch (const std::exception& e)
             {
