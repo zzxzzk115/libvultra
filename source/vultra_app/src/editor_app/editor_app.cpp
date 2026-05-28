@@ -370,6 +370,33 @@ namespace vultra_app
             return runCommand(launch.str());
         }
 
+        void resetWindowModeForShellState(IWindowService& windowService)
+        {
+            auto& window = windowService.window();
+            if (window.isFullscreen())
+                window.setFullscreen(false);
+            if (window.isMaximized())
+                window.restore();
+        }
+
+        bool viewportMatchesWindow(EditorContext& ctx)
+        {
+            if (!ctx.services)
+                return true;
+
+            auto* windowService = ctx.services->tryGet<IWindowService>();
+            if (!windowService)
+                return true;
+
+            const auto* viewport = ImGui::GetMainViewport();
+            if (!viewport)
+                return true;
+
+            const auto extent = windowService->window().getExtent();
+            return viewport->WorkSize.x >= static_cast<float>(std::max(extent.x, 1)) - 2.0f &&
+                   viewport->WorkSize.y >= static_cast<float>(std::max(extent.y, 1)) - 2.0f;
+        }
+
         uint32_t selectedEntityPickingId(EditorContext& ctx)
         {
             if (Selection::lastCategory() != SelectionCategory::Entity)
@@ -598,9 +625,21 @@ namespace vultra_app
         ctx.thumbnails = &m_ThumbnailService;
         ctx.history    = &m_History;
         ui::applyEditorSettingsRuntime(ctx.state.editorSettings);
+        if (m_Loading.phase == LoadingPhase::Complete)
+        {
+            applyEditorWindow(ctx);
+            if (!viewportMatchesWindow(ctx))
+            {
+                drawLoadingOverlay(ctx);
+                return;
+            }
+            m_Loading = {};
+            m_DefaultLayoutBuilt = false;
+        }
+
         if (isProjectLoading())
         {
-            drawLoadingOverlay();
+            drawLoadingOverlay(ctx);
             return;
         }
 
@@ -1219,6 +1258,7 @@ namespace vultra_app
             return;
 
         auto& window = windowService->window();
+        resetWindowModeForShellState(*windowService);
         window.setTitle("VultraEngine")
             .setResizable(false)
             .setDecorated(false)
@@ -1238,6 +1278,7 @@ namespace vultra_app
             return;
 
         auto& window = windowService->window();
+        resetWindowModeForShellState(*windowService);
         window.setTitle(kWindowTitle)
             .setDecorated(false)
             .setResizable(true)
@@ -1422,8 +1463,6 @@ namespace vultra_app
                 return true;
 
             case LoadingPhase::Complete:
-                applyEditorWindow(ctx);
-                m_Loading = {};
                 return false;
 
             case LoadingPhase::Idle:
@@ -1433,20 +1472,31 @@ namespace vultra_app
         return false;
     }
 
-    void EditorApp::drawLoadingOverlay() const
+    void EditorApp::drawLoadingOverlay(EditorContext& ctx) const
     {
         ImGuiViewport* viewport = ImGui::GetMainViewport();
         if (!viewport)
             return;
 
-        ImDrawList*  drawList = ImGui::GetForegroundDrawList(viewport);
-        const ImVec2 min      = viewport->WorkPos;
-        const ImVec2 max {viewport->WorkPos.x + viewport->WorkSize.x, viewport->WorkPos.y + viewport->WorkSize.y};
-        const ImVec2 size {viewport->WorkSize.x, viewport->WorkSize.y};
+        ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
+        ImVec2      size {viewport->WorkSize.x, viewport->WorkSize.y};
+        if (ctx.services)
+        {
+            if (auto* windowService = ctx.services->tryGet<IWindowService>())
+            {
+                const auto extent = windowService->window().getExtent();
+                size.x            = std::max(size.x, static_cast<float>(std::max(extent.x, 1)));
+                size.y            = std::max(size.y, static_cast<float>(std::max(extent.y, 1)));
+            }
+        }
+
+        const ImVec2 min = viewport->WorkPos;
+        const ImVec2 max {min.x + size.x, min.y + size.y};
         const ImVec2 center {min.x + size.x * 0.5f, min.y + size.y * 0.5f};
         const float  progress = std::clamp(m_Loading.progress, 0.0f, 1.0f);
 
         namespace theme = vultra::imgui_theme;
+        drawList->PushClipRectFullScreen();
         drawList->AddRectFilled(min, max, theme::u32(theme::background()));
 
         // A few translucent bands give the borderless splash depth without relying on any external texture.
@@ -1528,6 +1578,7 @@ namespace vultra_app
                           ImVec2 {center.x - detailSize.x * 0.5f, max.y - 32.0f},
                           theme::u32(theme::withAlpha(theme::textMuted(), 185.0f / 255.0f)),
                           detail.c_str());
+        drawList->PopClipRect();
     }
 
     void EditorApp::shutdown(EditorContext& ctx)

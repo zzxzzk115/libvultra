@@ -102,7 +102,7 @@ namespace vultra_app
         void waitForAssetImportTask();
         void applySplashWindow(EditorContext& ctx);
         void applyEditorWindow(EditorContext& ctx);
-        void drawLoadingOverlay() const;
+        void drawLoadingOverlay(EditorContext& ctx) const;
         void drawBuildRunConfigurePopup(EditorContext& ctx);
         void drawBuildRunPopup();
         void drawProjectSettingsPopup(EditorContext& ctx);

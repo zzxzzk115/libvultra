@@ -583,6 +583,15 @@ This directory is an index, not the runtime asset root.
                 windowService->window().close();
         }
 
+        void resetWindowModeForLauncher(IWindowService& windowService)
+        {
+            auto& window = windowService.window();
+            if (window.isFullscreen())
+                window.setFullscreen(false);
+            if (window.isMaximized())
+                window.restore();
+        }
+
         bool drawSidebarButton(const char* id, const char* icon, const char* label, bool active, ImVec2 size)
         {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -653,6 +662,7 @@ This directory is an index, not the runtime asset root.
             auto& window = windowService->window();
             if (window.getTitle() != kWindowTitle)
             {
+                resetWindowModeForLauncher(*windowService);
                 window.setTitle(kWindowTitle)
                     .setDecorated(false)
                     .setResizable(true)
