@@ -1171,6 +1171,7 @@ namespace vultra_app
                  {"source", "depth"},
                  {"color"},
                  {
+                     {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
                      {.name         = "warpingBackend",
                       .type         = vrendergraph::ParamType::eString,
                       .defaultValue = "adaptive_mesh_graphics"},

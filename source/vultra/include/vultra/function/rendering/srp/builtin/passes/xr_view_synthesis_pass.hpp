@@ -13,6 +13,7 @@ namespace vultra
 {
     struct XrViewSynthesisSettings
     {
+        bool        enabled {true};
         std::string warpingBackend {"adaptive_mesh_graphics"};
         std::string inpaintingBackend {"pull_push"};
         std::string sourceView {"left"};

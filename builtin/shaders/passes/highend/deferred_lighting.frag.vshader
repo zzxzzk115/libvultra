@@ -21,12 +21,16 @@ USE_MULTIVIEW : bool permute
 
 #if USE_MULTIVIEW && !PLATFORM_WEBGPU
 #extension GL_EXT_multiview : require
+#define VULTRA_MULTIVIEW 1
+#define VULTRA_VIEW_COUNT 2
+#define VULTRA_DECLARE_STEREO_CAMERA
+#include "include/common/gpu_scene.glsl"
 #define VULTRA_GBUFFER_TEXTURE sampler2DArray
 #define VULTRA_GBUFFER_SAMPLE(tex, uv) texture(tex, vec3((uv), float(gl_ViewIndex)))
+#define VULTRA_ACTIVE_CAMERA u_StereoCameraBlock.cameras[vultra_eye_index()]
 #else
 #define VULTRA_GBUFFER_TEXTURE sampler2D
 #define VULTRA_GBUFFER_SAMPLE(tex, uv) texture(tex, uv)
-#endif
 
 struct CameraData
 {
@@ -48,6 +52,8 @@ layout(set = 0, binding = 0) uniform Camera
 {
     CameraData data;
 } u_CameraBlock;
+#define VULTRA_ACTIVE_CAMERA u_CameraBlock.data
+#endif
 
 struct ShadowCascadeData
 {
@@ -102,16 +108,26 @@ layout(push_constant) uniform LightingPushConstants
 layout(location = 0) in vec2 v_TexCoord;
 layout(location = 0) out vec4 FragColor;
 
-const uint VULTRA_MAT_PBRMR = 1u;
-const uint VULTRA_MAT_PBRSG = 2u;
-const uint VULTRA_MAT_UNLIT = 3u;
-const uint VULTRA_MAT_PHONG = 4u;
-const uint VULTRA_MAT_TOONLIKE = 6u;
+#ifndef VULTRA_MAT_PBRMR
+#define VULTRA_MAT_PBRMR 1u
+#endif
+#ifndef VULTRA_MAT_PBRSG
+#define VULTRA_MAT_PBRSG 2u
+#endif
+#ifndef VULTRA_MAT_UNLIT
+#define VULTRA_MAT_UNLIT 3u
+#endif
+#ifndef VULTRA_MAT_PHONG
+#define VULTRA_MAT_PHONG 4u
+#endif
+#ifndef VULTRA_MAT_TOONLIKE
+#define VULTRA_MAT_TOONLIKE 6u
+#endif
 
 vec3 worldPositionFromDepth(float depth, vec2 uv)
 {
     vec4 clip = vec4(uv * 2.0 - 1.0, depth, 1.0);
-    vec4 world = u_CameraBlock.data.inverseViewProjection * clip;
+    vec4 world = VULTRA_ACTIVE_CAMERA.inverseViewProjection * clip;
     return world.xyz / max(world.w, 1e-6);
 }
 
@@ -134,8 +150,8 @@ float hardShadow(uint cascade, vec3 shadowCoord, float bias)
 
 uint selectShadowCascade(vec3 positionWS)
 {
-    vec4 viewPos = u_CameraBlock.data.view * vec4(positionWS, 1.0);
-    float viewDepth = max(-viewPos.z, u_CameraBlock.data.zNear);
+    vec4 viewPos = VULTRA_ACTIVE_CAMERA.view * vec4(positionWS, 1.0);
+    float viewDepth = max(-viewPos.z, VULTRA_ACTIVE_CAMERA.zNear);
     uint cascadeCount = uint(clamp(u_Shadow.cascadeParams.x, 1.0, 4.0));
     for (uint i = 0u; i < cascadeCount; ++i)
     {
@@ -328,7 +344,7 @@ void main()
     vec3 mra = mraSample.xyz;
     uint materialModel = uint(round(mraSample.w));
     vec3 positionWS = worldPositionFromDepth(depth, v_TexCoord);
-    vec3 cameraWS = u_CameraBlock.data.inverseView[3].xyz;
+    vec3 cameraWS = VULTRA_ACTIVE_CAMERA.inverseView[3].xyz;
 
     if (u_Push.debugViewMode == 1)
     {
@@ -357,9 +373,9 @@ void main()
     }
     if (u_Push.debugViewMode == 6)
     {
-        vec4 viewPos = u_CameraBlock.data.view * vec4(positionWS, 1.0);
-        float linearDepth = clamp((-viewPos.z - u_CameraBlock.data.zNear) /
-                                  max(u_CameraBlock.data.zFar - u_CameraBlock.data.zNear, 1e-6),
+        vec4 viewPos = VULTRA_ACTIVE_CAMERA.view * vec4(positionWS, 1.0);
+        float linearDepth = clamp((-viewPos.z - VULTRA_ACTIVE_CAMERA.zNear) /
+                                  max(VULTRA_ACTIVE_CAMERA.zFar - VULTRA_ACTIVE_CAMERA.zNear, 1e-6),
                                   0.0,
                                   1.0);
         FragColor = vec4(vec3(linearDepth), 1.0);

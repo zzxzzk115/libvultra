@@ -3028,7 +3028,11 @@ namespace vultra
             std::unordered_set<Renderer*> imguiRenderers;
             for (const size_t cameraIdx : cameraOrder)
             {
-                auto renderer = resolveRenderer(cams[cameraIdx]);
+                const auto& cam = cams[cameraIdx];
+                if (cam.isXRView || !cam.renderImGui)
+                    continue;
+
+                auto renderer = resolveRenderer(cam);
                 if (!renderer || imguiRenderers.contains(renderer.get()))
                     continue;
                 imguiRenderers.insert(renderer.get());

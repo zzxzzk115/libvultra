@@ -190,6 +190,7 @@
       "params": {
         "baseGridSize": 16,
         "depthThreshold": 0.015,
+        "enabled": false,
         "inpaintingBackend": "pull_push",
         "maxSubdivision": 3,
         "sideLengthThreshold": 0.1,

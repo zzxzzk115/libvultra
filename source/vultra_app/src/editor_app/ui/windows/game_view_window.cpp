@@ -1,6 +1,7 @@
 #include "editor_app/ui/windows/game_view_window.hpp"
 
 #include "common/ui_widgets.hpp"
+#include "editor_app/editor_history.hpp"
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
@@ -165,6 +166,7 @@ namespace vultra_app
                 return ImVec2(safeHeight * safeAspect, safeHeight);
             return ImVec2(safeWidth, safeWidth / safeAspect);
         }
+
     } // namespace
 
     GameViewWindow::GameViewWindow() : EditorWindow("Game View", ICON_MDI_GAMEPAD_VARIANT) {}
@@ -245,7 +247,8 @@ namespace vultra_app
                 auto* renderTarget = m_PendingRenderTarget.texture ?
                                          &*m_PendingRenderTarget.texture :
                                          (m_ActiveRenderTarget.texture ? &*m_ActiveRenderTarget.texture : nullptr);
-                if (hasPrimaryCamera && renderTarget != nullptr)
+                const bool useXrMirrorPreview = primaryCameraWantsXR && xrBackendEnabled;
+                if (hasPrimaryCamera && renderTarget != nullptr && !useXrMirrorPreview)
                 {
                     const float aspect       = outputSize.x / std::max(outputSize.y, 1.0f);
                     auto        renderCamera = makeGameCamera(world, cam, aspect, renderTarget);
@@ -339,6 +342,8 @@ namespace vultra_app
                     createDefaultCamera(worldService->world());
                     ctx.state.sceneDirty    = true;
                     ctx.state.statusMessage = "Created a primary Camera entity.";
+                    if (ctx.history)
+                        ctx.history->setNextLabel("Create Primary Camera");
                 }
             }
         }

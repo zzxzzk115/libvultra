@@ -889,7 +889,6 @@ namespace vultra
                         {
                             if (light.kind == RenderLightKind::eDirectional && light.castsShadow)
                             {
-                                settings.enabled        = settings.enabled;
                                 settings.lightDirection = light.direction;
                                 break;
                             }
@@ -1198,6 +1197,7 @@ namespace vultra
                         return;
 
                     XrViewSynthesisSettings settings {};
+                    settings.enabled        = params.get<bool>("enabled", settings.enabled);
                     settings.warpingBackend = params.get<std::string>("warpingBackend", settings.warpingBackend);
                     settings.inpaintingBackend =
                         params.get<std::string>("inpaintingBackend", settings.inpaintingBackend);

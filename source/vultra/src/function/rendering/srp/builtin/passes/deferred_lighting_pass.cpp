@@ -149,6 +149,7 @@ namespace vultra
         struct PassData
         {
             FrameGraphResource camera;
+            FrameGraphResource stereoCamera;
             FrameGraphResource lightBlock;
             FrameGraphResource colorIn;
             FrameGraphResource normal;
@@ -172,8 +173,10 @@ namespace vultra
              shadowMap,
              shadowData,
              lightBlock,
-             cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource](FrameGraph::Builder& builder,
-                                                                            PassData& pd) {
+             cameraBlock       = ctx.bb.get<CameraData>().cameraBlock.fgResource,
+             stereoCameraBlock = ctx.bb.get<CameraData>().stereoCameraBlock.fgResource,
+             useMultiview      = ctx.view().enableMultiview && ctx.view().multiviewCameraCount >= 2u](
+                FrameGraph::Builder& builder, PassData& pd) {
                 PASS_SETUP_ZONE;
 
                 pd.camera = builder.read(cameraBlock,
@@ -181,6 +184,14 @@ namespace vultra
                                              .location      = {.set = 0, .binding = 0},
                                              .pipelineStage = framegraph::PipelineStage::eFragmentShader,
                                          });
+                if (useMultiview && stereoCameraBlock)
+                {
+                    pd.stereoCamera = builder.read(stereoCameraBlock,
+                                                   framegraph::BindingInfo {
+                                                       .location      = {.set = 0, .binding = 23},
+                                                       .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                                   });
+                }
                 pd.colorIn = builder.read(color,
                                           framegraph::TextureRead {
                                               .binding =

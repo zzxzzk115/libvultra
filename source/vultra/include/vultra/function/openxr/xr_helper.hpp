@@ -88,9 +88,9 @@ namespace xrutils
         projectionMatrix[1][1] = 2.0f / tanHeight;
         projectionMatrix[2][0] = (tanRight + tanLeft) / tanWidth;
         projectionMatrix[2][1] = (tanUp + tanDown) / tanHeight;
-        projectionMatrix[2][2] = -(farClip + nearClip) / depth;
+        projectionMatrix[2][2] = -farClip / depth;
         projectionMatrix[2][3] = -1.0f;
-        projectionMatrix[3][2] = -(2.0f * farClip * nearClip) / depth;
+        projectionMatrix[3][2] = -(farClip * nearClip) / depth;
         return projectionMatrix;
     }
 

@@ -778,6 +778,9 @@ namespace vultra
                                                     const FrameGraphResource           depth,
                                                     const XrViewSynthesisSettings& settings)
     {
+        if (!settings.enabled)
+            return source;
+
         const auto warpingBackend = resolveWarpingBackend(settings.warpingBackend);
         if (warpingBackend == "none")
             return source;
