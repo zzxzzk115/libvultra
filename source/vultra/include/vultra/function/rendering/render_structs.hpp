@@ -107,6 +107,7 @@ namespace vultra
         glm::mat4 worldMatrix {1.0f};
         glm::vec4 baseColorOverride {1.0f};
         bool      hasBaseColorOverride {false};
+        bool      castsShadow {true};
         std::vector<MaterialOverride> materialOverrides;
     };
 

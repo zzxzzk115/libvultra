@@ -42,7 +42,7 @@ namespace vultra
         const auto normalDesc =
             makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
         const auto materialDesc =
-            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
+            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
         const auto cameraBlock           = ctx.bb.get<CameraData>().cameraBlock.fgResource;
         const auto drawBuffer            = ctx.data.tryGet(kResKey_DrawBuffer);
         const auto meshletsBuffer        = ctx.data.tryGet(kResKey_MeshletsBuffer);

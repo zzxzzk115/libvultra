@@ -26,8 +26,8 @@
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/shader_service.hpp"
 #include "vultra/function/services/world_service.hpp"
-#include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
+#include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
@@ -36,8 +36,8 @@
 #include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/world.hpp"
 
-#include <glm/geometric.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
+#include <glm/geometric.hpp>
 #include <glm/gtc/packing.hpp>
 
 #include <vbase/core/exe_path.hpp>
@@ -49,9 +49,9 @@
 
 #include <algorithm>
 #include <bit>
+#include <cctype>
 #include <chrono>
 #include <cmath>
-#include <cctype>
 #include <filesystem>
 #include <limits>
 #include <numeric>
@@ -69,9 +69,9 @@ namespace vultra
     {
         struct alignas(16) MaterialGraphSurfaceParams
         {
-            glm::vec4 baseColor {1.0f};
-            glm::vec4 emissiveAlpha {0.0f, 0.0f, 0.0f, 1.0f};
-            glm::vec4 metallicRoughnessAoCutoff {0.0f, 1.0f, 1.0f, 0.5f};
+            glm::vec4  baseColor {1.0f};
+            glm::vec4  emissiveAlpha {0.0f, 0.0f, 0.0f, 1.0f};
+            glm::vec4  metallicRoughnessAoCutoff {0.0f, 1.0f, 1.0f, 0.5f};
             glm::uvec4 textureInfo {0u};
             uint32_t   graphId {0};
             uint32_t   alphaMode {0};
@@ -120,9 +120,7 @@ namespace vultra
         }
 
         [[nodiscard]] const material_graph::Link*
-        linkedInput(const material_graph::Graph& graph,
-                    const material_graph::Node&  node,
-                    std::string_view             pin)
+        linkedInput(const material_graph::Graph& graph, const material_graph::Node& node, std::string_view pin)
         {
             return material_graph::findInputLink(graph, node.id, pin);
         }
@@ -136,8 +134,9 @@ namespace vultra
             const auto inputValue = [&](std::string_view pin, const nlohmann::json& inputFallback) {
                 const auto* inputLink = linkedInput(graph, node, pin);
                 const auto* inputNode = inputLink ? material_graph::findNode(graph, inputLink->from.nodeId) : nullptr;
-                return inputNode ? constantNodeValue(graph, *inputNode, inputLink->from.pin, inputFallback, timeSeconds)
-                                 : inputFallback;
+                return inputNode ?
+                           constantNodeValue(graph, *inputNode, inputLink->from.pin, inputFallback, timeSeconds) :
+                           inputFallback;
             };
 
             if (node.typeId == "vultra.param.float" || node.typeId == "vultra.param.vec2" ||
@@ -186,7 +185,7 @@ namespace vultra
                     const float v = jsonFloat(inputValue("v", 0.0f), 0.0f);
                     return 1.0f - v;
                 }
-                const float base = jsonFloat(inputValue("base", 1.0f), 1.0f);
+                const float base     = jsonFloat(inputValue("base", 1.0f), 1.0f);
                 const float exponent = jsonFloat(inputValue("exponent", 1.0f), 1.0f);
                 return std::pow(std::max(base, 0.0f), exponent);
             }
@@ -228,8 +227,10 @@ namespace vultra
 
             if (node.typeId == "vultra.math.mix" && outputPin == "out")
             {
-                const auto a = jsonVec4(inputValue("a", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})), glm::vec4(1.0f));
-                const auto b = jsonVec4(inputValue("b", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})), glm::vec4(1.0f));
+                const auto a =
+                    jsonVec4(inputValue("a", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})), glm::vec4(1.0f));
+                const auto b =
+                    jsonVec4(inputValue("b", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f})), glm::vec4(1.0f));
                 const auto t = glm::clamp(jsonFloat(inputValue("t", 0.0f), 0.0f), 0.0f, 1.0f);
                 return jsonVec4Value(glm::mix(a, b, t));
             }
@@ -251,7 +252,7 @@ namespace vultra
             return output.params.value(std::string(pin), fallback);
         }
 
-        [[nodiscard]] uint32_t materialGraphTextureIndex(IAssetService&              assets,
+        [[nodiscard]] uint32_t materialGraphTextureIndex(IAssetService&               assets,
                                                          const material_graph::Graph& graph,
                                                          const material_graph::Node&  output,
                                                          std::string_view             pin)
@@ -265,8 +266,7 @@ namespace vultra
                 return 0u;
 
             std::unordered_set<std::string> visited;
-            const auto findTexture = [&](const material_graph::Node& node,
-                                         auto&&                     findTextureRef) -> uint32_t {
+            const auto findTexture = [&](const material_graph::Node& node, auto&& findTextureRef) -> uint32_t {
                 if (!visited.insert(node.id).second)
                     return 0u;
 
@@ -296,17 +296,16 @@ namespace vultra
             return findTexture(*source, findTexture);
         }
 
-        [[nodiscard]] MaterialGraphSurfaceParams
-        materialGraphSurfaceParams(IAssetService& assets,
-                                   std::string_view materialGraphUri,
-                                   const uint32_t   graphId,
-                                   const float      timeSeconds)
+        [[nodiscard]] MaterialGraphSurfaceParams materialGraphSurfaceParams(IAssetService&   assets,
+                                                                            std::string_view materialGraphUri,
+                                                                            const uint32_t   graphId,
+                                                                            const float      timeSeconds)
         {
             MaterialGraphSurfaceParams params {};
             params.graphId = graphId;
 
             std::vector<material_graph::Diagnostic> diagnostics;
-            auto text = assets.loadTextAssetSync(materialGraphUri);
+            auto                                    text = assets.loadTextAssetSync(materialGraphUri);
             if (!text)
                 return params;
 
@@ -314,28 +313,34 @@ namespace vultra
             if (!graph)
                 return params;
 
-            const auto output = std::find_if(graph->nodes.begin(), graph->nodes.end(), [](const material_graph::Node& node) {
-                return node.typeId == "vultra.output.surface";
-            });
+            const auto output =
+                std::find_if(graph->nodes.begin(), graph->nodes.end(), [](const material_graph::Node& node) {
+                    return node.typeId == "vultra.output.surface";
+                });
             if (output == graph->nodes.end())
                 return params;
 
-            params.baseColor =
-                jsonVec4(surfaceInputValue(*graph, *output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds),
-                         glm::vec4(1.0f));
-            const glm::vec3 emissive =
-                jsonVec3(surfaceInputValue(*graph, *output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f}), timeSeconds),
-                         glm::vec3(0.0f));
+            params.baseColor = jsonVec4(
+                surfaceInputValue(
+                    *graph, *output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds),
+                glm::vec4(1.0f));
+            const glm::vec3 emissive = jsonVec3(
+                surfaceInputValue(*graph, *output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f}), timeSeconds),
+                glm::vec3(0.0f));
             params.emissiveAlpha = glm::vec4(
                 emissive,
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "alpha", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f));
+                glm::clamp(
+                    jsonFloat(surfaceInputValue(*graph, *output, "alpha", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f));
             params.metallicRoughnessAoCutoff = glm::vec4(
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "metallic", 0.0f, timeSeconds), 0.0f), 0.0f, 1.0f),
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "roughness", 1.0f, timeSeconds), 1.0f), 0.045f, 1.0f),
+                glm::clamp(
+                    jsonFloat(surfaceInputValue(*graph, *output, "metallic", 0.0f, timeSeconds), 0.0f), 0.0f, 1.0f),
+                glm::clamp(
+                    jsonFloat(surfaceInputValue(*graph, *output, "roughness", 1.0f, timeSeconds), 1.0f), 0.045f, 1.0f),
                 glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "ao", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f),
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "alphaCutoff", 0.5f, timeSeconds), 0.5f), 0.0f, 1.0f));
+                glm::clamp(
+                    jsonFloat(surfaceInputValue(*graph, *output, "alphaCutoff", 0.5f, timeSeconds), 0.5f), 0.0f, 1.0f));
             params.textureInfo.x = materialGraphTextureIndex(assets, *graph, *output, "baseColor");
-            params.alphaMode = static_cast<uint32_t>(
+            params.alphaMode     = static_cast<uint32_t>(
                 material_graph::alphaModeFromString(output->params.value("alphaMode", std::string {"Opaque"})));
             params.shadingModel = static_cast<uint32_t>(
                 material_graph::shadingModelFromString(output->params.value("shadingModel", std::string {"PBR_MR"})));
@@ -345,21 +350,24 @@ namespace vultra
             return params;
         }
 
-        void uploadMaterialGraphParams(resource::GpuResourcePool& pool,
-                                       rhi::RenderDevice&         rd,
-                                       resource::GpuMaterial&     material,
+        void uploadMaterialGraphParams(resource::GpuResourcePool&        pool,
+                                       rhi::RenderDevice&                rd,
+                                       resource::GpuMaterial&            material,
                                        const MaterialGraphSurfaceParams& params)
         {
             if (material.blockOffsetBytes + sizeof(params) <= pool.materialParams.cpu.size())
             {
                 std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, &params, sizeof(params));
                 if (pool.materialParams.gpu)
-                    rd.uploadS(*pool.materialParams.gpu, 0, static_cast<uint64_t>(pool.materialParams.cpu.size()), pool.materialParams.cpu.data());
+                    rd.uploadS(*pool.materialParams.gpu,
+                               0,
+                               static_cast<uint64_t>(pool.materialParams.cpu.size()),
+                               pool.materialParams.cpu.data());
             }
             else
             {
                 material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &params, sizeof(params));
-                pool.materialTableDirty = true;
+                pool.materialTableDirty   = true;
             }
         }
 
@@ -372,9 +380,9 @@ namespace vultra
             if (materialGraphUri.empty())
                 return std::numeric_limits<uint32_t>::max();
 
-            auto&          pool = gpuResources.pool();
+            auto&          pool    = gpuResources.pool();
             const uint32_t graphId = material_graph::stableGraphId(materialGraphUri);
-            const auto     params = materialGraphSurfaceParams(assets, materialGraphUri, graphId, timeSeconds);
+            const auto     params  = materialGraphSurfaceParams(assets, materialGraphUri, graphId, timeSeconds);
             for (uint32_t i = 0; i < static_cast<uint32_t>(pool.materials.size()); ++i)
             {
                 auto& material = pool.materials[i];
@@ -385,7 +393,7 @@ namespace vultra
                 }
             }
 
-            resource::GpuMaterial  material;
+            resource::GpuMaterial material;
             material.model            = resource::GpuMaterialModel::eMaterialGraph;
             material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &params, sizeof(params));
             material.tableIndex       = graphId;
@@ -398,9 +406,8 @@ namespace vultra
             return index;
         }
 
-        [[nodiscard]] uint32_t remapMaterialIndex(const RenderInstance& instance,
-                                                  const resource::GpuMesh& mesh,
-                                                  const uint32_t materialIndex)
+        [[nodiscard]] uint32_t
+        remapMaterialIndex(const RenderInstance& instance, const resource::GpuMesh& mesh, const uint32_t materialIndex)
         {
             if (materialIndex < mesh.materialOffset)
                 return materialIndex;
@@ -421,18 +428,19 @@ namespace vultra
             {
                 if (!reg.valid(e))
                     return false;
-                if (auto* status = reg.try_get<EntityStatusComponent>(e); status && (!status->active || !status->visible))
+                if (auto* status = reg.try_get<EntityStatusComponent>(e);
+                    status && (!status->active || !status->visible))
                     return false;
             }
             return true;
         }
 
-        void buildCpuDrivenGpuSceneForRenderWorld(RenderWorld&                  renderWorld,
-                                                  resource::GpuSceneDatabase&   gpuSceneDatabase,
-                                                  resource::GpuSceneView&       gpuSceneView,
+        void buildCpuDrivenGpuSceneForRenderWorld(RenderWorld&                     renderWorld,
+                                                  resource::GpuSceneDatabase&      gpuSceneDatabase,
+                                                  resource::GpuSceneView&          gpuSceneView,
                                                   const resource::GpuResourcePool& pool,
-                                                  rhi::RenderDevice&            rd,
-                                                  rhi::CommandBuffer&           cb)
+                                                  rhi::RenderDevice&               rd,
+                                                  rhi::CommandBuffer&              cb)
         {
             gpuSceneDatabase.beginFrame(pool);
             gpuSceneDatabase.instances.reserve(renderWorld.instances.size());
@@ -441,7 +449,7 @@ namespace vultra
 
             for (const auto& inst : renderWorld.instances)
             {
-                const uint32_t transformIndex = gpuSceneDatabase.pushTransform(inst.worldMatrix);
+                const uint32_t        transformIndex = gpuSceneDatabase.pushTransform(inst.worldMatrix);
                 resource::GpuInstance gpuInst {};
                 gpuInst.meshIndex      = inst.meshIndex;
                 gpuInst.materialIndex  = inst.materialIndex;
@@ -479,23 +487,23 @@ namespace vultra
                     if (globalMeshletIndex >= pool.meshlets.cpuMeshlets.size())
                         continue;
 
-                    const auto& meshlet = pool.meshlets.cpuMeshlets[globalMeshletIndex];
+                    const auto&             meshlet = pool.meshlets.cpuMeshlets[globalMeshletIndex];
                     resource::GpuDrawRecord dr {};
-                    dr.primitiveIndex    = globalMeshletIndex;
-                    dr.materialIndex     = remapMaterialIndex(inst, mesh, meshlet.materialIndex);
-                    dr.vertexStrideBytes = mesh.vertexStrideBytes;
-                    dr.flags             = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eMeshlet);
-                    dr.vertexAddress     = pool.geometry.vertexBytesAddress;
-                    dr.instanceIndex     = instanceIndex;
-                    const auto layout    = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
-                    dr.vertexAttributeMask = layout.attributeMask;
-                    dr.positionOffsetBytes = layout.positionOffsetBytes;
-                    dr.normalOffsetBytes = layout.normalOffsetBytes;
-                    dr.colorOffsetBytes = layout.colorOffsetBytes;
+                    dr.primitiveIndex       = globalMeshletIndex;
+                    dr.materialIndex        = remapMaterialIndex(inst, mesh, meshlet.materialIndex);
+                    dr.vertexStrideBytes    = mesh.vertexStrideBytes;
+                    dr.flags                = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eMeshlet);
+                    dr.vertexAddress        = pool.geometry.vertexBytesAddress;
+                    dr.instanceIndex        = instanceIndex;
+                    const auto layout       = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                    dr.vertexAttributeMask  = layout.attributeMask;
+                    dr.positionOffsetBytes  = layout.positionOffsetBytes;
+                    dr.normalOffsetBytes    = layout.normalOffsetBytes;
+                    dr.colorOffsetBytes     = layout.colorOffsetBytes;
                     dr.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
                     dr.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
-                    dr.tangentOffsetBytes = layout.tangentOffsetBytes;
-                    dr.model             = inst.worldMatrix;
+                    dr.tangentOffsetBytes   = layout.tangentOffsetBytes;
+                    dr.model                = inst.worldMatrix;
                     gpuSceneView.pushMeshletDraw(std::move(dr));
                 }
             }
@@ -573,7 +581,7 @@ namespace vultra
         void expandBounds(RenderWorld& out, const glm::mat4& model, const glm::vec3& center, const float radius)
         {
             const glm::vec3 worldCenter = glm::vec3(model * glm::vec4(center, 1.0f));
-            const float maxScale = std::max({
+            const float     maxScale    = std::max({
                 glm::length(glm::vec3(model[0])),
                 glm::length(glm::vec3(model[1])),
                 glm::length(glm::vec3(model[2])),
@@ -585,23 +593,20 @@ namespace vultra
 
         struct FrameGraphSnapshotWriter
         {
-            nlohmann::json                  snapshot;
+            nlohmann::json                          snapshot;
             std::unordered_map<std::string, size_t> emittedNodes;
-            std::unordered_set<std::string> emittedEdges;
+            std::unordered_set<std::string>         emittedEdges;
 
             FrameGraphSnapshotWriter(std::string_view cameraName, std::string_view rendererKey, std::string dot)
             {
-                snapshot["camera"] = cameraName;
+                snapshot["camera"]   = cameraName;
                 snapshot["renderer"] = rendererKey;
-                snapshot["dot"] = std::move(dot);
-                snapshot["nodes"] = nlohmann::json::array();
-                snapshot["edges"] = nlohmann::json::array();
+                snapshot["dot"]      = std::move(dot);
+                snapshot["nodes"]    = nlohmann::json::array();
+                snapshot["edges"]    = nlohmann::json::array();
             }
 
-            static std::string passId(const PassNode& pass)
-            {
-                return "pass:" + std::to_string(pass.getId());
-            }
+            static std::string passId(const PassNode& pass) { return "pass:" + std::to_string(pass.getId()); }
 
             static std::string resourceId(const ResourceNode& resource)
             {
@@ -610,9 +615,8 @@ namespace vultra
 
             static const ResourceNode* findResource(const std::vector<ResourceNode>& resources, FrameGraphResource id)
             {
-                const auto it = std::find_if(resources.begin(), resources.end(), [&](const auto& resource) {
-                    return resource.getId() == id;
-                });
+                const auto it = std::find_if(
+                    resources.begin(), resources.end(), [&](const auto& resource) { return resource.getId() == id; });
                 return it != resources.end() ? &*it : nullptr;
             }
 
@@ -666,10 +670,7 @@ namespace vultra
                 if (imported)
                     extra["imported"] = *imported;
 
-                emitNode(resourceId(resource),
-                         std::move(label),
-                         "resource",
-                         std::move(extra));
+                emitNode(resourceId(resource), std::move(label), "resource", std::move(extra));
             }
 
             void emitEdge(std::string from, std::string to, std::string label)
@@ -720,26 +721,24 @@ namespace vultra
                     emitResource(resource, entry.isImported());
             }
 
-            void flush(std::ostream& os) const
-            {
-                os << snapshot.dump();
-            }
+            void flush(std::ostream& os) const { os << snapshot.dump(); }
         };
 
-        void clearColorTarget(rhi::CommandBuffer&        cb,
-                              rhi::Texture&              target,
-                              const rhi::Rect2D&         area,
+        void clearColorTarget(rhi::CommandBuffer&                   cb,
+                              rhi::Texture&                         target,
+                              const rhi::Rect2D&                    area,
                               const std::optional<rhi::ClearValue>& clearValue,
-                              const bool                 enableMultiview,
-                              const uint32_t             multiviewMask)
+                              const bool                            enableMultiview,
+                              const uint32_t                        multiviewMask)
         {
             rhi::FramebufferInfo clearFbInfo {
                 .area             = area,
                 .layers           = enableMultiview ? 2u : 1u,
                 .viewMask         = enableMultiview ? multiviewMask : 0u,
                 .colorAttachments = {rhi::AttachmentInfo {
-                    .target     = &target,
-                    .clearValue = clearValue.has_value() ? clearValue : std::optional<rhi::ClearValue> {glm::vec4 {0, 0, 0, 1}},
+                    .target = &target,
+                    .clearValue =
+                        clearValue.has_value() ? clearValue : std::optional<rhi::ClearValue> {glm::vec4 {0, 0, 0, 1}},
                 }},
             };
 
@@ -781,11 +780,9 @@ namespace vultra
             }
             else
             {
-                const float orthoHeight = cam.projection[1][1] != 0.0f ?
-                                              std::abs(2.0f / cam.projection[1][1]) :
-                                              1.0f;
-                const float orthoWidth = orthoHeight * std::max(aspect, 0.0001f);
-                cam.projection = glm::orthoRH_ZO(-orthoWidth * 0.5f,
+                const float orthoHeight = cam.projection[1][1] != 0.0f ? std::abs(2.0f / cam.projection[1][1]) : 1.0f;
+                const float orthoWidth  = orthoHeight * std::max(aspect, 0.0001f);
+                cam.projection          = glm::orthoRH_ZO(-orthoWidth * 0.5f,
                                                  orthoWidth * 0.5f,
                                                  -orthoHeight * 0.5f,
                                                  orthoHeight * 0.5f,
@@ -799,6 +796,26 @@ namespace vultra
         [[nodiscard]] glm::vec3 lightDirectionFromTransformNormal(const TransformComponent& transform)
         {
             return safeNormalizeDirection(-glm::vec3(transform.worldMatrix[2]), glm::vec3 {0.0f, -1.0f, 0.0f});
+        }
+
+        [[nodiscard]] glm::mat4 areaLightSurfaceMatrix(const RenderLight& light)
+        {
+            const glm::vec3 normal = safeNormalizeDirection(light.direction, glm::vec3 {0.0f, -1.0f, 0.0f});
+            glm::vec3       up {0.0f, 1.0f, 0.0f};
+            if (std::abs(glm::dot(up, normal)) > 0.95f)
+                up = glm::vec3 {1.0f, 0.0f, 0.0f};
+
+            const glm::vec3 tangent =
+                safeNormalizeDirection(glm::cross(up, normal), glm::vec3 {1.0f, 0.0f, 0.0f});
+            const glm::vec3 bitangent =
+                safeNormalizeDirection(glm::cross(normal, tangent), glm::vec3 {0.0f, 1.0f, 0.0f});
+
+            glm::mat4 out {1.0f};
+            out[0] = glm::vec4(tangent * std::max(light.width, 0.001f), 0.0f);
+            out[1] = glm::vec4(-normal, 0.0f);
+            out[2] = glm::vec4(bitangent * std::max(light.height, 0.001f), 0.0f);
+            out[3] = glm::vec4(light.position, 1.0f);
+            return out;
         }
 
         float effectiveGaussianAutomaticClodLevel(const GaussianSplatRenderSettings& settings)
@@ -826,27 +843,23 @@ namespace vultra
             if (settings.lodBudget > 0u)
                 return std::min(totalSplatCount, settings.lodBudget);
             const float clodLevel = effectiveGaussianAutomaticClodLevel(settings);
-            return std::min(totalSplatCount,
-                            std::max(1u, static_cast<uint32_t>(
-                                             std::ceil(static_cast<float>(totalSplatCount) * clodLevel))));
+            return std::min(
+                totalSplatCount,
+                std::max(1u, static_cast<uint32_t>(std::ceil(static_cast<float>(totalSplatCount) * clodLevel))));
         }
 
         void applyGaussianSplatFoveatedClodSettings(resource::GpuSceneView&            gpuSceneView,
                                                     const GaussianSplatRenderSettings& settings)
         {
             const auto layers = settings.foveatedLayers();
-            gpuSceneView.setGeneralGaussianSplatFoveatedClod(settings.foveatedClodActive(),
-                                                             settings.foveatedLayeredCompositeActive(),
-                                                             settings.foveatedGaze,
-                                                             glm::vec2 {layers[0].eccentricityDegrees,
-                                                                        layers[1].eccentricityDegrees},
-                                                             glm::vec3 {layers[0].lodLevel,
-                                                                        layers[1].lodLevel,
-                                                                        layers[2].lodLevel},
-                                                             glm::vec3 {layers[0].resolutionScale,
-                                                                        layers[1].resolutionScale,
-                                                                        layers[2].resolutionScale},
-                                                             std::max(settings.foveatedTransitionDegrees, 0.0f));
+            gpuSceneView.setGeneralGaussianSplatFoveatedClod(
+                settings.foveatedClodActive(),
+                settings.foveatedLayeredCompositeActive(),
+                settings.foveatedGaze,
+                glm::vec2 {layers[0].eccentricityDegrees, layers[1].eccentricityDegrees},
+                glm::vec3 {layers[0].lodLevel, layers[1].lodLevel, layers[2].lodLevel},
+                glm::vec3 {layers[0].resolutionScale, layers[1].resolutionScale, layers[2].resolutionScale},
+                std::max(settings.foveatedTransitionDegrees, 0.0f));
         }
 
         void resetGaussianSplatIndirectBuffer(rhi::RenderDevice& rd, rhi::DrawIndirectBuffer& buffer)
@@ -876,8 +889,7 @@ namespace vultra
         bool gaussianSplatSelectionSettingsDirty(const GaussianSplatRenderSettings& current,
                                                  const GaussianSplatRenderSettings& applied)
         {
-            return current.lodBudget != applied.lodBudget ||
-                   current.clodLevel != applied.clodLevel ||
+            return current.lodBudget != applied.lodBudget || current.clodLevel != applied.clodLevel ||
                    current.foveatedClodEnabled != applied.foveatedClodEnabled ||
                    current.foveatedRenderMode != applied.foveatedRenderMode ||
                    current.foveatedGaze != applied.foveatedGaze ||
@@ -887,20 +899,19 @@ namespace vultra
                    current.foveatedTransitionDegrees != applied.foveatedTransitionDegrees;
         }
 
-        void updateGaussianSplatFoveatedBudgetController(GaussianSplatRenderSettings& settings,
-                                                         const double                 gpuFrameMs)
+        void updateGaussianSplatFoveatedBudgetController(GaussianSplatRenderSettings& settings, const double gpuFrameMs)
         {
             if (!settings.foveatedClodActive() || !settings.foveatedBudgetControllerEnabled || gpuFrameMs <= 0.0)
                 return;
 
             const float targetMs = std::max(settings.foveatedTargetFrameMs, 0.1f);
-            const float maxStep = std::clamp(settings.foveatedBudgetAdjustRate, 0.001f, 0.25f);
-            const float error = static_cast<float>((targetMs - gpuFrameMs) / targetMs);
+            const float maxStep  = std::clamp(settings.foveatedBudgetAdjustRate, 0.001f, 0.25f);
+            const float error    = static_cast<float>((targetMs - gpuFrameMs) / targetMs);
             if (std::abs(error) < 0.03f)
                 return;
 
             const float signedStep = std::clamp(error * 0.5f, -maxStep, maxStep);
-            auto adjust = [signedStep](float value, const float floorValue) {
+            auto        adjust     = [signedStep](float value, const float floorValue) {
                 return std::clamp(value + signedStep * std::max(value, 0.1f), floorValue, 1.0f);
             };
 
@@ -912,24 +923,25 @@ namespace vultra
                 settings.foveatedRingLevels.x = std::max(settings.foveatedRingLevels.x, settings.foveatedRingLevels.y);
         }
 
-        void rebuildGaussianSplatOrderedClodPrefixSources(resource::GpuSceneView&                       gpuSceneView,
-                                                          const std::vector<RenderGaussianSplatInstance>& gaussianSplats,
-                                                          const resource::GpuResourcePool&                 pool,
-                                                          RuntimeProfiler&                                 profiler)
+        void
+        rebuildGaussianSplatOrderedClodPrefixSources(resource::GpuSceneView&                         gpuSceneView,
+                                                     const std::vector<RenderGaussianSplatInstance>& gaussianSplats,
+                                                     const resource::GpuResourcePool&                pool,
+                                                     RuntimeProfiler&                                profiler)
         {
             gpuSceneView.generalGaussianSplatSelectedSources.clear();
 
             struct OrderedSource
             {
-                uint32_t rankNumerator {0};
-                uint32_t pointCount {1};
-                uint32_t drawIndex {0};
-                uint32_t rank {0};
+                uint32_t                                        rankNumerator {0};
+                uint32_t                                        pointCount {1};
+                uint32_t                                        drawIndex {0};
+                uint32_t                                        rank {0};
                 resource::GpuGeneralGaussianSplatSelectedSource selection {};
             };
 
-            RuntimeProfiler::Scope scope {profiler, "GaussianCLOD::BuildPrefix"};
-            const bool             singleDraw = gpuSceneView.generalGaussianSplatDraws.size() <= 1u;
+            RuntimeProfiler::Scope     scope {profiler, "GaussianCLOD::BuildPrefix"};
+            const bool                 singleDraw = gpuSceneView.generalGaussianSplatDraws.size() <= 1u;
             std::vector<OrderedSource> orderedSources;
             if (!singleDraw)
             {
@@ -954,9 +966,9 @@ namespace vultra
                 if (gpuSplat.pointCount == 0u)
                     continue;
 
-                const auto&  drawRecord      = gpuSceneView.generalGaussianSplatDraws[drawIndex];
-                const uint32_t sourceOffset  = drawRecord.pointOffset;
-                const uint32_t rankCount     = gpuSplat.pointCount;
+                const auto&    drawRecord   = gpuSceneView.generalGaussianSplatDraws[drawIndex];
+                const uint32_t sourceOffset = drawRecord.pointOffset;
+                const uint32_t rankCount    = gpuSplat.pointCount;
 
                 for (uint32_t rank = 0u; rank < rankCount; ++rank)
                 {
@@ -990,10 +1002,8 @@ namespace vultra
             if (!singleDraw)
             {
                 std::stable_sort(orderedSources.begin(), orderedSources.end(), [](const auto& a, const auto& b) {
-                    const uint64_t lhs =
-                        static_cast<uint64_t>(a.rankNumerator) * static_cast<uint64_t>(b.pointCount);
-                    const uint64_t rhs =
-                        static_cast<uint64_t>(b.rankNumerator) * static_cast<uint64_t>(a.pointCount);
+                    const uint64_t lhs = static_cast<uint64_t>(a.rankNumerator) * static_cast<uint64_t>(b.pointCount);
+                    const uint64_t rhs = static_cast<uint64_t>(b.rankNumerator) * static_cast<uint64_t>(a.pointCount);
                     if (lhs != rhs)
                         return lhs < rhs;
                     if (a.drawIndex != b.drawIndex)
@@ -1007,11 +1017,11 @@ namespace vultra
             }
         }
 
-        void rebuildGaussianSplatSelectedSources(resource::GpuSceneView&                       gpuSceneView,
+        void rebuildGaussianSplatSelectedSources(resource::GpuSceneView&                         gpuSceneView,
                                                  const std::vector<RenderGaussianSplatInstance>& gaussianSplats,
-                                                 const resource::GpuResourcePool&                 pool,
-                                                 GaussianSplatFrameStats&                         stats,
-                                                 RuntimeProfiler&                                 profiler)
+                                                 const resource::GpuResourcePool&                pool,
+                                                 GaussianSplatFrameStats&                        stats,
+                                                 RuntimeProfiler&                                profiler)
         {
             gpuSceneView.generalGaussianSplatSelectedSources.clear();
 
@@ -1030,8 +1040,8 @@ namespace vultra
                 if (gpuSplat.pointCount == 0u)
                     continue;
 
-                const auto&  drawRecord      = gpuSceneView.generalGaussianSplatDraws[drawIndex];
-                const uint32_t sourceOffset  = drawRecord.pointOffset;
+                const auto&    drawRecord   = gpuSceneView.generalGaussianSplatDraws[drawIndex];
+                const uint32_t sourceOffset = drawRecord.pointOffset;
                 for (uint32_t localPoint = 0u; localPoint < gpuSplat.pointCount; ++localPoint)
                 {
                     resource::GpuGeneralGaussianSplatSelectedSource selection {};
@@ -1094,12 +1104,12 @@ namespace vultra
             inst.materialOverrides.reserve(mesh.materialOverrides.size());
             for (const auto& materialOverride : mesh.materialOverrides)
             {
-                const uint32_t graphMaterialIndex =
-                    ensureMaterialGraphGpuMaterial(assets, gpuResources, rd, materialOverride.materialGraph, timeSeconds);
+                const uint32_t graphMaterialIndex = ensureMaterialGraphGpuMaterial(
+                    assets, gpuResources, rd, materialOverride.materialGraph, timeSeconds);
                 if (graphMaterialIndex != std::numeric_limits<uint32_t>::max())
                 {
                     inst.materialOverrides.push_back(RenderInstance::MaterialOverride {
-                        .slot = materialOverride.slot,
+                        .slot          = materialOverride.slot,
                         .materialIndex = graphMaterialIndex,
                     });
                 }
@@ -1152,28 +1162,60 @@ namespace vultra
         out.lights.reserve(lightView.size_hint());
         for (auto e : lightView)
         {
-            const auto& id = lightView.get<IDComponent>(e);
-            const auto& tr = lightView.get<TransformComponent>(e);
+            const auto& id    = lightView.get<IDComponent>(e);
+            const auto& tr    = lightView.get<TransformComponent>(e);
             const auto& light = lightView.get<LightComponent>(e);
             if (!isEntityRenderable(world, reg, e))
                 continue;
 
             RenderLight outLight {};
-            outLight.entity = id.uuid;
-            outLight.kind = static_cast<RenderLightKind>(light.kind);
-            outLight.position = glm::vec3(tr.worldMatrix[3]);
-            outLight.direction = lightDirectionFromTransformNormal(tr);
-            outLight.color = light.color;
-            outLight.intensity = light.intensity;
-            outLight.range = light.range;
-            outLight.radius = light.radius;
-            outLight.width = light.width;
-            outLight.height = light.height;
+            outLight.entity           = id.uuid;
+            outLight.kind             = static_cast<RenderLightKind>(light.kind);
+            outLight.position         = glm::vec3(tr.worldMatrix[3]);
+            outLight.direction        = lightDirectionFromTransformNormal(tr);
+            outLight.color            = light.color;
+            outLight.intensity        = light.intensity;
+            outLight.range            = light.range;
+            outLight.radius           = light.radius;
+            outLight.width            = light.width;
+            outLight.height           = light.height;
             outLight.innerConeDegrees = light.innerConeDegrees;
             outLight.outerConeDegrees = light.outerConeDegrees;
-            outLight.castsShadow = light.castsShadow;
-            outLight.twoSided = light.twoSided;
+            outLight.castsShadow      = light.castsShadow;
+            outLight.twoSided         = light.twoSided;
             out.lights.push_back(outLight);
+
+            if (outLight.kind == RenderLightKind::eArea)
+            {
+                const uint32_t meshIndex =
+                    geometryFactory.getOrCreateMeshIndex(BuiltinGeometryKind::eQuad, gpuResources, rd);
+                if (meshIndex != std::numeric_limits<uint32_t>::max())
+                {
+                    RenderInstance surface {};
+                    surface.entity               = id.uuid;
+                    surface.meshIndex            = meshIndex;
+                    surface.worldMatrix          = areaLightSurfaceMatrix(outLight);
+                    surface.baseColorOverride    = glm::vec4(outLight.color, 1.0f);
+                    surface.hasBaseColorOverride = true;
+                    surface.castsShadow          = false;
+                    out.instances.push_back(surface);
+
+                    const auto& pool = gpuResources.pool();
+                    if (meshIndex < pool.meshes.size())
+                    {
+                        const auto& gpuMesh = pool.meshes[meshIndex];
+                        if (gpuMesh.meshletCount > 0 &&
+                            gpuMesh.meshletOffset + gpuMesh.meshletCount <= pool.meshlets.cpuMeshlets.size())
+                        {
+                            for (uint32_t i = 0; i < gpuMesh.meshletCount; ++i)
+                            {
+                                const auto& meshlet = pool.meshlets.cpuMeshlets[gpuMesh.meshletOffset + i];
+                                expandBounds(out, surface.worldMatrix, meshlet.center, meshlet.radius);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         auto environmentView = reg.view<EnvironmentComponent>();
@@ -1185,17 +1227,17 @@ namespace vultra
             if (!isEntityRenderable(world, reg, e))
                 continue;
 
-            out.environment.active = true;
-            out.environment.ambientColor = environment.ambientColor;
+            out.environment.active           = true;
+            out.environment.ambientColor     = environment.ambientColor;
             out.environment.ambientIntensity = environment.ambientIntensity;
-            out.environment.enableIBL = environment.enableIBL;
-            out.environment.iblColor = environment.iblColor;
-            out.environment.iblIntensity = environment.iblIntensity;
+            out.environment.enableIBL        = environment.enableIBL;
+            out.environment.iblColor         = environment.iblColor;
+            out.environment.iblIntensity     = environment.iblIntensity;
 
             if (environment.skybox.valid())
             {
-                auto skybox = assets.loadTextureSync(environment.skybox);
-                const auto& pool = gpuResources.pool();
+                auto        skybox = assets.loadTextureSync(environment.skybox);
+                const auto& pool   = gpuResources.pool();
                 if (skybox.ready() && skybox.gpuIndex() < pool.textures.size())
                     out.environment.skybox = pool.textures[skybox.gpuIndex()].texture.get();
             }
@@ -1218,7 +1260,7 @@ namespace vultra
             {
                 if (!probe.environmentMap.valid())
                     continue;
-                auto map = assets.loadTextureSync(probe.environmentMap);
+                auto        map  = assets.loadTextureSync(probe.environmentMap);
                 const auto& pool = gpuResources.pool();
                 if (!map.ready() || map.gpuIndex() >= pool.textures.size())
                     continue;
@@ -1229,17 +1271,16 @@ namespace vultra
                 continue;
 
             RenderReflectionProbe outProbe {};
-            outProbe.entity = id.uuid;
-            outProbe.position = glm::vec3(tr.worldMatrix[3]);
-            outProbe.halfExtents = glm::max(probe.boxSize * 0.5f, glm::vec3 {0.01f});
-            outProbe.radius = std::max(probe.radius, 0.01f);
-            outProbe.blendDistance = std::max(probe.blendDistance, 0.0f);
-            outProbe.intensity = std::max(probe.intensity, 0.0f);
-            outProbe.priority = probe.priority;
-            outProbe.enableIBL = probe.enableIBL;
+            outProbe.entity             = id.uuid;
+            outProbe.position           = glm::vec3(tr.worldMatrix[3]);
+            outProbe.halfExtents        = glm::max(probe.boxSize * 0.5f, glm::vec3 {0.01f});
+            outProbe.radius             = std::max(probe.radius, 0.01f);
+            outProbe.blendDistance      = std::max(probe.blendDistance, 0.0f);
+            outProbe.intensity          = std::max(probe.intensity, 0.0f);
+            outProbe.priority           = probe.priority;
+            outProbe.enableIBL          = probe.enableIBL;
             outProbe.parallaxCorrection = probe.parallaxCorrection;
-            outProbe.shape = probe.shape == 1u ? RenderReflectionProbeShape::eSphere :
-                                                 RenderReflectionProbeShape::eBox;
+            outProbe.shape = probe.shape == 1u ? RenderReflectionProbeShape::eSphere : RenderReflectionProbeShape::eBox;
             outProbe.environmentMap = environmentMap;
             out.reflectionProbes.push_back(outProbe);
         }
@@ -1269,24 +1310,25 @@ namespace vultra
         if (!ctx().config.render.renderPipelineAsset.empty())
         {
             auto* assetService = ctx().services.tryGet<IAssetService>();
-            auto  pipelineText = assetService ? assetService->loadTextAssetSync(ctx().config.render.renderPipelineAsset) :
-                                                 vbase::Result<std::string, std::string>::err("asset service unavailable");
+            auto  pipelineText = assetService ?
+                                     assetService->loadTextAssetSync(ctx().config.render.renderPipelineAsset) :
+                                     vbase::Result<std::string, std::string>::err("asset service unavailable");
             if (pipelineText)
             {
-                VULTRA_CORE_INFO("[RenderSystem] Using render pipeline '{}'",
-                                 ctx().config.render.renderPipelineAsset);
+                VULTRA_CORE_INFO("[RenderSystem] Using render pipeline '{}'", ctx().config.render.renderPipelineAsset);
                 const auto rendererKey = ctx().config.render.renderPipelineRendererKey.empty() ?
                                              rendererKeyFromRenderGraphUri(ctx().config.render.renderPipelineAsset) :
                                              ctx().config.render.renderPipelineRendererKey;
                 m_Renderers[rendererKey] =
                     createRef<DeclarativeRenderer>(ctx().config.render.renderPipelineAsset, rendererKey);
-                m_DefaultRendererKey     = rendererKey;
+                m_DefaultRendererKey = rendererKey;
             }
             else
             {
-                VULTRA_CORE_WARN("[RenderSystem] Render pipeline '{}' is unavailable: {}. Falling back to registered renderer.",
-                                 ctx().config.render.renderPipelineAsset,
-                                 std::move(pipelineText).error());
+                VULTRA_CORE_WARN(
+                    "[RenderSystem] Render pipeline '{}' is unavailable: {}. Falling back to registered renderer.",
+                    ctx().config.render.renderPipelineAsset,
+                    std::move(pipelineText).error());
             }
         }
 
@@ -1305,7 +1347,7 @@ namespace vultra
         m_Samplers["linear"]  = backendService.renderDevice().getSampler(
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eLinear, .minFilter = rhi::TexelFilter::eLinear});
         m_Samplers["bilinear"] = m_Samplers["linear"];
-        m_Samplers["nearest"] = backendService.renderDevice().getSampler(
+        m_Samplers["nearest"]  = backendService.renderDevice().getSampler(
             rhi::SamplerInfo {.magFilter = rhi::TexelFilter::eNearest, .minFilter = rhi::TexelFilter::eNearest});
 
         const auto initialExtent = backendService.swapchain().getExtent();
@@ -1438,10 +1480,9 @@ namespace vultra
         if (m_InRenderFrame)
         {
             m_PendingRenderPipelineReload = true;
-            m_PendingRenderPipelineAsset = std::string {asset};
-            m_PendingRenderPipelineRendererKey = rendererKey.empty() ?
-                                                     rendererKeyFromRenderGraphUri(asset) :
-                                                     std::string {rendererKey};
+            m_PendingRenderPipelineAsset  = std::string {asset};
+            m_PendingRenderPipelineRendererKey =
+                rendererKey.empty() ? rendererKeyFromRenderGraphUri(asset) : std::string {rendererKey};
             VULTRA_CORE_INFO("[RenderSystem] Queued render pipeline reload for next frame");
             return true;
         }
@@ -1463,12 +1504,12 @@ namespace vultra
                                      rendererKeyFromRenderGraphUri(renderConfig.renderPipelineAsset) :
                                      renderConfig.renderPipelineRendererKey;
 
-        auto renderer = createRef<DeclarativeRenderer>(renderConfig.renderPipelineAsset, rendererKey);
+        auto     renderer = createRef<DeclarativeRenderer>(renderConfig.renderPipelineAsset, rendererKey);
         Services services = ctx().services;
         renderer->setupServices(services);
         renderer->init();
-        m_Renderers[rendererKey] = std::move(renderer);
-        m_DefaultRendererKey = rendererKey;
+        m_Renderers[rendererKey]      = std::move(renderer);
+        m_DefaultRendererKey          = rendererKey;
         m_PendingRenderPipelineReload = false;
         VULTRA_CORE_INFO("[RenderSystem] Reloaded render pipeline '{}'", renderConfig.renderPipelineAsset);
         return true;
@@ -1483,12 +1524,12 @@ namespace vultra
             backendService->renderDevice().waitIdle();
         clearFrameGraphDebugState();
 
-        auto key = rendererKey.empty() ? rendererKeyFromRenderGraphUri(asset) : std::string {rendererKey};
-        auto renderer = createRef<DeclarativeRenderer>(std::string {asset}, key);
+        auto     key      = rendererKey.empty() ? rendererKeyFromRenderGraphUri(asset) : std::string {rendererKey};
+        auto     renderer = createRef<DeclarativeRenderer>(std::string {asset}, key);
         Services services = ctx().services;
         renderer->setupServices(services);
         renderer->init();
-        m_Renderers[key] = std::move(renderer);
+        m_Renderers[key]              = std::move(renderer);
         m_PendingRenderPipelineReload = false;
         m_PendingRenderPipelineAsset.clear();
         m_PendingRenderPipelineRendererKey.clear();
@@ -1522,26 +1563,20 @@ namespace vultra
         }
     }
 
-    rhi::GraphicsPipeline*
-    RenderSystem::getFrameGraphTexturePreviewPipeline(rhi::RenderDevice&          rd,
-                                                      rhi::ShaderLibraryRuntime& shaderLib,
-                                                      const rhi::PixelFormat     colorFormat)
+    rhi::GraphicsPipeline* RenderSystem::getFrameGraphTexturePreviewPipeline(rhi::RenderDevice&         rd,
+                                                                             rhi::ShaderLibraryRuntime& shaderLib,
+                                                                             const rhi::PixelFormat     colorFormat)
     {
-        if (m_FrameGraphTexturePreviewPipeline &&
-            m_FrameGraphTexturePreviewPipelineFormat == colorFormat)
+        if (m_FrameGraphTexturePreviewPipeline && m_FrameGraphTexturePreviewPipelineFormat == colorFormat)
         {
             return &*m_FrameGraphTexturePreviewPipeline;
         }
 
         const auto vertexHash = rhi::ShaderLibraryRuntime::computeVariantHash(
-            "fullscreen_triangle.vert",
-            vshadersystem::ShaderStage::eVert,
-            {});
+            "fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert, {});
         const auto fragmentHash = rhi::ShaderLibraryRuntime::computeVariantHash(
-            "frame_debugger_texture_preview.frag",
-            vshadersystem::ShaderStage::eFrag,
-            {});
-        auto vertexShader = shaderLib.load(vertexHash, vshadersystem::ShaderStage::eVert);
+            "frame_debugger_texture_preview.frag", vshadersystem::ShaderStage::eFrag, {});
+        auto vertexShader   = shaderLib.load(vertexHash, vshadersystem::ShaderStage::eVert);
         auto fragmentShader = shaderLib.load(fragmentHash, vshadersystem::ShaderStage::eFrag);
         if (!vertexShader || !fragmentShader)
         {
@@ -1551,22 +1586,21 @@ namespace vultra
             return nullptr;
         }
 
-        m_FrameGraphTexturePreviewPipeline =
-            rhi::GraphicsPipeline::Builder {}
-                .setColorFormats({colorFormat})
-                .setInputAssembly({})
-                .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
-                .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
-                .setDepthStencil({
-                    .depthTest  = false,
-                    .depthWrite = false,
-                })
-                .setRasterizer({
-                    .polygonMode = rhi::PolygonMode::eFill,
-                    .cullMode    = rhi::CullMode::eNone,
-                })
-                .setBlending(0, {.enabled = false})
-                .build(rd);
+        m_FrameGraphTexturePreviewPipeline = rhi::GraphicsPipeline::Builder {}
+                                                 .setColorFormats({colorFormat})
+                                                 .setInputAssembly({})
+                                                 .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
+                                                 .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
+                                                 .setDepthStencil({
+                                                     .depthTest  = false,
+                                                     .depthWrite = false,
+                                                 })
+                                                 .setRasterizer({
+                                                     .polygonMode = rhi::PolygonMode::eFill,
+                                                     .cullMode    = rhi::CullMode::eNone,
+                                                 })
+                                                 .setBlending(0, {.enabled = false})
+                                                 .build(rd);
         m_FrameGraphTexturePreviewPipelineFormat = colorFormat;
         return m_FrameGraphTexturePreviewPipeline ? &*m_FrameGraphTexturePreviewPipeline : nullptr;
     }
@@ -1676,12 +1710,12 @@ namespace vultra
                                      layer == 1u ? " [Right Eye]" :
                                                    " [Layer " + std::to_string(layer) + "]";
                     candidates.push_back(CaptureCandidate {
-                        .resource = static_cast<FrameGraphResource>(resource.getId()),
-                        .name = std::move(layerName),
-                        .aspect = imageAspectFor(desc.format),
-                        .layer = layer,
+                        .resource   = static_cast<FrameGraphResource>(resource.getId()),
+                        .name       = std::move(layerName),
+                        .aspect     = imageAspectFor(desc.format),
+                        .layer      = layer,
                         .layerCount = layerCount,
-                        .imported = entry.isImported(),
+                        .imported   = entry.isImported(),
                         .capturable = capturable,
                     });
                 }
@@ -1690,13 +1724,13 @@ namespace vultra
             void flush(std::ostream&) const {}
         };
 
-        std::ostringstream         unused;
-        TextureResourceCollector   collector;
+        std::ostringstream       unused;
+        TextureResourceCollector collector;
         ctx.fg.debugOutput(unused, collector);
 
         for (const auto& candidate : collector.candidates)
         {
-            auto       source = candidate.resource;
+            auto       source     = candidate.resource;
             const auto sourceDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(source);
             if (sourceDesc.format == rhi::PixelFormat::eUndefined || sourceDesc.extent.width == 0u ||
                 sourceDesc.extent.height == 0u)
@@ -1704,49 +1738,70 @@ namespace vultra
                 continue;
             }
 
-            const auto previewExtent = sourceDesc.extent;
             std::string cameraName {camera.name.empty() ? std::string {"Camera"} : camera.name};
             std::string slotKey = cameraName + "/" + candidate.name + "/layer:" + std::to_string(candidate.layer);
             std::string transientResourceKey =
                 "resource:" + std::to_string(candidate.resource) + "/layer:" + std::to_string(candidate.layer);
-            std::string publicKey = slotKey + "@" + std::to_string(sourceDesc.extent.width) + "x" +
-                                    std::to_string(sourceDesc.extent.height) + ":" +
-                                    std::string(rhi::toString(sourceDesc.format));
-            const auto overrideIt = m_FrameGraphTexturePreviewOverrides.find(slotKey);
-            const auto previewSettings = overrideIt != m_FrameGraphTexturePreviewOverrides.end() ?
-                                             overrideIt->second :
-                                             m_FrameGraphTexturePreviewSettings;
+            const auto overrideIt          = m_FrameGraphTexturePreviewOverrides.find(slotKey);
+            const auto previewSettings     = overrideIt != m_FrameGraphTexturePreviewOverrides.end() ?
+                                                 overrideIt->second :
+                                                 m_FrameGraphTexturePreviewSettings;
             const bool captureAllRequested = m_FrameGraphTexturePreviewSettings.selectedTextureKey ==
                                              FrameGraphTexturePreviewSettings::kCaptureAllTextures;
+            const bool captureNoneRequested = m_FrameGraphTexturePreviewSettings.selectedTextureKey ==
+                                              FrameGraphTexturePreviewSettings::kCaptureNoTextures;
             const bool shouldPreview = captureAllRequested ?
                                            true :
+                                       captureNoneRequested ?
+                                           false :
                                        m_FrameGraphTexturePreviewSettings.selectedTextureKey.empty() ?
                                            m_FrameGraphDebugTextures.empty() :
                                            slotKey == m_FrameGraphTexturePreviewSettings.selectedTextureKey;
+            auto previewExtent = sourceDesc.extent;
+            if (previewSettings.maxPreviewExtent > 0u)
+            {
+                const uint32_t maxSourceExtent = std::max(sourceDesc.extent.width, sourceDesc.extent.height);
+                if (maxSourceExtent > previewSettings.maxPreviewExtent)
+                {
+                    previewExtent.width = std::max(
+                        1u,
+                        static_cast<uint32_t>((static_cast<uint64_t>(sourceDesc.extent.width) *
+                                               previewSettings.maxPreviewExtent) /
+                                              maxSourceExtent));
+                    previewExtent.height = std::max(
+                        1u,
+                        static_cast<uint32_t>((static_cast<uint64_t>(sourceDesc.extent.height) *
+                                               previewSettings.maxPreviewExtent) /
+                                              maxSourceExtent));
+                }
+            }
+            std::string publicKey = slotKey + "@" + std::to_string(previewExtent.width) + "x" +
+                                    std::to_string(previewExtent.height) + ":" +
+                                    std::string(rhi::toString(sourceDesc.format));
             if (!candidate.capturable || !shouldPreview)
             {
                 m_FrameGraphDebugTextures.push_back(FrameGraphDebugTexture {
-                    .camera = cameraName,
-                    .renderer = camera.rendererKey,
-                    .name = candidate.name,
-                    .key = publicKey,
-                    .resourceKey = slotKey,
+                    .camera               = cameraName,
+                    .renderer             = camera.rendererKey,
+                    .name                 = candidate.name,
+                    .key                  = publicKey,
+                    .resourceKey          = slotKey,
                     .transientResourceKey = transientResourceKey,
-                    .texture = nullptr,
-                    .layer = candidate.layer,
-                    .layerCount = candidate.layerCount,
-                    .imported = candidate.imported,
-                    .capturable = candidate.capturable,
-                    .extent = previewExtent,
-                    .sourceExtent = sourceDesc.extent,
-                    .format = sourceDesc.format,
-                    .zNear = camera.zNear,
-                    .zFar = camera.zFar,
+                    .texture              = nullptr,
+                    .layer                = candidate.layer,
+                    .layerCount           = candidate.layerCount,
+                    .imported             = candidate.imported,
+                    .capturable           = candidate.capturable,
+                    .extent               = previewExtent,
+                    .sourceExtent         = sourceDesc.extent,
+                    .format               = sourceDesc.format,
+                    .zNear                = camera.zNear,
+                    .zFar                 = camera.zFar,
                 });
                 continue;
             }
 
-            auto&       slot = m_FrameGraphDebugTextureSlots[publicKey];
+            auto&      slot     = m_FrameGraphDebugTextureSlots[publicKey];
             const bool recreate = !slot.texture || slot.extent.width != previewExtent.width ||
                                   slot.extent.height != previewExtent.height ||
                                   slot.format != rhi::PixelFormat::eRGBA8_UNorm;
@@ -1759,21 +1814,20 @@ namespace vultra
                     slot = {};
                 }
 
-                slot.texture =
-                    rhi::Texture::Builder {}
-                        .setExtent(previewExtent)
-                        .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
-                        .setNumMipLevels(1)
-                        .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eRenderTarget |
-                                       rhi::ImageUsage::eTransferSrc)
-                        .build(ctx.rd);
+                slot.texture = rhi::Texture::Builder {}
+                                   .setExtent(previewExtent)
+                                   .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
+                                   .setNumMipLevels(1)
+                                   .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eRenderTarget |
+                                                  rhi::ImageUsage::eTransferSrc)
+                                   .build(ctx.rd);
             }
 
-            slot.camera = cameraName;
-            slot.name = candidate.name;
-            slot.key = publicKey;
-            slot.extent = previewExtent;
-            slot.format = rhi::PixelFormat::eRGBA8_UNorm;
+            slot.camera           = cameraName;
+            slot.name             = candidate.name;
+            slot.key              = publicKey;
+            slot.extent           = previewExtent;
+            slot.format           = rhi::PixelFormat::eRGBA8_UNorm;
             slot.lastTouchedFrame = m_FrameCounter;
 
             if (!slot.texture)
@@ -1806,8 +1860,8 @@ namespace vultra
                     if (!rc.ext.builtinShaderLib)
                         return;
                     assert(rc.framebufferInfo().has_value());
-                    const auto fb = rc.framebufferInfo().value();
-                    auto* pipeline = getFrameGraphTexturePreviewPipeline(
+                    const auto fb       = rc.framebufferInfo().value();
+                    auto*      pipeline = getFrameGraphTexturePreviewPipeline(
                         rc.rd,
                         *rc.ext.builtinShaderLibForProfile(rhi::ShaderProfile::eGeneral),
                         rhi::getColorFormat(fb, 0));
@@ -1820,21 +1874,21 @@ namespace vultra
                                                   preview.channels[2] ? 1 : 0,
                                                   preview.channels[3] ? 1 : 0),
                         .gammaCorrect = preview.gammaCorrect ? 1 : 0,
-                        .previewMode = preview.previewMode,
-                        .depthNear = preview.depthNear,
-                        .depthFar = preview.depthFar,
-                        .clampMin = preview.clampMin,
-                        .clampMax = preview.clampMax,
+                        .previewMode  = preview.previewMode,
+                        .depthNear    = preview.depthNear,
+                        .depthFar     = preview.depthFar,
+                        .clampMin     = preview.clampMin,
+                        .clampMax     = preview.clampMax,
                     };
 
-                    auto* sourceTexture = resources.get<framegraph::FrameGraphTexture>(data.source).texture;
-                    const auto samplerIt = rc.ext.samplers.find("nearest");
+                    auto*      sourceTexture = resources.get<framegraph::FrameGraphTexture>(data.source).texture;
+                    const auto samplerIt     = rc.ext.samplers.find("nearest");
                     if (sourceTexture && samplerIt != rc.ext.samplers.end())
                     {
                         rc.resourceSet[3][0] = rhi::bindings::CombinedImageSampler {
-                            .texture = sourceTexture,
+                            .texture     = sourceTexture,
                             .imageAspect = sourceAspect,
-                            .sampler = samplerIt->second,
+                            .sampler     = samplerIt->second,
                             .layer = sourceTexture->getNumLayers() > 1u ? std::optional {sourceLayer} : std::nullopt,
                         };
                     }
@@ -1845,22 +1899,22 @@ namespace vultra
                 });
 
             m_FrameGraphDebugTextures.push_back(FrameGraphDebugTexture {
-                .camera = slot.camera,
-                .renderer = camera.rendererKey,
-                .name = slot.name,
-                .key = slot.key,
-                .resourceKey = slotKey,
+                .camera               = slot.camera,
+                .renderer             = camera.rendererKey,
+                .name                 = slot.name,
+                .key                  = slot.key,
+                .resourceKey          = slotKey,
                 .transientResourceKey = transientResourceKey,
-                .texture = &*slot.texture,
-                .layer = candidate.layer,
-                .layerCount = candidate.layerCount,
-                .imported = candidate.imported,
-                .capturable = candidate.capturable,
-                .extent = slot.extent,
-                .sourceExtent = sourceDesc.extent,
-                .format = sourceDesc.format,
-                .zNear = camera.zNear,
-                .zFar = camera.zFar,
+                .texture              = &*slot.texture,
+                .layer                = candidate.layer,
+                .layerCount           = candidate.layerCount,
+                .imported             = candidate.imported,
+                .capturable           = candidate.capturable,
+                .extent               = slot.extent,
+                .sourceExtent         = sourceDesc.extent,
+                .format               = sourceDesc.format,
+                .zNear                = camera.zNear,
+                .zFar                 = camera.zFar,
             });
         }
     }
@@ -1905,7 +1959,7 @@ namespace vultra
         m_FrameGraphDebugTextures.clear();
         {
             constexpr uint64_t kDebugTextureReleaseDelayFrames = 8u;
-            std::size_t        out = 0;
+            std::size_t        out                             = 0;
             for (auto& slot : m_RetiredFrameGraphDebugTextureSlots)
             {
                 if (m_FrameCounter > slot.lastTouchedFrame + kDebugTextureReleaseDelayFrames)
@@ -1930,7 +1984,7 @@ namespace vultra
             return;
         }
 
-        auto& cb = backendService.commandBuffer();
+        auto&                  cb = backendService.commandBuffer();
         RuntimeProfiler::Scope scopeRenderFrame {m_RuntimeProfiler, "RenderSystem::renderFrame"};
         if (!isTrackyGpuProfilerEnabled())
         {
@@ -1945,13 +1999,12 @@ namespace vultra
             frameDebuggerService->captureStart();
         }
 
-        World& world = worldService.world();
-        const auto cookedCameras = camService.cameras();
-        const std::span<const RenderCamera> cams = cookedCameras;
-        const bool rayTracingSceneRequired =
-            std::any_of(cams.begin(), cams.end(), [this](const RenderCamera& cam) {
-                return rendererRequiresRayTracingScene(cam.rendererKey);
-            });
+        World&                              world         = worldService.world();
+        const auto                          cookedCameras = camService.cameras();
+        const std::span<const RenderCamera> cams          = cookedCameras;
+        const bool rayTracingSceneRequired = std::any_of(cams.begin(), cams.end(), [this](const RenderCamera& cam) {
+            return rendererRequiresRayTracingScene(cam.rendererKey);
+        });
         const bool rayTracingAvailable =
             rayTracingSceneRequired &&
             HasFlagValues(rd.getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline);
@@ -1966,7 +2019,8 @@ namespace vultra
         const float       renderTimeSeconds = static_cast<float>(m_FrameCounter) / 60.0f;
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "RenderWorldCooker::cook"};
-            cooker.cook(world, assetService, gpuResourceService, rd, m_GeometryFactory, m_RenderWorldBack, renderTimeSeconds);
+            cooker.cook(
+                world, assetService, gpuResourceService, rd, m_GeometryFactory, m_RenderWorldBack, renderTimeSeconds);
         }
         m_RenderWorldBack.frameIndex = m_FrameCounter;
 
@@ -1975,7 +2029,7 @@ namespace vultra
         const uint64_t resourceRevision = gpuResourceService.contentRevision();
         const auto&    pool             = gpuResourceService.pool();
 
-        uint32_t maxGeneralGaussianSplatPoints = 0;
+        uint32_t maxGeneralGaussianSplatPoints      = 0;
         uint32_t maxGeneralGaussianSplatSourceCount = 0;
         for (const auto& splatInst : m_RenderWorldBack.gaussianSplats)
         {
@@ -1987,30 +2041,28 @@ namespace vultra
         }
 
         GaussianSplatFrameStats gaussianStats {};
-        gaussianStats.frameIndex                       = m_FrameCounter;
-        gaussianStats.baselineMode                     = m_GaussianSplatSettings.baselineMode;
-        gaussianStats.foveatedRenderMode               = m_GaussianSplatSettings.foveatedRenderMode;
-        gaussianStats.lodBudgetEnabled                 = m_GaussianSplatSettings.lodBudgetEnabled();
-        gaussianStats.foveatedClodEnabled              = m_GaussianSplatSettings.foveatedClodActive();
+        gaussianStats.frameIndex                      = m_FrameCounter;
+        gaussianStats.baselineMode                    = m_GaussianSplatSettings.baselineMode;
+        gaussianStats.foveatedRenderMode              = m_GaussianSplatSettings.foveatedRenderMode;
+        gaussianStats.lodBudgetEnabled                = m_GaussianSplatSettings.lodBudgetEnabled();
+        gaussianStats.foveatedClodEnabled             = m_GaussianSplatSettings.foveatedClodActive();
         gaussianStats.foveatedLayeredCompositeEnabled = m_GaussianSplatSettings.foveatedLayeredCompositeActive();
         gaussianStats.foveatedBudgetControllerEnabled = m_GaussianSplatSettings.foveatedBudgetControllerEnabled;
-        gaussianStats.lodBudget                        = m_GaussianSplatSettings.lodBudget;
-        gaussianStats.foveatedRingLevels               = m_GaussianSplatSettings.foveatedRingLevels;
-        gaussianStats.foveatedResolutionScales         = m_GaussianSplatSettings.foveatedResolutionScales;
-        gaussianStats.foveatedRingDegrees              = m_GaussianSplatSettings.foveatedRingDegrees;
-        gaussianStats.foveatedTargetFrameMs            = m_GaussianSplatSettings.foveatedTargetFrameMs;
-        gaussianStats.splatAssets                      = static_cast<uint32_t>(m_RenderWorldBack.gaussianSplats.size());
-        gaussianStats.totalSplats                      = maxGeneralGaussianSplatPoints;
+        gaussianStats.lodBudget                       = m_GaussianSplatSettings.lodBudget;
+        gaussianStats.foveatedRingLevels              = m_GaussianSplatSettings.foveatedRingLevels;
+        gaussianStats.foveatedResolutionScales        = m_GaussianSplatSettings.foveatedResolutionScales;
+        gaussianStats.foveatedRingDegrees             = m_GaussianSplatSettings.foveatedRingDegrees;
+        gaussianStats.foveatedTargetFrameMs           = m_GaussianSplatSettings.foveatedTargetFrameMs;
+        gaussianStats.splatAssets                     = static_cast<uint32_t>(m_RenderWorldBack.gaussianSplats.size());
+        gaussianStats.totalSplats                     = maxGeneralGaussianSplatPoints;
 
         const bool gaussianModeSettingsDirty =
             m_GaussianSplatSettings.baselineMode != m_AppliedGaussianSplatSettings.baselineMode;
         const bool gaussianSelectionSettingsDirty =
             gaussianSplatSelectionSettingsDirty(m_GaussianSplatSettings, m_AppliedGaussianSplatSettings);
         bool gpuSceneTopologyDirty =
-            gaussianModeSettingsDirty ||
-            m_GpuSceneDirtyTracker.shouldRebuildTopology(m_RenderWorldBack,
-                                                         resourceRevision,
-                                                         m_EnableGpuDrivenMeshletPipeline);
+            gaussianModeSettingsDirty || m_GpuSceneDirtyTracker.shouldRebuildTopology(
+                                             m_RenderWorldBack, resourceRevision, m_EnableGpuDrivenMeshletPipeline);
         bool gpuSceneTransformDirty =
             !gpuSceneTopologyDirty && m_GpuSceneDirtyTracker.shouldUpdateTransforms(m_RenderWorldBack);
         if (gpuSceneTransformDirty &&
@@ -2027,7 +2079,7 @@ namespace vultra
         {
             gpuSceneTopologyDirty = true;
         }
-        const bool gpuSceneDirty = gpuSceneTopologyDirty || gpuSceneTransformDirty;
+        const bool gpuSceneDirty          = gpuSceneTopologyDirty || gpuSceneTransformDirty;
         const bool gaussianSelectionDirty = gaussianOrderedClodMode && gaussianSelectionSettingsDirty;
 
         // Build GPU scene database + per-view draw state.
@@ -2046,11 +2098,10 @@ namespace vultra
             auto& gpuSceneDatabase = m_GpuSceneDatabaseFront;
             auto& gpuSceneView     = m_GpuSceneViewFront;
 
-            for (uint32_t instanceIndex = 0;
-                 instanceIndex < static_cast<uint32_t>(m_RenderWorldBack.instances.size());
+            for (uint32_t instanceIndex = 0; instanceIndex < static_cast<uint32_t>(m_RenderWorldBack.instances.size());
                  ++instanceIndex)
             {
-                const auto& model = m_RenderWorldBack.instances[instanceIndex].worldMatrix;
+                const auto& model                          = m_RenderWorldBack.instances[instanceIndex].worldMatrix;
                 gpuSceneDatabase.transforms[instanceIndex] = model;
             }
             gpuSceneDatabase.uploadTransforms(rd, cb);
@@ -2118,7 +2169,7 @@ namespace vultra
         else if (gpuSceneTopologyDirty)
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::rebuild"};
-            auto        packGaussianCovariance = [](const glm::uvec4 packed) {
+            auto                   packGaussianCovariance = [](const glm::uvec4 packed) {
                 const glm::vec2 p0 = glm::unpackHalf2x16(packed.x);
                 const glm::vec2 p1 = glm::unpackHalf2x16(packed.y);
                 const glm::vec2 p2 = glm::unpackHalf2x16(packed.z);
@@ -2200,7 +2251,7 @@ namespace vultra
                     if (instanceIndex >= m_GpuSceneDatabaseBack.instances.size())
                         continue;
 
-                    const auto& mesh    = pool.meshes[inst.meshIndex];
+                    const auto& mesh = pool.meshes[inst.meshIndex];
                     if (mesh.meshletCount == 0)
                         continue;
 
@@ -2213,30 +2264,31 @@ namespace vultra
                         const auto& meshlet = pool.meshlets.cpuMeshlets[globalMeshletIndex];
 
                         resource::GpuDrawRecord dr;
-                        dr.primitiveIndex    = globalMeshletIndex;
-                        dr.materialIndex     = remapMaterialIndex(inst, mesh, meshlet.materialIndex);
-                        dr.vertexStrideBytes = mesh.vertexStrideBytes;
-                        dr.flags             = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eMeshlet);
-                        dr.vertexAddress     = pool.geometry.vertexBytesAddress;
-                        dr.instanceIndex     = instanceIndex;
-                        const auto layout    = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
-                        dr.vertexAttributeMask = layout.attributeMask;
-                        dr.positionOffsetBytes = layout.positionOffsetBytes;
-                        dr.normalOffsetBytes = layout.normalOffsetBytes;
-                        dr.colorOffsetBytes = layout.colorOffsetBytes;
+                        dr.primitiveIndex       = globalMeshletIndex;
+                        dr.materialIndex        = remapMaterialIndex(inst, mesh, meshlet.materialIndex);
+                        dr.vertexStrideBytes    = mesh.vertexStrideBytes;
+                        dr.flags                = resource::gpuDrawFlagsToMask(resource::GpuDrawFlags::eMeshlet);
+                        dr.vertexAddress        = pool.geometry.vertexBytesAddress;
+                        dr.instanceIndex        = instanceIndex;
+                        const auto layout       = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                        dr.vertexAttributeMask  = layout.attributeMask;
+                        dr.positionOffsetBytes  = layout.positionOffsetBytes;
+                        dr.normalOffsetBytes    = layout.normalOffsetBytes;
+                        dr.colorOffsetBytes     = layout.colorOffsetBytes;
                         dr.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
                         dr.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
-                        dr.tangentOffsetBytes = layout.tangentOffsetBytes;
-                        dr.model             = inst.worldMatrix;
+                        dr.tangentOffsetBytes   = layout.tangentOffsetBytes;
+                        dr.model                = inst.worldMatrix;
                         m_GpuSceneViewBack.pushMeshletDraw(std::move(dr));
                     }
                 }
 
-                std::stable_sort(m_GpuSceneViewBack.draws.begin(), m_GpuSceneViewBack.draws.end(), [](const auto& a, const auto& b) {
-                    if (a.materialIndex != b.materialIndex)
-                        return a.materialIndex < b.materialIndex;
-                    return a.primitiveIndex < b.primitiveIndex;
-                });
+                std::stable_sort(
+                    m_GpuSceneViewBack.draws.begin(), m_GpuSceneViewBack.draws.end(), [](const auto& a, const auto& b) {
+                        if (a.materialIndex != b.materialIndex)
+                            return a.materialIndex < b.materialIndex;
+                        return a.primitiveIndex < b.primitiveIndex;
+                    });
 
                 m_GpuSceneViewBack.uploadDraws(rd, cb);
                 m_GpuSceneViewBack.buildIndirectFromDraws(pool);
@@ -2271,26 +2323,22 @@ namespace vultra
                 drawRecord.pointCount  = gpuSplat.pointCount;
                 drawRecord.shDegree    = static_cast<uint32_t>(std::max(gpuSplat.shDegree, 0));
                 // x: kernel size, y: cutoff scale, z: opacity scale, w: reserved sort order.
-                drawRecord.params0 = glm::vec4 {0.3f,
-                                                1.0f,
-                                                1.0f,
-                                                0.0f};
+                drawRecord.params0 = glm::vec4 {0.3f, 1.0f, 1.0f, 0.0f};
                 drawRecord.model   = splatInst.worldMatrix;
 
                 for (uint32_t localPoint = 0; localPoint < gpuSplat.pointCount; ++localPoint)
                 {
-                    const uint32_t globalPoint = pointBase + localPoint;
+                    const uint32_t                                globalPoint = pointBase + localPoint;
                     resource::GpuGeneralGaussianSplatPackedSource packed {};
                     if (globalPoint < pool.gaussianStorage.cpuCenters.size() &&
                         globalPoint < pool.gaussianStorage.cpuCovariances.size() &&
                         globalPoint < pool.gaussianStorage.cpuColors.size())
                     {
-                        const glm::vec4 localCenter = pool.gaussianStorage.cpuCenters[globalPoint];
-                        const uint32_t shOffset = globalPoint * shBaseStride;
-                        const glm::uvec2 sh0 =
-                            shOffset < pool.gaussianStorage.cpuSh.size() ?
-                                pool.gaussianStorage.cpuSh[shOffset] :
-                                glm::uvec2 {0u};
+                        const glm::vec4  localCenter = pool.gaussianStorage.cpuCenters[globalPoint];
+                        const uint32_t   shOffset    = globalPoint * shBaseStride;
+                        const glm::uvec2 sh0         = shOffset < pool.gaussianStorage.cpuSh.size() ?
+                                                           pool.gaussianStorage.cpuSh[shOffset] :
+                                                           glm::uvec2 {0u};
 
                         packed.posOpacity = glm::uvec4 {
                             std::bit_cast<uint32_t>(localCenter.x),
@@ -2313,8 +2361,8 @@ namespace vultra
                 m_GpuSceneViewBack.pushGeneralGaussianSplatDraw(drawRecord);
             }
 
-            uint32_t selectedSourceCapacity = 0u;
-            uint32_t activeGaussianSplats   = 0u;
+            uint32_t       selectedSourceCapacity = 0u;
+            uint32_t       activeGaussianSplats   = 0u;
             const uint32_t packedGaussianSources =
                 static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatPackedSources.size());
             const bool gaussianDirectPrefix =
@@ -2330,10 +2378,8 @@ namespace vultra
             }
             else if (gaussianOrderedClodMode)
             {
-                rebuildGaussianSplatOrderedClodPrefixSources(m_GpuSceneViewBack,
-                                                             m_RenderWorldBack.gaussianSplats,
-                                                             pool,
-                                                             m_RuntimeProfiler);
+                rebuildGaussianSplatOrderedClodPrefixSources(
+                    m_GpuSceneViewBack, m_RenderWorldBack.gaussianSplats, pool, m_RuntimeProfiler);
                 selectedSourceCapacity =
                     static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatSelectedSources.size());
                 activeGaussianSplats =
@@ -2343,11 +2389,8 @@ namespace vultra
             }
             else
             {
-                rebuildGaussianSplatSelectedSources(m_GpuSceneViewBack,
-                                                    m_RenderWorldBack.gaussianSplats,
-                                                    pool,
-                                                    gaussianStats,
-                                                    m_RuntimeProfiler);
+                rebuildGaussianSplatSelectedSources(
+                    m_GpuSceneViewBack, m_RenderWorldBack.gaussianSplats, pool, gaussianStats, m_RuntimeProfiler);
                 selectedSourceCapacity =
                     static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatSelectedSources.size());
                 activeGaussianSplats = selectedSourceCapacity;
@@ -2359,23 +2402,23 @@ namespace vultra
                 maxVisibleGaussianSplats = std::min(maxVisibleGaussianSplats, m_GaussianSplatSettings.lodBudget);
             }
 
-            gaussianStats.drawRecords        = static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatDraws.size());
-            gaussianStats.preparedSplats     = activeGaussianSplats;
+            gaussianStats.drawRecords    = static_cast<uint32_t>(m_GpuSceneViewBack.generalGaussianSplatDraws.size());
+            gaussianStats.preparedSplats = activeGaussianSplats;
             gaussianStats.maxVisibleSplatCap = maxVisibleGaussianSplats;
             m_GaussianSplatStats             = gaussianStats;
 
-            m_GpuSceneViewBack.setGeneralGaussianSplatCaps(
-                gaussianStats.drawRecords,
-                packedGaussianSources,
-                selectedSourceCapacity,
-                activeGaussianSplats,
-                maxVisibleGaussianSplats,
-                gaussianDirectPrefix);
+            m_GpuSceneViewBack.setGeneralGaussianSplatCaps(gaussianStats.drawRecords,
+                                                           packedGaussianSources,
+                                                           selectedSourceCapacity,
+                                                           activeGaussianSplats,
+                                                           maxVisibleGaussianSplats,
+                                                           gaussianDirectPrefix);
             applyGaussianSplatFoveatedClodSettings(m_GpuSceneViewBack, m_GaussianSplatSettings);
             m_GpuSceneViewBack.generalGaussianSplatShBuffer = pool.gaussianStorage.shBuffer;
             m_GpuSceneViewBack.ensureGeneralGaussianSplatBuffers(rd);
 
-            if (!m_GpuSceneViewBack.generalGaussianSplatDraws.empty() && m_GpuSceneViewBack.generalGaussianSplatDrawBuffer)
+            if (!m_GpuSceneViewBack.generalGaussianSplatDraws.empty() &&
+                m_GpuSceneViewBack.generalGaussianSplatDrawBuffer)
             {
                 cb.update(*m_GpuSceneViewBack.generalGaussianSplatDrawBuffer,
                           0,
@@ -2414,10 +2457,7 @@ namespace vultra
             if (m_GpuSceneViewBack.generalGaussianSplatDispatchArgsBuffer)
             {
                 const uint32_t zeroArgs[4] = {0u, 1u, 1u, 0u};
-                cb.update(*m_GpuSceneViewBack.generalGaussianSplatDispatchArgsBuffer,
-                          0,
-                          sizeof(zeroArgs),
-                          zeroArgs);
+                cb.update(*m_GpuSceneViewBack.generalGaussianSplatDispatchArgsBuffer, 0, sizeof(zeroArgs), zeroArgs);
             }
 
             resetGaussianSplatIndirectBuffers(rd, m_GpuSceneViewBack);
@@ -2435,22 +2475,20 @@ namespace vultra
         if (!gpuSceneDirty && gaussianSelectionDirty)
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::gaussian_lod_selection"};
-            auto& gpuSceneView = m_GpuSceneViewFront;
+            auto&                  gpuSceneView = m_GpuSceneViewFront;
 
-            uint32_t selectedSourceCapacity = static_cast<uint32_t>(gpuSceneView.generalGaussianSplatSelectedSources.size());
-            uint32_t activeGaussianSplats   = 0u;
-            bool     uploadSelectedSources  = false;
-            const bool gaussianDirectPrefix = gpuSceneView.generalGaussianSplatDirectPrefix;
-            gaussianStats.directPrefix      = gaussianDirectPrefix;
+            uint32_t selectedSourceCapacity =
+                static_cast<uint32_t>(gpuSceneView.generalGaussianSplatSelectedSources.size());
+            uint32_t   activeGaussianSplats  = 0u;
+            bool       uploadSelectedSources = false;
+            const bool gaussianDirectPrefix  = gpuSceneView.generalGaussianSplatDirectPrefix;
+            gaussianStats.directPrefix       = gaussianDirectPrefix;
             if (!gaussianDirectPrefix && selectedSourceCapacity < maxGeneralGaussianSplatPoints)
             {
-                rebuildGaussianSplatOrderedClodPrefixSources(gpuSceneView,
-                                                             m_RenderWorldBack.gaussianSplats,
-                                                             pool,
-                                                             m_RuntimeProfiler);
-                selectedSourceCapacity =
-                    static_cast<uint32_t>(gpuSceneView.generalGaussianSplatSelectedSources.size());
-                uploadSelectedSources = true;
+                rebuildGaussianSplatOrderedClodPrefixSources(
+                    gpuSceneView, m_RenderWorldBack.gaussianSplats, pool, m_RuntimeProfiler);
+                selectedSourceCapacity = static_cast<uint32_t>(gpuSceneView.generalGaussianSplatSelectedSources.size());
+                uploadSelectedSources  = true;
             }
 
             const uint32_t activeBudgetSourceCount =
@@ -2527,7 +2565,7 @@ namespace vultra
         m_RenderWorldBack.gpuSceneView      = &m_GpuSceneViewBack;
 
         constexpr uint64_t kOverrideRenderWorldReleaseDelayFrames = 4u;
-        std::size_t overrideOut = 0;
+        std::size_t        overrideOut                            = 0;
         for (auto& slot : m_OverrideRenderWorlds)
         {
             if (m_FrameCounter > slot.lastTouchedFrame + kOverrideRenderWorldReleaseDelayFrames)
@@ -2545,21 +2583,26 @@ namespace vultra
         {
             if (!cam.worldOverride)
                 continue;
-            auto slotIt = std::find_if(m_OverrideRenderWorlds.begin(),
-                                       m_OverrideRenderWorlds.end(),
-                                       [&](const OverrideRenderWorldSlot& slot) {
-                                           return slot.world == cam.worldOverride;
-                                       });
+            auto slotIt =
+                std::find_if(m_OverrideRenderWorlds.begin(),
+                             m_OverrideRenderWorlds.end(),
+                             [&](const OverrideRenderWorldSlot& slot) { return slot.world == cam.worldOverride; });
             if (slotIt == m_OverrideRenderWorlds.end())
             {
-                slotIt = m_OverrideRenderWorlds.insert(m_OverrideRenderWorlds.end(), OverrideRenderWorldSlot {});
+                slotIt        = m_OverrideRenderWorlds.insert(m_OverrideRenderWorlds.end(), OverrideRenderWorldSlot {});
                 slotIt->world = cam.worldOverride;
             }
-            auto& slot = *slotIt;
+            auto& slot            = *slotIt;
             slot.lastTouchedFrame = m_FrameCounter;
             {
                 RuntimeProfiler::Scope scope {m_RuntimeProfiler, "RenderWorldCooker::cook_override"};
-                cooker.cook(*slot.world, assetService, gpuResourceService, rd, m_GeometryFactory, slot.renderWorld, renderTimeSeconds);
+                cooker.cook(*slot.world,
+                            assetService,
+                            gpuResourceService,
+                            rd,
+                            m_GeometryFactory,
+                            slot.renderWorld,
+                            renderTimeSeconds);
             }
             slot.renderWorld.frameIndex = m_FrameCounter;
             buildCpuDrivenGpuSceneForRenderWorld(
@@ -2582,17 +2625,15 @@ namespace vultra
 
         const bool supportsMultiview =
             HasFlagValues(rd.getFeatureReport().flags, rhi::RenderDeviceFeatureReportFlagBits::eMultiview);
-        const auto xrEyeViews               = backendService.xrEyeViews();
-        bool       skipRemainingStereoViews = false;
+        const auto                        xrEyeViews               = backendService.xrEyeViews();
+        bool                              skipRemainingStereoViews = false;
         std::unordered_set<rhi::Texture*> clearedTargetsThisFrame;
         m_RuntimeProfiler.setGpuScopeCpuFallback(rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU);
 
         if (isTrackyGpuProfilerEnabled())
         {
             m_RuntimeProfiler.setGpuScopeCallbacks(
-                []() { return uint64_t {0}; },
-                [](const uint64_t) {},
-                [](const uint64_t) { return -1.0; });
+                []() { return uint64_t {0}; }, [](const uint64_t) {}, [](const uint64_t) { return -1.0; });
         }
         else
         {
@@ -2615,7 +2656,8 @@ namespace vultra
                         m_RuntimeProfiler.gpuScopeDepth() <= 1)
                     {
                         rhi::WebGPUCommandBufferAccess::closeActiveComputePassForProfilingBoundary(cb);
-                        g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle = cb.getCurrentRenderPassEncoderHandle();
+                        g_CurrentBuiltinProfilerGpuScopeContext.renderPassEncoderHandle =
+                            cb.getCurrentRenderPassEncoderHandle();
                         g_CurrentBuiltinProfilerGpuScopeContext.computePassEncoderHandle =
                             cb.getCurrentComputePassEncoderHandle();
                     }
@@ -2660,7 +2702,7 @@ namespace vultra
         for (const size_t cameraIdx : cameraOrder)
         {
             RuntimeProfiler::Scope scopeCamera {m_RuntimeProfiler, "RenderCamera::execute"};
-            const auto& cam = cams[cameraIdx];
+            const auto&            cam = cams[cameraIdx];
 
             if (skipRemainingStereoViews && cam.isXRView && !cam.isXRPrimaryView)
                 continue;
@@ -2682,18 +2724,17 @@ namespace vultra
             const bool isBackbufferTarget = !cam.isXRView && cam.target == nullptr && target == &defaultTarget;
             const bool useWindowContentArea =
                 isBackbufferTarget && window.platformType() == os::Window::PlatformType::eAndroidNativeWindow;
-            const rhi::Rect2D renderArea = useWindowContentArea ?
-                                               window.getContentArea() :
-                                               rhi::Rect2D {.offset = {0, 0}, .extent = target->getExtent()};
-            const RenderCamera viewCamera = cameraForRenderExtent(cam, renderArea.extent);
-            RenderWorld* renderWorld = &m_RenderWorldFront;
+            const rhi::Rect2D  renderArea  = useWindowContentArea ?
+                                                 window.getContentArea() :
+                                                 rhi::Rect2D {.offset = {0, 0}, .extent = target->getExtent()};
+            const RenderCamera viewCamera  = cameraForRenderExtent(cam, renderArea.extent);
+            RenderWorld*       renderWorld = &m_RenderWorldFront;
             if (cam.worldOverride)
             {
-                const auto slotIt = std::find_if(m_OverrideRenderWorlds.begin(),
-                                                 m_OverrideRenderWorlds.end(),
-                                                 [&](const OverrideRenderWorldSlot& slot) {
-                                                     return slot.world == cam.worldOverride;
-                                                 });
+                const auto slotIt =
+                    std::find_if(m_OverrideRenderWorlds.begin(),
+                                 m_OverrideRenderWorlds.end(),
+                                 [&](const OverrideRenderWorldSlot& slot) { return slot.world == cam.worldOverride; });
                 if (slotIt != m_OverrideRenderWorlds.end())
                     renderWorld = &slotIt->renderWorld;
             }
@@ -2704,8 +2745,9 @@ namespace vultra
                 .target               = target,
                 .extent               = renderArea.extent,
                 .clearValue           = viewCamera.clearValue,
-                .stereoMode           = canUseXrMultiview ? StereoRenderMode::eSingleGraphStereo :
-                                           (cam.isXRView ? StereoRenderMode::ePerEyeFallback : StereoRenderMode::eMono),
+                .stereoMode           = canUseXrMultiview ?
+                                            StereoRenderMode::eSingleGraphStereo :
+                                            (cam.isXRView ? StereoRenderMode::ePerEyeFallback : StereoRenderMode::eMono),
                 .enableMultiview      = canUseXrMultiview,
                 .multiviewMask        = canUseXrMultiview ? 0x3u : 0u,
                 .multiviewCameras     = {&viewCamera, nullptr},
@@ -2740,12 +2782,8 @@ namespace vultra
             // (e.g. pure ImGui examples or empty editor view render targets).
             if (clearedTargetsThisFrame.insert(target).second)
             {
-                clearColorTarget(cb,
-                                 *target,
-                                 renderArea,
-                                 viewCamera.clearValue,
-                                 canUseXrMultiview,
-                                 canUseXrMultiview ? 0x3u : 0u);
+                clearColorTarget(
+                    cb, *target, renderArea, viewCamera.clearValue, canUseXrMultiview, canUseXrMultiview ? 0x3u : 0u);
             }
 
             auto renderer = resolveRenderer(cam);
@@ -2844,9 +2882,8 @@ namespace vultra
                     .frame       = m_PreparedFrameData,
                     .viewData    = viewData,
                     .resourceSet = {},
-                    .ext         = {.builtinShaderLib = &shaderService.builtinLibrary(),
-                                    .builtinHighendShaderLib =
-                                        &shaderService.builtinLibrary(rhi::ShaderProfile::eHighend),
+                    .ext         = {.builtinShaderLib        = &shaderService.builtinLibrary(),
+                                    .builtinHighendShaderLib = &shaderService.builtinLibrary(rhi::ShaderProfile::eHighend),
                                     .builtinCompatibilityShaderLib =
                                         &shaderService.builtinLibrary(rhi::ShaderProfile::eCompatibility),
                                     .samplers = m_Samplers},
@@ -2914,43 +2951,42 @@ namespace vultra
                 if (eyeView.stereoTarget)
                 {
                     eyeView.target->setBarrierState(eyeView.stereoTarget->getLastBarrierScope(),
-                                                     eyeView.stereoTarget->getImageLayout());
+                                                    eyeView.stereoTarget->getImageLayout());
                 }
 
                 rhi::prepareForReading(cb, *eyeView.target);
                 if (m_BuiltinRenderSettings.xrMirrorGammaCorrect)
                 {
-                    auto* pipeline = getFrameGraphTexturePreviewPipeline(
-                        rd,
-                        shaderService.builtinLibrary(rhi::ShaderProfile::eGeneral),
-                        eyeView.mirrorTarget->getPixelFormat());
+                    auto* pipeline =
+                        getFrameGraphTexturePreviewPipeline(rd,
+                                                            shaderService.builtinLibrary(rhi::ShaderProfile::eGeneral),
+                                                            eyeView.mirrorTarget->getPixelFormat());
                     const auto samplerIt = m_Samplers.find("linear");
                     if (pipeline && samplerIt != m_Samplers.end())
                     {
-                        const auto descriptorSet =
-                            cb.createDescriptorSetBuilder()
-                                .bind(0,
-                                      rhi::bindings::CombinedImageSampler {
-                                          .texture     = eyeView.target,
-                                          .imageAspect = rhi::ImageAspect::eColor,
-                                          .sampler     = samplerIt->second,
-                                      })
-                                .build(pipeline->getDescriptorSetLayout(3));
+                        const auto descriptorSet = cb.createDescriptorSetBuilder()
+                                                       .bind(0,
+                                                             rhi::bindings::CombinedImageSampler {
+                                                                 .texture     = eyeView.target,
+                                                                 .imageAspect = rhi::ImageAspect::eColor,
+                                                                 .sampler     = samplerIt->second,
+                                                             })
+                                                       .build(pipeline->getDescriptorSetLayout(3));
                         const MirrorPreviewPushConstants pc {
-                            .channelMask = glm::ivec4(1, 1, 1, 0),
+                            .channelMask  = glm::ivec4(1, 1, 1, 0),
                             .gammaCorrect = 1,
-                            .previewMode = 0,
-                            .depthNear = 0.1f,
-                            .depthFar = 1000.0f,
-                            .clampMin = 0.0f,
-                            .clampMax = 1.0f,
+                            .previewMode  = 0,
+                            .depthNear    = 0.1f,
+                            .depthFar     = 1000.0f,
+                            .clampMin     = 0.0f,
+                            .clampMax     = 1.0f,
                         };
                         rhi::prepareForAttachment(cb, *eyeView.mirrorTarget, false);
                         cb.bindPipeline(*pipeline)
                             .bindDescriptorSet(3, descriptorSet)
                             .pushConstants(rhi::ShaderStages::eFragment, 0, &pc)
                             .beginRendering({
-                                .area = {.extent = eyeView.mirrorTarget->getExtent()},
+                                .area             = {.extent = eyeView.mirrorTarget->getExtent()},
                                 .colorAttachments = {rhi::AttachmentInfo {.target = eyeView.mirrorTarget}},
                             })
                             .drawFullScreenTriangle()
@@ -3009,10 +3045,9 @@ namespace vultra
 
         // Stop issuing begin/end scope queries after rendering submission building is done,
         // but keep resolve callback alive so endFrame can harvest ready GPU samples.
-        m_RuntimeProfiler.setGpuScopeCallbacks(
-            []() { return uint64_t {0}; },
-            [](const uint64_t) {},
-            [&rd](const uint64_t token) { return rd.consumeScopeGpuMs(token); });
+        m_RuntimeProfiler.setGpuScopeCallbacks([]() { return uint64_t {0}; },
+                                               [](const uint64_t) {},
+                                               [&rd](const uint64_t token) { return rd.consumeScopeGpuMs(token); });
 
         m_TransientResources->update();
         if (!isTrackyGpuProfilerEnabled())
@@ -3030,9 +3065,9 @@ namespace vultra
         const auto assetMemoryStats = assetService.memoryStats();
         const auto memoryStats      = rd.getMemoryStats();
         m_RuntimeProfiler.setMemoryStats(assetMemoryStats.cpuCacheBytes,
-                                          memoryStats.cpuCacheBytes,
-                                          memoryStats.gpuDeviceLocalBytes,
-                                          memoryStats.gpuHostVisibleBytes);
+                                         memoryStats.cpuCacheBytes,
+                                         memoryStats.gpuDeviceLocalBytes,
+                                         memoryStats.gpuHostVisibleBytes);
         const double gpuFrameMs = isTrackyGpuProfilerEnabled() ? -1.0 : rd.consumeGpuFrameMs();
         m_RuntimeProfiler.setGpuFrameMs(gpuFrameMs);
         const auto renderFrameCpuEnd = std::chrono::steady_clock::now();
@@ -3042,7 +3077,6 @@ namespace vultra
         updateGaussianSplatFoveatedBudgetController(m_GaussianSplatSettings, gpuFrameMs);
         rhi::setBuiltinProfilerGpuScopeCallbacks({}, {});
         m_RuntimeProfiler.setGpuScopeCallbacks({}, {}, {});
-
     }
 
     void RenderSystem::onPreRender() { m_SkipRender = false; }

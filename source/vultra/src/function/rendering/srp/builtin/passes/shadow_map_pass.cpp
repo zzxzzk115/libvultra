@@ -359,6 +359,8 @@ namespace vultra
 
                     for (const auto& instance : renderWorld->instances)
                     {
+                        if (!instance.castsShadow)
+                            continue;
                         if (instance.meshIndex >= gpuSceneDatabase->resources->meshes.size())
                             continue;
                         const auto& mesh = gpuSceneDatabase->resources->meshes[instance.meshIndex];

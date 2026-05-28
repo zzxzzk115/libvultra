@@ -326,7 +326,7 @@ namespace vultra
 
         const auto colorDesc    = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
         const auto normalDesc   = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F);
-        const auto materialDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
+        const auto materialDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F);
         const auto entityIdDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
         const auto depthDesc    = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eDepth32F);
 
