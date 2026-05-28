@@ -59,6 +59,7 @@ namespace vultra_app
         bool apply(EditorContext& ctx, const SceneState& state);
         void pushState(std::string label, SceneState state);
         std::string consumeNextLabel(std::string fallback);
+        void commitCurrent(EditorContext& ctx, std::string fallbackLabel);
 
         std::vector<Entry>      m_Entries;
         std::vector<SceneState> m_States;

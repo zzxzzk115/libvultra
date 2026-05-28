@@ -137,6 +137,30 @@ namespace vultra_app
         m_Applying = false;
     }
 
+    void EditorHistory::commitCurrent(EditorContext& ctx, std::string fallbackLabel)
+    {
+        if (m_Applying)
+            return;
+
+        auto current = capture(ctx);
+        if (!current)
+            return;
+
+        if (m_States.empty())
+        {
+            pushState(std::move(fallbackLabel), std::move(*current));
+            return;
+        }
+
+        if (current->serialized == m_States[m_Current].serialized && current->dirty == m_States[m_Current].dirty)
+            return;
+
+        auto label = !m_PendingLabel.empty() ? std::move(m_PendingLabel) : consumeNextLabel(std::move(fallbackLabel));
+        pushState(std::move(label), std::move(*current));
+        m_PendingState.reset();
+        m_PendingLabel.clear();
+    }
+
     void EditorHistory::observeScene(EditorContext& ctx)
     {
         if (m_Applying)
@@ -203,6 +227,7 @@ namespace vultra_app
 
     bool EditorHistory::undo(EditorContext& ctx)
     {
+        commitCurrent(ctx, "Scene Edit");
         if (!canUndo())
             return false;
         m_PendingState.reset();
@@ -215,6 +240,7 @@ namespace vultra_app
 
     bool EditorHistory::redo(EditorContext& ctx)
     {
+        commitCurrent(ctx, "Scene Edit");
         if (!canRedo())
             return false;
         m_PendingState.reset();
@@ -227,6 +253,7 @@ namespace vultra_app
 
     bool EditorHistory::jumpTo(EditorContext& ctx, std::size_t index)
     {
+        commitCurrent(ctx, "Scene Edit");
         if (index >= m_States.size())
             return false;
         m_PendingState.reset();
