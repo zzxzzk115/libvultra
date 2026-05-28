@@ -105,10 +105,14 @@ namespace vultra_app
         void drawLoadingOverlay(EditorContext& ctx) const;
         void drawBuildRunConfigurePopup(EditorContext& ctx);
         void drawBuildRunPopup();
+        void processEditorCommands(EditorContext& ctx);
+        bool openSceneFromCommand(EditorContext& ctx, const std::string& sceneUri);
+        void drawOpenSceneConfirmPopup(EditorContext& ctx);
         void drawProjectSettingsPopup(EditorContext& ctx);
         void drawEditorSettingsPopup(EditorContext& ctx);
         void drawBuildSettingsPopup(EditorContext& ctx);
         void saveCurrentScene(EditorContext& ctx);
+        void saveCurrentSceneThumbnail(EditorContext& ctx);
         void syncPlaybackState(EditorContext& ctx);
         void capturePlayModeSnapshot(EditorContext& ctx);
         void restorePlayModeSnapshot(EditorContext& ctx);
@@ -181,6 +185,8 @@ namespace vultra_app
         bool                m_BuildRunPopupPendingOpen {false};
         bool                m_BuildRunConfigureOpen {false};
         bool                m_ShowAboutPopup {false};
+        bool                m_OpenSceneConfirmPopup {false};
+        std::string         m_PendingOpenSceneUri;
         bool                m_PlaybackWasPlaying {false};
         bool                m_SplashWindowApplied {false};
         bool                m_EditorWindowApplied {false};

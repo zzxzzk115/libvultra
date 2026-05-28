@@ -22,6 +22,20 @@ namespace vultra_app::ui
             return std::any_of(exts.begin(), exts.end(), [&](const char* candidate) { return ext == candidate; });
         }
 
+        std::string lowerFileName(const std::filesystem::path& path)
+        {
+            auto name = path.filename().generic_string();
+            std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return name;
+        }
+
+        bool hasSuffix(const std::string& text, const std::string_view suffix)
+        {
+            return text.size() >= suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+        }
+
         void tooltip(const char* text)
         {
             if (text == nullptr || text[0] == '\0' || !ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
@@ -38,11 +52,22 @@ namespace vultra_app::ui
             return ICON_MDI_IMAGE;
         if (hasExtension(path, {".vscn"}))
             return ICON_MDI_FILE_TREE;
+        const auto name = lowerFileName(path);
+        if (hasSuffix(name, ".vrg.json"))
+            return ICON_MDI_GRAPH;
+        if (hasSuffix(name, ".vmatgraph.json") || hasExtension(path, {".vmatgraph"}))
+            return ICON_MDI_PALETTE;
         if (hasExtension(path, {".gltf", ".glb", ".obj", ".fbx", ".dae", ".ply", ".spz"}))
             return ICON_MDI_CUBE_OUTLINE;
         if (hasExtension(path, {".lua"}))
             return ICON_MDI_LANGUAGE_LUA;
-        if (hasExtension(path, {".h", ".hpp", ".c", ".cpp", ".glsl", ".vshader"}))
+        if (hasSuffix(name, ".vshaderlib.lua"))
+            return ICON_MDI_SOURCE_BRANCH;
+        if (hasSuffix(name, ".vfeature.lua") || hasSuffix(name, ".vsrp.lua") || hasSuffix(name, ".vso.lua"))
+            return ICON_MDI_FUNCTION;
+        if (hasExtension(path, {".glsl", ".vert", ".frag", ".comp", ".hlsl", ".vshader"}))
+            return ICON_MDI_ATOM;
+        if (hasExtension(path, {".h", ".hpp", ".c", ".cpp"}))
             return ICON_MDI_CODE_BRACES;
         return ICON_MDI_FILE_OUTLINE;
     }

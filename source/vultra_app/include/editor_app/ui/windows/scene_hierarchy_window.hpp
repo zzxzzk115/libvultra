@@ -7,6 +7,7 @@
 #include <entt/entity/entity.hpp>
 
 #include <array>
+#include <string>
 
 namespace vultra
 {

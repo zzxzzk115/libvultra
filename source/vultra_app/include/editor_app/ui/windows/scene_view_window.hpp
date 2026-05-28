@@ -24,6 +24,7 @@ namespace vultra_app
         void draw(EditorContext& ctx) override;
         void onClosed(EditorContext& ctx) override;
         void onDestroy(EditorContext& ctx) override;
+        bool saveSceneThumbnail(EditorContext& ctx, std::string_view sceneUri);
 
         enum class Tool
         {

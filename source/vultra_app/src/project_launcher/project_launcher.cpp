@@ -725,10 +725,14 @@ This directory is an index, not the runtime asset root.
             state.currentProject.clear();
             state.currentProjectName.clear();
             state.selectedSourceAsset.clear();
+            state.pendingEditorCommands.clear();
             state.currentAssetRoot          = "resources";
             state.currentDefaultScene       = "res://scenes/test.vscn";
             state.currentEditingRenderGraph = "res://render/default.vrg.json";
+            state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
             ++state.projectGeneration;
+            state.renderGraphOpenRequested = false;
+            state.materialGraphOpenRequested = false;
             state.mode          = AppMode::Editor;
             state.statusMessage = "Opened a blank editor session.";
         }
@@ -1105,11 +1109,15 @@ This directory is an index, not the runtime asset root.
         saveKnownProjects(state);
         state.currentProject = project.projectDir;
         state.selectedSourceAsset.clear();
+        state.pendingEditorCommands.clear();
         state.currentProjectName        = project.name;
         state.currentAssetRoot          = project.assetRoot;
         state.currentDefaultScene       = project.defaultScene;
         state.currentEditingRenderGraph = project.editingRenderGraph;
+        state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
         ++state.projectGeneration;
+        state.renderGraphOpenRequested = false;
+        state.materialGraphOpenRequested = false;
         state.editorPlaying           = false;
         state.editorPaused            = false;
         state.editorStepRequested     = false;
@@ -1160,11 +1168,15 @@ This directory is an index, not the runtime asset root.
 
         state.currentProject = project->projectDir;
         state.selectedSourceAsset.clear();
+        state.pendingEditorCommands.clear();
         state.currentProjectName        = project->name;
         state.currentAssetRoot          = project->assetRoot;
         state.currentDefaultScene       = project->defaultScene;
         state.currentEditingRenderGraph = project->editingRenderGraph;
+        state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
         ++state.projectGeneration;
+        state.renderGraphOpenRequested = false;
+        state.materialGraphOpenRequested = false;
         state.editorPlaying           = false;
         state.editorPaused            = false;
         state.editorStepRequested     = false;

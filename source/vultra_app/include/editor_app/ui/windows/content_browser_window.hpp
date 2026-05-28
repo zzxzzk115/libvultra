@@ -56,6 +56,9 @@ namespace vultra_app
         void invalidateEntryCache();
         void drawContextMenu(EditorContext& ctx, const std::filesystem::path& path, bool isDirectory);
         void drawPendingPopups(EditorContext& ctx);
+        void drawCreateAssetMenu(EditorContext& ctx, const std::filesystem::path& targetDir);
+        void openCreateAssetPopup(const std::string& creatorId, const std::filesystem::path& targetDir);
+        bool createRegisteredAsset(EditorContext& ctx);
         void openImportDialog(const std::filesystem::path& targetDir, bool directory);
         void drawImportDialogs(EditorContext& ctx);
         void importExternalPath(EditorContext& ctx, const std::filesystem::path& source);
@@ -70,10 +73,14 @@ namespace vultra_app
         std::filesystem::path m_RenamingPath;
         std::filesystem::path m_DeletePath;
         std::filesystem::path m_ImportTargetDir;
+        std::filesystem::path m_CreateAssetTargetDir;
         std::filesystem::path m_PendingSelectPath;
+        std::filesystem::path m_LastClickedPath;
         std::array<char, 128> m_Filter {};
         std::array<char, 128> m_RenameBuffer {};
         std::array<char, 128> m_NewFolderBuffer {"NewFolder"};
+        std::array<char, 128> m_CreateAssetNameBuffer {};
+        std::string           m_CreateAssetCreatorId;
         float                 m_LeftPanelRatio {0.28f};
         float                 m_IconSize {64.0f};
         float                 m_MinIconSize {24.0f};
@@ -91,6 +98,7 @@ namespace vultra_app
         uint64_t m_ObservedAssetFileGeneration {0};
         std::unordered_set<std::string> m_ExpandedModelAssets;
         int m_RemainingThumbnailLoads {0};
+        double m_LastClickTime {0.0};
         bool m_PendingSelectDragging {false};
         bool m_BoxSelecting {false};
         ImVec2 m_BoxSelectStart {};
@@ -106,5 +114,6 @@ namespace vultra_app
         bool m_OpenRenamePopup {false};
         bool m_OpenDeletePopup {false};
         bool m_OpenNewFolderPopup {false};
+        bool m_OpenCreateAssetPopup {false};
     };
 } // namespace vultra_app

@@ -18,6 +18,8 @@ namespace vultra_app::ui
         ModelRoot,
         Mesh,
         Texture,
+        Scene,
+        MaterialGraph,
     };
 
     enum class AssetThumbnailStatus
@@ -51,6 +53,9 @@ namespace vultra_app::ui
                                           std::string_view       uuid,
                                           std::string_view       importedPath);
         AssetThumbnailRequest requestTexture(EditorContext& ctx, const std::filesystem::path& sourcePath);
+        AssetThumbnailRequest requestScene(EditorContext& ctx, const std::filesystem::path& sourcePath);
+        AssetThumbnailRequest requestMaterialGraph(EditorContext& ctx, const std::filesystem::path& sourcePath);
+        void                  markReady(const AssetThumbnailRequest& request);
 
         void prewarmProjectModelThumbnails(EditorContext& ctx);
         void prewarmProjectThumbnails(EditorContext& ctx);
@@ -77,6 +82,8 @@ namespace vultra_app::ui
         std::unordered_map<std::string, AssetThumbnailRequest> m_ModelRootRequestCache;
         std::unordered_map<std::string, AssetThumbnailRequest> m_MeshRequestCache;
         std::unordered_map<std::string, AssetThumbnailRequest> m_TextureRequestCache;
+        std::unordered_map<std::string, AssetThumbnailRequest> m_SceneRequestCache;
+        std::unordered_map<std::string, AssetThumbnailRequest> m_MaterialGraphRequestCache;
         std::vector<AssetThumbnailRequest>                    m_QueuedRequests;
 
         struct ActiveRenderJob

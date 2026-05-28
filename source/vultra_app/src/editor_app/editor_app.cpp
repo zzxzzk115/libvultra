@@ -29,8 +29,11 @@
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/script_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/camera_component.hpp>
+#include <vultra/function/world/components/hierarchy_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
+#include <vultra/function/world/components/transform_component.hpp>
 
 #include <IconsMaterialDesignIcons.h>
 #ifdef VULTRA_HAS_VASSET_IMPORT
@@ -50,6 +53,8 @@
 #include <cstring>
 #include <entt/entity/entity.hpp>
 #include <filesystem>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <sstream>
 #include <system_error>
 #include <vector>
@@ -99,6 +104,57 @@ namespace vultra_app
     namespace
     {
         ImGuiID dockSpaceId() { return ImHashStr("VultraDockSpace"); }
+
+        glm::mat4 localTransformMatrix(const vultra::TransformComponent& transform)
+        {
+            return glm::translate(glm::mat4(1.0f), transform.position) * glm::mat4_cast(transform.rotation) *
+                   glm::scale(glm::mat4(1.0f), transform.scale);
+        }
+
+        glm::mat4 worldTransformMatrix(vultra::World& world, entt::entity entity)
+        {
+            auto& reg = world.registry();
+            glm::mat4 result(1.0f);
+            for (auto current = entity; current != entt::null && reg.valid(current);)
+            {
+                if (const auto* transform = reg.try_get<vultra::TransformComponent>(current))
+                    result = localTransformMatrix(*transform) * result;
+                const auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(current);
+                current               = hierarchy ? hierarchy->parent : entt::null;
+            }
+            return result;
+        }
+
+        void requestSceneViewAlignToPrimaryCamera(EditorContext& ctx, vultra::World& world)
+        {
+            auto& reg  = world.registry();
+            auto  view = reg.view<vultra::TransformComponent, vultra::CameraComponent>();
+
+            entt::entity best         = entt::null;
+            int          bestPriority = std::numeric_limits<int>::min();
+            for (auto entity : view)
+            {
+                const auto& camera = view.get<vultra::CameraComponent>(entity);
+                if (!camera.primary)
+                    continue;
+                if (best == entt::null || camera.priority >= bestPriority)
+                {
+                    best         = entity;
+                    bestPriority = camera.priority;
+                }
+            }
+
+            if (best == entt::null)
+                return;
+
+            const auto& camera         = reg.get<vultra::CameraComponent>(best);
+            const auto  worldTransform = worldTransformMatrix(world, best);
+            auto&       request        = ctx.state.sceneCameraAlignRequest;
+            request.pending            = true;
+            request.position           = glm::vec3(worldTransform[3]);
+            request.rotation           = glm::normalize(glm::quat_cast(worldTransform));
+            request.fovYDegrees        = camera.fovYDegrees;
+        }
 
         std::string currentHostPlatform()
         {
@@ -672,18 +728,22 @@ namespace vultra_app
                              .buildAndRun = [this](EditorContext& topBarCtx) { startBuildAndRun(topBarCtx); },
                              .backToLauncher =
                                  [this](EditorContext& topBarCtx) {
+                                     saveCurrentSceneThumbnail(topBarCtx);
                                      topBarCtx.state.currentProject.clear();
                                      topBarCtx.state.currentProjectName.clear();
                                      topBarCtx.state.selectedSourceAsset.clear();
                                      topBarCtx.state.codeEditorPath.clear();
+                                     topBarCtx.state.pendingEditorCommands.clear();
                                      topBarCtx.state.currentAssetRoot          = "resources";
                                      topBarCtx.state.currentDefaultScene       = "res://scenes/test.vscn";
                                      topBarCtx.state.currentEditingRenderGraph = "res://render/default.vrg.json";
+                                     topBarCtx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
                                      ++topBarCtx.state.projectGeneration;
                                      topBarCtx.state.editorPlaying           = false;
                                      topBarCtx.state.editorPaused            = false;
                                      topBarCtx.state.editorStepRequested     = false;
                                      topBarCtx.state.codeEditorOpenRequested = false;
+                                     topBarCtx.state.materialGraphOpenRequested = false;
                                      topBarCtx.state.editorShutdownRequested = true;
                                      topBarCtx.state.sceneDirty              = false;
                                      topBarCtx.state.mode                    = AppMode::Launcher;
@@ -718,6 +778,7 @@ namespace vultra_app
         buildDefaultDockLayout();
         m_WindowManager.draw(ctx);
         endDockSpace();
+        processEditorCommands(ctx);
         m_History.observeScene(ctx);
 
         if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
@@ -729,6 +790,7 @@ namespace vultra_app
         drawProjectSettingsPopup(ctx);
         drawEditorSettingsPopup(ctx);
         drawBuildSettingsPopup(ctx);
+        drawOpenSceneConfirmPopup(ctx);
 
         if (m_ShowAboutPopup)
         {
@@ -780,6 +842,133 @@ namespace vultra_app
         }
 
         m_PlaybackWasPlaying = ctx.state.editorPlaying;
+    }
+
+    void EditorApp::processEditorCommands(EditorContext& ctx)
+    {
+        if (ctx.state.pendingEditorCommands.empty())
+            return;
+
+        std::vector<AppState::EditorCommand> commands;
+        commands.swap(ctx.state.pendingEditorCommands);
+        for (const auto& command : commands)
+        {
+            switch (command.type)
+            {
+                case AppState::EditorCommandType::OpenScene:
+                    if (command.payload.empty())
+                        break;
+                    if (ctx.state.sceneDirty)
+                    {
+                        m_PendingOpenSceneUri   = command.payload;
+                        m_OpenSceneConfirmPopup = true;
+                        ctx.state.statusMessage = "Open scene pending confirmation: " + command.payload;
+                    }
+                    else
+                    {
+                        (void)openSceneFromCommand(ctx, command.payload);
+                    }
+                    break;
+                case AppState::EditorCommandType::OpenMaterialGraph:
+                    if (command.payload.empty())
+                        break;
+                    ctx.state.currentEditingMaterialGraph = command.payload;
+                    ctx.state.materialGraphOpenRequested  = true;
+                    ctx.state.statusMessage               = "Opening material graph: " + command.payload;
+                    break;
+                case AppState::EditorCommandType::OpenRenderGraph:
+                    if (command.payload.empty())
+                        break;
+                    ctx.state.currentEditingRenderGraph = command.payload;
+                    ctx.state.renderGraphOpenRequested  = true;
+                    ctx.state.statusMessage             = "Opening render graph: " + command.payload;
+                    break;
+            }
+        }
+    }
+
+    bool EditorApp::openSceneFromCommand(EditorContext& ctx, const std::string& sceneUri)
+    {
+        if (!ctx.services)
+        {
+            ctx.state.statusMessage = "Open scene failed: services unavailable.";
+            return false;
+        }
+        if (ctx.state.editorPlaying)
+        {
+            ctx.state.statusMessage = "Stop Play Mode before opening another scene.";
+            return false;
+        }
+
+        auto* sceneService = ctx.services->tryGet<vultra::ISceneService>();
+        auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
+        if (!sceneService || !worldService)
+        {
+            ctx.state.statusMessage = "Open scene failed: scene/world service unavailable.";
+            return false;
+        }
+
+        auto doc = sceneService->loadSceneSync(sceneUri);
+        if (!doc || !doc->root)
+        {
+            ctx.state.statusMessage = "Open scene failed: " + sceneUri;
+            return false;
+        }
+
+        auto& world = worldService->world();
+        saveCurrentSceneThumbnail(ctx);
+        const bool emptySyntheticScene = doc->syntheticRoot && doc->root->children.empty();
+        const auto root = emptySyntheticScene ?
+                              entt::null :
+                              sceneService->instantiateSceneDocument(world, *doc, entt::null, true);
+        if (root == entt::null)
+        {
+            if (!emptySyntheticScene)
+            {
+                ctx.state.statusMessage = "Open scene failed: " + sceneUri;
+                return false;
+            }
+            world.clear();
+        }
+
+        Selection::clear();
+        ctx.state.selectedSourceAsset.clear();
+        ctx.state.currentDefaultScene = sceneUri;
+        ctx.state.sceneDirty          = false;
+        ctx.state.statusMessage       = "Opened scene: " + sceneUri;
+        requestSceneViewAlignToPrimaryCamera(ctx, world);
+        m_History.reset(ctx, "Scene Opened");
+        return true;
+    }
+
+    void EditorApp::drawOpenSceneConfirmPopup(EditorContext& ctx)
+    {
+        if (m_OpenSceneConfirmPopup)
+        {
+            ImGui::OpenPopup("Open Scene");
+            m_OpenSceneConfirmPopup = false;
+        }
+
+        ui::centerNextModalInCurrentWindow();
+        if (ImGui::BeginPopupModal("Open Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+        {
+            ImGui::TextWrapped("Discard unsaved changes and open this scene?");
+            ImGui::TextWrapped("%s", m_PendingOpenSceneUri.c_str());
+            if (ImGui::Button("Open", ImVec2(90.0f, 0.0f)))
+            {
+                (void)openSceneFromCommand(ctx, m_PendingOpenSceneUri);
+                m_PendingOpenSceneUri.clear();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)))
+            {
+                ctx.state.statusMessage = "Open scene cancelled.";
+                m_PendingOpenSceneUri.clear();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
     }
 
     void EditorApp::drawBuildRunPopup()
@@ -1037,6 +1226,13 @@ namespace vultra_app
         }
     }
 
+    void EditorApp::saveCurrentSceneThumbnail(EditorContext& ctx)
+    {
+        if (ctx.state.currentProject.empty() || ctx.state.currentDefaultScene.empty())
+            return;
+        (void)m_WindowManager.saveSceneThumbnail(ctx, ctx.state.currentDefaultScene);
+    }
+
     void EditorApp::capturePlayModeSnapshot(EditorContext& ctx)
     {
         if (!ctx.services)
@@ -1086,6 +1282,8 @@ namespace vultra_app
         if (m_Loading.releasedEditorState)
             return;
 
+        saveCurrentSceneThumbnail(ctx);
+
         if (ctx.services)
         {
             if (auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>())
@@ -1112,6 +1310,9 @@ namespace vultra_app
         ctx.state.editorPlaying       = false;
         ctx.state.editorPaused        = false;
         ctx.state.editorStepRequested = false;
+        ctx.state.pendingEditorCommands.clear();
+        ctx.state.renderGraphOpenRequested   = false;
+        ctx.state.materialGraphOpenRequested = false;
         ctx.state.gameViewVisible     = false;
         ctx.state.gameViewVisibleLastFrame = false;
         ctx.state.sceneCamera.valid        = false;
@@ -1584,6 +1785,7 @@ namespace vultra_app
     void EditorApp::shutdown(EditorContext& ctx)
     {
         waitForAssetImportTask();
+        saveCurrentSceneThumbnail(ctx);
 
         if (ctx.services)
         {

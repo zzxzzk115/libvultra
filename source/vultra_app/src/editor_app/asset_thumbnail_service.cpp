@@ -1,5 +1,7 @@
 #include "editor_app/asset_thumbnail_service.hpp"
 
+#include "editor_app/scene_thumbnail.hpp"
+
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/asset_service.hpp>
@@ -7,7 +9,10 @@
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
+#include <vultra/function/world/components/gaussian_splat_component.hpp>
+#include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/light_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
@@ -90,6 +95,35 @@ namespace vultra_app::ui
             return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga" || ext == ".hdr";
         }
 
+        bool isSceneSourcePath(const std::filesystem::path& path)
+        {
+            auto ext = path.extension().generic_string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return ext == ".vscn";
+        }
+
+        bool isMaterialGraphSourcePath(const std::filesystem::path& path)
+        {
+            auto name = path.filename().generic_string();
+            auto ext  = path.extension().generic_string();
+            std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return ext == ".vmatgraph" || name.ends_with(".vmatgraph.json");
+        }
+
+        bool isInsideImportedFolder(const std::filesystem::path& assetRoot, const std::filesystem::path& path)
+        {
+            std::error_code ec;
+            const auto      rel = std::filesystem::relative(path, assetRoot, ec);
+            return !ec && !rel.empty() && *rel.begin() == "imported";
+        }
+
         glm::mat4 localMatrix(const vultra::TransformComponent& t)
         {
             return glm::translate(glm::mat4 {1.0f}, t.position) * glm::mat4_cast(t.rotation) *
@@ -135,14 +169,20 @@ namespace vultra_app::ui
                 bounds.includeTransformed(glm::vec3 {p.x, p.y, p.z}, matrix);
         }
 
-        Bounds computeWorldMeshBounds(vultra::World& world, vultra::IAssetService& assets)
+        void includeGaussianSplatBounds(Bounds& bounds, const vasset::VGaussianSplat& splat, const glm::mat4& matrix)
+        {
+            for (const auto& point : splat.splats)
+                bounds.includeTransformed(point.position, matrix);
+        }
+
+        Bounds computeWorldContentBounds(vultra::World& world, vultra::IAssetService& assets)
         {
             Bounds bounds;
             auto&  reg  = world.registry();
-            auto   view = reg.view<vultra::TransformComponent, vultra::MeshComponent>();
-            for (auto entity : view)
+            auto   meshView = reg.view<vultra::TransformComponent, vultra::MeshComponent>();
+            for (auto entity : meshView)
             {
-                const auto& meshComponent = view.get<vultra::MeshComponent>(entity);
+                const auto& meshComponent = meshView.get<vultra::MeshComponent>(entity);
                 if (!meshComponent.mesh.valid())
                     continue;
 
@@ -151,6 +191,20 @@ namespace vultra_app::ui
                     continue;
 
                 includeMeshBounds(bounds, *handle.cpu(), worldMatrix(world, entity));
+            }
+
+            auto splatView = reg.view<vultra::TransformComponent, vultra::GaussianSplatComponent>();
+            for (auto entity : splatView)
+            {
+                const auto& splatComponent = splatView.get<vultra::GaussianSplatComponent>(entity);
+                if (!splatComponent.gaussianSplat.valid())
+                    continue;
+
+                auto handle = assets.loadGaussianSplatSync(splatComponent.gaussianSplat);
+                if (!handle.ready() || !handle.cpu())
+                    continue;
+
+                includeGaussianSplatBounds(bounds, *handle.cpu(), worldMatrix(world, entity));
             }
             return bounds;
         }
@@ -238,6 +292,94 @@ namespace vultra_app::ui
             return camera;
         }
 
+        entt::entity findPrimaryCamera(vultra::World& world)
+        {
+            auto& reg  = world.registry();
+            auto  view = reg.view<vultra::IDComponent, vultra::TransformComponent, vultra::CameraComponent>();
+
+            entt::entity best         = entt::null;
+            int          bestPriority = std::numeric_limits<int>::min();
+            for (auto e : view)
+            {
+                const auto& camera = view.get<vultra::CameraComponent>(e);
+                if (!camera.primary)
+                    continue;
+                if (best == entt::null || camera.priority >= bestPriority)
+                {
+                    best         = e;
+                    bestPriority = camera.priority;
+                }
+            }
+            if (best != entt::null)
+                return best;
+
+            for (auto e : view)
+            {
+                const auto& camera = view.get<vultra::CameraComponent>(e);
+                if (best == entt::null || camera.priority >= bestPriority)
+                {
+                    best         = e;
+                    bestPriority = camera.priority;
+                }
+            }
+            return best;
+        }
+
+        glm::mat4 makeSceneProjection(const vultra::CameraComponent& camera, const float aspect)
+        {
+            const float zNear = std::max(camera.zNear, 0.0001f);
+            const float zFar  = std::max(camera.zFar, zNear + 0.0001f);
+            if (camera.projection == 1u)
+            {
+                const float height = std::max(camera.orthographicHeight, 0.0001f);
+                const float width  = height * std::max(aspect, 0.0001f);
+                return glm::orthoRH_ZO(-width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, zNear, zFar);
+            }
+
+            return glm::perspectiveRH_ZO(glm::radians(camera.fovYDegrees), std::max(aspect, 0.0001f), zNear, zFar);
+        }
+
+        vultra::RenderCamera makeSceneThumbnailCamera(vultra::World&        world,
+                                                      const entt::entity    entity,
+                                                      vultra::rhi::Texture* target)
+        {
+            auto& reg    = world.registry();
+            auto& camera = reg.get<vultra::CameraComponent>(entity);
+
+            vultra::RenderCamera out {};
+            if (auto* id = reg.try_get<vultra::IDComponent>(entity))
+                out.uuid = id->uuid;
+            out.name =
+                reg.all_of<vultra::NameComponent>(entity) ? reg.get<vultra::NameComponent>(entity).name : "Scene";
+            out.priority                = camera.priority;
+            out.view                    = glm::inverse(worldMatrix(world, entity));
+            out.projection              = makeSceneProjection(camera, 1.0f);
+            out.zNear                   = std::max(camera.zNear, 0.0001f);
+            out.zFar                    = std::max(camera.zFar, out.zNear + 0.0001f);
+            out.fovY                    = glm::radians(camera.fovYDegrees);
+            out.target                  = target;
+            out.clearValue              = camera.clearColor;
+            out.clearValue.a            = 1.0f;
+            out.clearMode               = camera.clearMode;
+            out.renderImGui             = false;
+            out.debugEntityIdOutput     = false;
+            out.selectionOutlineEnabled = false;
+            out.rendererKey             = "universal";
+            return out;
+        }
+
+        bool sourceIsNewerThanOutput(const std::filesystem::path& source, const std::filesystem::path& output)
+        {
+            std::error_code ec;
+            const auto      sourceTime = std::filesystem::last_write_time(source, ec);
+            if (ec)
+                return false;
+            const auto outputTime = std::filesystem::last_write_time(output, ec);
+            if (ec)
+                return true;
+            return sourceTime > outputTime;
+        }
+
         void addLoadingShellCamera(vbase::ServiceRegistry& services)
         {
             auto* cameraService = services.tryGet<vultra::ICameraService>();
@@ -292,6 +434,8 @@ namespace vultra_app::ui
         m_ModelRootRequestCache.clear();
         m_MeshRequestCache.clear();
         m_TextureRequestCache.clear();
+        m_SceneRequestCache.clear();
+        m_MaterialGraphRequestCache.clear();
         m_QueuedRequests.clear();
         m_ActiveRenderJob.reset();
         m_TotalQueuedThisPass = 0;
@@ -307,6 +451,8 @@ namespace vultra_app::ui
         m_ModelRootRequestCache.clear();
         m_MeshRequestCache.clear();
         m_TextureRequestCache.clear();
+        m_SceneRequestCache.clear();
+        m_MaterialGraphRequestCache.clear();
         m_QueuedRequests.clear();
         m_ActiveRenderJob.reset();
         m_TotalQueuedThisPass = 0;
@@ -426,6 +572,69 @@ namespace vultra_app::ui
         return request;
     }
 
+    AssetThumbnailRequest AssetThumbnailService::requestScene(EditorContext&               ctx,
+                                                              const std::filesystem::path& sourcePath)
+    {
+        syncProject(ctx);
+
+        const std::string cacheKey = sourcePath.lexically_normal().generic_string();
+        if (auto cachedIt = m_SceneRequestCache.find(cacheKey); cachedIt != m_SceneRequestCache.end())
+        {
+            auto request = cachedIt->second;
+            if (auto statusIt = m_StatusCache.find(request.key); statusIt != m_StatusCache.end())
+                request.status = statusIt->second;
+            return request;
+        }
+
+        AssetThumbnailRequest request;
+        request.kind       = AssetThumbnailKind::Scene;
+        request.sourcePath = sourcePath.lexically_normal();
+        request.sourceUri  = sourceUriFor(ctx, request.sourcePath);
+        request.key        = "scene:" + request.sourceUri;
+        request.outputPath = sceneThumbnailPath(ctx, request.sourceUri);
+        request.status     = statusFor(request.outputPath);
+        if (request.status == AssetThumbnailStatus::Ready &&
+            sourceIsNewerThanOutput(request.sourcePath, request.outputPath))
+        {
+            request.status = AssetThumbnailStatus::Missing;
+        }
+        if (request.status == AssetThumbnailStatus::Missing)
+            queueMissing(request);
+        m_SceneRequestCache[cacheKey] = request;
+        return request;
+    }
+
+    AssetThumbnailRequest AssetThumbnailService::requestMaterialGraph(EditorContext&               ctx,
+                                                                      const std::filesystem::path& sourcePath)
+    {
+        syncProject(ctx);
+
+        const std::string cacheKey = sourcePath.lexically_normal().generic_string();
+        if (auto cachedIt = m_MaterialGraphRequestCache.find(cacheKey);
+            cachedIt != m_MaterialGraphRequestCache.end())
+        {
+            auto request = cachedIt->second;
+            if (auto statusIt = m_StatusCache.find(request.key); statusIt != m_StatusCache.end())
+                request.status = statusIt->second;
+            return request;
+        }
+
+        AssetThumbnailRequest request;
+        request.kind       = AssetThumbnailKind::MaterialGraph;
+        request.sourcePath = sourcePath.lexically_normal();
+        request.sourceUri  = sourceUriFor(ctx, request.sourcePath);
+
+        const auto rel = request.sourceUri.empty() ? normalizedGeneric(request.sourcePath) : request.sourceUri;
+        request.key    = "material-graph:" + std::string(kThumbnailCacheVersion) + ":" + rel + ":" +
+                      std::to_string(fileWriteStamp(request.sourcePath));
+        request.outputPath = thumbnailPathFor(request.key);
+        request.status     = statusFor(request.outputPath);
+        if (request.status == AssetThumbnailStatus::Missing)
+            queueMissing(request);
+        m_MaterialGraphRequestCache[cacheKey] = request;
+        return request;
+    }
+
     std::filesystem::path AssetThumbnailService::projectAssetRoot(EditorContext& ctx) const
     {
         return (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
@@ -469,6 +678,12 @@ namespace vultra_app::ui
         request.status = AssetThumbnailStatus::Queued;
         m_QueuedRequests.push_back(std::move(request));
         m_TotalQueuedThisPass = std::max(m_TotalQueuedThisPass, m_QueuedRequests.size());
+    }
+
+    void AssetThumbnailService::markReady(const AssetThumbnailRequest& request)
+    {
+        if (!request.key.empty())
+            m_StatusCache[request.key] = AssetThumbnailStatus::Ready;
     }
 
     bool AssetThumbnailService::cookTextureThumbnail(const AssetThumbnailRequest& request)
@@ -577,6 +792,22 @@ namespace vultra_app::ui
                 requestTexture(ctx, assetRoot / std::filesystem::path(entry.sourcePath));
             }
         }
+
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(assetRoot, ec))
+        {
+            if (ec)
+                break;
+            if (!entry.is_regular_file(ec) || ec)
+                continue;
+            const auto path = entry.path();
+            if (isInsideImportedFolder(assetRoot, path))
+                continue;
+            if (isSceneSourcePath(path))
+                requestScene(ctx, path);
+            else if (isMaterialGraphSourcePath(path))
+                requestMaterialGraph(ctx, path);
+        }
         m_TotalQueuedThisPass = std::max(m_TotalQueuedThisPass, m_QueuedRequests.size());
     }
 
@@ -663,10 +894,10 @@ namespace vultra_app::ui
         auto& world = worldService->world();
         world.clear();
         cameraService->clearManualCameras();
-        addPreviewLighting(world);
 
         if (request.kind == AssetThumbnailKind::ModelRoot)
         {
+            addPreviewLighting(world);
             if (request.sourceUri.empty() ||
                 sceneService->instantiateScene(world, request.sourceUri, entt::null, false) == entt::null)
             {
@@ -674,8 +905,56 @@ namespace vultra_app::ui
                 return false;
             }
         }
+        else if (request.kind == AssetThumbnailKind::Scene)
+        {
+            if (request.sourceUri.empty())
+            {
+                world.clear();
+                return false;
+            }
+
+            auto doc = sceneService->loadSceneSync(request.sourceUri);
+            if (!doc || !doc->root)
+            {
+                world.clear();
+                return false;
+            }
+
+            const bool emptySyntheticScene = doc->syntheticRoot && doc->root->children.empty();
+            if (!emptySyntheticScene &&
+                sceneService->instantiateSceneDocument(world, *doc, entt::null, false) == entt::null)
+            {
+                world.clear();
+                return false;
+            }
+        }
+        else if (request.kind == AssetThumbnailKind::MaterialGraph)
+        {
+            if (request.sourceUri.empty())
+            {
+                world.clear();
+                return false;
+            }
+
+            addPreviewLighting(world);
+            auto& reg    = world.registry();
+            auto  sphere = world.createEntity();
+            reg.emplace<vultra::NameComponent>(sphere, vultra::NameComponent {"Material Preview Sphere"});
+            auto& transform = reg.get<vultra::TransformComponent>(sphere);
+            transform.position = glm::vec3 {0.0f};
+            transform.rotation = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+            transform.scale    = glm::vec3 {1.0f};
+            transform.dirty    = true;
+            reg.emplace<vultra::MeshComponent>(
+                sphere,
+                vultra::MeshComponent {
+                    .builtinGeometry   = 2u,
+                    .materialOverrides = {{.slot = 0u, .materialGraph = request.sourceUri}},
+                });
+        }
         else
         {
+            addPreviewLighting(world);
             vultra::CoreUUID meshUuid;
             if (!parseUuid(request.uuid, meshUuid))
                 return false;
@@ -694,7 +973,11 @@ namespace vultra_app::ui
             reg.emplace<vultra::MeshComponent>(meshEntity, vultra::MeshComponent {.mesh = meshUuid});
         }
 
-        const auto bounds = computeWorldMeshBounds(world, *assetService);
+        const auto sceneCamera = request.kind == AssetThumbnailKind::Scene ? findPrimaryCamera(world) : entt::null;
+        if (request.kind == AssetThumbnailKind::Scene && sceneCamera == entt::null)
+            addPreviewLighting(world);
+
+        const auto bounds = computeWorldContentBounds(world, *assetService);
 
         auto& rd     = backendService->renderDevice();
         auto  format = backendService->backbuffer().getPixelFormat();
@@ -719,10 +1002,13 @@ namespace vultra_app::ui
         job.frameSubmitted = m_FrameCounter;
         m_ActiveRenderJob  = std::move(job);
 
-        auto            camera         = makePreviewCamera(bounds, &m_ActiveRenderJob->target);
+        auto camera = request.kind == AssetThumbnailKind::Scene && sceneCamera != entt::null ?
+                          makeSceneThumbnailCamera(world, sceneCamera, &m_ActiveRenderJob->target) :
+                          makePreviewCamera(bounds, &m_ActiveRenderJob->target);
         const glm::vec3 center         = bounds.valid ? (bounds.min + bounds.max) * 0.5f : glm::vec3 {0.0f};
         const glm::vec3 cameraPosition = glm::vec3(glm::inverse(camera.view)[3]);
-        setPreviewLightDirection(world, center - cameraPosition);
+        if (request.kind != AssetThumbnailKind::Scene)
+            setPreviewLightDirection(world, center - cameraPosition);
         cameraService->addManualCamera(camera);
         addLoadingShellCamera(*ctx.services);
 

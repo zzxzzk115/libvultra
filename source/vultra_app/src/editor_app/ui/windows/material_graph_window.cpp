@@ -1,5 +1,6 @@
 #include "editor_app/ui/windows/material_graph_window.hpp"
 
+#include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/ui/graph_layout.hpp"
 
 #include <vultra/core/rhi/structs/render_device_structs.hpp>
@@ -539,6 +540,7 @@ namespace vultra_app
 
     void MaterialGraphWindow::draw(EditorContext& ctx)
     {
+        consumeOpenRequest(ctx);
         ensureLoaded(ctx);
 
         ImGuiWindowFlags flags = ImGuiWindowFlags_None;
@@ -593,6 +595,35 @@ namespace vultra_app
         m_Loaded = true;
         if (!loadGraph(ctx, m_CurrentUri))
             newGraph(ctx);
+    }
+
+    void MaterialGraphWindow::consumeOpenRequest(EditorContext& ctx)
+    {
+        if (!ctx.state.materialGraphOpenRequested)
+            return;
+
+        const auto uri = ctx.state.currentEditingMaterialGraph;
+        ctx.state.materialGraphOpenRequested = false;
+        if (uri.empty())
+            return;
+
+        if (uri == m_CurrentUri && m_Loaded)
+        {
+            m_Status = "Already open";
+            ctx.state.statusMessage = "Material graph already open: " + uri;
+            return;
+        }
+
+        m_Loaded = true;
+        if (loadGraph(ctx, uri))
+        {
+            ctx.state.statusMessage = "Opened material graph: " + uri;
+        }
+        else
+        {
+            ctx.state.statusMessage = "Open material graph failed: " + uri;
+            m_Status                = "Load failed";
+        }
     }
 
     void MaterialGraphWindow::newGraph(EditorContext& ctx)
@@ -655,9 +686,35 @@ namespace vultra_app
         }
         m_Dirty  = false;
         m_Status = "Saved";
+        (void)saveThumbnail(ctx, path);
         if (m_LiveApply)
             compileGraph(ctx);
         return true;
+    }
+
+    bool MaterialGraphWindow::saveThumbnail(EditorContext& ctx, const std::filesystem::path& sourcePath)
+    {
+        if (!ctx.thumbnails || !ctx.services || !m_PreviewTarget.texture)
+            return false;
+
+        auto* backend = ctx.services->tryGet<vultra::IRenderBackendService>();
+        if (!backend)
+            return false;
+
+        const auto request = ctx.thumbnails->requestMaterialGraph(ctx, sourcePath);
+        if (request.outputPath.empty())
+            return false;
+
+        std::error_code ec;
+        std::filesystem::create_directories(request.outputPath.parent_path(), ec);
+        if (ec)
+            return false;
+
+        const bool saved = backend->renderDevice().saveTextureToFile(
+            *m_PreviewTarget.texture, request.outputPath.generic_string(), vultra::rhi::ImageAspect::eColor);
+        if (saved)
+            ctx.thumbnails->markReady(request);
+        return saved;
     }
 
     bool MaterialGraphWindow::compileGraph(EditorContext& ctx)
@@ -1282,7 +1339,8 @@ namespace vultra_app
                 .setExtent(m_PreviewTarget.extent)
                 .setPixelFormat(format)
                 .setNumMipLevels(1)
-                .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
+                .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled |
+                               vultra::rhi::ImageUsage::eTransferSrc)
                 .build(backend->renderDevice());
         m_PreviewTarget.textureId = imgui->addTexture(*m_PreviewTarget.texture);
     }

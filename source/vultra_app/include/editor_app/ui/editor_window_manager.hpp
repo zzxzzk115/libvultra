@@ -3,6 +3,7 @@
 #include "editor_app/ui/editor_window.hpp"
 
 #include <memory>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -24,6 +25,7 @@ namespace vultra_app
         void draw(EditorContext& ctx);
         void tick(EditorContext& ctx);
         void destroy(EditorContext& ctx);
+        bool saveSceneThumbnail(EditorContext& ctx, std::string_view sceneUri);
 
         [[nodiscard]] const std::vector<std::unique_ptr<EditorWindow>>& windows() const { return m_Windows; }
 

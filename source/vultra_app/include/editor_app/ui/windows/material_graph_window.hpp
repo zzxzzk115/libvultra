@@ -52,9 +52,11 @@ namespace vultra_app
         };
 
         void ensureLoaded(EditorContext& ctx);
+        void consumeOpenRequest(EditorContext& ctx);
         void newGraph(EditorContext& ctx);
         bool loadGraph(EditorContext& ctx, std::string uri);
         bool saveGraph(EditorContext& ctx);
+        bool saveThumbnail(EditorContext& ctx, const std::filesystem::path& sourcePath);
         bool compileGraph(EditorContext& ctx);
         void drawToolbar(EditorContext& ctx);
         void drawNodeEditor(EditorContext& ctx);

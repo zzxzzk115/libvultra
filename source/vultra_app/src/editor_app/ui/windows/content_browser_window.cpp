@@ -2,10 +2,14 @@
 
 #include "common/ui_widgets.hpp"
 #include "editor_app/asset_thumbnail_service.hpp"
+#include "editor_app/content_asset_registry.hpp"
+#include "editor_app/editor_commands.hpp"
+#include "editor_app/scene_thumbnail.hpp"
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
+#include <vultra/core/base/common_context.hpp>
 #include <imgui.h>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/render_service.hpp>
@@ -16,6 +20,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -58,8 +63,11 @@ namespace vultra_app
             if (filename == "asset_registry.tsv")
                 return false;
 
-            const auto ext = path.extension();
-            if (ext == ".vmanifest" || ext == ".vimport" || ext == ".vpk")
+            auto ext = path.extension().generic_string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            if (ext == ".vmanifest" || ext == ".vimport" || ext == ".vpk" || ext == ".bin")
                 return false;
 
             return true;
@@ -83,10 +91,27 @@ namespace vultra_app
             const auto name = lowerString(path.filename().generic_string());
             const auto ext  = lowerString(path.extension().generic_string());
             return ext == ".lua" || ext == ".vshader" || ext == ".glsl" || ext == ".vert" || ext == ".frag" ||
-                   ext == ".comp" || ext == ".json" || ext == ".vproject" || ext == ".vscn" || ext == ".txt" ||
+                   ext == ".comp" || ext == ".json" || ext == ".vproject" || ext == ".txt" || ext == ".mtl" ||
                    ext == ".md" || hasSuffix(name, ".vfeature.lua") || hasSuffix(name, ".vsrp.lua") ||
                    hasSuffix(name, ".vshaderlib.lua") || hasSuffix(name, ".vso.lua") || ext == ".vmatgraph" ||
                    hasSuffix(name, ".vmatgraph.json");
+        }
+
+        bool isSceneSourceAsset(const std::filesystem::path& path)
+        {
+            return lowerString(path.extension().generic_string()) == ".vscn";
+        }
+
+        bool isMaterialGraphSourceAsset(const std::filesystem::path& path)
+        {
+            const auto name = lowerString(path.filename().generic_string());
+            const auto ext  = lowerString(path.extension().generic_string());
+            return ext == ".vmatgraph" || hasSuffix(name, ".vmatgraph.json");
+        }
+
+        bool isRenderGraphSourceAsset(const std::filesystem::path& path)
+        {
+            return hasSuffix(lowerString(path.filename().generic_string()), ".vrg.json");
         }
 
         bool isRenderPipelineSource(const std::filesystem::path& path)
@@ -107,6 +132,14 @@ namespace vultra_app
             if (ec || rel.empty() || relText == ".." || relText.starts_with("../"))
                 return {};
             return "res://" + relText;
+        }
+
+        std::filesystem::path sceneThumbnailPathForAsset(const EditorContext& ctx, const std::filesystem::path& path)
+        {
+            const auto uri = pathToResUri(ctx, path);
+            if (uri.empty())
+                return {};
+            return sceneThumbnailPath(ctx, uri);
         }
 
         std::vector<std::filesystem::directory_entry> sortedEntries(const std::filesystem::path& path)
@@ -172,6 +205,30 @@ namespace vultra_app
             const auto count = std::min(dst.size() - 1, name.size());
             std::memset(dst.data(), 0, dst.size());
             std::memcpy(dst.data(), name.data(), count);
+        }
+
+        std::string sanitizeAssetFileName(std::string name)
+        {
+            name.erase(std::remove_if(name.begin(),
+                                      name.end(),
+                                      [](unsigned char ch) {
+                                          return ch < 32 || ch == '<' || ch == '>' || ch == ':' || ch == '"' ||
+                                                 ch == '/' || ch == '\\' || ch == '|' || ch == '?' || ch == '*';
+                                      }),
+                       name.end());
+
+            while (!name.empty() && std::isspace(static_cast<unsigned char>(name.front())))
+                name.erase(name.begin());
+            while (!name.empty() && std::isspace(static_cast<unsigned char>(name.back())))
+                name.pop_back();
+            return name;
+        }
+
+        void copyText(std::array<char, 128>& dst, std::string_view text)
+        {
+            const auto count = std::min(dst.size() - 1, text.size());
+            std::memset(dst.data(), 0, dst.size());
+            std::memcpy(dst.data(), text.data(), count);
         }
 
         std::string sourceAssetDisplayName(const std::filesystem::path& path, const bool isDirectory)
@@ -676,7 +733,10 @@ namespace vultra_app
         }
     } // namespace
 
-    ContentBrowserWindow::ContentBrowserWindow() : EditorWindow("Content Browser", ICON_MDI_FOLDER_MULTIPLE_IMAGE) {}
+    ContentBrowserWindow::ContentBrowserWindow() : EditorWindow("Content Browser", ICON_MDI_FOLDER_MULTIPLE_IMAGE)
+    {
+        registerBuiltinContentAssetCreators();
+    }
 
     void ContentBrowserWindow::tick(EditorContext&) {}
 
@@ -858,6 +918,7 @@ namespace vultra_app
             if (ImGui::MenuItem(ICON_MDI_FOLDER_UPLOAD "  Import Folder"))
                 openImportDialog(m_CurrentDir, true);
             ImGui::Separator();
+            drawCreateAssetMenu(ctx, m_CurrentDir);
             if (ImGui::MenuItem(ICON_MDI_FOLDER_PLUS "  Create Folder"))
             {
                 std::memset(m_NewFolderBuffer.data(), 0, m_NewFolderBuffer.size());
@@ -1009,6 +1070,16 @@ namespace vultra_app
 
         const bool selected = isPathSelected(path);
         auto*      drawList = ImGui::GetWindowDrawList();
+
+        ImGui::InvisibleButton("##TileHit", ImVec2(tileWidth, tileHeight), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+        const bool tileHovered       = ImGui::IsItemHovered();
+        const bool tileClicked       = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+        const bool tileDoubleClicked = tileHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+        const bool tilePopupOpen     = ImGui::BeginPopupContextItem("AssetGridContext");
+        if (!isDir)
+            drawAssetDragSource(ctx, path);
+        ImGui::SetCursorScreenPos(itemMin);
+
         if (selected)
         {
             drawList->AddRectFilled(ImVec2 {itemMin.x - 3.0f, itemMin.y - 3.0f},
@@ -1062,6 +1133,31 @@ namespace vultra_app
                     --m_RemainingThumbnailLoads;
             }
         }
+        else if (isMaterialGraphSourceAsset(path) && ctx.thumbnails)
+        {
+            const auto thumbnail = ctx.thumbnails->requestMaterialGraph(ctx, path);
+            if (thumbnail.status == ui::AssetThumbnailStatus::Ready)
+            {
+                const bool cached    = m_PreviewCache.hasCachedImageFilePreview(ctx, thumbnail.outputPath);
+                const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
+                previewId            = m_PreviewCache.getImageFilePreview(ctx, thumbnail.outputPath, allowLoad);
+                if (!cached && allowLoad)
+                    --m_RemainingThumbnailLoads;
+            }
+        }
+        else if (isSceneSourceAsset(path))
+        {
+            const auto thumbnailPath = sceneThumbnailPathForAsset(ctx, path);
+            std::error_code ec;
+            if (!thumbnailPath.empty() && std::filesystem::exists(thumbnailPath, ec) && !ec)
+            {
+                const bool cached    = m_PreviewCache.hasCachedImageFilePreview(ctx, thumbnailPath);
+                const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
+                previewId            = m_PreviewCache.getImageFilePreview(ctx, thumbnailPath, allowLoad);
+                if (!cached && allowLoad)
+                    --m_RemainingThumbnailLoads;
+            }
+        }
         if (previewId)
         {
             ImGui::Image(previewId, ImVec2(iconSize, iconSize));
@@ -1089,13 +1185,14 @@ namespace vultra_app
         const ImVec2 mousePos       = ImGui::GetMousePos();
         const bool   mouseInFoldout = isModel && mousePos.x >= foldoutButtonPos.x && mousePos.x <= foldoutButtonMax.x &&
                                     mousePos.y >= foldoutButtonPos.y && mousePos.y <= foldoutButtonMax.y;
-        const bool hovered = ImGui::IsItemHovered() && !mouseInFoldout;
-        handleDeferredSelection(ctx, path, hovered);
-        if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-            openPath(ctx, path);
-        if (!isDir && !mouseInFoldout)
-            drawAssetDragSource(ctx, path);
-        if (ImGui::BeginPopupContextItem("AssetGridContext"))
+        if (!mouseInFoldout)
+        {
+            if (tileDoubleClicked)
+                openPath(ctx, path);
+            else if (tileClicked)
+                selectPath(ctx, path);
+        }
+        if (tilePopupOpen)
         {
             drawContextMenu(ctx, path, isDir);
             ImGui::EndPopup();
@@ -1317,11 +1414,46 @@ namespace vultra_app
             m_CurrentDir = path;
             invalidateEntryCache();
         }
+        else if (isMaterialGraphSourceAsset(path))
+        {
+            const auto uri = pathToResUri(ctx, path);
+            if (uri.empty())
+            {
+                ctx.state.statusMessage = "Open material graph failed: graph is outside the asset root.";
+                return;
+            }
+
+            queueOpenMaterialGraph(ctx.state, uri);
+            ctx.state.statusMessage = "Opening material graph: " + uri;
+        }
+        else if (isRenderGraphSourceAsset(path))
+        {
+            const auto uri = pathToResUri(ctx, path);
+            if (uri.empty())
+            {
+                ctx.state.statusMessage = "Open render graph failed: graph is outside the asset root.";
+                return;
+            }
+
+            queueOpenRenderGraph(ctx.state, uri);
+            ctx.state.statusMessage = "Opening render graph: " + uri;
+        }
         else if (isCodeEditableSourceAsset(path))
         {
-            ctx.state.codeEditorPath          = path.lexically_normal();
-            ctx.state.codeEditorOpenRequested = true;
+            requestOpenCodeEditor(ctx.state, path);
             ctx.state.statusMessage           = "Opened in Code Editor: " + path.filename().generic_string();
+        }
+        else if (isSceneSourceAsset(path))
+        {
+            const auto uri = pathToResUri(ctx, path);
+            if (uri.empty())
+            {
+                ctx.state.statusMessage = "Open scene failed: scene is outside the asset root.";
+                return;
+            }
+
+            queueOpenScene(ctx.state, uri);
+            ctx.state.statusMessage = "Opening scene: " + uri;
         }
     }
 
@@ -1437,6 +1569,7 @@ namespace vultra_app
             std::strncpy(m_NewFolderBuffer.data(), "NewFolder", m_NewFolderBuffer.size() - 1);
             m_OpenNewFolderPopup = true;
         }
+        drawCreateAssetMenu(ctx, isDirectory ? path : path.parent_path());
         if (ImGui::MenuItem(ICON_MDI_PENCIL "  Rename"))
         {
             m_RenamingPath = path;
@@ -1448,6 +1581,156 @@ namespace vultra_app
             m_DeletePath      = path;
             m_OpenDeletePopup = true;
         }
+    }
+
+    void ContentBrowserWindow::drawCreateAssetMenu(EditorContext&, const std::filesystem::path& targetDir)
+    {
+        const auto& creators = ContentAssetRegistry::instance().creators();
+        if (creators.empty())
+            return;
+
+        if (!ImGui::BeginMenu(ICON_MDI_PLUS_BOX_OUTLINE "  Create"))
+            return;
+
+        std::function<void(std::string_view)> drawLevel = [&](std::string_view prefix) {
+            std::vector<std::string> openedMenus;
+            for (const auto& creator : creators)
+            {
+                std::string_view path = creator.menuPath;
+                if (!prefix.empty())
+                {
+                    if (!path.starts_with(prefix))
+                        continue;
+                    path.remove_prefix(prefix.size());
+                }
+
+                const auto slash = path.find('/');
+                if (slash == std::string_view::npos)
+                {
+                    if (ImGui::MenuItem(path.data()))
+                        openCreateAssetPopup(creator.id, targetDir);
+                    continue;
+                }
+
+                const auto menu = std::string(path.substr(0, slash));
+                if (std::find(openedMenus.begin(), openedMenus.end(), menu) != openedMenus.end())
+                    continue;
+
+                openedMenus.push_back(menu);
+                if (ImGui::BeginMenu(menu.c_str()))
+                {
+                    const auto nextPrefix = std::string(prefix) + menu + "/";
+                    drawLevel(nextPrefix);
+                    ImGui::EndMenu();
+                }
+            }
+        };
+
+        drawLevel({});
+        ImGui::EndMenu();
+    }
+
+    void ContentBrowserWindow::openCreateAssetPopup(const std::string& creatorId, const std::filesystem::path& targetDir)
+    {
+        const auto* creator = ContentAssetRegistry::instance().find(creatorId);
+        if (!creator)
+            return;
+
+        m_CreateAssetCreatorId = creatorId;
+        m_CreateAssetTargetDir = targetDir.empty() ? m_CurrentDir : targetDir;
+        copyText(m_CreateAssetNameBuffer, creator->defaultFileName);
+        m_OpenCreateAssetPopup = true;
+    }
+
+    bool ContentBrowserWindow::createRegisteredAsset(EditorContext& ctx)
+    {
+        const auto* creator = ContentAssetRegistry::instance().find(m_CreateAssetCreatorId);
+        if (!creator)
+        {
+            ctx.state.statusMessage = "Create asset failed: unknown asset type.";
+            return false;
+        }
+
+        auto fileName = sanitizeAssetFileName(m_CreateAssetNameBuffer.data());
+        if (fileName.empty())
+        {
+            ctx.state.statusMessage = "Create asset failed: enter a file name.";
+            return false;
+        }
+
+        if (!creator->extension.empty())
+        {
+            auto ext = std::filesystem::path(fileName).extension().generic_string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            auto expected = lowerString(creator->extension);
+            if (ext != expected)
+                fileName += creator->extension;
+        }
+
+        const auto targetDir = (m_CreateAssetTargetDir.empty() ? m_CurrentDir : m_CreateAssetTargetDir).lexically_normal();
+        std::error_code relEc;
+        const auto      relDir = std::filesystem::relative(targetDir, m_AssetRoot, relEc);
+        const auto      relText = relDir.generic_string();
+        if (relEc || relDir.empty() || relText == ".." || relText.starts_with("../"))
+        {
+            ctx.state.statusMessage = "Create asset failed: target is outside the asset root.";
+            return false;
+        }
+
+        const auto target = (targetDir / fileName).lexically_normal();
+        if (std::filesystem::exists(target))
+        {
+            ctx.state.statusMessage = "Create asset failed: file already exists.";
+            return false;
+        }
+
+        std::error_code ec;
+        std::filesystem::create_directories(target.parent_path(), ec);
+        if (ec)
+        {
+            ctx.state.statusMessage = "Create asset failed: " + ec.message();
+            return false;
+        }
+
+        const auto assetName = target.stem().generic_string();
+        std::ofstream file(target, std::ios::trunc);
+        if (!file)
+        {
+            ctx.state.statusMessage = "Create asset failed: cannot open file.";
+            return false;
+        }
+        file << creator->makeText(assetName);
+        file.close();
+        if (!file)
+        {
+            ctx.state.statusMessage = "Create asset failed: cannot write file.";
+            return false;
+        }
+
+        bool registered = false;
+        if (ctx.services)
+        {
+            if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
+            {
+                const auto uri = pathToResUri(ctx, target);
+                if (!uri.empty())
+                    registered = assetService->reimportAsset(uri, false);
+            }
+        }
+
+        ++ctx.state.assetFileGeneration;
+        invalidateEntryCache();
+        m_CurrentDir = targetDir;
+        selectPath(ctx, target);
+        if (creator->openInCodeEditor)
+            openPath(ctx, target);
+
+        ctx.state.statusMessage = registered ? "Created " + creator->displayName + "." :
+                                             "Created " + creator->displayName +
+                                                 ", but asset registry import did not run.";
+        return true;
     }
 
     void ContentBrowserWindow::drawPendingPopups(EditorContext& ctx)
@@ -1494,6 +1777,32 @@ namespace vultra_app
                 ctx.state.statusMessage = ec ? "Create folder failed: " + ec.message() : "Created folder.";
                 invalidateEntryCache();
                 ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel"))
+                ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+
+        if (m_OpenCreateAssetPopup)
+        {
+            ImGui::OpenPopup("Create Asset");
+            m_OpenCreateAssetPopup = false;
+        }
+        if (ImGui::BeginPopupModal("Create Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            const auto* creator = ContentAssetRegistry::instance().find(m_CreateAssetCreatorId);
+            ImGui::TextWrapped("%s", m_CreateAssetTargetDir.generic_string().c_str());
+            ImGui::InputText("Name", m_CreateAssetNameBuffer.data(), m_CreateAssetNameBuffer.size());
+            if (creator && !creator->extension.empty())
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", creator->extension.c_str());
+            }
+            if (ImGui::Button("Create"))
+            {
+                if (createRegisteredAsset(ctx))
+                    ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
             if (ImGui::Button("Cancel"))

@@ -44,6 +44,19 @@ namespace vultra_app
             uint32_t y {0};
         };
 
+        enum class EditorCommandType
+        {
+            OpenScene,
+            OpenRenderGraph,
+            OpenMaterialGraph,
+        };
+
+        struct EditorCommand
+        {
+            EditorCommandType type {EditorCommandType::OpenScene};
+            std::string       payload;
+        };
+
         struct EditorSettings
         {
             float       applicationScale {1.0f};
@@ -100,6 +113,7 @@ namespace vultra_app
         std::string           currentAssetRoot {"resources"};
         std::string           currentDefaultScene {"res://scenes/test.vscn"};
         std::string           currentEditingRenderGraph {"res://render/default.vrg.json"};
+        std::string           currentEditingMaterialGraph {"res://materials/default.vmatgraph.json"};
         std::string           statusMessage;
         bool                  editorPlaying {false};
         bool                  editorPaused {false};
@@ -116,9 +130,12 @@ namespace vultra_app
         bool                  buildSettingsOpen {false};
         bool                  profilerWindowOpenRequested {false};
         bool                  frameDebuggerWindowOpenRequested {false};
+        bool                  renderGraphOpenRequested {false};
+        bool                  materialGraphOpenRequested {false};
         uint64_t              projectGeneration {0};
         uint64_t              assetFileGeneration {0};
         std::vector<std::filesystem::path> pendingExternalAssetDrops;
+        std::vector<EditorCommand> pendingEditorCommands;
         EditorSettings        editorSettings;
         BuildSettings         buildSettings;
         // Scene document state. Tool windows should mutate this, but only document tabs should display it.

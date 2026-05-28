@@ -2437,11 +2437,15 @@ namespace vultra_app
 
         if (std::filesystem::is_regular_file(path, ec) && isEditableSourceText(path))
         {
-            if (ImGui::Button(ICON_MDI_FILE_DOCUMENT_EDIT " Open in Code Editor"))
+            const bool sceneSource = sourceAssetHasExtension(path, {".vscn"});
+            if (ImGui::Button(sceneSource ? ICON_MDI_FILE_DOCUMENT_EDIT " Edit As Source" :
+                                            ICON_MDI_FILE_DOCUMENT_EDIT " Open in Code Editor"))
             {
                 ctx.state.codeEditorPath          = path.lexically_normal();
                 ctx.state.codeEditorOpenRequested = true;
-                ctx.state.statusMessage           = "Opened in Code Editor: " + path.filename().generic_string();
+                ctx.state.statusMessage           = sceneSource ?
+                                                        "Editing scene source: " + path.filename().generic_string() :
+                                                        "Opened in Code Editor: " + path.filename().generic_string();
             }
         }
 

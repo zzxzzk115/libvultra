@@ -1,5 +1,7 @@
 #include "editor_app/ui/editor_window_manager.hpp"
 
+#include "editor_app/ui/windows/scene_view_window.hpp"
+
 #include <imgui.h>
 
 namespace vultra_app
@@ -44,6 +46,17 @@ namespace vultra_app
                 focusRequested                             = true;
                 ctx.state.frameDebuggerWindowOpenRequested = false;
             }
+            if (ctx.state.renderGraphOpenRequested && window->name() == "Render Graph")
+            {
+                window->open()                   = true;
+                focusRequested                   = true;
+                ctx.state.renderGraphOpenRequested = false;
+            }
+            if (ctx.state.materialGraphOpenRequested && window->name() == "Material Graph")
+            {
+                window->open() = true;
+                focusRequested = true;
+            }
             if (window->open())
             {
                 if (focusRequested)
@@ -64,5 +77,15 @@ namespace vultra_app
             window->onDestroy(ctx);
         m_Windows.clear();
         m_WasOpen.clear();
+    }
+
+    bool EditorWindowManager::saveSceneThumbnail(EditorContext& ctx, std::string_view sceneUri)
+    {
+        for (auto& window : m_Windows)
+        {
+            if (auto* sceneView = dynamic_cast<SceneViewWindow*>(window.get()))
+                return sceneView->saveSceneThumbnail(ctx, sceneUri);
+        }
+        return false;
     }
 } // namespace vultra_app

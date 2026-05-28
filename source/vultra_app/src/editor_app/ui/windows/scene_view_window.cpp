@@ -1,6 +1,7 @@
 #include "editor_app/ui/windows/scene_view_window.hpp"
 
 #include "editor_app/editor_history.hpp"
+#include "editor_app/scene_thumbnail.hpp"
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
@@ -11,6 +12,7 @@
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
+#include <vultra/function/world/components/gaussian_splat_component.hpp>
 #include <vultra/function/world/components/hierarchy_component.hpp>
 #include <vultra/function/world/components/id_component.hpp>
 #include <vultra/function/world/components/mesh_component.hpp>
@@ -25,11 +27,14 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <imoguizmo/imoguizmo.hpp>
+#include <stb_image_resize2.h>
+#include <stb_image_write.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <limits>
 
 namespace vultra_app
@@ -40,6 +45,8 @@ namespace vultra_app
         constexpr float     kOverlayZoomMin                 = 0.5f;
         constexpr float     kOverlayZoomMax                 = 4.0f;
         constexpr float     kOverlayZoomStep                = 0.25f;
+        constexpr uint32_t  kSceneThumbnailSize             = 128u;
+        constexpr const char* kAssetUuidPayload             = "VULTRA_ASSET_UUID";
         constexpr float     kViewManipulatorSize            = 112.0f;
         constexpr float     kViewManipulatorMargin          = 14.0f;
         constexpr glm::vec3 kWorldUp {0.0f, 1.0f, 0.0f};
@@ -82,6 +89,71 @@ namespace vultra_app
                     return e;
             }
             return entt::null;
+        }
+
+        void selectEntityIfPossible(vultra::World& world, entt::entity entity)
+        {
+            if (entity == entt::null)
+                return;
+            if (auto* id = world.registry().try_get<vultra::IDComponent>(entity))
+                Selection::select(SelectionCategory::Entity, id->uuid);
+        }
+
+        std::string assetNameFromEntry(const vasset::VAssetRegistry::AssetEntry& entry)
+        {
+            const auto sourceName = std::filesystem::path(entry.sourcePath).stem().generic_string();
+            if (!sourceName.empty())
+                return sourceName;
+            const auto importedName = std::filesystem::path(entry.importedPath).stem().generic_string();
+            return importedName.empty() ? "Asset" : importedName;
+        }
+
+        bool instantiateDroppedAssetAtViewCenter(EditorContext& ctx, const vultra::CoreUUID& uuid)
+        {
+            if (!ctx.services || !uuid.valid())
+                return false;
+
+            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+            auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
+            if (!assetService || !worldService)
+                return false;
+
+            const auto entry = assetService->registry().lookup(uuid.native());
+            if (entry.type != vasset::VAssetType::eMesh && entry.type != vasset::VAssetType::eGaussianSplat)
+            {
+                ctx.state.statusMessage = "Dropped asset type cannot be placed in Scene View.";
+                return false;
+            }
+
+            auto&      world  = worldService->world();
+            auto&      reg    = world.registry();
+            auto       entity = world.createEntity();
+            const auto name   = assetNameFromEntry(entry);
+            reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {name});
+            auto& transform    = reg.get_or_emplace<vultra::TransformComponent>(entity);
+            transform.position = ctx.state.sceneCamera.valid ?
+                                     ctx.state.sceneCamera.position +
+                                         ctx.state.sceneCamera.rotation * glm::vec3(0.0f, 0.0f, -3.0f) :
+                                     glm::vec3(0.0f);
+            transform.dirty    = true;
+
+            if (entry.type == vasset::VAssetType::eMesh)
+            {
+                reg.emplace<vultra::MeshComponent>(entity, vultra::MeshComponent {.mesh = uuid});
+                ctx.state.statusMessage = "Created mesh entity: " + name;
+            }
+            else
+            {
+                reg.emplace<vultra::GaussianSplatComponent>(
+                    entity, vultra::GaussianSplatComponent {.gaussianSplat = uuid});
+                ctx.state.statusMessage = "Created gaussian splat entity: " + name;
+            }
+
+            selectEntityIfPossible(world, entity);
+            ctx.state.sceneDirty = true;
+            if (ctx.history)
+                ctx.history->setNextLabel("Drop Asset");
+            return true;
         }
 
         entt::entity findPrimaryCamera(vultra::World& world)
@@ -457,14 +529,15 @@ namespace vultra_app
 
             constexpr float aspect    = 16.0f / 9.0f;
             const float     baseWidth = std::min(320.0f, std::max(180.0f, viewportSize.x * 0.22f));
-            const float     width     = std::min(viewportSize.x - 32.0f,
-                                         baseWidth * std::clamp(gameOverlayZoom, kOverlayZoomMin, kOverlayZoomMax));
-            const float     height    = width / aspect;
-            const ImVec2    padding {14.0f, 14.0f};
+            const float     width =
+                std::min(viewportSize.x - 32.0f,
+                         baseWidth * std::clamp(gameOverlayZoom, kOverlayZoomMin, kOverlayZoomMax));
+            const float  height = width / aspect;
+            const ImVec2 padding {14.0f, 14.0f};
             constexpr float controlHeight = 30.0f;
-            const ImVec2    panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
-            const ImVec2    panelMin {viewportMin.x + 16.0f, viewportMax.y - panelSize.y - 16.0f};
-            const ImVec2    panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
+            const ImVec2 panelSize {width + padding.x * 2.0f, height + padding.y * 2.0f + 22.0f + controlHeight};
+            const ImVec2 panelMin {viewportMin.x + 16.0f, viewportMax.y - panelSize.y - 16.0f};
+            const ImVec2 panelMax {panelMin.x + panelSize.x, panelMin.y + panelSize.y};
             return isMouseInRect(panelMin, panelMax);
         }
 
@@ -491,6 +564,59 @@ namespace vultra_app
         releaseRenderTarget(ctx);
         releasePickingRenderTarget();
         releaseGameOverlayRenderTarget(ctx);
+    }
+
+    bool SceneViewWindow::saveSceneThumbnail(EditorContext& ctx, std::string_view sceneUri)
+    {
+        if (!ctx.services || sceneUri.empty() || !m_ActiveRenderTarget.texture)
+            return false;
+
+        auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>();
+        if (!backendService)
+            return false;
+
+        auto pixels = backendService->renderDevice().readTextureRGBA8(*m_ActiveRenderTarget.texture);
+        if (!pixels)
+            return false;
+
+        const auto extent = m_ActiveRenderTarget.texture->getExtent();
+        if (extent.width == 0u || extent.height == 0u)
+            return false;
+
+        const auto cropSize = std::min(extent.width, extent.height);
+        const auto cropX    = (extent.width - cropSize) / 2u;
+        const auto cropY    = (extent.height - cropSize) / 2u;
+        std::vector<unsigned char> resized(static_cast<std::size_t>(kSceneThumbnailSize) *
+                                           static_cast<std::size_t>(kSceneThumbnailSize) * 4u);
+        const auto* cropPixels =
+            pixels->data() + (static_cast<std::size_t>(cropY) * extent.width + cropX) * 4u;
+        const bool resizedOk = stbir_resize_uint8_srgb(cropPixels,
+                                                       static_cast<int>(cropSize),
+                                                       static_cast<int>(cropSize),
+                                                       static_cast<int>(extent.width * 4u),
+                                                       resized.data(),
+                                                       static_cast<int>(kSceneThumbnailSize),
+                                                       static_cast<int>(kSceneThumbnailSize),
+                                                       0,
+                                                       STBIR_RGBA);
+        if (!resizedOk)
+            return false;
+
+        const auto path = sceneThumbnailPath(ctx, sceneUri);
+        if (path.empty())
+            return false;
+
+        std::error_code ec;
+        std::filesystem::create_directories(path.parent_path(), ec);
+        if (ec)
+            return false;
+
+        return stbi_write_png(path.string().c_str(),
+                              static_cast<int>(kSceneThumbnailSize),
+                              static_cast<int>(kSceneThumbnailSize),
+                              4,
+                              resized.data(),
+                              static_cast<int>(kSceneThumbnailSize * 4u)) != 0;
     }
 
     void SceneViewWindow::updateFocusAnimation()
@@ -620,6 +746,19 @@ namespace vultra_app
                 dl->AddLine(ImVec2(imageMin.x, y), ImVec2(imageMax.x, y), IM_COL32(255, 255, 255, 18));
         }
         dl->AddRect(imageMin, imageMax, IM_COL32(90, 100, 118, 255));
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload* payload =
+                    ImGui::AcceptDragDropPayload(kAssetUuidPayload, ImGuiDragDropFlags_AcceptNoDrawDefaultRect))
+            {
+                if (payload->DataSize == sizeof(vultra::CoreUUID))
+                {
+                    const auto uuid = *static_cast<const vultra::CoreUUID*>(payload->Data);
+                    (void)instantiateDroppedAssetAtViewCenter(ctx, uuid);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
         drawToolbar(imageMin);
 
         const float aspect                = avail.x / std::max(avail.y, 1.0f);
@@ -1063,9 +1202,7 @@ namespace vultra_app
             return;
 
         auto& rd     = backendService->renderDevice();
-        auto  format = backendService->backbuffer().getPixelFormat();
-        if (format == vultra::rhi::PixelFormat::eUndefined)
-            format = vultra::rhi::PixelFormat::eRGBA8_UNorm;
+        auto  format = vultra::rhi::PixelFormat::eRGBA8_UNorm;
 
         m_PendingRenderTarget.extent = {width, height};
         m_PendingRenderTarget.texture =
