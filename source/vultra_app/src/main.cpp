@@ -20,6 +20,7 @@
 #include <vultra/function/rendering/srp/builtin/universal_renderer.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_rt_renderer.hpp>
 #include <vultra/function/rendering/srp/renderer.hpp>
+#include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
@@ -405,36 +406,27 @@ namespace
             {
                 if (auto opened = vasset::openVpk(m_VpkPath->generic_string()); opened)
                 {
-                    for (const auto& uri : renderGraphUrisFromVpkRecords(opened.value()))
+                    const auto renderGraphUris = renderGraphUrisFromVpkRecords(opened.value());
+                    for (const auto& uri : renderGraphUris)
                     {
-                        renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
+                        const auto rendererKey = rendererKeyFromRenderGraphUri(uri);
+                        renderService->reloadRenderPipeline(uri, rendererKey);
+                        if (m_RuntimeRendererKey.empty() || uri == "res://render/default.vrg.json")
+                            m_RuntimeRendererKey = rendererKey;
                     }
                 }
             }
 
-            auto&             sceneService = engine.ctx().services.require<vultra::ISceneService>();
-            auto&             worldService = engine.ctx().services.require<vultra::IWorldService>();
-            const std::string sceneUri     = m_Options.sceneUri.empty() ? "res://scenes/main.vscn" : m_Options.sceneUri;
-            sceneService.instantiateScene(worldService.world(), sceneUri);
-
-            bool  hasSceneCamera = false;
-            auto& world          = worldService.world();
-            auto& reg            = world.registry();
-            auto  view           = reg.view<vultra::CameraComponent>();
-            for (auto entity : view)
+            if (auto* cameraService = engine.ctx().services.tryGet<vultra::ICameraService>())
             {
-                hasSceneCamera = true;
-                auto& camera   = view.get<vultra::CameraComponent>(entity);
-                if (camera.rendererKey.empty())
-                    camera.rendererKey = "universal";
-            }
-            if (hasSceneCamera)
-            {
-                if (auto* cameraService = engine.ctx().services.tryGet<vultra::ICameraService>())
-                    cameraService->clearManualCameras();
+                cameraService->clearManualCameras();
+                cameraService->setWorldCamerasEnabled(true);
+                cameraService->setWorldXRCamerasEnabled(true);
             }
 
-            VULTRA_CLIENT_INFO("[Vultra] Loaded scene '{}' from VPK '{}'", sceneUri, m_VpkPath->generic_string());
+            m_RuntimeSceneUri  = m_Options.sceneUri.empty() ? "res://scenes/main.vscn" : m_Options.sceneUri;
+            m_RuntimeSceneLoad = engine.ctx().services.require<vultra::ISceneService>().loadSceneAsync(m_RuntimeSceneUri);
+            VULTRA_CLIENT_INFO("[Vultra] Loading scene '{}' from VPK '{}'", m_RuntimeSceneUri, m_VpkPath->generic_string());
         }
 
         void onWindowEvent(const vultra::os::GeneralWindowEvent& e) override
@@ -457,7 +449,10 @@ namespace
         void onBeforeEngineTick(vultra::fsec /*dt*/) override
         {
             if (m_State.mode == vultra_app::AppMode::Runtime)
+            {
+                updateRuntimeSceneLoad();
                 return;
+            }
 
             vultra_app::EditorContext ctx {.state = m_State, .services = &engineCtx().services};
             if (auto* cameraService = engineCtx().services.tryGet<vultra::ICameraService>())
@@ -479,14 +474,81 @@ namespace
                 m_Editor.tick(ctx);
         }
 
+        void updateRuntimeSceneLoad()
+        {
+            if (!m_RuntimeSceneLoad || m_RuntimeSceneLoaded)
+                return;
+
+            auto* sceneService = engineCtx().services.tryGet<vultra::ISceneService>();
+            auto* worldService = engineCtx().services.tryGet<vultra::IWorldService>();
+            if (!sceneService || !worldService)
+                return;
+
+            const auto status = sceneService->sceneLoadStatus(m_RuntimeSceneLoad);
+            if (status.state == vultra::SceneLoadState::eLoading)
+                return;
+
+            if (status.state == vultra::SceneLoadState::eFailed || status.state == vultra::SceneLoadState::eInvalid)
+            {
+                VULTRA_CLIENT_ERROR("[Vultra] Failed to load scene '{}': {}", m_RuntimeSceneUri, status.message);
+                sceneService->releaseSceneLoad(m_RuntimeSceneLoad);
+                m_RuntimeSceneLoad = {};
+                return;
+            }
+
+            const auto root =
+                sceneService->instantiateLoadedScene(m_RuntimeSceneLoad, worldService->world(), entt::null, false);
+            sceneService->releaseSceneLoad(m_RuntimeSceneLoad);
+            m_RuntimeSceneLoad = {};
+            if (root == entt::null)
+            {
+                VULTRA_CLIENT_ERROR("[Vultra] Failed to instantiate scene '{}'", m_RuntimeSceneUri);
+                return;
+            }
+
+            bool  hasSceneCamera = false;
+            auto& reg            = worldService->world().registry();
+            auto  view           = reg.view<vultra::CameraComponent>();
+            for (auto entity : view)
+            {
+                hasSceneCamera = true;
+                auto& camera   = view.get<vultra::CameraComponent>(entity);
+                if (!m_RuntimeRendererKey.empty() && (camera.rendererKey.empty() || camera.rendererKey == "universal"))
+                    camera.rendererKey = m_RuntimeRendererKey;
+            }
+            if (hasSceneCamera)
+            {
+                if (auto* cameraService = engineCtx().services.tryGet<vultra::ICameraService>())
+                {
+                    cameraService->clearManualCameras();
+                    cameraService->setWorldCamerasEnabled(true);
+                    cameraService->setWorldXRCamerasEnabled(true);
+                }
+            }
+
+            m_RuntimeSceneLoaded = true;
+            const auto vpk = m_VpkPath ? m_VpkPath->generic_string() : std::string {};
+            VULTRA_CLIENT_INFO("[Vultra] Loaded scene '{}' from VPK '{}'", m_RuntimeSceneUri, vpk);
+        }
+
         void onBeforeShutdown(vultra::Engine& engine) override
         {
+            if (m_RuntimeSceneLoad)
+            {
+                if (auto* sceneService = engine.ctx().services.tryGet<vultra::ISceneService>())
+                    sceneService->releaseSceneLoad(m_RuntimeSceneLoad);
+                m_RuntimeSceneLoad = {};
+            }
             vultra_app::EditorContext ctx {.state = m_State, .services = &engine.ctx().services};
             m_Editor.shutdown(ctx);
         }
 
         vultra_app::LaunchOptions            m_Options;
         std::optional<std::filesystem::path> m_VpkPath;
+        vultra::SceneLoadHandle              m_RuntimeSceneLoad;
+        std::string                          m_RuntimeSceneUri;
+        std::string                          m_RuntimeRendererKey;
+        bool                                 m_RuntimeSceneLoaded {false};
         mutable vultra_app::AppState         m_State;
         mutable vultra_app::ProjectLauncher  m_Launcher;
         mutable vultra_app::EditorApp        m_Editor;
