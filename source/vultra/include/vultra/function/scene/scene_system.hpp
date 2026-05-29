@@ -31,6 +31,15 @@ namespace vultra
 
         // ISceneService
         std::shared_ptr<const SceneDocument> loadSceneSync(std::string_view uri) override;
+        SceneLoadHandle                      loadSceneAsync(std::string_view uri) override;
+        SceneLoadStatus                      sceneLoadStatus(SceneLoadHandle handle) override;
+        entt::entity                         instantiateLoadedScene(SceneLoadHandle handle,
+                                                                    World&          world,
+                                                                    entt::entity    parent,
+                                                                    bool            clearWorld) override;
+        void                                 releaseSceneLoad(SceneLoadHandle handle) override;
+        entt::entity
+        loadSceneStreaming(World& world, std::string_view uri, entt::entity parent, bool clearWorld) override;
         bool                                 saveSceneSync(std::string_view uri, const SceneDocument& doc) override;
 
         entt::entity
@@ -44,6 +53,19 @@ namespace vultra
         SceneComponentRegistry m_ComponentRegistry;
 
         std::unordered_map<std::string, std::shared_ptr<const SceneDocument>> m_Cache;
+
+        struct AsyncSceneLoad
+        {
+            std::string                          uri;
+            std::shared_ptr<const SceneDocument> doc;
+            std::unique_ptr<World>               stagingWorld;
+            entt::entity                         stagingRoot {entt::null};
+            SceneLoadState                       state {SceneLoadState::eLoading};
+            float                                progress {0.0f};
+            std::string                          message;
+        };
+        uint64_t m_NextAsyncSceneLoadId {1};
+        std::unordered_map<uint64_t, AsyncSceneLoad> m_AsyncSceneLoads;
 
         IAssetService* m_AssetService {nullptr};
 

@@ -16,6 +16,9 @@
 
 #include <vfilesystem/backends/physical_filesystem.hpp>
 
+#include <vtask/scheduler.hpp>
+#include <vtask/task_set.hpp>
+
 #include <glm/gtc/packing.hpp>
 #include <glm/gtx/quaternion.hpp>
 
@@ -33,6 +36,8 @@ namespace vultra
 {
     namespace
     {
+        constexpr uint32_t kAssetLoadMaxAttempts = 3;
+
         // Very small fallback: pack a subset of material params into a fixed block.
         // This is intentionally simple; later, vshadersystem reflection will pack arbitrary params.
         struct alignas(16) MaterialParamsPBRMR
@@ -106,6 +111,9 @@ namespace vultra
             uint32_t  pad2 {0};
         };
         static_assert(sizeof(MaterialParamsPhong) % 16 == 0);
+
+        constexpr std::size_t kMaxUploadCommandsPerFrame        = 2;
+        constexpr std::size_t kMaxMaterialRefreshChecksPerFrame = 8;
 
         using namespace resource;
         using namespace rhi;
@@ -338,6 +346,8 @@ namespace vultra
         }
     } // namespace
 
+    AssetSystem::~AssetSystem() = default;
+
     bool AssetSystem::onInit()
     {
         VULTRA_CORE_INFO("[AssetSystem] Initializing...");
@@ -348,6 +358,7 @@ namespace vultra
 
         VULTRA_CORE_TRACE("[AssetSystem] Getting GPU resource service");
         m_GpuResourceService = &ctx().services.require<IGpuResourceService>();
+        m_CpuLoadScheduler   = std::make_unique<vtask::Scheduler>();
 
         // Default config (can be overridden at runtime/editor).
         configure(AssetSystemDesc {
@@ -372,6 +383,7 @@ namespace vultra
         if (auto* backend = ctx().services.tryGet<IRenderBackendService>())
             backend->renderDevice().waitIdle();
 
+        waitForCpuLoadTasks();
         {
             std::scoped_lock lock(m_UploadQueueMutex);
             m_UploadQueue.clear();
@@ -380,6 +392,8 @@ namespace vultra
         m_TextureCache.clear();
         m_GaussianSplatCache.clear();
         m_TexUUIDToBindlessIndex.clear();
+        m_PendingMaterialRefreshes.clear();
+        m_CpuLoadScheduler.reset();
         m_RenderDevice       = nullptr;
         m_GpuResourceService = nullptr;
     }
@@ -426,6 +440,7 @@ namespace vultra
         if (auto* backend = ctx().services.tryGet<IRenderBackendService>())
             backend->renderDevice().waitIdle();
 
+        waitForCpuLoadTasks();
         {
             std::scoped_lock lock(m_UploadQueueMutex);
             m_UploadQueue.clear();
@@ -434,6 +449,7 @@ namespace vultra
         m_TextureCache.clear();
         m_GaussianSplatCache.clear();
         m_TexUUIDToBindlessIndex.clear();
+        m_PendingMaterialRefreshes.clear();
         if (m_GpuResourceService)
             m_GpuResourceService->pool().clear();
 
@@ -621,12 +637,16 @@ namespace vultra
         // NOTE:
         // GPU upload must happen on the main/render thread. Even in sync bring-up, we keep a queue + update() shape so
         // the system can migrate to async loading later without breaking APIs.
+        collectFinishedCpuLoadTasks();
+        refreshPendingMaterialParams();
 
         // Drain upload commands
         std::vector<UploadCmd> cmds;
         {
             std::scoped_lock lock(m_UploadQueueMutex);
-            cmds.swap(m_UploadQueue);
+            const auto count = std::min(kMaxUploadCommandsPerFrame, m_UploadQueue.size());
+            cmds.insert(cmds.end(), m_UploadQueue.begin(), m_UploadQueue.begin() + static_cast<std::ptrdiff_t>(count));
+            m_UploadQueue.erase(m_UploadQueue.begin(), m_UploadQueue.begin() + static_cast<std::ptrdiff_t>(count));
         }
 
         for (const auto& cmd : cmds)
@@ -748,6 +768,221 @@ namespace vultra
         (void)frameIndex;
     }
 
+    void AssetSystem::enqueueUploadOnce(UploadCmd::Kind kind, const CoreUUID& uuid, std::atomic_bool& queuedFlag)
+    {
+        bool expected = false;
+        if (!queuedFlag.compare_exchange_strong(expected, true, std::memory_order_acq_rel))
+            return;
+
+        {
+            std::scoped_lock lock(m_UploadQueueMutex);
+            m_UploadQueue.push_back(UploadCmd {kind, uuid});
+        }
+    }
+
+    void AssetSystem::collectFinishedCpuLoadTasks()
+    {
+        std::scoped_lock lock(m_CpuLoadTasksMutex);
+        for (auto it = m_CpuLoadTasks.begin(); it != m_CpuLoadTasks.end();)
+        {
+            CpuLoadTask& cpuTask = **it;
+            if (!cpuTask.done.load(std::memory_order_acquire))
+            {
+                ++it;
+                continue;
+            }
+
+            if (cpuTask.task && m_CpuLoadScheduler)
+                m_CpuLoadScheduler->wait(*cpuTask.task);
+            it = m_CpuLoadTasks.erase(it);
+        }
+    }
+
+    void AssetSystem::waitForCpuLoadTasks()
+    {
+        std::scoped_lock lock(m_CpuLoadTasksMutex);
+        if (m_CpuLoadScheduler)
+        {
+            for (auto& cpuTask : m_CpuLoadTasks)
+            {
+                if (cpuTask && cpuTask->task)
+                    m_CpuLoadScheduler->wait(*cpuTask->task);
+            }
+        }
+        m_CpuLoadTasks.clear();
+    }
+
+    void AssetSystem::startMeshCpuLoadAsync(AssetRecord<vasset::VMesh, resource::GpuMesh>& rec, const CoreUUID& uuid)
+    {
+        std::string uri;
+        if (!resolveUUIDToUri(uuid, uri))
+        {
+            VULTRA_CLIENT_ERROR("loadMeshAsync: cannot resolve uuid {}", uuid.toString());
+            rec.state.store(AssetState::eFailed, std::memory_order_release);
+            return;
+        }
+
+        auto cpuLoadTask = std::make_unique<CpuLoadTask>();
+        auto* taskState  = cpuLoadTask.get();
+        cpuLoadTask->task = std::make_unique<vtask::TaskSet>(1, 1, [this, &rec, uuid, uri, taskState](vtask::Range) {
+            for (uint32_t attempt = 1; attempt <= kAssetLoadMaxAttempts; ++attempt)
+            {
+                auto br = m_VFS.readAll(uri);
+                if (!br)
+                {
+                    VULTRA_CLIENT_ERROR("loadMeshAsync: failed to read {} (attempt {}/{})",
+                                        uri,
+                                        attempt,
+                                        kAssetLoadMaxAttempts);
+                    continue;
+                }
+
+                auto cpu = std::make_unique<vasset::VMesh>();
+                auto r   = vasset::loadMeshFromMemory(br.value(), *cpu);
+                if (!r)
+                {
+                    VULTRA_CLIENT_ERROR("loadMeshAsync: vasset::loadMeshFromMemory failed: {} (attempt {}/{})",
+                                        uri,
+                                        attempt,
+                                        kAssetLoadMaxAttempts);
+                    continue;
+                }
+
+                rec.cpu = std::move(cpu);
+                rec.state.store(AssetState::eCPUReady, std::memory_order_release);
+                rec.state.store(AssetState::eUploadQueued, std::memory_order_release);
+                enqueueUploadOnce(UploadCmd::Kind::eMesh, uuid, rec.uploadQueued);
+                taskState->done.store(true, std::memory_order_release);
+                return;
+            }
+
+            rec.state.store(AssetState::eFailed, std::memory_order_release);
+            taskState->done.store(true, std::memory_order_release);
+        });
+
+        if (!m_CpuLoadScheduler)
+            m_CpuLoadScheduler = std::make_unique<vtask::Scheduler>();
+        m_CpuLoadScheduler->run(*cpuLoadTask->task);
+
+        std::scoped_lock lock(m_CpuLoadTasksMutex);
+        m_CpuLoadTasks.push_back(std::move(cpuLoadTask));
+    }
+
+    void AssetSystem::startTextureCpuLoadAsync(AssetRecord<vasset::VTexture, resource::GpuTexture>& rec,
+                                               const CoreUUID& uuid)
+    {
+        std::string uri;
+        if (!resolveUUIDToUri(uuid, uri))
+        {
+            VULTRA_CLIENT_ERROR("loadTextureAsync: cannot resolve uuid {}", uuid.toString());
+            rec.state.store(AssetState::eFailed, std::memory_order_release);
+            return;
+        }
+
+        auto cpuLoadTask = std::make_unique<CpuLoadTask>();
+        auto* taskState  = cpuLoadTask.get();
+        cpuLoadTask->task = std::make_unique<vtask::TaskSet>(1, 1, [this, &rec, uuid, uri, taskState](vtask::Range) {
+            for (uint32_t attempt = 1; attempt <= kAssetLoadMaxAttempts; ++attempt)
+            {
+                auto br = m_VFS.readAll(uri);
+                if (!br)
+                {
+                    VULTRA_CLIENT_ERROR("loadTextureAsync: failed to read {} (attempt {}/{})",
+                                        uri,
+                                        attempt,
+                                        kAssetLoadMaxAttempts);
+                    continue;
+                }
+
+                auto cpu = std::make_unique<vasset::VTexture>();
+                auto r   = vasset::loadTextureFromMemory(br.value(), *cpu);
+                if (!r)
+                {
+                    VULTRA_CLIENT_ERROR("loadTextureAsync: vasset::loadTextureFromMemory failed: {} (attempt {}/{})",
+                                        uri,
+                                        attempt,
+                                        kAssetLoadMaxAttempts);
+                    continue;
+                }
+
+                rec.cpu = std::move(cpu);
+                rec.state.store(AssetState::eCPUReady, std::memory_order_release);
+                rec.state.store(AssetState::eUploadQueued, std::memory_order_release);
+                enqueueUploadOnce(UploadCmd::Kind::eTexture, uuid, rec.uploadQueued);
+                taskState->done.store(true, std::memory_order_release);
+                return;
+            }
+
+            rec.state.store(AssetState::eFailed, std::memory_order_release);
+            taskState->done.store(true, std::memory_order_release);
+        });
+
+        if (!m_CpuLoadScheduler)
+            m_CpuLoadScheduler = std::make_unique<vtask::Scheduler>();
+        m_CpuLoadScheduler->run(*cpuLoadTask->task);
+
+        std::scoped_lock lock(m_CpuLoadTasksMutex);
+        m_CpuLoadTasks.push_back(std::move(cpuLoadTask));
+    }
+
+    void AssetSystem::startGaussianSplatCpuLoadAsync(
+        AssetRecord<vasset::VGaussianSplat, resource::GpuGaussianSplat>& rec, const CoreUUID& uuid)
+    {
+        std::string uri;
+        if (!resolveUUIDToUri(uuid, uri))
+        {
+            VULTRA_CLIENT_ERROR("loadGaussianSplatAsync: cannot resolve uuid {}", uuid.toString());
+            rec.state.store(AssetState::eFailed, std::memory_order_release);
+            return;
+        }
+
+        auto cpuLoadTask = std::make_unique<CpuLoadTask>();
+        auto* taskState  = cpuLoadTask.get();
+        cpuLoadTask->task = std::make_unique<vtask::TaskSet>(1, 1, [this, &rec, uuid, uri, taskState](vtask::Range) {
+            for (uint32_t attempt = 1; attempt <= kAssetLoadMaxAttempts; ++attempt)
+            {
+                auto br = m_VFS.readAll(uri);
+                if (!br)
+                {
+                    VULTRA_CLIENT_ERROR("loadGaussianSplatAsync: failed to read {} (attempt {}/{})",
+                                        uri,
+                                        attempt,
+                                        kAssetLoadMaxAttempts);
+                    continue;
+                }
+
+                auto cpu = std::make_unique<vasset::VGaussianSplat>();
+                auto r   = vasset::loadGaussianSplatFromMemory(br.value(), *cpu);
+                if (!r)
+                {
+                    VULTRA_CLIENT_ERROR(
+                        "loadGaussianSplatAsync: vasset::loadGaussianSplatFromMemory failed: {} (attempt {}/{})",
+                        uri,
+                        attempt,
+                        kAssetLoadMaxAttempts);
+                    continue;
+                }
+
+                rec.cpu = std::move(cpu);
+                rec.state.store(AssetState::eCPUReady, std::memory_order_release);
+                rec.state.store(AssetState::eUploadQueued, std::memory_order_release);
+                enqueueUploadOnce(UploadCmd::Kind::eGaussianSplat, uuid, rec.uploadQueued);
+                taskState->done.store(true, std::memory_order_release);
+                return;
+            }
+
+            rec.state.store(AssetState::eFailed, std::memory_order_release);
+            taskState->done.store(true, std::memory_order_release);
+        });
+
+        if (!m_CpuLoadScheduler)
+            m_CpuLoadScheduler = std::make_unique<vtask::Scheduler>();
+        m_CpuLoadScheduler->run(*cpuLoadTask->task);
+
+        std::scoped_lock lock(m_CpuLoadTasksMutex);
+        m_CpuLoadTasks.push_back(std::move(cpuLoadTask));
+    }
+
     bool AssetSystem::resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const
     {
         auto entry = m_Registry.lookup(uuid);
@@ -786,6 +1021,180 @@ namespace vultra
         if (idx == std::numeric_limits<uint32_t>::max())
             return 0;
         return idx;
+    }
+
+    uint32_t AssetSystem::resolveBindlessTextureIndexAsync(const CoreUUID& texUUID)
+    {
+        if (!texUUID.valid())
+            return 0;
+
+        auto it = m_TexUUIDToBindlessIndex.find(texUUID);
+        if (it != m_TexUUIDToBindlessIndex.end())
+            return it->second;
+
+        auto h = loadTextureAsync(texUUID);
+        if (!h.ready())
+            return 0;
+
+        const uint32_t idx = h.gpuIndex();
+        if (idx == std::numeric_limits<uint32_t>::max())
+            return 0;
+        return idx;
+    }
+
+    bool AssetSystem::meshPreviewReady(const CoreUUID& meshUUID)
+    {
+        if (!meshUUID.valid())
+            return false;
+
+        auto handle = loadMeshAsync(meshUUID);
+        if (!handle.ready())
+            return false;
+
+        if (const auto* cpuMesh = handle.cpu())
+        {
+            for (const auto& material : cpuMesh->materials)
+            {
+                if (!materialTextureDependenciesReady(material))
+                    return false;
+            }
+        }
+
+        return !materialRefreshPending();
+    }
+
+    bool AssetSystem::materialRefreshPending() const { return !m_PendingMaterialRefreshes.empty(); }
+
+    bool AssetSystem::materialTextureDependenciesReady(const vasset::VMaterial& material)
+    {
+        auto ready = [this](const CoreUUID& uuid) {
+            if (!uuid.valid())
+                return true;
+            const auto texture = loadTextureAsync(uuid);
+            return texture.ready() && texture.gpuIndex() != std::numeric_limits<uint32_t>::max();
+        };
+
+        switch (material.model)
+        {
+            case vasset::VMaterialModel::ePBRMetallicRoughness:
+                return ready(CoreUUID(material.core.pbrMR.baseColorTexture.uuid)) &&
+                       ready(CoreUUID(material.core.pbrMR.normalTexture.uuid)) &&
+                       ready(CoreUUID(material.core.pbrMR.metallicRoughnessTexture.uuid)) &&
+                       ready(CoreUUID(material.core.pbrMR.metallicTexture.uuid)) &&
+                       ready(CoreUUID(material.core.pbrMR.roughnessTexture.uuid)) &&
+                       ready(CoreUUID(material.core.pbrMR.ambientOcclusionTexture.uuid)) &&
+                       ready(CoreUUID(material.core.pbrMR.emissiveTexture.uuid));
+            case vasset::VMaterialModel::ePBRSpecularGlossiness:
+                return ready(CoreUUID(material.core.pbrSG.diffuseTexture.uuid)) &&
+                       ready(CoreUUID(material.core.pbrSG.specularGlossinessTexture.uuid));
+            case vasset::VMaterialModel::eUnlit:
+                return ready(CoreUUID(material.core.unlit.colorTexture.uuid));
+            case vasset::VMaterialModel::ePhong:
+            default:
+                return ready(CoreUUID(material.core.phong.diffuseTexture.uuid));
+        }
+    }
+
+    bool AssetSystem::refreshGpuMaterialParams(const uint32_t materialIndex, const vasset::VMaterial& material)
+    {
+        auto& pool = m_GpuResourceService->pool();
+        if (materialIndex >= pool.materials.size())
+            return true;
+        if (!materialTextureDependenciesReady(material))
+            return false;
+
+        auto uploadBlock = [&](resource::GpuMaterial& gpuMaterial, const void* src, const uint32_t size) {
+            if (gpuMaterial.blockOffsetBytes + size > pool.materialParams.cpu.size())
+            {
+                gpuMaterial.blockOffsetBytes = pool.materialParams.allocAndUpload(*m_RenderDevice, src, size, 16);
+                pool.materialTableDirty      = true;
+                return;
+            }
+
+            std::memcpy(pool.materialParams.cpu.data() + gpuMaterial.blockOffsetBytes, src, size);
+            if (pool.materialParams.gpu)
+            {
+                m_RenderDevice->uploadS(*pool.materialParams.gpu,
+                                         0,
+                                         static_cast<uint64_t>(pool.materialParams.cpu.size()),
+                                         pool.materialParams.cpu.data());
+            }
+        };
+
+        auto& gpuMaterial = pool.materials[materialIndex];
+        switch (material.model)
+        {
+            case vasset::VMaterialModel::ePBRMetallicRoughness: {
+                MaterialParamsPBRMR p;
+                p.baseColor       = material.core.pbrMR.baseColor;
+                p.metallicFactor  = material.core.pbrMR.metallicFactor;
+                p.roughnessFactor = material.core.pbrMR.roughnessFactor;
+                p.alphaCutoff     = material.core.pbrMR.alphaCutoff;
+                p.alphaMode       = static_cast<uint32_t>(material.core.pbrMR.alphaMode);
+                p.baseColorTex    = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.baseColorTexture.uuid));
+                p.normalTex       = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.normalTexture.uuid));
+                p.mrTex = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.metallicRoughnessTexture.uuid));
+                p.metallicTex     = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.metallicTexture.uuid));
+                p.roughnessTex    = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.roughnessTexture.uuid));
+                p.occlusionTex =
+                    resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.ambientOcclusionTexture.uuid));
+                p.emissiveTex = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.emissiveTexture.uuid));
+                p.doubleSided = material.core.pbrMR.doubleSided ? 1u : 0u;
+                uploadBlock(gpuMaterial, &p, sizeof(p));
+                break;
+            }
+            case vasset::VMaterialModel::ePBRSpecularGlossiness: {
+                MaterialParamsPBRSG p;
+                p.diffuseColor     = material.core.pbrSG.diffuseColor;
+                p.specularFactor   = material.core.pbrSG.specularFactor;
+                p.glossinessFactor = material.core.pbrSG.glossinessFactor;
+                p.diffuseColorTex  = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.diffuseTexture.uuid));
+                p.specularGlossinessTex =
+                    resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrSG.specularGlossinessTexture.uuid));
+                uploadBlock(gpuMaterial, &p, sizeof(p));
+                break;
+            }
+            case vasset::VMaterialModel::eUnlit: {
+                MaterialParamsUnlit p;
+                p.color    = material.core.unlit.color;
+                p.colorTex = resolveBindlessTextureIndexAsync(CoreUUID(material.core.unlit.colorTexture.uuid));
+                uploadBlock(gpuMaterial, &p, sizeof(p));
+                break;
+            }
+            case vasset::VMaterialModel::ePhong:
+            default: {
+                MaterialParamsPhong p;
+                p.diffuse           = material.core.phong.diffuse;
+                p.specularShininess = glm::vec4(material.core.phong.specular, material.core.phong.shininess);
+                p.diffuseTex        = resolveBindlessTextureIndexAsync(CoreUUID(material.core.phong.diffuseTexture.uuid));
+                uploadBlock(gpuMaterial, &p, sizeof(p));
+                break;
+            }
+        }
+
+        m_GpuResourceService->markContentDirty();
+        return true;
+    }
+
+    void AssetSystem::refreshPendingMaterialParams()
+    {
+        if (m_PendingMaterialRefreshes.empty())
+            return;
+
+        std::size_t checks = 0;
+        std::size_t out    = 0;
+        for (std::size_t i = 0; i < m_PendingMaterialRefreshes.size(); ++i)
+        {
+            auto& pending = m_PendingMaterialRefreshes[i];
+            if (checks < kMaxMaterialRefreshChecksPerFrame)
+            {
+                ++checks;
+                if (refreshGpuMaterialParams(pending.materialIndex, pending.material))
+                    continue;
+            }
+            m_PendingMaterialRefreshes[out++] = std::move(pending);
+        }
+        m_PendingMaterialRefreshes.resize(out);
     }
 
     uint32_t AssetSystem::uploadTexture(const vasset::VTexture& cpuTex)
@@ -840,13 +1249,13 @@ namespace vultra
                 p.roughnessFactor = m.core.pbrMR.roughnessFactor;
                 p.alphaCutoff     = m.core.pbrMR.alphaCutoff;
                 p.alphaMode       = static_cast<uint32_t>(m.core.pbrMR.alphaMode);
-                p.baseColorTex    = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.baseColorTexture.uuid));
-                p.normalTex       = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.normalTexture.uuid));
-                p.mrTex           = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.metallicRoughnessTexture.uuid));
-                p.metallicTex     = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.metallicTexture.uuid));
-                p.roughnessTex    = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.roughnessTexture.uuid));
-                p.occlusionTex    = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.ambientOcclusionTexture.uuid));
-                p.emissiveTex     = resolveBindlessTextureIndex(CoreUUID(m.core.pbrMR.emissiveTexture.uuid));
+                p.baseColorTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.baseColorTexture.uuid));
+                p.normalTex       = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.normalTexture.uuid));
+                p.mrTex           = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.metallicRoughnessTexture.uuid));
+                p.metallicTex     = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.metallicTexture.uuid));
+                p.roughnessTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.roughnessTexture.uuid));
+                p.occlusionTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.ambientOcclusionTexture.uuid));
+                p.emissiveTex     = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.emissiveTexture.uuid));
                 p.doubleSided     = m.core.pbrMR.doubleSided ? 1u : 0u;
                 blockOffset       = allocBlock(&p, sizeof(p));
                 break;
@@ -857,9 +1266,9 @@ namespace vultra
                 p.diffuseColor     = m.core.pbrSG.diffuseColor;
                 p.specularFactor   = m.core.pbrSG.specularFactor;
                 p.glossinessFactor = m.core.pbrSG.glossinessFactor;
-                p.diffuseColorTex  = resolveBindlessTextureIndex(CoreUUID(m.core.pbrSG.diffuseTexture.uuid));
+                p.diffuseColorTex  = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.diffuseTexture.uuid));
                 p.specularGlossinessTex =
-                    resolveBindlessTextureIndex(CoreUUID(m.core.pbrSG.specularGlossinessTexture.uuid));
+                    resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrSG.specularGlossinessTexture.uuid));
                 blockOffset = allocBlock(&p, sizeof(p));
                 break;
             }
@@ -867,7 +1276,7 @@ namespace vultra
                 gm.model = GpuMaterialModel::eUnlit;
                 MaterialParamsUnlit p;
                 p.color     = m.core.unlit.color;
-                p.colorTex  = resolveBindlessTextureIndex(CoreUUID(m.core.unlit.colorTexture.uuid));
+                p.colorTex  = resolveBindlessTextureIndexAsync(CoreUUID(m.core.unlit.colorTexture.uuid));
                 blockOffset = allocBlock(&p, sizeof(p));
                 break;
             }
@@ -877,7 +1286,7 @@ namespace vultra
                 MaterialParamsPhong p;
                 p.diffuse           = m.core.phong.diffuse;
                 p.specularShininess = glm::vec4(m.core.phong.specular, m.core.phong.shininess);
-                p.diffuseTex        = resolveBindlessTextureIndex(CoreUUID(m.core.phong.diffuseTexture.uuid));
+                p.diffuseTex        = resolveBindlessTextureIndexAsync(CoreUUID(m.core.phong.diffuseTexture.uuid));
                 blockOffset         = allocBlock(&p, sizeof(p));
                 break;
             }
@@ -886,6 +1295,8 @@ namespace vultra
         gm.blockOffsetBytes = blockOffset;
         gm.tableIndex       = static_cast<uint32_t>(pool.materials.size());
         pool.materials.push_back(gm);
+        if (!materialTextureDependenciesReady(m))
+            m_PendingMaterialRefreshes.push_back(PendingMaterialRefresh {.materialIndex = gm.tableIndex, .material = m});
         pool.materialTableDirty = true;
         m_GpuResourceService->markContentDirty();
         return gm.tableIndex;
@@ -1216,6 +1627,82 @@ namespace vultra
         return index;
     }
 
+    AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureAsync(const CoreUUID& uuid)
+    {
+        auto* rec = m_TextureCache.findOrCreate(uuid);
+        if (!rec)
+            return {};
+
+        auto st = rec->state.load(std::memory_order_acquire);
+        if (st == AssetState::eUnloaded)
+        {
+            AssetState expected = AssetState::eUnloaded;
+            if (rec->state.compare_exchange_strong(
+                    expected, AssetState::eLoadingCPU, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                startTextureCpuLoadAsync(*rec, uuid);
+            }
+        }
+        else if (st == AssetState::eCPUReady)
+        {
+            rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
+            enqueueUploadOnce(UploadCmd::Kind::eTexture, uuid, rec->uploadQueued);
+        }
+
+        return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
+    }
+
+    AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshAsync(const CoreUUID& uuid)
+    {
+        auto* rec = m_MeshCache.findOrCreate(uuid);
+        if (!rec)
+            return {};
+
+        auto st = rec->state.load(std::memory_order_acquire);
+        if (st == AssetState::eUnloaded)
+        {
+            AssetState expected = AssetState::eUnloaded;
+            if (rec->state.compare_exchange_strong(
+                    expected, AssetState::eLoadingCPU, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                startMeshCpuLoadAsync(*rec, uuid);
+            }
+        }
+        else if (st == AssetState::eCPUReady)
+        {
+            rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
+            enqueueUploadOnce(UploadCmd::Kind::eMesh, uuid, rec->uploadQueued);
+        }
+
+        return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
+    }
+
+    AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+    AssetSystem::loadGaussianSplatAsync(const CoreUUID& uuid)
+    {
+        auto* rec = m_GaussianSplatCache.findOrCreate(uuid);
+        if (!rec)
+            return {};
+
+        auto st = rec->state.load(std::memory_order_acquire);
+        if (st == AssetState::eUnloaded)
+        {
+            AssetState expected = AssetState::eUnloaded;
+            if (rec->state.compare_exchange_strong(
+                    expected, AssetState::eLoadingCPU, std::memory_order_acq_rel, std::memory_order_acquire))
+            {
+                startGaussianSplatCpuLoadAsync(*rec, uuid);
+            }
+        }
+        else if (st == AssetState::eCPUReady)
+        {
+            rec->state.store(AssetState::eUploadQueued, std::memory_order_release);
+            enqueueUploadOnce(UploadCmd::Kind::eGaussianSplat, uuid, rec->uploadQueued);
+        }
+
+        return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
+    }
+
     AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureSync(const CoreUUID& uuid)
     {
         auto* rec = m_TextureCache.findOrCreate(uuid);
@@ -1227,6 +1714,9 @@ namespace vultra
         {
             return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
         }
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eLoadingCPU)
+            waitForCpuLoadTasks();
 
         // CPU stage (sync baseline)
         if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
@@ -1288,6 +1778,14 @@ namespace vultra
         return loadTextureSync(uuid);
     }
 
+    AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureAsync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadTextureAsync(uuid);
+    }
+
     AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshSync(const CoreUUID& uuid)
     {
         auto* rec = m_MeshCache.findOrCreate(uuid);
@@ -1300,6 +1798,9 @@ namespace vultra
         {
             return AssetHandle<vasset::VMesh, resource::GpuMesh>(rec);
         }
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eLoadingCPU)
+            waitForCpuLoadTasks();
 
         // CPU stage (sync baseline)
         if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
@@ -1364,6 +1865,14 @@ namespace vultra
         return loadMeshSync(uuid);
     }
 
+    AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshAsync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadMeshAsync(uuid);
+    }
+
     AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
     AssetSystem::loadGaussianSplatSync(const CoreUUID& uuid)
     {
@@ -1376,6 +1885,9 @@ namespace vultra
         {
             return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
         }
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eLoadingCPU)
+            waitForCpuLoadTasks();
 
         if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
         {
@@ -1436,6 +1948,15 @@ namespace vultra
         return loadGaussianSplatSync(uuid);
     }
 
+    AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+    AssetSystem::loadGaussianSplatAsync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadGaussianSplatAsync(uuid);
+    }
+
     std::string AssetSystem::resolveUri(const std::string_view uri) const
     {
         auto vbaseUri = vfilesystem::parse_uri(uri);
@@ -1469,6 +1990,34 @@ namespace vultra
         static_cast<void>(forceReimport);
         return false;
 #endif
+    }
+
+    bool AssetSystem::reloadRegistry()
+    {
+        if (ctx().config.asset.loadFromVPK)
+            return false;
+
+        const auto registryPath =
+            (std::filesystem::path(m_Desc.assetRoot) / m_Desc.importedFolder / m_Desc.registryFile).generic_string();
+        vasset::VAssetRegistry registry;
+        registry.setAssetRootPath(m_Desc.assetRoot);
+        registry.setImportedFolderName(m_Desc.importedFolder);
+        if (!registry.load(registryPath))
+        {
+            VULTRA_CORE_WARN("[AssetSystem] Failed to reload asset registry: {}", registryPath);
+            return false;
+        }
+
+        const auto beforeCleanup = registry.getRegistry().size();
+        registry.cleanup();
+        if (registry.getRegistry().size() < beforeCleanup && !registry.save(registryPath))
+            VULTRA_CORE_WARN("[AssetSystem] Failed to save cleaned asset registry: {}", registryPath);
+
+        m_Registry = std::move(registry);
+        m_Resolver.loadFromAssetRegistry(m_Registry);
+        m_Resolver.setScheme(m_Desc.scheme);
+        VULTRA_CORE_INFO("[AssetSystem] Reloaded asset registry. Registry entries: {}", m_Registry.getRegistry().size());
+        return true;
     }
 
     vbase::Result<std::string, std::string> AssetSystem::loadTextAssetSync(std::string_view uri)

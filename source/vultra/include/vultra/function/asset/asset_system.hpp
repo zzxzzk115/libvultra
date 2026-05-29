@@ -17,9 +17,15 @@
 #include <vasset/vmesh.hpp>
 #include <vasset/vtexture.hpp>
 
+#include <vtask/scheduler.hpp>
+#include <vtask/task_set.hpp>
+
+#include <atomic>
 #include <mutex>
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace vultra
 {
@@ -45,6 +51,8 @@ namespace vultra
     public:
         ENGINE_SUBSYSTEM(AssetSystem)
 
+        ~AssetSystem() override;
+
         bool onInit() override;
         void onShutdown() override;
 
@@ -59,11 +67,21 @@ namespace vultra
         AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(const CoreUUID& uuid) override;
 
+        AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshAsync(const CoreUUID& uuid) override;
+        AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureAsync(const CoreUUID& uuid) override;
+        AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+        loadGaussianSplatAsync(const CoreUUID& uuid) override;
+
         // Convenience: load by uri/path (must be resolvable by registry/resolver)
         AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(std::string_view uri) override;
         AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(std::string_view uri) override;
         AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(std::string_view uri) override;
+
+        AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshAsync(std::string_view uri) override;
+        AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureAsync(std::string_view uri) override;
+        AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+        loadGaussianSplatAsync(std::string_view uri) override;
 
         vbase::Result<std::string, std::string> loadTextAssetSync(std::string_view uri) override;
         void setTextAssetOverride(std::string_view uri, std::string text) override;
@@ -77,22 +95,13 @@ namespace vultra
 
         std::string resolveUri(const std::string_view uri) const override;
         bool        reimportAsset(std::string_view uri, bool forceReimport = true) override;
+        bool        reloadRegistry() override;
 
         // Bindless texture index resolution.
         // Returns 0 for invalid UUID.
         uint32_t resolveBindlessTextureIndex(const CoreUUID& texUUID) override;
-
-    private:
-        uint32_t uploadTexture(const vasset::VTexture& cpuTex);
-        uint32_t uploadMesh(const vasset::VMesh& cpuMesh, uint32_t materialOffset);
-        uint32_t uploadGaussianSplat(const vasset::VGaussianSplat& cpuSplat);
-
-        // Creates a GpuMaterial entry and appends into the global material table.
-        // Returns index.
-        uint32_t createAndAppendGpuMaterial(const vasset::VMaterial& m);
-
-        bool resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const;
-        bool resolveUriToUUID(std::string_view uri, CoreUUID& outUUID) const;
+        bool     meshPreviewReady(const CoreUUID& meshUUID) override;
+        bool     materialRefreshPending() const override;
 
     private:
         struct UploadCmd
@@ -108,11 +117,50 @@ namespace vultra
             CoreUUID uuid;
         };
 
+        uint32_t uploadTexture(const vasset::VTexture& cpuTex);
+        uint32_t uploadMesh(const vasset::VMesh& cpuMesh, uint32_t materialOffset);
+        uint32_t uploadGaussianSplat(const vasset::VGaussianSplat& cpuSplat);
+
+        // Creates a GpuMaterial entry and appends into the global material table.
+        // Returns index.
+        uint32_t createAndAppendGpuMaterial(const vasset::VMaterial& m);
+
+        bool resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const;
+        bool resolveUriToUUID(std::string_view uri, CoreUUID& outUUID) const;
+        void enqueueUploadOnce(UploadCmd::Kind kind, const CoreUUID& uuid, std::atomic_bool& queuedFlag);
+        void collectFinishedCpuLoadTasks();
+        void waitForCpuLoadTasks();
+        void startMeshCpuLoadAsync(AssetRecord<vasset::VMesh, resource::GpuMesh>& rec, const CoreUUID& uuid);
+        void startTextureCpuLoadAsync(AssetRecord<vasset::VTexture, resource::GpuTexture>& rec, const CoreUUID& uuid);
+        void startGaussianSplatCpuLoadAsync(AssetRecord<vasset::VGaussianSplat, resource::GpuGaussianSplat>& rec,
+                                            const CoreUUID& uuid);
+        uint32_t resolveBindlessTextureIndexAsync(const CoreUUID& texUUID);
+        bool     materialTextureDependenciesReady(const vasset::VMaterial& material);
+        bool     refreshGpuMaterialParams(uint32_t materialIndex, const vasset::VMaterial& material);
+        void     refreshPendingMaterialParams();
+
+    private:
         // Thread-safe upload command queue (sync bring-up).
         // NOTE: This is intentionally simple today (mutex + vector). It can be replaced with a lock-free MPSC ring
         // buffer later without changing any public APIs.
         std::mutex             m_UploadQueueMutex;
         std::vector<UploadCmd> m_UploadQueue;
+
+        struct CpuLoadTask
+        {
+            std::unique_ptr<vtask::TaskSet> task;
+            std::atomic_bool                done {false};
+        };
+        std::unique_ptr<vtask::Scheduler>         m_CpuLoadScheduler;
+        std::mutex                                m_CpuLoadTasksMutex;
+        std::vector<std::unique_ptr<CpuLoadTask>> m_CpuLoadTasks;
+
+        struct PendingMaterialRefresh
+        {
+            uint32_t          materialIndex {0};
+            vasset::VMaterial material;
+        };
+        std::vector<PendingMaterialRefresh> m_PendingMaterialRefreshes;
 
     private:
         rhi::RenderDevice* m_RenderDevice {nullptr};

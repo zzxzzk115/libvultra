@@ -42,11 +42,23 @@ namespace vultra
         virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(const CoreUUID& uuid) = 0;
 
+        // Non-blocking runtime requests. CPU loading is scheduled on worker threads; GPU upload is finalized from
+        // update() on the main/render thread. Returned handles may be valid but not ready yet.
+        virtual AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshAsync(const CoreUUID& uuid)    = 0;
+        virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureAsync(const CoreUUID& uuid) = 0;
+        virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+        loadGaussianSplatAsync(const CoreUUID& uuid) = 0;
+
         // Convenience: load by uri/path (must be resolvable by registry/resolver)
         virtual AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(std::string_view uri)    = 0;
         virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(std::string_view uri) = 0;
         virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(std::string_view uri) = 0;
+
+        virtual AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshAsync(std::string_view uri)    = 0;
+        virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureAsync(std::string_view uri) = 0;
+        virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
+        loadGaussianSplatAsync(std::string_view uri) = 0;
 
         // Text assets: scene documents, manifests, Lua scripts, etc.
         virtual vbase::Result<std::string, std::string> loadTextAssetSync(std::string_view uri) = 0;
@@ -63,6 +75,11 @@ namespace vultra
         // Returns 0 for invalid UUID.
         virtual uint32_t resolveBindlessTextureIndex(const CoreUUID& texUUID) = 0;
 
+        // Preview/thumbnail readiness helpers. They request missing texture dependencies asynchronously and return
+        // false until meshes are GPU-ready, their material textures are GPU-ready, and pending material refreshes drain.
+        [[nodiscard]] virtual bool meshPreviewReady(const CoreUUID& meshUUID) = 0;
+        [[nodiscard]] virtual bool materialRefreshPending() const = 0;
+
         // Optional: access registry/resolver for tooling.
         virtual const vasset::VAssetRegistry& registry() const = 0;
         virtual const vasset::VUUIDResolver&  resolver() const = 0;
@@ -73,6 +90,10 @@ namespace vultra
 
         // Editor/development import path. Production builds may return false when import support is not linked.
         virtual bool reimportAsset(std::string_view uri, bool forceReimport = true) = 0;
+
+        // Reload the asset registry/resolver without clearing resident runtime assets.
+        // Editor background imports/deletes use this so the open scene keeps its GPU resources.
+        virtual bool reloadRegistry() = 0;
 
         // Allow overriding config (e.g., editor/runtime).
         // Per-frame update.

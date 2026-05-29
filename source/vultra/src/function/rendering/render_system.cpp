@@ -307,7 +307,7 @@ namespace vultra
                     if (uri.empty())
                         return 0u;
 
-                    auto texture = assets.loadTextureSync(uri);
+                    auto texture = assets.loadTextureAsync(uri);
                     return texture.ready() ? texture.gpuIndex() : 0u;
                 }
 
@@ -1120,7 +1120,7 @@ namespace vultra
             }
             else
             {
-                auto h = assets.loadMeshSync(mesh.mesh);
+                auto h = assets.loadMeshAsync(mesh.mesh);
                 if (!h.ready())
                     continue;
                 meshIndex = h.gpuIndex();
@@ -1179,7 +1179,7 @@ namespace vultra
             if (!isEntityRenderable(world, reg, e))
                 continue;
 
-            auto h = assets.loadGaussianSplatSync(splat.gaussianSplat);
+            auto h = assets.loadGaussianSplatAsync(splat.gaussianSplat);
             if (!h.ready())
                 continue;
 
@@ -1268,7 +1268,7 @@ namespace vultra
 
             if (environment.skybox.valid())
             {
-                auto        skybox = assets.loadTextureSync(environment.skybox);
+                auto        skybox = assets.loadTextureAsync(environment.skybox);
                 const auto& pool   = gpuResources.pool();
                 if (skybox.ready() && skybox.gpuIndex() < pool.textures.size())
                     out.environment.skybox = pool.textures[skybox.gpuIndex()].texture.get();
@@ -1292,7 +1292,7 @@ namespace vultra
             {
                 if (!probe.environmentMap.valid())
                     continue;
-                auto        map  = assets.loadTextureSync(probe.environmentMap);
+                auto        map  = assets.loadTextureAsync(probe.environmentMap);
                 const auto& pool = gpuResources.pool();
                 if (!map.ready() || map.gpuIndex() >= pool.textures.size())
                     continue;

@@ -225,6 +225,50 @@ namespace vultra
         return false;
     }
 
+    struct SceneAssetReadiness
+    {
+        size_t total {0};
+        size_t ready {0};
+    };
+
+    SceneAssetReadiness checkSceneAssetReadiness(World& world, IAssetService& assets)
+    {
+        SceneAssetReadiness out;
+        auto&               reg = world.registry();
+
+        auto meshView = reg.view<MeshComponent>();
+        for (auto entity : meshView)
+        {
+            (void)entity;
+            const auto& mesh = meshView.get<MeshComponent>(entity);
+            if (mesh.builtinGeometry != UINT32_MAX)
+                continue;
+            if (!mesh.mesh.valid())
+                continue;
+            ++out.total;
+            if (assets.meshPreviewReady(mesh.mesh))
+                ++out.ready;
+        }
+
+        auto splatView = reg.view<GaussianSplatComponent>();
+        for (auto entity : splatView)
+        {
+            (void)entity;
+            const auto& splat = splatView.get<GaussianSplatComponent>(entity);
+            if (!splat.gaussianSplat.valid())
+                continue;
+            ++out.total;
+            auto handle = assets.loadGaussianSplatAsync(splat.gaussianSplat);
+            if (handle.ready())
+                ++out.ready;
+        }
+
+        if (assets.materialRefreshPending())
+            ++out.total;
+
+        return out;
+    }
+
     entt::meta_any SceneSystem::parseValueToAny(entt::meta_type                                     expected,
                                                 std::string_view                                    raw,
                                                 const std::unordered_map<std::string, std::string>& assets) const
@@ -433,7 +477,11 @@ namespace vultra
         return true;
     }
 
-    void SceneSystem::onShutdown() { m_Cache.clear(); }
+    void SceneSystem::onShutdown()
+    {
+        m_AsyncSceneLoads.clear();
+        m_Cache.clear();
+    }
 
     // ------------------------------------------------------------
     // Service
@@ -468,6 +516,121 @@ namespace vultra
         auto sp      = std::make_shared<SceneDocument>(std::move(doc));
         m_Cache[key] = sp;
         return sp;
+    }
+
+    SceneLoadHandle SceneSystem::loadSceneAsync(std::string_view uri)
+    {
+        const std::string key(uri);
+        for (const auto& [id, load] : m_AsyncSceneLoads)
+        {
+            if (load.uri == key && load.state != SceneLoadState::eFailed)
+                return SceneLoadHandle {id};
+        }
+
+        AsyncSceneLoad load;
+        load.uri      = key;
+        load.progress = 0.05f;
+        load.message  = "Loading scene document...";
+        load.doc      = loadSceneSync(key);
+        if (!load.doc)
+        {
+            load.state    = SceneLoadState::eFailed;
+            load.progress = 1.0f;
+            load.message  = "Failed to load scene document.";
+        }
+        else
+        {
+            load.message = "Preparing scene assets...";
+            load.stagingWorld = std::make_unique<World>();
+            load.stagingRoot  = instantiateSceneDocument(*load.stagingWorld, *load.doc, entt::null, true);
+            if (load.stagingRoot == entt::null)
+            {
+                load.state    = SceneLoadState::eFailed;
+                load.progress = 1.0f;
+                load.message  = "Failed to prepare scene.";
+            }
+        }
+
+        const uint64_t id = m_NextAsyncSceneLoadId++;
+        m_AsyncSceneLoads.emplace(id, std::move(load));
+        return SceneLoadHandle {id};
+    }
+
+    SceneLoadStatus SceneSystem::sceneLoadStatus(const SceneLoadHandle handle)
+    {
+        if (!handle)
+            return {};
+
+        auto it = m_AsyncSceneLoads.find(handle.id);
+        if (it == m_AsyncSceneLoads.end())
+            return {};
+
+        auto& load = it->second;
+        if (load.state == SceneLoadState::eFailed || load.state == SceneLoadState::eReady)
+        {
+            return SceneLoadStatus {
+                .state    = load.state,
+                .progress = load.progress,
+                .message  = load.message,
+            };
+        }
+
+        if (!m_AssetService)
+        {
+            load.state    = SceneLoadState::eFailed;
+            load.progress = 1.0f;
+            load.message  = "Asset service unavailable.";
+        }
+        else
+        {
+            const auto readiness = load.stagingWorld ? checkSceneAssetReadiness(*load.stagingWorld, *m_AssetService) :
+                                                       SceneAssetReadiness {};
+            if (readiness.total == 0 || readiness.ready >= readiness.total)
+            {
+                load.state    = SceneLoadState::eReady;
+                load.progress = 1.0f;
+                load.message  = "Scene assets ready.";
+            }
+            else
+            {
+                load.progress = 0.1f + 0.85f * (static_cast<float>(readiness.ready) /
+                                                static_cast<float>(std::max<size_t>(readiness.total, 1)));
+                load.message = "Loading scene assets " + std::to_string(readiness.ready) + " / " +
+                               std::to_string(readiness.total) + "...";
+            }
+        }
+
+        return SceneLoadStatus {
+            .state    = load.state,
+            .progress = load.progress,
+            .message  = load.message,
+        };
+    }
+
+    entt::entity SceneSystem::instantiateLoadedScene(const SceneLoadHandle handle,
+                                                     World&                world,
+                                                     const entt::entity    parent,
+                                                     const bool            clearWorld)
+    {
+        auto it = m_AsyncSceneLoads.find(handle.id);
+        if (it == m_AsyncSceneLoads.end() || it->second.state != SceneLoadState::eReady || !it->second.doc)
+            return entt::null;
+
+        return instantiateSceneDocument(world, *it->second.doc, parent, clearWorld);
+    }
+
+    void SceneSystem::releaseSceneLoad(const SceneLoadHandle handle)
+    {
+        if (handle)
+            m_AsyncSceneLoads.erase(handle.id);
+    }
+
+    entt::entity SceneSystem::loadSceneStreaming(World&             world,
+                                                 const std::string_view uri,
+                                                 const entt::entity parent,
+                                                 const bool         clearWorld)
+    {
+        return instantiateScene(world, uri, parent, clearWorld);
     }
 
     bool SceneSystem::saveSceneSync(std::string_view uri, const SceneDocument& doc)
@@ -535,29 +698,13 @@ namespace vultra
         if (!mesh.mesh.valid())
             return;
 
-        auto handle = m_AssetService->loadMeshSync(mesh.mesh);
+        auto handle = m_AssetService->loadMeshAsync(mesh.mesh);
         if (!handle.ready())
             return;
 
-        vasset::VMesh metadataMesh {};
         const auto*   cpuMesh = handle.cpu();
         if (!cpuMesh)
-        {
-            const auto entry = m_AssetService->registry().lookup(mesh.mesh);
-            if (entry.type == vasset::VAssetType::eUnknown || entry.importedPath.empty())
-                return;
-
-            auto bytes = m_AssetService->loadBinaryAssetSync("res://" + entry.importedPath);
-            if (!bytes)
-                return;
-
-            std::vector<std::byte> meshBytes(bytes.value().size());
-            std::memcpy(meshBytes.data(), bytes.value().data(), bytes.value().size());
-            auto parseResult = vasset::loadMeshFromMemory(meshBytes, metadataMesh);
-            if (!parseResult)
-                return;
-            cpuMesh = &metadataMesh;
-        }
+            return;
 
         if (!cpuMesh->hasDefaultTransform)
             return;

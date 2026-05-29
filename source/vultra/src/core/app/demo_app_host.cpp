@@ -10,6 +10,7 @@
 #include "vultra/function/camera/camera_system.hpp"
 #include "vultra/function/debugging/frame_debugger_system.hpp"
 #include "vultra/function/imgui/imgui_system.hpp"
+#include "vultra/function/jobs/job_system.hpp"
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
 #include "vultra/function/openxr/xr_runtime_system.hpp"
 #endif
@@ -366,6 +367,7 @@ namespace vultra
         engine.emplaceSubsystem<WindowSystem>();
         engine.emplaceSubsystem<InputSystem>();
         engine.emplaceSubsystem<TimingSystem>();
+        engine.emplaceSubsystem<JobSystem>();
 
         auto renderer = makeRenderer();
         if (!renderer)
