@@ -81,6 +81,37 @@ namespace vultra
 
         static_assert(sizeof(MaterialGraphSurfaceParams) % 16 == 0);
 
+        void importPreparedFrameGraphUniforms(FrameGraph& fg, FrameRenderData& frameData, ViewRenderData& viewData)
+        {
+            if (frameData.frameData.frameBlock.buffer)
+            {
+                frameData.frameData.frameBlock.fgResource =
+                    framegraph::importBuffer(fg,
+                                             "FrameBlock",
+                                             frameData.frameData.frameBlock.buffer,
+                                             framegraph::BufferType::eUniformBuffer,
+                                             sizeof(GPUFrameBlock));
+            }
+            if (viewData.cameraData.cameraBlock.buffer)
+            {
+                viewData.cameraData.cameraBlock.fgResource =
+                    framegraph::importBuffer(fg,
+                                             "CameraBlock",
+                                             viewData.cameraData.cameraBlock.buffer,
+                                             framegraph::BufferType::eUniformBuffer,
+                                             sizeof(GPUCameraBlock));
+            }
+            if (viewData.cameraData.stereoCameraBlock.buffer)
+            {
+                viewData.cameraData.stereoCameraBlock.fgResource =
+                    framegraph::importBuffer(fg,
+                                             "StereoCameraBlock",
+                                             viewData.cameraData.stereoCameraBlock.buffer,
+                                             framegraph::BufferType::eUniformBuffer,
+                                             sizeof(GPUStereoCameraBlock));
+            }
+        }
+
         [[nodiscard]] glm::vec4 jsonVec4(const nlohmann::json& value, const glm::vec4 fallback)
         {
             if (!value.is_array())
@@ -2854,13 +2885,7 @@ namespace vultra
             renderer->render(immediateCtx);
             if (useFrameGraph)
             {
-                FrameGraphResourceUploader fgUploader {fg};
-                prepareFrameData(fgUploader,
-                                 m_PreparedFrameData,
-                                 m_RenderWorldFront.frameIndex,
-                                 static_cast<float>(m_RenderWorldFront.frameIndex) / 60.0f,
-                                 0.0f);
-                prepareCameraData(fgUploader, viewData, renderArea.extent, viewCamera, rd.getBackendApi());
+                importPreparedFrameGraphUniforms(fg, m_PreparedFrameData, viewData);
                 bb.add<FrameData>(m_PreparedFrameData.frameData);
                 bb.add<CameraData>(viewData.cameraData);
                 bb.add<StereoViewData>(viewData.stereoViewData);
@@ -2874,6 +2899,7 @@ namespace vultra
                     .bb       = bb,
                     .rd       = rd,
                     .data     = dataRegistry,
+                    .frameResources = &m_FrameResources,
                     .frame    = m_PreparedFrameData,
                     .viewData = viewData,
                 };

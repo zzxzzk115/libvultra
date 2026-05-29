@@ -6,8 +6,7 @@
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
-#include "vultra/function/framegraph/transient_buffer.hpp"
-#include "vultra/function/framegraph/upload_struct.hpp"
+#include "vultra/function/rendering/framework/resource_uploader.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
 
@@ -282,13 +281,13 @@ namespace vultra
         const auto cascadeCount = sanitizeCascadeCount(settings);
         const auto shadowData =
             makeShadowData(ctx.view().camera ? *ctx.view().camera : RenderCamera {}, settings, ctx.view().renderWorld);
-        result.shadowData = framegraph::uploadStruct(ctx.fg,
-                                                     "UploadShadowData",
-                                                     framegraph::TransientBuffer<ShadowData> {
-                                                         .name = "ShadowData",
-                                                         .type = framegraph::BufferType::eUniformBuffer,
-                                                         .data = shadowData,
-                                                     });
+        result.shadowData = uploadFrameGraphStruct(ctx.fg,
+                                                   ctx.frameResources,
+                                                   ctx.rd,
+                                                   "UploadShadowData",
+                                                   "ShadowData",
+                                                   framegraph::BufferType::eUniformBuffer,
+                                                   shadowData);
 
         struct PassData
         {

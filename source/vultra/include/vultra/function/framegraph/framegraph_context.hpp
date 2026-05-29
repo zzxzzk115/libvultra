@@ -14,6 +14,8 @@
 
 namespace vultra
 {
+    class RenderFrameResources;
+
     struct FrameGraphBuildContext
     {
         FrameGraph&           fg;
@@ -21,6 +23,7 @@ namespace vultra
 
         rhi::RenderDevice&      rd;
         FrameGraphDataRegistry& data;
+        RenderFrameResources*   frameResources {nullptr};
         const FrameRenderData&  frame;
         const ViewRenderData&   viewData;
 

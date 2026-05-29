@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/function/framegraph/framegraph_import.hpp"
 #include "vultra/function/framegraph/transient_buffer.hpp"
 #include "vultra/function/framegraph/upload_struct.hpp"
 #include "vultra/function/rendering/framework/render_frame_resources.hpp"
@@ -61,4 +62,33 @@ namespace vultra
         RenderFrameResources& m_Resources;
         rhi::RenderDevice&    m_RD;
     };
+
+    template<typename T>
+    [[nodiscard]] FrameGraphResource uploadFrameGraphStruct(FrameGraph&                 fg,
+                                                            RenderFrameResources*       frameResources,
+                                                            rhi::RenderDevice&          rd,
+                                                            std::string_view            passName,
+                                                            std::string_view            resourceName,
+                                                            framegraph::BufferType      type,
+                                                            T&&                         data)
+    {
+        if (!frameResources)
+        {
+            return framegraph::uploadStruct(fg,
+                                            passName,
+                                            framegraph::TransientBuffer<std::remove_cvref_t<T>> {
+                                                .name = resourceName,
+                                                .type = type,
+                                                .data = std::forward<T>(data),
+                                            });
+        }
+
+        ImmediateResourceUploader uploader {*frameResources, rd};
+        auto uploaded = uploader.uploadStruct(passName, resourceName, type, std::forward<T>(data));
+        return framegraph::importBuffer(fg,
+                                        resourceName,
+                                        uploaded.buffer,
+                                        type,
+                                        static_cast<uint32_t>(sizeof(std::remove_cvref_t<T>)));
+    }
 } // namespace vultra

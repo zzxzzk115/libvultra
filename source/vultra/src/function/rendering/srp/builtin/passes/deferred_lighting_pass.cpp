@@ -6,9 +6,8 @@
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
+#include "vultra/function/rendering/framework/resource_uploader.hpp"
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
-#include "vultra/function/framegraph/transient_buffer.hpp"
-#include "vultra/function/framegraph/upload_struct.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
 
 #include <texture_headers/ltc_1.dds.bintex.h>
@@ -137,14 +136,13 @@ namespace vultra
     {
         const auto lightBlockData = makeLightBlock(renderWorld);
 
-        const auto lightBlock =
-            framegraph::uploadStruct(ctx.fg,
-                                     "UploadDeferredLightBlock",
-                                     framegraph::TransientBuffer<GpuLightBlock> {
-                                         .name = "DeferredLightBlock",
-                                         .type = framegraph::BufferType::eUniformBuffer,
-                                         .data = lightBlockData,
-                                     });
+        const auto lightBlock = uploadFrameGraphStruct(ctx.fg,
+                                                       ctx.frameResources,
+                                                       ctx.rd,
+                                                       "UploadDeferredLightBlock",
+                                                       "DeferredLightBlock",
+                                                       framegraph::BufferType::eUniformBuffer,
+                                                       lightBlockData);
 
         struct PassData
         {

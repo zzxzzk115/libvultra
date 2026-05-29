@@ -6,8 +6,7 @@
 #include "vultra/core/rhi/util.hpp"
 #include "vultra/function/framegraph/framegraph_resource_access.hpp"
 #include "vultra/function/framegraph/framegraph_texture.hpp"
-#include "vultra/function/framegraph/transient_buffer.hpp"
-#include "vultra/function/framegraph/upload_struct.hpp"
+#include "vultra/function/rendering/framework/resource_uploader.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/rendering/render_structs.hpp"
 #include "vultra/function/resource/gpu_scene_database.hpp"
@@ -108,14 +107,13 @@ namespace vultra
             FrameGraphResource color;
         };
 
-        const auto lightBlock =
-            framegraph::uploadStruct(ctx.fg,
-                                     "UploadRayTracingLightBlock",
-                                     framegraph::TransientBuffer<RtLightBlock> {
-                                         .name = "RayTracingLightBlock",
-                                         .type = framegraph::BufferType::eUniformBuffer,
-                                         .data = makeRtLightBlock(ctx.view().renderWorld),
-                                     });
+        const auto lightBlock = uploadFrameGraphStruct(ctx.fg,
+                                                       ctx.frameResources,
+                                                       ctx.rd,
+                                                       "UploadRayTracingLightBlock",
+                                                       "RayTracingLightBlock",
+                                                       framegraph::BufferType::eUniformBuffer,
+                                                       makeRtLightBlock(ctx.view().renderWorld));
 
         const auto output = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
