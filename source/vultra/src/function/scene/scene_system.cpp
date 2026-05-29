@@ -640,6 +640,16 @@ namespace vultra
             const auto path = toPath(uri);
             const auto text = VscnWriter::writeToText(doc);
             os::FileSystem::writeFileAllText(path, text);
+            const auto cacheKey = path.lexically_normal().generic_string();
+            m_Cache.erase(cacheKey);
+            const std::string uriKey {uri};
+            for (auto it = m_AsyncSceneLoads.begin(); it != m_AsyncSceneLoads.end();)
+            {
+                if (it->second.uri == uriKey)
+                    it = m_AsyncSceneLoads.erase(it);
+                else
+                    ++it;
+            }
             return true;
         }
         catch (...)
