@@ -458,6 +458,12 @@ namespace vultra
         engineCtx().services.require<IInputService>().handleEvent(e);
         engineCtx().services.require<IImGuiService>().processEvent(e);
 
+        if (e.type == event::WindowEventType::eCloseRequested || e.type == event::WindowEventType::eQuit)
+        {
+            m_PendingResize = false;
+            return;
+        }
+
         if (e.type == event::WindowEventType::eResized)
         {
             auto* backendService = engineCtx().services.tryGet<IRenderBackendService>();
@@ -486,6 +492,13 @@ namespace vultra
     {
         if (!m_PendingResize || m_PendingResizeWidth == 0u || m_PendingResizeHeight == 0u)
             return;
+
+        auto* windowService = engineCtx().services.tryGet<IWindowService>();
+        if (windowService != nullptr && windowService->window().shouldClose())
+        {
+            m_PendingResize = false;
+            return;
+        }
 
         constexpr auto kResizeSettleDelay = std::chrono::milliseconds(120);
         if (std::chrono::steady_clock::now() - m_LastResizeEventTime < kResizeSettleDelay)
