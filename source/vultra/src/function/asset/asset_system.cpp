@@ -526,6 +526,23 @@ namespace vultra
                                     .generic_string();
             const bool hasRegistryFile = std::filesystem::exists(registryPath);
             const bool loadedRegistry  = hasRegistryFile && m_Registry.load(registryPath);
+            if (loadedRegistry)
+            {
+                const auto beforeCleanup = m_Registry.getRegistry().size();
+                m_Registry.cleanup();
+                const auto afterCleanup = m_Registry.getRegistry().size();
+                if (afterCleanup < beforeCleanup)
+                {
+                    VULTRA_CORE_INFO("[AssetSystem] Removed {} stale asset registry entr{} from '{}'",
+                                     beforeCleanup - afterCleanup,
+                                     beforeCleanup - afterCleanup == 1 ? "y" : "ies",
+                                     registryPath);
+                    if (!m_Registry.save(registryPath))
+                    {
+                        VULTRA_CORE_WARN("[AssetSystem] Failed to save reconciled asset registry: {}", registryPath);
+                    }
+                }
+            }
             if (m_Desc.enableImportScan && (!loadedRegistry || m_Registry.getRegistry().empty()))
             {
                 if (!loadedRegistry)
