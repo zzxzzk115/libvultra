@@ -48,6 +48,7 @@ namespace vultra
         {
             glm::vec4 posIntensity {0.0f};
             glm::vec4 colorRadius {0.0f};
+            glm::vec4 flags {0.0f};
         };
 
         struct alignas(16) RtLightBlock
@@ -55,6 +56,7 @@ namespace vultra
             glm::uvec4 counts {0u};
             RtDirectionalLight directional {};
             std::array<RtPointLight, kMaxRtPointLights> pointLights {};
+            glm::vec4 ambientColorIntensity {0.15f, 0.15f, 0.15f, 1.0f};
         };
 
         [[nodiscard]] glm::vec3 safeNormalize(const glm::vec3& v, const glm::vec3& fallback)
@@ -68,19 +70,23 @@ namespace vultra
             RtLightBlock out {};
             if (!renderWorld)
                 return out;
+            if (renderWorld->environment.active)
+            {
+                out.ambientColorIntensity =
+                    glm::vec4(renderWorld->environment.ambientColor,
+                              std::max(renderWorld->environment.ambientIntensity, 0.0f));
+            }
 
             bool     hasDirectional = false;
             uint32_t pointCount     = 0u;
             for (const auto& light : renderWorld->lights)
             {
-                if (!light.castsShadow)
-                    continue;
-
                 if (light.kind == RenderLightKind::eDirectional && !hasDirectional)
                 {
                     hasDirectional = true;
                     out.directional.directionShadowStrength =
-                        glm::vec4(safeNormalize(light.direction, glm::vec3 {-0.35f, -0.8f, -0.25f}), 1.0f);
+                        glm::vec4(safeNormalize(light.direction, glm::vec3 {-0.35f, -0.8f, -0.25f}),
+                                  light.castsShadow ? 1.0f : 0.0f);
                     out.directional.colorIntensity = glm::vec4(light.color, std::max(light.intensity, 0.0f));
                 }
                 else if (light.kind == RenderLightKind::ePoint && pointCount < kMaxRtPointLights)
@@ -88,6 +94,7 @@ namespace vultra
                     auto& dst        = out.pointLights[pointCount++];
                     dst.posIntensity = glm::vec4(light.position, std::max(light.intensity, 0.0f));
                     dst.colorRadius  = glm::vec4(light.color, std::max(light.range, light.radius));
+                    dst.flags        = glm::vec4(light.castsShadow ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
                 }
             }
 

@@ -35,6 +35,7 @@ struct RtPointLight
 {
     vec4 posIntensity;
     vec4 colorRadius;
+    vec4 flags;
 };
 
 layout(set = 1, binding = 1, std140) uniform RtLights
@@ -42,6 +43,7 @@ layout(set = 1, binding = 1, std140) uniform RtLights
     uvec4 counts;
     RtDirectionalLight directional;
     RtPointLight pointLights[32];
+    vec4 ambientColorIntensity;
 } u_RtLights;
 
 layout(set = 3, binding = 0) uniform accelerationStructureEXT topLevelAS;
@@ -81,6 +83,15 @@ hitAttributeEXT vec2 attribs;
 
 const uint INVALID_OFFSET = 0xFFFFFFFFu;
 const uint ALPHA_MODE_MASK = 1u;
+const float RT_PI = 3.14159265358979323846;
+
+vec3 rtSrgbToLinear(vec3 color)
+{
+    const bvec3 cutoff = lessThan(color, vec3(0.04045));
+    const vec3 higher = pow((color + 0.055) / 1.055, vec3(2.4));
+    const vec3 lower = color / 12.92;
+    return mix(higher, lower, cutoff);
+}
 
 vec3 loadVec3(uint64_t baseAddress, uint vertexIndex, uint strideBytes, uint offsetBytes, vec3 fallback)
 {
@@ -255,6 +266,7 @@ RtMaterialSample sampleMaterial(uint materialIndex, vec2 uv, vec2 duvdx, vec2 du
     }
 
     outSample.mra.y = clamp(outSample.mra.y, 0.045, 1.0);
+    outSample.baseColor.rgb = rtSrgbToLinear(outSample.baseColor.rgb);
     return outSample;
 }
 
@@ -273,6 +285,58 @@ float traceShadow(vec3 origin, vec3 direction, float tMax)
                 tMax,
                 1);
     return shadowed ? 0.0 : 1.0;
+}
+
+vec3 FresnelSchlick(float cosTheta, vec3 F0)
+{
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+float DistributionGTR(vec3 N, vec3 H, float roughness, float gamma)
+{
+    float alpha = roughness * roughness;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+    float alpha2 = alpha * alpha;
+    float denom = NdotH2 * (alpha2 - 1.0) + 1.0;
+    denom = RT_PI * pow(denom, gamma);
+    return alpha2 / (denom + 1e-12);
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k + 1e-12);
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+{
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+}
+
+vec3 rtPbrDirect(RtMaterialSample material, vec3 F0, vec3 N, vec3 V, vec3 L, vec3 radiance)
+{
+    vec3 H = normalize(V + L);
+    float roughness = clamp(material.mra.y, 0.045, 1.0);
+    float metallic = clamp(material.mra.x, 0.0, 1.0);
+
+    float NDF = DistributionGTR(N, H, roughness, 2.0);
+    float G = GeometrySmith(N, V, L, roughness);
+    vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    vec3 nominator = NDF * G * F;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 1e-12;
+    vec3 specular = nominator / denominator;
+
+    float NdotL = max(dot(N, L), 0.0);
+    return (kD * material.baseColor.rgb / RT_PI + specular) * radiance * NdotL;
 }
 
 void main()
@@ -315,12 +379,18 @@ void main()
     RtMaterialSample material = sampleMaterial(materialIndex, uvGrad.uv, uvGrad.dx, uvGrad.dy, normalWS, tangentWS);
 
     vec3 hitPos = b0 * p0WS + attribs.x * p1WS + attribs.y * p2WS;
-    vec3 shaded = material.baseColor.rgb * 0.05;
     if (material.unlit)
     {
         hitValue.color = material.baseColor.rgb;
         return;
     }
+
+    vec3 shaded = material.baseColor.rgb * u_RtLights.ambientColorIntensity.rgb *
+                  u_RtLights.ambientColorIntensity.a * clamp(material.mra.z, 0.0, 1.0);
+
+    vec3 viewDir = normalize(u_CameraBlock.data.inverseView[3].xyz - hitPos);
+    vec3 F0 = vec3(0.04);
+    F0 = mix(F0, material.baseColor.rgb, clamp(material.mra.x, 0.0, 1.0));
 
     if (u_RtLights.counts.x > 0u)
     {
@@ -328,11 +398,16 @@ void main()
         float ndotl = max(dot(material.normalWS, lightDir), 0.0);
         if (ndotl > 0.0)
         {
-            float visibility = traceShadow(hitPos + material.normalWS * 0.002, lightDir, u_CameraBlock.data.zFar);
-            float shadowAmount = 1.0 - visibility;
-            visibility = 1.0 - shadowAmount * clamp(u_RtLights.directional.directionShadowStrength.w, 0.0, 1.0);
-            shaded += material.baseColor.rgb * u_RtLights.directional.colorIntensity.rgb *
-                      u_RtLights.directional.colorIntensity.w * ndotl * visibility;
+            float shadowStrength = clamp(u_RtLights.directional.directionShadowStrength.w, 0.0, 1.0);
+            float visibility = 1.0;
+            if (shadowStrength > 0.0)
+            {
+                visibility = traceShadow(hitPos + material.normalWS * 0.002, lightDir, u_CameraBlock.data.zFar);
+                float shadowAmount = 1.0 - visibility;
+                visibility = 1.0 - shadowAmount * shadowStrength;
+            }
+            vec3 radiance = u_RtLights.directional.colorIntensity.rgb * u_RtLights.directional.colorIntensity.w;
+            shaded += rtPbrDirect(material, F0, material.normalWS, viewDir, lightDir, radiance) * visibility;
         }
     }
 
@@ -352,9 +427,12 @@ void main()
             continue;
 
         float attenuation = 1.0 - clamp(dist / radius, 0.0, 1.0);
-        attenuation *= attenuation;
-        float visibility = traceShadow(hitPos + material.normalWS * 0.002, lightDir, max(dist - 0.01, 0.001));
-        shaded += material.baseColor.rgb * light.colorRadius.rgb * light.posIntensity.w * ndotl * attenuation * visibility;
+        attenuation = attenuation * attenuation / max(dist * dist, 1e-4);
+        float visibility = 1.0;
+        if (light.flags.x > 0.5)
+            visibility = traceShadow(hitPos + material.normalWS * 0.002, lightDir, max(dist - 0.01, 0.001));
+        vec3 radiance = light.colorRadius.rgb * light.posIntensity.w * attenuation;
+        shaded += rtPbrDirect(material, F0, material.normalWS, viewDir, lightDir, radiance) * visibility;
     }
 
     hitValue.color = shaded;
