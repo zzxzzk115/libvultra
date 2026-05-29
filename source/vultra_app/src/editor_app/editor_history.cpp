@@ -139,7 +139,7 @@ namespace vultra_app
 
     void EditorHistory::commitCurrent(EditorContext& ctx, std::string fallbackLabel)
     {
-        if (m_Applying)
+        if (m_Applying || ctx.state.editorPlaying)
             return;
 
         auto current = capture(ctx);
@@ -165,6 +165,13 @@ namespace vultra_app
     {
         if (m_Applying)
             return;
+
+        if (ctx.state.editorPlaying)
+        {
+            m_PendingState.reset();
+            m_PendingLabel.clear();
+            return;
+        }
 
         auto current = capture(ctx);
         if (!current)
@@ -227,6 +234,9 @@ namespace vultra_app
 
     bool EditorHistory::undo(EditorContext& ctx)
     {
+        if (ctx.state.editorPlaying)
+            return false;
+
         commitCurrent(ctx, "Scene Edit");
         if (!canUndo())
             return false;
@@ -240,6 +250,9 @@ namespace vultra_app
 
     bool EditorHistory::redo(EditorContext& ctx)
     {
+        if (ctx.state.editorPlaying)
+            return false;
+
         commitCurrent(ctx, "Scene Edit");
         if (!canRedo())
             return false;
@@ -253,6 +266,9 @@ namespace vultra_app
 
     bool EditorHistory::jumpTo(EditorContext& ctx, std::size_t index)
     {
+        if (ctx.state.editorPlaying)
+            return false;
+
         commitCurrent(ctx, "Scene Edit");
         if (index >= m_States.size())
             return false;
