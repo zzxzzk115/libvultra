@@ -102,6 +102,30 @@ namespace vultra
             return normalizeId(std::move(filename));
         }
 
+        [[nodiscard]] const RenderLight* findPrimaryDirectionalLight(const RenderWorld* world)
+        {
+            if (!world)
+                return nullptr;
+            for (const auto& light : world->lights)
+            {
+                if (light.kind == RenderLightKind::eDirectional)
+                    return &light;
+            }
+            return nullptr;
+        }
+
+        [[nodiscard]] const RenderLight* findPrimaryShadowDirectionalLight(const RenderWorld* world)
+        {
+            if (!world)
+                return nullptr;
+            for (const auto& light : world->lights)
+            {
+                if (light.kind == RenderLightKind::eDirectional && light.castsShadow)
+                    return &light;
+            }
+            return nullptr;
+        }
+
         struct RenderGraphResRef
         {
             std::string node;
@@ -1046,16 +1070,11 @@ namespace vultra
                     settings.depthBias       = params.get<float>("depthBias", settings.depthBias);
                     settings.normalBias      = params.get<float>("normalBias", settings.normalBias);
                     settings.pcssLightRadius = params.get<float>("pcssLightRadius", settings.pcssLightRadius);
-                    if (ctx->view().renderWorld)
+                    const auto* shadowDirectionalLight = findPrimaryShadowDirectionalLight(ctx->view().renderWorld);
+                    settings.enabled = settings.enabled && shadowDirectionalLight != nullptr;
+                    if (shadowDirectionalLight)
                     {
-                        for (const auto& light : ctx->view().renderWorld->lights)
-                        {
-                            if (light.kind == RenderLightKind::eDirectional && light.castsShadow)
-                            {
-                                settings.lightDirection = light.direction;
-                                break;
-                            }
-                        }
+                        settings.lightDirection = shadowDirectionalLight->direction;
                     }
                     auto shadow = m_ShadowMapPass.addPass(*ctx, settings);
                     if (shadow.shadowMap)
@@ -1095,6 +1114,23 @@ namespace vultra
                         params.get<int>("shadowDebugMode", static_cast<int>(shadowSettings.debugMode)), 0, 5));
                     if (params.get<bool>("debugCascades", false))
                         shadowSettings.debugMode = ShadowRenderSettings::DebugMode::eCascade;
+                    const auto* primaryDirectionalLight =
+                        findPrimaryDirectionalLight(ctx->view().renderWorld);
+                    const auto* shadowDirectionalLight =
+                        findPrimaryShadowDirectionalLight(ctx->view().renderWorld);
+                    if (primaryDirectionalLight)
+                    {
+                        lightingSettings.directionalLightDirection = primaryDirectionalLight->direction;
+                        lightingSettings.directionalLightColor     = primaryDirectionalLight->color;
+                        lightingSettings.directionalLightIntensity = primaryDirectionalLight->intensity;
+                    }
+                    else if (ctx->view().renderWorld && !ctx->view().renderWorld->lights.empty())
+                    {
+                        lightingSettings.directionalLightIntensity = 0.0f;
+                    }
+                    shadowSettings.enabled = shadowSettings.enabled && shadowDirectionalLight != nullptr;
+                    if (shadowDirectionalLight)
+                        shadowSettings.lightDirection = shadowDirectionalLight->direction;
                     const auto* renderEnvironment =
                         ctx->view().renderWorld && ctx->view().renderWorld->environment.active ?
                             &ctx->view().renderWorld->environment :
@@ -1599,6 +1635,39 @@ namespace vultra
                                 }
                             });
 
+            registerBuiltin("GeneralGaussianSplatComposite",
+                            {"source"},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock&,
+                                   vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+
+                                const auto source = passCtx.getInput("source");
+                                auto*      gpuSceneView = ctx->view().gpuSceneView;
+                                if (!gpuSceneView || !gpuSceneView->hasGeneralGaussianSplats())
+                                {
+                                    passCtx.setOutput("color", source);
+                                    return;
+                                }
+
+                                ctx->data.set(kResKey_FinalCompositionSource, source);
+                                m_GaussianPreprocessPass.addPass(*ctx);
+                                auto color = m_GaussianRenderPass.addPass(*ctx);
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                                else
+                                {
+                                    passCtx.setOutput("color", source);
+                                }
+                            });
+
             registerBuiltin("GeneralGaussianSplatFoveatedComposite",
                             {"fovea", "mid", "outer", "base"},
                             {"color"},
@@ -1828,6 +1897,7 @@ namespace vultra
         {
             try
             {
+                const bool builtinGraph = m_PipelineUri.starts_with("builtin://");
                 const auto json = nlohmann::json::parse(text.value());
                 static_cast<void>(vrendergraph::loadRenderGraph(json));
                 auto feature        = Feature {};
@@ -1835,8 +1905,11 @@ namespace vultra
                 feature.renderGraph = m_PipelineUri;
                 m_Asset.rendererKey = m_RendererKeyOverride.empty() ? rendererKeyFromRenderGraphUri(m_PipelineUri) :
                                                                       m_RendererKeyOverride;
-                m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
-                loadProjectGraphPasses();
+                if (!builtinGraph)
+                {
+                    m_Asset.shaderLibraries.try_emplace("project", "res://shaders/project.vshaderlib.lua");
+                    loadProjectGraphPasses();
+                }
                 m_Asset.features.push_back(std::move(feature));
                 return true;
             }

@@ -41,6 +41,8 @@ namespace vultra
 
     private:
         friend class RenderSystem;
+        friend class UniversalRenderer;
+        friend class UniversalRtRenderer;
         void setupServices(Services services) { m_ServiceCache = &services; }
 
     protected:

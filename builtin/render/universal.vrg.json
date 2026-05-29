@@ -32,12 +32,6 @@
             220.0
           ]
         },
-        "Pixelate": {
-          "pos": [
-            2000.0,
-            80.0
-          ]
-        },
         "SelectionOutline": {
           "pos": [
             3080.0,
@@ -189,7 +183,7 @@
         "binaryRefinement": 3,
         "enabled": true,
         "maxSteps": 16,
-        "reflectionFactor": 0.20000000298023224,
+        "reflectionFactor": 0.2,
         "stride": 0.35,
         "thickness": 0.5
       },
@@ -211,30 +205,16 @@
       "type": "SsrComposite"
     },
     {
-      "enabled": false,
-      "id": "Pixelate",
-      "inputs": {
-        "source": "SsrComposite.color"
-      },
-      "outputs": {
-        "color": "Pixelate.color"
-      },
-      "params": {
-        "name": "Pixelate"
-      },
-      "type": "Pixelate"
-    },
-    {
-      "enabled": false,
+      "enabled": true,
       "id": "ToneMapping",
       "inputs": {
-        "source": "Pixelate.color"
+        "source": "SsrComposite.color"
       },
       "outputs": {
         "color": "ToneMapping.color"
       },
       "params": {
-        "enabled": false,
+        "enabled": true,
         "exposure": 1.0,
         "method": 0
       },

@@ -1,0 +1,67 @@
+{
+  "version": 3,
+  "meta": {
+    "editor": {
+      "nodes": {
+        "RayTracingPrimary": {
+          "pos": [
+            360.0,
+            80.0
+          ]
+        },
+        "ToneMapping": {
+          "pos": [
+            620.0,
+            80.0
+          ]
+        },
+        "FinalComposition": {
+          "pos": [
+            980.0,
+            80.0
+          ]
+        }
+      }
+    }
+  },
+  "passes": [
+    {
+      "enabled": true,
+      "id": "RayTracingPrimary",
+      "outputs": {
+        "color": "RayTracingPrimary.color"
+      },
+      "type": "RayTracingPrimary",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "ToneMapping",
+      "inputs": {
+        "source": "RayTracingPrimary.color"
+      },
+      "outputs": {
+        "color": "ToneMapping.color"
+      },
+      "params": {
+        "enabled": true,
+        "exposure": 1.0,
+        "method": 0
+      },
+      "type": "ToneMapping",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "ToneMapping.color"
+      },
+      "outputs": {
+        "target": "FinalComposition.target"
+      },
+      "type": "FinalComposition",
+      "viewMode": "inherit"
+    }
+  ]
+}

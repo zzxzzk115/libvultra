@@ -9,6 +9,7 @@
 #include "vultra/function/rendering/srp/builtin/features/general_gaussian_splat_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/meshlet_feature.hpp"
 #include "vultra/function/rendering/srp/builtin/features/visibility_buffer_feature.hpp"
+#include "vultra/function/rendering/srp/declarative_renderer.hpp"
 #include "vultra/function/services/camera_service.hpp"
 #include "vultra/function/services/gpu_resource_service.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
@@ -34,6 +35,10 @@
 
 namespace vultra
 {
+    UniversalRenderer::UniversalRenderer() = default;
+
+    UniversalRenderer::~UniversalRenderer() = default;
+
     namespace
     {
         [[nodiscard]] std::string formatBytes(const uint64_t bytes)
@@ -935,23 +940,18 @@ namespace vultra
         const bool forceCompatibilityByCli = m_RenderProfile == RenderProfile::eCompatibility;
         const bool useCompatibilityFeature =
             kForceCompatibilityFeature || forceCompatibilityByCli || backendApi == rhi::RenderBackendApi::eWebGPU;
-        auto& renderService = services->require<IRenderService>();
-        if (useCompatibilityFeature)
-        {
-            emplaceFeature<CompatibilityBaseColorFeature>();
-            emplaceFeature<GeneralGaussianSplatFeature>();
-            emplaceFeature<BuiltinScreenSpaceFeature>(renderService);
-            emplaceFeature<FinalCompositionFeature>();
-            return;
-        }
 
-        // Direct GBuffer is the stable highend baseline. Visibility Buffer /
-        // Thin G-Buffer remains available in-tree, but is not the default until
-        // its material/UV resolve is completed.
-        emplaceFeature<DirectGBufferFeature>(renderService);
-        emplaceFeature<GeneralGaussianSplatFeature>();
-        emplaceFeature<BuiltinScreenSpaceFeature>(renderService);
-        emplaceFeature<FinalCompositionFeature>();
+        const char* graphUri = useCompatibilityFeature ? "builtin://render/universal_compat.vrg.json" :
+                                                        "builtin://render/universal.vrg.json";
+        m_GraphRenderer = createScope<DeclarativeRenderer>(graphUri, "universal");
+        m_GraphRenderer->setupServices(*services);
+        m_GraphRenderer->init();
+    }
+
+    void UniversalRenderer::buildFrameGraph(FrameGraphBuildContext& ctx)
+    {
+        if (m_GraphRenderer)
+            m_GraphRenderer->buildFrameGraph(ctx);
     }
 
     void UniversalRenderer::onImGui()

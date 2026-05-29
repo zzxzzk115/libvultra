@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/file_dialog.hpp"
 #include "editor_app/ui/editor_window.hpp"
 
 #include <vultra/core/rhi/structs/extent2d.hpp>
@@ -8,6 +9,7 @@
 #include <vultra/function/services/render_service.hpp>
 
 #include <cstdint>
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -108,6 +110,12 @@ namespace vultra_app
         std::filesystem::path    m_RenderGraphPassCatalogProject;
         std::string              m_RenderGraphPassCatalogAssetRoot;
         uint64_t                 m_RenderGraphPassCatalogProjectGeneration {0};
+        ui::FileDialogField      m_BuiltinRenderGraphExportDialog {
+            "BuiltinRenderGraphExportPath",
+            "Export Builtin Render Graph",
+            ui::FileDialogMode::File,
+        };
+        std::array<char, 512>    m_BuiltinRenderGraphExportPath {};
         bool m_RuntimeGraphPopupOpen {false};
         bool m_RuntimeGraphPopupPendingOpen {false};
         bool m_RuntimeTexturePreviewOpen {false};

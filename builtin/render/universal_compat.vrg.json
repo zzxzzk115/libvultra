@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "editor": {
+      "nodes": {
+        "CompatibilityBaseColor": {
+          "pos": [
+            260.0,
+            80.0
+          ]
+        },
+        "GeneralGaussianSplatComposite": {
+          "pos": [
+            620.0,
+            80.0
+          ]
+        },
+        "FinalComposition": {
+          "pos": [
+            980.0,
+            80.0
+          ]
+        }
+      }
+    }
+  },
+  "passes": [
+    {
+      "enabled": true,
+      "id": "CompatibilityBaseColor",
+      "outputs": {
+        "color": "CompatibilityBaseColor.color"
+      },
+      "type": "CompatibilityBaseColor"
+    },
+    {
+      "enabled": true,
+      "id": "GeneralGaussianSplatComposite",
+      "inputs": {
+        "source": "CompatibilityBaseColor.color"
+      },
+      "outputs": {
+        "color": "GeneralGaussianSplatComposite.color"
+      },
+      "type": "GeneralGaussianSplatComposite"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "GeneralGaussianSplatComposite.color"
+      },
+      "outputs": {
+        "target": "FinalComposition.target"
+      },
+      "type": "FinalComposition"
+    }
+  ],
+  "version": 3
+}

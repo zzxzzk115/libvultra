@@ -7,6 +7,7 @@
 #include <vultra/core/rhi/sampler.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
+#include <vultra/function/rendering/srp/builtin/builtin_rendergraph_registry.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/imgui_service.hpp>
@@ -1319,9 +1320,11 @@ namespace vultra_app
 
         std::filesystem::path assetPathForUri(const EditorContext& ctx, std::string_view uri)
         {
-            if (ctx.state.currentProject.empty() || uri.empty())
+            if (uri.empty())
                 return {};
             constexpr std::string_view prefix = "res://";
+            if (ctx.state.currentProject.empty())
+                return {};
             if (!uri.starts_with(prefix))
                 return {};
             return (ctx.state.currentProject / ctx.state.currentAssetRoot /
@@ -1332,6 +1335,15 @@ namespace vultra_app
         std::vector<std::string> collectProjectRenderGraphUris(const EditorContext& ctx)
         {
             return collectProjectAssetUrisWithSuffix(ctx.state.currentProject, ctx.state.currentAssetRoot, ".vrg.json");
+        }
+
+        std::vector<std::string> collectBuiltinRenderGraphUris()
+        {
+            std::vector<std::string> out;
+            for (const auto& source : vultra::builtinRenderGraphSources())
+                out.emplace_back(source.uri);
+            std::sort(out.begin(), out.end());
+            return out;
         }
 
         std::string rendererKeyFromRenderGraphUri(std::string_view uri)
@@ -1367,6 +1379,10 @@ namespace vultra_app
             {
                 const EditorCpuScope refreshPerf {ctx, "Editor::RenderGraph/AssetSelectorRefresh"};
                 cachedUris               = collectProjectRenderGraphUris(ctx);
+                auto builtinUris         = collectBuiltinRenderGraphUris();
+                cachedUris.insert(cachedUris.end(), builtinUris.begin(), builtinUris.end());
+                std::sort(cachedUris.begin(), cachedUris.end());
+                cachedUris.erase(std::unique(cachedUris.begin(), cachedUris.end()), cachedUris.end());
                 cachedProject            = ctx.state.currentProject;
                 cachedAssetRoot          = ctx.state.currentAssetRoot;
                 cachedProjectGeneration  = ctx.state.projectGeneration;
@@ -3217,7 +3233,9 @@ namespace vultra_app
         bool                              editingFeatureInternals {false};
         bool                              focusPipelineEditor {false};
         bool                              directGraphAsset {false};
+        bool                              builtinGraphAsset {false};
         std::string                       editingFeature;
+        std::string                       loadedUri;
 
         GraphEditorState()
         {
@@ -4631,16 +4649,21 @@ namespace vultra_app
             state.pipelineDirty = false;
             state.runtimeDirty  = false;
             state.path.clear();
+            state.loadedUri.clear();
             state.pipelinePath.clear();
             state.editingFeatureInternals = true;
             state.editingFeature.clear();
+            state.builtinGraphAsset = false;
         }
         ImGui::Separator();
 
-        const auto graphPath = ctx.state.currentEditingRenderGraph.ends_with(".vrg.json") ?
+        const bool isBuiltinGraph = ctx.state.currentEditingRenderGraph.starts_with("builtin://render/");
+        const auto graphPath = !isBuiltinGraph && ctx.state.currentEditingRenderGraph.ends_with(".vrg.json") ?
                                    assetPathForUri(ctx, ctx.state.currentEditingRenderGraph) :
                                    std::filesystem::path {};
         auto       graphUri  = [&]() {
+            if (ctx.state.currentEditingRenderGraph.starts_with("builtin://render/"))
+                return ctx.state.currentEditingRenderGraph;
             if (ctx.state.currentProject.empty() || state.path.empty())
                 return std::string {};
             std::error_code ec;
@@ -4683,6 +4706,13 @@ namespace vultra_app
             return true;
         };
         auto persistGraph = [&]() {
+            if (state.builtinGraphAsset)
+            {
+                state.status            = "Builtin graphs are read-only; use Export.";
+                ctx.state.statusMessage = state.status;
+                return false;
+            }
+
             std::string validationError;
             if (!validateRenderGraph(state.registry, state.graph, validationError))
             {
@@ -4722,11 +4752,28 @@ namespace vultra_app
             return true;
         };
 
-        if (!graphPath.empty() && graphPath != state.path)
+        if (isBuiltinGraph && ctx.state.currentEditingRenderGraph != state.loadedUri)
         {
-            state.path = graphPath;
+            state.path.clear();
+            state.loadedUri              = ctx.state.currentEditingRenderGraph;
             state.pipelinePath.clear();
             state.directGraphAsset        = true;
+            state.builtinGraphAsset       = true;
+            state.loaded                  = false;
+            state.dirty                   = false;
+            state.pipelineDirty           = false;
+            state.runtimeDirty            = false;
+            state.editingFeatureInternals = true;
+            state.editingFeature.clear();
+            state.status.clear();
+        }
+        else if (!graphPath.empty() && graphPath != state.path)
+        {
+            state.path = graphPath;
+            state.loadedUri = ctx.state.currentEditingRenderGraph;
+            state.pipelinePath.clear();
+            state.directGraphAsset        = true;
+            state.builtinGraphAsset       = false;
             state.loaded                  = false;
             state.dirty                   = false;
             state.pipelineDirty           = false;
@@ -4755,7 +4802,7 @@ namespace vultra_app
         ImGui::Checkbox("Live Apply", &state.liveApply);
         ImGui::SameLine();
 
-        const bool canSave = state.loaded && !state.path.empty();
+        const bool canSave = state.loaded && !state.path.empty() && !state.builtinGraphAsset;
         if (!canSave)
             ImGui::BeginDisabled();
         if (ImGui::SmallButton(ICON_MDI_CONTENT_SAVE " Save"))
@@ -4764,6 +4811,54 @@ namespace vultra_app
         }
         if (!canSave)
             ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        const bool canExport = state.loaded && state.builtinGraphAsset;
+        if (!canExport)
+            ImGui::BeginDisabled();
+        if (ImGui::SmallButton(ICON_MDI_EXPORT " Export"))
+        {
+            m_BuiltinRenderGraphExportPath[0] = '\0';
+            ImGui::OpenPopup("Export Builtin Render Graph");
+        }
+        if (!canExport)
+            ImGui::EndDisabled();
+
+        if (ImGui::BeginPopupModal("Export Builtin Render Graph", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::TextUnformatted("Builtin graphs are read-only. Choose an export target.");
+            const auto filename =
+                std::filesystem::path(std::string(ctx.state.currentEditingRenderGraph)).filename().generic_string();
+            ImGui::TextDisabled("Suggested file: %s", filename.c_str());
+            m_BuiltinRenderGraphExportDialog.drawBrowseOnly(
+                "Target", m_BuiltinRenderGraphExportPath.data(), m_BuiltinRenderGraphExportPath.size());
+
+            const bool hasTarget = m_BuiltinRenderGraphExportPath[0] != '\0';
+            if (!hasTarget)
+                ImGui::BeginDisabled();
+            if (ImGui::Button(ICON_MDI_EXPORT " Export", ImVec2 {112.0f, 0.0f}))
+            {
+                std::string error;
+                const auto  target = std::filesystem::path(m_BuiltinRenderGraphExportPath.data()).lexically_normal();
+                if (writeTextAtomic(target, serializedGraph(), error))
+                {
+                    state.status            = "Exported";
+                    ctx.state.statusMessage = "Exported builtin render graph: " + target.generic_string();
+                    ImGui::CloseCurrentPopup();
+                }
+                else
+                {
+                    state.status            = error;
+                    ctx.state.statusMessage = error;
+                }
+            }
+            if (!hasTarget)
+                ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2 {96.0f, 0.0f}))
+                ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
 
         ImGui::SameLine();
         if (ImGui::SmallButton("Topo Order") && state.loaded)
@@ -4791,8 +4886,12 @@ namespace vultra_app
         if (ImGui::SmallButton(ICON_MDI_DELETE " Delete Selected") && state.loaded)
             state.removeSelected();
 
-        ImGui::TextDisabled("%s%s",
-                            state.path.empty() ? "No render graph selected" : state.path.generic_string().c_str(),
+        const auto graphLabel = state.builtinGraphAsset ? state.loadedUri :
+                                state.path.empty()     ? std::string {"No render graph selected"} :
+                                                         state.path.generic_string();
+        ImGui::TextDisabled("%s%s%s",
+                            graphLabel.c_str(),
+                            state.builtinGraphAsset ? " (builtin, read-only)" : "",
                             state.dirty ? " *" : "");
 
         std::string bannerMessage;
@@ -4817,6 +4916,40 @@ namespace vultra_app
         drawGraphStatusBanner(bannerMessage, bannerError);
 
         ImGui::Separator();
+
+        if (!state.loaded && state.builtinGraphAsset)
+        {
+            if (auto* assetService = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
+            {
+                auto text = assetService->loadTextAssetSync(state.loadedUri);
+                if (text)
+                {
+                    try
+                    {
+                        const auto json = nlohmann::json::parse(text.value());
+                        state.graph     = vrendergraph::loadRenderGraph(json);
+                        for (auto& pass : state.graph.passes)
+                        {
+                            if (state.registry.contains(pass.type))
+                                ensureSlots(pass, state.registry.get(pass.type));
+                        }
+                        state.pipelineFeatures.clear();
+                        state.pipelineText.clear();
+                        state.loaded         = true;
+                        state.dirty          = false;
+                        state.pipelineDirty  = false;
+                        state.runtimeDirty   = false;
+                        state.applyPositions = true;
+                        state.status         = "Loaded builtin graph";
+                    }
+                    catch (const std::exception& e)
+                    {
+                        ImGui::TextColored(
+                            ImVec4 {1.0f, 0.35f, 0.25f, 1.0f}, "Failed to load builtin graph: %s", e.what());
+                    }
+                }
+            }
+        }
 
         if (!state.loaded && !state.path.empty())
         {
@@ -4886,7 +5019,7 @@ namespace vultra_app
             ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))
             persistGraph();
 
-        if (state.liveApply && state.runtimeDirty && !state.path.empty())
+        if (state.liveApply && state.runtimeDirty && !graphUri().empty())
             applyGraphToRuntime();
     }
 

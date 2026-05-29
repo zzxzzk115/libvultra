@@ -441,6 +441,119 @@ task("shader_task")
     end)
 task_end()
 
+task("rendergraph_task")
+    on_run(function ()
+        import("core.project.config")
+
+        local function emit_summary(label, built, skipped, samples)
+            if built == 0 then
+                cprint("${cyan}[OK]${clear} %s up to date (%d items)", label, skipped)
+                return
+            end
+
+            cprint("${green}[EMBED]${clear} %s updated (%d changed, %d unchanged)", label, built, skipped)
+            for _, sample in ipairs(samples) do
+                cprint("  - %s", sample)
+            end
+            if built > #samples then
+                cprint("  - ... and %d more", built - #samples)
+            end
+        end
+
+        local projectdir = get_config("project_dir")
+        local graph_root = path.join(projectdir, "builtin/render")
+        local header_root = path.join(projectdir, "builtin/generated/include")
+        local header = path.join(header_root, "builtin_rendergraphs.hpp")
+        local build_script = path.join(projectdir, "builtin/xmake.lua")
+
+        os.mkdir(header_root)
+
+        local files = os.files(path.join(graph_root, "**.vrg.json"))
+        table.sort(files)
+
+        local newest_mtime = os.exists(build_script) and os.mtime(build_script) or 0
+        for _, file in ipairs(files) do
+            newest_mtime = math.max(newest_mtime, os.mtime(file))
+        end
+
+        local rebuild = true
+        if os.exists(header) and os.mtime(header) >= newest_mtime then
+            rebuild = false
+        end
+
+        if rebuild then
+            local function sanitize_symbol_name(value)
+                local out = value:gsub("[^%w_]", "_")
+                if out:match("^[0-9]") then
+                    out = "_" .. out
+                end
+                return out
+            end
+
+            local function renderer_key(rel)
+                local name = path.filename(rel)
+                if name:sub(-#".vrg.json") == ".vrg.json" then
+                    name = name:sub(1, #name - #".vrg.json")
+                end
+                return name:gsub("[%- ]", "_"):lower()
+            end
+
+            local records = {}
+            local f = io.open(header, "w")
+            f:write("// auto-generated\n")
+            f:write("#pragma once\n\n")
+            f:write("#include <cstddef>\n")
+            f:write("#include <cstdint>\n\n")
+
+            local function write_embedded_blob(symbol_name, data)
+                f:write(string.format("inline constexpr unsigned char %s[] = {\n", symbol_name))
+                for i = 1, #data do
+                    if i % 12 == 1 then
+                        f:write("    ")
+                    end
+                    f:write(string.format("0x%02X", data:byte(i)))
+                    if i < #data then
+                        f:write(",")
+                    end
+                    if i % 12 == 0 then
+                        f:write("\n")
+                    end
+                end
+                f:write("\n};\n")
+                f:write(string.format("inline constexpr std::size_t %s_size = %d;\n\n", symbol_name, #data))
+            end
+
+            for _, file in ipairs(files) do
+                local rel = path.relative(file, graph_root):gsub("\\", "/")
+                local symbol = "builtin_rendergraph_" .. sanitize_symbol_name(rel)
+                local data = io.readfile(file, {encoding = "binary"})
+                write_embedded_blob(symbol, data)
+                table.insert(records, {
+                    uri = "builtin://render/" .. rel,
+                    key = renderer_key(rel),
+                    symbol = symbol,
+                })
+            end
+
+            f:write("#define VULTRA_BUILTIN_RENDERGRAPH_SOURCES(X) \\\n")
+            for i, record in ipairs(records) do
+                local suffix = i < #records and " \\" or ""
+                f:write(string.format(
+                    "    X(\"%s\", \"%s\", %s)%s\n",
+                    record.uri,
+                    record.key,
+                    record.symbol,
+                    suffix))
+            end
+            f:write("\n")
+            f:write(string.format("inline constexpr std::size_t builtin_rendergraph_sources_count = %d;\n", #records))
+            f:close()
+        end
+
+        emit_summary("builtin render graphs", rebuild and 1 or 0, rebuild and 0 or 1, {"builtin_rendergraphs.hpp"})
+    end)
+task_end()
+
 -- Texture convert task
 task("texture_task")
     on_run(function ()
@@ -624,6 +737,7 @@ target("vultra_builtin_assets")
     set_kind("headeronly")
 
 	add_headerfiles("generated/include/**.h")
+	add_headerfiles("generated/include/**.hpp")
     add_includedirs("generated/include", {public = true}) -- public: let other targets to auto include
     add_rules("utils.install.cmake_importfiles")
     add_rules("utils.install.pkgconfig_importfiles")
@@ -633,6 +747,7 @@ target("vultra_builtin_assets")
     on_config(function (target)
         import("core.base.task")
         task.run("shader_task")
+        task.run("rendergraph_task")
         task.run("texture_task")
         task.run("font_task")
     end)
