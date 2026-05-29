@@ -28,9 +28,6 @@
     {
       "enabled": true,
       "id": "RayTracingPrimary",
-      "outputs": {
-        "color": "RayTracingPrimary.color"
-      },
       "type": "RayTracingPrimary",
       "viewMode": "inherit"
     },
@@ -39,9 +36,6 @@
       "id": "ToneMapping",
       "inputs": {
         "source": "RayTracingPrimary.color"
-      },
-      "outputs": {
-        "color": "ToneMapping.color"
       },
       "params": {
         "enabled": true,
@@ -56,9 +50,6 @@
       "id": "FinalComposition",
       "inputs": {
         "source": "ToneMapping.color"
-      },
-      "outputs": {
-        "target": "FinalComposition.target"
       },
       "type": "FinalComposition",
       "viewMode": "inherit"

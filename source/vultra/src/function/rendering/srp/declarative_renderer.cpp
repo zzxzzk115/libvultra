@@ -73,6 +73,28 @@ namespace vultra
             return value.is<std::string>() ? value.as<std::string>() : std::move(fallback);
         }
 
+        [[nodiscard]] std::vector<std::string> getStringList(sol::table table, const char* key)
+        {
+            std::vector<std::string> out;
+            sol::object              value = table[key];
+            if (value.is<std::string>())
+                out.push_back(value.as<std::string>());
+            else if (value.is<sol::table>())
+            {
+                sol::table values = value.as<sol::table>();
+                for (const auto& [_, item] : values)
+                {
+                    static_cast<void>(_);
+                    if (item.is<std::string>())
+                        out.push_back(item.as<std::string>());
+                }
+            }
+
+            out.erase(std::remove_if(out.begin(), out.end(), [](const auto& item) { return item.empty(); }), out.end());
+            out.erase(std::unique(out.begin(), out.end()), out.end());
+            return out;
+        }
+
         [[nodiscard]] std::string normalizeId(std::string value)
         {
             for (auto& ch : value)
@@ -150,6 +172,88 @@ namespace vultra
             if (slot == "out")
                 return std::string(node);
             return std::string(node) + "." + std::string(slot);
+        }
+
+        void materializeRenderGraphDefaultOutputs(const vrendergraph::RenderGraphRegistry& registry,
+                                                  vrendergraph::RenderGraphDesc&           desc)
+        {
+            for (auto& pass : desc.passes)
+            {
+                if (!registry.contains(pass.type))
+                    continue;
+
+                const auto& def = registry.get(pass.type);
+                for (const auto& slot : def.outputs)
+                    pass.outputs.try_emplace(slot, makeRenderGraphResRef(pass.id, slot));
+            }
+        }
+
+        bool applyRenderGraphTopoOrder(vrendergraph::RenderGraphDesc& desc, std::string* error)
+        {
+            std::unordered_map<std::string, size_t> order;
+            for (size_t i = 0; i < desc.passes.size(); ++i)
+                order[desc.passes[i].id] = i;
+
+            std::unordered_map<std::string, std::vector<std::string>> edges;
+            std::unordered_map<std::string, int>                      indegree;
+            for (const auto& pass : desc.passes)
+                indegree.try_emplace(pass.id, 0);
+
+            for (const auto& pass : desc.passes)
+            {
+                for (const auto& [_, ref] : pass.inputs)
+                {
+                    static_cast<void>(_);
+                    const auto parsed = parseRenderGraphResRef(ref.resource);
+                    if (!parsed || !order.contains(parsed->node))
+                        continue;
+                    edges[parsed->node].push_back(pass.id);
+                    ++indegree[pass.id];
+                }
+            }
+
+            std::vector<std::string> ready;
+            for (const auto& [id, degree] : indegree)
+            {
+                if (degree == 0)
+                    ready.push_back(id);
+            }
+
+            std::vector<std::string> sorted;
+            while (!ready.empty())
+            {
+                std::sort(
+                    ready.begin(), ready.end(), [&](const auto& a, const auto& b) { return order[a] < order[b]; });
+                const auto id = ready.front();
+                ready.erase(ready.begin());
+                sorted.push_back(id);
+
+                for (const auto& dst : edges[id])
+                {
+                    if (--indegree[dst] == 0)
+                        ready.push_back(dst);
+                }
+            }
+
+            if (sorted.size() != desc.passes.size())
+            {
+                if (error)
+                    *error = "render graph contains a pass dependency cycle";
+                return false;
+            }
+
+            std::vector<vrendergraph::PassDecl> reordered;
+            reordered.reserve(desc.passes.size());
+            for (const auto& id : sorted)
+            {
+                auto it = std::find_if(desc.passes.begin(), desc.passes.end(), [&](const auto& pass) {
+                    return pass.id == id;
+                });
+                if (it != desc.passes.end())
+                    reordered.push_back(std::move(*it));
+            }
+            desc.passes = std::move(reordered);
+            return true;
         }
 
         enum class RenderGraphBackbufferView : uint8_t
@@ -461,6 +565,110 @@ namespace vultra
         }
     } // namespace
 
+    void registerBuiltinRenderGraphPasses(vrendergraph::RenderGraphRegistry& registry)
+    {
+        const auto noop = [](FrameGraph&,
+                             FrameGraphBlackboard&,
+                             const vrendergraph::ParamBlock&,
+                             vrendergraph::PassBuildContext&) {};
+        const auto pass = [&](std::string                          type,
+                              std::vector<std::string>             inputs,
+                              std::vector<std::string>             outputs,
+                              std::vector<vrendergraph::ParamDesc> params = {}) {
+            if (registry.contains(type))
+                return;
+            registry.registerPass(vrendergraph::PassDefinition {
+                .type    = std::move(type),
+                .setup   = noop,
+                .inputs  = std::move(inputs),
+                .outputs = std::move(outputs),
+                .params  = std::move(params),
+            });
+        };
+
+        pass("CompatibilityBaseColor", {}, {"color"});
+        pass("DirectGBuffer", {}, {"color", "depth", "normal", "material", "entityId"});
+        pass("DepthPre", {}, {"depth"});
+        pass("ShadowMap",
+             {},
+             {"shadowMap", "shadowData"},
+             {
+                 {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                 {.name = "resolution", .type = vrendergraph::ParamType::eInt, .defaultValue = 2048},
+                 {.name = "cascadeCount", .type = vrendergraph::ParamType::eInt, .defaultValue = 4},
+                 {.name = "coverageRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 75.0f},
+                 {.name = "lightDistance", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f},
+                 {.name = "zRange", .type = vrendergraph::ParamType::eFloat, .defaultValue = 120.0f},
+                 {.name = "splitLambda", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.60f},
+                 {.name = "autoFitBounds", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                 {.name = "stableTexelSnapping", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
+                 {.name = "depthBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.0012f},
+                 {.name = "normalBias", .type = vrendergraph::ParamType::eFloat, .defaultValue = 0.015f},
+                 {.name = "pcssLightRadius", .type = vrendergraph::ParamType::eFloat, .defaultValue = 1.5f},
+             });
+        pass("DeferredLighting",
+             {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"},
+             {"color"});
+        pass("HzbGenerate", {"depth"}, {"hzb"});
+        pass("Ssao",
+             {"depth", "normal"},
+             {"ao"},
+             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+        pass("Ssr",
+             {"color", "depth", "normal", "material"},
+             {"reflection"},
+             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+        pass("SsrComposite",
+             {"source", "reflection"},
+             {"color"},
+             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+        pass("ToneMapping",
+             {"source"},
+             {"color"},
+             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+        pass("Fxaa",
+             {"source"},
+             {"color"},
+             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+        pass("SelectionOutline",
+             {"source", "entityId", "depth"},
+             {"color"},
+             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+        pass("FinalComposition", {"source"}, {"target"});
+        pass("RayTracingPrimary", {}, {"color"});
+        pass("VisibilityBuffer", {}, {"visibility"});
+        pass("ThinGBuffer", {"visibility"}, {"color", "normal", "material"});
+        pass("CoarseInstanceCull", {}, {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"});
+        pass("MeshletCull", {}, {"visibleMeshlet", "visibleMeshletCount"});
+        pass("BuildIndirect",
+             {},
+             {"draw",
+              "instance",
+              "meshTable",
+              "transform",
+              "meshlets",
+              "visibleMeshlet",
+              "visibleMeshletCount",
+              "materialTable"});
+        pass("DrawsetBuild", {}, {"draw", "meshlets", "indirect", "drawSet"});
+        pass("MeshletHiZCull", {}, {"visibleMeshlet", "visibleMeshletCount"});
+        pass("GeneralGaussianSplatPreprocess",
+             {},
+             {"draw",
+              "packedSource",
+              "selectedSource",
+              "visibleSplat",
+              "sortKey",
+              "sortIndex",
+              "visibleCount",
+              "indirect",
+              "sortStorage",
+              "sh"});
+        pass("GeneralGaussianSplatRender", {}, {"color"});
+        pass("GeneralGaussianSplatComposite", {"source"}, {"color"});
+        pass("GeneralGaussianSplatFoveatedComposite", {"fovea", "mid", "outer", "base"}, {"color"});
+    }
+
     class DeclarativeRenderer::FullscreenPassRuntime
     {
     public:
@@ -703,8 +911,20 @@ namespace vultra
         void build(FrameGraphBuildContext& ctx)
         {
             vrendergraph::RenderGraphDesc activeDesc = makeActiveGraphWithPassthrough(m_Desc, ctx.view());
+            materializeRenderGraphDefaultOutputs(m_Registry, activeDesc);
             if (activeDesc.passes.empty())
                 return;
+
+            std::string topoError;
+            if (!applyRenderGraphTopoOrder(activeDesc, &topoError))
+            {
+                if (topoError != m_LastValidationError)
+                {
+                    VULTRA_CORE_ERROR("[DeclarativeRenderer] Invalid render graph '{}': {}", m_Uri, topoError);
+                    m_LastValidationError = topoError;
+                }
+                return;
+            }
 
             std::string validationError;
             if (!validateActiveGraph(activeDesc, validationError))
@@ -944,13 +1164,13 @@ namespace vultra
                             else
                                 runtime->update(pass, library);
 
-                            const auto input  = passCtx.getInput("source");
+                            const auto input  = passCtx.getInput(pass.input.empty() ? "source" : pass.input);
                             const auto output = runtime->addPass(*ctx, input, {}, false);
                             if (output)
-                                passCtx.setOutput("color", output);
+                                passCtx.setOutput(pass.output.empty() ? "color" : pass.output, output);
                         },
-                    .inputs  = {"source"},
-                    .outputs = {"color"},
+                    .inputs  = projectPass.inputs.empty() ? std::vector<std::string> {"source"} : projectPass.inputs,
+                    .outputs = projectPass.outputs.empty() ? std::vector<std::string> {"color"} : projectPass.outputs,
                     .params =
                         {
                             {.name         = "name",
@@ -2070,10 +2290,17 @@ namespace vultra
         if (outPass.type.empty())
             return false;
 
+        outPass.inputs = getStringList(table, "inputs");
+        if (outPass.inputs.empty())
+            outPass.inputs.push_back(getString(table, "input", "source"));
+        outPass.outputs = getStringList(table, "outputs");
+        if (outPass.outputs.empty())
+            outPass.outputs.push_back(getString(table, "output", "color"));
+
         auto& pass  = outPass.fullscreen;
         pass.name   = getString(table, "passName", outPass.type);
-        pass.input  = "source";
-        pass.output = "color";
+        pass.input  = outPass.inputs.front();
+        pass.output = outPass.outputs.front();
 
         sol::object shaderObj = table["shader"];
         if (!shaderObj.is<sol::table>())

@@ -8,6 +8,7 @@
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/builtin/builtin_rendergraph_registry.hpp>
+#include <vultra/function/rendering/srp/declarative_renderer.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/imgui_service.hpp>
@@ -172,6 +173,82 @@ namespace vultra_app
                 graph.resources.begin(), graph.resources.end(), [&](const auto& r) { return r.name == name; });
         }
 
+        bool passTypeHasOutput(const vrendergraph::RenderGraphRegistry& registry,
+                               const vrendergraph::PassDecl&            pass,
+                               std::string_view                         slot)
+        {
+            if (!registry.contains(pass.type))
+                return false;
+            const auto& outputs = registry.get(pass.type).outputs;
+            return std::find(outputs.begin(), outputs.end(), slot) != outputs.end();
+        }
+
+        const vrendergraph::PassDecl* findUniquePassByTypeWithOutput(const vrendergraph::RenderGraphRegistry& registry,
+                                                                      const vrendergraph::RenderGraphDesc&     graph,
+                                                                      std::string_view                         type,
+                                                                      std::string_view                         slot)
+        {
+            const vrendergraph::PassDecl* match = nullptr;
+            for (const auto& pass : graph.passes)
+            {
+                if (pass.type != type || !passTypeHasOutput(registry, pass, slot))
+                    continue;
+                if (match)
+                    return nullptr;
+                match = &pass;
+            }
+            return match;
+        }
+
+        bool repairMissingInputRefs(const vrendergraph::RenderGraphRegistry& registry,
+                                    vrendergraph::RenderGraphDesc&           graph)
+        {
+            bool changed = false;
+            for (auto& pass : graph.passes)
+            {
+                for (auto& [slot, ref] : pass.inputs)
+                {
+                    static_cast<void>(slot);
+                    auto parsed = parseResRef(ref);
+                    if (!parsed || findPass(graph, parsed->node) || hasResource(graph, parsed->node))
+                        continue;
+
+                    if (const auto* replacement =
+                            findUniquePassByTypeWithOutput(registry, graph, parsed->node, parsed->slot))
+                    {
+                        ref = makeResRef(replacement->id, parsed->slot);
+                    }
+                    else
+                    {
+                        ref.clear();
+                    }
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+
+        void removeDefaultOutputRefs(vrendergraph::RenderGraphDesc& graph)
+        {
+            for (auto& pass : graph.passes)
+            {
+                if (pass.outputs.empty())
+                    continue;
+
+                bool allDefault = true;
+                for (const auto& [slot, value] : pass.outputs)
+                {
+                    if (!value.selector.empty() || value.resource != makeResRef(pass.id, slot))
+                    {
+                        allDefault = false;
+                        break;
+                    }
+                }
+                if (allDefault)
+                    pass.outputs.clear();
+            }
+        }
+
         void applyRenderGraphAutoLayout(const vrendergraph::RenderGraphRegistry& registry,
                                         vrendergraph::RenderGraphDesc&           graph)
         {
@@ -260,8 +337,6 @@ namespace vultra_app
         {
             for (const auto& slot : def.inputs)
                 pass.inputs.try_emplace(slot, "");
-            for (const auto& slot : def.outputs)
-                pass.outputs.try_emplace(slot, pass.id + "." + slot);
             for (const auto& param : def.params)
             {
                 auto& raw = pass.params.raw();
@@ -1068,149 +1143,7 @@ namespace vultra_app
 
         void registerEditorBuiltinRenderGraphPasses(vrendergraph::RenderGraphRegistry& registry)
         {
-            const auto noop = [](FrameGraph&,
-                                 FrameGraphBlackboard&,
-                                 const vrendergraph::ParamBlock&,
-                                 vrendergraph::PassBuildContext&) {};
-            const auto pass = [&](std::string                          type,
-                                  std::vector<std::string>             inputs,
-                                  std::vector<std::string>             outputs,
-                                  std::vector<vrendergraph::ParamDesc> params = {}) {
-                registry.registerPass(vrendergraph::PassDefinition {
-                    .type    = std::move(type),
-                    .setup   = noop,
-                    .inputs  = std::move(inputs),
-                    .outputs = std::move(outputs),
-                    .params  = std::move(params),
-                });
-            };
-
-            pass("CompatibilityBaseColor", {}, {"color"});
-            pass("DirectGBuffer", {}, {"color", "depth", "normal", "material", "entityId"});
-            pass("DepthPre", {}, {"depth"});
-            pass("ShadowMap",
-                 {},
-                 {"shadowMap", "shadowData"},
-                 {
-                     {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name         = "resolution",
-                      .type         = vrendergraph::ParamType::eInt,
-                      .defaultValue = 2048,
-                      .minValue     = 256,
-                      .maxValue     = 8192},
-                     {.name         = "cascadeCount",
-                      .type         = vrendergraph::ParamType::eInt,
-                      .defaultValue = 4,
-                      .minValue     = 1,
-                      .maxValue     = 4},
-                     {.name         = "coverageRadius",
-                      .type         = vrendergraph::ParamType::eFloat,
-                      .defaultValue = 75.0f,
-                      .minValue     = 1.0f,
-                      .maxValue     = 500.0f},
-                     {.name         = "lightDistance",
-                      .type         = vrendergraph::ParamType::eFloat,
-                      .defaultValue = 120.0f,
-                      .minValue     = 1.0f,
-                      .maxValue     = 500.0f},
-                     {.name         = "zRange",
-                      .type         = vrendergraph::ParamType::eFloat,
-                      .defaultValue = 120.0f,
-                      .minValue     = 1.0f,
-                      .maxValue     = 800.0f},
-                     {.name         = "splitLambda",
-                      .type         = vrendergraph::ParamType::eFloat,
-                      .defaultValue = 0.60f,
-                      .minValue     = 0.0f,
-                      .maxValue     = 1.0f},
-                     {.name = "autoFitBounds", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name = "stableTexelSnapping", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                     {.name         = "depthBias",
-                      .type         = vrendergraph::ParamType::eFloat,
-                      .defaultValue = 0.0012f,
-                      .minValue     = 0.0f,
-                      .maxValue     = 0.1f},
-                     {.name         = "normalBias",
-                      .type         = vrendergraph::ParamType::eFloat,
-                      .defaultValue = 0.015f,
-                      .minValue     = 0.0f,
-                      .maxValue     = 1.0f},
-                     {.name         = "pcssLightRadius",
-                      .type         = vrendergraph::ParamType::eFloat,
-                      .defaultValue = 1.5f,
-                      .minValue     = 0.0f,
-                      .maxValue     = 16.0f},
-                 });
-            pass("DeferredLighting",
-                 {"color", "normal", "material", "depth", "ao", "shadowMap", "shadowData"},
-                 {"color"},
-                 {});
-            pass("HzbGenerate", {"depth"}, {"hzb"});
-            pass("Ssao",
-                 {"depth", "normal"},
-                 {"ao"},
-                 {
-                     {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 });
-            pass("Ssr",
-                 {"color", "depth", "normal", "material"},
-                 {"reflection"},
-                 {
-                     {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 });
-            pass("SsrComposite",
-                 {"source", "reflection"},
-                 {"color"},
-                 {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-            pass("ToneMapping",
-                 {"source"},
-                 {"color"},
-                 {
-                     {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 });
-            pass("Fxaa",
-                 {"source"},
-                 {"color"},
-                 {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
-            pass("SelectionOutline",
-                 {"source", "entityId", "depth"},
-                 {"color"},
-                 {
-                     {.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true},
-                 });
-            pass("FinalComposition", {"source"}, {"target"});
-            pass("RayTracingPrimary", {}, {"color"});
-            pass("VisibilityBuffer", {}, {"visibility"});
-            pass("ThinGBuffer", {"visibility"}, {"color", "normal", "material"});
-            pass("CoarseInstanceCull", {}, {"visibleInstance", "visibleInstanceCount", "meshletCullDispatchArgs"});
-            pass("MeshletCull", {}, {"visibleMeshlet", "visibleMeshletCount"});
-            pass("BuildIndirect",
-                 {},
-                 {"draw",
-                  "instance",
-                  "meshTable",
-                  "transform",
-                  "meshlets",
-                  "visibleMeshlet",
-                  "visibleMeshletCount",
-                  "materialTable"});
-            pass("DrawsetBuild", {}, {"draw", "meshlets", "indirect", "drawSet"});
-            pass("MeshletHiZCull", {}, {"visibleMeshlet", "visibleMeshletCount"});
-            pass("GeneralGaussianSplatPreprocess",
-                 {},
-                 {"draw",
-                  "packedSource",
-                  "selectedSource",
-                  "visibleSplat",
-                  "sortKey",
-                  "sortIndex",
-                  "visibleCount",
-                  "indirect",
-                  "sortStorage",
-                  "sh"});
-            pass("GeneralGaussianSplatRender", {}, {"color"});
-            pass("GeneralGaussianSplatComposite", {"source"}, {"color"});
-            pass("GeneralGaussianSplatFoveatedComposite", {"fovea", "mid", "outer", "base"}, {"color"});
+            vultra::registerBuiltinRenderGraphPasses(registry);
         }
 
         std::string trim(std::string_view text)
@@ -1220,6 +1153,33 @@ namespace vultra_app
                 return {};
             const auto last = text.find_last_not_of(" \t\r\n");
             return std::string(text.substr(first, last - first + 1));
+        }
+
+        std::string solString(sol::table table, const char* key, std::string fallback = {})
+        {
+            sol::object value = table[key];
+            return value.is<std::string>() ? value.as<std::string>() : std::move(fallback);
+        }
+
+        std::vector<std::string> solStringList(sol::table table, const char* key)
+        {
+            std::vector<std::string> out;
+            sol::object              value = table[key];
+            if (value.is<std::string>())
+                out.push_back(value.as<std::string>());
+            else if (value.is<sol::table>())
+            {
+                sol::table values = value.as<sol::table>();
+                for (const auto& [_, item] : values)
+                {
+                    static_cast<void>(_);
+                    if (item.is<std::string>())
+                        out.push_back(item.as<std::string>());
+                }
+            }
+
+            out.erase(std::remove_if(out.begin(), out.end(), [](const auto& item) { return item.empty(); }), out.end());
+            return out;
         }
 
         std::string runtimeCameraDisplayName(std::string_view cameraName)
@@ -1519,13 +1479,7 @@ namespace vultra_app
                     continue;
 
                 sol::table  passTable = obj.as<sol::table>();
-                std::string type;
-                sol::object typeObj = passTable["type"];
-                sol::object nameObj = passTable["name"];
-                if (typeObj.is<std::string>())
-                    type = typeObj.as<std::string>();
-                else if (nameObj.is<std::string>())
-                    type = nameObj.as<std::string>();
+                std::string type      = solString(passTable, "type", solString(passTable, "name"));
                 if (!type.empty())
                     types.push_back(type);
             }
@@ -1583,21 +1537,22 @@ namespace vultra_app
                     continue;
 
                 sol::table  passTable = obj.as<sol::table>();
-                std::string type;
-                sol::object typeObj = passTable["type"];
-                sol::object nameObj = passTable["name"];
-                if (typeObj.is<std::string>())
-                    type = typeObj.as<std::string>();
-                else if (nameObj.is<std::string>())
-                    type = nameObj.as<std::string>();
+                std::string type      = solString(passTable, "type", solString(passTable, "name"));
                 if (type.empty() || registry.contains(type))
                     continue;
+
+                auto inputs = solStringList(passTable, "inputs");
+                if (inputs.empty())
+                    inputs.push_back(solString(passTable, "input", "source"));
+                auto outputs = solStringList(passTable, "outputs");
+                if (outputs.empty())
+                    outputs.push_back(solString(passTable, "output", "color"));
 
                 registry.registerPass(vrendergraph::PassDefinition {
                     .type    = type,
                     .setup   = noop,
-                    .inputs  = {"source"},
-                    .outputs = {"color"},
+                    .inputs  = std::move(inputs),
+                    .outputs = std::move(outputs),
                     .params =
                         {
                             {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = type},
@@ -4676,6 +4631,7 @@ namespace vultra_app
         };
         auto serializedGraph = [&]() {
             state.storeMeta();
+            removeDefaultOutputRefs(state.graph);
             return vrendergraph::saveRenderGraph(state.graph).dump(2);
         };
         auto applyGraphToRuntime = [&]() {
@@ -4929,6 +4885,12 @@ namespace vultra_app
                     {
                         const auto json = nlohmann::json::parse(text.value());
                         state.graph     = vrendergraph::loadRenderGraph(json);
+                        if (repairMissingInputRefs(state.registry, state.graph))
+                        {
+                            state.dirty        = true;
+                            state.runtimeDirty = true;
+                            state.status       = "Repaired stale render graph links";
+                        }
                         for (auto& pass : state.graph.passes)
                         {
                             if (state.registry.contains(pass.type))
@@ -4962,6 +4924,12 @@ namespace vultra_app
                     nlohmann::json json;
                     file >> json;
                     state.graph = vrendergraph::loadRenderGraph(json);
+                    if (repairMissingInputRefs(state.registry, state.graph))
+                    {
+                        state.dirty        = true;
+                        state.runtimeDirty = true;
+                        state.status       = "Repaired stale render graph links";
+                    }
                     for (auto& pass : state.graph.passes)
                     {
                         if (state.registry.contains(pass.type))
@@ -5047,6 +5015,7 @@ namespace vultra_app
             pass.type = type;
             ensureSlots(pass, def);
             state.graph.passes.push_back(std::move(pass));
+            repairMissingInputRefs(state.registry, state.graph);
             state.markDirty();
             state.applyPositions = true;
             ImGui::CloseCurrentPopup();
@@ -5438,8 +5407,12 @@ namespace vultra_app
                         if (auto* dst = findPass(state.graph, to.node))
                         {
                             dst->inputs[to.slot] = makeResRef(from.node, from.slot);
+                            std::string topoError;
+                            if (!applyTopoOrder(state.graph, &topoError))
+                                state.status = topoError;
+                            else
+                                state.status = "Updated pass input link";
                             state.markDirty();
-                            state.status = "Updated pass input link";
                         }
                     }
                 }

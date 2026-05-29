@@ -16,26 +16,26 @@
         },
         "FinalComposition": {
           "pos": [
-            3800.0,
-            80.0
+            4375.0,
+            244.0
           ]
         },
         "Fxaa": {
           "pos": [
-            2720.0,
-            80.0
+            3508.0,
+            -158.0
           ]
         },
         "GeneralGaussianSplatComposite": {
           "pos": [
-            1378.0,
-            220.0
+            1519.0,
+            414.0
           ]
         },
         "SelectionOutline": {
           "pos": [
-            3080.0,
-            80.0
+            3827.0,
+            85.0
           ]
         },
         "ShadowMap": {
@@ -52,20 +52,20 @@
         },
         "Ssr": {
           "pos": [
-            1378.0,
-            532.0
+            1928.0,
+            575.0
           ]
         },
         "SsrComposite": {
           "pos": [
-            1688.0,
-            53.0
+            2510.0,
+            -145.0
           ]
         },
         "ToneMapping": {
           "pos": [
-            2360.0,
-            80.0
+            3022.0,
+            -189.0
           ]
         }
       }
@@ -75,22 +75,11 @@
     {
       "enabled": true,
       "id": "DirectGBuffer",
-      "outputs": {
-        "color": "DirectGBuffer.color",
-        "depth": "DirectGBuffer.depth",
-        "entityId": "DirectGBuffer.entityId",
-        "material": "DirectGBuffer.material",
-        "normal": "DirectGBuffer.normal"
-      },
       "type": "DirectGBuffer"
     },
     {
       "enabled": true,
       "id": "ShadowMap",
-      "outputs": {
-        "shadowData": "ShadowMap.shadowData",
-        "shadowMap": "ShadowMap.shadowMap"
-      },
       "params": {
         "autoFitBounds": true,
         "cascadeCount": 4,
@@ -113,9 +102,6 @@
       "inputs": {
         "depth": "DirectGBuffer.depth",
         "normal": "DirectGBuffer.normal"
-      },
-      "outputs": {
-        "ao": "Ssao.ao"
       },
       "params": {
         "bias": 0.05,
@@ -140,9 +126,6 @@
         "shadowData": "ShadowMap.shadowData",
         "shadowMap": "ShadowMap.shadowMap"
       },
-      "outputs": {
-        "color": "DeferredLighting.color"
-      },
       "params": {
         "ambientIntensity": 1.0,
         "debugCascades": false,
@@ -162,9 +145,6 @@
       "inputs": {
         "source": "DeferredLighting.color"
       },
-      "outputs": {
-        "color": "GeneralGaussianSplatComposite.color"
-      },
       "type": "GeneralGaussianSplatComposite"
     },
     {
@@ -175,9 +155,6 @@
         "depth": "DirectGBuffer.depth",
         "material": "DirectGBuffer.material",
         "normal": "DirectGBuffer.normal"
-      },
-      "outputs": {
-        "reflection": "Ssr.reflection"
       },
       "params": {
         "binaryRefinement": 3,
@@ -196,9 +173,6 @@
         "reflection": "Ssr.reflection",
         "source": "GeneralGaussianSplatComposite.color"
       },
-      "outputs": {
-        "color": "SsrComposite.color"
-      },
       "params": {
         "enabled": true
       },
@@ -209,9 +183,6 @@
       "id": "ToneMapping",
       "inputs": {
         "source": "SsrComposite.color"
-      },
-      "outputs": {
-        "color": "ToneMapping.color"
       },
       "params": {
         "enabled": true,
@@ -226,9 +197,6 @@
       "inputs": {
         "source": "ToneMapping.color"
       },
-      "outputs": {
-        "color": "Fxaa.color"
-      },
       "params": {
         "enabled": true
       },
@@ -241,9 +209,6 @@
         "depth": "DirectGBuffer.depth",
         "entityId": "DirectGBuffer.entityId",
         "source": "Fxaa.color"
-      },
-      "outputs": {
-        "color": "SelectionOutline.color"
       },
       "params": {
         "edgeOpacity": 0.35,
@@ -258,9 +223,6 @@
       "id": "FinalComposition",
       "inputs": {
         "source": "SelectionOutline.color"
-      },
-      "outputs": {
-        "target": "FinalComposition.target"
       },
       "type": "FinalComposition"
     }

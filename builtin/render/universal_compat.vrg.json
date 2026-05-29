@@ -27,9 +27,6 @@
     {
       "enabled": true,
       "id": "CompatibilityBaseColor",
-      "outputs": {
-        "color": "CompatibilityBaseColor.color"
-      },
       "type": "CompatibilityBaseColor"
     },
     {
@@ -38,9 +35,6 @@
       "inputs": {
         "source": "CompatibilityBaseColor.color"
       },
-      "outputs": {
-        "color": "GeneralGaussianSplatComposite.color"
-      },
       "type": "GeneralGaussianSplatComposite"
     },
     {
@@ -48,9 +42,6 @@
       "id": "FinalComposition",
       "inputs": {
         "source": "GeneralGaussianSplatComposite.color"
-      },
-      "outputs": {
-        "target": "FinalComposition.target"
       },
       "type": "FinalComposition"
     }

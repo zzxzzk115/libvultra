@@ -5,6 +5,7 @@
 #include "vultra/function/rendering/srp/renderer.hpp"
 
 #include <sol/sol.hpp>
+#include <vrendergraph/vrendergraph.hpp>
 
 #include <memory>
 #include <string>
@@ -14,6 +15,8 @@
 namespace vultra
 {
     class IShaderService;
+
+    void registerBuiltinRenderGraphPasses(vrendergraph::RenderGraphRegistry& registry);
 
     class DeclarativeRenderer final : public Renderer
     {
@@ -53,6 +56,8 @@ namespace vultra
         {
             std::string type;
             FullscreenPass fullscreen;
+            std::vector<std::string> inputs;
+            std::vector<std::string> outputs;
         };
 
         struct PipelineAsset

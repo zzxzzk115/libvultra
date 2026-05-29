@@ -3,8 +3,18 @@
   "meta": {
     "editor": {
       "nodes": {
-        "ComposeLeftEye": { "pos": [260.0, 80.0] },
-        "ComposeRightEye": { "pos": [620.0, 80.0] }
+        "ComposeLeftEye": {
+          "pos": [
+            260.0,
+            80.0
+          ]
+        },
+        "ComposeRightEye": {
+          "pos": [
+            620.0,
+            80.0
+          ]
+        }
       },
       "design": {
         "status": "reserved",

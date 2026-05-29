@@ -46,8 +46,8 @@
         },
         "ShadowMap": {
           "pos": [
-            499.0,
-            427.0
+            559.0,
+            366.0
           ]
         },
         "Ssao": {
@@ -81,37 +81,7 @@
     {
       "enabled": true,
       "id": "DirectGBuffer",
-      "outputs": {
-        "color": "DirectGBuffer.color",
-        "depth": "DirectGBuffer.depth",
-        "entityId": "DirectGBuffer.entityId",
-        "material": "DirectGBuffer.material",
-        "normal": "DirectGBuffer.normal"
-      },
       "type": "DirectGBuffer"
-    },
-    {
-      "enabled": true,
-      "id": "ShadowMap",
-      "outputs": {
-        "shadowData": "ShadowMap.shadowData",
-        "shadowMap": "ShadowMap.shadowMap"
-      },
-      "params": {
-        "autoFitBounds": true,
-        "cascadeCount": 4,
-        "coverageRadius": 75.0,
-        "depthBias": 0.0012,
-        "enabled": true,
-        "lightDistance": 200.0,
-        "normalBias": 0.015,
-        "pcssLightRadius": 1.5,
-        "resolution": 2048,
-        "splitLambda": 0.6,
-        "stableTexelSnapping": true,
-        "zRange": 120.0
-      },
-      "type": "ShadowMap"
     },
     {
       "enabled": true,
@@ -119,9 +89,6 @@
       "inputs": {
         "depth": "DirectGBuffer.depth",
         "normal": "DirectGBuffer.normal"
-      },
-      "outputs": {
-        "ao": "Ssao.ao"
       },
       "params": {
         "bias": 0.05,
@@ -136,6 +103,25 @@
     },
     {
       "enabled": true,
+      "id": "ShadowMap",
+      "params": {
+        "autoFitBounds": true,
+        "cascadeCount": 4,
+        "coverageRadius": 75.0,
+        "depthBias": 0.0012000000569969416,
+        "enabled": true,
+        "lightDistance": 120.0,
+        "normalBias": 0.014999999664723873,
+        "pcssLightRadius": 1.5,
+        "resolution": 2048,
+        "splitLambda": 0.6000000238418579,
+        "stableTexelSnapping": true,
+        "zRange": 120.0
+      },
+      "type": "ShadowMap"
+    },
+    {
+      "enabled": true,
       "id": "DeferredLighting",
       "inputs": {
         "ao": "Ssao.ao",
@@ -145,9 +131,6 @@
         "normal": "DirectGBuffer.normal",
         "shadowData": "ShadowMap.shadowData",
         "shadowMap": "ShadowMap.shadowMap"
-      },
-      "outputs": {
-        "color": "DeferredLighting.color"
       },
       "params": {
         "ambientIntensity": 1.0,
@@ -168,9 +151,6 @@
       "inputs": {
         "source": "DeferredLighting.color"
       },
-      "outputs": {
-        "color": "GeneralGaussianSplatComposite.color"
-      },
       "type": "GeneralGaussianSplatComposite"
     },
     {
@@ -181,9 +161,6 @@
         "depth": "DirectGBuffer.depth",
         "material": "DirectGBuffer.material",
         "normal": "DirectGBuffer.normal"
-      },
-      "outputs": {
-        "reflection": "Ssr.reflection"
       },
       "params": {
         "binaryRefinement": 3,
@@ -202,9 +179,6 @@
         "reflection": "Ssr.reflection",
         "source": "GeneralGaussianSplatComposite.color"
       },
-      "outputs": {
-        "color": "SsrComposite.color"
-      },
       "params": {
         "enabled": true
       },
@@ -216,9 +190,6 @@
       "inputs": {
         "source": "SsrComposite.color"
       },
-      "outputs": {
-        "color": "Pixelate.color"
-      },
       "params": {
         "name": "Pixelate"
       },
@@ -229,9 +200,6 @@
       "id": "ToneMapping",
       "inputs": {
         "source": "Pixelate.color"
-      },
-      "outputs": {
-        "color": "ToneMapping.color"
       },
       "params": {
         "enabled": false,
@@ -246,9 +214,6 @@
       "inputs": {
         "source": "ToneMapping.color"
       },
-      "outputs": {
-        "color": "Fxaa.color"
-      },
       "params": {
         "enabled": true
       },
@@ -261,9 +226,6 @@
         "depth": "DirectGBuffer.depth",
         "entityId": "DirectGBuffer.entityId",
         "source": "Fxaa.color"
-      },
-      "outputs": {
-        "color": "SelectionOutline.color"
       },
       "params": {
         "edgeOpacity": 0.35,
@@ -278,9 +240,6 @@
       "id": "FinalComposition",
       "inputs": {
         "source": "SelectionOutline.color"
-      },
-      "outputs": {
-        "target": "FinalComposition.target"
       },
       "type": "FinalComposition"
     }
