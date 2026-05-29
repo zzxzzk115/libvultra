@@ -41,8 +41,8 @@ void main() {
 #endif
     vec3 color = max(source.rgb, vec3(0.0));
 #if MANUAL_SRGB_ENCODE
-    FragColor = vec4(linearTosRGB(color), 1.0);
+    FragColor = vec4(linearTosRGB(color), source.a);
 #else
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(color, source.a);
 #endif
 }

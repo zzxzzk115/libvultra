@@ -597,8 +597,8 @@ namespace vultra_app
                 if (!meshComponent.mesh.valid())
                     continue;
 
-                auto mesh = assets.loadMeshSync(meshComponent.mesh);
-                if (!mesh.ready() || !mesh.cpu())
+                auto mesh = assets.loadMeshAsync(meshComponent.mesh);
+                if (!mesh.cpu())
                     continue;
 
                 const auto worldMatrix = makeWorldTransformMatrix(reg, e);
@@ -618,14 +618,35 @@ namespace vultra_app
                 const auto& meshComponent = view.get<vultra::MeshComponent>(e);
                 if (!meshComponent.mesh.valid())
                     continue;
-                auto mesh = assets.loadMeshSync(meshComponent.mesh);
-                if (!mesh.ready() || !mesh.cpu())
+                auto mesh = assets.loadMeshAsync(meshComponent.mesh);
+                if (!mesh.cpu())
                     continue;
                 const auto worldMatrix = makeWorldTransformMatrix(reg, e);
                 for (const auto& p : mesh.cpu()->positions)
                     bounds.include(glm::vec3(worldMatrix * glm::vec4(glm::vec3 {p.x, p.y, p.z}, 1.0f)));
             }
             return bounds;
+        }
+
+        bool previewWorldAssetsReady(vultra::World& world, vultra::IAssetService& assets)
+        {
+            bool hasPreviewAsset = false;
+            auto& reg = world.registry();
+            auto view = reg.view<vultra::MeshComponent>();
+            for (auto e : view)
+            {
+                (void)e;
+                const auto& meshComponent = view.get<vultra::MeshComponent>(e);
+                if (meshComponent.builtinGeometry != UINT32_MAX)
+                    continue;
+                if (!meshComponent.mesh.valid())
+                    return false;
+                hasPreviewAsset = true;
+                if (!assets.meshPreviewReady(meshComponent.mesh))
+                    return false;
+            }
+
+            return !hasPreviewAsset || !assets.materialRefreshPending();
         }
 
         void updateWorldTransforms(vultra::World& world)
@@ -1635,8 +1656,8 @@ namespace vultra_app
                 return choices;
             }
 
-            const auto  handle  = assets->loadMeshSync(mesh.mesh);
-            const auto* cpuMesh = handle.ready() ? handle.cpu() : nullptr;
+            const auto  handle  = assets->loadMeshAsync(mesh.mesh);
+            const auto* cpuMesh = handle.cpu();
             if (!cpuMesh)
             {
                 choices.push_back({.slot = 0u, .label = "Slot 0 - Loading Mesh Materials"});
@@ -2526,8 +2547,8 @@ namespace vultra_app
     void InspectorWindow::drawModelPreviewViewport(EditorContext& ctx, const std::string& key)
     {
         ImGui::TextUnformatted("Preview");
-        const float    width        = std::max(160.0f, ImGui::GetContentRegionAvail().x);
-        const float    height       = std::clamp(width * 0.62f, 140.0f, 260.0f);
+        const float    width        = std::clamp(ImGui::GetContentRegionAvail().x, 140.0f, 220.0f);
+        const float    height       = std::clamp(width * 0.68f, 120.0f, 180.0f);
         const uint32_t targetWidth  = quantizePreviewExtent(width);
         const uint32_t targetHeight = quantizePreviewExtent(height);
         if (targetWidth != m_ModelPreviewLastWidth || targetHeight != m_ModelPreviewLastHeight)
@@ -2603,8 +2624,11 @@ namespace vultra_app
         auto* drawList = ImGui::GetWindowDrawList();
         drawList->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(72, 150, 225, 180), 4.0f);
 
-        if (!m_ModelPreviewDirty)
+        if (!previewWorldAssetsReady(m_ModelPreviewWorld, *assetService))
+        {
+            m_ModelPreviewDirty = true;
             return;
+        }
 
         if (m_ModelPreviewRoot != entt::null && m_ModelPreviewWorld.registry().valid(m_ModelPreviewRoot))
         {
@@ -2618,7 +2642,7 @@ namespace vultra_app
         if (!rotatedBounds.valid)
         {
             ImGui::TextDisabled("Preview scene is empty.");
-            m_ModelPreviewDirty = false;
+            m_ModelPreviewDirty = true;
             return;
         }
 

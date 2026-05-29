@@ -2,13 +2,12 @@
 
 #include "editor_app/scene_thumbnail.hpp"
 
-#include <vultra/core/services/window_service.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
+#include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
-#include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
@@ -23,6 +22,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -42,7 +42,7 @@ namespace vultra_app::ui
 {
     namespace
     {
-        constexpr std::string_view kThumbnailCacheVersion        = "lighting-v3";
+        constexpr std::string_view kThumbnailCacheVersion        = "transparent-v1";
         constexpr std::string_view kTextureThumbnailCacheVersion = "texture-v1";
         constexpr int              kTextureThumbnailSize         = 128;
         constexpr uint64_t         kRenderThumbnailWarmupFrames  = 4;
@@ -186,8 +186,8 @@ namespace vultra_app::ui
                 if (!meshComponent.mesh.valid())
                     continue;
 
-                auto handle = assets.loadMeshSync(meshComponent.mesh);
-                if (!handle.ready() || !handle.cpu())
+                auto handle = assets.loadMeshAsync(meshComponent.mesh);
+                if (!handle.cpu())
                     continue;
 
                 includeMeshBounds(bounds, *handle.cpu(), worldMatrix(world, entity));
@@ -200,13 +200,79 @@ namespace vultra_app::ui
                 if (!splatComponent.gaussianSplat.valid())
                     continue;
 
-                auto handle = assets.loadGaussianSplatSync(splatComponent.gaussianSplat);
-                if (!handle.ready() || !handle.cpu())
+                auto handle = assets.loadGaussianSplatAsync(splatComponent.gaussianSplat);
+                if (!handle.cpu())
                     continue;
 
                 includeGaussianSplatBounds(bounds, *handle.cpu(), worldMatrix(world, entity));
             }
             return bounds;
+        }
+
+        bool worldPreviewAssetsReady(vultra::World& world, vultra::IAssetService& assets)
+        {
+            bool hasPreviewAsset = false;
+            auto& reg = world.registry();
+
+            auto meshView = reg.view<vultra::MeshComponent>();
+            for (auto entity : meshView)
+            {
+                (void)entity;
+                const auto& meshComponent = meshView.get<vultra::MeshComponent>(entity);
+                if (meshComponent.builtinGeometry != UINT32_MAX)
+                    continue;
+                if (!meshComponent.mesh.valid())
+                    return false;
+                hasPreviewAsset = true;
+                if (!assets.meshPreviewReady(meshComponent.mesh))
+                    return false;
+            }
+
+            auto splatView = reg.view<vultra::GaussianSplatComponent>();
+            for (auto entity : splatView)
+            {
+                const auto& splatComponent = splatView.get<vultra::GaussianSplatComponent>(entity);
+                if (!splatComponent.gaussianSplat.valid())
+                    return false;
+                hasPreviewAsset = true;
+                auto handle = assets.loadGaussianSplatAsync(splatComponent.gaussianSplat);
+                if (!handle.ready())
+                    return false;
+            }
+
+            return !hasPreviewAsset || !assets.materialRefreshPending();
+        }
+
+        bool makeNearBlackTransparent(const std::filesystem::path& path)
+        {
+            int width = 0;
+            int height = 0;
+            int channels = 0;
+            stbi_uc* pixels = stbi_load(path.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+            if (!pixels || width <= 0 || height <= 0)
+            {
+                if (pixels)
+                    stbi_image_free(pixels);
+                return false;
+            }
+
+            bool changed = false;
+            const int pixelCount = width * height;
+            for (int i = 0; i < pixelCount; ++i)
+            {
+                stbi_uc* px = pixels + i * 4;
+                if (px[0] <= 2 && px[1] <= 2 && px[2] <= 2)
+                {
+                    px[3] = 0;
+                    changed = true;
+                }
+            }
+
+            bool ok = true;
+            if (changed)
+                ok = stbi_write_png(path.string().c_str(), width, height, 4, pixels, width * 4) != 0;
+            stbi_image_free(pixels);
+            return ok;
         }
 
         void addPreviewLighting(vultra::World& world)
@@ -285,7 +351,7 @@ namespace vultra_app::ui
             camera.fovY        = fovY;
             camera.zNear       = std::max(0.01f, distance - radius * 3.0f);
             camera.zFar        = std::max(distance + radius * 6.0f, 1000.0f);
-            camera.clearValue  = glm::vec4 {0.06f, 0.07f, 0.08f, 1.0f};
+            camera.clearValue  = glm::vec4 {0.0f, 0.0f, 0.0f, 0.0f};
             camera.clearMode   = 0u;
             camera.renderImGui = false;
             camera.rendererKey = "universal";
@@ -359,7 +425,7 @@ namespace vultra_app::ui
             out.fovY                    = glm::radians(camera.fovYDegrees);
             out.target                  = target;
             out.clearValue              = camera.clearColor;
-            out.clearValue.a            = 1.0f;
+            out.clearValue.a            = 0.0f;
             out.clearMode               = camera.clearMode;
             out.renderImGui             = false;
             out.debugEntityIdOutput     = false;
@@ -378,32 +444,6 @@ namespace vultra_app::ui
             if (ec)
                 return true;
             return sourceTime > outputTime;
-        }
-
-        void addLoadingShellCamera(vbase::ServiceRegistry& services)
-        {
-            auto* cameraService = services.tryGet<vultra::ICameraService>();
-            auto* windowService = services.tryGet<IWindowService>();
-            if (!cameraService || !windowService)
-                return;
-
-            const auto  extent = windowService->window().getExtent();
-            const float width  = static_cast<float>(std::max(extent.x, 1));
-            const float height = static_cast<float>(std::max(extent.y, 1));
-
-            vultra::RenderCamera shellCamera {};
-            shellCamera.name     = "Vultra Editor UI";
-            shellCamera.priority = 1000;
-            shellCamera.view =
-                glm::lookAt(glm::vec3 {0.0f, 0.0f, 1.0f}, glm::vec3 {0.0f, 0.0f, 0.0f}, glm::vec3 {0.0f, 1.0f, 0.0f});
-            shellCamera.projection  = glm::perspectiveRH_ZO(glm::radians(60.0f), width / height, 0.1f, 1000.0f);
-            shellCamera.zNear       = 0.1f;
-            shellCamera.zFar        = 1000.0f;
-            shellCamera.fovY        = glm::radians(60.0f);
-            shellCamera.clearValue  = {0.018f, 0.02f, 0.026f, 1.0f};
-            shellCamera.renderImGui = true;
-            shellCamera.rendererKey = "editor-shell";
-            cameraService->addManualCamera(shellCamera);
         }
 
         bool parseUuid(std::string_view text, vultra::CoreUUID& out)
@@ -438,11 +478,18 @@ namespace vultra_app::ui
         m_MaterialGraphRequestCache.clear();
         m_QueuedRequests.clear();
         m_ActiveRenderJob.reset();
+        if (m_ActiveTextureJob)
+        {
+            if (auto* jobs = ctx.services ? ctx.services->tryGet<vultra::IJobService>() : nullptr)
+                jobs->wait(m_ActiveTextureJob->job);
+        }
+        m_ActiveTextureJob.reset();
         m_TotalQueuedThisPass = 0;
     }
 
     void AssetThumbnailService::clear()
     {
+        m_ActiveTextureJob.reset();
         m_ProjectRoot.clear();
         m_AssetRootName.clear();
         m_CacheRoot.clear();
@@ -764,6 +811,63 @@ namespace vultra_app::ui
                               kTextureThumbnailSize * 4) != 0;
     }
 
+    bool AssetThumbnailService::startTextureThumbnailTask(EditorContext& ctx, AssetThumbnailRequest request)
+    {
+        if (m_ActiveTextureJob)
+            return false;
+
+        auto* jobs = ctx.services ? ctx.services->tryGet<vultra::IJobService>() : nullptr;
+        if (!jobs)
+        {
+            const bool cooked          = cookTextureThumbnail(request);
+            m_StatusCache[request.key] = cooked ? AssetThumbnailStatus::Ready : AssetThumbnailStatus::Failed;
+            return true;
+        }
+
+        auto job     = std::make_unique<ActiveTextureJob>();
+        job->request = std::move(request);
+        auto requestCopy = job->request;
+        auto done        = job->done;
+        auto cooked      = job->cooked;
+        job->job         = jobs->submit("Texture thumbnail",
+                                vultra::JobOptions {.maxAttempts = 3},
+                                [requestCopy = std::move(requestCopy), done, cooked](vultra::JobProgress& progress) {
+            bool ok = false;
+            for (uint32_t attempt = 1; attempt <= 3 && !ok; ++attempt)
+            {
+                progress.setProgress(0.1f, std::format("Decoding texture thumbnail ({}/3)...", attempt));
+                ok = AssetThumbnailService::cookTextureThumbnail(requestCopy);
+            }
+            cooked->store(ok, std::memory_order_release);
+            progress.setProgress(1.0f, ok ? "Texture thumbnail ready." : "Texture thumbnail failed.");
+            done->store(true, std::memory_order_release);
+        });
+        m_ActiveTextureJob = std::move(job);
+        return true;
+    }
+
+    bool AssetThumbnailService::collectTextureThumbnailTask(float& progress, std::string& message)
+    {
+        if (!m_ActiveTextureJob)
+            return false;
+
+        if (!m_ActiveTextureJob->done->load(std::memory_order_acquire))
+        {
+            progress = 0.5f;
+            message  = "Generating texture thumbnail...";
+            return true;
+        }
+
+        const auto request = std::move(m_ActiveTextureJob->request);
+        const bool cooked  = m_ActiveTextureJob->cooked->load(std::memory_order_acquire);
+        m_ActiveTextureJob.reset();
+
+        m_StatusCache[request.key] = cooked ? AssetThumbnailStatus::Ready : AssetThumbnailStatus::Failed;
+        progress                   = 1.0f;
+        message                    = cooked ? "Generated texture thumbnail." : "Failed to generate texture thumbnail.";
+        return true;
+    }
+
     void AssetThumbnailService::prewarmProjectModelThumbnails(EditorContext& ctx) { prewarmProjectThumbnails(ctx); }
 
     void AssetThumbnailService::prewarmProjectThumbnails(EditorContext& ctx)
@@ -851,6 +955,9 @@ namespace vultra_app::ui
         syncProject(ctx);
         ++m_FrameCounter;
 
+        if (collectTextureThumbnailTask(progress, message))
+            return true;
+
         auto textureIt = std::find_if(m_QueuedRequests.begin(), m_QueuedRequests.end(), [](const auto& request) {
             return request.kind == AssetThumbnailKind::Texture;
         });
@@ -872,10 +979,11 @@ namespace vultra_app::ui
             return true;
         }
 
-        const bool cooked          = cookTextureThumbnail(request);
-        m_StatusCache[request.key] = cooked ? AssetThumbnailStatus::Ready : AssetThumbnailStatus::Failed;
-        progress                   = 1.0f;
-        message                    = cooked ? "Generated texture thumbnail." : "Failed to generate texture thumbnail.";
+        if (!startTextureThumbnailTask(ctx, std::move(request)))
+            return false;
+
+        progress = 0.0f;
+        message  = "Generating texture thumbnail...";
         return true;
     }
 
@@ -887,9 +995,25 @@ namespace vultra_app::ui
 
         if (m_ActiveRenderJob)
         {
-            if (m_FrameCounter <= m_ActiveRenderJob->frameSubmitted + kRenderThumbnailWarmupFrames)
+            const auto doneJobs = totalJobs - std::min(totalJobs, m_QueuedRequests.size() + 1);
+            if (!m_ActiveRenderJob->assetsReady)
             {
-                const auto doneJobs = totalJobs - std::min(totalJobs, m_QueuedRequests.size() + 1);
+                if (renderJobAssetsReady(ctx, *m_ActiveRenderJob))
+                {
+                    m_ActiveRenderJob->assetsReady = true;
+                    m_ActiveRenderJob->readyFrame  = m_FrameCounter;
+                }
+                else
+                {
+                    progress = std::clamp(static_cast<float>(doneJobs) / static_cast<float>(totalJobs), 0.0f, 1.0f);
+                    message  = "Preparing asset thumbnail " + std::to_string(doneJobs + 1) + " / " +
+                              std::to_string(totalJobs) + "...";
+                    return true;
+                }
+            }
+
+            if (m_FrameCounter <= m_ActiveRenderJob->readyFrame + kRenderThumbnailWarmupFrames)
+            {
                 progress = std::clamp(static_cast<float>(doneJobs) / static_cast<float>(totalJobs), 0.0f, 1.0f);
                 message  = "Rendering asset thumbnail " + std::to_string(doneJobs + 1) + " / " +
                           std::to_string(totalJobs) + "...";
@@ -901,25 +1025,24 @@ namespace vultra_app::ui
 
         if (!m_QueuedRequests.empty())
         {
-            auto request = std::move(m_QueuedRequests.front());
-            m_QueuedRequests.erase(m_QueuedRequests.begin());
+            auto renderIt = std::find_if(m_QueuedRequests.begin(), m_QueuedRequests.end(), [](const auto& request) {
+                return request.kind != AssetThumbnailKind::Texture;
+            });
+            if (renderIt == m_QueuedRequests.end())
+            {
+                progress = 1.0f;
+                message.clear();
+                return false;
+            }
+
+            auto request = std::move(*renderIt);
+            m_QueuedRequests.erase(renderIt);
             if (statusFor(request.outputPath) == AssetThumbnailStatus::Ready)
             {
                 const auto doneJobs = totalJobs - std::min(totalJobs, m_QueuedRequests.size());
                 progress = std::clamp(static_cast<float>(doneJobs) / static_cast<float>(totalJobs), 0.0f, 1.0f);
                 message  = "Loading cached asset thumbnail " + std::to_string(doneJobs) + " / " +
                           std::to_string(totalJobs) + "...";
-                return true;
-            }
-
-            if (request.kind == AssetThumbnailKind::Texture)
-            {
-                const bool cooked          = cookTextureThumbnail(request);
-                m_StatusCache[request.key] = cooked ? AssetThumbnailStatus::Ready : AssetThumbnailStatus::Failed;
-                const auto doneJobs        = totalJobs - std::min(totalJobs, m_QueuedRequests.size());
-                progress = std::clamp(static_cast<float>(doneJobs) / static_cast<float>(totalJobs), 0.0f, 1.0f);
-                message =
-                    "Cooking texture thumbnail " + std::to_string(doneJobs) + " / " + std::to_string(totalJobs) + "...";
                 return true;
             }
 
@@ -946,6 +1069,50 @@ namespace vultra_app::ui
         return false;
     }
 
+    bool AssetThumbnailService::renderJobAssetsReady(EditorContext& ctx, ActiveRenderJob& job)
+    {
+        if (!ctx.services)
+            return true;
+
+        auto* assetService  = ctx.services->tryGet<vultra::IAssetService>();
+        auto* cameraService = ctx.services->tryGet<vultra::ICameraService>();
+        if (!assetService)
+            return true;
+
+        if (!job.world)
+            return true;
+
+        auto& world = *job.world;
+        const auto sceneCamera = job.request.kind == AssetThumbnailKind::Scene ? findPrimaryCamera(world) : entt::null;
+        if (job.request.kind == AssetThumbnailKind::MaterialGraph)
+        {
+            return !assetService->materialRefreshPending();
+        }
+
+        if (!worldPreviewAssetsReady(world, *assetService))
+            return false;
+
+        const auto bounds = computeWorldContentBounds(world, *assetService);
+        if (!bounds.valid)
+            return false;
+
+        if (cameraService)
+        {
+            cameraService->removeManualCamerasByName("Thumbnail Camera");
+            auto camera = job.request.kind == AssetThumbnailKind::Scene && sceneCamera != entt::null ?
+                              makeSceneThumbnailCamera(world, sceneCamera, &job.target) :
+                              makePreviewCamera(bounds, &job.target);
+            camera.worldOverride = &world;
+            const glm::vec3 center         = (bounds.min + bounds.max) * 0.5f;
+            const glm::vec3 cameraPosition = glm::vec3(glm::inverse(camera.view)[3]);
+            if (job.request.kind != AssetThumbnailKind::Scene)
+                setPreviewLightDirection(world, center - cameraPosition);
+            cameraService->addManualCamera(camera);
+        }
+
+        return true;
+    }
+
     bool AssetThumbnailService::beginRenderJob(EditorContext& ctx, const AssetThumbnailRequest& request)
     {
         if (!ctx.services)
@@ -953,15 +1120,14 @@ namespace vultra_app::ui
 
         auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>();
         auto* cameraService  = ctx.services->tryGet<vultra::ICameraService>();
-        auto* worldService   = ctx.services->tryGet<vultra::IWorldService>();
         auto* sceneService   = ctx.services->tryGet<vultra::ISceneService>();
         auto* assetService   = ctx.services->tryGet<vultra::IAssetService>();
-        if (!backendService || !cameraService || !worldService || !sceneService || !assetService)
+        if (!backendService || !cameraService || !sceneService || !assetService)
             return false;
 
-        auto& world = worldService->world();
-        world.clear();
-        cameraService->clearManualCameras();
+        auto thumbnailWorld = std::make_unique<vultra::World>();
+        auto& world         = *thumbnailWorld;
+        cameraService->removeManualCamerasByName("Thumbnail Camera");
 
         if (request.kind == AssetThumbnailKind::ModelRoot)
         {
@@ -1029,8 +1195,8 @@ namespace vultra_app::ui
             auto  meshEntity = world.createEntity();
             auto& reg        = world.registry();
             reg.emplace<vultra::NameComponent>(meshEntity, vultra::NameComponent {"Thumbnail Mesh"});
-            auto meshHandle = assetService->loadMeshSync(meshUuid);
-            if (meshHandle.ready() && meshHandle.cpu() && meshHandle.cpu()->hasDefaultTransform)
+            auto meshHandle = assetService->loadMeshAsync(meshUuid);
+            if (meshHandle.cpu() && meshHandle.cpu()->hasDefaultTransform)
             {
                 auto& transform    = reg.get<vultra::TransformComponent>(meshEntity);
                 transform.position = meshHandle.cpu()->defaultPosition;
@@ -1066,19 +1232,21 @@ namespace vultra_app::ui
             world.clear();
             return false;
         }
+        job.world = std::move(thumbnailWorld);
 
         job.frameSubmitted = m_FrameCounter;
         m_ActiveRenderJob  = std::move(job);
+        auto& jobWorld     = *m_ActiveRenderJob->world;
 
         auto camera = request.kind == AssetThumbnailKind::Scene && sceneCamera != entt::null ?
-                          makeSceneThumbnailCamera(world, sceneCamera, &m_ActiveRenderJob->target) :
+                          makeSceneThumbnailCamera(jobWorld, sceneCamera, &m_ActiveRenderJob->target) :
                           makePreviewCamera(bounds, &m_ActiveRenderJob->target);
+        camera.worldOverride = &jobWorld;
         const glm::vec3 center         = bounds.valid ? (bounds.min + bounds.max) * 0.5f : glm::vec3 {0.0f};
         const glm::vec3 cameraPosition = glm::vec3(glm::inverse(camera.view)[3]);
         if (request.kind != AssetThumbnailKind::Scene)
-            setPreviewLightDirection(world, center - cameraPosition);
+            setPreviewLightDirection(jobWorld, center - cameraPosition);
         cameraService->addManualCamera(camera);
-        addLoadingShellCamera(*ctx.services);
 
         std::error_code ec;
         std::filesystem::create_directories(request.outputPath.parent_path(), ec);
@@ -1092,18 +1260,20 @@ namespace vultra_app::ui
 
         auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>();
         auto* cameraService  = ctx.services->tryGet<vultra::ICameraService>();
-        auto* worldService   = ctx.services->tryGet<vultra::IWorldService>();
-        if (!backendService || !cameraService || !worldService)
+        auto* renderService  = ctx.services->tryGet<vultra::IRenderService>();
+        if (!backendService || !cameraService)
             return false;
 
         auto&      job   = *m_ActiveRenderJob;
         const bool saved = backendService->renderDevice().saveTextureToFile(
             job.target, job.request.outputPath.generic_string(), vultra::rhi::ImageAspect::eColor);
-        m_StatusCache[job.request.key] = saved ? AssetThumbnailStatus::Ready : AssetThumbnailStatus::Failed;
-        cameraService->clearManualCameras();
-        addLoadingShellCamera(*ctx.services);
-        worldService->world().clear();
+        const bool postProcessed =
+            saved && (job.request.kind != AssetThumbnailKind::Texture) ? makeNearBlackTransparent(job.request.outputPath) : saved;
+        m_StatusCache[job.request.key] = postProcessed ? AssetThumbnailStatus::Ready : AssetThumbnailStatus::Failed;
+        cameraService->removeManualCamerasByName("Thumbnail Camera");
+        if (renderService && job.world)
+            renderService->releaseOverrideRenderWorld(job.world.get());
         m_ActiveRenderJob.reset();
-        return saved;
+        return postProcessed;
     }
 } // namespace vultra_app::ui

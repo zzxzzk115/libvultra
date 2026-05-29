@@ -350,6 +350,14 @@ namespace vultra
 
     void CameraSystem::clearManualCameras() { m_Manual.clear(); }
 
+    void CameraSystem::removeManualCamerasByName(const std::string_view name)
+    {
+        m_Manual.erase(std::remove_if(m_Manual.begin(),
+                                      m_Manual.end(),
+                                      [&](const RenderCamera& camera) { return camera.name == name; }),
+                       m_Manual.end());
+    }
+
     void CameraSystem::setWorldCamerasEnabled(const bool enabled) { m_WorldCamerasEnabled = enabled; }
 
     void CameraSystem::setWorldXRCamerasEnabled(const bool enabled) { m_WorldXRCamerasEnabled = enabled; }

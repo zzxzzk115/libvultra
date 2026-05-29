@@ -353,8 +353,8 @@ namespace vultra_app
                 if (!meshComponent.mesh.valid())
                     continue;
 
-                auto mesh = assets.loadMeshSync(meshComponent.mesh);
-                if (!mesh.ready() || !mesh.cpu())
+                auto mesh = assets.loadMeshAsync(meshComponent.mesh);
+                if (!mesh.cpu())
                     continue;
 
                 const auto worldMatrix = makeWorldTransformMatrix(reg, e);

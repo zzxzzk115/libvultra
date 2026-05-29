@@ -3,8 +3,12 @@
 #include "editor_app/editor_context.hpp"
 
 #include <vultra/core/rhi/texture.hpp>
+#include <vultra/function/services/job_service.hpp>
+#include <vultra/function/world/world.hpp>
 
 #include <filesystem>
+#include <atomic>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <optional>
@@ -67,12 +71,17 @@ namespace vultra_app::ui
         const std::filesystem::path& cacheRoot() const { return m_CacheRoot; }
 
     private:
+        struct ActiveRenderJob;
+
         std::filesystem::path projectAssetRoot(EditorContext& ctx) const;
         std::filesystem::path thumbnailPathFor(std::string_view key) const;
         AssetThumbnailStatus  statusFor(const std::filesystem::path& path) const;
         std::string           sourceUriFor(EditorContext& ctx, const std::filesystem::path& sourcePath) const;
         void                  queueMissing(AssetThumbnailRequest request);
-        bool                  cookTextureThumbnail(const AssetThumbnailRequest& request);
+        static bool           cookTextureThumbnail(const AssetThumbnailRequest& request);
+        bool                  startTextureThumbnailTask(EditorContext& ctx, AssetThumbnailRequest request);
+        bool                  collectTextureThumbnailTask(float& progress, std::string& message);
+        bool                  renderJobAssetsReady(EditorContext& ctx, ActiveRenderJob& job);
         bool                  beginRenderJob(EditorContext& ctx, const AssetThumbnailRequest& request);
         bool                  finishRenderJob(EditorContext& ctx);
 
@@ -92,10 +101,23 @@ namespace vultra_app::ui
         {
             AssetThumbnailRequest request;
             vultra::rhi::Texture  target;
+            std::unique_ptr<vultra::World> world;
             uint64_t              frameSubmitted {0};
+            uint64_t              readyFrame {0};
+            bool                  assetsReady {false};
         };
 
         std::optional<ActiveRenderJob> m_ActiveRenderJob;
+
+        struct ActiveTextureJob
+        {
+            AssetThumbnailRequest request;
+            vultra::JobHandle     job;
+            std::shared_ptr<std::atomic_bool> done {std::make_shared<std::atomic_bool>(false)};
+            std::shared_ptr<std::atomic_bool> cooked {std::make_shared<std::atomic_bool>(false)};
+        };
+
+        std::unique_ptr<ActiveTextureJob> m_ActiveTextureJob;
         std::size_t                    m_TotalQueuedThisPass {0};
         uint64_t                       m_FrameCounter {0};
     };

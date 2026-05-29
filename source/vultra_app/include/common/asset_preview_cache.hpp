@@ -44,6 +44,7 @@ namespace vultra_app::ui
         {
             std::optional<vultra::rhi::Texture> texture;
             ImTextureID                         textureId {};
+            int64_t                             sourceWriteStamp {0};
         };
 
         std::string textureUriFor(EditorContext& ctx, const std::filesystem::path& path) const;

@@ -220,6 +220,26 @@ namespace vultra_app
             m_NextLabel = std::move(label);
     }
 
+    void EditorHistory::syncCurrent(EditorContext& ctx)
+    {
+        auto state = capture(ctx);
+        if (!state)
+            return;
+
+        m_PendingState.reset();
+        m_PendingLabel.clear();
+        m_NextLabel.clear();
+
+        if (m_States.empty())
+        {
+            pushState("Scene Loaded", std::move(*state));
+            return;
+        }
+
+        m_States[m_Current]        = std::move(*state);
+        m_Entries[m_Current].dirty = m_States[m_Current].dirty;
+    }
+
     void EditorHistory::markCurrentClean(EditorContext& ctx)
     {
         auto state = capture(ctx);

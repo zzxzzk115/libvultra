@@ -12,6 +12,7 @@
 #include <array>
 #include <vultra/core/engine/engine.hpp>
 #include <vultra/function/scene/vscn_document.hpp>
+#include <vultra/function/services/scene_service.hpp>
 #include <vtask/scheduler.hpp>
 #include <vtask/task_set.hpp>
 
@@ -89,6 +90,7 @@ namespace vultra_app
         {
             LoadingPhase         phase {LoadingPhase::Idle};
             std::filesystem::path projectRoot;
+            vultra::SceneLoadHandle sceneLoad;
             float                progress {0.0f};
             std::string          message;
             bool                 releasedEditorState {false};
@@ -146,6 +148,8 @@ namespace vultra_app
         std::shared_ptr<ImportTaskProgress> m_ImportProgress;
         bool                                m_BackgroundAssetImport {false};
         std::vector<std::filesystem::path>  m_BackgroundAssetImportPaths;
+        std::mutex                          m_ImportedThumbnailMutex;
+        std::vector<std::filesystem::path>  m_PendingImportedThumbnailPaths;
         bool                                m_ImportProgressPopupPendingOpen {false};
         bool                                m_BackgroundRenderThumbnailActive {false};
         std::optional<vultra::SceneDocument> m_BackgroundThumbnailWorldSnapshot;

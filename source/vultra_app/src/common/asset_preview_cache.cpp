@@ -70,6 +70,15 @@ namespace vultra_app::ui
             return vasset::VTextureFileFormat::eUnknown;
         }
 
+        int64_t imageFileWriteStamp(const std::filesystem::path& path)
+        {
+            std::error_code ec;
+            const auto      writeTime = std::filesystem::last_write_time(path, ec);
+            if (ec)
+                return 0;
+            return writeTime.time_since_epoch().count();
+        }
+
         std::vector<uint8_t> readBinaryFile(const std::filesystem::path& path)
         {
             std::ifstream in(path, std::ios::binary);
@@ -181,7 +190,7 @@ namespace vultra_app::ui
                 m_LastError = "Texture preview deferred.";
                 return {};
             }
-            handle = assetService->loadTextureSync(uri);
+            handle = assetService->loadTextureAsync(uri);
         }
 
         if (!handle.ready() || handle.gpuIndex() == std::numeric_limits<uint32_t>::max())
@@ -222,7 +231,8 @@ namespace vultra_app::ui
             return false;
 
         const auto it = m_ImageFilePreviews.find(path.lexically_normal().generic_string());
-        return it != m_ImageFilePreviews.end() && it->second.textureId;
+        return it != m_ImageFilePreviews.end() && it->second.textureId &&
+               it->second.sourceWriteStamp == imageFileWriteStamp(path);
     }
 
     ImTextureID
@@ -237,10 +247,20 @@ namespace vultra_app::ui
             return {};
         }
 
-        const std::string key    = path.lexically_normal().generic_string();
-        auto&             cached = m_ImageFilePreviews[key];
-        if (cached.textureId)
+        const std::string key        = path.lexically_normal().generic_string();
+        const int64_t     writeStamp = imageFileWriteStamp(path);
+        auto&             cached     = m_ImageFilePreviews[key];
+        if (cached.textureId && cached.sourceWriteStamp == writeStamp)
             return cached.textureId;
+
+        if (cached.textureId)
+        {
+            if (auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr)
+                imguiService->removeTexture(cached.textureId);
+            cached.texture.reset();
+            cached.textureId        = {};
+            cached.sourceWriteStamp = 0;
+        }
 
         if (!allowLoad)
         {
@@ -295,8 +315,9 @@ namespace vultra_app::ui
             return {};
         }
 
-        cached.texture   = std::move(result.value());
-        cached.textureId = imguiService->addTexture(*cached.texture, makeLinearClampSampler(rd));
+        cached.texture          = std::move(result.value());
+        cached.textureId        = imguiService->addTexture(*cached.texture, makeLinearClampSampler(rd));
+        cached.sourceWriteStamp = writeStamp;
         return cached.textureId;
     }
 

@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace vultra
@@ -60,6 +61,7 @@ namespace vultra
         // Incremental helper (until ECS cooking is wired):
         // App can push cameras manually.
         void          clearManualCameras() override;
+        void          removeManualCamerasByName(std::string_view name) override;
         RenderCamera& addManualCamera(const RenderCamera& cam) override;
         void          setWorldCamerasEnabled(bool enabled) override;
         void          setWorldXRCamerasEnabled(bool enabled) override;

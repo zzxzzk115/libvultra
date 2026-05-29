@@ -25,6 +25,7 @@
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/asset_service.hpp>
+#include <vultra/function/services/job_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
@@ -1374,6 +1375,7 @@ namespace vultra_app
         ctx.state.sceneDirty         = m_PlayModeSceneDirtySnapshot;
         m_PlayModeSceneDirtySnapshot = false;
         Selection::clear(SelectionCategory::Entity);
+        m_History.syncCurrent(ctx);
         ctx.state.statusMessage       = "Exited Play Mode. Scene state restored.";
         ctx.state.editorStepRequested = false;
     }
@@ -1480,6 +1482,10 @@ namespace vultra_app
 
         m_ImportResult   = {};
         m_ImportTaskDone = false;
+        {
+            std::scoped_lock lock(m_ImportedThumbnailMutex);
+            m_PendingImportedThumbnailPaths.clear();
+        }
         for (auto& path : importPaths)
             path = path.lexically_normal();
         m_ImportTask     = std::make_unique<vtask::TaskSet>(
@@ -1586,6 +1592,13 @@ namespace vultra_app
                         if (!importResult && importResult.error() != vasset::AssetError::eNotSupported)
                             break;
 
+                        if (importResult)
+                        {
+                            (void)registry.save(result.registryPath);
+                            std::scoped_lock lock(m_ImportedThumbnailMutex);
+                            m_PendingImportedThumbnailPaths.push_back(importPath);
+                        }
+
                         ++processed;
                     }
 
@@ -1647,15 +1660,18 @@ namespace vultra_app
         if (!assetService)
             return;
 
-        const auto projectRoot = ctx.state.currentProject.lexically_normal();
-        vultra::AssetSystemDesc desc;
-        desc.assetRoot        = (projectRoot / ctx.state.currentAssetRoot).lexically_normal().generic_string();
-        desc.importedFolder   = "imported";
-        desc.registryFile     = "asset_registry.tsv";
-        desc.scheme           = "res";
-        desc.keepCpuCopy      = true;
-        desc.enableImportScan = false;
-        assetService->configure(desc);
+        if (!assetService->reloadRegistry())
+        {
+            const auto projectRoot = ctx.state.currentProject.lexically_normal();
+            vultra::AssetSystemDesc desc;
+            desc.assetRoot        = (projectRoot / ctx.state.currentAssetRoot).lexically_normal().generic_string();
+            desc.importedFolder   = "imported";
+            desc.registryFile     = "asset_registry.tsv";
+            desc.scheme           = "res";
+            desc.keepCpuCopy      = true;
+            desc.enableImportScan = false;
+            assetService->configure(desc);
+        }
 
         ++ctx.state.assetFileGeneration;
     }
@@ -1681,6 +1697,17 @@ namespace vultra_app
         if (!m_BackgroundAssetImport)
             return;
 
+        std::vector<std::filesystem::path> importedThumbnailPaths;
+        {
+            std::scoped_lock lock(m_ImportedThumbnailMutex);
+            importedThumbnailPaths.swap(m_PendingImportedThumbnailPaths);
+        }
+        if (!importedThumbnailPaths.empty())
+        {
+            reloadRuntimeAssetRegistry(ctx);
+            m_ThumbnailService.prewarmSourceThumbnails(ctx, importedThumbnailPaths);
+        }
+
         if (m_ImportProgress)
         {
             std::scoped_lock lock(m_ImportProgress->mutex);
@@ -1699,10 +1726,18 @@ namespace vultra_app
         {
             ctx.state.statusMessage = "Asset import failed: " + importResult.error;
             m_BackgroundAssetImportPaths.clear();
+            std::scoped_lock lock(m_ImportedThumbnailMutex);
+            m_PendingImportedThumbnailPaths.clear();
             return;
         }
 
         reloadRuntimeAssetRegistry(ctx);
+        {
+            std::scoped_lock lock(m_ImportedThumbnailMutex);
+            importedThumbnailPaths.swap(m_PendingImportedThumbnailPaths);
+        }
+        if (!importedThumbnailPaths.empty())
+            m_ThumbnailService.prewarmSourceThumbnails(ctx, importedThumbnailPaths);
         m_ThumbnailService.prewarmSourceThumbnails(ctx, m_BackgroundAssetImportPaths);
         m_BackgroundAssetImportPaths.clear();
         ctx.state.statusMessage = "Imported project assets: " + importResult.assetRoot;
@@ -1945,13 +1980,37 @@ namespace vultra_app
                 auto* worldService = ctx.services->tryGet<vultra::IWorldService>();
                 if (sceneService && worldService && !ctx.state.currentDefaultScene.empty())
                 {
-                    const auto root = sceneService->instantiateScene(
-                        worldService->world(), ctx.state.currentDefaultScene, entt::null, true);
+                    if (!m_Loading.sceneLoad)
+                        m_Loading.sceneLoad = sceneService->loadSceneAsync(ctx.state.currentDefaultScene);
+
+                    const auto status = sceneService->sceneLoadStatus(m_Loading.sceneLoad);
+                    if (status.state == vultra::SceneLoadState::eLoading)
+                    {
+                        m_Loading.progress = 0.94f + std::clamp(status.progress, 0.0f, 1.0f) * 0.04f;
+                        m_Loading.message  = status.message.empty() ? "Loading scene assets..." : status.message;
+                        ctx.state.statusMessage = m_Loading.message;
+                        return true;
+                    }
+                    if (status.state == vultra::SceneLoadState::eFailed)
+                    {
+                        ctx.state.statusMessage = "Failed to load default scene: " + ctx.state.currentDefaultScene;
+                        sceneService->releaseSceneLoad(m_Loading.sceneLoad);
+                        m_Loading.sceneLoad = {};
+                        m_Loading.phase    = LoadingPhase::Finalize;
+                        m_Loading.progress = 0.98f;
+                        m_Loading.message  = ctx.state.statusMessage;
+                        return true;
+                    }
+
+                    const auto root = sceneService->instantiateLoadedScene(
+                        m_Loading.sceneLoad, worldService->world(), entt::null, true);
                     if (root != entt::null)
                     {
                         ctx.state.sceneDirty    = false;
                         ctx.state.statusMessage = "Loaded default scene: " + ctx.state.currentDefaultScene;
                     }
+                    sceneService->releaseSceneLoad(m_Loading.sceneLoad);
+                    m_Loading.sceneLoad = {};
                 }
                 m_History.reset(ctx, "Scene Loaded");
 
@@ -2145,6 +2204,7 @@ namespace vultra_app
         auto* renderService        = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
         auto* renderBackendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
         auto* assetService         = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
+        auto* jobService           = ctx.services ? ctx.services->tryGet<vultra::IJobService>() : nullptr;
         auto* profiler             = renderService ? renderService->runtimeProfiler() : nullptr;
 
         const auto* frame = profiler ? profiler->selectedFrame() : nullptr;
@@ -2156,6 +2216,7 @@ namespace vultra_app
             renderBackendService ? renderBackendService->renderDevice().getMemoryBudget() :
                                    vultra::rhi::RenderDeviceMemoryBudget {};
         const auto assetMemoryStats = assetService ? assetService->memoryStats() : vultra::AssetMemoryStats {};
+        const auto jobSnapshots     = jobService ? jobService->snapshots() : std::vector<vultra::JobSnapshot> {};
 
         std::vector<std::string> labels;
         char                     fpsText[32] {};
@@ -2184,6 +2245,37 @@ namespace vultra_app
             totalWidth += ImGui::CalcTextSize(labels[i].c_str()).x;
             if (i + 1 < labels.size())
                 totalWidth += separatorWidth;
+        }
+
+        ImGui::SetCursorPosY((barHeight - ImGui::GetTextLineHeight()) * 0.5f);
+        if (!jobSnapshots.empty())
+        {
+            const auto& job = jobSnapshots.front();
+            const float pulse =
+                job.progress > 0.0f && job.progress < 1.0f ? job.progress : std::fmod(ImGui::GetTime() * 0.35f, 1.0f);
+            ImGui::SetCursorPosX(8.0f);
+            ImGui::TextDisabled("%s", job.label.empty() ? "Task" : job.label.c_str());
+            ImGui::SameLine(0.0f, 8.0f);
+            ImGui::SetNextItemWidth(180.0f);
+            ImGui::ProgressBar(pulse, ImVec2(180.0f, 8.0f), "");
+            ImGui::SameLine(0.0f, 8.0f);
+            ImGui::TextDisabled("%s", job.message.empty() ? "Working..." : job.message.c_str());
+        }
+        else if (m_Loading.phase == LoadingPhase::LoadScene)
+        {
+            const float progress = std::clamp((m_Loading.progress - 0.94f) / 0.04f, 0.0f, 1.0f);
+            ImGui::SetCursorPosX(8.0f);
+            ImGui::TextDisabled("Scene Load");
+            ImGui::SameLine(0.0f, 8.0f);
+            ImGui::SetNextItemWidth(180.0f);
+            ImGui::ProgressBar(progress, ImVec2(180.0f, 8.0f), "");
+            ImGui::SameLine(0.0f, 8.0f);
+            ImGui::TextDisabled("%s", m_Loading.message.empty() ? "Loading scene assets..." : m_Loading.message.c_str());
+        }
+        else if (!ctx.state.statusMessage.empty())
+        {
+            ImGui::SetCursorPosX(8.0f);
+            ImGui::TextDisabled("%s", ctx.state.statusMessage.c_str());
         }
 
         ImGui::SetCursorPosY((barHeight - ImGui::GetTextLineHeight()) * 0.5f);

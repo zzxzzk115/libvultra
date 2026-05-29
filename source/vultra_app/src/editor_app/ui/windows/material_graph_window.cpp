@@ -494,8 +494,8 @@ namespace vultra_app
             if (!assets)
                 return bounds;
 
-            const auto mesh = assets->loadMeshSync(meshUuid);
-            if (!mesh.ready() || !mesh.cpu())
+            const auto mesh = assets->loadMeshAsync(meshUuid);
+            if (!mesh.cpu())
                 return bounds;
 
             for (const auto& p : mesh.cpu()->positions)

@@ -168,8 +168,8 @@ namespace vultra_app
             if (!assetService)
                 return std::nullopt;
 
-            auto handle = assetService->loadMeshSync(meshUuid);
-            if (!handle.ready() || !handle.cpu() || !handle.cpu()->hasDefaultTransform)
+            auto handle = assetService->loadMeshAsync(meshUuid);
+            if (!handle.cpu() || !handle.cpu()->hasDefaultTransform)
                 return std::nullopt;
 
             MeshSubAssetPlacement placement {};

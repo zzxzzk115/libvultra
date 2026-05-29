@@ -34,6 +34,7 @@ namespace vultra_app
         void observeScene(EditorContext& ctx);
         void execute(EditorContext& ctx, EditorCommand& command);
         void setNextLabel(std::string label);
+        void syncCurrent(EditorContext& ctx);
         void markCurrentClean(EditorContext& ctx);
 
         bool undo(EditorContext& ctx);
