@@ -708,7 +708,6 @@ namespace vultra::platform::sdl
                         };
                         emitEvent(generalEvent);
                     }
-                    SDL_free(const_cast<char*>(event.drop.data));
                     break;
 
                 default:

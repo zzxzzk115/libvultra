@@ -59,7 +59,9 @@ namespace vultra_app::ui
 
         void prewarmProjectModelThumbnails(EditorContext& ctx);
         void prewarmProjectThumbnails(EditorContext& ctx);
+        void prewarmSourceThumbnails(EditorContext& ctx, const std::vector<std::filesystem::path>& sourcePaths);
         bool processLoadingThumbnail(EditorContext& ctx, float& progress, std::string& message);
+        bool processQueuedTextureThumbnail(EditorContext& ctx, float& progress, std::string& message);
 
         const std::vector<AssetThumbnailRequest>& queuedRequests() const { return m_QueuedRequests; }
         const std::filesystem::path& cacheRoot() const { return m_CacheRoot; }

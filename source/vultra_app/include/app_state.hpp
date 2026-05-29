@@ -141,6 +141,8 @@ namespace vultra_app
         bool                  materialGraphOpenRequested {false};
         uint64_t              projectGeneration {0};
         uint64_t              assetFileGeneration {0};
+        bool                  pendingAssetImportRefresh {false};
+        std::vector<std::filesystem::path> pendingAssetImportPaths;
         std::vector<std::filesystem::path> pendingExternalAssetDrops;
         std::vector<EditorCommand> pendingEditorCommands;
         EditorSettings        editorSettings;

@@ -72,6 +72,9 @@ namespace vultra_app
             std::mutex mutex;
             float       progress {0.0f};
             std::string message;
+            std::string currentItem;
+            size_t      processedItems {0};
+            size_t      totalItems {0};
         };
 
         struct ImportTaskResult
@@ -98,12 +101,18 @@ namespace vultra_app
         void startBuildAndRun(EditorContext& ctx);
         void beginBuildAndRun(EditorContext& ctx, const std::filesystem::path& outputFolder, bool launchRuntime = true);
         void startProjectLoading(const std::filesystem::path& projectRoot);
-        void startAssetImportTask(const std::filesystem::path& projectRoot, const std::string& assetRoot);
+        void startAssetImportTask(const std::filesystem::path&              projectRoot,
+                                  const std::string&                       assetRoot,
+                                  std::vector<std::filesystem::path>       importPaths = {});
         void waitForAssetImportTask();
+        void updateBackgroundAssetImport(EditorContext& ctx);
+        void updateBackgroundThumbnails(EditorContext& ctx);
+        void reloadRuntimeAssetRegistry(EditorContext& ctx);
         void applySplashWindow(EditorContext& ctx);
         void applyEditorWindow(EditorContext& ctx);
         void drawLoadingOverlay(EditorContext& ctx) const;
         void drawEditorTaskBar(EditorContext& ctx);
+        void drawImportProgressPopup();
         void drawBuildRunConfigurePopup(EditorContext& ctx);
         void drawBuildRunPopup();
         void processEditorCommands(EditorContext& ctx);
@@ -135,6 +144,11 @@ namespace vultra_app
         ImportTaskResult                    m_ImportResult;
         std::atomic_bool                    m_ImportTaskDone {false};
         std::shared_ptr<ImportTaskProgress> m_ImportProgress;
+        bool                                m_BackgroundAssetImport {false};
+        std::vector<std::filesystem::path>  m_BackgroundAssetImportPaths;
+        bool                                m_ImportProgressPopupPendingOpen {false};
+        bool                                m_BackgroundRenderThumbnailActive {false};
+        std::optional<vultra::SceneDocument> m_BackgroundThumbnailWorldSnapshot;
         std::future<BuildRunResult>         m_BuildRunFuture;
         std::shared_ptr<BuildRunTaskProgress> m_BuildRunProgress;
         std::optional<BuildRunResult>       m_BuildRunCompleted;

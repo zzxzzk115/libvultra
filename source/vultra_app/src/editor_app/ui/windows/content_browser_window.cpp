@@ -692,44 +692,30 @@ namespace vultra_app
             return true;
         }
 
-        bool importCopiedAssetPath(EditorContext& ctx, const std::filesystem::path& path, uint32_t& importedCount)
+        std::filesystem::path sourceAssetVImportPath(const std::filesystem::path& path)
         {
-            if (!ctx.services)
-                return false;
+            auto sidecar = path;
+            sidecar.replace_extension(".vimport");
+            return sidecar;
+        }
 
-            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
-            if (!assetService)
-                return false;
-
-            bool            ok = false;
-            std::error_code ec;
-            if (std::filesystem::is_directory(path, ec))
+        bool deleteSourceAssetWithSidecars(const std::filesystem::path& path, std::error_code& ec)
+        {
+            std::error_code dirEc;
+            if (std::filesystem::is_directory(path, dirEc))
             {
-                for (const auto& entry : std::filesystem::recursive_directory_iterator(path, ec))
-                {
-                    if (ec)
-                        break;
-                    std::error_code entryEc;
-                    if (!entry.is_regular_file(entryEc) || entryEc)
-                        continue;
-                    const auto uri = pathToResUri(ctx, entry.path());
-                    if (uri.empty())
-                        continue;
-                    const bool imported = assetService->reimportAsset(uri, false);
-                    ok                  = imported || ok;
-                    if (imported)
-                        ++importedCount;
-                }
-                return ok;
+                std::filesystem::remove_all(path, ec);
+                return !ec;
             }
 
-            const auto uri = pathToResUri(ctx, path);
-            if (uri.empty())
+            std::filesystem::remove(path, ec);
+            if (ec)
                 return false;
-            const bool imported = assetService->reimportAsset(uri, false);
-            if (imported)
-                ++importedCount;
-            return imported;
+
+            const auto sidecar = sourceAssetVImportPath(path);
+            if (sidecar != path && std::filesystem::exists(sidecar))
+                std::filesystem::remove(sidecar, ec);
+            return !ec;
         }
     } // namespace
 
@@ -1822,15 +1808,17 @@ namespace vultra_app
             if (ImGui::Button("Delete"))
             {
                 std::error_code ec;
-                if (std::filesystem::is_directory(m_DeletePath, ec))
-                    std::filesystem::remove_all(m_DeletePath, ec);
-                else
-                    std::filesystem::remove(m_DeletePath, ec);
+                deleteSourceAssetWithSidecars(m_DeletePath, ec);
                 ctx.state.statusMessage = ec ? "Delete failed: " + ec.message() : "Deleted asset.";
                 if (m_SelectedPath == m_DeletePath)
                 {
                     m_SelectedPath.clear();
                     ctx.state.selectedSourceAsset.clear();
+                }
+                if (!ec)
+                {
+                    ctx.state.pendingAssetImportPaths.push_back(m_DeletePath);
+                    ctx.state.pendingAssetImportRefresh = true;
                 }
                 invalidateEntryCache();
                 m_DeletePath.clear();
@@ -1903,10 +1891,9 @@ namespace vultra_app
             return;
         }
 
-        uint32_t   importedCount = 0;
-        const bool imported      = importCopiedAssetPath(ctx, copiedPath, importedCount);
-        ctx.state.statusMessage  = imported ? "Imported " + std::to_string(importedCount) + " asset(s)." :
-                                              "Copied asset, but no importer accepted it.";
+        ctx.state.pendingAssetImportPaths.push_back(copiedPath);
+        ctx.state.pendingAssetImportRefresh = true;
+        ctx.state.statusMessage             = "Copied asset. Import queued.";
         invalidateEntryCache();
         m_CurrentDir   = (m_ImportTargetDir.empty() ? m_CurrentDir : m_ImportTargetDir).lexically_normal();
         m_SelectedPath = copiedPath;

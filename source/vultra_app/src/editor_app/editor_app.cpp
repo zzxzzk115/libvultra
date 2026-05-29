@@ -687,6 +687,8 @@ namespace vultra_app
         syncPlaybackState(ctx);
         updateBuildAndRun(ctx);
         (void)updateProjectLoading(ctx);
+        updateBackgroundAssetImport(ctx);
+        updateBackgroundThumbnails(ctx);
         if (ctx.state.mode == AppMode::Editor && !isProjectLoading())
         {
             ensureInitialized();
@@ -836,6 +838,7 @@ namespace vultra_app
             vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::playbackAndPopups"};
             syncPlaybackState(ctx);
             drawBuildRunConfigurePopup(ctx);
+            drawImportProgressPopup();
             drawBuildRunPopup();
             drawProjectSettingsPopup(ctx);
             drawEditorSettingsPopup(ctx);
@@ -1080,6 +1083,53 @@ namespace vultra_app
                 closeCompletedPopup();
             ImGui::EndPopup();
         }
+    }
+
+    void EditorApp::drawImportProgressPopup()
+    {
+        if (!m_BackgroundAssetImport && !m_ImportProgressPopupPendingOpen)
+            return;
+
+        if (m_ImportProgressPopupPendingOpen)
+        {
+            ui::centerNextModalInCurrentWindow();
+            ImGui::OpenPopup("Import Assets");
+            m_ImportProgressPopupPendingOpen = false;
+        }
+
+        bool popupOpen = true;
+        if (!ImGui::BeginPopupModal("Import Assets", &popupOpen, ImGuiWindowFlags_AlwaysAutoResize))
+            return;
+
+        float       progress = 0.0f;
+        std::string message  = "Preparing asset import...";
+        std::string currentItem;
+        size_t      processedItems = 0;
+        size_t      totalItems     = 0;
+        if (m_ImportProgress)
+        {
+            std::scoped_lock lock(m_ImportProgress->mutex);
+            progress       = std::clamp(m_ImportProgress->progress, 0.0f, 1.0f);
+            message        = m_ImportProgress->message.empty() ? message : m_ImportProgress->message;
+            currentItem    = m_ImportProgress->currentItem;
+            processedItems = m_ImportProgress->processedItems;
+            totalItems     = m_ImportProgress->totalItems;
+        }
+
+        ImGui::TextUnformatted(ICON_MDI_FILE_IMPORT " Importing assets");
+        ImGui::Spacing();
+        ImGui::ProgressBar(progress, ImVec2 {420.0f, 0.0f});
+        ImGui::TextWrapped("%s", message.c_str());
+        if (!currentItem.empty())
+        {
+            ImGui::TextDisabled("Item");
+            ImGui::SameLine();
+            ImGui::TextWrapped("%s", currentItem.c_str());
+        }
+        if (totalItems > 0)
+            ImGui::TextDisabled("%zu / %zu", std::min(processedItems, totalItems), totalItems);
+
+        ImGui::EndPopup();
     }
 
     void EditorApp::drawBuildRunConfigurePopup(EditorContext& ctx)
@@ -1411,7 +1461,9 @@ namespace vultra_app
         m_EditorWindowApplied = false;
     }
 
-    void EditorApp::startAssetImportTask(const std::filesystem::path& projectRoot, const std::string& assetRoot)
+    void EditorApp::startAssetImportTask(const std::filesystem::path&        projectRoot,
+                                         const std::string&                 assetRoot,
+                                         std::vector<std::filesystem::path> importPaths)
     {
         auto progress      = std::make_shared<ImportTaskProgress>();
         progress->message  = "Scanning project assets...";
@@ -1428,8 +1480,10 @@ namespace vultra_app
 
         m_ImportResult   = {};
         m_ImportTaskDone = false;
+        for (auto& path : importPaths)
+            path = path.lexically_normal();
         m_ImportTask     = std::make_unique<vtask::TaskSet>(
-            1, 1, [this, progress, assetRootPath, importedFolder, registryFile](vtask::Range) {
+            1, 1, [this, progress, assetRootPath, importedFolder, registryFile, importPaths = std::move(importPaths)](vtask::Range) {
                 ImportTaskResult result;
                 result.assetRoot    = assetRootPath.generic_string();
                 result.registryPath = (assetRootPath / importedFolder / registryFile).generic_string();
@@ -1444,12 +1498,21 @@ namespace vultra_app
 
                 vasset::VAssetImporter importer {registry};
                 auto                   options = makeEditorAssetImportOptions();
-                options.progress               = [progress](const vasset::VAssetImporter::ImportProgress& p) {
+                const size_t            targetedImportCount = importPaths.size();
+                options.progress               = [progress, targetedImportCount](const vasset::VAssetImporter::ImportProgress& p) {
                     std::scoped_lock lock(progress->mutex);
+                    const bool keepOuterBatchProgress = targetedImportCount > 1 && p.totalFiles <= 1;
+                    if (!keepOuterBatchProgress)
+                    {
+                        progress->processedItems = p.processedFiles;
+                        progress->totalItems     = p.totalFiles;
+                    }
+                    progress->currentItem    = p.currentPath;
                     switch (p.phase)
                     {
                         case vasset::VAssetImporter::ImportProgress::Phase::eScan:
-                            progress->progress = 0.08f;
+                            if (!keepOuterBatchProgress)
+                                progress->progress = 0.08f;
                             progress->message =
                                 p.currentPath.empty() ? "Scanning project assets..." : "Scanning " + p.currentPath;
                             break;
@@ -1457,26 +1520,94 @@ namespace vultra_app
                             const float amount = p.totalFiles > 0 ? static_cast<float>(p.processedFiles) /
                                                                         static_cast<float>(p.totalFiles) :
                                                                                   1.0f;
-                            progress->progress = 0.12f + amount * 0.68f;
+                            if (!keepOuterBatchProgress)
+                                progress->progress = 0.12f + amount * 0.68f;
                             progress->message =
                                 p.currentPath.empty() ? "Importing project assets..." : "Importing " + p.currentPath;
                             break;
                         }
                         case vasset::VAssetImporter::ImportProgress::Phase::eDone:
-                            progress->progress = 0.82f;
+                            if (!keepOuterBatchProgress)
+                                progress->progress = 0.82f;
                             progress->message  = "Finalizing asset database...";
                             break;
                     }
                 };
                 importer.setOptions(options);
 
-                auto importResult = importer.importOrReimportAssetFolder(result.assetRoot, false);
-                if (!importResult)
+                vbase::Result<void, vasset::AssetError> importResult =
+                    vbase::Result<void, vasset::AssetError>::ok();
+                if (importPaths.empty())
+                {
+                    importResult = importer.importOrReimportAssetFolder(result.assetRoot, false);
+                }
+                else
+                {
+                    {
+                        std::scoped_lock lock(progress->mutex);
+                        progress->progress = 0.12f;
+                        progress->message  = "Importing changed assets...";
+                        progress->currentItem.clear();
+                        progress->processedItems = 0;
+                        progress->totalItems     = importPaths.size();
+                    }
+
+                    size_t processed = 0;
+                    for (const auto& importPath : importPaths)
+                    {
+                        std::error_code relEc;
+                        const auto currentPath =
+                            std::filesystem::relative(importPath, assetRootPath, relEc).generic_string();
+                        {
+                            std::scoped_lock lock(progress->mutex);
+                            const float amount = importPaths.empty() ? 1.0f :
+                                                                 static_cast<float>(processed) /
+                                                                     static_cast<float>(importPaths.size());
+                            progress->progress = 0.12f + amount * 0.68f;
+                            progress->message  = currentPath.empty() ? "Importing changed assets..." :
+                                                                     "Importing " + currentPath;
+                            progress->currentItem    = currentPath;
+                            progress->processedItems = processed;
+                            progress->totalItems     = importPaths.size();
+                        }
+
+                        std::error_code ec;
+                        if (!std::filesystem::exists(importPath, ec))
+                        {
+                            ++processed;
+                            continue;
+                        }
+
+                        if (std::filesystem::is_directory(importPath, ec))
+                            importResult = importer.importOrReimportAssetFolder(importPath.generic_string(), false);
+                        else
+                            importResult = importer.importOrReimportAsset(importPath.generic_string(), false);
+
+                        if (!importResult && importResult.error() != vasset::AssetError::eNotSupported)
+                            break;
+
+                        ++processed;
+                    }
+
+                    {
+                        std::scoped_lock lock(progress->mutex);
+                        progress->progress = 0.82f;
+                        progress->message  = "Finalizing asset database...";
+                        progress->processedItems = importPaths.size();
+                        progress->totalItems     = importPaths.size();
+                    }
+                }
+                if (!importResult && importResult.error() != vasset::AssetError::eNotSupported)
                 {
                     result.ok    = false;
                     result.error = "asset import failed";
                 }
-                else if (!registry.save(result.registryPath))
+                else
+                {
+                    registry.cleanup();
+                }
+
+                if (result.error.empty() && !registry.save(result.registryPath))
                 {
                     result.ok    = false;
                     result.error = "failed to save asset registry";
@@ -1505,6 +1636,121 @@ namespace vultra_app
             m_ImportScheduler->wait(*m_ImportTask);
         m_ImportTask.reset();
         m_ImportTaskDone.store(true, std::memory_order_release);
+    }
+
+    void EditorApp::reloadRuntimeAssetRegistry(EditorContext& ctx)
+    {
+        if (!ctx.services || ctx.state.currentProject.empty())
+            return;
+
+        auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+        if (!assetService)
+            return;
+
+        const auto projectRoot = ctx.state.currentProject.lexically_normal();
+        vultra::AssetSystemDesc desc;
+        desc.assetRoot        = (projectRoot / ctx.state.currentAssetRoot).lexically_normal().generic_string();
+        desc.importedFolder   = "imported";
+        desc.registryFile     = "asset_registry.tsv";
+        desc.scheme           = "res";
+        desc.keepCpuCopy      = true;
+        desc.enableImportScan = false;
+        assetService->configure(desc);
+
+        ++ctx.state.assetFileGeneration;
+    }
+
+    void EditorApp::updateBackgroundAssetImport(EditorContext& ctx)
+    {
+        if (isProjectLoading())
+            return;
+
+        if (ctx.state.pendingAssetImportRefresh && !m_BackgroundAssetImport && !m_ImportTask &&
+            !ctx.state.currentProject.empty())
+        {
+            auto importPaths = std::move(ctx.state.pendingAssetImportPaths);
+            ctx.state.pendingAssetImportPaths.clear();
+            ctx.state.pendingAssetImportRefresh = false;
+            m_BackgroundAssetImportPaths = importPaths;
+            startAssetImportTask(ctx.state.currentProject, ctx.state.currentAssetRoot, std::move(importPaths));
+            m_BackgroundAssetImport = true;
+            m_ImportProgressPopupPendingOpen = true;
+            ctx.state.statusMessage = "Importing project assets...";
+        }
+
+        if (!m_BackgroundAssetImport)
+            return;
+
+        if (m_ImportProgress)
+        {
+            std::scoped_lock lock(m_ImportProgress->mutex);
+            if (!m_ImportProgress->message.empty())
+                ctx.state.statusMessage = m_ImportProgress->message;
+        }
+
+        if (!m_ImportTaskDone.load(std::memory_order_acquire))
+            return;
+
+        waitForAssetImportTask();
+        auto importResult = std::move(m_ImportResult);
+        m_BackgroundAssetImport = false;
+
+        if (!importResult.ok)
+        {
+            ctx.state.statusMessage = "Asset import failed: " + importResult.error;
+            m_BackgroundAssetImportPaths.clear();
+            return;
+        }
+
+        reloadRuntimeAssetRegistry(ctx);
+        m_ThumbnailService.prewarmSourceThumbnails(ctx, m_BackgroundAssetImportPaths);
+        m_BackgroundAssetImportPaths.clear();
+        ctx.state.statusMessage = "Imported project assets: " + importResult.assetRoot;
+    }
+
+    void EditorApp::updateBackgroundThumbnails(EditorContext& ctx)
+    {
+        if (isProjectLoading())
+            return;
+
+        float       thumbnailProgress = 1.0f;
+        std::string thumbnailMessage;
+        if (m_ThumbnailService.processQueuedTextureThumbnail(ctx, thumbnailProgress, thumbnailMessage) &&
+            !thumbnailMessage.empty())
+        {
+            ctx.state.statusMessage = thumbnailMessage;
+        }
+
+        const auto& queuedThumbnails = m_ThumbnailService.queuedRequests();
+        const bool hasRenderThumbnail =
+            std::any_of(queuedThumbnails.begin(), queuedThumbnails.end(), [](const auto& request) {
+                return request.kind != ui::AssetThumbnailKind::Texture;
+            });
+        if (!hasRenderThumbnail && !m_BackgroundRenderThumbnailActive)
+            return;
+
+        auto* sceneService = ctx.services ? ctx.services->tryGet<vultra::ISceneService>() : nullptr;
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!sceneService || !worldService)
+            return;
+
+        if (!m_BackgroundRenderThumbnailActive)
+        {
+            m_BackgroundThumbnailWorldSnapshot = sceneService->captureWorldAsScene(worldService->world(), entt::null);
+            m_BackgroundRenderThumbnailActive  = true;
+        }
+
+        if (m_ThumbnailService.processLoadingThumbnail(ctx, thumbnailProgress, thumbnailMessage))
+        {
+            if (!thumbnailMessage.empty())
+                ctx.state.statusMessage = thumbnailMessage;
+            return;
+        }
+
+        if (m_BackgroundThumbnailWorldSnapshot && m_BackgroundThumbnailWorldSnapshot->root)
+            sceneService->instantiateSceneDocument(worldService->world(), *m_BackgroundThumbnailWorldSnapshot, entt::null, true);
+        m_BackgroundThumbnailWorldSnapshot.reset();
+        m_BackgroundRenderThumbnailActive = false;
     }
 
     void EditorApp::applySplashWindow(EditorContext& ctx)

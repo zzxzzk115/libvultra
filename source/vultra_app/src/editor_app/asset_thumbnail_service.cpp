@@ -811,6 +811,74 @@ namespace vultra_app::ui
         m_TotalQueuedThisPass = std::max(m_TotalQueuedThisPass, m_QueuedRequests.size());
     }
 
+    void AssetThumbnailService::prewarmSourceThumbnails(EditorContext&                            ctx,
+                                                        const std::vector<std::filesystem::path>& sourcePaths)
+    {
+        syncProject(ctx);
+        if (sourcePaths.empty())
+            return;
+
+        for (const auto& sourcePath : sourcePaths)
+        {
+            std::error_code ec;
+            if (!std::filesystem::is_regular_file(sourcePath, ec) || ec)
+                continue;
+
+            const auto sourcePathText = sourcePath.generic_string();
+            if (isTextureSourcePath(sourcePathText))
+            {
+                requestTexture(ctx, sourcePath);
+            }
+            else if (isSceneSourcePath(sourcePath))
+            {
+                requestScene(ctx, sourcePath);
+            }
+            else if (isMaterialGraphSourcePath(sourcePath))
+            {
+                requestMaterialGraph(ctx, sourcePath);
+            }
+            else if (isModelSourcePath(sourcePathText))
+            {
+                requestModelRoot(ctx, sourcePath);
+            }
+        }
+
+        m_TotalQueuedThisPass = std::max(m_TotalQueuedThisPass, m_QueuedRequests.size());
+    }
+
+    bool AssetThumbnailService::processQueuedTextureThumbnail(EditorContext& ctx, float& progress, std::string& message)
+    {
+        syncProject(ctx);
+        ++m_FrameCounter;
+
+        auto textureIt = std::find_if(m_QueuedRequests.begin(), m_QueuedRequests.end(), [](const auto& request) {
+            return request.kind == AssetThumbnailKind::Texture;
+        });
+        if (textureIt == m_QueuedRequests.end())
+        {
+            progress = 1.0f;
+            message.clear();
+            return false;
+        }
+
+        auto request = std::move(*textureIt);
+        m_QueuedRequests.erase(textureIt);
+
+        if (statusFor(request.outputPath) == AssetThumbnailStatus::Ready)
+        {
+            m_StatusCache[request.key] = AssetThumbnailStatus::Ready;
+            progress = 1.0f;
+            message  = "Loaded cached texture thumbnail.";
+            return true;
+        }
+
+        const bool cooked          = cookTextureThumbnail(request);
+        m_StatusCache[request.key] = cooked ? AssetThumbnailStatus::Ready : AssetThumbnailStatus::Failed;
+        progress                   = 1.0f;
+        message                    = cooked ? "Generated texture thumbnail." : "Failed to generate texture thumbnail.";
+        return true;
+    }
+
     bool AssetThumbnailService::processLoadingThumbnail(EditorContext& ctx, float& progress, std::string& message)
     {
         syncProject(ctx);
