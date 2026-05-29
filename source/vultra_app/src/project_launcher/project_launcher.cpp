@@ -434,7 +434,7 @@ Describe the repeatable player loop here.
 
 ## Technical Boundaries
 
-- Default Scene: `res://scenes/test.vscn`
+- Default Scene: `res://scenes/main.vscn`
 - Editing Render Graph: `res://render/default.vrg.json`
 - Runtime Asset Root: `resources`
 
@@ -496,7 +496,7 @@ This directory is an index, not the runtime asset root.
 )";
 
             const auto resourcesDir = projectDir / "resources";
-            return writeTextFile(resourcesDir / "scenes" / "test.vscn", kSampleScene, errorMessage) &&
+            return writeTextFile(resourcesDir / "scenes" / "main.vscn", kSampleScene, errorMessage) &&
                    writeTextFile(resourcesDir / "render" / "default.vrg.json", kDefaultRenderGraph, errorMessage) &&
                    writeTextFile(resourcesDir / "render" / "stereo_vr.vrg.json", kStereoRenderGraph, errorMessage) &&
                    writeTextFile(resourcesDir / "render" / "passes" / "pixelate.lua", kPixelatePass, errorMessage) &&
@@ -727,7 +727,7 @@ This directory is an index, not the runtime asset root.
             state.selectedSourceAsset.clear();
             state.pendingEditorCommands.clear();
             state.currentAssetRoot          = "resources";
-            state.currentDefaultScene       = "res://scenes/test.vscn";
+            state.currentDefaultScene.clear();
             state.currentEditingRenderGraph = "res://render/default.vrg.json";
             state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
             ++state.projectGeneration;
@@ -1091,7 +1091,7 @@ This directory is an index, not the runtime asset root.
                .projectDir         = projectDir,
                .name               = projectName,
                .assetRoot          = "resources",
-               .defaultScene       = "res://scenes/test.vscn",
+               .defaultScene       = "res://scenes/main.vscn",
                .editingRenderGraph = "res://render/default.vrg.json",
         };
         if (!saveVProject(project, &errorMessage))

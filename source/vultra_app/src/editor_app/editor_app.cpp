@@ -768,7 +768,7 @@ namespace vultra_app
                                      topBarCtx.state.codeEditorPath.clear();
                                      topBarCtx.state.pendingEditorCommands.clear();
                                      topBarCtx.state.currentAssetRoot          = "resources";
-                                     topBarCtx.state.currentDefaultScene       = "res://scenes/test.vscn";
+                                     topBarCtx.state.currentDefaultScene.clear();
                                      topBarCtx.state.currentEditingRenderGraph = "res://render/default.vrg.json";
                                      topBarCtx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
                                      ++topBarCtx.state.projectGeneration;

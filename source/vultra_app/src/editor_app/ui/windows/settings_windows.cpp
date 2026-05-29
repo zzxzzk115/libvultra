@@ -310,7 +310,7 @@ namespace vultra_app
         if (ImGui::Button("Reset to Defaults", ImVec2 {132.0f, 0.0f}))
         {
             setBuffer(m_ProjectAssetRootBuffer, "resources");
-            setBuffer(m_ProjectDefaultSceneBuffer, "res://scenes/test.vscn");
+            setBuffer(m_ProjectDefaultSceneBuffer, "");
             setBuffer(m_ProjectEditingRenderGraphBuffer, "res://render/default.vrg.json");
             applyProjectSettingsFromBuffers(ctx,
                                             m_ProjectNameBuffer,

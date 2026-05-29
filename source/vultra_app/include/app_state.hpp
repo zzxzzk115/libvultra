@@ -111,7 +111,7 @@ namespace vultra_app
         std::filesystem::path codeEditorPath;
         std::string           currentProjectName;
         std::string           currentAssetRoot {"resources"};
-        std::string           currentDefaultScene {"res://scenes/test.vscn"};
+        std::string           currentDefaultScene;
         std::string           currentEditingRenderGraph {"res://render/default.vrg.json"};
         std::string           currentEditingMaterialGraph {"res://materials/default.vmatgraph.json"};
         std::string           statusMessage;

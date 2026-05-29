@@ -82,7 +82,7 @@ def parse_vproject(path: Path | None) -> dict[str, Any]:
         value = value.strip().strip('"')
         result[key.strip()] = value
     result.setdefault("asset_root", "resources")
-    result.setdefault("default_scene", "res://scenes/test.vscn")
+    result.setdefault("default_scene", "")
     result.setdefault("editing_rendergraph", "res://render/default.vrg.json")
     return result
 

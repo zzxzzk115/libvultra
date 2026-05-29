@@ -6,7 +6,9 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace vultra_app
 {
@@ -68,6 +70,81 @@ namespace vultra_app
             out += "\"";
             return out;
         }
+
+        std::filesystem::path resolveProjectAssetUri(const VProject& project, const std::string_view uri)
+        {
+            constexpr std::string_view prefix {"res://"};
+            if (!uri.starts_with(prefix))
+                return {};
+            return (project.projectDir / project.assetRoot / std::string(uri.substr(prefix.size()))).lexically_normal();
+        }
+
+        bool projectAssetUriExists(const VProject& project, const std::string_view uri)
+        {
+            const auto path = resolveProjectAssetUri(project, uri);
+            if (path.empty())
+                return false;
+            std::error_code ec;
+            return std::filesystem::is_regular_file(path, ec);
+        }
+
+        std::optional<std::string> readPackageEntryScene(const VProject& project)
+        {
+            const auto manifestPath = project.projectDir / project.assetRoot / kVPackageManifestPath;
+            std::ifstream file(manifestPath);
+            if (!file)
+                return std::nullopt;
+
+            std::string line;
+            while (std::getline(file, line))
+            {
+                line = trim(std::move(line));
+                if (line.empty() || line.front() == '#' || line.front() == '[')
+                    continue;
+
+                const auto equalsPos = line.find('=');
+                if (equalsPos == std::string::npos)
+                    continue;
+
+                auto key = trim(line.substr(0, equalsPos));
+                if (key != "entry_scene")
+                    continue;
+
+                auto value = unquote(line.substr(equalsPos + 1));
+                if (!value.empty())
+                    return value;
+            }
+            return std::nullopt;
+        }
+
+        std::string findFallbackSceneUri(const VProject& project)
+        {
+            if (auto entryScene = readPackageEntryScene(project);
+                entryScene.has_value() && projectAssetUriExists(project, *entryScene))
+            {
+                return *entryScene;
+            }
+
+            const auto scenesDir = project.projectDir / project.assetRoot / "scenes";
+            std::error_code ec;
+            if (!std::filesystem::is_directory(scenesDir, ec))
+                return {};
+
+            std::vector<std::filesystem::path> sceneFiles;
+            for (const auto& entry : std::filesystem::directory_iterator(scenesDir, ec))
+            {
+                if (entry.is_regular_file(ec) && entry.path().extension() == ".vscn")
+                    sceneFiles.push_back(entry.path().lexically_normal());
+            }
+            std::sort(sceneFiles.begin(), sceneFiles.end());
+            if (sceneFiles.empty())
+                return {};
+
+            auto rel = std::filesystem::relative(sceneFiles.front(), project.projectDir / project.assetRoot, ec);
+            if (ec)
+                return {};
+            return "res://" + rel.generic_string();
+        }
     } // namespace
 
     std::filesystem::path vprojectFileFor(const std::filesystem::path& projectDir, const std::string& projectName)
@@ -121,8 +198,8 @@ namespace vultra_app
             project.name = project.projectDir.filename().generic_string();
         if (project.assetRoot.empty())
             project.assetRoot = "resources";
-        if (project.defaultScene.empty())
-            project.defaultScene = "res://scenes/test.vscn";
+        if (project.defaultScene.empty() || !projectAssetUriExists(project, project.defaultScene))
+            project.defaultScene = findFallbackSceneUri(project);
         if (project.editingRenderGraph.empty())
             project.editingRenderGraph = "res://render/default.vrg.json";
 
@@ -216,8 +293,6 @@ namespace vultra_app
             begin = end + 1;
         }
 
-        if (manifest.entryScene.empty())
-            manifest.entryScene = "res://scenes/test.vscn";
         return manifest;
     }
 

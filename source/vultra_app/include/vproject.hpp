@@ -14,14 +14,14 @@ namespace vultra_app
         std::filesystem::path projectDir;
         std::string           name;
         std::string           assetRoot {"resources"};
-        std::string           defaultScene {"res://scenes/test.vscn"};
+        std::string           defaultScene;
         std::string           editingRenderGraph {"res://render/default.vrg.json"};
     };
 
     struct VPackageManifest
     {
         std::string name;
-        std::string entryScene {"res://scenes/test.vscn"};
+        std::string entryScene;
     };
 
     [[nodiscard]] std::filesystem::path vprojectFileFor(const std::filesystem::path& projectDir,

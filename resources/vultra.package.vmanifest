@@ -1,4 +1,4 @@
 [vpackage]
 version = 1
 name = "example"
-entry_scene = "res://scenes/test.vscn"
+entry_scene = "res://scenes/sponza.vscn"

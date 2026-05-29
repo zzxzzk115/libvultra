@@ -35,7 +35,7 @@ function OnCreate(self)
     print("[binding_probe] camera.count=" .. tostring(Camera.count()) .. " overlay=" .. tostring(overlay.mode))
     print("[binding_probe] render.clodLevel=" .. tostring(gs.clodLevel))
     print("[binding_probe] xr.enabled=" .. bool_text(RenderBackend.isXREnabled()))
-    print("[binding_probe] scene.load.default=" .. bool_text(Scene.load("res://scenes/test.vscn")))
+    print("[binding_probe] scene.load.package=" .. bool_text(Scene.load("res://scenes/sponza.vscn")))
 end
 
 function OnUpdate(self, dt)
