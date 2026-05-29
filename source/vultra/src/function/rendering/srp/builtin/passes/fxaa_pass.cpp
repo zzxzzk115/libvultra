@@ -9,6 +9,7 @@
 
 #include <fg/FrameGraph.hpp>
 
+#include <format>
 #include <glm/ext/vector_float2.hpp>
 
 namespace vultra
@@ -70,8 +71,6 @@ namespace vultra
                     return;
                 setShaderLib(*rc.ext.builtinShaderLib);
 
-                RHI_GPU_ZONE(rc.cb, PASS_NAME);
-
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
                 const auto* pipeline = getPipeline(rhi::getColorFormat(framebufferInfo, 0), framebufferInfo.viewMask);
@@ -86,7 +85,13 @@ namespace vultra
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
-                rc.cb.beginRendering(rc.framebufferInfo().value()).drawFullScreenTriangle().endRendering();
+                rc.cb.beginRendering(framebufferInfo);
+                {
+                    const auto scopeName = std::format("{} {}x{}", PASS_NAME, extent.width, extent.height);
+                    RHI_GPU_ZONE(rc.cb, scopeName.c_str());
+                    rc.cb.drawFullScreenTriangle();
+                }
+                rc.cb.endRendering();
             });
 
         return data.output;

@@ -8,6 +8,7 @@
 #include "vultra/function/rendering/srp/render_target_desc.hpp"
 
 #include <fg/FrameGraph.hpp>
+#include <format>
 
 namespace vultra
 {
@@ -109,14 +110,12 @@ namespace vultra
                                               .clearValue  = framegraph::ClearValue::eTransparentBlack,
                                           });
             },
-            [this, settings](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+            [this, settings, extent = colorDesc.extent](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
                     return;
                 setShaderLib(*rc.ext.builtinShaderLib);
-
-                RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
@@ -139,7 +138,13 @@ namespace vultra
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
-                rc.cb.beginRendering(rc.framebufferInfo().value()).drawFullScreenTriangle().endRendering();
+                rc.cb.beginRendering(framebufferInfo);
+                {
+                    const auto scopeName = std::format("{} {}x{}", PASS_NAME, extent.width, extent.height);
+                    RHI_GPU_ZONE(rc.cb, scopeName.c_str());
+                    rc.cb.drawFullScreenTriangle();
+                }
+                rc.cb.endRendering();
             });
 
         return data.output;

@@ -5,6 +5,7 @@
 #include "vultra/function/rendering/framework/prepared_render_data.hpp"
 
 #include <fg/FrameGraph.hpp>
+#include <format>
 
 namespace vultra
 {
@@ -25,7 +26,9 @@ namespace vultra
 
         ctx.fg.addCallbackPass(
             PASS_NAME,
-            [cameraBlock, depth, environmentMap, &color](FrameGraph::Builder& builder, auto&) {
+            [cameraBlock, depth, environmentMap, useCubemapOverride = cubemapOverride != nullptr, &color](
+                FrameGraph::Builder& builder,
+                auto&) {
                 PASS_SETUP_ZONE;
 
                 builder.read(cameraBlock,
@@ -37,16 +40,19 @@ namespace vultra
                              framegraph::Attachment {
                                  .imageAspect = rhi::ImageAspect::eDepth,
                              });
-                builder.read(environmentMap,
-                             framegraph::TextureRead {
-                                 .binding =
-                                     {
-                                         .location      = {.set = 3, .binding = 0},
-                                         .pipelineStage = framegraph::PipelineStage::eFragmentShader,
-                                     },
-                                 .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
-                                 .imageAspect = rhi::ImageAspect::eColor,
-                             });
+                if (!useCubemapOverride)
+                {
+                    builder.read(environmentMap,
+                                 framegraph::TextureRead {
+                                     .binding =
+                                         {
+                                             .location      = {.set = 3, .binding = 0},
+                                             .pipelineStage = framegraph::PipelineStage::eFragmentShader,
+                                         },
+                                     .type        = framegraph::TextureRead::Type::eCombinedImageSampler,
+                                     .imageAspect = rhi::ImageAspect::eColor,
+                                 });
+                }
                 color = builder.write(color,
                                       framegraph::Attachment {
                                           .index       = 0,
@@ -68,7 +74,6 @@ namespace vultra
                 if (!pipeline)
                     return;
 
-                RHI_GPU_ZONE(rc.cb, PASS_NAME);
                 if (cubemapOverride && *cubemapOverride)
                 {
                     rhi::prepareForReading(rc.cb, *cubemapOverride);
@@ -83,7 +88,16 @@ namespace vultra
                 }
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
-                rc.cb.beginRendering(framebufferInfo).drawFullScreenTriangle().endRendering();
+                rc.cb.beginRendering(framebufferInfo);
+                {
+                    const auto scopeName = std::format("{} {}x{}",
+                                                       PASS_NAME,
+                                                       framebufferInfo.area.extent.width,
+                                                       framebufferInfo.area.extent.height);
+                    RHI_GPU_ZONE(rc.cb, scopeName.c_str());
+                    rc.cb.drawFullScreenTriangle();
+                }
+                rc.cb.endRendering();
             });
 
         return color;
