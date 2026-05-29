@@ -3083,7 +3083,7 @@ namespace vultra
             for (const size_t cameraIdx : cameraOrder)
             {
                 const auto& cam = cams[cameraIdx];
-                if (cam.isXRView || !cam.renderImGui)
+                if (!cam.renderImGui)
                     continue;
 
                 auto renderer = resolveRenderer(cam);

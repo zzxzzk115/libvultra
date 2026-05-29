@@ -30,6 +30,8 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/trigonometric.hpp>
 
+#include <vbase/core/scoped_enum_flags.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -309,10 +311,14 @@ namespace vultra
         engine.ctx().config.window.resizable               = demoWindowResizable();
         engine.ctx().config.render.backendApi              = backendApi;
         engine.ctx().config.render.renderDeviceFeatureFlag = demoRenderDeviceFeatureFlag();
+        engine.ctx().config.asset.asyncLoading             = false;
         engine.ctx().config.render.builtinShaderLibrary =
             universalRenderProfile == UniversalRenderer::RenderProfile::eCompatibility ?
                 EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eCompatibility :
                 EngineContext::Config::RenderConfig::BuiltinShaderLibrary::eAuto;
+        const bool xrRuntimeCameraOverride =
+            HasFlagValues(engine.ctx().config.render.renderDeviceFeatureFlag, rhi::RenderDeviceFeatureFlagBits::eXR);
+        engine.ctx().config.render.xr.runtimeCameraOverride = xrRuntimeCameraOverride;
 
         const auto diagnostics = parseCliDiagnostics(commandLineArgs());
         if (diagnostics.validation.has_value())
@@ -382,6 +388,11 @@ namespace vultra
         auto& cameraSystem  = engine.emplaceSubsystem<CameraSystem>();
         auto  fpsController = makeFPSCameraController();
         auto& camera        = cameraSystem.addManualCamera({.rendererKey = renderer->name().data()});
+        camera.name              = "Demo Runtime Camera";
+        camera.xrViewEnabled     = xrRuntimeCameraOverride;
+        camera.xrFallbackMono    = true;
+        camera.isXRPrimaryView   = true;
+        camera.renderImGui       = true;
 
         const float width  = static_cast<float>(std::max(engine.ctx().config.window.width, 1u));
         const float height = static_cast<float>(std::max(engine.ctx().config.window.height, 1u));

@@ -51,7 +51,7 @@ namespace vultra
             XRHeadset& operator=(XRHeadset&&) noexcept = delete;
 
             [[nodiscard]] BeginFrameResult beginFrame(uint32_t& swapchainImageIndex);
-            void                           endFrame() const;
+            void                           endFrame();
 
             [[nodiscard]] bool isExitRequested() const { return m_ExitRequested; }
 
@@ -116,6 +116,8 @@ namespace vultra
 
             bool m_SessionRunning {false};
             bool m_ExitRequested {false};
+            bool m_FrameBegun {false};
+            bool m_SwapchainImageAcquired {false};
         };
     } // namespace openxr
 } // namespace vultra

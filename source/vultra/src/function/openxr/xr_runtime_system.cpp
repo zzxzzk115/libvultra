@@ -45,6 +45,9 @@ namespace vultra
 
     bool XRRuntimeSystem::sceneRequestsXR() const
     {
+        if (ctx().config.render.xr.runtimeCameraOverride)
+            return true;
+
         auto* worldService = ctx().services.tryGet<IWorldService>();
         if (!worldService)
             return false;

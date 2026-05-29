@@ -196,12 +196,15 @@ public:
             .depthAttachment  = rhi::AttachmentInfo {.target = &m_DepthTexture, .clearValue = 1.0f},
         });
 
+        auto& gpuResources = getServices()->require<IGpuResourceService>();
+        auto& pool         = gpuResources.pool();
         for (const auto& drawMesh : m_DrawMeshes)
         {
-            if (!drawMesh.mesh)
+            if (drawMesh.meshIndex >= pool.meshes.size())
                 continue;
+            auto& mesh = pool.meshes[drawMesh.meshIndex];
 
-            auto* pipeline = pipelineForMesh(ctx.rd, *drawMesh.mesh);
+            auto* pipeline = pipelineForMesh(ctx.rd, mesh);
             if (!pipeline)
                 continue;
 
@@ -214,13 +217,13 @@ public:
                 .bindDescriptorSet(0, descriptorSet)
                 .pushConstants(rhi::ShaderStages::eVertex | rhi::ShaderStages::eFragment, 0, &pushConstants);
 
-            for (const auto& subMesh : drawMesh.mesh->subMeshes)
+            for (const auto& subMesh : mesh.subMeshes)
             {
                 cb.draw(rhi::GeometryInfo {
-                    .vertexBuffer = &drawMesh.mesh->vertexBuffer,
+                    .vertexBuffer = &mesh.vertexBuffer,
                     .vertexOffset = subMesh.vertexOffset,
                     .numVertices  = subMesh.vertexCount,
-                    .indexBuffer  = &drawMesh.mesh->indexBuffer,
+                    .indexBuffer  = &mesh.indexBuffer,
                     .indexOffset  = subMesh.indexOffset,
                     .numIndices   = subMesh.indexCount,
                 });
@@ -254,8 +257,8 @@ public:
 private:
     struct DrawMesh
     {
-        resource::GpuMesh* mesh {nullptr};
-        glm::mat4          transform {1.0f};
+        uint32_t  meshIndex {std::numeric_limits<uint32_t>::max()};
+        glm::mat4 transform {1.0f};
     };
 
     struct PipelineVariant
@@ -377,7 +380,7 @@ private:
             const uint32_t  instanceID  = static_cast<uint32_t>(m_DrawMeshes.size());
             m_MeshHandles.push_back(std::move(handle));
             m_DrawMeshes.push_back(DrawMesh {
-                .mesh      = &gpuMesh,
+                .meshIndex = meshIndex,
                 .transform = worldMatrix,
             });
             tlasInstances.push_back(rhi::RayTracingInstance {

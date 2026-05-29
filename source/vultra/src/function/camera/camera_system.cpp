@@ -234,7 +234,6 @@ namespace vultra
         const auto xrEyeViews     = (backendService && backendService->isXREnabled()) ?
                                         backendService->xrEyeViews() :
                                         std::span<const IRenderBackendService::XREyeView> {};
-
         const std::size_t viewMultiplier = xrEyeViews.empty() ? 1u : xrEyeViews.size();
         std::size_t       ecsCameraCount = 0;
         if (auto* worldService = ctx().services.tryGet<IWorldService>())
@@ -293,13 +292,14 @@ namespace vultra
 
                     const auto* xrView      = reg.try_get<XRViewComponent>(e);
                     const bool  wantsXR     = xrView && xrView->enabled;
+                    const bool  fallbackMono = xrView ? xrView->fallbackMono : true;
                     const bool  xrPoseReady = wantsXR && !xrEyeViews.empty() &&
                                              std::all_of(xrEyeViews.begin(), xrEyeViews.end(), xrPoseUsable);
                     if (xrPoseReady && cookWorldXR)
                     {
                         const glm::mat4 originTransform = makeWorldTransformMatrix(reg, e);
                         cam.xrViewEnabled               = true;
-                        cam.xrFallbackMono              = xrView ? xrView->fallbackMono : true;
+                        cam.xrFallbackMono              = fallbackMono;
                         for (const auto& eyeView : xrEyeViews)
                             m_Cooked.push_back(makeXREyeCamera(cam, eyeView, originTransform));
                         continue;
@@ -308,7 +308,7 @@ namespace vultra
                     if (!cookWorldMono)
                         continue;
 
-                    if (wantsXR && xrView && !xrView->fallbackMono)
+                    if (wantsXR && !fallbackMono)
                         continue;
 
                     finalizeCamera(cam);

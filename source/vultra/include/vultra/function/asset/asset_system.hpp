@@ -43,6 +43,10 @@ namespace vultra
         // Editor boot can import assets before reconfiguring the runtime registry. In that path configure() should
         // only load/mount the already refreshed registry to avoid blocking the render thread.
         bool enableImportScan {true};
+
+        // When disabled, the Async service methods become blocking loads. This keeps small demos/examples fully
+        // resident after scene instantiation while preserving async streaming for editor/project runtime paths.
+        bool asyncLoading {true};
     };
 
     // Sync-only baseline. Async IO + main-thread upload will be added later without breaking APIs.

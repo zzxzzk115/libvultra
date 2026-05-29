@@ -84,6 +84,7 @@ namespace vultra
                 {
                     bool mirror {true};
                     bool autoStartSessionFromScene {true};
+                    bool runtimeCameraOverride {false};
                 } xr;
             } render;
 
@@ -100,6 +101,7 @@ namespace vultra
                 std::string importedFolder {"imported"};
                 std::string registryFile {"asset_registry.tsv"};
                 std::string vpkFile {"resources.vpk"};
+                bool        asyncLoading {true};
             } asset;
 
             struct ImGuiConfig

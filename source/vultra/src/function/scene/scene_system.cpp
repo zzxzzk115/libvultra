@@ -698,9 +698,7 @@ namespace vultra
         if (!mesh.mesh.valid())
             return;
 
-        auto handle = m_AssetService->loadMeshAsync(mesh.mesh);
-        if (!handle.ready())
-            return;
+        auto handle = m_AssetService->loadMeshSync(mesh.mesh);
 
         const auto*   cpuMesh = handle.cpu();
         if (!cpuMesh)

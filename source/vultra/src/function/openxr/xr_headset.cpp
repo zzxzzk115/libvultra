@@ -159,6 +159,11 @@ namespace vultra
 
         XRHeadset::~XRHeadset()
         {
+            if (m_FrameBegun)
+            {
+                endFrame();
+            }
+
             // Clean up OpenXR
             if (m_SessionRunning)
             {
@@ -184,6 +189,8 @@ namespace vultra
             ZoneScopedN("XRHeadset::beginFrame");
 
             XrInstance instance = m_Device.m_XrInstance;
+            m_FrameBegun             = false;
+            m_SwapchainImageAcquired = false;
 
             // Poll OpenXR events
             XrEventDataBuffer buffer {};
@@ -261,6 +268,7 @@ namespace vultra
                 VULTRA_CORE_ERROR("[XRHeadset] xrBeginFrame failed: {}", xrutils::resultToString(instance, result));
                 return BeginFrameResult::eError;
             }
+            m_FrameBegun = true;
 
             // Update the eye poses
             m_ViewState.type = XR_TYPE_VIEW_STATE;
@@ -280,24 +288,28 @@ namespace vultra
             if (XR_FAILED(result))
             {
                 VULTRA_CORE_ERROR("[XRHeadset] xrLocateViews failed: {}", xrutils::resultToString(instance, result));
+                endFrame();
                 return BeginFrameResult::eError;
             }
 
             if (viewCount != m_EyeCount)
             {
                 VULTRA_CORE_ERROR("[XRHeadset] Eye count mismatch: {}", viewCount);
+                endFrame();
                 return BeginFrameResult::eError;
             }
 
             if ((m_ViewState.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT) == 0)
             {
                 VULTRA_CORE_ERROR("[XRHeadset] Eye position valid flag not set");
+                endFrame();
                 return BeginFrameResult::eError;
             }
 
             if ((m_ViewState.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) == 0)
             {
                 VULTRA_CORE_ERROR("[XRHeadset] Eye orientation valid flag not set");
+                endFrame();
                 return BeginFrameResult::eError;
             }
 
@@ -308,6 +320,7 @@ namespace vultra
 
             if (!ensureSwapchain())
             {
+                endFrame();
                 return BeginFrameResult::eError;
             }
 
@@ -336,8 +349,10 @@ namespace vultra
             {
                 VULTRA_CORE_ERROR("[XRHeadset] xrAcquireSwapchainImage failed: {}",
                                   xrutils::resultToString(instance, result));
+                endFrame();
                 return BeginFrameResult::eError;
             }
+            m_SwapchainImageAcquired = true;
 
             // Wait for the swapchain image
             XrSwapchainImageWaitInfo swapchainImageWaitInfo {};
@@ -348,25 +363,33 @@ namespace vultra
             {
                 VULTRA_CORE_ERROR("[XRHeadset] xrWaitSwapchainImage failed: {}",
                                   xrutils::resultToString(instance, result));
+                endFrame();
                 return BeginFrameResult::eError;
             }
 
             return BeginFrameResult::eNormal;
         }
 
-        void XRHeadset::endFrame() const
+        void XRHeadset::endFrame()
         {
             ZoneScopedN("XRHeadset::endFrame");
 
-            // Release the swapchain image
-            XrSwapchainImageReleaseInfo swapchainImageReleaseInfo {};
-            swapchainImageReleaseInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO;
-            XrResult result                = xrReleaseSwapchainImage(m_Swapchain, &swapchainImageReleaseInfo);
-            if (XR_FAILED(result))
-            {
-                VULTRA_CORE_ERROR("[XRHeadset] xrReleaseSwapchainImage failed: {}",
-                                  xrutils::resultToString(m_Device.m_XrInstance, result));
+            if (!m_FrameBegun)
                 return;
+
+            const bool submitProjectionLayer = m_FrameState.shouldRender && m_SwapchainImageAcquired;
+
+            if (m_SwapchainImageAcquired)
+            {
+                XrSwapchainImageReleaseInfo swapchainImageReleaseInfo {};
+                swapchainImageReleaseInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO;
+                const XrResult result          = xrReleaseSwapchainImage(m_Swapchain, &swapchainImageReleaseInfo);
+                m_SwapchainImageAcquired       = false;
+                if (XR_FAILED(result))
+                {
+                    VULTRA_CORE_ERROR("[XRHeadset] xrReleaseSwapchainImage failed: {}",
+                                      xrutils::resultToString(m_Device.m_XrInstance, result));
+                }
             }
 
             // End the frame
@@ -377,7 +400,7 @@ namespace vultra
             compositionLayerProjection.views     = m_EyeRenderInfos.data();
 
             std::vector<XrCompositionLayerBaseHeader*> layers;
-            if (m_FrameState.shouldRender)
+            if (submitProjectionLayer)
             {
                 layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&compositionLayerProjection));
             }
@@ -388,7 +411,8 @@ namespace vultra
             frameEndInfo.layerCount           = static_cast<uint32_t>(layers.size());
             frameEndInfo.layers               = layers.data();
             frameEndInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-            result                            = xrEndFrame(m_Session, &frameEndInfo);
+            const XrResult result             = xrEndFrame(m_Session, &frameEndInfo);
+            m_FrameBegun                      = false;
             if (XR_FAILED(result))
             {
                 VULTRA_CORE_ERROR("[XRHeadset] xrEndFrame failed: {}",

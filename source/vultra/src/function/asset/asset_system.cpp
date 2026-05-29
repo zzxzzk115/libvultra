@@ -4,6 +4,7 @@
 #include "vultra/core/rhi/structs/render_mesh.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
+#include "vultra/function/rendering/srp/builtin/builtin_rendergraph_registry.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
@@ -367,6 +368,7 @@ namespace vultra
             .registryFile     = ctx().config.asset.registryFile,
             .vpkFile          = ctx().config.asset.vpkFile,
             .enableImportScan = ctx().config.asset.enableImportScan,
+            .asyncLoading     = ctx().config.asset.asyncLoading,
         });
 
         VULTRA_CORE_TRACE("[AssetSystem] Providing IAssetService");
@@ -1629,6 +1631,9 @@ namespace vultra
 
     AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureAsync(const CoreUUID& uuid)
     {
+        if (!m_Desc.asyncLoading)
+            return loadTextureSync(uuid);
+
         auto* rec = m_TextureCache.findOrCreate(uuid);
         if (!rec)
             return {};
@@ -1654,6 +1659,9 @@ namespace vultra
 
     AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshAsync(const CoreUUID& uuid)
     {
+        if (!m_Desc.asyncLoading)
+            return loadMeshSync(uuid);
+
         auto* rec = m_MeshCache.findOrCreate(uuid);
         if (!rec)
             return {};
@@ -1680,6 +1688,9 @@ namespace vultra
     AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
     AssetSystem::loadGaussianSplatAsync(const CoreUUID& uuid)
     {
+        if (!m_Desc.asyncLoading)
+            return loadGaussianSplatSync(uuid);
+
         auto* rec = m_GaussianSplatCache.findOrCreate(uuid);
         if (!rec)
             return {};
@@ -2026,6 +2037,12 @@ namespace vultra
             std::scoped_lock lock(m_TextOverrideMutex);
             if (auto it = m_TextAssetOverrides.find(std::string(uri)); it != m_TextAssetOverrides.end())
                 return vbase::Result<std::string, std::string>::ok(it->second);
+        }
+
+        if (uri.starts_with("builtin://"))
+        {
+            if (const auto text = builtinRenderGraphText(uri); !text.empty())
+                return vbase::Result<std::string, std::string>::ok(std::string(text));
         }
 
         if (!ctx().config.asset.loadFromVPK)
