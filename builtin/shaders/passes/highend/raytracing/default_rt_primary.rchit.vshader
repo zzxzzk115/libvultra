@@ -329,7 +329,8 @@ void main()
         if (ndotl > 0.0)
         {
             float visibility = traceShadow(hitPos + material.normalWS * 0.002, lightDir, u_CameraBlock.data.zFar);
-            visibility = mix(1.0, visibility, clamp(u_RtLights.directional.directionShadowStrength.w, 0.0, 1.0));
+            float shadowAmount = 1.0 - visibility;
+            visibility = 1.0 - shadowAmount * clamp(u_RtLights.directional.directionShadowStrength.w, 0.0, 1.0);
             shaded += material.baseColor.rgb * u_RtLights.directional.colorIntensity.rgb *
                       u_RtLights.directional.colorIntensity.w * ndotl * visibility;
         }

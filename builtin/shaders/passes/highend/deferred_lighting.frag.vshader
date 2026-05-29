@@ -407,7 +407,8 @@ void main()
                          shadowCoord.z >= 0.0 && shadowCoord.z <= 1.0;
         float normalBias = u_Shadow.lightDirectionDepthBias.w * clamp(1.0 - nDotL, 0.25, 1.0);
         visibility = selectedShadowVisibility(cascade, shadowCoord, normalBias);
-        visibility = mix(1.0, visibility, clamp(u_Push.directionalLightDirectionShadowStrength.w, 0.0, 1.0));
+        float shadowAmount = 1.0 - visibility;
+        visibility = 1.0 - shadowAmount * clamp(u_Push.directionalLightDirectionShadowStrength.w, 0.0, 1.0);
     }
 
     if (u_Push.shadowDebugMode != 0)
