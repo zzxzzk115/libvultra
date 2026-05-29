@@ -1209,6 +1209,7 @@ namespace vultra_app
                   "sortStorage",
                   "sh"});
             pass("GeneralGaussianSplatRender", {}, {"color"});
+            pass("GeneralGaussianSplatComposite", {"source"}, {"color"});
             pass("GeneralGaussianSplatFoveatedComposite", {"fovea", "mid", "outer", "base"}, {"color"});
         }
 
