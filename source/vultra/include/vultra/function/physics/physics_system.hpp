@@ -20,6 +20,7 @@ namespace JPH
 
 namespace vultra
 {
+    class ITimingService;
     class IJobService;
     class IWorldService;
 
@@ -35,7 +36,7 @@ namespace vultra
         void onShutdown() override;
         void onPhysics(fsec dt) override;
 
-        void setEnabled(bool enabled) override { m_Enabled = enabled; }
+        void setEnabled(bool enabled) override;
         bool enabled() const override { return m_Enabled; }
 
         void setPlaybackState(bool playing, bool paused) override;
@@ -59,6 +60,7 @@ namespace vultra
         void stepSimulation(float seconds);
         void syncDynamicBodiesToWorld();
         void removeStaleBodies();
+        void clearBodies();
 
         bool ensureBody(entt::entity entity);
         void destroyBody(entt::entity entity);
@@ -68,13 +70,15 @@ namespace vultra
 
         IWorldService* m_WorldService {nullptr};
         IJobService*   m_JobService {nullptr};
+        ITimingService* m_TimingService {nullptr};
 
         bool  m_Enabled {true};
         bool  m_Playing {true};
         bool  m_Paused {false};
+        bool  m_JoltGlobalsAcquired {false};
         float m_FixedTimeStep {1.0f / 60.0f};
         float m_Accumulator {0.0f};
-        uint32_t m_MaxSubSteps {4};
+        uint32_t m_FallbackMaxSubSteps {8};
         uint32_t m_PendingSingleSteps {0};
 
     };

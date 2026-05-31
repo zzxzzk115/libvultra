@@ -1,6 +1,7 @@
 #include "vultra/function/physics/physics_system.hpp"
 
 #include "vultra/core/base/common_context.hpp"
+#include "vultra/core/services/timing_service.hpp"
 #include "vultra/function/services/job_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/box_shape_component.hpp"
@@ -168,7 +169,6 @@ namespace vultra
                 vtask::TaskSet* task = record->task.get();
                 {
                     std::scoped_lock lock(m_Mutex);
-                    collectFinishedLocked();
                     m_Queued.push_back(std::move(record));
                 }
                 m_Jobs.scheduler().run(*task);
@@ -195,24 +195,44 @@ namespace vultra
 
             void waitAll()
             {
-                std::vector<QueuedJob*> jobs;
+                while (true)
                 {
-                    std::scoped_lock lock(m_Mutex);
-                    jobs.reserve(m_Queued.size());
-                    for (auto& job : m_Queued)
-                        jobs.push_back(job.get());
-                }
+                    std::vector<vtask::TaskSet*> jobs;
+                    {
+                        std::scoped_lock lock(m_Mutex);
+                        collectFinishedLocked();
+                        if (m_Queued.empty())
+                            return;
 
-                for (auto* job : jobs)
-                {
-                    if (job && job->task)
-                        m_Jobs.scheduler().wait(*job->task);
+                        jobs.reserve(m_Queued.size());
+                        for (auto& job : m_Queued)
+                        {
+                            if (job->task)
+                                jobs.push_back(job->task.get());
+                        }
+                    }
+
+                    for (auto* job : jobs)
+                        m_Jobs.scheduler().wait(*job);
                 }
-                collectFinished();
             }
 
             void collectFinished()
             {
+                std::vector<vtask::TaskSet*> completed;
+                {
+                    std::scoped_lock lock(m_Mutex);
+                    completed.reserve(m_Queued.size());
+                    for (auto& job : m_Queued)
+                    {
+                        if (job->task && job->done->load(std::memory_order_acquire))
+                            completed.push_back(job->task.get());
+                    }
+                }
+
+                for (auto* task : completed)
+                    m_Jobs.scheduler().wait(*task);
+
                 std::scoped_lock lock(m_Mutex);
                 collectFinishedLocked();
             }
@@ -226,8 +246,6 @@ namespace vultra
                         ++it;
                         continue;
                     }
-                    if ((*it)->task)
-                        m_Jobs.scheduler().wait(*(*it)->task);
                     it = m_Queued.erase(it);
                 }
             }
@@ -309,6 +327,7 @@ namespace vultra
     {
         m_WorldService = ctx().services.tryGet<IWorldService>();
         m_JobService   = ctx().services.tryGet<IJobService>();
+        m_TimingService = ctx().services.tryGet<ITimingService>();
         if (!m_WorldService || !m_JobService)
         {
             VULTRA_CORE_WARN("[PhysicsSystem] Missing world or job service; physics disabled");
@@ -316,6 +335,7 @@ namespace vultra
         }
 
         ensureJoltGlobals();
+        m_JoltGlobalsAcquired = true;
 
         m_Impl = std::make_unique<Impl>();
         m_Impl->tempAllocator = std::make_unique<JPH::TempAllocatorImpl>(10 * 1024 * 1024);
@@ -341,27 +361,34 @@ namespace vultra
 
     void PhysicsSystem::onShutdown()
     {
-        if (m_Impl && m_Impl->physics)
-        {
-            auto& bodyInterface = m_Impl->physics->GetBodyInterface();
-            for (auto& [entity, record] : m_Impl->bodies)
-            {
-                (void)entity;
-                bodyInterface.RemoveBody(record.id);
-                bodyInterface.DestroyBody(record.id);
-            }
-        }
+        clearBodies();
         m_Impl.reset();
-        if (m_WorldService && m_JobService)
+        if (m_JoltGlobalsAcquired)
+        {
             releaseJoltGlobals();
+            m_JoltGlobalsAcquired = false;
+        }
         m_WorldService = nullptr;
         m_JobService   = nullptr;
+        m_TimingService = nullptr;
         m_Accumulator  = 0.0f;
+    }
+
+    void PhysicsSystem::setEnabled(bool enabled)
+    {
+        if (m_Enabled == enabled)
+            return;
+
+        m_Enabled = enabled;
+        if (!m_Enabled)
+            clearBodies();
     }
 
     void PhysicsSystem::setFixedTimeStep(float seconds)
     {
         m_FixedTimeStep = std::clamp(seconds, 1.0f / 240.0f, 1.0f / 15.0f);
+        if (m_TimingService)
+            m_TimingService->setFixedDeltaTime(m_FixedTimeStep);
     }
 
     void PhysicsSystem::setPlaybackState(const bool playing, const bool paused)
@@ -372,6 +399,7 @@ namespace vultra
             m_Paused = false;
             m_Accumulator = 0.0f;
             m_PendingSingleSteps = 0;
+            clearBodies();
             return;
         }
 
@@ -395,15 +423,24 @@ namespace vultra
 
     void PhysicsSystem::onPhysics(fsec dt)
     {
-        if (!m_Enabled || !m_Playing || !m_Impl || !m_Impl->physics || !m_WorldService)
+        if (!m_Impl || !m_Impl->physics || !m_WorldService)
             return;
+
+        if (!m_Enabled || !m_Playing)
+        {
+            clearBodies();
+            return;
+        }
 
         syncWorldBodies();
 
         if (m_Paused)
         {
             if (m_PendingSingleSteps == 0)
+            {
+                removeStaleBodies();
                 return;
+            }
 
             stepSimulation(m_FixedTimeStep);
             --m_PendingSingleSteps;
@@ -413,16 +450,29 @@ namespace vultra
             return;
         }
 
-        m_Accumulator += std::max(0.0f, dt.count());
+        const float stepDt = m_TimingService ? m_TimingService->fixedDeltaTime() : m_FixedTimeStep;
+        if (stepDt <= 0.0f)
+            return;
+
         uint32_t steps = 0;
-        while (m_Accumulator >= m_FixedTimeStep && steps < m_MaxSubSteps)
+        if (m_TimingService)
         {
-            stepSimulation(m_FixedTimeStep);
-            m_Accumulator -= m_FixedTimeStep;
-            ++steps;
+            steps = m_TimingService->fixedStepsThisFrame();
         }
-        if (steps == m_MaxSubSteps)
-            m_Accumulator = std::min(m_Accumulator, m_FixedTimeStep);
+        else
+        {
+            m_Accumulator += std::max(0.0f, dt.count());
+            while (m_Accumulator >= stepDt && steps < m_FallbackMaxSubSteps)
+            {
+                m_Accumulator -= stepDt;
+                ++steps;
+            }
+            if (steps == m_FallbackMaxSubSteps)
+                m_Accumulator = std::min(m_Accumulator, stepDt);
+        }
+
+        for (uint32_t step = 0; step < steps; ++step)
+            stepSimulation(stepDt);
 
         syncDynamicBodiesToWorld();
         removeStaleBodies();
@@ -480,6 +530,21 @@ namespace vultra
                 ++it;
             }
         }
+    }
+
+    void PhysicsSystem::clearBodies()
+    {
+        if (!m_Impl || !m_Impl->physics || m_Impl->bodies.empty())
+            return;
+
+        auto& bodyInterface = m_Impl->physics->GetBodyInterface();
+        for (auto& [entity, record] : m_Impl->bodies)
+        {
+            (void)entity;
+            bodyInterface.RemoveBody(record.id);
+            bodyInterface.DestroyBody(record.id);
+        }
+        m_Impl->bodies.clear();
     }
 
     bool PhysicsSystem::buildSignature(entt::entity entity, BodySignature& out) const

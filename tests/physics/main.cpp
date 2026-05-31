@@ -1,4 +1,5 @@
 #include <vultra/core/engine/engine.hpp>
+#include <vultra/core/timing/timing_system.hpp>
 #include <vultra/function/jobs/job_system.hpp>
 #include <vultra/function/physics/physics_system.hpp>
 #include <vultra/function/services/physics_service.hpp>
@@ -15,6 +16,7 @@
 int main()
 {
     vultra::Engine engine;
+    engine.emplaceSubsystem<vultra::TimingSystem>();
     engine.emplaceSubsystem<vultra::JobSystem>();
     engine.emplaceSubsystem<vultra::WorldSystem>();
     engine.emplaceSubsystem<vultra::PhysicsSystem>();
@@ -58,6 +60,12 @@ int main()
     const float initialY = sphereTransform.position.y;
 
     physics.setPlaybackState(false, false);
+    if (physics.bodyCount() != 0u)
+    {
+        std::fprintf(stderr, "physics bodies survived stop: %u\n", physics.bodyCount());
+        engine.shutdownCore();
+        return 2;
+    }
     for (int i = 0; i < 30; ++i)
         engine.tickFrame(vultra::fsec {1.0f / 60.0f});
     const float stoppedY = sphereTransform.position.y;
@@ -65,10 +73,17 @@ int main()
     {
         std::fprintf(stderr, "sphere moved while stopped: start=%f stopped=%f\n", initialY, stoppedY);
         engine.shutdownCore();
-        return 2;
+        return 3;
     }
 
     physics.setPlaybackState(true, true);
+    engine.tickFrame(vultra::fsec {1.0f / 60.0f});
+    if (physics.bodyCount() != 3u)
+    {
+        std::fprintf(stderr, "physics bodies were not recreated while paused: %u\n", physics.bodyCount());
+        engine.shutdownCore();
+        return 4;
+    }
     for (int i = 0; i < 30; ++i)
         engine.tickFrame(vultra::fsec {1.0f / 60.0f});
     const float pausedY = sphereTransform.position.y;
@@ -76,7 +91,7 @@ int main()
     {
         std::fprintf(stderr, "sphere moved while paused: start=%f paused=%f\n", initialY, pausedY);
         engine.shutdownCore();
-        return 3;
+        return 5;
     }
 
     physics.requestSingleStep();
@@ -86,10 +101,29 @@ int main()
     {
         std::fprintf(stderr, "sphere did not move on single step: start=%f stepped=%f\n", initialY, steppedY);
         engine.shutdownCore();
-        return 4;
+        return 6;
     }
 
+    physics.setEnabled(false);
+    if (physics.bodyCount() != 0u)
+    {
+        std::fprintf(stderr, "physics bodies survived disable: %u\n", physics.bodyCount());
+        engine.shutdownCore();
+        return 7;
+    }
+    physics.setEnabled(true);
+
     physics.setPlaybackState(true, false);
+    const float catchupStartY = reg.get<vultra::TransformComponent>(sphere).position.y;
+    engine.tickFrame(vultra::fsec {0.1f});
+    const float catchupEndY = reg.get<vultra::TransformComponent>(sphere).position.y;
+    if (!((catchupStartY - catchupEndY) > 0.05f))
+    {
+        std::fprintf(stderr, "physics did not catch up on low render fps: start=%f end=%f\n", catchupStartY, catchupEndY);
+        engine.shutdownCore();
+        return 8;
+    }
+
     const float runStartY = sphereTransform.position.y;
     for (int i = 0; i < 180; ++i)
         engine.tickFrame(vultra::fsec {1.0f / 60.0f});
@@ -99,20 +133,20 @@ int main()
     {
         std::fprintf(stderr, "sphere did not fall: start=%f end=%f\n", runStartY, endY);
         engine.shutdownCore();
-        return 5;
+        return 9;
     }
     if (!(endY > 0.35f))
     {
         std::fprintf(stderr, "sphere fell through floor: end=%f\n", endY);
         engine.shutdownCore();
-        return 6;
+        return 10;
     }
 
     if (physics.bodyCount() != 3u)
     {
         std::fprintf(stderr, "unexpected body count: %u\n", physics.bodyCount());
         engine.shutdownCore();
-        return 7;
+        return 11;
     }
 
     engine.shutdownCore();
