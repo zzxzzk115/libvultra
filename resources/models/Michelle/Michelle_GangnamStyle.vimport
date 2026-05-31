@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="scene_manifest"
+uid="9beb17e63f0db53d0099fe5391bfa882"
+
+[source]
+file="models/Michelle/Michelle_GangnamStyle.fbx"
+
+[output]
+file="imported/scene_manifest/Michelle_GangnamStyle"
+
+[params]

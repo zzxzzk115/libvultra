@@ -43,7 +43,7 @@ namespace vultra_app::ui
 {
     namespace
     {
-        constexpr std::string_view kThumbnailCacheVersion        = "scene-override-v5";
+        constexpr std::string_view kThumbnailCacheVersion        = "scene-override-v6";
         constexpr std::string_view kTextureThumbnailCacheVersion = "texture-v1";
         constexpr int              kTextureThumbnailSize         = 128;
         constexpr uint64_t         kRenderThumbnailWarmupFrames  = 1;

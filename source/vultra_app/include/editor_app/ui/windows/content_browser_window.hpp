@@ -3,6 +3,8 @@
 #include "common/asset_preview_cache.hpp"
 #include "editor_app/ui/editor_window.hpp"
 
+#include <vasset/vasset_type.hpp>
+
 #include <imgui.h>
 #include <array>
 #include <filesystem>
@@ -17,7 +19,9 @@ namespace vultra_app
     {
         std::string uuid;
         std::string name;
+        std::string sourcePath;
         std::string importedPath;
+        vasset::VAssetType type {vasset::VAssetType::eUnknown};
     };
 
     class ContentBrowserWindow final : public EditorWindow
@@ -38,14 +42,10 @@ namespace vultra_app
         void drawGridItem(EditorContext& ctx, const std::filesystem::path& path, float iconSize);
         void drawListSubAsset(EditorContext&                ctx,
                               const std::filesystem::path& ownerPath,
-                              const std::string&           uuid,
-                              const std::string&           name,
-                              const std::string&           importedPath);
+                              const ModelSubAssetEntry&    subAsset);
         void drawGridSubAsset(EditorContext&                ctx,
                               const std::filesystem::path& ownerPath,
-                              const std::string&           uuid,
-                              const std::string&           name,
-                              const std::string&           importedPath,
+                              const ModelSubAssetEntry&    subAsset,
                               float                        iconSize);
         void handleDeferredSelection(EditorContext& ctx, const std::filesystem::path& path, bool hovered);
         void selectPath(EditorContext& ctx, const std::filesystem::path& path);

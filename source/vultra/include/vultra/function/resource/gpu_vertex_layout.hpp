@@ -13,6 +13,8 @@ namespace vultra::resource
     inline constexpr uint32_t kVertexLocationTexCoord0 = 3u;
     inline constexpr uint32_t kVertexLocationTexCoord1 = 4u;
     inline constexpr uint32_t kVertexLocationTangent   = 5u;
+    inline constexpr uint32_t kVertexLocationJointIndices = 6u;
+    inline constexpr uint32_t kVertexLocationJointWeights = 7u;
     inline constexpr uint32_t kInvalidVertexAttributeOffset = 0xFFFFFFFFu;
 
     enum class GpuVertexAttributeFlags : uint32_t
@@ -24,6 +26,8 @@ namespace vultra::resource
         eTexCoord0 = 1u << 3u,
         eTexCoord1 = 1u << 4u,
         eTangent   = 1u << 5u,
+        eJointIndices = 1u << 6u,
+        eJointWeights = 1u << 7u,
     };
 
     [[nodiscard]] constexpr uint32_t gpuVertexAttributeFlagMask(const GpuVertexAttributeFlags flag)
@@ -45,6 +49,8 @@ namespace vultra::resource
         uint32_t texCoord0OffsetBytes {kInvalidVertexAttributeOffset};
         uint32_t texCoord1OffsetBytes {kInvalidVertexAttributeOffset};
         uint32_t tangentOffsetBytes {kInvalidVertexAttributeOffset};
+        uint32_t jointIndicesOffsetBytes {kInvalidVertexAttributeOffset};
+        uint32_t jointWeightsOffsetBytes {kInvalidVertexAttributeOffset};
 
         [[nodiscard]] bool hasPosition() const
         {
@@ -75,6 +81,12 @@ namespace vultra::resource
         {
             return gpuVertexAttributeHasFlag(attributeMask, GpuVertexAttributeFlags::eTangent);
         }
+
+        [[nodiscard]] bool hasSkinning() const
+        {
+            return gpuVertexAttributeHasFlag(attributeMask, GpuVertexAttributeFlags::eJointIndices) &&
+                   gpuVertexAttributeHasFlag(attributeMask, GpuVertexAttributeFlags::eJointWeights);
+        }
     };
 
     [[nodiscard]] inline GpuVertexLayout inspectGpuVertexLayout(const rhi::VertexAttributes& attributes)
@@ -98,6 +110,14 @@ namespace vultra::resource
         read(kVertexLocationTexCoord0, out.texCoord0OffsetBytes, GpuVertexAttributeFlags::eTexCoord0, out.attributeMask);
         read(kVertexLocationTexCoord1, out.texCoord1OffsetBytes, GpuVertexAttributeFlags::eTexCoord1, out.attributeMask);
         read(kVertexLocationTangent, out.tangentOffsetBytes, GpuVertexAttributeFlags::eTangent, out.attributeMask);
+        read(kVertexLocationJointIndices,
+             out.jointIndicesOffsetBytes,
+             GpuVertexAttributeFlags::eJointIndices,
+             out.attributeMask);
+        read(kVertexLocationJointWeights,
+             out.jointWeightsOffsetBytes,
+             GpuVertexAttributeFlags::eJointWeights,
+             out.attributeMask);
         return out;
     }
 

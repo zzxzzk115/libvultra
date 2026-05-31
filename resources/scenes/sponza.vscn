@@ -1598,3 +1598,27 @@ MeshComponent/builtinGeometry = 2
 MeshComponent/materialColor = (1, 1, 1, 1)
 MeshComponent/materialOverrides = "0=res://materials/default.vmatgraph.json"
 
+[node id=112 name="Michelle_GangnamStyle" parent=0 uuid="6ca57f08082145ae715e67704eaa3833"]
+NameComponent/name = "Michelle_GangnamStyle"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+
+[node id=113 name="Ch03" parent=112 uuid="780bc3d478a2e4bc64f8a2a5de28573d"]
+NameComponent/name = "Ch03"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (-6, 0.829, 0.0129508)
+TransformComponent/rotation = (2.98023e-08, -0.790689, -1.49012e-08, 0.612218)
+TransformComponent/scale = (1, 1, 1)
+MeshComponent/mesh = "76b557078a207da86bae3f70ccaaf029"
+MeshComponent/builtinGeometry = 4294967295
+MeshComponent/materialColor = (1, 1, 1, 1)
+MeshComponent/materialOverrides = ""
+

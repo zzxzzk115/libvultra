@@ -11,6 +11,8 @@
 #include <vultra/function/services/imgui_service.hpp>
 #include <vultra/function/world/world.hpp>
 
+#include <vasset/vasset_registry.hpp>
+
 #include <array>
 #include <entt/entity/fwd.hpp>
 #include <filesystem>
@@ -42,6 +44,9 @@ namespace vultra_app
         void drawAddComponentButton(EditorContext& ctx, vultra::World& world, entt::entity entity);
         void drawAssetInspector(EditorContext& ctx);
         void drawSourceAssetInspector(EditorContext& ctx);
+        void drawTextureAssetPreview(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry);
+        void drawSkeletonAssetInspector(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry);
+        void drawAnimationAssetInspector(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry);
         bool drawRenderGraphPassSourceInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceTexturePreview(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceModelPreview(EditorContext& ctx, const std::filesystem::path& path);

@@ -347,7 +347,7 @@ namespace vultra
                 add(5, VertexAttribute::Type::eFloat4);
 
             if (flags & VVertexFlags::eJointIndices)
-                add(6, VertexAttribute::Type::eFloat4);
+                add(6, VertexAttribute::Type::eInt4);
 
             if (flags & VVertexFlags::eJointWeights)
                 add(7, VertexAttribute::Type::eFloat4);
@@ -438,7 +438,7 @@ namespace vultra
                             break;
 
                         case 6:
-                            memcpy(ptr, &mesh.jointIndices[i], sizeof(glm::vec4));
+                            memcpy(ptr, &mesh.jointIndices[i], sizeof(glm::ivec4));
                             break;
 
                         case 7:
@@ -1216,7 +1216,8 @@ namespace vultra
         if (entry.type == vasset::VAssetType::eUnknown)
             return false;
 
-        const bool         cookedOnly = entry.type == vasset::VAssetType::eMesh;
+        const bool         cookedOnly = entry.type == vasset::VAssetType::eMesh ||
+                                entry.type == vasset::VAssetType::eTexture;
         const std::string& path       = cookedOnly && !entry.importedPath.empty() ? entry.importedPath :
                                         !entry.sourcePath.empty()                 ? entry.sourcePath :
                                                                                     entry.importedPath;

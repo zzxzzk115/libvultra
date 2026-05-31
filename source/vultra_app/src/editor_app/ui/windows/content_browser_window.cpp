@@ -358,6 +358,69 @@ namespace vultra_app
             return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga" || ext == ".hdr";
         }
 
+        bool isModelSubAssetType(vasset::VAssetType type)
+        {
+            return type == vasset::VAssetType::eMesh || type == vasset::VAssetType::eTexture ||
+                   type == vasset::VAssetType::eSkeleton || type == vasset::VAssetType::eAnimation;
+        }
+
+        const char* subAssetTypeLabel(vasset::VAssetType type)
+        {
+            switch (type)
+            {
+                case vasset::VAssetType::eMesh:
+                    return "Sub Mesh";
+                case vasset::VAssetType::eTexture:
+                    return "Sub Texture";
+                case vasset::VAssetType::eSkeleton:
+                    return "Sub Skeleton";
+                case vasset::VAssetType::eAnimation:
+                    return "Sub Animation";
+                default:
+                    return "Sub Asset";
+            }
+        }
+
+        const char* subAssetIcon(vasset::VAssetType type)
+        {
+            switch (type)
+            {
+                case vasset::VAssetType::eMesh:
+                    return ICON_MDI_CUBE_OUTLINE;
+                case vasset::VAssetType::eTexture:
+                    return ICON_MDI_IMAGE;
+                case vasset::VAssetType::eSkeleton:
+                    return ICON_MDI_SOURCE_BRANCH;
+                case vasset::VAssetType::eAnimation:
+                    return ICON_MDI_PLAY;
+                default:
+                    return ICON_MDI_FILE_OUTLINE;
+            }
+        }
+
+        std::string subAssetDisplayName(const vasset::VAssetRegistry::AssetEntry& entry,
+                                        const std::unordered_map<std::string, std::string>& names)
+        {
+            if (auto nameIt = names.find(entry.sourcePath); nameIt != names.end())
+                return nameIt->second;
+            if (auto nameIt = names.find(entry.importedPath); nameIt != names.end())
+                return nameIt->second;
+
+            const auto hashPos = entry.sourcePath.find('#');
+            if (hashPos != std::string::npos && hashPos + 1 < entry.sourcePath.size())
+            {
+                auto label = entry.sourcePath.substr(hashPos + 1);
+                const auto slash = label.find_last_of('/');
+                if (slash != std::string::npos && slash + 1 < label.size())
+                    label = label.substr(slash + 1);
+                if (!label.empty())
+                    return label;
+            }
+
+            auto label = std::filesystem::path(entry.importedPath).filename().generic_string();
+            return label.empty() ? entry.sourcePath : label;
+        }
+
         bool setUuidDragPayload(const std::string& uuidText)
         {
             vbase::UUID parsed {};
@@ -458,14 +521,13 @@ namespace vultra_app
             if (manifestEntry.type != vasset::VAssetType::eSceneManifest || manifestEntry.importedPath.empty())
                 return entries;
 
-            const auto manifestStem = std::filesystem::path(manifestEntry.importedPath).filename().generic_string();
-            const auto meshPrefix   = assetService->registry().getImportedFolderName() + "/mesh/" + manifestStem + "_";
             const auto assetRoot    = ctx.state.currentProject / ctx.state.currentAssetRoot;
             const auto names        = readModelSubAssetNames(assetRoot, manifestEntry.importedPath);
+            const auto sourcePrefix = manifestEntry.sourcePath + "#";
 
             for (const auto& [uuid, entry] : assetService->registry().getRegistry())
             {
-                if (entry.type != vasset::VAssetType::eMesh || !entry.importedPath.starts_with(meshPrefix))
+                if (!isModelSubAssetType(entry.type) || !entry.sourcePath.starts_with(sourcePrefix))
                     continue;
                 vbase::UUID parsed {};
                 if (!vbase::try_parse_uuid(uuid.c_str(), parsed))
@@ -474,21 +536,19 @@ namespace vultra_app
                 if (!std::filesystem::is_regular_file(assetRoot / std::filesystem::path(entry.importedPath), ec) || ec)
                     continue;
 
-                auto nameIt = names.find(entry.sourcePath);
-                if (nameIt == names.end())
-                    nameIt = names.find(entry.importedPath);
-                if (nameIt == names.end())
-                    continue;
-
-                auto name = nameIt->second;
+                auto name = subAssetDisplayName(entry, names);
                 entries.push_back(ModelSubAssetEntry {
                     .uuid         = uuid,
                     .name         = std::move(name),
+                    .sourcePath   = entry.sourcePath,
                     .importedPath = entry.importedPath,
+                    .type         = entry.type,
                 });
             }
 
             std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
+                if (a.type != b.type)
+                    return static_cast<uint32_t>(a.type) < static_cast<uint32_t>(b.type);
                 return a.importedPath < b.importedPath;
             });
             return entries;
@@ -1058,7 +1118,7 @@ namespace vultra_app
                         m_ExpandedModelAssets.contains(entry.lexically_normal().generic_string()))
                     {
                         for (const auto& subAsset : modelSubAssetsFor(ctx, entry))
-                            drawListSubAsset(ctx, entry, subAsset.uuid, subAsset.name, subAsset.importedPath);
+                            drawListSubAsset(ctx, entry, subAsset);
                     }
                 }
 
@@ -1081,7 +1141,7 @@ namespace vultra_app
             if (isModelSourceAsset(entry) && m_ExpandedModelAssets.contains(entry.lexically_normal().generic_string()))
             {
                 for (const auto& subAsset : modelSubAssetsFor(ctx, entry))
-                    drawGridSubAsset(ctx, entry, subAsset.uuid, subAsset.name, subAsset.importedPath, m_IconSize);
+                    drawGridSubAsset(ctx, entry, subAsset, m_IconSize);
             }
         }
         ImGui::Columns(1);
@@ -1380,22 +1440,20 @@ namespace vultra_app
 
     void ContentBrowserWindow::drawListSubAsset(EditorContext&               ctx,
                                                 const std::filesystem::path& ownerPath,
-                                                const std::string&           uuid,
-                                                const std::string&           name,
-                                                const std::string&           importedPath)
+                                                const ModelSubAssetEntry&    subAsset)
     {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
-        ImGui::PushID((ownerPath.generic_string() + "#" + uuid).c_str());
+        ImGui::PushID((ownerPath.generic_string() + "#" + subAsset.uuid).c_str());
         ImGui::Indent(22.0f);
-        ImGui::Selectable((std::string(ICON_MDI_CUBE_OUTLINE) + "  " + name).c_str(),
+        ImGui::Selectable((std::string(subAssetIcon(subAsset.type)) + "  " + subAsset.name).c_str(),
                           Selection::lastCategory() == SelectionCategory::Asset &&
-                              Selection::lastId().toString() == uuid,
+                              Selection::lastId().toString() == subAsset.uuid,
                           ImGuiSelectableFlags_SpanAllColumns);
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         {
             vultra::CoreUUID id;
-            if (vbase::UUID parsed {}; vbase::try_parse_uuid(uuid.c_str(), parsed))
+            if (vbase::UUID parsed {}; vbase::try_parse_uuid(subAsset.uuid.c_str(), parsed))
             {
                 id = vultra::CoreUUID(parsed);
                 Selection::select(SelectionCategory::Asset, id);
@@ -1403,23 +1461,21 @@ namespace vultra_app
             }
         }
         drawSubAssetListFrame(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-        drawSubAssetDragSource(uuid, name, importedPath);
+        drawSubAssetDragSource(subAsset.uuid, subAsset.name, subAsset.importedPath);
         ImGui::Unindent(22.0f);
         ImGui::TableNextColumn();
-        ImGui::TextUnformatted("Sub Mesh");
+        ImGui::TextUnformatted(subAssetTypeLabel(subAsset.type));
         ImGui::TableNextColumn();
-        ImGui::TextWrapped("%s", importedPath.c_str());
+        ImGui::TextWrapped("%s", subAsset.importedPath.c_str());
         ImGui::PopID();
     }
 
     void ContentBrowserWindow::drawGridSubAsset(EditorContext&               ctx,
                                                 const std::filesystem::path& ownerPath,
-                                                const std::string&           uuid,
-                                                const std::string&           name,
-                                                const std::string&           importedPath,
+                                                const ModelSubAssetEntry&    subAsset,
                                                 float                        iconSize)
     {
-        ImGui::PushID((ownerPath.generic_string() + "#" + uuid).c_str());
+        ImGui::PushID((ownerPath.generic_string() + "#" + subAsset.uuid).c_str());
         ImGui::BeginGroup();
         const ImVec2 itemMin = ImGui::GetCursorScreenPos();
         const ImVec2 itemMax {itemMin.x + iconSize + 10.0f,
@@ -1435,9 +1491,9 @@ namespace vultra_app
         }
 
         ImTextureID previewId {};
-        if (ctx.thumbnails)
+        if (ctx.thumbnails && subAsset.type == vasset::VAssetType::eMesh)
         {
-            const auto thumbnail = ctx.thumbnails->requestMesh(ctx, uuid, importedPath);
+            const auto thumbnail = ctx.thumbnails->requestMesh(ctx, subAsset.uuid, subAsset.importedPath);
             if (thumbnail.status == ui::AssetThumbnailStatus::Ready)
             {
                 const bool cached    = m_PreviewCache.hasCachedImageFilePreview(ctx, thumbnail.outputPath);
@@ -1446,6 +1502,15 @@ namespace vultra_app
                 if (!cached && allowLoad)
                     --m_RemainingThumbnailLoads;
             }
+        }
+        else if (subAsset.type == vasset::VAssetType::eTexture && !subAsset.sourcePath.empty())
+        {
+            const std::string uri = "res://" + std::filesystem::path(subAsset.sourcePath).generic_string();
+            const bool cached = m_PreviewCache.hasCachedTexturePreview(ctx, std::string_view(uri));
+            const bool allowLoad = cached || m_RemainingThumbnailLoads > 0;
+            previewId = m_PreviewCache.getTexturePreview(ctx, std::string_view(uri), allowLoad);
+            if (!cached && allowLoad)
+                --m_RemainingThumbnailLoads;
         }
 
         if (previewId)
@@ -1459,22 +1524,22 @@ namespace vultra_app
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.12f, 0.16f, 0.20f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.18f, 0.24f, 0.30f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.21f, 0.30f, 0.38f, 1.0f));
-            ImGui::Button(ICON_MDI_CUBE_OUTLINE, ImVec2(iconSize, iconSize));
+            ImGui::Button(subAssetIcon(subAsset.type), ImVec2(iconSize, iconSize));
             ImGui::PopStyleColor(3);
             ImGui::GetWindowDrawList()->AddRect(
                 ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(90, 145, 210, 150), 4.0f);
         }
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         {
-            if (vbase::UUID parsed {}; vbase::try_parse_uuid(uuid.c_str(), parsed))
+            if (vbase::UUID parsed {}; vbase::try_parse_uuid(subAsset.uuid.c_str(), parsed))
             {
                 Selection::select(SelectionCategory::Asset, vultra::CoreUUID(parsed));
                 ctx.state.selectedSourceAsset.clear();
             }
         }
-        drawSubAssetDragSource(uuid, name, importedPath);
+        drawSubAssetDragSource(subAsset.uuid, subAsset.name, subAsset.importedPath);
         const float textWidth = iconSize + 10.0f;
-        drawWrappedEllipsizedLabel(name, textWidth, 2);
+        drawWrappedEllipsizedLabel(subAsset.name, textWidth, 2);
         ImGui::EndGroup();
         m_GridItemBounds.push_back(GridItemBounds {
             .path = ownerPath,

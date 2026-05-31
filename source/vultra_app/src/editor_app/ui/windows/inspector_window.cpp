@@ -35,6 +35,8 @@
 #include <vultra/function/world/components/xr_view_component.hpp>
 #include <vultra/function/world/world.hpp>
 
+#include <vasset/vanimation.hpp>
+
 #include <entt/meta/meta.hpp>
 #include <glm/common.hpp>
 #include <glm/ext/matrix_clip_space.hpp>
@@ -3483,6 +3485,75 @@ namespace vultra_app
             drawMeshAssetPreview(
                 ctx, uuid, std::filesystem::path(entry.importedPath).filename().generic_string(), entry.importedPath);
         }
+        else if (entry.type == vasset::VAssetType::eTexture)
+        {
+            ImGui::Spacing();
+            drawTextureAssetPreview(ctx, entry);
+        }
+        else if (entry.type == vasset::VAssetType::eSkeleton)
+        {
+            ImGui::Spacing();
+            drawSkeletonAssetInspector(ctx, entry);
+        }
+        else if (entry.type == vasset::VAssetType::eAnimation)
+        {
+            ImGui::Spacing();
+            drawAnimationAssetInspector(ctx, entry);
+        }
+    }
+
+    void InspectorWindow::drawTextureAssetPreview(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry)
+    {
+        const std::string uri = !entry.sourcePath.empty() ?
+                                    "res://" + std::filesystem::path(entry.sourcePath).generic_string() :
+                                    "res://" + std::filesystem::path(entry.importedPath).generic_string();
+        const auto previewId = m_PreviewCache.getTexturePreview(ctx, std::string_view(uri));
+        if (!previewId)
+        {
+            drawImagePreviewPlaceholder(std::filesystem::path(entry.sourcePath), m_PreviewCache.lastError().c_str());
+            return;
+        }
+
+        ImGui::TextUnformatted("Preview");
+        const float size = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
+        ImGui::Image(previewId, ImVec2(size, size));
+    }
+
+    void InspectorWindow::drawSkeletonAssetInspector(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry)
+    {
+        const auto assetRoot = ctx.state.currentProject / ctx.state.currentAssetRoot;
+        const auto path = assetRoot / std::filesystem::path(entry.importedPath);
+        vasset::VSkeleton skeleton;
+        const auto result = vasset::loadSkeleton(path.generic_string(), skeleton);
+        if (!result)
+        {
+            ImGui::TextDisabled("Skeleton metadata unavailable.");
+            return;
+        }
+
+        ui::sectionTitle(ICON_MDI_SOURCE_BRANCH, "Skeleton");
+        ImGui::TextWrapped("Name: %s", skeleton.name.c_str());
+        ImGui::Text("Joints: %zu", skeleton.jointNames.size());
+        ImGui::Text("Payload: %s", formatFileSize(skeleton.ozzData.size()).c_str());
+    }
+
+    void InspectorWindow::drawAnimationAssetInspector(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry)
+    {
+        const auto assetRoot = ctx.state.currentProject / ctx.state.currentAssetRoot;
+        const auto path = assetRoot / std::filesystem::path(entry.importedPath);
+        vasset::VAnimation animation;
+        const auto result = vasset::loadAnimation(path.generic_string(), animation);
+        if (!result)
+        {
+            ImGui::TextDisabled("Animation metadata unavailable.");
+            return;
+        }
+
+        ui::sectionTitle(ICON_MDI_PLAY, "Animation");
+        ImGui::TextWrapped("Name: %s", animation.name.c_str());
+        ImGui::Text("Duration: %.3f s", animation.duration);
+        ImGui::Text("Payload: %s", formatFileSize(animation.ozzData.size()).c_str());
+        ImGui::TextDisabled("Playback preview requires the runtime animation system.");
     }
 
     void InspectorWindow::drawSourceAssetInspector(EditorContext& ctx)
