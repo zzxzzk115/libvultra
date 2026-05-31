@@ -1,5 +1,6 @@
 #include "editor_app/editor_app.hpp"
 
+#include "common/system_memory.hpp"
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/selection.hpp"
 #include "editor_app/ui/editor_top_bar.hpp"
@@ -2387,6 +2388,7 @@ namespace vultra_app
                                    vultra::rhi::RenderDeviceMemoryBudget {};
         const auto assetMemoryStats = assetService ? assetService->memoryStats() : vultra::AssetMemoryStats {};
         const auto jobSnapshots     = jobService ? jobService->snapshots() : std::vector<vultra::JobSnapshot> {};
+        const auto systemMemory     = querySystemMemory();
 
         std::vector<std::string> labels;
         char                     fpsText[32] {};
@@ -2398,6 +2400,18 @@ namespace vultra_app
                     assetMemoryStats.cpuCacheBytes + renderMemoryStats.cpuCacheBytes;
         const uint64_t gpuBytes = frame ? frame->gpuDeviceLocalBytes : renderMemoryStats.gpuDeviceLocalBytes;
         labels.emplace_back("CPU cache " + formatBytes(cpuCacheBytes));
+        if (systemMemory.processResidentAvailable)
+        {
+            if (systemMemory.systemMemoryAvailable)
+            {
+                labels.emplace_back("RAM " + formatBytes(systemMemory.processResidentBytes) + " / avail " +
+                                    formatBytes(systemMemory.systemAvailableBytes));
+            }
+            else
+            {
+                labels.emplace_back("RAM " + formatBytes(systemMemory.processResidentBytes));
+            }
+        }
         if (renderMemoryBudget.available && renderMemoryBudget.deviceLocalBudgetBytes > 0u)
         {
             labels.emplace_back("VRAM " + formatBytes(renderMemoryBudget.deviceLocalUsageBytes) + " / " +

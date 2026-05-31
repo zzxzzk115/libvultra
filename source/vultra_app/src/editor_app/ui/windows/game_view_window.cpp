@@ -1,5 +1,6 @@
 #include "editor_app/ui/windows/game_view_window.hpp"
 
+#include "common/system_memory.hpp"
 #include "common/ui_widgets.hpp"
 #include "editor_app/editor_history.hpp"
 #include "editor_app/selection.hpp"
@@ -443,6 +444,7 @@ namespace vultra_app
         const ImGuiIO& io      = ImGui::GetIO();
         const float    fps     = io.Framerate;
         const float    frameMs = fps > 0.0f ? 1000.0f / fps : 0.0f;
+        const auto     systemMemory = querySystemMemory();
 
         ImGui::SetNextWindowPos(ImVec2 {imageMax.x - 10.0f, imageMin.y + 10.0f}, ImGuiCond_Always, ImVec2 {1.0f, 0.0f});
         ImGui::SetNextWindowBgAlpha(0.88f);
@@ -474,6 +476,19 @@ namespace vultra_app
             else
             {
                 ImGui::TextDisabled("Profiler warming up...");
+            }
+
+            if (systemMemory.processResidentAvailable || systemMemory.systemMemoryAvailable)
+            {
+                ImGui::Separator();
+                if (systemMemory.processResidentAvailable)
+                    ImGui::Text("RAM used   %s", formatBytes(systemMemory.processResidentBytes).c_str());
+                if (systemMemory.systemMemoryAvailable)
+                {
+                    ImGui::Text("RAM avail  %s", formatBytes(systemMemory.systemAvailableBytes).c_str());
+                    if (systemMemory.systemTotalBytes > 0u)
+                        ImGui::Text("RAM total  %s", formatBytes(systemMemory.systemTotalBytes).c_str());
+                }
             }
 
             if (renderService)

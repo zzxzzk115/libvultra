@@ -1,5 +1,7 @@
 #include "editor_app/ui/windows/profiler_window.hpp"
 
+#include "common/system_memory.hpp"
+
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <implot/implot.h>
@@ -318,6 +320,40 @@ namespace vultra_app
                 ImGui::Text("VRAM heap %s", formatBytes(budget.deviceLocalHeapBytes).c_str());
             ImGui::TextDisabled("Runtime VRAM budget is unavailable on this backend/device.");
         }
+
+        void drawSystemMemory(const SystemMemorySnapshot& memory)
+        {
+            if (!memory.processResidentAvailable && !memory.systemMemoryAvailable)
+            {
+                ImGui::TextDisabled("Runtime RAM usage is unavailable on this platform.");
+                return;
+            }
+
+            if (memory.processResidentAvailable)
+                ImGui::Text("Process RAM %s", formatBytes(memory.processResidentBytes).c_str());
+
+            if (!memory.systemMemoryAvailable)
+                return;
+
+            ImGui::SameLine(0.0f, 16.0f);
+            ImGui::Text("Available %s", formatBytes(memory.systemAvailableBytes).c_str());
+
+            if (memory.systemTotalBytes > 0u)
+            {
+                const uint64_t usedBytes =
+                    memory.systemTotalBytes > memory.systemAvailableBytes ?
+                        memory.systemTotalBytes - memory.systemAvailableBytes :
+                        0u;
+                const double usageRatio =
+                    static_cast<double>(usedBytes) / static_cast<double>(memory.systemTotalBytes);
+                ImGui::Text("System RAM %s / %s",
+                            formatBytes(usedBytes).c_str(),
+                            formatBytes(memory.systemTotalBytes).c_str());
+                ImGui::ProgressBar(static_cast<float>(std::clamp(usageRatio, 0.0, 1.0)), ImVec2(-1.0f, 0.0f));
+                if (usageRatio >= 0.90)
+                    ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.25f, 1.0f), "System RAM is close to exhaustion.");
+            }
+        }
     } // namespace
 
     ProfilerWindow::ProfilerWindow() : EditorWindow("Profiler", ICON_MDI_CHART_TIMELINE_VARIANT) {}
@@ -354,6 +390,7 @@ namespace vultra_app
             profiler->setEnabled(true);
 
         const auto* frame = profiler->selectedFrame();
+        const auto  systemMemory = querySystemMemory();
         if (!frame)
         {
             ImGui::Separator();
@@ -387,6 +424,25 @@ namespace vultra_app
             ImGui::Text("Updates %llu", static_cast<unsigned long long>(frame->updateOps));
             ImGui::TableNextColumn();
             ImGui::Text("GPU mem %s", formatBytes(frame->gpuDeviceLocalBytes).c_str());
+
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            if (systemMemory.processResidentAvailable)
+                ImGui::Text("RAM %s", formatBytes(systemMemory.processResidentBytes).c_str());
+            else
+                ImGui::TextUnformatted("RAM n/a");
+            ImGui::TableNextColumn();
+            if (systemMemory.systemMemoryAvailable)
+                ImGui::Text("RAM avail %s", formatBytes(systemMemory.systemAvailableBytes).c_str());
+            else
+                ImGui::TextUnformatted("RAM avail n/a");
+            ImGui::TableNextColumn();
+            if (systemMemory.systemTotalBytes > 0u)
+                ImGui::Text("RAM total %s", formatBytes(systemMemory.systemTotalBytes).c_str());
+            else
+                ImGui::TextUnformatted("RAM total n/a");
+            ImGui::TableNextColumn();
+            ImGui::Text("CPU cache %s", formatBytes(frame->assetCpuCacheBytes + frame->renderCpuCacheBytes).c_str());
             ImGui::EndTable();
         }
 
@@ -441,6 +497,8 @@ namespace vultra_app
             if (ImGui::BeginTabItem("Memory"))
             {
                 auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+                drawSystemMemory(systemMemory);
+                ImGui::Separator();
                 if (!backendService)
                 {
                     ImGui::TextDisabled("Render backend is unavailable.");
