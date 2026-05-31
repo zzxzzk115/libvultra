@@ -1,6 +1,5 @@
 #pragma once
 
-#include "vultra/core/rhi/compute_pass.hpp"
 #include "vultra/core/rhi/render_pass.hpp"
 #include "vultra/core/rhi/structs/pixel_format.hpp"
 #include "vultra/function/framegraph/framegraph_context.hpp"
@@ -14,21 +13,13 @@ namespace vultra
     struct XrViewSynthesisSettings
     {
         bool        enabled {true};
-        std::string warpingBackend {"adaptive_mesh_graphics"};
+        std::string warpingBackend {"geometry"};
         std::string inpaintingBackend {"pull_push"};
         std::string sourceView {"left"};
         std::string targetView {"right"};
 
-        uint32_t baseGridSize {16};
-        uint32_t maxSubdivision {3};
-        float    sideLengthThreshold {0.1f};
-        float    depthThreshold {0.015f};
-    };
-
-    struct XrAdaptiveMeshData
-    {
-        FrameGraphResource vertices;
-        uint32_t           vertexCount {0};
+        uint32_t gridSize {4};
+        float    warpStrength {0.035f};
     };
 
     struct XrPullPushMipData
@@ -37,33 +28,40 @@ namespace vultra
         FrameGraphResource output;
     };
 
-    class XrAdaptiveMeshBuildPass final : public rhi::ComputePass<XrAdaptiveMeshBuildPass>
+    class IXrWarpingBackend
     {
-        friend class BasePass;
-
     public:
-        XrAdaptiveMeshBuildPass();
+        virtual ~IXrWarpingBackend() = default;
 
-        [[nodiscard]] XrAdaptiveMeshData addPass(FrameGraphBuildContext&            ctx,
-                                                 FrameGraphResource                 source,
-                                                 FrameGraphResource                 depth,
-                                                 const XrViewSynthesisSettings& settings);
-
-    private:
-        [[nodiscard]] rhi::ComputePipeline createPipeline(uint64_t variantHash) const;
+        [[nodiscard]] virtual std::string_view   name() const                                     = 0;
+        [[nodiscard]] virtual FrameGraphResource addPass(FrameGraphBuildContext&        ctx,
+                                                         FrameGraphResource             source,
+                                                         FrameGraphResource             depth,
+                                                         const XrViewSynthesisSettings& settings) = 0;
     };
 
-    class XrAdaptiveMeshRasterPass final : public rhi::RenderPass<XrAdaptiveMeshRasterPass>
+    class IXrInpaintingBackend
+    {
+    public:
+        virtual ~IXrInpaintingBackend() = default;
+
+        [[nodiscard]] virtual std::string_view name() const = 0;
+        [[nodiscard]] virtual FrameGraphResource
+        addPass(FrameGraphBuildContext& ctx, FrameGraphResource source, const XrViewSynthesisSettings& settings) = 0;
+    };
+
+    class XrGeometryWarpPass final : public rhi::RenderPass<XrGeometryWarpPass>, public IXrWarpingBackend
     {
         friend class BasePass;
 
     public:
-        XrAdaptiveMeshRasterPass();
+        XrGeometryWarpPass();
 
-        [[nodiscard]] FrameGraphResource addPass(FrameGraphBuildContext&            ctx,
-                                                 const XrAdaptiveMeshData&          mesh,
-                                                 FrameGraphResource                 source,
-                                                 const XrViewSynthesisSettings& settings);
+        [[nodiscard]] std::string_view   name() const override;
+        [[nodiscard]] FrameGraphResource addPass(FrameGraphBuildContext&        ctx,
+                                                 FrameGraphResource             source,
+                                                 FrameGraphResource             depth,
+                                                 const XrViewSynthesisSettings& settings) override;
 
     private:
         [[nodiscard]] rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask) const;
@@ -76,10 +74,8 @@ namespace vultra
     public:
         XrPullPyramidPass();
 
-        [[nodiscard]] XrPullPushMipData addPass(FrameGraphBuildContext& ctx,
-                                                FrameGraphResource      pyramid,
-                                                uint32_t                lod,
-                                                rhi::Extent2D           dstExtent);
+        [[nodiscard]] XrPullPushMipData
+        addPass(FrameGraphBuildContext& ctx, FrameGraphResource pyramid, uint32_t lod, rhi::Extent2D dstExtent);
 
     private:
         [[nodiscard]] rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask) const;
@@ -92,21 +88,20 @@ namespace vultra
     public:
         XrPushPyramidPass();
 
-        [[nodiscard]] XrPullPushMipData addPass(FrameGraphBuildContext& ctx,
-                                                FrameGraphResource      pyramid,
-                                                uint32_t                lod,
-                                                rhi::Extent2D           dstExtent);
+        [[nodiscard]] XrPullPushMipData
+        addPass(FrameGraphBuildContext& ctx, FrameGraphResource pyramid, uint32_t lod, rhi::Extent2D dstExtent);
 
     private:
         [[nodiscard]] rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat, uint32_t viewMask) const;
     };
 
-    class XrPullPushInpaintPass final
+    class XrPullPushInpaintPass final : public IXrInpaintingBackend
     {
     public:
-        [[nodiscard]] FrameGraphResource addPass(FrameGraphBuildContext&            ctx,
-                                                 FrameGraphResource                 warped,
-                                                 const XrViewSynthesisSettings& settings);
+        [[nodiscard]] std::string_view   name() const override;
+        [[nodiscard]] FrameGraphResource addPass(FrameGraphBuildContext&        ctx,
+                                                 FrameGraphResource             warped,
+                                                 const XrViewSynthesisSettings& settings) override;
 
     private:
         XrPullPyramidPass m_PullPass;
@@ -129,9 +124,9 @@ namespace vultra
             std::string_view label;
         };
 
-        [[nodiscard]] FrameGraphResource addPass(FrameGraphBuildContext&            ctx,
-                                                 FrameGraphResource                 source,
-                                                 FrameGraphResource                 depth,
+        [[nodiscard]] FrameGraphResource addPass(FrameGraphBuildContext&        ctx,
+                                                 FrameGraphResource             source,
+                                                 FrameGraphResource             depth,
                                                  const XrViewSynthesisSettings& settings);
 
         [[nodiscard]] static std::span<const BackendInfo> warpingBackends();
@@ -142,8 +137,7 @@ namespace vultra
         [[nodiscard]] static bool                         hasInpaintingBackend(std::string_view name);
 
     private:
-        XrAdaptiveMeshBuildPass  m_AdaptiveMeshBuildPass;
-        XrAdaptiveMeshRasterPass m_AdaptiveMeshRasterPass;
-        XrPullPushInpaintPass    m_PullPushInpaintPass;
+        XrGeometryWarpPass    m_GeometryWarpPass;
+        XrPullPushInpaintPass m_PullPushInpaintPass;
     };
 } // namespace vultra

@@ -1,83 +1,95 @@
-{
-  "version": 3,
-  "meta": {
-    "editor": {
-      "nodes": {
-        "ComposeLeftEye": {
-          "pos": [
-            260.0,
-            80.0
-          ]
-        },
-        "ComposeRightEye": {
-          "pos": [
-            620.0,
-            80.0
-          ]
-        }
-      },
-      "design": {
-        "status": "reserved",
-        "notes": "Future XR view synthesis graph composes explicit eye backbuffers from atomic warping and repair passes."
-      }
-    }
-  },
-  "resources": [
-    {
-      "name": "stereo_color",
-      "imported": true
-    },
-    {
-      "name": "stereo_inpainted_color",
-      "imported": true
-    },
-    {
-      "name": "left_backbuffer",
-      "imported": true,
-      "desc": {
-        "view": "left"
-      }
-    },
-    {
-      "name": "right_backbuffer",
-      "imported": true,
-      "desc": {
-        "view": "right"
-      }
-    }
-  ],
-  "passes": [
-    {
-      "enabled": false,
-      "id": "ComposeLeftEye",
-      "when": "never",
-      "inputs": {
-        "source": "stereo_color"
-      },
-      "outputs": {
-        "target": {
-          "resource": "left_backbuffer",
-          "view": "left"
-        }
-      },
-      "type": "FinalComposition",
-      "viewMode": "stereo"
-    },
-    {
-      "enabled": false,
-      "id": "ComposeRightEye",
-      "when": "never",
-      "inputs": {
-        "source": "stereo_inpainted_color"
-      },
-      "outputs": {
-        "target": {
-          "resource": "right_backbuffer",
-          "view": "right"
-        }
-      },
-      "type": "FinalComposition",
-      "viewMode": "stereo"
-    }
-  ]
+﻿{
+    "version":  3,
+    "meta":  {
+                 "editor":  {
+                                "nodes":  {
+                                              "ComposeLeftEye":  {
+                                                                     "pos":  [
+                                                                                 260.0,
+                                                                                 80.0
+                                                                             ]
+                                                                 },
+                                              "ComposeRightEye":  {
+                                                                      "pos":  [
+                                                                                  620.0,
+                                                                                  80.0
+                                                                              ]
+                                                                  },
+                                              "VisibilityBuffer":  {
+                                                                       "pos":  [
+                                                                                   -30,
+                                                                                   80
+                                                                               ]
+                                                                   },
+                                              "ThinGBuffer":  {
+                                                                  "pos":  [
+                                                                              260,
+                                                                              80
+                                                                          ]
+                                                              }
+                                          },
+                                "design":  {
+                                               "status":  "reserved",
+                                               "notes":  "Future XR view synthesis graph composes explicit eye backbuffers from atomic warping and repair passes."
+                                           }
+                            }
+             },
+    "resources":  [
+                      {
+                          "name":  "stereo_color",
+                          "imported":  true
+                      },
+                      {
+                          "name":  "stereo_inpainted_color",
+                          "imported":  true
+                      },
+                      {
+                          "name":  "left_backbuffer",
+                          "imported":  true,
+                          "desc":  {
+                                       "view":  "left"
+                                   }
+                      },
+                      {
+                          "name":  "right_backbuffer",
+                          "imported":  true,
+                          "desc":  {
+                                       "view":  "right"
+                                   }
+                      }
+                  ],
+    "passes":  [
+                   {
+                       "enabled":  false,
+                       "id":  "ComposeLeftEye",
+                       "when":  "never",
+                       "inputs":  {
+                                      "source":  "stereo_color"
+                                  },
+                       "outputs":  {
+                                       "target":  {
+                                                      "resource":  "left_backbuffer",
+                                                      "view":  "left"
+                                                  }
+                                   },
+                       "type":  "FinalComposition",
+                       "viewMode":  "stereo"
+                   },
+                   {
+                       "enabled":  false,
+                       "id":  "ComposeRightEye",
+                       "when":  "never",
+                       "inputs":  {
+                                      "source":  "stereo_inpainted_color"
+                                  },
+                       "outputs":  {
+                                       "target":  {
+                                                      "resource":  "right_backbuffer",
+                                                      "view":  "right"
+                                                  }
+                                   },
+                       "type":  "FinalComposition",
+                       "viewMode":  "stereo"
+                   }
+               ]
 }

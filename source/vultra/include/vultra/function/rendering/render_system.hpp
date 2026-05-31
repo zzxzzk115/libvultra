@@ -54,6 +54,8 @@ namespace vultra
         void onResize(uint32_t width, uint32_t height) override;
         bool reloadRenderPipeline() override;
         bool reloadRenderPipeline(std::string_view asset, std::string_view rendererKey = {}) override;
+        bool updateRenderGraph(std::string_view asset, std::string_view rendererKey = {}) override;
+        bool reloadProjectShaderLibrary(std::string_view uri) override;
         void resetSceneState() override;
         void releaseOverrideRenderWorld(World* world) override;
 
@@ -105,6 +107,7 @@ namespace vultra
         bool          rendererRequiresRayTracingScene(std::string_view rendererKey) const;
         bool          reloadRenderPipelineNow();
         bool          reloadRenderPipelineNow(std::string_view asset, std::string_view rendererKey);
+        bool          updateRenderGraphNow(std::string_view asset, std::string_view rendererKey);
         void          clearFrameGraphDebugState();
         void          addFrameGraphTextureCapturePasses(FrameGraphBuildContext& ctx, const RenderCamera& camera);
         rhi::GraphicsPipeline* getFrameGraphTexturePreviewPipeline(rhi::RenderDevice& rd,
@@ -118,6 +121,9 @@ namespace vultra
         bool m_PendingRenderPipelineReload {false};
         std::string m_PendingRenderPipelineAsset;
         std::string m_PendingRenderPipelineRendererKey;
+        bool        m_PendingRenderGraphUpdate {false};
+        std::string m_PendingRenderGraphUpdateAsset;
+        std::string m_PendingRenderGraphUpdateRendererKey;
 
         std::unordered_map<std::string, Ref<Renderer>> m_Renderers;
         std::string                                    m_DefaultRendererKey {"builtin"};

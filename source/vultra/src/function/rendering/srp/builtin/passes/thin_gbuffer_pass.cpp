@@ -17,6 +17,14 @@ namespace vultra
     namespace
     {
         constexpr auto PASS_NAME = "ThinGBufferPass";
+
+        struct ThinGBufferPushConstants
+        {
+            uint32_t maxDraws {0};
+            uint32_t maxMeshlets {0};
+            uint32_t maxMeshletVertices {0};
+            uint32_t maxMeshletTriangles {0};
+        };
     }
 
     FrameGraphResource ThinGBufferPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource visibility)
@@ -28,6 +36,7 @@ namespace vultra
             FrameGraphResource color;
             FrameGraphResource normal;
             FrameGraphResource material;
+            FrameGraphResource entityId;
 
             FrameGraphResource drawBuffer;
             FrameGraphResource meshletsBuffer;
@@ -40,9 +49,13 @@ namespace vultra
         const auto colorDesc =
             makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
         const auto normalDesc =
-            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
+            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRG8_UNorm, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
         const auto materialDesc =
-            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
+            makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm, rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled);
+        const bool writeEntityId =
+            ctx.view().camera != nullptr &&
+            (ctx.view().camera->debugEntityIdOutput || ctx.view().camera->selectionOutlineEnabled);
+        const auto entityIdDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
         const auto cameraBlock           = ctx.bb.get<CameraData>().cameraBlock.fgResource;
         const auto drawBuffer            = ctx.data.tryGet(kResKey_DrawBuffer);
         const auto meshletsBuffer        = ctx.data.tryGet(kResKey_MeshletsBuffer);
@@ -56,6 +69,8 @@ namespace vultra
             [colorDesc,
              normalDesc,
              materialDesc,
+             entityIdDesc,
+             writeEntityId,
              cameraBlock,
              visibility,
              drawBuffer,
@@ -153,8 +168,20 @@ namespace vultra
                                                 .imageAspect = rhi::ImageAspect::eColor,
                                                 .clearValue  = framegraph::ClearValue::eTransparentWhite,
                                             });
+                if (writeEntityId)
+                {
+                    pd.entityId = builder.create<framegraph::FrameGraphTexture>(
+                        "ThinGBufferEntityId",
+                        entityIdDesc);
+                    pd.entityId = builder.write(pd.entityId,
+                                                framegraph::Attachment {
+                                                    .index       = 3,
+                                                    .imageAspect = rhi::ImageAspect::eColor,
+                                                    .clearValue  = framegraph::ClearValue::eTransparentBlack,
+                                                });
+                }
             },
-            [this](const PassData& pd, FrameGraphPassResources&, void* ctxPtr) {
+            [this, writeEntityId](const PassData& pd, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -162,7 +189,8 @@ namespace vultra
                 setShaderLib(*rc.ext.builtinShaderLib);
 
                 const auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
-                if (!gpuSceneDatabase || !gpuSceneDatabase->resources || !pd.drawBuffer || !pd.meshletsBuffer ||
+                const auto* gpuSceneView     = rc.view().gpuSceneView;
+                if (!gpuSceneDatabase || !gpuSceneDatabase->resources || !gpuSceneView || !pd.drawBuffer || !pd.meshletsBuffer ||
                     !pd.materialTableBuffer || !pd.materialParamsBuffer || !pd.meshletVertexBuffer ||
                     !pd.meshletTriangleBuffer)
                     return;
@@ -172,6 +200,9 @@ namespace vultra
                 const auto* pipeline       = getPipeline(rhi::getColorFormat(framebufferInfo, 0),
                                                    rhi::getColorFormat(framebufferInfo, 1),
                                                    rhi::getColorFormat(framebufferInfo, 2),
+                                                   writeEntityId ? rhi::getColorFormat(framebufferInfo, 3) :
+                                                                   rhi::PixelFormat::eUndefined,
+                                                   writeEntityId,
                                                    framebufferInfo.viewMask);
                 if (!pipeline)
                     return;
@@ -186,18 +217,31 @@ namespace vultra
                 rc.overrideSampler(rc.resourceSet[3][1], rc.ext.samplers["nearest"]);
                 rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
+                const ThinGBufferPushConstants pc {
+                    .maxDraws            = gpuSceneView->maxDraws,
+                    .maxMeshlets         = static_cast<uint32_t>(gpuSceneDatabase->resources->meshlets.cpuMeshlets.size()),
+                    .maxMeshletVertices  = static_cast<uint32_t>(
+                         gpuSceneDatabase->resources->meshlets.cpuMeshletVertices.size()),
+                    .maxMeshletTriangles = static_cast<uint32_t>(
+                         gpuSceneDatabase->resources->meshlets.cpuMeshletTriangles.size()),
+                };
+                rc.cb.pushConstants(rhi::ShaderStages::eFragment, 0, &pc);
                 rc.cb.drawFullScreenTriangle().endRendering();
             });
 
         ctx.data.set(kResKey_ThinGBufferColor, data.color);
         ctx.data.set(kResKey_GBufferNormal, data.normal);
         ctx.data.set(kResKey_GBufferMetallicRoughnessAO, data.material);
+        if (data.entityId)
+            ctx.data.set(kResKey_GBufferEntityId, data.entityId);
         return data.color;
     }
 
     rhi::GraphicsPipeline ThinGBufferPass::createPipeline(const rhi::PixelFormat colorFormat,
                                                           const rhi::PixelFormat normalFormat,
                                                           const rhi::PixelFormat materialFormat,
+                                                          const rhi::PixelFormat entityIdFormat,
+                                                          const bool             writeEntityId,
                                                           const uint32_t         viewMask) const
     {
         auto vertexShader = loadHighendShader("fullscreen_triangle.vert", vshadersystem::ShaderStage::eVert);
@@ -207,15 +251,24 @@ namespace vultra
             return {};
         }
 
-        auto fragmentShader = loadHighendShader("thin_gbuffer.frag", vshadersystem::ShaderStage::eFrag);
+        auto fragmentShader = loadHighendShader(
+            "thin_gbuffer.frag",
+            vshadersystem::ShaderStage::eFrag,
+            {{"WRITE_ENTITY_ID", writeEntityId ? 1u : 0u}});
         if (!fragmentShader)
         {
             VULTRA_CORE_ERROR("[ThinGBufferPass] Failed to load fragment shader");
             return {};
         }
 
-        return rhi::GraphicsPipeline::Builder {}
-            .setColorFormats({colorFormat, normalFormat, materialFormat})
+        const auto colorFormats = writeEntityId ?
+                                      std::vector<rhi::PixelFormat> {colorFormat,
+                                                                     normalFormat,
+                                                                     materialFormat,
+                                                                     entityIdFormat} :
+                                      std::vector<rhi::PixelFormat> {colorFormat, normalFormat, materialFormat};
+        rhi::GraphicsPipeline::Builder builder;
+        builder.setColorFormats(colorFormats)
             .setViewMask(viewMask)
             .setInputAssembly({})
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
@@ -230,7 +283,9 @@ namespace vultra
             })
             .setBlending(0, {.enabled = false})
             .setBlending(1, {.enabled = false})
-            .setBlending(2, {.enabled = false})
-            .build(getRenderDevice());
+            .setBlending(2, {.enabled = false});
+        if (writeEntityId)
+            builder.setBlending(3, {.enabled = false});
+        return builder.build(getRenderDevice());
     }
 } // namespace vultra

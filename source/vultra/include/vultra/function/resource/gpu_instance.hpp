@@ -18,5 +18,9 @@ namespace vultra::resource
         uint32_t materialIndex {0};
         uint32_t transformIndex {0};
         uint32_t flags {0};
+        uint32_t entityPickingId {0};
+        uint32_t padding0 {0};
+        uint32_t padding1 {0};
+        uint32_t padding2 {0};
     };
 } // namespace vultra::resource

@@ -41,7 +41,7 @@ void main()
     const vec2 texelSize = 1.0 / vec2(texSize);
 
     int validCount = 0;
-    vec3 colorAccum = vec3(0.0);
+    vec4 colorAccum = vec4(0.0);
 
     for (int y = 0; y < INDEX_COUNT; ++y)
     {
@@ -51,14 +51,14 @@ void main()
             const vec4 sampleValue = VULTRA_SAMPLE_LOD(u_Pyramid, sampleUv, float(u_PC.lod));
             if (sampleValue.a > 0.5)
             {
-                colorAccum += sampleValue.rgb;
+                colorAccum += sampleValue;
                 ++validCount;
             }
         }
     }
 
     if (validCount > 0)
-        FragColor = vec4(colorAccum / float(validCount), 1.0);
+        FragColor = colorAccum / float(validCount);
     else
         FragColor = vec4(0.0);
 }

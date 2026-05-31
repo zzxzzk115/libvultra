@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vultra/core/base/uuid.hpp"
+#include "vultra/function/asset/builtin_assets.hpp"
 
 #include <glm/vec3.hpp>
 
@@ -10,7 +10,7 @@ namespace vultra
     {
         bool active {true};
 
-        CoreUUID skybox;
+        CoreUUID skybox {builtinCitrusOrchardSkyTextureUuid()};
 
         glm::vec3 ambientColor {0.15f};
         float     ambientIntensity {1.0f};

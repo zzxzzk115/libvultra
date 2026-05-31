@@ -4,6 +4,7 @@
 #include "vultra/core/base/common_context.hpp"
 #include "vultra/core/engine/engine_context.hpp"
 #include "vultra/core/math/math.hpp"
+#include "vultra/core/services/timing_service.hpp"
 #include "vultra/core/rhi/backends/webgpu/webgpu_command_buffer_access.hpp"
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/services/window_service.hpp"
@@ -154,6 +155,26 @@ namespace vultra
         linkedInput(const material_graph::Graph& graph, const material_graph::Node& node, std::string_view pin)
         {
             return material_graph::findInputLink(graph, node.id, pin);
+        }
+
+        [[nodiscard]] bool graphDependsOnTime(const material_graph::Graph& graph,
+                                              const material_graph::Node&  node,
+                                              std::unordered_set<std::string>& visited)
+        {
+            if (!visited.insert(node.id).second)
+                return false;
+            if (node.typeId == "vultra.input.time")
+                return true;
+
+            for (const auto& link : graph.links)
+            {
+                if (link.to.nodeId != node.id)
+                    continue;
+                const auto* upstream = material_graph::findNode(graph, link.from.nodeId);
+                if (upstream && graphDependsOnTime(graph, *upstream, visited))
+                    return true;
+            }
+            return false;
         }
 
         [[nodiscard]] nlohmann::json constantNodeValue(const material_graph::Graph& graph,
@@ -327,54 +348,96 @@ namespace vultra
             return findTexture(*source, findTexture);
         }
 
-        [[nodiscard]] MaterialGraphSurfaceParams materialGraphSurfaceParams(IAssetService&   assets,
-                                                                            std::string_view materialGraphUri,
-                                                                            const uint32_t   graphId,
-                                                                            const float      timeSeconds)
+        struct CachedMaterialGraph
         {
-            MaterialGraphSurfaceParams params {};
-            params.graphId = graphId;
+            uint64_t                     contentRevision {0};
+            std::optional<material_graph::Graph> graph;
+            std::size_t                  outputIndex {0};
+            bool                         timeDependent {false};
+        };
+
+        [[nodiscard]] const CachedMaterialGraph*
+        cachedMaterialGraph(IAssetService& assets, std::string_view materialGraphUri, const uint64_t contentRevision)
+        {
+            static std::unordered_map<std::string, CachedMaterialGraph> cache;
+            auto& entry = cache[std::string(materialGraphUri)];
+            if (entry.graph && entry.contentRevision == contentRevision)
+                return &entry;
+
+            entry = {};
+            entry.contentRevision = contentRevision;
 
             std::vector<material_graph::Diagnostic> diagnostics;
             auto                                    text = assets.loadTextAssetSync(materialGraphUri);
             if (!text)
-                return params;
+                return nullptr;
 
             auto graph = material_graph::loadGraphFromText(text.value(), &diagnostics);
             if (!graph)
-                return params;
+                return nullptr;
 
             const auto output =
                 std::find_if(graph->nodes.begin(), graph->nodes.end(), [](const material_graph::Node& node) {
                     return node.typeId == "vultra.output.surface";
                 });
             if (output == graph->nodes.end())
+                return nullptr;
+
+            entry.outputIndex = static_cast<std::size_t>(std::distance(graph->nodes.begin(), output));
+            {
+                std::unordered_set<std::string> visited;
+                entry.timeDependent = graphDependsOnTime(*graph, *output, visited);
+            }
+            entry.graph = std::move(graph);
+            return &entry;
+        }
+
+        [[nodiscard]] MaterialGraphSurfaceParams materialGraphSurfaceParams(IAssetService&   assets,
+                                                                            std::string_view materialGraphUri,
+                                                                            const uint32_t   graphId,
+                                                                            const uint64_t   contentRevision,
+                                                                            const float      timeSeconds,
+                                                                            bool*            timeDependent = nullptr)
+        {
+            if (timeDependent)
+                *timeDependent = false;
+            MaterialGraphSurfaceParams params {};
+            params.graphId = graphId;
+
+            const auto* cached = cachedMaterialGraph(assets, materialGraphUri, contentRevision);
+            if (!cached || !cached->graph || cached->outputIndex >= cached->graph->nodes.size())
                 return params;
+
+            if (timeDependent)
+                *timeDependent = cached->timeDependent;
+
+            const auto& graph  = *cached->graph;
+            const auto& output = graph.nodes[cached->outputIndex];
+            params.textureInfo.x = materialGraphTextureIndex(assets, graph, output, "baseColor");
+            params.alphaMode     = static_cast<uint32_t>(
+                material_graph::alphaModeFromString(output.params.value("alphaMode", std::string {"Opaque"})));
+            params.shadingModel = static_cast<uint32_t>(
+                material_graph::shadingModelFromString(output.params.value("shadingModel", std::string {"PBR_MR"})));
 
             params.baseColor = jsonVec4(
                 surfaceInputValue(
-                    *graph, *output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds),
+                    graph, output, "baseColor", nlohmann::json::array({1.0f, 1.0f, 1.0f, 1.0f}), timeSeconds),
                 glm::vec4(1.0f));
             const glm::vec3 emissive = jsonVec3(
-                surfaceInputValue(*graph, *output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f}), timeSeconds),
+                surfaceInputValue(graph, output, "emissive", nlohmann::json::array({0.0f, 0.0f, 0.0f}), timeSeconds),
                 glm::vec3(0.0f));
             params.emissiveAlpha = glm::vec4(
                 emissive,
                 glm::clamp(
-                    jsonFloat(surfaceInputValue(*graph, *output, "alpha", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f));
+                    jsonFloat(surfaceInputValue(graph, output, "alpha", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f));
             params.metallicRoughnessAoCutoff = glm::vec4(
                 glm::clamp(
-                    jsonFloat(surfaceInputValue(*graph, *output, "metallic", 0.0f, timeSeconds), 0.0f), 0.0f, 1.0f),
+                    jsonFloat(surfaceInputValue(graph, output, "metallic", 0.0f, timeSeconds), 0.0f), 0.0f, 1.0f),
                 glm::clamp(
-                    jsonFloat(surfaceInputValue(*graph, *output, "roughness", 1.0f, timeSeconds), 1.0f), 0.045f, 1.0f),
-                glm::clamp(jsonFloat(surfaceInputValue(*graph, *output, "ao", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f),
+                    jsonFloat(surfaceInputValue(graph, output, "roughness", 1.0f, timeSeconds), 1.0f), 0.045f, 1.0f),
+                glm::clamp(jsonFloat(surfaceInputValue(graph, output, "ao", 1.0f, timeSeconds), 1.0f), 0.0f, 1.0f),
                 glm::clamp(
-                    jsonFloat(surfaceInputValue(*graph, *output, "alphaCutoff", 0.5f, timeSeconds), 0.5f), 0.0f, 1.0f));
-            params.textureInfo.x = materialGraphTextureIndex(assets, *graph, *output, "baseColor");
-            params.alphaMode     = static_cast<uint32_t>(
-                material_graph::alphaModeFromString(output->params.value("alphaMode", std::string {"Opaque"})));
-            params.shadingModel = static_cast<uint32_t>(
-                material_graph::shadingModelFromString(output->params.value("shadingModel", std::string {"PBR_MR"})));
+                    jsonFloat(surfaceInputValue(graph, output, "alphaCutoff", 0.5f, timeSeconds), 0.5f), 0.0f, 1.0f));
             if (params.shadingModel == static_cast<uint32_t>(material_graph::ShadingModel::ePBRSpecularGlossiness) ||
                 params.shadingModel == static_cast<uint32_t>(material_graph::ShadingModel::ePhong))
                 params.metallicRoughnessAoCutoff.x = 0.0f;
@@ -389,11 +452,6 @@ namespace vultra
             if (material.blockOffsetBytes + sizeof(params) <= pool.materialParams.cpu.size())
             {
                 std::memcpy(pool.materialParams.cpu.data() + material.blockOffsetBytes, &params, sizeof(params));
-                if (pool.materialParams.gpu)
-                    rd.uploadS(*pool.materialParams.gpu,
-                               0,
-                               static_cast<uint64_t>(pool.materialParams.cpu.size()),
-                               pool.materialParams.cpu.data());
             }
             else
             {
@@ -413,17 +471,58 @@ namespace vultra
 
             auto&          pool    = gpuResources.pool();
             const uint32_t graphId = material_graph::stableGraphId(materialGraphUri);
-            const auto     params  = materialGraphSurfaceParams(assets, materialGraphUri, graphId, timeSeconds);
+            const uint64_t contentRevision = gpuResources.contentRevision();
             for (uint32_t i = 0; i < static_cast<uint32_t>(pool.materials.size()); ++i)
             {
                 auto& material = pool.materials[i];
                 if (material.model == resource::GpuMaterialModel::eMaterialGraph && material.tableIndex == graphId)
                 {
+                    struct MaterialGraphCacheEntry
+                    {
+                        uint64_t                   contentRevision {0};
+                        bool                       timeDependent {false};
+                        float                      timeSeconds {std::numeric_limits<float>::quiet_NaN()};
+                        uint32_t                   materialIndex {std::numeric_limits<uint32_t>::max()};
+                        MaterialGraphSurfaceParams params {};
+                    };
+                    static std::unordered_map<std::string, MaterialGraphCacheEntry> cache;
+                    auto& cached = cache[std::string(materialGraphUri)];
+                    if (cached.contentRevision == contentRevision && !cached.timeDependent)
+                        return i;
+                    if (cached.contentRevision == contentRevision && cached.timeDependent &&
+                        cached.materialIndex == i && cached.timeSeconds == timeSeconds)
+                        return i;
+
+                    bool       timeDependent = false;
+                    const auto params =
+                        materialGraphSurfaceParams(
+                            assets, materialGraphUri, graphId, contentRevision, timeSeconds, &timeDependent);
+                    if (material.blockOffsetBytes + sizeof(params) <= pool.materialParams.cpu.size() &&
+                        std::memcmp(pool.materialParams.cpu.data() + material.blockOffsetBytes, &params, sizeof(params)) == 0)
+                    {
+                        cached = {
+                            .contentRevision = contentRevision,
+                            .timeDependent   = timeDependent,
+                            .timeSeconds     = timeSeconds,
+                            .materialIndex   = i,
+                            .params          = params,
+                        };
+                        return i;
+                    }
+
                     uploadMaterialGraphParams(pool, rd, material, params);
+                    cached = {
+                        .contentRevision = contentRevision,
+                        .timeDependent   = timeDependent,
+                        .timeSeconds     = timeSeconds,
+                        .materialIndex   = i,
+                        .params          = params,
+                    };
                     return i;
                 }
             }
 
+            const auto params = materialGraphSurfaceParams(assets, materialGraphUri, graphId, contentRevision, timeSeconds);
             resource::GpuMaterial material;
             material.model            = resource::GpuMaterialModel::eMaterialGraph;
             material.blockOffsetBytes = pool.materialParams.allocAndUpload(rd, &params, sizeof(params));
@@ -466,6 +565,140 @@ namespace vultra
             return true;
         }
 
+        void resetGaussianSplatIndirectBuffers(rhi::RenderDevice& rd, resource::GpuSceneView& gpuSceneView);
+
+        void buildCpuDrivenGaussianSplatsForRenderWorld(RenderWorld&                     renderWorld,
+                                                        resource::GpuSceneView&          gpuSceneView,
+                                                        const resource::GpuResourcePool& pool,
+                                                        rhi::RenderDevice&               rd,
+                                                        rhi::CommandBuffer&              cb)
+        {
+            uint32_t maxGeneralGaussianSplatSourceCount = 0u;
+            for (const auto& splatInst : renderWorld.gaussianSplats)
+            {
+                if (splatInst.splatIndex >= pool.gaussianSplats.size())
+                    continue;
+                maxGeneralGaussianSplatSourceCount += pool.gaussianSplats[splatInst.splatIndex].pointCount;
+            }
+
+            gpuSceneView.generalGaussianSplatDraws.clear();
+            gpuSceneView.generalGaussianSplatPackedSources.clear();
+            gpuSceneView.generalGaussianSplatSelectedSources.clear();
+            gpuSceneView.generalGaussianSplatDirectPrefix = false;
+            gpuSceneView.generalGaussianSplatDraws.reserve(renderWorld.gaussianSplats.size());
+            gpuSceneView.generalGaussianSplatPackedSources.reserve(maxGeneralGaussianSplatSourceCount);
+            gpuSceneView.generalGaussianSplatSelectedSources.reserve(maxGeneralGaussianSplatSourceCount);
+
+            for (const auto& splatInst : renderWorld.gaussianSplats)
+            {
+                if (splatInst.splatIndex >= pool.gaussianSplats.size())
+                    continue;
+
+                const auto& gpuSplat = pool.gaussianSplats[splatInst.splatIndex];
+                if (gpuSplat.pointCount == 0u)
+                    continue;
+
+                const uint32_t drawIndex = static_cast<uint32_t>(gpuSceneView.generalGaussianSplatDraws.size());
+                const uint32_t pointBase = gpuSplat.pointOffset;
+                const uint32_t shBaseStride = std::max(gpuSplat.shRestCoeffCount, 1u);
+                const uint32_t rawSourceOffset =
+                    static_cast<uint32_t>(gpuSceneView.generalGaussianSplatPackedSources.size());
+
+                resource::GpuGeneralGaussianSplatDrawRecord drawRecord {};
+                drawRecord.splatIndex  = splatInst.splatIndex;
+                drawRecord.pointOffset = rawSourceOffset;
+                drawRecord.pointCount  = gpuSplat.pointCount;
+                drawRecord.shDegree    = static_cast<uint32_t>(std::max(gpuSplat.shDegree, 0));
+                drawRecord.params0     = glm::vec4 {0.3f, 1.0f, 1.0f, 0.0f};
+                drawRecord.model       = splatInst.worldMatrix;
+
+                for (uint32_t localPoint = 0; localPoint < gpuSplat.pointCount; ++localPoint)
+                {
+                    const uint32_t globalPoint = pointBase + localPoint;
+                    resource::GpuGeneralGaussianSplatPackedSource packed {};
+                    if (globalPoint < pool.gaussianStorage.cpuCenters.size() &&
+                        globalPoint < pool.gaussianStorage.cpuCovariances.size() &&
+                        globalPoint < pool.gaussianStorage.cpuColors.size())
+                    {
+                        const glm::vec4 localCenter = pool.gaussianStorage.cpuCenters[globalPoint];
+                        const uint32_t  shOffset    = globalPoint * shBaseStride;
+                        const glm::uvec2 sh0        = shOffset < pool.gaussianStorage.cpuSh.size() ?
+                                                          pool.gaussianStorage.cpuSh[shOffset] :
+                                                          glm::uvec2 {0u};
+
+                        packed.posOpacity = glm::uvec4 {
+                            std::bit_cast<uint32_t>(localCenter.x),
+                            std::bit_cast<uint32_t>(localCenter.y),
+                            std::bit_cast<uint32_t>(localCenter.z),
+                            pool.gaussianStorage.cpuColors[globalPoint].y,
+                        };
+                        packed.covariance0 = pool.gaussianStorage.cpuCovariances[globalPoint];
+                        packed.colorSh0    = glm::uvec4 {
+                            pool.gaussianStorage.cpuColors[globalPoint].x,
+                            pool.gaussianStorage.cpuColors[globalPoint].y,
+                            sh0.x,
+                            sh0.y,
+                        };
+                        packed.aux0 = glm::uvec4 {globalPoint, 0u, shOffset, 0u};
+                    }
+
+                    const uint32_t sourceIndex = gpuSceneView.pushGeneralGaussianSplatSource(packed);
+                    resource::GpuGeneralGaussianSplatSelectedSource selected {};
+                    selected.sourceIndex  = sourceIndex;
+                    selected.drawIndex    = drawIndex;
+                    selected.packedWeight = std::bit_cast<uint32_t>(1.0f);
+                    selected.flags        = 0u;
+                    gpuSceneView.pushGeneralGaussianSplatSelectedSource(selected);
+                }
+
+                gpuSceneView.pushGeneralGaussianSplatDraw(drawRecord);
+            }
+
+            const uint32_t drawCount = static_cast<uint32_t>(gpuSceneView.generalGaussianSplatDraws.size());
+            const uint32_t sourceCount = static_cast<uint32_t>(gpuSceneView.generalGaussianSplatPackedSources.size());
+            const uint32_t selectedCount = static_cast<uint32_t>(gpuSceneView.generalGaussianSplatSelectedSources.size());
+            gpuSceneView.setGeneralGaussianSplatCaps(drawCount, sourceCount, selectedCount, selectedCount, selectedCount, false);
+            gpuSceneView.resetGeneralGaussianSplatFoveatedClod();
+            gpuSceneView.generalGaussianSplatShBuffer = pool.gaussianStorage.shBuffer;
+            gpuSceneView.ensureGeneralGaussianSplatBuffers(rd);
+
+            if (!gpuSceneView.generalGaussianSplatDraws.empty() && gpuSceneView.generalGaussianSplatDrawBuffer)
+            {
+                cb.update(*gpuSceneView.generalGaussianSplatDrawBuffer,
+                          0,
+                          static_cast<uint64_t>(gpuSceneView.generalGaussianSplatDraws.size()) *
+                              sizeof(resource::GpuGeneralGaussianSplatDrawRecord),
+                          gpuSceneView.generalGaussianSplatDraws.data());
+            }
+            if (!gpuSceneView.generalGaussianSplatPackedSources.empty() && gpuSceneView.generalGaussianSplatPackedSourceBuffer)
+            {
+                cb.update(*gpuSceneView.generalGaussianSplatPackedSourceBuffer,
+                          0,
+                          static_cast<uint64_t>(gpuSceneView.generalGaussianSplatPackedSources.size()) *
+                              sizeof(resource::GpuGeneralGaussianSplatPackedSource),
+                          gpuSceneView.generalGaussianSplatPackedSources.data());
+            }
+            if (!gpuSceneView.generalGaussianSplatSelectedSources.empty() && gpuSceneView.generalGaussianSplatSelectedSourceBuffer)
+            {
+                cb.update(*gpuSceneView.generalGaussianSplatSelectedSourceBuffer,
+                          0,
+                          static_cast<uint64_t>(gpuSceneView.generalGaussianSplatSelectedSources.size()) *
+                              sizeof(resource::GpuGeneralGaussianSplatSelectedSource),
+                          gpuSceneView.generalGaussianSplatSelectedSources.data());
+            }
+            if (gpuSceneView.generalGaussianSplatVisibleCountBuffer)
+            {
+                const uint32_t zero = 0u;
+                cb.update(*gpuSceneView.generalGaussianSplatVisibleCountBuffer, 0, sizeof(uint32_t), &zero);
+            }
+            if (gpuSceneView.generalGaussianSplatDispatchArgsBuffer)
+            {
+                const uint32_t zeroArgs[4] = {0u, 1u, 1u, 0u};
+                cb.update(*gpuSceneView.generalGaussianSplatDispatchArgsBuffer, 0, sizeof(zeroArgs), zeroArgs);
+            }
+            resetGaussianSplatIndirectBuffers(rd, gpuSceneView);
+        }
+
         void buildCpuDrivenGpuSceneForRenderWorld(RenderWorld&                     renderWorld,
                                                   resource::GpuSceneDatabase&      gpuSceneDatabase,
                                                   resource::GpuSceneView&          gpuSceneView,
@@ -486,6 +719,7 @@ namespace vultra
                 gpuInst.materialIndex  = inst.materialIndex;
                 gpuInst.transformIndex = transformIndex;
                 gpuInst.flags          = 0;
+                gpuInst.entityPickingId = makeEntityPickingId(inst.entity);
                 gpuSceneDatabase.pushInstance(gpuInst);
             }
             gpuSceneDatabase.uploadSceneTables(rd, cb);
@@ -534,6 +768,7 @@ namespace vultra
                     dr.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
                     dr.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
                     dr.tangentOffsetBytes   = layout.tangentOffsetBytes;
+                    dr.entityPickingId      = makeEntityPickingId(inst.entity);
                     dr.model                = inst.worldMatrix;
                     gpuSceneView.pushMeshletDraw(std::move(dr));
                 }
@@ -548,6 +783,7 @@ namespace vultra
             gpuSceneView.uploadDraws(rd, cb);
             gpuSceneView.buildIndirectFromDraws(pool);
             gpuSceneView.uploadIndirect(rd);
+            buildCpuDrivenGaussianSplatsForRenderWorld(renderWorld, gpuSceneView, pool, rd, cb);
 
             renderWorld.gpuSceneDatabase = &gpuSceneDatabase;
             renderWorld.gpuSceneView     = &gpuSceneView;
@@ -1098,151 +1334,165 @@ namespace vultra
                                  RenderWorld&         out,
                                  const float          timeSeconds)
     {
+        RuntimeProfiler::ExternalScope cookScope {"RenderWorldCooker::cook/total"};
         out.clear();
 
         auto& reg = world.registry();
 
-        auto view = reg.view<IDComponent, TransformComponent, MeshComponent>();
-        out.instances.reserve(view.size_hint());
-        for (auto e : view)
         {
-            const auto& id   = view.get<IDComponent>(e);
-            const auto& tr   = view.get<TransformComponent>(e);
-            const auto& mesh = view.get<MeshComponent>(e);
-            if (!isEntityRenderable(world, reg, e))
-                continue;
-
-            uint32_t meshIndex = std::numeric_limits<uint32_t>::max();
-            if (mesh.builtinGeometry != UINT32_MAX)
+            RuntimeProfiler::ExternalScope meshScope {"RenderWorldCooker::cook/meshes"};
+            auto view = reg.view<IDComponent, TransformComponent, MeshComponent>();
+            out.instances.reserve(view.size_hint());
+            for (auto e : view)
             {
-                meshIndex = geometryFactory.getOrCreateMeshIndex(
-                    static_cast<BuiltinGeometryKind>(mesh.builtinGeometry), gpuResources, rd);
-            }
-            else
-            {
-                auto h = assets.loadMeshAsync(mesh.mesh);
-                if (!h.ready())
+                const auto& id   = view.get<IDComponent>(e);
+                const auto& tr   = view.get<TransformComponent>(e);
+                const auto& mesh = view.get<MeshComponent>(e);
+                if (!isEntityRenderable(world, reg, e))
                     continue;
-                meshIndex = h.gpuIndex();
-            }
 
-            if (meshIndex == std::numeric_limits<uint32_t>::max())
-                continue;
-
-            RenderInstance inst {};
-            inst.entity      = id.uuid;
-            inst.meshIndex   = meshIndex;
-            inst.worldMatrix = tr.worldMatrix;
-            inst.materialOverrides.reserve(mesh.materialOverrides.size());
-            for (const auto& materialOverride : mesh.materialOverrides)
-            {
-                const uint32_t graphMaterialIndex = ensureMaterialGraphGpuMaterial(
-                    assets, gpuResources, rd, materialOverride.materialGraph, timeSeconds);
-                if (graphMaterialIndex != std::numeric_limits<uint32_t>::max())
+                uint32_t meshIndex = std::numeric_limits<uint32_t>::max();
+                if (mesh.builtinGeometry != UINT32_MAX)
                 {
-                    inst.materialOverrides.push_back(RenderInstance::MaterialOverride {
-                        .slot          = materialOverride.slot,
-                        .materialIndex = graphMaterialIndex,
-                    });
+                    meshIndex = geometryFactory.getOrCreateMeshIndex(
+                        static_cast<BuiltinGeometryKind>(mesh.builtinGeometry), gpuResources, rd);
                 }
-            }
-            if (mesh.builtinGeometry != UINT32_MAX && inst.materialOverrides.empty())
-            {
-                inst.baseColorOverride    = mesh.materialColor;
-                inst.hasBaseColorOverride = true;
-            }
-            out.instances.push_back(inst);
-
-            const auto& pool = gpuResources.pool();
-            if (meshIndex < pool.meshes.size())
-            {
-                const auto& gpuMesh = pool.meshes[meshIndex];
-                if (gpuMesh.meshletCount > 0 &&
-                    gpuMesh.meshletOffset + gpuMesh.meshletCount <= pool.meshlets.cpuMeshlets.size())
+                else
                 {
-                    for (uint32_t i = 0; i < gpuMesh.meshletCount; ++i)
+                    auto h = assets.loadMeshAsync(mesh.mesh);
+                    if (!h.ready())
+                        continue;
+                    meshIndex = h.gpuIndex();
+                }
+
+                if (meshIndex == std::numeric_limits<uint32_t>::max())
+                    continue;
+
+                RenderInstance inst {};
+                inst.entity      = id.uuid;
+                inst.meshIndex   = meshIndex;
+                inst.worldMatrix = tr.worldMatrix;
+                inst.materialOverrides.reserve(mesh.materialOverrides.size());
+                if (!mesh.materialOverrides.empty())
+                {
+                    RuntimeProfiler::ExternalScope materialScope {"RenderWorldCooker::cook/materialOverrides"};
+                    for (const auto& materialOverride : mesh.materialOverrides)
                     {
-                        const auto& meshlet = pool.meshlets.cpuMeshlets[gpuMesh.meshletOffset + i];
-                        expandBounds(out, tr.worldMatrix, meshlet.center, meshlet.radius);
+                        const uint32_t graphMaterialIndex = ensureMaterialGraphGpuMaterial(
+                            assets, gpuResources, rd, materialOverride.materialGraph, timeSeconds);
+                        if (graphMaterialIndex != std::numeric_limits<uint32_t>::max())
+                        {
+                            inst.materialOverrides.push_back(RenderInstance::MaterialOverride {
+                                .slot          = materialOverride.slot,
+                                .materialIndex = graphMaterialIndex,
+                            });
+                        }
+                    }
+                }
+                if (mesh.builtinGeometry != UINT32_MAX && inst.materialOverrides.empty())
+                {
+                    inst.baseColorOverride    = mesh.materialColor;
+                    inst.hasBaseColorOverride = true;
+                }
+                out.instances.push_back(inst);
+
+                const auto& pool = gpuResources.pool();
+                if (meshIndex < pool.meshes.size())
+                {
+                    const auto& gpuMesh = pool.meshes[meshIndex];
+                    if (gpuMesh.meshletCount > 0 &&
+                        gpuMesh.meshletOffset + gpuMesh.meshletCount <= pool.meshlets.cpuMeshlets.size())
+                    {
+                        for (uint32_t i = 0; i < gpuMesh.meshletCount; ++i)
+                        {
+                            const auto& meshlet = pool.meshlets.cpuMeshlets[gpuMesh.meshletOffset + i];
+                            expandBounds(out, tr.worldMatrix, meshlet.center, meshlet.radius);
+                        }
                     }
                 }
             }
         }
 
-        auto splatView = reg.view<IDComponent, TransformComponent, GaussianSplatComponent>();
-        out.gaussianSplats.reserve(splatView.size_hint());
-        for (auto e : splatView)
         {
-            const auto& id    = splatView.get<IDComponent>(e);
-            const auto& tr    = splatView.get<TransformComponent>(e);
-            const auto& splat = splatView.get<GaussianSplatComponent>(e);
-            if (!isEntityRenderable(world, reg, e))
-                continue;
+            RuntimeProfiler::ExternalScope splatScope {"RenderWorldCooker::cook/gaussianSplats"};
+            auto splatView = reg.view<IDComponent, TransformComponent, GaussianSplatComponent>();
+            out.gaussianSplats.reserve(splatView.size_hint());
+            for (auto e : splatView)
+            {
+                const auto& id    = splatView.get<IDComponent>(e);
+                const auto& tr    = splatView.get<TransformComponent>(e);
+                const auto& splat = splatView.get<GaussianSplatComponent>(e);
+                if (!isEntityRenderable(world, reg, e))
+                    continue;
 
-            auto h = assets.loadGaussianSplatAsync(splat.gaussianSplat);
-            if (!h.ready())
-                continue;
+                auto h = assets.loadGaussianSplatAsync(splat.gaussianSplat);
+                if (!h.ready())
+                    continue;
 
-            RenderGaussianSplatInstance inst {};
-            inst.entity      = id.uuid;
-            inst.splatIndex  = h.gpuIndex();
-            inst.worldMatrix = tr.worldMatrix;
-            out.gaussianSplats.push_back(inst);
+                RenderGaussianSplatInstance inst {};
+                inst.entity      = id.uuid;
+                inst.splatIndex  = h.gpuIndex();
+                inst.worldMatrix = tr.worldMatrix;
+                out.gaussianSplats.push_back(inst);
+            }
         }
 
-        auto lightView = reg.view<IDComponent, TransformComponent, LightComponent>();
-        out.lights.reserve(lightView.size_hint());
-        for (auto e : lightView)
         {
-            const auto& id    = lightView.get<IDComponent>(e);
-            const auto& tr    = lightView.get<TransformComponent>(e);
-            const auto& light = lightView.get<LightComponent>(e);
-            if (!isEntityRenderable(world, reg, e))
-                continue;
-
-            RenderLight outLight {};
-            outLight.entity           = id.uuid;
-            outLight.kind             = static_cast<RenderLightKind>(light.kind);
-            outLight.position         = glm::vec3(tr.worldMatrix[3]);
-            outLight.direction        = lightDirectionFromTransformNormal(tr);
-            outLight.color            = light.color;
-            outLight.intensity        = light.intensity;
-            outLight.range            = light.range;
-            outLight.radius           = light.radius;
-            outLight.width            = light.width;
-            outLight.height           = light.height;
-            outLight.innerConeDegrees = light.innerConeDegrees;
-            outLight.outerConeDegrees = light.outerConeDegrees;
-            outLight.castsShadow      = light.castsShadow;
-            outLight.twoSided         = light.twoSided;
-            out.lights.push_back(outLight);
-
-            if (outLight.kind == RenderLightKind::eArea)
+            RuntimeProfiler::ExternalScope lightScope {"RenderWorldCooker::cook/lights"};
+            auto lightView = reg.view<IDComponent, TransformComponent, LightComponent>();
+            out.lights.reserve(lightView.size_hint());
+            for (auto e : lightView)
             {
-                const uint32_t meshIndex =
-                    geometryFactory.getOrCreateMeshIndex(BuiltinGeometryKind::eQuad, gpuResources, rd);
-                if (meshIndex != std::numeric_limits<uint32_t>::max())
-                {
-                    RenderInstance surface {};
-                    surface.entity               = id.uuid;
-                    surface.meshIndex            = meshIndex;
-                    surface.worldMatrix          = areaLightSurfaceMatrix(outLight);
-                    surface.baseColorOverride    = glm::vec4(outLight.color, 1.0f);
-                    surface.hasBaseColorOverride = true;
-                    surface.castsShadow          = false;
-                    out.instances.push_back(surface);
+                const auto& id    = lightView.get<IDComponent>(e);
+                const auto& tr    = lightView.get<TransformComponent>(e);
+                const auto& light = lightView.get<LightComponent>(e);
+                if (!isEntityRenderable(world, reg, e))
+                    continue;
 
-                    const auto& pool = gpuResources.pool();
-                    if (meshIndex < pool.meshes.size())
+                RenderLight outLight {};
+                outLight.entity           = id.uuid;
+                outLight.kind             = static_cast<RenderLightKind>(light.kind);
+                outLight.position         = glm::vec3(tr.worldMatrix[3]);
+                outLight.direction        = lightDirectionFromTransformNormal(tr);
+                outLight.color            = light.color;
+                outLight.intensity        = light.intensity;
+                outLight.range            = light.range;
+                outLight.radius           = light.radius;
+                outLight.width            = light.width;
+                outLight.height           = light.height;
+                outLight.innerConeDegrees = light.innerConeDegrees;
+                outLight.outerConeDegrees = light.outerConeDegrees;
+                outLight.castsShadow      = light.castsShadow;
+                outLight.twoSided         = light.twoSided;
+                out.lights.push_back(outLight);
+
+                if (outLight.kind == RenderLightKind::eArea)
+                {
+                    const uint32_t meshIndex =
+                        geometryFactory.getOrCreateMeshIndex(BuiltinGeometryKind::eQuad, gpuResources, rd);
+                    if (meshIndex != std::numeric_limits<uint32_t>::max())
                     {
-                        const auto& gpuMesh = pool.meshes[meshIndex];
-                        if (gpuMesh.meshletCount > 0 &&
-                            gpuMesh.meshletOffset + gpuMesh.meshletCount <= pool.meshlets.cpuMeshlets.size())
+                        RenderInstance surface {};
+                        surface.entity               = id.uuid;
+                        surface.meshIndex            = meshIndex;
+                        surface.worldMatrix          = areaLightSurfaceMatrix(outLight);
+                        surface.baseColorOverride    = glm::vec4(outLight.color, 1.0f);
+                        surface.hasBaseColorOverride = true;
+                        surface.castsShadow          = false;
+                        out.instances.push_back(surface);
+
+                        const auto& pool = gpuResources.pool();
+                        if (meshIndex < pool.meshes.size())
                         {
-                            for (uint32_t i = 0; i < gpuMesh.meshletCount; ++i)
+                            const auto& gpuMesh = pool.meshes[meshIndex];
+                            if (gpuMesh.meshletCount > 0 &&
+                                gpuMesh.meshletOffset + gpuMesh.meshletCount <= pool.meshlets.cpuMeshlets.size())
                             {
-                                const auto& meshlet = pool.meshlets.cpuMeshlets[gpuMesh.meshletOffset + i];
-                                expandBounds(out, surface.worldMatrix, meshlet.center, meshlet.radius);
+                                for (uint32_t i = 0; i < gpuMesh.meshletCount; ++i)
+                                {
+                                    const auto& meshlet = pool.meshlets.cpuMeshlets[gpuMesh.meshletOffset + i];
+                                    expandBounds(out, surface.worldMatrix, meshlet.center, meshlet.radius);
+                                }
                             }
                         }
                     }
@@ -1250,71 +1500,77 @@ namespace vultra
             }
         }
 
-        auto environmentView = reg.view<EnvironmentComponent>();
-        for (auto e : environmentView)
         {
-            const auto& environment = environmentView.get<EnvironmentComponent>(e);
-            if (!environment.active)
-                continue;
-            if (!isEntityRenderable(world, reg, e))
-                continue;
-
-            out.environment.active           = true;
-            out.environment.ambientColor     = environment.ambientColor;
-            out.environment.ambientIntensity = environment.ambientIntensity;
-            out.environment.enableIBL        = environment.enableIBL;
-            out.environment.iblColor         = environment.iblColor;
-            out.environment.iblIntensity     = environment.iblIntensity;
-
-            if (environment.skybox.valid())
+            RuntimeProfiler::ExternalScope envScope {"RenderWorldCooker::cook/environment"};
+            auto environmentView = reg.view<EnvironmentComponent>();
+            for (auto e : environmentView)
             {
-                auto        skybox = assets.loadTextureAsync(environment.skybox);
-                const auto& pool   = gpuResources.pool();
-                if (skybox.ready() && skybox.gpuIndex() < pool.textures.size())
-                    out.environment.skybox = pool.textures[skybox.gpuIndex()].texture.get();
+                const auto& environment = environmentView.get<EnvironmentComponent>(e);
+                if (!environment.active)
+                    continue;
+                if (!isEntityRenderable(world, reg, e))
+                    continue;
+
+                out.environment.active           = true;
+                out.environment.ambientColor     = environment.ambientColor;
+                out.environment.ambientIntensity = environment.ambientIntensity;
+                out.environment.enableIBL        = environment.enableIBL;
+                out.environment.iblColor         = environment.iblColor;
+                out.environment.iblIntensity     = environment.iblIntensity;
+
+                if (environment.skybox.valid())
+                {
+                    auto        skybox = assets.loadTextureAsync(environment.skybox);
+                    const auto& pool   = gpuResources.pool();
+                    if (skybox.ready() && skybox.gpuIndex() < pool.textures.size())
+                        out.environment.skybox = pool.textures[skybox.gpuIndex()].texture.get();
+                }
+                break;
             }
-            break;
         }
 
-        auto reflectionProbeView = reg.view<IDComponent, TransformComponent, ReflectionProbeComponent>();
-        out.reflectionProbes.reserve(reflectionProbeView.size_hint());
-        for (auto e : reflectionProbeView)
         {
-            const auto& id    = reflectionProbeView.get<IDComponent>(e);
-            const auto& tr    = reflectionProbeView.get<TransformComponent>(e);
-            const auto& probe = reflectionProbeView.get<ReflectionProbeComponent>(e);
-            if (!probe.active)
-                continue;
-            if (!isEntityRenderable(world, reg, e))
-                continue;
-            rhi::Texture* environmentMap = nullptr;
-            if (probe.enableIBL)
+            RuntimeProfiler::ExternalScope probeScope {"RenderWorldCooker::cook/reflectionProbes"};
+            auto reflectionProbeView = reg.view<IDComponent, TransformComponent, ReflectionProbeComponent>();
+            out.reflectionProbes.reserve(reflectionProbeView.size_hint());
+            for (auto e : reflectionProbeView)
             {
-                if (!probe.environmentMap.valid())
+                const auto& id    = reflectionProbeView.get<IDComponent>(e);
+                const auto& tr    = reflectionProbeView.get<TransformComponent>(e);
+                const auto& probe = reflectionProbeView.get<ReflectionProbeComponent>(e);
+                if (!probe.active)
                     continue;
-                auto        map  = assets.loadTextureAsync(probe.environmentMap);
-                const auto& pool = gpuResources.pool();
-                if (!map.ready() || map.gpuIndex() >= pool.textures.size())
+                if (!isEntityRenderable(world, reg, e))
                     continue;
-                environmentMap = pool.textures[map.gpuIndex()].texture.get();
+                rhi::Texture* environmentMap = nullptr;
+                if (probe.enableIBL)
+                {
+                    if (!probe.environmentMap.valid())
+                        continue;
+                    auto        map  = assets.loadTextureAsync(probe.environmentMap);
+                    const auto& pool = gpuResources.pool();
+                    if (!map.ready() || map.gpuIndex() >= pool.textures.size())
+                        continue;
+                    environmentMap = pool.textures[map.gpuIndex()].texture.get();
+                }
+
+                if (probe.enableIBL && !environmentMap)
+                    continue;
+
+                RenderReflectionProbe outProbe {};
+                outProbe.entity             = id.uuid;
+                outProbe.position           = glm::vec3(tr.worldMatrix[3]);
+                outProbe.halfExtents        = glm::max(probe.boxSize * 0.5f, glm::vec3 {0.01f});
+                outProbe.radius             = std::max(probe.radius, 0.01f);
+                outProbe.blendDistance      = std::max(probe.blendDistance, 0.0f);
+                outProbe.intensity          = std::max(probe.intensity, 0.0f);
+                outProbe.priority           = probe.priority;
+                outProbe.enableIBL          = probe.enableIBL;
+                outProbe.parallaxCorrection = probe.parallaxCorrection;
+                outProbe.shape = probe.shape == 1u ? RenderReflectionProbeShape::eSphere : RenderReflectionProbeShape::eBox;
+                outProbe.environmentMap = environmentMap;
+                out.reflectionProbes.push_back(outProbe);
             }
-
-            if (probe.enableIBL && !environmentMap)
-                continue;
-
-            RenderReflectionProbe outProbe {};
-            outProbe.entity             = id.uuid;
-            outProbe.position           = glm::vec3(tr.worldMatrix[3]);
-            outProbe.halfExtents        = glm::max(probe.boxSize * 0.5f, glm::vec3 {0.01f});
-            outProbe.radius             = std::max(probe.radius, 0.01f);
-            outProbe.blendDistance      = std::max(probe.blendDistance, 0.0f);
-            outProbe.intensity          = std::max(probe.intensity, 0.0f);
-            outProbe.priority           = probe.priority;
-            outProbe.enableIBL          = probe.enableIBL;
-            outProbe.parallaxCorrection = probe.parallaxCorrection;
-            outProbe.shape = probe.shape == 1u ? RenderReflectionProbeShape::eSphere : RenderReflectionProbeShape::eBox;
-            outProbe.environmentMap = environmentMap;
-            out.reflectionProbes.push_back(outProbe);
         }
     }
 
@@ -1535,6 +1791,23 @@ namespace vultra
         return reloadRenderPipelineNow(asset, rendererKey);
     }
 
+    bool RenderSystem::updateRenderGraph(std::string_view asset, std::string_view rendererKey)
+    {
+        if (asset.empty())
+            return false;
+
+        if (m_InRenderFrame)
+        {
+            m_PendingRenderGraphUpdate            = true;
+            m_PendingRenderGraphUpdateAsset       = std::string {asset};
+            m_PendingRenderGraphUpdateRendererKey = rendererKey.empty() ? rendererKeyFromRenderGraphUri(asset) :
+                                                                          std::string {rendererKey};
+            return true;
+        }
+
+        return updateRenderGraphNow(asset, rendererKey);
+    }
+
     bool RenderSystem::reloadRenderPipelineNow()
     {
         const auto& renderConfig = ctx().config.render;
@@ -1582,6 +1855,48 @@ namespace vultra
         return true;
     }
 
+    bool RenderSystem::updateRenderGraphNow(std::string_view asset, std::string_view rendererKey)
+    {
+        if (asset.empty())
+            return false;
+
+        auto key = rendererKey.empty() ? rendererKeyFromRenderGraphUri(asset) : std::string {rendererKey};
+        auto it  = m_Renderers.find(key);
+        if (it == m_Renderers.end() || !it->second)
+            return false;
+
+        auto renderer = std::dynamic_pointer_cast<DeclarativeRenderer>(it->second);
+        if (!renderer)
+            return false;
+
+        const bool updated = renderer->updateRenderGraph(asset);
+        if (updated)
+        {
+            m_PendingRenderGraphUpdate = false;
+            m_PendingRenderGraphUpdateAsset.clear();
+            m_PendingRenderGraphUpdateRendererKey.clear();
+        }
+        return updated;
+    }
+
+    bool RenderSystem::reloadProjectShaderLibrary(std::string_view uri)
+    {
+        if (uri.empty())
+            return false;
+
+        auto* shaderService = ctx().services.tryGet<IShaderService>();
+        if (!shaderService || !shaderService->reloadProjectLibrary(uri))
+            return false;
+
+        for (auto& [_, renderer] : m_Renderers)
+        {
+            auto declarative = std::dynamic_pointer_cast<DeclarativeRenderer>(renderer);
+            if (declarative)
+                declarative->invalidateShaderPipelines();
+        }
+        return true;
+    }
+
     void RenderSystem::clearFrameGraphDebugState()
     {
         m_FrameGraphTexturePreviewPipeline.reset();
@@ -1599,12 +1914,12 @@ namespace vultra
         if (!world)
             return;
 
-        for (auto it = m_OverrideRenderWorlds.begin(); it != m_OverrideRenderWorlds.end();)
+        for (auto& slot : m_OverrideRenderWorlds)
         {
-            if (it->world == world)
-                it = m_OverrideRenderWorlds.erase(it);
-            else
-                ++it;
+            if (slot.world != world)
+                continue;
+            slot.world            = nullptr;
+            slot.lastTouchedFrame = m_FrameCounter;
         }
     }
 
@@ -2004,6 +2319,8 @@ namespace vultra
             else
                 reloadRenderPipelineNow(m_PendingRenderPipelineAsset, m_PendingRenderPipelineRendererKey);
         }
+        if (m_PendingRenderGraphUpdate)
+            updateRenderGraphNow(m_PendingRenderGraphUpdateAsset, m_PendingRenderGraphUpdateRendererKey);
 
         m_RuntimeProfiler.beginFrame(m_FrameCounter);
         m_LastFrameGraphSnapshot.clear();
@@ -2070,7 +2387,10 @@ namespace vultra
         }
         // Cook render instances
         RenderWorldCooker cooker {};
-        const float       renderTimeSeconds = static_cast<float>(m_FrameCounter) / 60.0f;
+        auto*             timingService     = ctx().services.tryGet<ITimingService>();
+        const float       renderTimeSeconds =
+            timingService ? timingService->totalTime() : static_cast<float>(m_FrameCounter) / 60.0f;
+        const float renderDeltaSeconds = timingService ? timingService->updateDeltaTime() : 0.0f;
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "RenderWorldCooker::cook"};
             cooker.cook(
@@ -2266,6 +2586,7 @@ namespace vultra
                 gpuInst.materialIndex  = inst.materialIndex;
                 gpuInst.transformIndex = transformIndex;
                 gpuInst.flags          = 0;
+                gpuInst.entityPickingId = makeEntityPickingId(inst.entity);
                 m_GpuSceneDatabaseBack.pushInstance(gpuInst);
             }
             m_GpuSceneDatabaseBack.uploadSceneTables(rd, cb);
@@ -2332,6 +2653,7 @@ namespace vultra
                         dr.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
                         dr.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
                         dr.tangentOffsetBytes   = layout.tangentOffsetBytes;
+                        dr.entityPickingId      = makeEntityPickingId(inst.entity);
                         dr.model                = inst.worldMatrix;
                         m_GpuSceneViewBack.pushMeshletDraw(std::move(dr));
                     }
@@ -2666,7 +2988,7 @@ namespace vultra
         m_FrameResources.beginFrame(m_FrameCounter);
         {
             ImmediateResourceUploader frameUploader {m_FrameResources, rd};
-            prepareFrameData(frameUploader, m_PreparedFrameData, m_FrameCounter, renderTimeSeconds, 0.0f);
+            prepareFrameData(frameUploader, m_PreparedFrameData, m_FrameCounter, renderTimeSeconds, renderDeltaSeconds);
         }
 
         ++m_FrameCounter;
@@ -2784,9 +3106,12 @@ namespace vultra
 
             const bool canUseXrMultiview = supportsMultiview && cam.isXRView && cam.isXRPrimaryView &&
                                            cam.viewCount == 2u && !xrEyeViews.empty() && xrEyeViews[0].stereoTarget;
+            const bool canUseLocalStereoTarget = supportsMultiview && cam.isXRView && cam.isXRPrimaryView &&
+                                                 cam.viewCount == 2u && cam.target && cam.target->getNumLayers() >= 2u;
+            auto*      stereoTarget =
+                canUseXrMultiview ? xrEyeViews[0].stereoTarget : (canUseLocalStereoTarget ? cam.target : nullptr);
 
-            rhi::Texture* target =
-                canUseXrMultiview ? xrEyeViews[0].stereoTarget : (cam.target ? cam.target : &defaultTarget);
+            rhi::Texture* target = stereoTarget ? stereoTarget : (cam.target ? cam.target : &defaultTarget);
             if (!target)
                 continue;
 
@@ -2814,13 +3139,13 @@ namespace vultra
                 .target               = target,
                 .extent               = renderArea.extent,
                 .clearValue           = viewCamera.clearValue,
-                .stereoMode           = canUseXrMultiview ?
+                .stereoMode           = stereoTarget ?
                                             StereoRenderMode::eSingleGraphStereo :
                                             (cam.isXRView ? StereoRenderMode::ePerEyeFallback : StereoRenderMode::eMono),
-                .enableMultiview      = canUseXrMultiview,
-                .multiviewMask        = canUseXrMultiview ? 0x3u : 0u,
+                .enableMultiview      = stereoTarget != nullptr,
+                .multiviewMask        = stereoTarget ? 0x3u : 0u,
                 .multiviewCameras     = {&viewCamera, nullptr},
-                .multiviewCameraCount = canUseXrMultiview ? 2u : 0u,
+                .multiviewCameraCount = stereoTarget ? 2u : 0u,
                 .xrStereoTarget       = canUseXrMultiview ? xrEyeViews[0].stereoTarget : nullptr,
                 .xrEyeTargets         = {xrEyeViews.size() > 0u ? xrEyeViews[0].target : nullptr,
                                          xrEyeViews.size() > 1u ? xrEyeViews[1].target : nullptr},
@@ -2836,11 +3161,13 @@ namespace vultra
                 if (secondEyeIt != cameraOrder.end())
                     view.multiviewCameras[1] = &cams[*secondEyeIt];
             }
+            if (stereoTarget && !view.multiviewCameras[1])
+                view.multiviewCameras[1] = &viewCamera;
 
             rhi::FramebufferInfo fbInfo {
                 .area             = renderArea,
-                .layers           = canUseXrMultiview ? 2u : 1u,
-                .viewMask         = canUseXrMultiview ? 0x3u : 0u,
+                .layers           = stereoTarget ? 2u : 1u,
+                .viewMask         = stereoTarget ? 0x3u : 0u,
                 .colorAttachments = {rhi::AttachmentInfo {.target = target, .clearValue = viewCamera.clearValue}},
             };
 
@@ -2855,7 +3182,7 @@ namespace vultra
             if (clearedTargetsThisFrame.insert(target).second)
             {
                 clearColorTarget(
-                    cb, *target, renderArea, viewCamera.clearValue, canUseXrMultiview, canUseXrMultiview ? 0x3u : 0u);
+                    cb, *target, renderArea, viewCamera.clearValue, stereoTarget != nullptr, stereoTarget ? 0x3u : 0u);
             }
 
             auto renderer = resolveRenderer(cam);

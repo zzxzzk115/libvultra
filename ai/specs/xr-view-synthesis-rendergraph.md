@@ -41,7 +41,7 @@ Future synthesis graphs should be built from atomic passes:
 
 - `XrGeometryWarp`: non-adaptive geometry-based warping from source color/depth
   to target-view warped color/validity.
-- `XrDepthAwarePullPush`: depth-aware repair of invalid/hole regions.
+- `XrPullPushInpaint`: non-depth-aware repair of invalid/hole regions.
 
 Adaptive mesh warping is intentionally out of scope for the first atomic pass
 version because the previous implementation caused stability risk.

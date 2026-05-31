@@ -77,7 +77,7 @@ struct DrawRecord
     uint texCoord0OffsetBytes;
     uint texCoord1OffsetBytes;
     uint tangentOffsetBytes;
-    uint padding0;
+    uint entityPickingId;
     uint padding1;
     mat4 model;
 };
@@ -115,6 +115,10 @@ struct GpuInstance
     uint materialIndex;
     uint transformIndex;
     uint flags;
+    uint entityPickingId;
+    uint padding0;
+    uint padding1;
+    uint padding2;
 };
 #endif
 

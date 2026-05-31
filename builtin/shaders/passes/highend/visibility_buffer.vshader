@@ -15,18 +15,81 @@ layout(location = 0) out vec2 v_TexCoord0;
 layout(location = 1) flat out uint v_DrawID;
 layout(location = 2) flat out uint v_TriangleIndex;
 
+layout(push_constant) uniform VisibilityPushConstants
+{
+    uint maxDraws;
+    uint maxMeshlets;
+    uint maxMeshletVertices;
+    uint maxMeshletTriangles;
+} u_PC;
+
 void main()
 {
     uint drawId = gl_BaseInstance;
+    if (drawId >= u_PC.maxDraws)
+    {
+        v_TexCoord0 = vec2(0.0);
+        v_DrawID = 0u;
+        v_TriangleIndex = 0u;
+        gl_Position = vec4(2.0, 2.0, 1.0, 1.0);
+        return;
+    }
+
     DrawRecord d = s_Draws.draws[drawId];
+    if (d.primitiveIndex >= u_PC.maxMeshlets)
+    {
+        v_TexCoord0 = vec2(0.0);
+        v_DrawID = 0u;
+        v_TriangleIndex = 0u;
+        gl_Position = vec4(2.0, 2.0, 1.0, 1.0);
+        return;
+    }
+
     Meshlet meshlet = s_Meshlets.meshlets[d.primitiveIndex];
 
     uint packedTriVertex = uint(gl_VertexIndex);
     uint triIndex = packedTriVertex / 3u;
+    if (triIndex >= meshlet.triangleCount)
+    {
+        v_TexCoord0 = vec2(0.0);
+        v_DrawID = 0u;
+        v_TriangleIndex = 0u;
+        gl_Position = vec4(2.0, 2.0, 1.0, 1.0);
+        return;
+    }
+
     uint corner = packedTriVertex % 3u;
     uint triDataIndex = meshlet.triangleOffset + triIndex * 3u + corner;
+    if (triDataIndex >= u_PC.maxMeshletTriangles)
+    {
+        v_TexCoord0 = vec2(0.0);
+        v_DrawID = 0u;
+        v_TriangleIndex = 0u;
+        gl_Position = vec4(2.0, 2.0, 1.0, 1.0);
+        return;
+    }
+
     uint localVertex = load_meshlet_triangle_index(triDataIndex);
-    uint globalVertex = s_MeshletVertices.meshletVertices[meshlet.vertexOffset + localVertex];
+    if (localVertex >= meshlet.vertexCount)
+    {
+        v_TexCoord0 = vec2(0.0);
+        v_DrawID = 0u;
+        v_TriangleIndex = 0u;
+        gl_Position = vec4(2.0, 2.0, 1.0, 1.0);
+        return;
+    }
+
+    uint meshletVertexIndex = meshlet.vertexOffset + localVertex;
+    if (meshletVertexIndex >= u_PC.maxMeshletVertices)
+    {
+        v_TexCoord0 = vec2(0.0);
+        v_DrawID = 0u;
+        v_TriangleIndex = 0u;
+        gl_Position = vec4(2.0, 2.0, 1.0, 1.0);
+        return;
+    }
+
+    uint globalVertex = s_MeshletVertices.meshletVertices[meshletVertexIndex];
 
     Vertex v = load_vertex(d, globalVertex);
 

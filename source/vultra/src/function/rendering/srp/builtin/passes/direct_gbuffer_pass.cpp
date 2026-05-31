@@ -38,6 +38,26 @@ namespace vultra
             glm::uvec4 entityInfo {0u};
         };
 
+        struct PreparedDirectDraw
+        {
+            const resource::GpuMesh*      mesh {nullptr};
+            resource::GpuVertexLayout     layout {};
+            uint32_t                      paramIndex {0u};
+            float                         cameraDistanceSq {0.0f};
+            uint32_t                      materialIndex {0u};
+            uint32_t                      vertexOffset {0u};
+            uint32_t                      vertexCount {0u};
+            uint32_t                      indexOffset {0u};
+            uint32_t                      indexCount {0u};
+            bool                          doubleSided {false};
+        };
+
+        struct PreparedDirectDrawSet
+        {
+            std::vector<PreparedDirectDraw> records;
+            std::vector<std::byte>          paramBytes;
+        };
+
         struct alignas(16) MaterialParamsPBRMR
         {
             glm::vec4 baseColor {1.0f};
@@ -260,16 +280,8 @@ namespace vultra
                 return false;
 
             const auto& material = resources.materials[materialIndex];
-            // Legacy/DCC material models often do not carry a reliable two-sided flag.
-            // Treat them as double-sided in the direct raster path so OBJ/FBX/DAE
-            // interiors such as Cornell Box do not disappear while RT still works.
-            if (material.model == resource::GpuMaterialModel::ePhong ||
-                material.model == resource::GpuMaterialModel::ePBRSpecularGlossiness ||
-                material.model == resource::GpuMaterialModel::eUnlit)
-                return true;
-
             if (material.model != resource::GpuMaterialModel::ePBRMetallicRoughness)
-                return true;
+                return false;
 
             const auto p = loadMaterialParams<MaterialParamsPBRMR>(resources.materialParams,
                                                                    material.blockOffsetBytes);
@@ -299,6 +311,16 @@ namespace vultra
             return fallback;
         }
 
+        [[nodiscard]] float cameraDistanceSq(const RenderCamera* camera, const glm::mat4& model)
+        {
+            if (!camera)
+                return 0.0f;
+            const glm::vec3 cameraPos = renderCameraPosition(camera);
+            const glm::vec3 objectPos = glm::vec3(model[3]);
+            const glm::vec3 delta     = objectPos - cameraPos;
+            return glm::dot(delta, delta);
+        }
+
         void disableUvDependentTextures(DirectDrawParams& params)
         {
             params.materialTextureInfo0.y = 0u;
@@ -309,9 +331,232 @@ namespace vultra
             params.materialTextureInfo1.w = 0u;
         }
 
+        [[nodiscard]] PreparedDirectDrawSet prepareDirectDrawSet(const RenderWorld&                renderWorld,
+                                                                 const resource::GpuResourcePool& resources,
+                                                                 const RenderCamera*              camera)
+        {
+            PreparedDirectDrawSet out;
+            out.records.reserve(renderWorld.instances.size());
+
+            for (const auto& instance : renderWorld.instances)
+            {
+                if (instance.meshIndex >= resources.meshes.size())
+                    continue;
+                const auto& mesh = resources.meshes[instance.meshIndex];
+                if (!mesh.vertexBuffer || !mesh.indexBuffer)
+                    continue;
+
+                const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                if (!layout.hasPosition() || !layout.hasNormal())
+                    continue;
+
+                const auto prepareSubMesh = [&](const resource::GpuSubMesh& subMesh) {
+                    const uint32_t materialIndex = remapMaterialIndex(instance, mesh, subMesh.materialIndex);
+                    auto drawParams = makeDrawParams(resources, materialIndex, instance.worldMatrix);
+                    if (!layout.hasTexCoord0())
+                        disableUvDependentTextures(drawParams);
+                    drawParams.entityInfo.x = makeEntityPickingId(instance.entity);
+                    if (instance.hasBaseColorOverride)
+                    {
+                        drawParams.baseColorFactor = instance.baseColorOverride;
+                        drawParams.materialTextureInfo0.y = 0u;
+                    }
+
+                    const auto byteOffset = out.paramBytes.size();
+                    const auto paramIndex = static_cast<uint32_t>(byteOffset / kUniformOffsetAlignment);
+                    out.paramBytes.resize(byteOffset + static_cast<size_t>(kUniformOffsetAlignment), std::byte {0});
+                    std::memcpy(out.paramBytes.data() + byteOffset, &drawParams, sizeof(DirectDrawParams));
+                    out.records.push_back(PreparedDirectDraw {
+                        .mesh         = &mesh,
+                        .layout       = layout,
+                        .paramIndex   = paramIndex,
+                        .cameraDistanceSq = cameraDistanceSq(camera, instance.worldMatrix),
+                        .materialIndex = materialIndex,
+                        .vertexOffset = subMesh.vertexOffset,
+                        .vertexCount  = subMesh.vertexCount,
+                        .indexOffset  = subMesh.indexOffset,
+                        .indexCount   = subMesh.indexCount,
+                        .doubleSided  = isMaterialDoubleSided(resources, materialIndex),
+                    });
+                };
+
+                if (!mesh.subMeshes.empty())
+                {
+                    for (const auto& subMesh : mesh.subMeshes)
+                        prepareSubMesh(subMesh);
+                }
+                else
+                {
+                    prepareSubMesh(resource::GpuSubMesh {
+                        .vertexOffset  = 0u,
+                        .vertexCount   = mesh.vertexCount,
+                        .indexOffset   = 0u,
+                        .indexCount    = mesh.indexCount,
+                        .materialIndex = mesh.materialOffset,
+                    });
+                }
+            }
+
+            std::stable_sort(out.records.begin(), out.records.end(), [](const auto& a, const auto& b) {
+                if (a.cameraDistanceSq != b.cameraDistanceSq)
+                    return a.cameraDistanceSq < b.cameraDistanceSq;
+                if (a.materialIndex != b.materialIndex)
+                    return a.materialIndex < b.materialIndex;
+                if (a.mesh != b.mesh)
+                    return a.mesh < b.mesh;
+                return a.indexOffset < b.indexOffset;
+            });
+            return out;
+        }
+
     } // namespace
 
-    FrameGraphResource DirectGBufferPass::addPass(FrameGraphBuildContext& ctx)
+    FrameGraphResource DirectGBufferPass::addDepthPrePass(FrameGraphBuildContext& ctx)
+    {
+        struct PassData
+        {
+            FrameGraphResource camera;
+            FrameGraphResource stereoCamera;
+            FrameGraphResource depth;
+        };
+
+        const auto depthDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eDepth32F);
+        auto data = ctx.fg.addCallbackPass<PassData>(
+            "DirectDepthPrePass",
+            [depthDesc,
+             useMultiview = ctx.view().usesSingleGraphStereo(),
+             cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource,
+             stereoCameraBlock = ctx.bb.get<CameraData>().stereoCameraBlock.fgResource](
+                FrameGraph::Builder& builder, PassData& pd) {
+                PASS_SETUP_ZONE;
+
+                if (useMultiview && stereoCameraBlock)
+                {
+                    pd.stereoCamera =
+                        builder.read(stereoCameraBlock,
+                                     framegraph::BindingInfo {
+                                         .location      = {.set = 0, .binding = 23},
+                                         .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                     });
+                }
+                else
+                {
+                    pd.camera = builder.read(cameraBlock,
+                                             framegraph::BindingInfo {
+                                                 .location      = {.set = 0, .binding = 0},
+                                                 .pipelineStage = framegraph::PipelineStage::eVertexShader,
+                                             });
+                }
+
+                pd.depth = builder.create<framegraph::FrameGraphTexture>("DirectDepthPre", depthDesc);
+                pd.depth = builder.write(pd.depth,
+                                         framegraph::Attachment {
+                                             .imageAspect = rhi::ImageAspect::eDepth,
+                                             .clearValue  = framegraph::ClearValue::eOne,
+                                         });
+            },
+            [this](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+                VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
+                setRenderDevice(rc.rd);
+                if (!rc.ext.builtinShaderLib)
+                    return;
+                setShaderLib(*rc.ext.builtinShaderLib);
+
+                const auto* renderWorld      = rc.view().renderWorld;
+                const auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
+                if (!renderWorld || !gpuSceneDatabase || !gpuSceneDatabase->resources)
+                    return;
+
+                auto materialTextures = gpuSceneDatabase->resources->getBindlessTextureHandles();
+                if (!sanitizeBindlessTextures(materialTextures))
+                {
+                    RHI_GPU_ZONE(rc.cb, "DirectDepthPrePass");
+                    rc.cb.beginRendering(rc.framebufferInfo().value()).endRendering();
+                    return;
+                }
+
+                auto prepared = prepareDirectDrawSet(*renderWorld, *gpuSceneDatabase->resources, rc.view().camera);
+                const uint64_t drawParamStride = kUniformOffsetAlignment;
+                const uint64_t drawParamBufferSize =
+                    std::max<uint64_t>(1u, static_cast<uint64_t>(prepared.records.size())) * drawParamStride;
+                auto drawParamsBuffer =
+                    rc.rd.createUniformBuffer(drawParamBufferSize, rhi::AllocationHints::eSequentialWrite);
+                if (!prepared.paramBytes.empty())
+                    rc.cb.update(drawParamsBuffer,
+                                 0,
+                                 static_cast<uint64_t>(prepared.paramBytes.size()),
+                                 prepared.paramBytes.data());
+                auto& retainedDrawParamsBuffer = retainDrawParamBuffer(rc.frame.frameIndex, std::move(drawParamsBuffer));
+                rhi::prepareForReading(rc.cb, retainedDrawParamsBuffer);
+
+                assert(rc.framebufferInfo().has_value());
+                const auto framebufferInfo = rc.framebufferInfo().value();
+                RHI_GPU_ZONE(rc.cb, "DirectDepthPrePass");
+                rc.resourceSet[3] = {
+                    {4,
+                     rhi::bindings::CombinedImageSamplerArray {
+                         .textures    = materialTextures,
+                         .imageAspect = rhi::ImageAspect::eColor,
+                     }},
+                };
+                rc.cb.beginRendering(framebufferInfo);
+                for (uint64_t drawParamIndex = 0u; drawParamIndex < prepared.records.size(); ++drawParamIndex)
+                {
+                    const auto& record = prepared.records[drawParamIndex];
+                    const auto* mesh   = record.mesh;
+                    if (!mesh || !mesh->vertexBuffer || !mesh->indexBuffer)
+                        continue;
+
+                    rhi::prepareForReading(rc.cb, mesh->vertexBuffer);
+                    rhi::prepareForReading(rc.cb, mesh->indexBuffer);
+
+                    const auto& layout = record.layout;
+                    const auto* pipeline = getPipeline(true,
+                                                       rhi::PixelFormat::eUndefined,
+                                                       rhi::PixelFormat::eUndefined,
+                                                       rhi::PixelFormat::eUndefined,
+                                                       rhi::PixelFormat::eUndefined,
+                                                       false,
+                                                       false,
+                                                       layout.attributeMask,
+                                                       layout.positionOffsetBytes,
+                                                       layout.normalOffsetBytes,
+                                                       layout.texCoord0OffsetBytes,
+                                                       layout.tangentOffsetBytes,
+                                                       record.doubleSided,
+                                                       mesh->vertexStrideBytes,
+                                                       framebufferInfo.viewMask);
+                    if (!pipeline)
+                        continue;
+
+                    rc.resourceSet[1] = {
+                        {0,
+                         rhi::bindings::UniformBuffer {
+                             .buffer = &retainedDrawParamsBuffer,
+                             .offset = static_cast<uint64_t>(record.paramIndex) * drawParamStride,
+                             .range  = sizeof(DirectDrawParams),
+                         }},
+                    };
+                    rc.cb.bindPipeline(*pipeline);
+                    rc.bindDescriptorSets(*pipeline);
+                    rc.cb.draw(rhi::GeometryInfo {
+                        .topology     = rhi::PrimitiveTopology::eTriangleList,
+                        .vertexBuffer = &mesh->vertexBuffer,
+                        .vertexOffset = record.vertexOffset,
+                        .numVertices  = record.vertexCount,
+                        .indexBuffer  = &mesh->indexBuffer,
+                        .indexOffset  = record.indexOffset,
+                        .numIndices   = record.indexCount,
+                    });
+                }
+                rc.cb.endRendering();
+            });
+
+        ctx.data.set(kResKey_DepthTexture, data.depth);
+        return data.depth;
+    }
+
+    FrameGraphResource DirectGBufferPass::addPass(FrameGraphBuildContext& ctx, FrameGraphResource prepassDepth)
     {
         struct PassData
         {
@@ -325,10 +570,15 @@ namespace vultra
         };
 
         const auto colorDesc    = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
-        const auto normalDesc   = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F);
-        const auto materialDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA16F);
+        const auto normalDesc   = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRG8_UNorm);
+        const auto materialDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
+        const bool writeEntityId =
+            ctx.view().camera != nullptr &&
+            (ctx.view().camera->debugEntityIdOutput || ctx.view().camera->selectionOutlineEnabled);
         const auto entityIdDesc = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eRGBA8_UNorm);
         const auto depthDesc    = makeRenderViewTextureDesc(ctx.view(), rhi::PixelFormat::eDepth32F);
+
+        const bool readOnlyDepth = prepassDepth != FrameGraphResource {};
 
         auto data = ctx.fg.addCallbackPass<PassData>(
             PASS_NAME,
@@ -337,6 +587,9 @@ namespace vultra
              materialDesc,
              entityIdDesc,
              depthDesc,
+             writeEntityId,
+             readOnlyDepth,
+             prepassDepth,
              useMultiview = ctx.view().usesSingleGraphStereo(),
              cameraBlock = ctx.bb.get<CameraData>().cameraBlock.fgResource,
              stereoCameraBlock = ctx.bb.get<CameraData>().stereoCameraBlock.fgResource](
@@ -391,26 +644,39 @@ namespace vultra
                                                 .clearValue  = framegraph::ClearValue::eTransparentWhite,
                                             });
 
-                pd.entityId = builder.create<framegraph::FrameGraphTexture>(
-                    "DirectGBufferEntityId",
-                    entityIdDesc);
-                pd.entityId = builder.write(pd.entityId,
-                                            framegraph::Attachment {
-                                                .index       = 3,
-                                                .imageAspect = rhi::ImageAspect::eColor,
-                                                .clearValue  = framegraph::ClearValue::eTransparentBlack,
-                                            });
+                if (writeEntityId)
+                {
+                    pd.entityId = builder.create<framegraph::FrameGraphTexture>(
+                        "DirectGBufferEntityId",
+                        entityIdDesc);
+                    pd.entityId = builder.write(pd.entityId,
+                                                framegraph::Attachment {
+                                                    .index       = 3,
+                                                    .imageAspect = rhi::ImageAspect::eColor,
+                                                    .clearValue  = framegraph::ClearValue::eTransparentBlack,
+                                                });
+                }
 
-                pd.depth = builder.create<framegraph::FrameGraphTexture>(
-                    "DirectGBufferDepth",
-                    depthDesc);
-                pd.depth = builder.write(pd.depth,
-                                         framegraph::Attachment {
-                                             .imageAspect = rhi::ImageAspect::eDepth,
-                                             .clearValue  = framegraph::ClearValue::eOne,
-                                         });
+                if (readOnlyDepth)
+                {
+                    pd.depth = builder.read(prepassDepth,
+                                            framegraph::Attachment {
+                                                .imageAspect = rhi::ImageAspect::eDepth,
+                                            });
+                }
+                else
+                {
+                    pd.depth = builder.create<framegraph::FrameGraphTexture>(
+                        "DirectGBufferDepth",
+                        depthDesc);
+                    pd.depth = builder.write(pd.depth,
+                                             framegraph::Attachment {
+                                                 .imageAspect = rhi::ImageAspect::eDepth,
+                                                 .clearValue  = framegraph::ClearValue::eOne,
+                                             });
+                }
             },
-            [this](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
+            [this, writeEntityId, readOnlyDepth](const PassData&, FrameGraphPassResources&, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -427,7 +693,8 @@ namespace vultra
                 const auto colorFormat     = rhi::getColorFormat(framebufferInfo, 0);
                 const auto normalFormat    = rhi::getColorFormat(framebufferInfo, 1);
                 const auto materialFormat  = rhi::getColorFormat(framebufferInfo, 2);
-                const auto entityIdFormat  = rhi::getColorFormat(framebufferInfo, 3);
+                const auto entityIdFormat  =
+                    writeEntityId ? rhi::getColorFormat(framebufferInfo, 3) : rhi::PixelFormat::eUndefined;
 
                 auto materialTextures = gpuSceneDatabase->resources->getBindlessTextureHandles();
                 if (!sanitizeBindlessTextures(materialTextures))
@@ -445,158 +712,71 @@ namespace vultra
                      }},
                 };
 
-                uint64_t drawCallCount = 0u;
-                for (const auto& instance : renderWorld->instances)
-                {
-                    if (instance.meshIndex >= gpuSceneDatabase->resources->meshes.size())
-                        continue;
-                    const auto& mesh = gpuSceneDatabase->resources->meshes[instance.meshIndex];
-                    if (!mesh.vertexBuffer || !mesh.indexBuffer)
-                        continue;
-
-                    const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
-                    if (!layout.hasPosition() || !layout.hasNormal())
-                        continue;
-
-                    drawCallCount += mesh.subMeshes.empty() ? 1u : static_cast<uint64_t>(mesh.subMeshes.size());
-                }
-
-                const uint64_t drawParamStride     = alignUp(sizeof(DirectDrawParams), kUniformOffsetAlignment);
-                const uint64_t drawParamBufferSize = std::max<uint64_t>(1u, drawCallCount) * drawParamStride;
-                auto           drawParamsBuffer =
+                const uint64_t drawParamStride = kUniformOffsetAlignment;
+                auto prepared = prepareDirectDrawSet(*renderWorld, *gpuSceneDatabase->resources, rc.view().camera);
+                const uint64_t drawParamBufferSize =
+                    std::max<uint64_t>(1u, static_cast<uint64_t>(prepared.records.size())) * drawParamStride;
+                auto drawParamsBuffer =
                     rc.rd.createUniformBuffer(drawParamBufferSize, rhi::AllocationHints::eSequentialWrite);
-                std::vector<std::byte> drawParamBytes(static_cast<size_t>(drawParamBufferSize));
-
-                uint64_t preparedDrawParamIndex = 0u;
-                for (const auto& instance : renderWorld->instances)
-                {
-                    if (instance.meshIndex >= gpuSceneDatabase->resources->meshes.size())
-                        continue;
-                    const auto& mesh = gpuSceneDatabase->resources->meshes[instance.meshIndex];
-                    if (!mesh.vertexBuffer || !mesh.indexBuffer)
-                        continue;
-
-                    const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
-                    if (!layout.hasPosition() || !layout.hasNormal())
-                        continue;
-
-                    const auto prepareSubMesh = [&](const resource::GpuSubMesh& subMesh) {
-                        if (preparedDrawParamIndex >= drawCallCount)
-                            return;
-
-                        const uint32_t materialIndex = remapMaterialIndex(instance, mesh, subMesh.materialIndex);
-                        auto drawParams = makeDrawParams(*gpuSceneDatabase->resources, materialIndex, instance.worldMatrix);
-                        if (!layout.hasTexCoord0())
-                            disableUvDependentTextures(drawParams);
-                        drawParams.entityInfo.x = makeEntityPickingId(instance.entity);
-                        if (instance.hasBaseColorOverride)
-                        {
-                            drawParams.baseColorFactor = instance.baseColorOverride;
-                            drawParams.materialTextureInfo0.y = 0u;
-                        }
-
-                        std::memcpy(drawParamBytes.data() + preparedDrawParamIndex * drawParamStride,
-                                    &drawParams,
-                                    sizeof(DirectDrawParams));
-                        ++preparedDrawParamIndex;
-                    };
-
-                    if (!mesh.subMeshes.empty())
-                    {
-                        for (const auto& subMesh : mesh.subMeshes)
-                            prepareSubMesh(subMesh);
-                    }
-                    else
-                    {
-                        prepareSubMesh(resource::GpuSubMesh {
-                            .vertexOffset  = 0u,
-                            .vertexCount   = mesh.vertexCount,
-                            .indexOffset   = 0u,
-                            .indexCount    = mesh.indexCount,
-                            .materialIndex = mesh.materialOffset,
-                        });
-                    }
-                }
-                if (!drawParamBytes.empty())
-                    rc.cb.update(drawParamsBuffer, 0, drawParamBufferSize, drawParamBytes.data());
+                if (!prepared.paramBytes.empty())
+                    rc.cb.update(drawParamsBuffer,
+                                 0,
+                                 static_cast<uint64_t>(prepared.paramBytes.size()),
+                                 prepared.paramBytes.data());
                 auto& retainedDrawParamsBuffer = retainDrawParamBuffer(rc.frame.frameIndex, std::move(drawParamsBuffer));
                 rhi::prepareForReading(rc.cb, retainedDrawParamsBuffer);
 
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
                 rc.cb.beginRendering(framebufferInfo);
 
-                uint64_t drawParamIndex = 0u;
-                for (const auto& instance : renderWorld->instances)
+                for (uint64_t drawParamIndex = 0u; drawParamIndex < prepared.records.size(); ++drawParamIndex)
                 {
-                    if (instance.meshIndex >= gpuSceneDatabase->resources->meshes.size())
-                        continue;
-                    const auto& mesh = gpuSceneDatabase->resources->meshes[instance.meshIndex];
-                    if (!mesh.vertexBuffer || !mesh.indexBuffer)
-                        continue;
-
-                    const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
-                    if (!layout.hasPosition() || !layout.hasNormal())
+                    const auto& record = prepared.records[drawParamIndex];
+                    const auto* mesh   = record.mesh;
+                    if (!mesh || !mesh->vertexBuffer || !mesh->indexBuffer)
                         continue;
 
-                    rhi::prepareForReading(rc.cb, mesh.vertexBuffer);
-                    rhi::prepareForReading(rc.cb, mesh.indexBuffer);
+                    rhi::prepareForReading(rc.cb, mesh->vertexBuffer);
+                    rhi::prepareForReading(rc.cb, mesh->indexBuffer);
 
-                    const auto drawSubMesh = [&](const resource::GpuSubMesh& subMesh) {
-                        const auto* pipeline = getPipeline(colorFormat,
-                                                           normalFormat,
-                                                           materialFormat,
-                                                           entityIdFormat,
-                                                           layout.attributeMask,
-                                                           layout.positionOffsetBytes,
-                                                           layout.normalOffsetBytes,
-                                                           layout.texCoord0OffsetBytes,
-                                                           layout.tangentOffsetBytes,
-                                                           isMaterialDoubleSided(*gpuSceneDatabase->resources,
-                                                                                 subMesh.materialIndex),
-                                                           mesh.vertexStrideBytes,
-                                                           framebufferInfo.viewMask);
-                        if (!pipeline)
-                            return;
+                    const auto& layout = record.layout;
+                    const auto* pipeline = getPipeline(false,
+                                                       colorFormat,
+                                                       normalFormat,
+                                                       materialFormat,
+                                                       entityIdFormat,
+                                                       writeEntityId,
+                                                       readOnlyDepth,
+                                                       layout.attributeMask,
+                                                       layout.positionOffsetBytes,
+                                                       layout.normalOffsetBytes,
+                                                       layout.texCoord0OffsetBytes,
+                                                       layout.tangentOffsetBytes,
+                                                       record.doubleSided,
+                                                       mesh->vertexStrideBytes,
+                                                       framebufferInfo.viewMask);
+                    if (!pipeline)
+                        continue;
 
-                        const uint64_t drawParamOffset = drawParamIndex * drawParamStride;
-
-                        rc.resourceSet[1] = {
-                            {0,
-                             rhi::bindings::UniformBuffer {
-                                 .buffer = &retainedDrawParamsBuffer,
-                                 .offset = drawParamOffset,
-                                 .range  = sizeof(DirectDrawParams),
-                             }},
-                        };
-                        rc.cb.bindPipeline(*pipeline);
-                        rc.bindDescriptorSets(*pipeline);
-                        rc.cb.draw(rhi::GeometryInfo {
-                            .topology     = rhi::PrimitiveTopology::eTriangleList,
-                            .vertexBuffer = &mesh.vertexBuffer,
-                            .vertexOffset = subMesh.vertexOffset,
-                            .numVertices  = subMesh.vertexCount,
-                            .indexBuffer  = &mesh.indexBuffer,
-                            .indexOffset  = subMesh.indexOffset,
-                            .numIndices   = subMesh.indexCount,
-                        });
-                        ++drawParamIndex;
+                    rc.resourceSet[1] = {
+                        {0,
+                         rhi::bindings::UniformBuffer {
+                             .buffer = &retainedDrawParamsBuffer,
+                             .offset = static_cast<uint64_t>(record.paramIndex) * drawParamStride,
+                             .range  = sizeof(DirectDrawParams),
+                         }},
                     };
-
-                    if (!mesh.subMeshes.empty())
-                    {
-                        for (const auto& subMesh : mesh.subMeshes)
-                            drawSubMesh(subMesh);
-                    }
-                    else
-                    {
-                        drawSubMesh(resource::GpuSubMesh {
-                            .vertexOffset  = 0u,
-                            .vertexCount   = mesh.vertexCount,
-                            .indexOffset   = 0u,
-                            .indexCount    = mesh.indexCount,
-                            .materialIndex = mesh.materialOffset,
-                        });
-                    }
+                    rc.cb.bindPipeline(*pipeline);
+                    rc.bindDescriptorSets(*pipeline);
+                    rc.cb.draw(rhi::GeometryInfo {
+                        .topology     = rhi::PrimitiveTopology::eTriangleList,
+                        .vertexBuffer = &mesh->vertexBuffer,
+                        .vertexOffset = record.vertexOffset,
+                        .numVertices  = record.vertexCount,
+                        .indexBuffer  = &mesh->indexBuffer,
+                        .indexOffset  = record.indexOffset,
+                        .numIndices   = record.indexCount,
+                    });
                 }
 
                 rc.cb.endRendering();
@@ -606,7 +786,8 @@ namespace vultra
         ctx.data.set(kResKey_DepthTexture, data.depth);
         ctx.data.set(kResKey_GBufferNormal, data.normal);
         ctx.data.set(kResKey_GBufferMetallicRoughnessAO, data.material);
-        ctx.data.set(kResKey_GBufferEntityId, data.entityId);
+        if (data.entityId)
+            ctx.data.set(kResKey_GBufferEntityId, data.entityId);
         return data.color;
     }
 
@@ -626,10 +807,13 @@ namespace vultra
         return *ptr;
     }
 
-    rhi::GraphicsPipeline DirectGBufferPass::createPipeline(const rhi::PixelFormat colorFormat,
+    rhi::GraphicsPipeline DirectGBufferPass::createPipeline(const bool             depthOnly,
+                                                            const rhi::PixelFormat colorFormat,
                                                             const rhi::PixelFormat normalFormat,
                                                             const rhi::PixelFormat materialFormat,
                                                             const rhi::PixelFormat entityIdFormat,
+                                                            const bool             writeEntityId,
+                                                            const bool             readOnlyDepth,
                                                             const uint32_t         vertexAttributeMask,
                                                             const uint32_t         positionOffset,
                                                             const uint32_t         normalOffset,
@@ -651,38 +835,54 @@ namespace vultra
                                               {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},
                                                {"VTX_HAS_TANGENT", layout.hasTangent() ? 1 : 0},
                                                {"USE_MULTIVIEW", viewMask != 0u ? 1 : 0}});
-        auto fragmentShader = loadHighendShader("direct_gbuffer.frag",
-                                                vshadersystem::ShaderStage::eFrag,
-                                                {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},
-                                                 {"VTX_HAS_TANGENT", layout.hasTangent() ? 1 : 0}});
+        auto fragmentShader =
+            depthOnly ? loadHighendShader("direct_depth_pre.frag",
+                                          vshadersystem::ShaderStage::eFrag,
+                                          {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0}}) :
+                        loadHighendShader("direct_gbuffer.frag",
+                                          vshadersystem::ShaderStage::eFrag,
+                                          {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},
+                                           {"VTX_HAS_TANGENT", layout.hasTangent() ? 1 : 0},
+                                           {"WRITE_ENTITY_ID", writeEntityId ? 1 : 0},
+                                           {"EARLY_FRAGMENT_TESTS", readOnlyDepth ? 1 : 0}});
         if (!vertexShader || !fragmentShader)
         {
             VULTRA_CORE_ERROR("[DirectGBufferPass] Failed to load shaders");
             return {};
         }
 
-        return rhi::GraphicsPipeline::Builder {}
-            .setColorFormats({colorFormat, normalFormat, materialFormat, entityIdFormat})
+        rhi::GraphicsPipeline::Builder builder {};
+        builder
+            .setColorFormats(depthOnly ?
+                                 std::vector<rhi::PixelFormat> {} :
+                                 writeEntityId ?
+                                     std::vector<rhi::PixelFormat> {colorFormat,
+                                                                    normalFormat,
+                                                                    materialFormat,
+                                                                    entityIdFormat} :
+                                     std::vector<rhi::PixelFormat> {colorFormat, normalFormat, materialFormat})
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
             .setViewMask(viewMask)
-            .setInputAssembly(
-                resource::buildInputAssemblyVertexAttributes(layout, true, true, true))
+            .setInputAssembly(resource::buildInputAssemblyVertexAttributes(layout, true, true, true))
             .setVertexStride(vertexStride)
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
             .setDepthStencil({
                 .depthTest      = true,
-                .depthWrite     = true,
+                .depthWrite     = !readOnlyDepth,
                 .depthCompareOp = rhi::CompareOp::eLessOrEqual,
             })
             .setRasterizer({
                 .polygonMode = rhi::PolygonMode::eFill,
                 .cullMode    = doubleSided ? rhi::CullMode::eNone : rhi::CullMode::eBack,
-            })
-            .setBlending(0, {.enabled = false})
-            .setBlending(1, {.enabled = false})
-            .setBlending(2, {.enabled = false})
-            .setBlending(3, {.enabled = false})
-            .build(getRenderDevice());
+            });
+        if (!depthOnly)
+        {
+            builder.setBlending(0, {.enabled = false})
+                .setBlending(1, {.enabled = false})
+                .setBlending(2, {.enabled = false})
+                .setBlending(3, {.enabled = false});
+        }
+        return builder.build(getRenderDevice());
     }
 } // namespace vultra

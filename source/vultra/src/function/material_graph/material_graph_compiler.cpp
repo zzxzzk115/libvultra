@@ -157,7 +157,7 @@ namespace vultra::material_graph
                 if (type == "vultra.input.world_position")
                     return "ctx.positionWS";
                 if (type == "vultra.input.world_normal")
-                    return "ctx.normalWS";
+                    return "normalWS";
                 if (type == "vultra.input.view_direction")
                     return "ctx.viewDirWS";
                 if (type == "vultra.input.view_index")
@@ -361,6 +361,7 @@ namespace vultra::material_graph
         src << "const uint VULTRA_MATERIAL_GRAPH_ID_" << graphSymbol << " = " << input.graphId << "u;\n\n";
         src << "MaterialGraphSurface eval_material_graph_" << graphSymbol << "_ctx(MaterialGraphContext ctx)\n{\n";
         src << "    MaterialGraphSurface surface;\n";
+        src << "    vec3 normalWS = ctx.normalWS;\n";
         src << "    surface.baseColor = " << baseColor << ";\n";
         src << "    surface.normalWS = normalize(" << normal << ");\n";
         src << "    surface.metallic = clamp(" << metallic << ", 0.0, 1.0);\n";

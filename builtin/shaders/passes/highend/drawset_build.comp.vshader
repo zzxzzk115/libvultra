@@ -15,7 +15,7 @@ layout(push_constant) uniform DrawsetBuildPushConstants
 {
     uint maxDraws;
     uint useIndirectCount;
-    uint padding1;
+    uint maxMeshlets;
     uint padding2;
 } u_PC;
 
@@ -48,6 +48,8 @@ void main()
     {
         DrawRecord dr = s_Draws.draws[drawId];
         if ((dr.flags & kDrawFlagMeshlet) == 0u)
+            continue;
+        if (dr.primitiveIndex >= u_PC.maxMeshlets)
             continue;
 
         uint queueId = (dr.flags >> kDrawQueueShift) & 0xFFu;

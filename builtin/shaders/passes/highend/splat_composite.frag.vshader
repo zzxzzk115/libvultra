@@ -55,5 +55,6 @@ void main()
     // Front-to-back splat color is already accumulated in premultiplied form.
     // Mesh shows through only via remaining transmittance.
     vec3 blended = splat.rgb + meshlet.rgb * (1.0 - splat.a);
-    FragColor = vec4(blended, 1.0);
+    float alpha = splat.a + meshlet.a * (1.0 - splat.a);
+    FragColor = vec4(blended, alpha);
 }

@@ -3,6 +3,8 @@
 #include "vultra/core/rhi/command_buffer.hpp"
 #include "vultra/core/rhi/structs/render_mesh.hpp"
 #include "vultra/core/rhi/structs/vertex_attributes.hpp"
+#include "vultra/function/asset/builtin_assets.hpp"
+#include "vultra/function/asset/builtin_resource_ids.hpp"
 #include "vultra/function/resource/vtexture_loader.hpp"
 #include "vultra/function/rendering/srp/builtin/builtin_rendergraph_registry.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
@@ -33,11 +35,192 @@
 #include <mutex>
 #include <string_view>
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
+#endif
+
+#if !defined(_WIN32) && !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+extern "C"
+{
+    extern const std::byte vultra_builtin_citrus_orchard_sky_texture_start[];
+    extern const std::byte vultra_builtin_citrus_orchard_sky_texture_end[];
+}
+#endif
+
 namespace vultra
 {
     namespace
     {
         constexpr uint32_t kAssetLoadMaxAttempts = 3;
+
+        bool isBuiltinCitrusOrchardSkyTextureUri(std::string_view uri)
+        {
+            return uri == kBuiltinCitrusOrchardSkyTextureUri;
+        }
+
+        bool isBuiltinTextureUri(std::string_view uri)
+        {
+            return uri.starts_with(kBuiltinTextureUriPrefix);
+        }
+
+        std::filesystem::path builtinTexturePathForUri(std::string_view uri)
+        {
+            if (!isBuiltinTextureUri(uri))
+                return {};
+            const auto rel = std::string(uri.substr(kBuiltinTextureUriPrefix.size()));
+            return (std::filesystem::path("builtin") / "textures" / std::filesystem::path(rel)).lexically_normal();
+        }
+
+        bool isLoadableBuiltinTexturePath(const std::filesystem::path& path)
+        {
+            const auto ext = path.extension().generic_string();
+            return ext == ".vtexture" || ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" ||
+                   ext == ".tga" || ext == ".hdr" || ext == ".pic" || ext == ".exr" || ext == ".ktx" ||
+                   ext == ".ktx2" || ext == ".dds";
+        }
+
+        std::string builtinTextureUriForPath(const std::filesystem::path& path)
+        {
+            std::error_code ec;
+            const auto rel = std::filesystem::relative(path.lexically_normal(),
+                                                       (std::filesystem::path("builtin") / "textures").lexically_normal(),
+                                                       ec);
+            if (ec || rel.empty())
+                return {};
+            return std::string(kBuiltinTextureUriPrefix) + rel.generic_string();
+        }
+
+        std::string builtinTextureUriForUuid(const CoreUUID& uuid)
+        {
+            if (uuid == builtinCitrusOrchardSkyTextureUuid())
+                return std::string(kBuiltinCitrusOrchardSkyTextureUri);
+
+            const auto root = std::filesystem::path("builtin") / "textures";
+            std::error_code ec;
+            if (!std::filesystem::exists(root, ec) || ec)
+                return {};
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     root, std::filesystem::directory_options::skip_permission_denied, ec);
+                 it != std::filesystem::recursive_directory_iterator {};
+                 it.increment(ec))
+            {
+                if (ec)
+                {
+                    ec.clear();
+                    continue;
+                }
+                const auto& entry = *it;
+                if (!entry.is_regular_file(ec) || ec || !isLoadableBuiltinTexturePath(entry.path()))
+                {
+                    ec.clear();
+                    continue;
+                }
+                const auto uri = builtinTextureUriForPath(entry.path());
+                if (!uri.empty() && builtinTextureUuidForUri(uri) == uuid)
+                    return uri;
+            }
+            return {};
+        }
+
+        vbase::Result<std::vector<std::byte>, std::string> readResourceBuiltinTextureBytes(std::string_view uri)
+        {
+            if (!isBuiltinCitrusOrchardSkyTextureUri(uri))
+                return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource not found");
+
+#if defined(_WIN32)
+            HMODULE module = GetModuleHandleW(nullptr);
+            HRSRC   res    = FindResourceW(module,
+                                           MAKEINTRESOURCEW(kBuiltinResourceCitrusOrchardSkyTexture),
+                                           MAKEINTRESOURCEW(10));
+            if (!res)
+                return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource not found");
+
+            HGLOBAL loaded = LoadResource(module, res);
+            const auto* data = loaded ? static_cast<const std::byte*>(LockResource(loaded)) : nullptr;
+            const DWORD size = SizeofResource(module, res);
+            if (!data || size == 0)
+                return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource is empty");
+
+            std::vector<std::byte> bytes(size);
+            std::memcpy(bytes.data(), data, size);
+            return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(bytes));
+#elif !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+            const auto* begin = vultra_builtin_citrus_orchard_sky_texture_start;
+            const auto* end   = vultra_builtin_citrus_orchard_sky_texture_end;
+            if (!begin || !end || end <= begin)
+                return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource is empty");
+
+            std::vector<std::byte> bytes(static_cast<size_t>(end - begin));
+            std::memcpy(bytes.data(), begin, bytes.size());
+            return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(bytes));
+#else
+            return vbase::Result<std::vector<std::byte>, std::string>::err("builtin texture resource not available");
+#endif
+        }
+
+        vasset::VTextureFileFormat textureFileFormatForExtension(const std::filesystem::path& path)
+        {
+            const auto ext = path.extension().generic_string();
+            using enum vasset::VTextureFileFormat;
+            if (ext == ".jpg")
+                return eJPG;
+            if (ext == ".jpeg")
+                return eJPEG;
+            if (ext == ".png")
+                return ePNG;
+            if (ext == ".tga")
+                return eTGA;
+            if (ext == ".bmp")
+                return eBMP;
+            if (ext == ".hdr")
+                return eHDR;
+            if (ext == ".pic")
+                return ePIC;
+            if (ext == ".exr")
+                return eEXR;
+            if (ext == ".ktx")
+                return eKTX;
+            if (ext == ".dds")
+                return eDDS;
+            if (ext == ".ktx2")
+                return eKTX2;
+            return eUnknown;
+        }
+
+        std::unique_ptr<vasset::VTexture> makeTextureFromBytes(std::string_view               uri,
+                                                               const std::filesystem::path&   path,
+                                                               const std::vector<std::byte>& bytes)
+        {
+            if (path.extension() == ".vtexture")
+            {
+                auto cpu = std::make_unique<vasset::VTexture>();
+                auto r   = vasset::loadTextureFromMemory(bytes, *cpu);
+                return r ? std::move(cpu) : nullptr;
+            }
+
+            auto fileFormat = textureFileFormatForExtension(path);
+            if (fileFormat == vasset::VTextureFileFormat::eUnknown)
+                return nullptr;
+
+            auto cpu       = std::make_unique<vasset::VTexture>();
+            cpu->uuid      = builtinTextureUuidForUri(uri).native();
+            cpu->fileFormat = fileFormat;
+            cpu->data.resize(bytes.size());
+            std::memcpy(cpu->data.data(), bytes.data(), bytes.size());
+            return cpu;
+        }
+
+        std::unique_ptr<vasset::VTexture> makeTextureFromBytes(std::string_view               uri,
+                                                               const std::vector<std::byte>& bytes)
+        {
+            return makeTextureFromBytes(uri, builtinTexturePathForUri(uri), bytes);
+        }
 
         // Very small fallback: pack a subset of material params into a fixed block.
         // This is intentionally simple; later, vshadersystem reflection will pack arbitrary params.
@@ -85,10 +268,23 @@ namespace vultra
         static_assert(sizeof(MaterialParamsUnlit) % 16 == 0);
 
 #ifdef VULTRA_HAS_VASSET_IMPORT
-        vasset::VAssetImporter::ImportOptions makeAssetImportOptions(const bool importShaderLibraries = true)
+        vasset::VAssetImporter::ImportOptions
+        makeAssetImportOptions(const bool importShaderLibraries = true,
+                               std::vector<AssetDiagnostic>* diagnostics = nullptr)
         {
             vasset::VAssetImporter::ImportOptions options;
             options.importShaderLibraries = importShaderLibraries;
+            if (diagnostics)
+            {
+                options.diagnostics = [diagnostics](const vasset::VAssetImporter::ImportOptions::Diagnostic& diagnostic) {
+                    diagnostics->push_back(AssetDiagnostic {
+                        .path    = diagnostic.path,
+                        .line    = diagnostic.line,
+                        .column  = diagnostic.column,
+                        .message = diagnostic.message,
+                    });
+                };
+            }
             options.shaderVirtualIncludes.reserve(builtin_shader_include_sources_count);
             for (size_t i = 0; i < builtin_shader_include_sources_count; ++i)
             {
@@ -829,7 +1025,7 @@ namespace vultra
         cpuLoadTask->task = std::make_unique<vtask::TaskSet>(1, 1, [this, &rec, uuid, uri, taskState](vtask::Range) {
             for (uint32_t attempt = 1; attempt <= kAssetLoadMaxAttempts; ++attempt)
             {
-                auto br = m_VFS.readAll(uri);
+                auto br = readTextureAssetBytes(uri);
                 if (!br)
                 {
                     VULTRA_CLIENT_ERROR("loadMeshAsync: failed to read {} (attempt {}/{})",
@@ -886,7 +1082,7 @@ namespace vultra
         cpuLoadTask->task = std::make_unique<vtask::TaskSet>(1, 1, [this, &rec, uuid, uri, taskState](vtask::Range) {
             for (uint32_t attempt = 1; attempt <= kAssetLoadMaxAttempts; ++attempt)
             {
-                auto br = m_VFS.readAll(uri);
+                auto br = readTextureAssetBytes(uri);
                 if (!br)
                 {
                     VULTRA_CLIENT_ERROR("loadTextureAsync: failed to read {} (attempt {}/{})",
@@ -896,9 +1092,9 @@ namespace vultra
                     continue;
                 }
 
-                auto cpu = std::make_unique<vasset::VTexture>();
-                auto r   = vasset::loadTextureFromMemory(br.value(), *cpu);
-                if (!r)
+                auto cpu = isBuiltinTextureUri(uri) ? makeTextureFromBytes(uri, br.value()) :
+                                                      std::make_unique<vasset::VTexture>();
+                if (!cpu || (!isBuiltinTextureUri(uri) && !vasset::loadTextureFromMemory(br.value(), *cpu)))
                 {
                     VULTRA_CLIENT_ERROR("loadTextureAsync: vasset::loadTextureFromMemory failed: {} (attempt {}/{})",
                                         uri,
@@ -987,6 +1183,12 @@ namespace vultra
 
     bool AssetSystem::resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const
     {
+        if (const auto builtinUri = builtinTextureUriForUuid(uuid); !builtinUri.empty())
+        {
+            outUri = builtinUri;
+            return true;
+        }
+
         auto entry = m_Registry.lookup(uuid);
         if (entry.type == vasset::VAssetType::eUnknown)
             return false;
@@ -1001,7 +1203,36 @@ namespace vultra
 
     bool AssetSystem::resolveUriToUUID(std::string_view uri, CoreUUID& outUUID) const
     {
+        if (isBuiltinTextureUri(uri))
+        {
+            outUUID = builtinTextureUuidForUri(uri);
+            return true;
+        }
+
         return m_Resolver.reverseResolve(uri, outUUID);
+    }
+
+    vbase::Result<std::vector<std::byte>, std::string> AssetSystem::readTextureAssetBytes(std::string_view uri)
+    {
+        if (isBuiltinTextureUri(uri))
+        {
+            const auto path = builtinTexturePathForUri(uri);
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            if (!file)
+                return readResourceBuiltinTextureBytes(uri);
+
+            const auto          size = static_cast<std::streamsize>(file.tellg());
+            std::vector<std::byte> bytes(static_cast<size_t>(std::max<std::streamsize>(size, 0)));
+            file.seekg(0);
+            if (!bytes.empty() && !file.read(reinterpret_cast<char*>(bytes.data()), size))
+                return readResourceBuiltinTextureBytes(uri);
+            return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(bytes));
+        }
+
+        auto br = m_VFS.readAll(uri);
+        if (!br)
+            return vbase::Result<std::vector<std::byte>, std::string>::err("failed to read " + std::string(uri));
+        return vbase::Result<std::vector<std::byte>, std::string>::ok(std::move(br.value()));
     }
 
     uint32_t AssetSystem::resolveBindlessTextureIndex(const CoreUUID& texUUID)
@@ -1742,7 +1973,7 @@ namespace vultra
                 return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
             }
 
-            auto br = m_VFS.readAll(uri);
+            auto br = readTextureAssetBytes(uri);
             if (!br)
             {
                 VULTRA_CLIENT_ERROR("loadTextureSync: failed to read {}", uri);
@@ -1750,9 +1981,9 @@ namespace vultra
                 return AssetHandle<vasset::VTexture, resource::GpuTexture>(rec);
             }
 
-            auto cpu = std::make_unique<vasset::VTexture>();
-            auto r   = vasset::loadTextureFromMemory(br.value(), *cpu);
-            if (!r)
+            auto cpu = isBuiltinTextureUri(uri) ? makeTextureFromBytes(uri, br.value()) :
+                                                  std::make_unique<vasset::VTexture>();
+            if (!cpu || (!isBuiltinTextureUri(uri) && !vasset::loadTextureFromMemory(br.value(), *cpu)))
             {
                 VULTRA_CLIENT_ERROR("loadTextureSync: vasset::loadTextureFromMemory failed: {}", uri);
                 rec->state.store(AssetState::eFailed, std::memory_order_release);
@@ -1982,7 +2213,8 @@ namespace vultra
 
         const auto             physicalPath = std::filesystem::path(resolveUri(uri)).lexically_normal();
         vasset::VAssetImporter importer {m_Registry};
-        importer.setOptions(makeAssetImportOptions());
+        m_LastImportDiagnostics.clear();
+        importer.setOptions(makeAssetImportOptions(true, &m_LastImportDiagnostics));
         auto result = importer.importOrReimportAsset(physicalPath.generic_string(), forceReimport);
         if (!result)
         {
@@ -2076,12 +2308,16 @@ namespace vultra
     {
         std::scoped_lock lock(m_TextOverrideMutex);
         m_TextAssetOverrides[std::string(uri)] = std::move(text);
+        if (m_GpuResourceService)
+            m_GpuResourceService->markContentDirty();
     }
 
     void AssetSystem::clearTextAssetOverride(std::string_view uri)
     {
         std::scoped_lock lock(m_TextOverrideMutex);
         m_TextAssetOverrides.erase(std::string(uri));
+        if (m_GpuResourceService)
+            m_GpuResourceService->markContentDirty();
     }
 
     vbase::Result<std::vector<uint8_t>, std::string> AssetSystem::loadBinaryAssetSync(std::string_view uri)

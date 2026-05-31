@@ -49,7 +49,7 @@ TransformComponent/position = (0, 0, 0)
 TransformComponent/rotation = (0.479269, 0.472498, 0.526066, -0.519905)
 TransformComponent/scale = (1, 1, 1)
 LightComponent/kind = 0
-LightComponent/color = (1, 0.875969, 0.689922)
+LightComponent/color = (1, 0.941085, 0.852713)
 LightComponent/intensity = 10.000000
 LightComponent/range = 100.000000
 LightComponent/radius = 0.050000
@@ -1268,7 +1268,7 @@ TransformComponent/scale = (0.008, 0.008, 0.008)
 MeshComponent/mesh = "fdb5c6e963664c15e2aeaf4ef5673fda"
 MeshComponent/builtinGeometry = 4294967295
 MeshComponent/materialColor = (1, 1, 1, 1)
-MeshComponent/materialOverrides = ""
+MeshComponent/materialOverrides = "0=res://materials/default.vmatgraph.json"
 
 [node id=91 name="meshes[0]-83" parent=7 uuid="e7fde1a8b650d331f4f68491187a46b6"]
 NameComponent/name = "meshes[0]-83"

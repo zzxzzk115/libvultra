@@ -131,6 +131,20 @@ vec3 worldPositionFromDepth(float depth, vec2 uv)
     return world.xyz / max(world.w, 1e-6);
 }
 
+vec3 decodeGBufferNormal(vec2 encoded)
+{
+    vec2 f = encoded * 2.0 - 1.0;
+    vec3 n = vec3(f, 1.0 - abs(f.x) - abs(f.y));
+    float t = clamp(-n.z, 0.0, 1.0);
+    n.xy += vec2(n.x >= 0.0 ? -t : t, n.y >= 0.0 ? -t : t);
+    return normalize(n);
+}
+
+uint decodeMaterialModel(float encoded)
+{
+    return uint(round(clamp(encoded, 0.0, 1.0) * 255.0));
+}
+
 float shadowDepth(vec2 uv)
 {
     return texture(u_ShadowMap, uv).r;
@@ -339,10 +353,10 @@ void main()
         return;
     }
 
-    vec3 normalWS = normalize(VULTRA_GBUFFER_SAMPLE(u_GBufferNormal, v_TexCoord).xyz);
+    vec3 normalWS = decodeGBufferNormal(VULTRA_GBUFFER_SAMPLE(u_GBufferNormal, v_TexCoord).xy);
     vec4 mraSample = VULTRA_GBUFFER_SAMPLE(u_GBufferMetallicRoughnessAO, v_TexCoord);
     vec3 mra = mraSample.xyz;
-    uint materialModel = uint(round(mraSample.w));
+    uint materialModel = decodeMaterialModel(mraSample.w);
     vec3 positionWS = worldPositionFromDepth(depth, v_TexCoord);
     vec3 cameraWS = VULTRA_ACTIVE_CAMERA.inverseView[3].xyz;
 

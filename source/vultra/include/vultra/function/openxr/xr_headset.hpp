@@ -54,6 +54,7 @@ namespace vultra
             void                           endFrame();
 
             [[nodiscard]] bool isExitRequested() const { return m_ExitRequested; }
+            [[nodiscard]] bool isSessionCloseRequested() const { return m_SessionCloseRequested; }
 
             [[nodiscard]] XrSession    getXrSession() const { return m_Session; }
             [[nodiscard]] XrSpace      getXrSpace() const { return m_Space; }
@@ -116,6 +117,7 @@ namespace vultra
 
             bool m_SessionRunning {false};
             bool m_ExitRequested {false};
+            bool m_SessionCloseRequested {false};
             bool m_FrameBegun {false};
             bool m_SwapchainImageAcquired {false};
         };

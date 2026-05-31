@@ -140,10 +140,27 @@ CameraComponent/fovYDegrees = 60.000000
 CameraComponent/orthographicHeight = 10.000000
 CameraComponent/zNear = 0.100000
 CameraComponent/zFar = 1000.000000
-CameraComponent/clearMode = 0
+CameraComponent/clearMode = 1
 CameraComponent/clearColor = (0.02, 0.025, 0.035, 1)
 CameraComponent/priority = 0
 CameraComponent/rendererKey = "universal"
+
+[node id=3 name="Environment" parent=0 uuid="2ed6e38597034df78145da7f6b56d6ad"]
+NameComponent/name = "Environment"
+EntityStatusComponent/active = true
+EntityStatusComponent/visible = true
+EntityStatusComponent/locked = false
+EntityStatusComponent/selectable = true
+TransformComponent/position = (0, 0, 0)
+TransformComponent/rotation = (0, 0, 0, 1)
+TransformComponent/scale = (1, 1, 1)
+EnvironmentComponent/active = true
+EnvironmentComponent/skybox = "9a5cf6f3664c0e0b07179f44e84101cc"
+EnvironmentComponent/ambientColor = (0.15, 0.15, 0.15)
+EnvironmentComponent/ambientIntensity = 1.000000
+EnvironmentComponent/enableIBL = false
+EnvironmentComponent/iblColor = (0.04, 0.045, 0.05)
+EnvironmentComponent/iblIntensity = 1.000000
 )";
 
             constexpr std::string_view kDefaultRenderGraph = R"({
@@ -151,57 +168,215 @@ CameraComponent/rendererKey = "universal"
   "meta": {
     "editor": {
       "nodes": {
-        "CompatibilityBaseColor": {
-          "pos": [
-            260.0,
-            80.0
-          ]
-        },
-        "Pixelate": {
-          "pos": [
-            620.0,
-            80.0
-          ]
-        },
-        "FinalComposition": {
-          "pos": [
-            980.0,
-            80.0
-          ]
-        }
+        "DirectDepthPre": { "pos": [-30.0, 80.0] },
+        "DirectGBuffer": { "pos": [260.0, 80.0] },
+        "Ssao": { "pos": [708.0, -251.0] },
+        "ShadowMap": { "pos": [559.0, 366.0] },
+        "DeferredLighting": { "pos": [1134.0, -94.0] },
+        "GeneralGaussianSplatComposite": { "pos": [1520.0, 315.0] },
+        "Ssr": { "pos": [1925.0, 433.0] },
+        "SsrComposite": { "pos": [2420.0, -92.0] },
+        "Pixelate": { "pos": [2688.0, -69.0] },
+        "Invert": { "pos": [3030.0, -21.0] },
+        "ToneMapping": { "pos": [3413.0, -42.0] },
+        "Fxaa": { "pos": [3796.0, 3.0] },
+        "SelectionOutline": { "pos": [4081.0, 176.0] },
+        "FinalComposition": { "pos": [4470.0, 208.0] }
       }
     }
   },
-  "passes": [
-    {
+  "passes": [    {
       "enabled": true,
-      "id": "CompatibilityBaseColor",
-      "type": "CompatibilityBaseColor",
-      "viewMode": "inherit"
+      "id": "DirectDepthPre",
+      "type": "DirectDepthPre"
     },
     {
       "enabled": true,
-      "id": "Pixelate",
+      "id": "DirectGBuffer",
       "inputs": {
-        "source": "CompatibilityBaseColor.color"
+        "depth": "DirectDepthPre.depth"
+      },
+      "type": "DirectGBuffer"
+    },
+    {
+      "enabled": true,
+      "id": "Ssao",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "normal": "DirectGBuffer.normal"
       },
       "params": {
-        "name": "Pixelate"
+        "bias": 0.05,
+        "directionCount": 4,
+        "enabled": false,
+        "intensity": 1.0,
+        "maxRadiusPixels": 16,
+        "radius": 1.5,
+        "stepCount": 2
       },
-      "type": "Pixelate",
-      "viewMode": "inherit"
+      "type": "Ssao"
+    },
+    {
+      "enabled": true,
+      "id": "ShadowMap",
+      "params": {
+        "autoFitBounds": true,
+        "cascadeCount": 4,
+        "coverageRadius": 75.0,
+        "depthBias": 0.0012,
+        "enabled": true,
+        "lightDistance": 120.0,
+        "normalBias": 0.015,
+        "pcssLightRadius": 1.5,
+        "resolution": 2048,
+        "splitLambda": 0.6,
+        "stableTexelSnapping": true,
+        "zRange": 120.0
+      },
+      "type": "ShadowMap"
+    },
+    {
+      "enabled": true,
+      "id": "DeferredLighting",
+      "inputs": {
+        "ao": "Ssao.ao",
+        "color": "DirectGBuffer.color",
+        "depth": "DirectGBuffer.depth",
+        "material": "DirectGBuffer.material",
+        "normal": "DirectGBuffer.normal",
+        "shadowData": "ShadowMap.shadowData",
+        "shadowMap": "ShadowMap.shadowMap"
+      },
+      "params": {
+        "ambientIntensity": 1.0,
+        "debugCascades": false,
+        "debugViewMode": 0,
+        "iblIntensity": 1.0,
+        "pcfRadius": 2,
+        "pcssBlockerSamples": 6,
+        "shadowDebugMode": 0,
+        "shadowFilterMode": 1,
+        "shadowStrength": 0.85
+      },
+      "type": "DeferredLighting"
+    },
+    {
+      "enabled": true,
+      "id": "GeneralGaussianSplatComposite",
+      "inputs": {
+        "source": "DeferredLighting.color"
+      },
+      "type": "GeneralGaussianSplatComposite"
+    },
+    {
+      "enabled": true,
+      "id": "Ssr",
+      "inputs": {
+        "color": "GeneralGaussianSplatComposite.color",
+        "depth": "DirectGBuffer.depth",
+        "material": "DirectGBuffer.material",
+        "normal": "DirectGBuffer.normal"
+      },
+      "params": {
+        "binaryRefinement": 2,
+        "enabled": false,
+        "maxSteps": 8,
+        "reflectionFactor": 0.2,
+        "stride": 0.35,
+        "thickness": 0.5
+      },
+      "type": "Ssr"
+    },
+    {
+      "enabled": true,
+      "id": "SsrComposite",
+      "inputs": {
+        "reflection": "Ssr.reflection",
+        "source": "GeneralGaussianSplatComposite.color"
+      },
+      "params": {
+        "enabled": false
+      },
+      "type": "SsrComposite"
+    },
+    {
+      "enabled": false,
+      "id": "Pixelate",
+      "inputs": {
+        "source": "SsrComposite.color"
+      },
+      "params": {
+        "gridOffset": 0.5,
+        "mode": 0,
+        "name": "Pixelate",
+        "pixelSize": 8.0,
+        "preserveAlpha": true
+      },
+      "type": "Pixelate"
+    },
+    {
+      "enabled": false,
+      "id": "Invert",
+      "inputs": {
+        "source": "Pixelate.color"
+      },
+      "params": {
+        "mode": 0,
+        "name": "Invert",
+        "preserveAlpha": true,
+        "strength": 1.0
+      },
+      "type": "Invert"
+    },
+    {
+      "enabled": true,
+      "id": "ToneMapping",
+      "inputs": {
+        "source": "Invert.color"
+      },
+      "params": {
+        "enabled": true,
+        "exposure": 1.0,
+        "method": 0
+      },
+      "type": "ToneMapping"
+    },
+    {
+      "enabled": true,
+      "id": "Fxaa",
+      "inputs": {
+        "source": "ToneMapping.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "Fxaa"
+    },
+    {
+      "enabled": true,
+      "id": "SelectionOutline",
+      "inputs": {
+        "depth": "DirectGBuffer.depth",
+        "entityId": "DirectGBuffer.entityId",
+        "source": "Fxaa.color"
+      },
+      "params": {
+        "edgeOpacity": 0.35,
+        "enabled": true,
+        "fillOpacity": 0.0,
+        "thickness": 3.0
+      },
+      "type": "SelectionOutline"
     },
     {
       "enabled": true,
       "id": "FinalComposition",
       "inputs": {
-        "source": "Pixelate.color"
+        "source": "SelectionOutline.color"
       },
-      "type": "FinalComposition",
-      "viewMode": "inherit"
+      "type": "FinalComposition"
     }
-  ],
-  "resources": []
+  ]
 }
 )";
 
@@ -210,6 +385,7 @@ CameraComponent/rendererKey = "universal"
   "meta": {
     "editor": {
       "nodes": {
+        "DirectDepthPre": { "pos": [-30.0, 100.0] },
         "DirectGBuffer": { "pos": [260.0, 100.0] },
         "ShadowMap": { "pos": [260.0, 460.0] },
         "Ssao": { "pos": [620.0, 260.0] },
@@ -220,10 +396,18 @@ CameraComponent/rendererKey = "universal"
       }
     }
   },
-  "passes": [
+  "passes": [    {
+      "enabled": true,
+      "id": "DirectDepthPre",
+      "type": "DirectDepthPre",
+      "viewMode": "inherit"
+    },
     {
       "enabled": true,
       "id": "DirectGBuffer",
+      "inputs": {
+        "depth": "DirectDepthPre.depth"
+      },
       "type": "DirectGBuffer",
       "viewMode": "inherit"
     },
@@ -241,7 +425,10 @@ CameraComponent/rendererKey = "universal"
         "normal": "DirectGBuffer.normal"
       },
       "params": {
-        "enabled": true
+        "enabled": false,
+        "maxRadiusPixels": 16,
+        "stepCount": 2,
+        "directionCount": 4
       },
       "type": "Ssao",
       "viewMode": "inherit"
@@ -310,32 +497,34 @@ CameraComponent/rendererKey = "universal"
     type = "Pixelate",
     shader = {
         library = "project",
+        vertexLibrary = "builtin",
         vertex = "fullscreen_triangle.vert",
         fragment = "pixelate.frag",
     },
 }
 )";
 
-            constexpr std::string_view kShaderLibrary = R"(return ShaderLibrary {
-    name = "project",
-    root = "shaders",
-    shaders = {
-        "fullscreen/*.vshader",
-        "generated/material_graph/*.vshader",
+            constexpr std::string_view kInvertPass = R"(return RenderGraphPass {
+    type = "Invert",
+    pipeline = "compute",
+    inputs = { "source" },
+    outputs = { "color" },
+    shader = {
+        library = "project",
+        compute = "invert.comp",
+    },
+    dispatch = {
+        byOutputSize = true,
     },
 }
 )";
 
-            constexpr std::string_view kFullscreenTriangle = R"([vshader]
-language = glsl
-version = 460
-
-[vert]
-layout (location = 0) out vec2 v_TexCoord;
-
-void main() {
-    v_TexCoord = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
-    gl_Position = vec4(v_TexCoord * 2.0 - 1.0, 0.0, 1.0);
+constexpr std::string_view kShaderLibrary = R"(return ShaderLibrary {
+    name = "project",
+    root = "shaders",
+    shaders = {
+        "**/*.vshader",
+    },
 }
 )";
 
@@ -355,6 +544,106 @@ void main() {
     vec2 pixel = floor(v_TexCoord * sourceSize / pixelSize) * pixelSize + vec2(0.5 * pixelSize);
     vec2 uv = clamp(pixel / sourceSize, vec2(0.0), vec2(1.0));
     FragColor = texture(t_0, uv);
+}
+)";
+
+            constexpr std::string_view kComputeInvertShader = R"([vshader]
+language = glsl
+version = 460
+
+[comp]
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 3, binding = 0) uniform texture2D u_Source;
+layout(set = 3, binding = 1, rgba16f) uniform writeonly image2D u_Output;
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_Output);
+    if (pixel.x >= size.x || pixel.y >= size.y)
+        return;
+
+    vec4 color = texelFetch(u_Source, pixel, 0);
+    imageStore(u_Output, pixel, vec4(vec3(1.0) - color.rgb, color.a));
+}
+)";
+
+            constexpr std::string_view kDefaultMaterialGraph = R"({
+  "version": 1,
+  "domain": "surface",
+  "name": "Default Material Graph",
+  "metadata": {
+    "description": "Default surface material graph for new projects."
+  },
+  "nodes": [
+    {
+      "id": "BaseColor",
+      "type": "vultra.param.color",
+      "displayName": "Base Color",
+      "params": {
+        "value": [0.8, 0.82, 0.86, 1.0]
+      },
+      "inputs": [],
+      "outputs": [
+        { "name": "value", "type": "color" }
+      ],
+      "editor": { "pos": [120.0, 120.0] }
+    },
+    {
+      "id": "Roughness",
+      "type": "vultra.param.float",
+      "displayName": "Roughness",
+      "params": {
+        "value": 0.55
+      },
+      "inputs": [],
+      "outputs": [
+        { "name": "value", "type": "float" }
+      ],
+      "editor": { "pos": [120.0, 300.0] }
+    },
+    {
+      "id": "Surface",
+      "type": "vultra.output.surface",
+      "displayName": "Surface Output",
+      "params": {
+        "baseColor": [1.0, 1.0, 1.0, 1.0],
+        "metallic": 0.0,
+        "roughness": 1.0,
+        "ao": 1.0,
+        "emissive": [0.0, 0.0, 0.0],
+        "alpha": 1.0,
+        "alphaCutoff": 0.5,
+        "alphaMode": "Opaque",
+        "shadingModel": "PBRMetallicRoughness"
+      },
+      "inputs": [
+        { "name": "baseColor", "type": "color", "default": [1.0, 1.0, 1.0, 1.0] },
+        { "name": "normal", "type": "vec3" },
+        { "name": "metallic", "type": "float", "default": 0.0 },
+        { "name": "roughness", "type": "float", "default": 1.0 },
+        { "name": "ao", "type": "float", "default": 1.0 },
+        { "name": "emissive", "type": "vec3", "default": [0.0, 0.0, 0.0] },
+        { "name": "alpha", "type": "float", "default": 1.0 },
+        { "name": "alphaCutoff", "type": "float", "default": 0.5 }
+      ],
+      "outputs": [],
+      "editor": { "pos": [520.0, 200.0] }
+    }
+  ],
+  "links": [
+    {
+      "from": { "node": "BaseColor", "pin": "value" },
+      "to": { "node": "Surface", "pin": "baseColor" }
+    },
+    {
+      "from": { "node": "Roughness", "pin": "value" },
+      "to": { "node": "Surface", "pin": "roughness" }
+    }
+  ]
 }
 )";
 
@@ -465,12 +754,15 @@ This directory is an index, not the runtime asset root.
                    writeTextFile(resourcesDir / "render" / "default.vrg.json", kDefaultRenderGraph, errorMessage) &&
                    writeTextFile(resourcesDir / "render" / "stereo_vr.vrg.json", kStereoRenderGraph, errorMessage) &&
                    writeTextFile(resourcesDir / "render" / "passes" / "pixelate.lua", kPixelatePass, errorMessage) &&
+                   writeTextFile(resourcesDir / "render" / "passes" / "invert.lua", kInvertPass, errorMessage) &&
+                   writeTextFile(
+                       resourcesDir / "materials" / "default.vmatgraph.json", kDefaultMaterialGraph, errorMessage) &&
                    writeTextFile(resourcesDir / "shaders" / "project.vshaderlib.lua", kShaderLibrary, errorMessage) &&
-                   writeTextFile(resourcesDir / "shaders" / "fullscreen" / "fullscreen_triangle.vert.vshader",
-                                 kFullscreenTriangle,
-                                 errorMessage) &&
                    writeTextFile(resourcesDir / "shaders" / "fullscreen" / "pixelate.frag.vshader",
                                  kPixelateShader,
+                                 errorMessage) &&
+                   writeTextFile(resourcesDir / "shaders" / "compute" / "invert.comp.vshader",
+                                 kComputeInvertShader,
                                  errorMessage) &&
                    writeTextFile(projectDir / "ai" / "README.md", kProjectAiReadme, errorMessage) &&
                    writeTextFile(projectDir / "ai" / "game.md", kProjectGameBrief, errorMessage) &&

@@ -22,7 +22,7 @@ namespace vultra
             uint32_t instanceCount {0};
             uint32_t maxVisibleMeshlets {0};
             uint32_t enableConeCull {0};
-            uint32_t padding0 {0};
+            uint32_t maxMeshlets {0};
         };
     } // namespace
 
@@ -221,6 +221,10 @@ namespace vultra
                 pc.instanceCount      = maxVisibleInstances;
                 pc.maxVisibleMeshlets = maxVisible;
                 pc.enableConeCull     = 0u;
+                pc.maxMeshlets        = rc.view().gpuSceneDatabase && rc.view().gpuSceneDatabase->resources ?
+                                            static_cast<uint32_t>(
+                                                rc.view().gpuSceneDatabase->resources->meshlets.cpuMeshlets.size()) :
+                                            0u;
 
                 auto variantHash =
                     computeHighendVariantHash("meshlet_cull.comp", vshadersystem::ShaderStage::eComp, {});

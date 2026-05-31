@@ -1,0 +1,19 @@
+#if defined(__APPLE__)
+.section __DATA,__vultra_assets
+.globl _vultra_builtin_citrus_orchard_sky_texture_start
+.globl _vultra_builtin_citrus_orchard_sky_texture_end
+.p2align 4
+_vultra_builtin_citrus_orchard_sky_texture_start:
+.incbin "builtin/textures/environment_maps/citrus_orchard_puresky_1k.vtexture"
+_vultra_builtin_citrus_orchard_sky_texture_end:
+#else
+.section .rodata.vultra_assets,"a",@progbits
+.globl vultra_builtin_citrus_orchard_sky_texture_start
+.globl vultra_builtin_citrus_orchard_sky_texture_end
+.type vultra_builtin_citrus_orchard_sky_texture_start, @object
+.type vultra_builtin_citrus_orchard_sky_texture_end, @object
+.p2align 4
+vultra_builtin_citrus_orchard_sky_texture_start:
+.incbin "builtin/textures/environment_maps/citrus_orchard_puresky_1k.vtexture"
+vultra_builtin_citrus_orchard_sky_texture_end:
+#endif

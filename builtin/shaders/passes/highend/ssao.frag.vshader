@@ -6,9 +6,9 @@ version = 460
 radius : float = 1.5 range(0.0, 10.0)
 bias : float = 0.05 range(0.0, 1.0)
 intensity : float = 1.2 range(0.0, 4.0)
-maxRadiusPixels : int = 32 range(4, 128)
-stepCount : int = 4 range(2, 8)
-directionCount : int = 8 range(1, 16)
+maxRadiusPixels : int = 16 range(4, 128)
+stepCount : int = 2 range(2, 8)
+directionCount : int = 4 range(1, 16)
 
 [keywords]
 USE_MULTIVIEW : bool permute
@@ -68,6 +68,15 @@ vec2 rotate_sample(vec2 v, float angle)
     return vec2(c * v.x - s * v.y, s * v.x + c * v.y);
 }
 
+vec3 decode_gbuffer_normal(vec2 encoded)
+{
+    vec2 f = encoded * 2.0 - 1.0;
+    vec3 n = vec3(f, 1.0 - abs(f.x) - abs(f.y));
+    float t = clamp(-n.z, 0.0, 1.0);
+    n.xy += vec2(n.x >= 0.0 ? -t : t, n.y >= 0.0 ? -t : t);
+    return normalize(n);
+}
+
 void main()
 {
     vec2 resolution = u_Camera.resolution.xy;
@@ -80,53 +89,45 @@ void main()
         return;
     }
 
-    vec3 p = reconstruct_view_pos(uv, depth);
-    vec3 normalWS = normalize(VULTRA_FETCH(u_Normal, ivec2(gl_FragCoord.xy), 0).xyz);
+    vec3 fragPosVS = reconstruct_view_pos(uv, depth);
+    vec3 normalWS = decode_gbuffer_normal(VULTRA_FETCH(u_Normal, ivec2(gl_FragCoord.xy), 0).xy);
     vec3 normalVS = normalize(mat3(u_Camera.view) * normalWS);
-    float centerDepth = max(-p.z, 0.0);
 
+    float noiseAngle = interleaved_gradient_noise(gl_FragCoord.xy) * 6.28318530718;
+    vec3 randomVec = normalize(vec3(cos(noiseAngle), sin(noiseAngle), 0.0));
+    vec3 tangent = normalize(randomVec - normalVS * dot(randomVec, normalVS));
+    vec3 bitangent = cross(normalVS, tangent);
+    mat3 tbn = mat3(tangent, bitangent, normalVS);
+
+    int sampleCount = clamp(stepCount * directionCount, 4, 32);
     float occlusion = 0.0;
-    float sampleCount = 0.0;
-    float focalScale = 0.5 * resolution.y / tan(max(u_Camera.fovY, 0.001) * 0.5);
-    float pixelRadius = clamp(radius * focalScale / max(centerDepth, 1e-3), 1.0, float(maxRadiusPixels));
-    float angleOffset = interleaved_gradient_noise(gl_FragCoord.xy) * 6.28318530718;
-    int dirs = clamp(directionCount, 4, 16);
-    int steps = clamp(stepCount, 2, 8);
-
-    for (int d = 0; d < dirs; ++d)
+    for (int i = 0; i < sampleCount; ++i)
     {
-        float angle = (float(d) + 0.5) * 6.28318530718 / float(dirs) + angleOffset;
-        vec2 dir = vec2(cos(angle), sin(angle));
-        float horizon = -1.0;
+        float fi = float(i);
+        float n0 = interleaved_gradient_noise(gl_FragCoord.xy + vec2(fi * 17.0, fi * 29.0));
+        float n1 = interleaved_gradient_noise(gl_FragCoord.yx + vec2(fi * 41.0, fi * 13.0));
+        float phi = 6.28318530718 * (fi * 0.61803398875 + n0);
+        float z = clamp((fi + 0.5 + n1 * 0.25) / float(sampleCount), 0.0, 1.0);
+        float r = sqrt(max(1.0 - z * z, 0.0));
+        vec3 kernel = vec3(cos(phi) * r, sin(phi) * r, z);
+        float scale = mix(0.1, 1.0, pow((fi + 1.0) / float(sampleCount), 2.0));
 
-        for (int s = 1; s <= steps; ++s)
-        {
-            float jitter = interleaved_gradient_noise(gl_FragCoord.xy + vec2(float(d) * 17.0, float(s) * 31.0));
-            float stepScale = (float(s) - 0.5 + jitter) / float(steps);
-            vec2 sampleUv = uv + dir * pixelRadius * stepScale / resolution;
-            if (any(lessThan(sampleUv, vec2(0.0))) || any(greaterThan(sampleUv, vec2(1.0))))
-                continue;
+        vec3 samplePosVS = fragPosVS + (tbn * kernel) * radius * scale;
+        vec4 offset = u_Camera.projection * vec4(samplePosVS, 1.0);
+        offset.xyz *= safe_rcp_w(offset.w);
+        vec2 sampleUv = offset.xy * 0.5 + 0.5;
+        if (any(lessThan(sampleUv, vec2(0.0))) || any(greaterThan(sampleUv, vec2(1.0))))
+            continue;
 
-            float sampleDepthRaw = VULTRA_SAMPLE(u_Depth, sampleUv).r;
-            if (sampleDepthRaw >= 1.0)
-                continue;
+        float sampleDepthRaw = VULTRA_SAMPLE(u_Depth, sampleUv).r;
+        if (sampleDepthRaw >= 1.0)
+            continue;
 
-            vec3 q = reconstruct_view_pos(sampleUv, sampleDepthRaw);
-            vec3 h = q - p;
-            float dist2 = dot(h, h);
-            if (dist2 <= 1e-8 || dist2 > radius * radius)
-                continue;
-
-            float dist = sqrt(dist2);
-            float nDotH = dot(normalVS, h / dist);
-            float horizonDelta = max(nDotH - horizon - bias, 0.0);
-            horizon = max(horizon, nDotH);
-            float rangeWeight = clamp(1.0 - dist2 / max(radius * radius, 1e-6), 0.0, 1.0);
-            occlusion += horizonDelta * rangeWeight;
-            sampleCount += 1.0;
-        }
+        float sampleDepthVS = reconstruct_view_pos(sampleUv, sampleDepthRaw).z;
+        float rangeCheck = smoothstep(0.0, 1.0, radius / max(abs(fragPosVS.z - sampleDepthVS), 1e-4));
+        occlusion += (sampleDepthVS >= samplePosVS.z + bias ? 1.0 : 0.0) * rangeCheck;
     }
 
-    float ao = 1.0 - intensity * occlusion / max(sampleCount, 1.0);
-    FragAO = clamp(ao, 0.0, 1.0);
+    float ao = 1.0 - occlusion / float(sampleCount);
+    FragAO = pow(clamp(ao, 0.0, 1.0), max(intensity, 0.001));
 }

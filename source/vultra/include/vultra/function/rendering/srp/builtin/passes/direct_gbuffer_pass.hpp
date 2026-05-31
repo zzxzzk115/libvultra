@@ -18,13 +18,17 @@ namespace vultra
 
     public:
         DirectGBufferPass();
-        FrameGraphResource addPass(FrameGraphBuildContext& ctx);
+        FrameGraphResource addDepthPrePass(FrameGraphBuildContext& ctx);
+        FrameGraphResource addPass(FrameGraphBuildContext& ctx, FrameGraphResource prepassDepth = {});
 
     private:
-        rhi::GraphicsPipeline createPipeline(rhi::PixelFormat colorFormat,
+        rhi::GraphicsPipeline createPipeline(bool             depthOnly,
+                                             rhi::PixelFormat colorFormat,
                                              rhi::PixelFormat normalFormat,
                                              rhi::PixelFormat materialFormat,
                                              rhi::PixelFormat entityIdFormat,
+                                             bool             writeEntityId,
+                                             bool             readOnlyDepth,
                                              uint32_t         vertexAttributeMask,
                                              uint32_t         positionOffset,
                                              uint32_t         normalOffset,

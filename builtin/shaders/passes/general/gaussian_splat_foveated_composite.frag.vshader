@@ -51,7 +51,7 @@ vec4 sampleLayer(const int layerIndex, const vec2 uv)
 #if USE_BASE
     return texture(t_BaseLayer, uvw);
 #else
-    return vec4(0.0, 0.0, 0.0, 1.0);
+    return vec4(0.0);
 #endif
 #else
     if (layerIndex == 0)
@@ -63,14 +63,15 @@ vec4 sampleLayer(const int layerIndex, const vec2 uv)
 #if USE_BASE
     return texture(t_BaseLayer, uv);
 #else
-    return vec4(0.0, 0.0, 0.0, 1.0);
+    return vec4(0.0);
 #endif
 #endif
 }
 
-vec3 overPremultiplied(const vec4 src, const vec3 dst)
+vec4 overPremultiplied(const vec4 src, const vec4 dst)
 {
-    return src.rgb + dst * (1.0 - clamp(src.a, 0.0, 1.0));
+    float srcAlpha = clamp(src.a, 0.0, 1.0);
+    return vec4(src.rgb + dst.rgb * (1.0 - srcAlpha), srcAlpha + dst.a * (1.0 - srcAlpha));
 }
 
 void main()
@@ -90,7 +91,5 @@ void main()
     const vec4 outer = sampleLayer(2, sampleUv);
     const vec4 gaussian = mix(mix(fovea, mid, layerBlend.x), outer, layerBlend.y);
 
-    vec3 color = sampleLayer(3, sampleUv).rgb;
-    color = overPremultiplied(gaussian, color);
-    outColor = vec4(color, 1.0);
+    outColor = overPremultiplied(gaussian, sampleLayer(3, sampleUv));
 }

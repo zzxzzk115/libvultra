@@ -18,6 +18,14 @@ namespace vultra
     namespace
     {
         constexpr auto PASS_NAME = "VisibilityBufferPass";
+
+        struct VisibilityPushConstants
+        {
+            uint32_t maxDraws {0};
+            uint32_t maxMeshlets {0};
+            uint32_t maxMeshletVertices {0};
+            uint32_t maxMeshletTriangles {0};
+        };
     }
 
     FrameGraphResource VisibilityBufferPass::addPass(FrameGraphBuildContext& ctx)
@@ -136,7 +144,8 @@ namespace vultra
                                              });
                 }
             },
-            [this](const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
+            [this, readOnlyDepth = static_cast<bool>(depthPre)](
+                const PassData& pd, FrameGraphPassResources& resources, void* ctxPtr) {
                 VULTRA_SCOPED_FRAMEGRAPH_EXEC_CONTEXT(rc, ctxPtr);
                 setRenderDevice(rc.rd);
                 if (!rc.ext.builtinShaderLib)
@@ -146,13 +155,15 @@ namespace vultra
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
 
                 const auto* gpuSceneView = rc.view().gpuSceneView;
-                if (!gpuSceneView || !pd.drawBuffer || !pd.indirectBuffer || !pd.meshletsBuffer ||
+                const auto* gpuSceneDatabase = rc.view().gpuSceneDatabase;
+                if (!gpuSceneView || !gpuSceneDatabase || !gpuSceneDatabase->resources || !pd.drawBuffer ||
+                    !pd.indirectBuffer || !pd.meshletsBuffer ||
                     !pd.meshletVertexBuffer || !pd.meshletTriangleBuffer)
                     return;
 
                 assert(rc.framebufferInfo().has_value());
                 const auto framebufferInfo = rc.framebufferInfo().value();
-                const auto* pipeline = getPipeline(framebufferInfo.viewMask);
+                const auto* pipeline = getPipeline(readOnlyDepth, framebufferInfo.viewMask);
                 if (!pipeline)
                     return;
 
@@ -167,14 +178,20 @@ namespace vultra
 
                 rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
+                const VisibilityPushConstants pc {
+                    .maxDraws            = gpuSceneView->maxDraws,
+                    .maxMeshlets         = static_cast<uint32_t>(gpuSceneDatabase->resources->meshlets.cpuMeshlets.size()),
+                    .maxMeshletVertices  = static_cast<uint32_t>(
+                         gpuSceneDatabase->resources->meshlets.cpuMeshletVertices.size()),
+                    .maxMeshletTriangles = static_cast<uint32_t>(
+                         gpuSceneDatabase->resources->meshlets.cpuMeshletTriangles.size()),
+                };
+                rc.cb.pushConstants(rhi::ShaderStages::eVertex, 0, &pc);
 
                 constexpr uint32_t kRenderQueueOpaque    = 0u;
                 constexpr uint32_t kRenderQueueAlphaMask = 1u;
                 const uint32_t     queueStride           = gpuSceneView->maxDraws;
-                const bool         useIndirectCount =
-                    drawSetBuf &&
-                    HasFlagValues(rc.rd.getFeatureReport().flags,
-                                  vultra::rhi::RenderDeviceFeatureReportFlagBits::eDrawIndirectCount);
+                const bool         useIndirectCount = false;
 
                 const auto drawQueueWindow = [&](const uint32_t queueId) {
                     const uint32_t firstCommand = queueId * queueStride;
@@ -213,16 +230,47 @@ namespace vultra
                     }
                 };
 
-                drawQueueWindow(kRenderQueueOpaque);
-                drawQueueWindow(kRenderQueueAlphaMask);
+                if (drawSetBuf || gpuSceneView->isGpuDriven())
+                {
+                    drawQueueWindow(kRenderQueueOpaque);
+                    drawQueueWindow(kRenderQueueAlphaMask);
+                }
+                else
+                {
+                    const uint32_t commandCount = static_cast<uint32_t>(gpuSceneView->indirectCommands.size());
+                    if (commandCount > 0u)
+                    {
+                        if (HasFlagValues(rc.rd.getFeatureReport().flags,
+                                          vultra::rhi::RenderDeviceFeatureReportFlagBits::eMultiDraw))
+                        {
+                            rc.cb.drawIndirect(rhi::DrawIndirectInfo {
+                                .buffer       = indirectBuf,
+                                .firstCommand = 0u,
+                                .commandCount = commandCount,
+                            });
+                        }
+                        else
+                        {
+                            for (uint32_t i = 0; i < commandCount; ++i)
+                            {
+                                rc.cb.drawIndirect(rhi::DrawIndirectInfo {
+                                    .buffer       = indirectBuf,
+                                    .firstCommand = i,
+                                    .commandCount = 1u,
+                                });
+                            }
+                        }
+                    }
+                }
                 rc.cb.endRendering();
             });
 
         ctx.data.set(kResKey_VisibilityBuffer, data.visibility);
+        ctx.data.set(kResKey_DepthTexture, data.depth);
         return data.visibility;
     }
 
-    rhi::GraphicsPipeline VisibilityBufferPass::createPipeline(const uint32_t viewMask) const
+    rhi::GraphicsPipeline VisibilityBufferPass::createPipeline(const bool readOnlyDepth, const uint32_t viewMask) const
     {
         auto vertexShader = loadHighendShader("visibility_buffer", vshadersystem::ShaderStage::eVert);
         if (!vertexShader)
@@ -246,7 +294,7 @@ namespace vultra
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)
             .setDepthStencil({
                 .depthTest      = true,
-                .depthWrite     = false,
+                .depthWrite     = !readOnlyDepth,
                 .depthCompareOp = rhi::CompareOp::eLessOrEqual,
             })
             .setBlending(0, {.enabled = false})

@@ -1,0 +1,12 @@
+[vimport]
+version=1
+importer="script_lua"
+uid="a68d988c2f6447063b467deda1693acb"
+
+[source]
+file="render/passes/invert.lua"
+
+[output]
+file="imported/script_lua/render/passes/invert.lua"
+
+[params]

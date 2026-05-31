@@ -96,17 +96,18 @@ namespace
         return filename.empty() ? "custom" : filename;
     }
 
-    std::vector<std::string> renderGraphUrisFromVpkRecords(const vasset::VpkReadOnly& vpk)
+    std::vector<std::string> renderGraphUrisFromRegistry(const vasset::VAssetRegistry& registry)
     {
         std::vector<std::string> uris;
-        for (const auto& entry : vpk.registry)
+        for (const auto& [_, entry] : registry.getRegistry())
         {
+            static_cast<void>(_);
             if (entry.type != vasset::VAssetType::eRenderGraphJson)
                 continue;
-            if (entry.pathOffset + entry.pathSize > vpk.stringTable.size())
-                continue;
 
-            std::string logicalPath {vpk.stringTable.data() + entry.pathOffset, entry.pathSize};
+            std::string logicalPath = !entry.sourcePath.empty() ? entry.sourcePath : entry.importedPath;
+            if (logicalPath.empty())
+                continue;
             std::replace(logicalPath.begin(), logicalPath.end(), '\\', '/');
             if (logicalPath.starts_with("res://"))
                 uris.push_back(std::move(logicalPath));
@@ -402,19 +403,21 @@ namespace
             }
 
             auto* renderService = engine.ctx().services.tryGet<vultra::IRenderService>();
+            auto* assetService  = engine.ctx().services.tryGet<vultra::IAssetService>();
             if (renderService)
             {
-                if (auto opened = vasset::openVpk(m_VpkPath->generic_string()); opened)
+                VULTRA_CLIENT_INFO("[Vultra] Runtime post-configure: loading render graphs from asset registry");
+                const auto renderGraphUris =
+                    assetService ? renderGraphUrisFromRegistry(assetService->registry()) : std::vector<std::string> {};
+                for (const auto& uri : renderGraphUris)
                 {
-                    const auto renderGraphUris = renderGraphUrisFromVpkRecords(opened.value());
-                    for (const auto& uri : renderGraphUris)
-                    {
-                        const auto rendererKey = rendererKeyFromRenderGraphUri(uri);
-                        renderService->reloadRenderPipeline(uri, rendererKey);
-                        if (m_RuntimeRendererKey.empty() || uri == "res://render/default.vrg.json")
-                            m_RuntimeRendererKey = rendererKey;
-                    }
+                    const auto rendererKey = rendererKeyFromRenderGraphUri(uri);
+                    renderService->reloadRenderPipeline(uri, rendererKey);
+                    if (m_RuntimeRendererKey.empty() || uri == "res://render/default.vrg.json")
+                        m_RuntimeRendererKey = rendererKey;
                 }
+                VULTRA_CLIENT_INFO("[Vultra] Runtime post-configure: loaded {} render graph(s)",
+                                   renderGraphUris.size());
             }
 
             if (auto* cameraService = engine.ctx().services.tryGet<vultra::ICameraService>())

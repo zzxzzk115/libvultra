@@ -27,13 +27,22 @@ namespace vultra
         std::string_view name() const override { return m_RendererKey; }
         void             init() override;
         void             buildFrameGraph(FrameGraphBuildContext& ctx) override;
+        bool             updateRenderGraph(std::string_view uri);
+        void             invalidateShaderPipelines();
 
     private:
         struct ShaderRef
         {
             std::string library {"project"};
+            std::string vertexLibrary;
+            std::string fragmentLibrary;
             std::string vertex;
             std::string fragment;
+            std::string compute;
+            std::string raygen;
+            std::string miss;
+            std::string closestHit;
+            std::string anyHit;
         };
 
         struct FullscreenPass
@@ -54,10 +63,23 @@ namespace vultra
 
         struct ProjectGraphPass
         {
+            enum class Pipeline
+            {
+                eGraphics,
+                eCompute,
+                eRayTracing,
+            };
+
             std::string type;
+            Pipeline    pipeline {Pipeline::eGraphics};
             FullscreenPass fullscreen;
+            ShaderRef      shader;
             std::vector<std::string> inputs;
             std::vector<std::string> outputs;
+            uint32_t dispatchX {1};
+            uint32_t dispatchY {1};
+            uint32_t dispatchZ {1};
+            bool     dispatchByOutputSize {false};
         };
 
         struct PipelineAsset
@@ -70,6 +92,7 @@ namespace vultra
         };
 
         class FullscreenPassRuntime;
+        class ComputePassRuntime;
         class RenderGraphRuntime;
         struct RuntimeFeature;
 

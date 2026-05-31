@@ -1,0 +1,3 @@
+#include "vultra/function/asset/builtin_resource_ids.hpp"
+
+VULTRA_BUILTIN_RESOURCE_CITRUS_ORCHARD_SKY_TEXTURE RCDATA "../../../builtin/textures/environment_maps/citrus_orchard_puresky_1k.vtexture"

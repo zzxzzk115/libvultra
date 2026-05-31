@@ -82,6 +82,7 @@ namespace vultra
         World*        worldOverride {nullptr};
         glm::vec4     clearValue {0, 0, 0, 1};
         uint32_t      clearMode {0};
+        bool          suppressSkybox {false};
         bool          renderImGui {true};
         bool          debugEntityIdOutput {false};
         bool          selectionOutlineEnabled {false};
@@ -301,17 +302,17 @@ namespace vultra
         float radius {1.5f};
         float bias {0.05f};
         float intensity {1.0f};
-        int   maxRadiusPixels {32};
-        int   stepCount {4};
-        int   directionCount {8};
+        int   maxRadiusPixels {16};
+        int   stepCount {2};
+        int   directionCount {4};
     };
 
     struct SsrRenderSettings
     {
         bool  enabled {true};
         float reflectionFactor {0.2f};
-        int   maxSteps {16};
-        int   binaryRefinement {3};
+        int   maxSteps {8};
+        int   binaryRefinement {2};
         float stride {0.35f};
         float thickness {0.5f};
     };

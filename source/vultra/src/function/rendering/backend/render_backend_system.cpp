@@ -224,6 +224,9 @@ namespace vultra
         m_XRFrameActive      = false;
         m_XRShouldRender     = false;
         m_XRSessionRequested = false;
+        m_XRSessionUserClosed = false;
+        m_XRSessionRestartPending = false;
+        m_XRSessionStartDeferred  = false;
 
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
         m_XRBackend.reset();
@@ -250,6 +253,26 @@ namespace vultra
         m_XREyeViews.clear();
 
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
+        if (m_XRSessionRestartPending && m_XRBackend)
+        {
+            m_RenderDevice->waitIdle();
+            m_XRBackend.reset();
+            m_XRMirrorTargets.clear();
+            m_XREyeViews.clear();
+            m_LastXREyeViews.clear();
+            m_XRFrameActive             = false;
+            m_XRShouldRender            = false;
+            m_XRSessionRestartPending   = false;
+            m_XRSessionStartDeferred    = true;
+            VULTRA_CORE_INFO("[RenderBackendSystem] XR session restarted; released old session, skipping transition frame");
+            return false;
+        }
+        if (m_XRSessionStartDeferred)
+        {
+            m_XRSessionStartDeferred = false;
+            VULTRA_CORE_INFO("[RenderBackendSystem] XR session restart deferred one frame before start");
+            return false;
+        }
         if (!m_XRSessionRequested && m_XRBackend)
         {
             m_RenderDevice->waitIdle();
@@ -257,10 +280,12 @@ namespace vultra
             m_XRMirrorTargets.clear();
             m_XREyeViews.clear();
             m_LastXREyeViews.clear();
+            m_XRSessionRestartPending = false;
+            m_XRSessionStartDeferred  = false;
             VULTRA_CORE_INFO("[RenderBackendSystem] XR session released; skipping transition frame");
             return false;
         }
-        if (m_XRSessionRequested && !m_XRBackend && m_RenderDevice->getXRDevice())
+        if (m_XRSessionRequested && !m_XRSessionUserClosed && !m_XRBackend && m_RenderDevice->getXRDevice())
         {
             try
             {
@@ -353,6 +378,21 @@ namespace vultra
                     break;
 
                 case openxr::XRHeadset::BeginFrameResult::eSkipAll:
+                    if (m_XRBackend && m_XRBackend->isSessionCloseRequested())
+                    {
+                        m_RenderDevice->waitIdle();
+                        m_XRBackend.reset();
+                        m_XRMirrorTargets.clear();
+                        m_XREyeViews.clear();
+                        m_LastXREyeViews.clear();
+                        m_XRFrameActive       = false;
+                        m_XRShouldRender      = false;
+                        m_XRSessionRequested  = false;
+                        m_XRSessionRestartPending = false;
+                        m_XRSessionStartDeferred  = false;
+                        m_XRSessionUserClosed = true;
+                        VULTRA_CORE_INFO("[RenderBackendSystem] XR session closed by runtime/user");
+                    }
                     m_XRFrameActive  = false;
                     m_XRShouldRender = false;
                     return false;
@@ -398,7 +438,24 @@ namespace vultra
 
     bool RenderBackendSystem::isXRMirrorEnabled() const { return m_XRMirrorEnabled; }
 
-    void RenderBackendSystem::requestXRSession(const bool requested) { m_XRSessionRequested = requested; }
+    void RenderBackendSystem::requestXRSession(const bool requested)
+    {
+        if (!requested)
+        {
+            m_XRSessionUserClosed = false;
+            if (m_XRBackend)
+                m_XRSessionRestartPending = true;
+            else
+                m_XRSessionStartDeferred = false;
+        }
+        else if (m_XRSessionRestartPending)
+        {
+            m_XRSessionUserClosed  = false;
+            m_XRSessionRequested   = true;
+            return;
+        }
+        m_XRSessionRequested = requested && !m_XRSessionUserClosed;
+    }
 
     bool RenderBackendSystem::isExitRequested() const
     {

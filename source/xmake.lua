@@ -262,6 +262,11 @@ if not is_plat("android") and not is_plat("wasm") then
         add_includedirs("vultra_app/include")
         add_headerfiles("vultra_app/include/(**.hpp)")
         add_files("vultra_app/src/**.cpp")
+        if is_plat("windows") then
+            add_files("vultra_app/resources/**.rc")
+        elseif is_plat("linux") or is_plat("macosx") then
+            add_files("vultra_app/resources/**.S")
+        end
         add_deps("vultra", "vasset-import")
         add_packages("argparse")
         if has_config("vultra_app_validation") then

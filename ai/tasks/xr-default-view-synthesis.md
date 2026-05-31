@@ -32,5 +32,5 @@ composition explicit only where view synthesis needs left/right eye targets.
 ## Follow-Up
 
 - Add `XrGeometryWarp` as a non-adaptive atomic pass.
-- Add `XrDepthAwarePullPush` as an atomic repair pass.
+- Add `XrPullPushInpaint` as a non-depth-aware atomic repair pass.
 - Keep adaptive geometry warping out of the initial atomic implementation.

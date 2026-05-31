@@ -1,231 +1,245 @@
-{
-  "meta": {
-    "editor": {
-      "nodes": {
-        "DeferredLighting": {
-          "pos": [
-            1134.0,
-            -94.0
-          ]
-        },
-        "DirectGBuffer": {
-          "pos": [
-            260.0,
-            80.0
-          ]
-        },
-        "FinalComposition": {
-          "pos": [
-            4375.0,
-            244.0
-          ]
-        },
-        "Fxaa": {
-          "pos": [
-            3508.0,
-            -158.0
-          ]
-        },
-        "GeneralGaussianSplatComposite": {
-          "pos": [
-            1519.0,
-            414.0
-          ]
-        },
-        "SelectionOutline": {
-          "pos": [
-            3827.0,
-            85.0
-          ]
-        },
-        "ShadowMap": {
-          "pos": [
-            499.0,
-            427.0
-          ]
-        },
-        "Ssao": {
-          "pos": [
-            708.0,
-            -251.0
-          ]
-        },
-        "Ssr": {
-          "pos": [
-            1928.0,
-            575.0
-          ]
-        },
-        "SsrComposite": {
-          "pos": [
-            2510.0,
-            -145.0
-          ]
-        },
-        "ToneMapping": {
-          "pos": [
-            3022.0,
-            -189.0
-          ]
-        }
-      }
-    }
-  },
-  "passes": [
-    {
-      "enabled": true,
-      "id": "DirectGBuffer",
-      "type": "DirectGBuffer"
-    },
-    {
-      "enabled": true,
-      "id": "ShadowMap",
-      "params": {
-        "autoFitBounds": true,
-        "cascadeCount": 4,
-        "coverageRadius": 75.0,
-        "depthBias": 0.0012,
-        "enabled": true,
-        "lightDistance": 200.0,
-        "normalBias": 0.015,
-        "pcssLightRadius": 1.5,
-        "resolution": 2048,
-        "splitLambda": 0.6,
-        "stableTexelSnapping": true,
-        "zRange": 120.0
-      },
-      "type": "ShadowMap"
-    },
-    {
-      "enabled": true,
-      "id": "Ssao",
-      "inputs": {
-        "depth": "DirectGBuffer.depth",
-        "normal": "DirectGBuffer.normal"
-      },
-      "params": {
-        "bias": 0.05,
-        "directionCount": 8,
-        "enabled": true,
-        "intensity": 1.0,
-        "maxRadiusPixels": 32,
-        "radius": 1.5,
-        "stepCount": 4
-      },
-      "type": "Ssao"
-    },
-    {
-      "enabled": true,
-      "id": "DeferredLighting",
-      "inputs": {
-        "ao": "Ssao.ao",
-        "color": "DirectGBuffer.color",
-        "depth": "DirectGBuffer.depth",
-        "material": "DirectGBuffer.material",
-        "normal": "DirectGBuffer.normal",
-        "shadowData": "ShadowMap.shadowData",
-        "shadowMap": "ShadowMap.shadowMap"
-      },
-      "params": {
-        "ambientIntensity": 1.0,
-        "debugCascades": false,
-        "debugViewMode": 0,
-        "iblIntensity": 1.0,
-        "pcfRadius": 2,
-        "pcssBlockerSamples": 12,
-        "shadowDebugMode": 0,
-        "shadowFilterMode": 1,
-        "shadowStrength": 0.85
-      },
-      "type": "DeferredLighting"
-    },
-    {
-      "enabled": true,
-      "id": "GeneralGaussianSplatComposite",
-      "inputs": {
-        "source": "DeferredLighting.color"
-      },
-      "type": "GeneralGaussianSplatComposite"
-    },
-    {
-      "enabled": true,
-      "id": "Ssr",
-      "inputs": {
-        "color": "GeneralGaussianSplatComposite.color",
-        "depth": "DirectGBuffer.depth",
-        "material": "DirectGBuffer.material",
-        "normal": "DirectGBuffer.normal"
-      },
-      "params": {
-        "binaryRefinement": 3,
-        "enabled": true,
-        "maxSteps": 16,
-        "reflectionFactor": 0.2,
-        "stride": 0.35,
-        "thickness": 0.5
-      },
-      "type": "Ssr"
-    },
-    {
-      "enabled": true,
-      "id": "SsrComposite",
-      "inputs": {
-        "reflection": "Ssr.reflection",
-        "source": "GeneralGaussianSplatComposite.color"
-      },
-      "params": {
-        "enabled": true
-      },
-      "type": "SsrComposite"
-    },
-    {
-      "enabled": true,
-      "id": "ToneMapping",
-      "inputs": {
-        "source": "SsrComposite.color"
-      },
-      "params": {
-        "enabled": true,
-        "exposure": 1.0,
-        "method": 0
-      },
-      "type": "ToneMapping"
-    },
-    {
-      "enabled": true,
-      "id": "Fxaa",
-      "inputs": {
-        "source": "ToneMapping.color"
-      },
-      "params": {
-        "enabled": true
-      },
-      "type": "Fxaa"
-    },
-    {
-      "enabled": true,
-      "id": "SelectionOutline",
-      "inputs": {
-        "depth": "DirectGBuffer.depth",
-        "entityId": "DirectGBuffer.entityId",
-        "source": "Fxaa.color"
-      },
-      "params": {
-        "edgeOpacity": 0.35,
-        "enabled": true,
-        "fillOpacity": 0.0,
-        "thickness": 3.0
-      },
-      "type": "SelectionOutline"
-    },
-    {
-      "enabled": true,
-      "id": "FinalComposition",
-      "inputs": {
-        "source": "SelectionOutline.color"
-      },
-      "type": "FinalComposition"
-    }
-  ],
-  "version": 3
+﻿{
+    "meta":  {
+                 "editor":  {
+                                "nodes":  {
+                                              "DeferredLighting":  {
+                                                                       "pos":  [
+                                                                                   1134.0,
+                                                                                   -94.0
+                                                                               ]
+                                                                   },
+                                              "FinalComposition":  {
+                                                                       "pos":  [
+                                                                                   4375.0,
+                                                                                   244.0
+                                                                               ]
+                                                                   },
+                                              "Fxaa":  {
+                                                           "pos":  [
+                                                                       3508.0,
+                                                                       -158.0
+                                                                   ]
+                                                       },
+                                              "GeneralGaussianSplatComposite":  {
+                                                                                    "pos":  [
+                                                                                                1519.0,
+                                                                                                414.0
+                                                                                            ]
+                                                                                },
+                                              "SelectionOutline":  {
+                                                                       "pos":  [
+                                                                                   3827.0,
+                                                                                   85.0
+                                                                               ]
+                                                                   },
+                                              "ShadowMap":  {
+                                                                "pos":  [
+                                                                            499.0,
+                                                                            427.0
+                                                                        ]
+                                                            },
+                                              "Ssao":  {
+                                                           "pos":  [
+                                                                       708.0,
+                                                                       -251.0
+                                                                   ]
+                                                       },
+                                              "Ssr":  {
+                                                          "pos":  [
+                                                                      1928.0,
+                                                                      575.0
+                                                                  ]
+                                                      },
+                                              "SsrComposite":  {
+                                                                   "pos":  [
+                                                                               2510.0,
+                                                                               -145.0
+                                                                           ]
+                                                               },
+                                              "ToneMapping":  {
+                                                                  "pos":  [
+                                                                              3022.0,
+                                                                              -189.0
+                                                                          ]
+                                                              },
+                                              "DirectDepthPre":  {
+                                                                     "pos":  [
+                                                                                 -30,
+                                                                                 80
+                                                                             ]
+                                                                 },
+                                              "DirectGBuffer":  {
+                                                                    "pos":  [
+                                                                                260,
+                                                                                80
+                                                                            ]
+                                                                }
+                                          }
+                            }
+             },
+    "passes":  [
+                   {
+                       "enabled":  true,
+                       "id":  "DirectDepthPre",
+                       "type":  "DirectDepthPre"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "DirectGBuffer",
+                       "inputs":  {
+                                      "depth":  "DirectDepthPre.depth"
+                                  },
+                       "type":  "DirectGBuffer"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "ShadowMap",
+                       "params":  {
+                                      "autoFitBounds":  true,
+                                      "cascadeCount":  4,
+                                      "coverageRadius":  75.0,
+                                      "depthBias":  0.0012,
+                                      "enabled":  true,
+                                      "lightDistance":  200.0,
+                                      "normalBias":  0.015,
+                                      "pcssLightRadius":  1.5,
+                                      "resolution":  2048,
+                                      "splitLambda":  0.6,
+                                      "stableTexelSnapping":  true,
+                                      "zRange":  120.0
+                                  },
+                       "type":  "ShadowMap"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "Ssao",
+                       "inputs":  {
+                                      "depth":  "DirectGBuffer.depth",
+                                      "normal":  "DirectGBuffer.normal"
+                                  },
+                       "params":  {
+                                      "bias":  0.05,
+                                      "directionCount":  4,
+                                      "enabled":  false,
+                                      "intensity":  1.0,
+                                      "maxRadiusPixels":  16,
+                                      "radius":  1.5,
+                                      "stepCount":  2
+                                  },
+                       "type":  "Ssao"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "DeferredLighting",
+                       "inputs":  {
+                                      "ao":  "Ssao.ao",
+                                      "color":  "DirectGBuffer.color",
+                                      "depth":  "DirectGBuffer.depth",
+                                      "material":  "DirectGBuffer.material",
+                                      "normal":  "DirectGBuffer.normal",
+                                      "shadowData":  "ShadowMap.shadowData",
+                                      "shadowMap":  "ShadowMap.shadowMap"
+                                  },
+                       "params":  {
+                                      "ambientIntensity":  1.0,
+                                      "debugCascades":  false,
+                                      "debugViewMode":  0,
+                                      "iblIntensity":  1.0,
+                                      "pcfRadius":  2,
+                                      "pcssBlockerSamples":  12,
+                                      "shadowDebugMode":  0,
+                                      "shadowFilterMode":  1,
+                                      "shadowStrength":  0.85
+                                  },
+                       "type":  "DeferredLighting"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "GeneralGaussianSplatComposite",
+                       "inputs":  {
+                                      "source":  "DeferredLighting.color"
+                                  },
+                       "type":  "GeneralGaussianSplatComposite"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "Ssr",
+                       "inputs":  {
+                                      "color":  "GeneralGaussianSplatComposite.color",
+                                      "depth":  "DirectGBuffer.depth",
+                                      "material":  "DirectGBuffer.material",
+                                      "normal":  "DirectGBuffer.normal"
+                                  },
+                       "params":  {
+                                      "binaryRefinement":  2,
+                                      "enabled":  false,
+                                      "maxSteps":  8,
+                                      "reflectionFactor":  0.2,
+                                      "stride":  0.35,
+                                      "thickness":  0.5
+                                  },
+                       "type":  "Ssr"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "SsrComposite",
+                       "inputs":  {
+                                      "reflection":  "Ssr.reflection",
+                                      "source":  "GeneralGaussianSplatComposite.color"
+                                  },
+                       "params":  {
+                                      "enabled":  false
+                                  },
+                       "type":  "SsrComposite"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "ToneMapping",
+                       "inputs":  {
+                                      "source":  "SsrComposite.color"
+                                  },
+                       "params":  {
+                                      "enabled":  true,
+                                      "exposure":  1.0,
+                                      "method":  0
+                                  },
+                       "type":  "ToneMapping"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "Fxaa",
+                       "inputs":  {
+                                      "source":  "ToneMapping.color"
+                                  },
+                       "params":  {
+                                      "enabled":  true
+                                  },
+                       "type":  "Fxaa"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "SelectionOutline",
+                       "inputs":  {
+                                      "depth":  "DirectGBuffer.depth",
+                                      "entityId":  "DirectGBuffer.entityId",
+                                      "source":  "Fxaa.color"
+                                  },
+                       "params":  {
+                                      "edgeOpacity":  0.35,
+                                      "enabled":  true,
+                                      "fillOpacity":  0.0,
+                                      "thickness":  3.0
+                                  },
+                       "type":  "SelectionOutline"
+                   },
+                   {
+                       "enabled":  true,
+                       "id":  "FinalComposition",
+                       "inputs":  {
+                                      "source":  "SelectionOutline.color"
+                                  },
+                       "type":  "FinalComposition"
+                   }
+               ],
+    "version":  3
 }

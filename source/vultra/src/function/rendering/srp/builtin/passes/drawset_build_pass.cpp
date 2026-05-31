@@ -22,7 +22,7 @@ namespace vultra
         {
             uint32_t maxDraws {0};
             uint32_t useIndirectCount {0};
-            uint32_t padding1 {0};
+            uint32_t maxMeshlets {0};
             uint32_t padding2 {0};
         };
     } // namespace
@@ -130,11 +130,8 @@ namespace vultra
 
                 DrawsetBuildPushConstants pc {};
                 pc.maxDraws = gpuSceneView->maxDraws;
-                pc.useIndirectCount =
-                    HasFlagValues(rc.rd.getFeatureReport().flags,
-                                  vultra::rhi::RenderDeviceFeatureReportFlagBits::eDrawIndirectCount) ?
-                        1u :
-                        0u;
+                pc.useIndirectCount = 0u;
+                pc.maxMeshlets = static_cast<uint32_t>(gpuSceneDatabase->resources->meshlets.cpuMeshlets.size());
 
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);

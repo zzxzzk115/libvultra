@@ -63,7 +63,9 @@ namespace vultra
         if (!hasMeshInstances || !ctx.view().target)
             return;
 
-        auto color = m_GBufferPass->addPass(ctx);
+        m_GBufferPass->addDepthPrePass(ctx);
+        const auto prepassDepth = ctx.data.tryGet(kResKey_DepthTexture);
+        auto color = m_GBufferPass->addPass(ctx, prepassDepth);
         if (!color || !ctx.data.contains(kResKey_DepthTexture) || !ctx.data.contains(kResKey_GBufferNormal) ||
             !ctx.data.contains(kResKey_GBufferMetallicRoughnessAO))
             return;
@@ -71,7 +73,9 @@ namespace vultra
         const auto& settings = m_RenderService.builtinRenderSettings();
         auto shadowSettings = settings.shadow;
         auto lightingSettings = settings.pbrLighting;
-        rhi::Texture* skyboxTexture = settings.pbrLighting.showSkybox ? settings.pbrLighting.environmentMap : nullptr;
+        const bool suppressCameraSkybox = ctx.view().camera != nullptr && ctx.view().camera->suppressSkybox;
+        rhi::Texture* skyboxTexture =
+            !suppressCameraSkybox && settings.pbrLighting.showSkybox ? settings.pbrLighting.environmentMap : nullptr;
         const auto* renderEnvironment =
             ctx.view().renderWorld && ctx.view().renderWorld->environment.active ?
                 &ctx.view().renderWorld->environment :
@@ -84,7 +88,7 @@ namespace vultra
             lightingSettings.iblColor = renderEnvironment->iblColor;
             lightingSettings.iblIntensity = renderEnvironment->iblIntensity;
             lightingSettings.environmentMap = renderEnvironment->skybox;
-            skyboxTexture = renderEnvironment->skybox;
+            skyboxTexture = suppressCameraSkybox ? nullptr : renderEnvironment->skybox;
         }
         if (const auto* probe = selectReflectionProbe(ctx.view().renderWorld, ctx.view().camera))
         {
@@ -137,8 +141,9 @@ namespace vultra
         if (lit)
         {
             const bool cameraWantsSkybox =
-                (ctx.view().camera && ctx.view().camera->clearMode == 1u) ||
-                settings.pbrLighting.showSkybox;
+                !suppressCameraSkybox &&
+                ((ctx.view().camera && ctx.view().camera->clearMode == 1u) ||
+                 settings.pbrLighting.showSkybox);
             if (cameraWantsSkybox && skyboxTexture &&
                 ctx.data.contains(kResKey_DepthTexture))
             {

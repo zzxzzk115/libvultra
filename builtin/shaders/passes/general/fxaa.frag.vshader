@@ -35,11 +35,12 @@ void main()
     const vec2 uv2 = gl_FragCoord.xy / resolution;
     const vec4 uv = vec4(uv2, uv2 - (rcpFrame * (0.5 + FXAA_SUBPIX_SHIFT)));
 
+    const vec4 srcM = VULTRA_SAMPLE_LOD(u_Source, uv.xy, 0.0);
     const vec3 rgbNW = VULTRA_SAMPLE_LOD(u_Source, uv.zw, 0.0).xyz;
     const vec3 rgbNE = VULTRA_SAMPLE_LOD(u_Source, uv.zw + vec2(1.0, 0.0) * rcpFrame.xy, 0.0).xyz;
     const vec3 rgbSW = VULTRA_SAMPLE_LOD(u_Source, uv.zw + vec2(0.0, 1.0) * rcpFrame.xy, 0.0).xyz;
     const vec3 rgbSE = VULTRA_SAMPLE_LOD(u_Source, uv.zw + vec2(1.0, 1.0) * rcpFrame.xy, 0.0).xyz;
-    const vec3 rgbM = VULTRA_SAMPLE_LOD(u_Source, uv.xy, 0.0).xyz;
+    const vec3 rgbM = srcM.xyz;
 
     const vec3 luma = vec3(0.299, 0.587, 0.114);
     const float lumaNW = dot(rgbNW, luma);
@@ -65,5 +66,5 @@ void main()
                                            VULTRA_SAMPLE_LOD(u_Source, uv.xy + dir * 0.5, 0.0).xyz);
 
     const float lumaB = dot(rgbB, luma);
-    FragColor = vec4((lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB, 1.0);
+    FragColor = vec4((lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB, srcM.a);
 }

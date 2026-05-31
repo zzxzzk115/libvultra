@@ -15,6 +15,7 @@
 #include <vbase/core/result.hpp>
 #include <vbase/service/service_registry.hpp>
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -25,6 +26,14 @@ namespace vultra
     struct AssetMemoryStats
     {
         uint64_t cpuCacheBytes {0};
+    };
+
+    struct AssetDiagnostic
+    {
+        std::string path;
+        size_t      line {0};
+        size_t      column {0};
+        std::string message;
     };
 
     // Asset service interface (engine-facing).
@@ -90,6 +99,7 @@ namespace vultra
 
         // Editor/development import path. Production builds may return false when import support is not linked.
         virtual bool reimportAsset(std::string_view uri, bool forceReimport = true) = 0;
+        virtual std::vector<AssetDiagnostic> lastImportDiagnostics() const = 0;
 
         // Reload the asset registry/resolver without clearing resident runtime assets.
         // Editor background imports/deletes use this so the open scene keeps its GPU resources.

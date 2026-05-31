@@ -99,6 +99,7 @@ namespace vultra
 
         std::string resolveUri(const std::string_view uri) const override;
         bool        reimportAsset(std::string_view uri, bool forceReimport = true) override;
+        std::vector<AssetDiagnostic> lastImportDiagnostics() const override { return m_LastImportDiagnostics; }
         bool        reloadRegistry() override;
 
         // Bindless texture index resolution.
@@ -131,6 +132,7 @@ namespace vultra
 
         bool resolveUUIDToUri(const CoreUUID& uuid, std::string& outUri) const;
         bool resolveUriToUUID(std::string_view uri, CoreUUID& outUUID) const;
+        vbase::Result<std::vector<std::byte>, std::string> readTextureAssetBytes(std::string_view uri);
         void enqueueUploadOnce(UploadCmd::Kind kind, const CoreUUID& uuid, std::atomic_bool& queuedFlag);
         void collectFinishedCpuLoadTasks();
         void waitForCpuLoadTasks();
@@ -187,5 +189,6 @@ namespace vultra
 
         std::mutex                                   m_TextOverrideMutex;
         std::unordered_map<std::string, std::string> m_TextAssetOverrides;
+        std::vector<AssetDiagnostic>                 m_LastImportDiagnostics;
     };
 } // namespace vultra

@@ -2,6 +2,9 @@
 language = glsl
 version = 460
 
+[keywords]
+WRITE_ENTITY_ID : bool permute
+
 [frag]
 #define VULTRA_DECLARE_CAMERA
 #define VULTRA_DECLARE_DRAW_BUFFER_READONLY
@@ -21,6 +24,17 @@ layout(location = 0) in vec2 v_TexCoord;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 GBufferNormal;
 layout(location = 2) out vec4 GBufferMetallicRoughnessAO;
+#if WRITE_ENTITY_ID
+layout(location = 3) out vec4 GBufferEntityId;
+#endif
+
+layout(push_constant) uniform ThinGBufferPushConstants
+{
+    uint maxDraws;
+    uint maxMeshlets;
+    uint maxMeshletVertices;
+    uint maxMeshletTriangles;
+} u_PC;
 
 const uint VULTRA_VISIBILITY_INVALID = 0xFFFFFFFFu;
 
@@ -166,6 +180,21 @@ float material_lighting_model(uint materialIndex)
     return float(model);
 }
 
+vec2 encode_gbuffer_normal(vec3 normalWS)
+{
+    vec3 n = normalize(normalWS);
+    n /= abs(n.x) + abs(n.y) + abs(n.z);
+    vec2 encoded = n.xy;
+    if (n.z < 0.0)
+        encoded = (1.0 - abs(encoded.yx)) * sign(encoded.xy);
+    return encoded * 0.5 + 0.5;
+}
+
+float encode_material_model(float model)
+{
+    return clamp(model / 255.0, 0.0, 1.0);
+}
+
 void main()
 {
     uvec4 visSample = texelFetch(u_VisibilityBuffer, ivec2(gl_FragCoord.xy), 0);
@@ -177,17 +206,49 @@ void main()
 
     uint drawId = visibility >> 16;
     uint triIndex = visibility & 0xFFFFu;
+    if (drawId >= u_PC.maxDraws)
+    {
+        discard;
+    }
 
     DrawRecord d = s_Draws.draws[drawId];
+    if (d.primitiveIndex >= u_PC.maxMeshlets)
+    {
+        discard;
+    }
+
     Meshlet meshlet = s_Meshlets.meshlets[d.primitiveIndex];
+    if (triIndex >= meshlet.triangleCount)
+    {
+        discard;
+    }
 
     uint triBase = meshlet.triangleOffset + triIndex * 3u;
+    if (triBase + 2u >= u_PC.maxMeshletTriangles)
+    {
+        discard;
+    }
+
     uint local0 = load_meshlet_triangle_index(triBase + 0u);
     uint local1 = load_meshlet_triangle_index(triBase + 1u);
     uint local2 = load_meshlet_triangle_index(triBase + 2u);
-    uint vertex0 = s_MeshletVertices.meshletVertices[meshlet.vertexOffset + local0];
-    uint vertex1 = s_MeshletVertices.meshletVertices[meshlet.vertexOffset + local1];
-    uint vertex2 = s_MeshletVertices.meshletVertices[meshlet.vertexOffset + local2];
+    if (local0 >= meshlet.vertexCount || local1 >= meshlet.vertexCount || local2 >= meshlet.vertexCount)
+    {
+        discard;
+    }
+
+    uint meshletVertex0 = meshlet.vertexOffset + local0;
+    uint meshletVertex1 = meshlet.vertexOffset + local1;
+    uint meshletVertex2 = meshlet.vertexOffset + local2;
+    if (meshletVertex0 >= u_PC.maxMeshletVertices || meshletVertex1 >= u_PC.maxMeshletVertices ||
+        meshletVertex2 >= u_PC.maxMeshletVertices)
+    {
+        discard;
+    }
+
+    uint vertex0 = s_MeshletVertices.meshletVertices[meshletVertex0];
+    uint vertex1 = s_MeshletVertices.meshletVertices[meshletVertex1];
+    uint vertex2 = s_MeshletVertices.meshletVertices[meshletVertex2];
 
     Vertex v0 = load_vertex(d, vertex0);
     Vertex v1 = load_vertex(d, vertex1);
@@ -220,6 +281,14 @@ void main()
     vec3 mra = material_mra(d.materialIndex, uv, hasUv0);
 
     FragColor = color;
-    GBufferNormal = vec4(normalWS, 1.0);
-    GBufferMetallicRoughnessAO = vec4(mra, material_lighting_model(d.materialIndex));
+    GBufferNormal = vec4(encode_gbuffer_normal(normalWS), 0.0, 1.0);
+    GBufferMetallicRoughnessAO = vec4(clamp(mra, 0.0, 1.0), encode_material_model(material_lighting_model(d.materialIndex)));
+#if WRITE_ENTITY_ID
+    uint id = d.entityPickingId & 0x00FFFFFFu;
+    GBufferEntityId = vec4(
+        float(id & 0xFFu) / 255.0,
+        float((id >> 8u) & 0xFFu) / 255.0,
+        float((id >> 16u) & 0xFFu) / 255.0,
+        1.0);
+#endif
 }

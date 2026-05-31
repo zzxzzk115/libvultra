@@ -20,7 +20,8 @@ layout(push_constant) uniform BuildPushConstants
     uint maxDraws;
     uint vertexAddressLo;
     uint vertexAddressHi;
-    uint padding0;
+    uint maxVisibleMeshlets;
+    uint maxMeshlets;
 } u_PC;
 
 void main()
@@ -36,11 +37,14 @@ void main()
     // Default to invalid each frame; DrawsetBuildPass rebuilds grouped command windows.
     s_Draws.draws[drawId].flags = 0u;
 
-    if (drawId >= s_VisibleCount.visibleCount)
+    uint visibleCount = min(s_VisibleCount.visibleCount, u_PC.maxVisibleMeshlets);
+    if (drawId >= visibleCount)
         return;
 
     GpuVisibleMeshlet vis = s_VisibleMeshlets.visibleMeshlets[drawId];
     if ((vis.flags & kMeshletVisibleFlag) == 0u)
+        return;
+    if (vis.meshletIndex >= u_PC.maxMeshlets)
         return;
 
     GpuInstance inst = s_Instances.instances[vis.instanceIndex];
@@ -62,7 +66,7 @@ void main()
     dr.texCoord0OffsetBytes = mesh.texCoord0OffsetBytes;
     dr.texCoord1OffsetBytes = mesh.texCoord1OffsetBytes;
     dr.tangentOffsetBytes = mesh.tangentOffsetBytes;
-    dr.padding0 = 0u;
+    dr.entityPickingId = inst.entityPickingId;
     dr.padding1 = 0u;
     dr.model = s_Models.models[inst.transformIndex];
     s_Draws.draws[drawId] = dr;

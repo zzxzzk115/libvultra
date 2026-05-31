@@ -4,8 +4,8 @@ version = 460
 
 [properties]
 reflectionFactor : float = 0.7 range(0.0, 2.0)
-maxSteps : int = 16 range(4, 64)
-binaryRefinement : int = 3 range(0, 8)
+maxSteps : int = 8 range(4, 64)
+binaryRefinement : int = 2 range(0, 8)
 stride : float = 0.35 range(0.05, 4.0)
 thickness : float = 0.5 range(0.0, 5.0)
 
@@ -86,6 +86,15 @@ float depth_delta_at(vec3 rayPos, vec2 uv)
     return linear_view_depth(rayPos) - linear_view_depth(scenePos);
 }
 
+vec3 decode_gbuffer_normal(vec2 encoded)
+{
+    vec2 f = encoded * 2.0 - 1.0;
+    vec3 n = vec3(f, 1.0 - abs(f.x) - abs(f.y));
+    float t = clamp(-n.z, 0.0, 1.0);
+    n.xy += vec2(n.x >= 0.0 ? -t : t, n.y >= 0.0 ? -t : t);
+    return normalize(n);
+}
+
 void main()
 {
     vec2 resolution = u_Camera.resolution.xy;
@@ -103,7 +112,7 @@ void main()
     float roughness = material.g;
     float roughnessFade = 1.0 - smoothstep(0.35, 0.85, roughness);
     vec3 p = reconstruct_view_pos(uv, depth);
-    vec3 normalWS = VULTRA_SAMPLE(u_Normal, uv).xyz;
+    vec3 normalWS = decode_gbuffer_normal(VULTRA_SAMPLE(u_Normal, uv).xy);
     vec3 n = normalize(mat3(u_Camera.view) * normalWS);
     vec3 viewDir = normalize(-p);
     float nDotV = clamp(dot(n, viewDir), 0.0, 1.0);

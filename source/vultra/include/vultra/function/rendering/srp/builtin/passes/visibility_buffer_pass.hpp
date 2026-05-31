@@ -14,6 +14,6 @@ namespace vultra
         FrameGraphResource addPass(FrameGraphBuildContext& ctx);
 
     private:
-        rhi::GraphicsPipeline createPipeline(uint32_t viewMask) const;
+        rhi::GraphicsPipeline createPipeline(bool readOnlyDepth, uint32_t viewMask) const;
     };
 } // namespace vultra

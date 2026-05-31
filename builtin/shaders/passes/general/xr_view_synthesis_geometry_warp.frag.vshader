@@ -20,13 +20,15 @@ layout(location = 1) in float v_Valid;
 
 layout(location = 0) out vec4 FragColor;
 
-layout(set = 3, binding = 1) uniform VULTRA_SOURCE_TEXTURE u_Source;
+layout(set = 3, binding = 0) uniform VULTRA_SOURCE_TEXTURE u_Source;
 
-layout(push_constant) uniform XrAdaptiveMeshRasterPushConstants
+layout(push_constant) uniform XrGeometryWarpPushConstants
 {
     vec2 resolution;
     uint sourceView;
     uint targetView;
+    uint gridSize;
+    float warpStrength;
 } u_PC;
 
 const uint XR_VIEW_PRIMARY = 0u;
@@ -56,11 +58,10 @@ void main()
     if (currentView() == u_PC.sourceView)
     {
         const vec2 uv = gl_FragCoord.xy / max(u_PC.resolution, vec2(1.0));
-        FragColor = vec4(VULTRA_SAMPLE_LOD(u_Source, uv, sourceLayer(), 0.0).rgb, 1.0);
+        FragColor = VULTRA_SAMPLE_LOD(u_Source, uv, sourceLayer(), 0.0);
         return;
     }
 
-    const vec2 sourceUv = clamp(v_SourceUv, vec2(0.0), vec2(1.0));
-    const vec4 sampleValue = VULTRA_SAMPLE_LOD(u_Source, sourceUv, sourceLayer(), 0.0);
-    FragColor = vec4(sampleValue.rgb, clamp(v_Valid, 0.0, 1.0));
+    const vec4 sampleValue = VULTRA_SAMPLE_LOD(u_Source, clamp(v_SourceUv, vec2(0.0), vec2(1.0)), sourceLayer(), 0.0);
+    FragColor = vec4(sampleValue.rgb, sampleValue.a * clamp(v_Valid, 0.0, 1.0));
 }

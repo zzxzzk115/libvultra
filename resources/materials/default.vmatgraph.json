@@ -272,8 +272,8 @@
             "displayName": "Roughness",
             "editor": {
                 "pos": [
-                    800.0,
-                    377.99993896484375
+                    758.0,
+                    594.0
                 ]
             },
             "id": "Roughness",
@@ -293,8 +293,8 @@
             "displayName": "Metallic",
             "editor": {
                 "pos": [
-                    800.0,
-                    239.99996948242188
+                    754.0,
+                    456.0
                 ]
             },
             "id": "Metallic",
@@ -314,8 +314,8 @@
             "displayName": "AO",
             "editor": {
                 "pos": [
-                    800.0,
-                    515.9999389648438
+                    765.0,
+                    737.0
                 ]
             },
             "id": "AO",
@@ -335,8 +335,8 @@
             "displayName": "Rim Emissive",
             "editor": {
                 "pos": [
-                    800.0,
-                    654.0
+                    770.0,
+                    876.0
                 ]
             },
             "id": "RimEmissive",
@@ -642,7 +642,7 @@
                 ],
                 "metallic": 0.0,
                 "roughness": 1.0,
-                "shadingModel": "PBR_MR"
+                "shadingModel": "ToonLike"
             },
             "type": "vultra.output.surface"
         }

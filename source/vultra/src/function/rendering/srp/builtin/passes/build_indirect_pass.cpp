@@ -22,7 +22,8 @@ namespace vultra
             uint32_t maxDraws {0};
             uint32_t vertexAddressLo {0};
             uint32_t vertexAddressHi {0};
-            uint32_t padding0 {0};
+            uint32_t maxVisibleMeshlets {0};
+            uint32_t maxMeshlets {0};
         };
     } // namespace
 
@@ -182,6 +183,8 @@ namespace vultra
                 pc.maxDraws        = gpuSceneView->maxDraws;
                 pc.vertexAddressLo = static_cast<uint32_t>(vertexAddress & 0xffffffffull);
                 pc.vertexAddressHi = static_cast<uint32_t>((vertexAddress >> 32u) & 0xffffffffull);
+                pc.maxVisibleMeshlets = gpuSceneView->maxVisibleMeshlets;
+                pc.maxMeshlets = static_cast<uint32_t>(gpuSceneDatabase->resources->meshlets.cpuMeshlets.size());
 
                 rc.cb.bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);

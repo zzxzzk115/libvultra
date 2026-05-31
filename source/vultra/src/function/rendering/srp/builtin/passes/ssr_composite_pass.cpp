@@ -22,6 +22,9 @@ namespace vultra
                                                  FrameGraphResource      source,
                                                  FrameGraphResource      reflection)
     {
+        if (!source || !reflection || source == reflection)
+            return source;
+
         const auto sourceDesc = ctx.fg.getDescriptor<framegraph::FrameGraphTexture>(source);
 
         struct PassData

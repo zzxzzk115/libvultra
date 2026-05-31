@@ -21,7 +21,7 @@ layout(push_constant) uniform CullPushConstants
     uint instanceCount;
     uint maxVisibleMeshlets;
     uint enableConeCull;
-    uint padding0;
+    uint maxMeshlets;
 } u_PC;
 
 void main()
@@ -65,9 +65,19 @@ void main()
         return;
     }
 
-    for (uint i = 0u; i < mesh.meshletCount; ++i)
+    uint writeCount = mesh.meshletCount;
+    if (baseOut + writeCount > u_PC.maxVisibleMeshlets)
+    {
+        writeCount = u_PC.maxVisibleMeshlets - baseOut;
+        atomicMin(s_VisibleCount.visibleCount, u_PC.maxVisibleMeshlets);
+    }
+
+    for (uint i = 0u; i < writeCount; ++i)
     {
         uint meshletIndex = mesh.meshletOffset + i;
+        if (meshletIndex >= u_PC.maxMeshlets)
+            break;
+
         Meshlet m = s_Meshlets.meshlets[meshletIndex];
 
         vec3 centerWS = (model * vec4(m.center, 1.0)).xyz;
@@ -93,9 +103,6 @@ void main()
         }
 
         uint outIndex = baseOut + i;
-        if (outIndex >= u_PC.maxVisibleMeshlets)
-            break;
-
         s_VisibleMeshlets.visibleMeshlets[outIndex].meshletIndex = meshletIndex;
         s_VisibleMeshlets.visibleMeshlets[outIndex].instanceIndex = instanceIndex;
         s_VisibleMeshlets.visibleMeshlets[outIndex].materialIndex = m.materialIndex;

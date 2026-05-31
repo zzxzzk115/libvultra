@@ -225,7 +225,9 @@ namespace vultra
                         else if (event->state == XR_SESSION_STATE_LOSS_PENDING ||
                                  event->state == XR_SESSION_STATE_EXITING)
                         {
-                            m_ExitRequested = true;
+                            m_SessionCloseRequested = true;
+                            if (m_SessionRunning && !endSession())
+                                return BeginFrameResult::eError;
                             return BeginFrameResult::eSkipAll;
                         }
 
@@ -614,6 +616,15 @@ namespace vultra
 
         bool XRHeadset::endSession()
         {
+            if (m_FrameBegun)
+                endFrame();
+
+            if (!m_SessionRunning)
+            {
+                destroySwapchain();
+                return true;
+            }
+
             // End the session
             const XrResult result = xrEndSession(m_Session);
             if (XR_FAILED(result))
@@ -624,6 +635,8 @@ namespace vultra
             }
 
             m_SessionRunning = false;
+            m_FrameBegun             = false;
+            m_SwapchainImageAcquired = false;
             destroySwapchain();
             return true;
         }

@@ -8,6 +8,12 @@
             -94.0
           ]
         },
+        "DirectDepthPre": {
+          "pos": [
+            -30.0,
+            80.0
+          ]
+        },
         "DirectGBuffer": {
           "pos": [
             260.0,
@@ -16,20 +22,26 @@
         },
         "FinalComposition": {
           "pos": [
-            4243.0,
-            220.0
+            4317.0,
+            265.0
           ]
         },
         "Fxaa": {
           "pos": [
-            3507.0,
-            -24.0
+            3610.0,
+            -19.0
           ]
         },
         "GeneralGaussianSplatComposite": {
           "pos": [
             1520.0,
             315.0
+          ]
+        },
+        "Invert": {
+          "pos": [
+            2965.0,
+            -92.0
           ]
         },
         "Pixelate": {
@@ -40,8 +52,8 @@
         },
         "SelectionOutline": {
           "pos": [
-            3842.0,
-            178.0
+            3917.0,
+            176.0
           ]
         },
         "ShadowMap": {
@@ -70,8 +82,8 @@
         },
         "ToneMapping": {
           "pos": [
-            3068.0,
-            -91.0
+            3292.0,
+            -59.0
           ]
         }
       }
@@ -80,7 +92,15 @@
   "passes": [
     {
       "enabled": true,
+      "id": "DirectDepthPre",
+      "type": "DirectDepthPre"
+    },
+    {
+      "enabled": true,
       "id": "DirectGBuffer",
+      "inputs": {
+        "depth": "DirectDepthPre.depth"
+      },
       "type": "DirectGBuffer"
     },
     {
@@ -92,12 +112,12 @@
       },
       "params": {
         "bias": 0.05,
-        "directionCount": 8,
-        "enabled": true,
+        "directionCount": 4,
+        "enabled": false,
         "intensity": 1.0,
-        "maxRadiusPixels": 32,
+        "maxRadiusPixels": 16,
         "radius": 1.5,
-        "stepCount": 4
+        "stepCount": 2
       },
       "type": "Ssao"
     },
@@ -163,9 +183,9 @@
         "normal": "DirectGBuffer.normal"
       },
       "params": {
-        "binaryRefinement": 3,
-        "enabled": true,
-        "maxSteps": 16,
+        "binaryRefinement": 2,
+        "enabled": false,
+        "maxSteps": 8,
         "reflectionFactor": 0.20000000298023224,
         "stride": 0.35,
         "thickness": 0.5
@@ -180,7 +200,7 @@
         "source": "GeneralGaussianSplatComposite.color"
       },
       "params": {
-        "enabled": true
+        "enabled": false
       },
       "type": "SsrComposite"
     },
@@ -191,15 +211,33 @@
         "source": "SsrComposite.color"
       },
       "params": {
-        "name": "Pixelate"
+        "gridOffset": 0.5,
+        "mode": 0,
+        "name": "Pixelate",
+        "pixelSize": 8.0,
+        "preserveAlpha": true
       },
       "type": "Pixelate"
     },
     {
       "enabled": false,
-      "id": "ToneMapping",
+      "id": "Invert",
       "inputs": {
         "source": "Pixelate.color"
+      },
+      "params": {
+        "mode": 0,
+        "name": "Invert",
+        "preserveAlpha": true,
+        "strength": 1.0
+      },
+      "type": "Invert"
+    },
+    {
+      "enabled": false,
+      "id": "ToneMapping",
+      "inputs": {
+        "source": "Invert.color"
       },
       "params": {
         "enabled": false,

@@ -31,14 +31,14 @@ void main()
     const vec4 current = VULTRA_SAMPLE_LOD(u_PointPyramid, v_TexCoord, float(u_PC.lod));
     if (current.a > 0.5)
     {
-        FragColor = vec4(current.rgb, 1.0);
+        FragColor = current;
         return;
     }
 
     const vec4 coarse = VULTRA_SAMPLE_LOD(u_LinearPyramid, v_TexCoord, float(u_PC.lod + 1));
     if (coarse.a > 0.0)
     {
-        FragColor = vec4(coarse.rgb, 1.0);
+        FragColor = coarse;
         return;
     }
 

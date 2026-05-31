@@ -1,7 +1,9 @@
 return RenderGraphPass {
     type = "Pixelate",
+    inputs = { "source" },
+    outputs = { "color" },
     shader = {
-        library = "project",
+        vertexLibrary = "builtin",
         vertex = "fullscreen_triangle.vert",
         fragment = "pixelate.frag",
     },

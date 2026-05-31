@@ -61,6 +61,9 @@ namespace vultra
         bool     m_XRFrameActive {false};
         bool     m_XRShouldRender {false};
         bool     m_XRSessionRequested {false};
+        bool     m_XRSessionUserClosed {false};
+        bool     m_XRSessionRestartPending {false};
+        bool     m_XRSessionStartDeferred {false};
         bool     m_XRMirrorEnabled {false};
         uint32_t m_XRSwapchainImageIndex {0};
 
