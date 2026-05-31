@@ -157,6 +157,9 @@ namespace vultra
                      rhi::bindings::StorageBuffer {
                          .buffer = gpuSceneDatabase->resources->meshlets.meshletTrianglesBuffer.get()}},
                 };
+                if (gpuSceneDatabase->skinMatrixBuffer)
+                    rc.resourceSet[0][46] =
+                        rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->skinMatrixBuffer.get()};
 
                 rc.resourceSet[3] = {
                     {4,

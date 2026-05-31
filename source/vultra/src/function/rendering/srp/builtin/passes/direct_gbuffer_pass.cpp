@@ -36,6 +36,7 @@ namespace vultra
             glm::uvec4 materialTextureInfo0 {0u};
             glm::uvec4 materialTextureInfo1 {0u};
             glm::uvec4 entityInfo {0u};
+            glm::uvec4 skinInfo {0xFFFFFFFFu, 0u, 0u, 0u};
         };
 
         struct PreparedDirectDraw
@@ -362,6 +363,8 @@ namespace vultra
                         drawParams.baseColorFactor = instance.baseColorOverride;
                         drawParams.materialTextureInfo0.y = 0u;
                     }
+                    drawParams.skinInfo.x = instance.skinMatrixOffset;
+                    drawParams.skinInfo.y = instance.skinMatrixCount;
 
                     const auto byteOffset = out.paramBytes.size();
                     const auto paramIndex = static_cast<uint32_t>(byteOffset / kUniformOffsetAlignment);
@@ -525,6 +528,8 @@ namespace vultra
                                                        layout.normalOffsetBytes,
                                                        layout.texCoord0OffsetBytes,
                                                        layout.tangentOffsetBytes,
+                                                       layout.jointIndicesOffsetBytes,
+                                                       layout.jointWeightsOffsetBytes,
                                                        record.doubleSided,
                                                        mesh->vertexStrideBytes,
                                                        framebufferInfo.viewMask);
@@ -539,6 +544,21 @@ namespace vultra
                              .range  = sizeof(DirectDrawParams),
                          }},
                     };
+                    if (layout.hasSkinning())
+                    {
+                        if (auto* db = rc.view().gpuSceneDatabase)
+                        {
+                            if (db->skinMatrixBuffer)
+                            {
+                                rc.resourceSet[0][46] =
+                                    rhi::bindings::StorageBuffer {.buffer = db->skinMatrixBuffer.get()};
+                            }
+                        }
+                    }
+                    else
+                    {
+                        rc.resourceSet[0].erase(46);
+                    }
                     if (pipeline != boundPipeline)
                     {
                         rc.cb.bindPipeline(*pipeline);
@@ -761,6 +781,8 @@ namespace vultra
                                                        layout.normalOffsetBytes,
                                                        layout.texCoord0OffsetBytes,
                                                        layout.tangentOffsetBytes,
+                                                       layout.jointIndicesOffsetBytes,
+                                                       layout.jointWeightsOffsetBytes,
                                                        record.doubleSided,
                                                        mesh->vertexStrideBytes,
                                                        framebufferInfo.viewMask);
@@ -775,6 +797,19 @@ namespace vultra
                              .range  = sizeof(DirectDrawParams),
                          }},
                     };
+                    if (layout.hasSkinning())
+                    {
+                        if (auto* db = rc.view().gpuSceneDatabase)
+                        {
+                            if (db->skinMatrixBuffer)
+                                rc.resourceSet[0][46] =
+                                    rhi::bindings::StorageBuffer {.buffer = db->skinMatrixBuffer.get()};
+                        }
+                    }
+                    else
+                    {
+                        rc.resourceSet[0].erase(46);
+                    }
                     if (pipeline != boundPipeline)
                     {
                         rc.cb.bindPipeline(*pipeline);
@@ -834,6 +869,8 @@ namespace vultra
                                                             const uint32_t         normalOffset,
                                                             const uint32_t         texCoord0Offset,
                                                             const uint32_t         tangentOffset,
+                                                            const uint32_t         jointIndicesOffset,
+                                                            const uint32_t         jointWeightsOffset,
                                                             const bool             doubleSided,
                                                             const uint32_t         vertexStride,
                                                             const uint32_t         viewMask) const
@@ -844,11 +881,14 @@ namespace vultra
             .normalOffsetBytes = normalOffset,
             .texCoord0OffsetBytes = texCoord0Offset,
             .tangentOffsetBytes = tangentOffset,
+            .jointIndicesOffsetBytes = jointIndicesOffset,
+            .jointWeightsOffsetBytes = jointWeightsOffset,
         };
         auto vertexShader = loadHighendShader("direct_gbuffer.vert",
                                               vshadersystem::ShaderStage::eVert,
-                                              {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},
+                                               {{"VTX_HAS_UV0", layout.hasTexCoord0() ? 1 : 0},
                                                {"VTX_HAS_TANGENT", layout.hasTangent() ? 1 : 0},
+                                               {"VTX_HAS_SKIN", layout.hasSkinning() ? 1 : 0},
                                                {"USE_MULTIVIEW", viewMask != 0u ? 1 : 0}});
         auto fragmentShader =
             depthOnly ? loadHighendShader("direct_depth_pre.frag",

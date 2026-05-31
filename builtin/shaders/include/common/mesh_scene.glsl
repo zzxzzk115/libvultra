@@ -61,6 +61,10 @@
 #define VULTRA_DRAW_SET_BINDING 30
 #endif
 
+#ifndef VULTRA_SKIN_MATRIX_BINDING
+#define VULTRA_SKIN_MATRIX_BINDING 46
+#endif
+
 #if defined(VULTRA_DECLARE_DRAW_BUFFER_READONLY) || defined(VULTRA_DECLARE_DRAW_BUFFER_READWRITE)
 struct DrawRecord
 {
@@ -77,8 +81,11 @@ struct DrawRecord
     uint texCoord0OffsetBytes;
     uint texCoord1OffsetBytes;
     uint tangentOffsetBytes;
+    uint jointIndicesOffsetBytes;
+    uint jointWeightsOffsetBytes;
+    uint skinMatrixOffset;
+    uint skinMatrixCount;
     uint entityPickingId;
-    uint padding1;
     mat4 model;
 };
 
@@ -116,8 +123,8 @@ struct GpuInstance
     uint transformIndex;
     uint flags;
     uint entityPickingId;
-    uint padding0;
-    uint padding1;
+    uint skinMatrixOffset;
+    uint skinMatrixCount;
     uint padding2;
 };
 #endif
@@ -142,7 +149,11 @@ struct GpuMeshEntry
     uint texCoord0OffsetBytes;
     uint texCoord1OffsetBytes;
     uint tangentOffsetBytes;
+    uint jointIndicesOffsetBytes;
+    uint jointWeightsOffsetBytes;
     uint padding0;
+    uint padding1;
+    uint padding2;
 
     vec3 boundsCenter;
     float boundsRadius;
@@ -216,6 +227,13 @@ layout(set = VULTRA_SCENE_SET, binding = VULTRA_MODEL_BINDING, std430) readonly 
 {
     mat4 models[];
 } s_Models;
+#endif
+
+#ifdef VULTRA_DECLARE_SKIN_MATRIX_BUFFER
+layout(set = VULTRA_SCENE_SET, binding = VULTRA_SKIN_MATRIX_BINDING, std430) readonly buffer SkinMatrixBuffer
+{
+    mat4 skinMatrices[];
+} s_SkinMatrices;
 #endif
 
 #ifdef VULTRA_DECLARE_VISIBLE_MESHLET_BUFFER

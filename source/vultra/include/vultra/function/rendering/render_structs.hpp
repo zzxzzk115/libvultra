@@ -115,6 +115,9 @@ namespace vultra
         glm::vec4 baseColorOverride {1.0f};
         bool      hasBaseColorOverride {false};
         bool      castsShadow {true};
+        uint32_t  skinMatrixOffset {std::numeric_limits<uint32_t>::max()};
+        uint32_t  skinMatrixCount {0};
+        std::vector<glm::mat4> skinMatrices;
         std::vector<MaterialOverride> materialOverrides;
     };
 

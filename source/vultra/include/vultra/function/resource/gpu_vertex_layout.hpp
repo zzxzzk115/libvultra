@@ -130,6 +130,7 @@ namespace vultra::resource
             {"VTX_HAS_UV0", layout.hasTexCoord0() ? 1u : 0u},
             {"VTX_HAS_UV1", layout.hasTexCoord1() ? 1u : 0u},
             {"VTX_HAS_TANGENT", layout.hasTangent() ? 1u : 0u},
+            {"VTX_HAS_SKIN", layout.hasSkinning() ? 1u : 0u},
         };
     }
 
@@ -170,6 +171,19 @@ namespace vultra::resource
                 .location = kVertexLocationTangent,
                 .type     = rhi::VertexAttribute::Type::eFloat4,
                 .offset   = layout.tangentOffsetBytes,
+            };
+        }
+        if (layout.hasSkinning())
+        {
+            attrs[kVertexLocationJointIndices] = rhi::VertexAttribute {
+                .location = kVertexLocationJointIndices,
+                .type     = rhi::VertexAttribute::Type::eInt4,
+                .offset   = layout.jointIndicesOffsetBytes,
+            };
+            attrs[kVertexLocationJointWeights] = rhi::VertexAttribute {
+                .location = kVertexLocationJointWeights,
+                .type     = rhi::VertexAttribute::Type::eFloat4,
+                .offset   = layout.jointWeightsOffsetBytes,
             };
         }
         return attrs;

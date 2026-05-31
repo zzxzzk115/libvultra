@@ -15,6 +15,7 @@
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/animator_component.hpp>
 #include <vultra/function/world/components/box_shape_component.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/capsule_shape_component.hpp>
@@ -184,6 +185,8 @@ namespace vultra_app
                 return "Status";
             if (std::strcmp(metaName, "MeshComponent") == 0)
                 return "Mesh";
+            if (std::strcmp(metaName, "AnimatorComponent") == 0)
+                return "Animator";
             if (std::strcmp(metaName, "GaussianSplatComponent") == 0)
                 return "Gaussian Splat";
             if (std::strcmp(metaName, "CameraComponent") == 0)
@@ -231,6 +234,12 @@ namespace vultra_app
         const char* componentDisplayName<vultra::MeshComponent>()
         {
             return "Mesh";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::AnimatorComponent>()
+        {
+            return "Animator";
         }
 
         template<>
@@ -1183,6 +1192,10 @@ namespace vultra_app
         {
             if (std::strcmp(fieldName, "mesh") == 0)
                 return vasset::VAssetType::eMesh;
+            if (std::strcmp(fieldName, "skeleton") == 0)
+                return vasset::VAssetType::eSkeleton;
+            if (std::strcmp(fieldName, "animation") == 0)
+                return vasset::VAssetType::eAnimation;
             if (std::strcmp(fieldName, "gaussianSplat") == 0)
                 return vasset::VAssetType::eGaussianSplat;
             if (std::strcmp(fieldName, "skybox") == 0)
@@ -1197,6 +1210,10 @@ namespace vultra_app
             const auto type = expectedAssetTypeForField(fieldName);
             if (type == vasset::VAssetType::eMesh)
                 return "Mesh";
+            if (type == vasset::VAssetType::eSkeleton)
+                return "Skeleton";
+            if (type == vasset::VAssetType::eAnimation)
+                return "Animation";
             if (type == vasset::VAssetType::eGaussianSplat)
                 return "Gaussian Splat";
             if (type == vasset::VAssetType::eTexture)
@@ -2070,6 +2087,34 @@ namespace vultra_app
             return changed;
         }
 
+        bool drawAnimatorComponentFields(EditorContext& ctx, vultra::AnimatorComponent& animator)
+        {
+            bool changed = false;
+
+            changed |= drawUuidObjectField(&ctx, animator.skeleton, "skeleton", "Skeleton");
+            changed |= drawUuidObjectField(&ctx, animator.animation, "animation", "Animation");
+
+            ImGui::Separator();
+            changed |= ImGui::Checkbox("Play On Start", &animator.playOnStart);
+            changed |= ImGui::Checkbox("Playing", &animator.playing);
+            changed |= ImGui::Checkbox("Loop", &animator.loop);
+            changed |= ImGui::DragFloat("Speed", &animator.speed, 0.01f, -8.0f, 8.0f, "%.3f");
+
+            float time = std::max(animator.time, 0.0f);
+            if (ImGui::DragFloat("Time", &time, 0.01f, 0.0f, 0.0f, "%.3f s"))
+            {
+                animator.time = std::max(time, 0.0f);
+                changed       = true;
+            }
+
+            if (ImGui::Button(ICON_MDI_RESTART "  Reset Time", ImVec2(ImGui::GetContentRegionAvail().x, 0.0f)))
+            {
+                animator.time = 0.0f;
+                changed       = true;
+            }
+            return changed;
+        }
+
         bool drawScriptUriObjectField(EditorContext* ctx, std::string& uri, const char* label)
         {
             bool       changed = false;
@@ -2781,6 +2826,88 @@ namespace vultra_app
             };
         }
 
+        void autoConfigureAnimatorFromSkinnedMesh(EditorContext& ctx, entt::registry& reg, entt::entity entity)
+        {
+            if (!ctx.services || !reg.all_of<vultra::AnimatorComponent>(entity))
+                return;
+
+            auto* assets = ctx.services->tryGet<vultra::IAssetService>();
+            if (!assets)
+                return;
+
+            const auto findMeshEntity = [&](auto&& self, entt::entity cursor) -> entt::entity {
+                if (cursor == entt::null || !reg.valid(cursor))
+                    return entt::null;
+                if (const auto* mesh = reg.try_get<vultra::MeshComponent>(cursor); mesh && mesh->mesh.valid())
+                    return cursor;
+
+                const auto* hierarchy = reg.try_get<vultra::HierarchyComponent>(cursor);
+                if (!hierarchy)
+                    return entt::null;
+
+                for (auto child = hierarchy->firstChild; child != entt::null;)
+                {
+                    const auto* childHierarchy = reg.try_get<vultra::HierarchyComponent>(child);
+                    const auto  next          = childHierarchy ? childHierarchy->nextSibling : entt::null;
+                    if (auto found = self(self, child); found != entt::null)
+                        return found;
+                    child = next;
+                }
+                return entt::null;
+            };
+
+            const auto meshEntity = findMeshEntity(findMeshEntity, entity);
+            if (meshEntity == entt::null)
+                return;
+
+            const auto* meshComponent = reg.try_get<vultra::MeshComponent>(meshEntity);
+            if (!meshComponent || !meshComponent->mesh.valid())
+                return;
+
+            auto meshHandle = assets->loadMeshSync(meshComponent->mesh);
+            if (!meshHandle.ready() || !meshHandle.cpu() || !meshHandle.cpu()->hasSkin)
+                return;
+
+            auto& animator = reg.get<vultra::AnimatorComponent>(entity);
+            animator.skeleton = vultra::CoreUUID(meshHandle.cpu()->skeleton);
+
+            const auto skeletonEntry = assets->registry().lookup(animator.skeleton.native());
+            const auto hashPos       = skeletonEntry.sourcePath.find('#');
+            const auto sourcePrefix  = hashPos == std::string::npos ? skeletonEntry.sourcePath :
+                                                                skeletonEntry.sourcePath.substr(0, hashPos);
+            if (!sourcePrefix.empty())
+            {
+                for (const auto& [uuid, entry] : assets->registry().getRegistry())
+                {
+                    if (entry.type != vasset::VAssetType::eAnimation)
+                        continue;
+                    if (!entry.sourcePath.starts_with(sourcePrefix + "#animation/"))
+                        continue;
+                    vbase::UUID parsed {};
+                    if (vbase::try_parse_uuid(uuid.c_str(), parsed))
+                        animator.animation = vultra::CoreUUID(parsed);
+                    break;
+                }
+            }
+        }
+
+        AddComponentDescriptor addAnimatorComponentDescriptor()
+        {
+            return AddComponentDescriptor {
+                "Animator",
+                "Animator",
+                "Animation",
+                [](entt::registry& reg, entt::entity entity) {
+                    return reg.all_of<vultra::AnimatorComponent>(entity);
+                },
+                [](EditorContext& ctx, entt::registry& reg, entt::entity entity) {
+                    if (!reg.all_of<vultra::AnimatorComponent>(entity))
+                        reg.emplace<vultra::AnimatorComponent>(entity);
+                    autoConfigureAnimatorFromSkinnedMesh(ctx, reg, entity);
+                },
+            };
+        }
+
         template<typename Component>
         AddComponentDescriptor addPhysicsShapeComponentDescriptor(const char* key,
                                                                  const char* label,
@@ -2805,6 +2932,7 @@ namespace vultra_app
             static const std::vector<AddComponentDescriptor> descriptors {
                 addComponentDescriptor<vultra::TransformComponent>("Transform", "Transform", "Core"),
                 addComponentDescriptor<vultra::MeshComponent>("Mesh", "Mesh", "Rendering"),
+                addAnimatorComponentDescriptor(),
                 addComponentDescriptor<vultra::GaussianSplatComponent>(
                     "GaussianSplat", "Gaussian Splat", "Rendering"),
                 addComponentDescriptor<vultra::EnvironmentComponent>("Environment", "Environment", "Lighting"),
@@ -2830,6 +2958,7 @@ namespace vultra_app
             static const std::vector<const char*> order {
                 "Transform",
                 "Mesh",
+                "Animator",
                 "GaussianSplat",
                 "Environment",
                 "ReflectionProbe",
@@ -2852,6 +2981,8 @@ namespace vultra_app
                 return reg.all_of<vultra::TransformComponent>(entity);
             if (key == "Mesh")
                 return reg.all_of<vultra::MeshComponent>(entity);
+            if (key == "Animator")
+                return reg.all_of<vultra::AnimatorComponent>(entity);
             if (key == "GaussianSplat")
                 return reg.all_of<vultra::GaussianSplatComponent>(entity);
             if (key == "Environment")
@@ -2902,6 +3033,8 @@ namespace vultra_app
                 return "Transform";
             if (key == "Mesh")
                 return "Mesh";
+            if (key == "Animator")
+                return "Animator";
             if (key == "GaussianSplat")
                 return "Gaussian Splat";
             if (key == "Environment")
@@ -2935,6 +3068,8 @@ namespace vultra_app
                 reg.remove<vultra::TransformComponent>(entity);
             else if (key == "Mesh")
                 reg.remove<vultra::MeshComponent>(entity);
+            else if (key == "Animator")
+                reg.remove<vultra::AnimatorComponent>(entity);
             else if (key == "GaussianSplat")
                 reg.remove<vultra::GaussianSplatComponent>(entity);
             else if (key == "Environment")
@@ -3221,6 +3356,16 @@ namespace vultra_app
                             ctx.history->setNextLabel("Edit Mesh");
                     }
             }
+            else if (key == "Animator")
+            {
+                if (auto* animator = reg.try_get<vultra::AnimatorComponent>(e))
+                    if (drawAnimatorComponentFields(ctx, *animator))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Animator");
+                    }
+            }
             else if (key == "GaussianSplat")
             {
                 if (auto* splat = reg.try_get<vultra::GaussianSplatComponent>(e))
@@ -3391,7 +3536,15 @@ namespace vultra_app
         if (ImGui::BeginPopup("AddComponentPopup"))
         {
             bool any = false;
-            constexpr const char* categories[] = {"Core", "Rendering", "Lighting", "Physics", "Camera", "Scripting"};
+            constexpr const char* categories[] = {
+                "Core",
+                "Rendering",
+                "Animation",
+                "Lighting",
+                "Physics",
+                "Camera",
+                "Scripting",
+            };
             for (const char* category : categories)
             {
                 const auto categoryHasItems = std::any_of(addableComponents().begin(),

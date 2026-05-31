@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vultra/core/base/uuid.hpp"
 #include "vultra/core/rhi/acceleration_structure.hpp"
 #include "vultra/core/rhi/index_buffer.hpp"
 #include "vultra/core/rhi/structs/device_address.hpp"
@@ -73,5 +74,9 @@ namespace vultra::resource
         // Global meshlet-table range inside GpuResourcePool::meshlets.
         uint32_t meshletOffset {0};
         uint32_t meshletCount {0};
+
+        bool                  hasSkin {false};
+        CoreUUID              skeleton;
+        std::vector<glm::mat4> inverseBindPoses;
     };
 } // namespace vultra::resource

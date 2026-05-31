@@ -105,6 +105,7 @@ if not is_plat("wasm") then
     add_requires("openxr", {configs = {shared = false, debug = is_mode("debug")}})
 end
 add_requires("vrendergraph v0.3.0", {configs = { debug = is_mode("debug") }})
+add_requires("ozz-animation", {configs = {tools = false, fbx = false, gltf = false, data = false, debug = is_mode("debug")}})
 
 -- target defination, name: vultra
 target("vultra")
@@ -168,7 +169,7 @@ target("vultra")
     end
 
     -- add packages
-    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vrendergraph", "sol2", "joltphysics", { public = true })
+    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vrendergraph", "sol2", "joltphysics", "ozz-animation", { public = true })
     if not is_plat("wasm") then
         add_packages("vulkan-headers", "vulkan-memory-allocator-hpp", { public = true })
     else

@@ -213,6 +213,9 @@ namespace vultra
                     .textures    = gpuSceneDatabase->resources->getBindlessTextureHandles(),
                     .imageAspect = rhi::ImageAspect::eColor,
                 };
+                if (gpuSceneDatabase->skinMatrixBuffer)
+                    rc.resourceSet[0][46] =
+                        rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->skinMatrixBuffer.get()};
 
                 rc.overrideSampler(rc.resourceSet[3][1], rc.ext.samplers["nearest"]);
                 rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);

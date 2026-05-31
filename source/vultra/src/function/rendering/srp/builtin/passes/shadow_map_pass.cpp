@@ -9,6 +9,7 @@
 #include "vultra/function/rendering/framework/resource_uploader.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
+#include "vultra/function/resource/gpu_vertex_layout.hpp"
 
 #include <algorithm>
 #include <array>
@@ -48,9 +49,12 @@ namespace vultra
         {
             glm::mat4 model {1.0f};
             glm::uvec4 cascadeIndex {0u, 0u, 0u, 0u};
+            glm::uvec4 skinInfo {0xFFFFFFFFu, 0u, 0u, 0u};
         };
 
-        [[nodiscard]] rhi::VertexAttributes buildPipelineVertexAttributes(const uint32_t positionOffset)
+        [[nodiscard]] rhi::VertexAttributes buildPipelineVertexAttributes(const uint32_t positionOffset,
+                                                                          const uint32_t jointIndicesOffset,
+                                                                          const uint32_t jointWeightsOffset)
         {
             rhi::VertexAttributes attrs;
             attrs[kVertexLocationPosition] = rhi::VertexAttribute {
@@ -58,6 +62,19 @@ namespace vultra
                 .type     = rhi::VertexAttribute::Type::eFloat3,
                 .offset   = positionOffset,
             };
+            if (jointIndicesOffset != 0xFFFFFFFFu && jointWeightsOffset != 0xFFFFFFFFu)
+            {
+                attrs[6] = rhi::VertexAttribute {
+                    .location = 6,
+                    .type     = rhi::VertexAttribute::Type::eInt4,
+                    .offset   = jointIndicesOffset,
+                };
+                attrs[7] = rhi::VertexAttribute {
+                    .location = 7,
+                    .type     = rhi::VertexAttribute::Type::eFloat4,
+                    .offset   = jointWeightsOffset,
+                };
+            }
             return attrs;
         }
 
@@ -367,11 +384,14 @@ namespace vultra
                         if (!mesh.vertexBuffer || !mesh.indexBuffer)
                             continue;
 
-                        const auto posIt = mesh.vertexAttributes.find(kVertexLocationPosition);
-                        if (posIt == mesh.vertexAttributes.end())
+                        const auto layout = resource::inspectGpuVertexLayout(mesh.vertexAttributes);
+                        if (!layout.hasPosition())
                             continue;
 
-                        const auto* pipeline = getPipeline(posIt->second.offset, mesh.vertexStrideBytes);
+                        const auto* pipeline = getPipeline(layout.positionOffsetBytes,
+                                                           layout.jointIndicesOffsetBytes,
+                                                           layout.jointWeightsOffsetBytes,
+                                                           mesh.vertexStrideBytes);
                         if (!pipeline)
                             continue;
 
@@ -382,11 +402,25 @@ namespace vultra
                             const ShadowDrawParams params {
                                 .model = instance.worldMatrix,
                                 .cascadeIndex = {cascade, 0u, 0u, 0u},
+                                .skinInfo = {instance.skinMatrixOffset, instance.skinMatrixCount, 0u, 0u},
                             };
 
                             if (pipeline != boundPipeline)
                             {
                                 rc.cb.bindPipeline(*pipeline);
+                                if (layout.hasSkinning())
+                                {
+                                    if (auto* db = rc.view().gpuSceneDatabase)
+                                    {
+                                        if (db->skinMatrixBuffer)
+                                            rc.resourceSet[0][46] =
+                                                rhi::bindings::StorageBuffer {.buffer = db->skinMatrixBuffer.get()};
+                                    }
+                                }
+                                else
+                                {
+                                    rc.resourceSet[0].erase(46);
+                                }
                                 rc.bindDescriptorSets(*pipeline);
                                 boundPipeline = pipeline;
                             }
@@ -431,9 +465,14 @@ namespace vultra
     }
 
     rhi::GraphicsPipeline ShadowMapPass::createPipeline(const uint32_t positionOffset,
+                                                        const uint32_t jointIndicesOffset,
+                                                        const uint32_t jointWeightsOffset,
                                                         const uint32_t vertexStride) const
     {
-        auto vertexShader = loadHighendShader("shadow_map.vert", vshadersystem::ShaderStage::eVert);
+        const bool hasSkin = jointIndicesOffset != 0xFFFFFFFFu && jointWeightsOffset != 0xFFFFFFFFu;
+        auto vertexShader = loadHighendShader("shadow_map.vert",
+                                              vshadersystem::ShaderStage::eVert,
+                                              {{"VTX_HAS_SKIN", hasSkin ? 1 : 0}});
         auto fragmentShader = loadHighendShader("shadow_map.frag", vshadersystem::ShaderStage::eFrag);
         if (!vertexShader || !fragmentShader)
         {
@@ -443,7 +482,7 @@ namespace vultra
 
         return rhi::GraphicsPipeline::Builder {}
             .setDepthFormat(rhi::PixelFormat::eDepth32F)
-            .setInputAssembly(buildPipelineVertexAttributes(positionOffset))
+            .setInputAssembly(buildPipelineVertexAttributes(positionOffset, jointIndicesOffset, jointWeightsOffset))
             .setVertexStride(vertexStride)
             .addBuiltinShader(rhi::ShaderType::eVertex, *vertexShader)
             .addBuiltinShader(rhi::ShaderType::eFragment, *fragmentShader)

@@ -69,6 +69,7 @@ namespace vultra::resource
         // CPU staging / snapshot data
         std::vector<GpuInstance>       instances;
         std::vector<glm::mat4>         transforms;
+        std::vector<glm::mat4>         skinMatrices;
         std::vector<GpuMeshTableEntry> meshTable;
 
         std::vector<GpuRayTracingInstance>     rayTracingInstances;
@@ -78,11 +79,13 @@ namespace vultra::resource
         // GPU buffers
         Ref<rhi::StorageBuffer> instanceBuffer {nullptr};
         Ref<rhi::StorageBuffer> transformBuffer {nullptr};
+        Ref<rhi::StorageBuffer> skinMatrixBuffer {nullptr};
         Ref<rhi::StorageBuffer> meshTableBuffer {nullptr};
         Ref<rhi::StorageBuffer> rayTracingInstanceBuffer {nullptr};
         Ref<rhi::StorageBuffer> rayTracingGeometryNodeBuffer {nullptr};
         uint64_t                instanceBufferCapacityBytes {0};
         uint64_t                transformBufferCapacityBytes {0};
+        uint64_t                skinMatrixBufferCapacityBytes {0};
         uint64_t                meshTableBufferCapacityBytes {0};
         uint64_t                rayTracingInstanceBufferCapacityBytes {0};
         uint64_t                rayTracingGeometryNodeBufferCapacityBytes {0};
@@ -92,17 +95,20 @@ namespace vultra::resource
             resources = nullptr;
             instances.clear();
             transforms.clear();
+            skinMatrices.clear();
             meshTable.clear();
             rayTracingInstances.clear();
             rayTracingGeometryNodes.clear();
             rayTracingTlas = {};
             instanceBuffer  = nullptr;
             transformBuffer = nullptr;
+            skinMatrixBuffer = nullptr;
             meshTableBuffer = nullptr;
             rayTracingInstanceBuffer    = nullptr;
             rayTracingGeometryNodeBuffer = nullptr;
             instanceBufferCapacityBytes  = 0;
             transformBufferCapacityBytes = 0;
+            skinMatrixBufferCapacityBytes = 0;
             meshTableBufferCapacityBytes = 0;
             rayTracingInstanceBufferCapacityBytes     = 0;
             rayTracingGeometryNodeBufferCapacityBytes = 0;
@@ -113,6 +119,7 @@ namespace vultra::resource
             resources = &res;
             instances.clear();
             transforms.clear();
+            skinMatrices.clear();
             meshTable.clear();
             rayTracingInstances.clear();
             rayTracingGeometryNodes.clear();
@@ -123,6 +130,15 @@ namespace vultra::resource
         {
             const uint32_t index = static_cast<uint32_t>(transforms.size());
             transforms.push_back(model);
+            return index;
+        }
+
+        uint32_t pushSkinMatrices(const std::vector<glm::mat4>& matrices)
+        {
+            if (matrices.empty())
+                return std::numeric_limits<uint32_t>::max();
+            const uint32_t index = static_cast<uint32_t>(skinMatrices.size());
+            skinMatrices.insert(skinMatrices.end(), matrices.begin(), matrices.end());
             return index;
         }
 
@@ -159,6 +175,8 @@ namespace vultra::resource
                 e.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
                 e.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
                 e.tangentOffsetBytes = layout.tangentOffsetBytes;
+                e.jointIndicesOffsetBytes = layout.jointIndicesOffsetBytes;
+                e.jointWeightsOffsetBytes = layout.jointWeightsOffsetBytes;
 
                 // Build conservative mesh-space bounds from meshlet bounds.
                 if (mesh.meshletCount > 0 &&
@@ -217,6 +235,16 @@ namespace vultra::resource
             {
                 meshTableBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
                 meshTableBufferCapacityBytes = bytes;
+            }
+        }
+
+        void ensureSkinMatrixBuffer(rhi::RenderDevice& rd)
+        {
+            const size_t bytes = std::max<size_t>(skinMatrices.size(), 1u) * sizeof(glm::mat4);
+            if (!skinMatrixBuffer || skinMatrixBufferCapacityBytes < bytes)
+            {
+                skinMatrixBuffer = createRef<rhi::StorageBuffer>(rd.createStorageBuffer(bytes));
+                skinMatrixBufferCapacityBytes = bytes;
             }
         }
 
@@ -377,6 +405,21 @@ namespace vultra::resource
                 cb.update(*transformBuffer, 0, static_cast<uint64_t>(bytes), transforms.data());
         }
 
+        void uploadSkinMatrices(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
+        {
+            ensureSkinMatrixBuffer(rd);
+            if (!skinMatrices.empty())
+            {
+                const size_t bytes = skinMatrices.size() * sizeof(glm::mat4);
+                cb.update(*skinMatrixBuffer, 0, static_cast<uint64_t>(bytes), skinMatrices.data());
+            }
+            else
+            {
+                const glm::mat4 identity(1.0f);
+                cb.update(*skinMatrixBuffer, 0, sizeof(glm::mat4), &identity);
+            }
+        }
+
         void uploadMeshTable(rhi::RenderDevice& rd, rhi::CommandBuffer& cb)
         {
             ensureMeshTableBuffer(rd);
@@ -391,6 +434,7 @@ namespace vultra::resource
             // Avoid synchronous uploadS() here to prevent mid-frame submit/wait stalls.
             uploadInstances(rd, cb);
             uploadTransforms(rd, cb);
+            uploadSkinMatrices(rd, cb);
             uploadMeshTable(rd, cb);
         }
     };

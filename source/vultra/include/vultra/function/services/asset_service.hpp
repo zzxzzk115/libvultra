@@ -5,10 +5,12 @@
 #include "vultra/function/resource/gpu_gaussian_splat.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
 #include "vultra/function/resource/gpu_texture.hpp"
+#include "vultra/function/resource/cpu_asset.hpp"
 
 #include <vasset/uuid_resolver.hpp>
 #include <vasset/vasset_registry.hpp>
 #include <vasset/vgaussiansplat.hpp>
+#include <vasset/vanimation.hpp>
 #include <vasset/vmesh.hpp>
 #include <vasset/vtexture.hpp>
 
@@ -50,6 +52,8 @@ namespace vultra
         virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(const CoreUUID& uuid) = 0;
         virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(const CoreUUID& uuid) = 0;
+        virtual AssetHandle<vasset::VSkeleton, resource::CpuAsset>  loadSkeletonSync(const CoreUUID& uuid)  = 0;
+        virtual AssetHandle<vasset::VAnimation, resource::CpuAsset> loadAnimationSync(const CoreUUID& uuid) = 0;
 
         // Non-blocking runtime requests. CPU loading is scheduled on worker threads; GPU upload is finalized from
         // update() on the main/render thread. Returned handles may be valid but not ready yet.
@@ -57,17 +61,23 @@ namespace vultra
         virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureAsync(const CoreUUID& uuid) = 0;
         virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatAsync(const CoreUUID& uuid) = 0;
+        virtual AssetHandle<vasset::VSkeleton, resource::CpuAsset>  loadSkeletonAsync(const CoreUUID& uuid)  = 0;
+        virtual AssetHandle<vasset::VAnimation, resource::CpuAsset> loadAnimationAsync(const CoreUUID& uuid) = 0;
 
         // Convenience: load by uri/path (must be resolvable by registry/resolver)
         virtual AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(std::string_view uri)    = 0;
         virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(std::string_view uri) = 0;
         virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(std::string_view uri) = 0;
+        virtual AssetHandle<vasset::VSkeleton, resource::CpuAsset>  loadSkeletonSync(std::string_view uri)  = 0;
+        virtual AssetHandle<vasset::VAnimation, resource::CpuAsset> loadAnimationSync(std::string_view uri) = 0;
 
         virtual AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshAsync(std::string_view uri)    = 0;
         virtual AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureAsync(std::string_view uri) = 0;
         virtual AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatAsync(std::string_view uri) = 0;
+        virtual AssetHandle<vasset::VSkeleton, resource::CpuAsset>  loadSkeletonAsync(std::string_view uri)  = 0;
+        virtual AssetHandle<vasset::VAnimation, resource::CpuAsset> loadAnimationAsync(std::string_view uri) = 0;
 
         // Text assets: scene documents, manifests, Lua scripts, etc.
         virtual vbase::Result<std::string, std::string> loadTextAssetSync(std::string_view uri) = 0;

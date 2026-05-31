@@ -176,6 +176,9 @@ namespace vultra
                 if (drawSetBuf)
                     rhi::prepareForDrawingIndirect(rc.cb, *drawSetBuf);
 
+                if (gpuSceneDatabase->skinMatrixBuffer)
+                    rc.resourceSet[0][46] =
+                        rhi::bindings::StorageBuffer {.buffer = gpuSceneDatabase->skinMatrixBuffer.get()};
                 rc.cb.beginRendering(framebufferInfo).bindPipeline(*pipeline);
                 rc.bindDescriptorSets(*pipeline);
                 const VisibilityPushConstants pc {

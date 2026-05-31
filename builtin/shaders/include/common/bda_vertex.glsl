@@ -18,6 +18,11 @@ layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer Flo
     float values[];
 };
 
+layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer IntBuffer
+{
+    int values[];
+};
+
 struct Vertex
 {
     vec3 position;
@@ -26,6 +31,8 @@ struct Vertex
     vec2 texCoord0;
     vec2 texCoord1;
     vec4 tangent;
+    ivec4 jointIndices;
+    vec4 jointWeights;
 };
 
 bool vertex_has_attribute(uint attributeMask, uint flag)
@@ -65,6 +72,14 @@ vec4 load_vertex_vec4(uint64_t baseAddress, uint vertexIndex, uint strideBytes, 
     return vec4(data.values[0], data.values[1], data.values[2], data.values[3]);
 }
 
+ivec4 load_vertex_ivec4(uint64_t baseAddress, uint vertexIndex, uint strideBytes, uint offsetBytes, ivec4 fallback)
+{
+    if (offsetBytes == VULTRA_INVALID_VERTEX_OFFSET)
+        return fallback;
+    IntBuffer data = IntBuffer(baseAddress + uint64_t(vertexIndex * strideBytes + offsetBytes));
+    return ivec4(data.values[0], data.values[1], data.values[2], data.values[3]);
+}
+
 Vertex load_vertex(in DrawRecord d, uint vertexIndex)
 {
     Vertex v;
@@ -98,7 +113,49 @@ Vertex load_vertex(in DrawRecord d, uint vertexIndex)
                                  d.vertexStrideBytes,
                                  d.tangentOffsetBytes,
                                  vec4(1.0, 0.0, 0.0, 1.0));
+    v.jointIndices = load_vertex_ivec4(d.vertexAddress,
+                                       vertexIndex,
+                                       d.vertexStrideBytes,
+                                       d.jointIndicesOffsetBytes,
+                                       ivec4(0));
+    v.jointWeights = load_vertex_vec4(d.vertexAddress,
+                                      vertexIndex,
+                                      d.vertexStrideBytes,
+                                      d.jointWeightsOffsetBytes,
+                                      vec4(0.0));
     return v;
+}
+
+bool vtx_has_skin(in DrawRecord d)
+{
+    return d.skinMatrixOffset != 0xFFFFFFFFu &&
+           d.skinMatrixCount > 0u &&
+           d.jointIndicesOffsetBytes != VULTRA_INVALID_VERTEX_OFFSET &&
+           d.jointWeightsOffsetBytes != VULTRA_INVALID_VERTEX_OFFSET;
+}
+
+mat4 vtx_skin_matrix(in DrawRecord d, in Vertex v)
+{
+#ifdef VULTRA_DECLARE_SKIN_MATRIX_BUFFER
+    if (!vtx_has_skin(d))
+        return mat4(1.0);
+
+    mat4 skin = mat4(0.0);
+    for (uint i = 0u; i < 4u; ++i)
+    {
+        int joint = v.jointIndices[int(i)];
+        float weight = v.jointWeights[int(i)];
+        if (joint >= 0 && weight > 0.0)
+        {
+            uint jointIndex = uint(joint);
+            if (jointIndex < d.skinMatrixCount)
+                skin += s_SkinMatrices.skinMatrices[d.skinMatrixOffset + jointIndex] * weight;
+        }
+    }
+    return skin;
+#else
+    return mat4(1.0);
+#endif
 }
 
 vec3 vtx_color(in Vertex v)

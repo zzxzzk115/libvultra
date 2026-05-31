@@ -624,6 +624,9 @@ namespace vultra
                 return kResKey_ShadowMap;
             if (normalized == "shadow_data" || normalized == "shadowdata")
                 return kResKey_ShadowData;
+            if (normalized == "skin_matrix" || normalized == "skinmatrix" || normalized == "skin_matrices" ||
+                normalized == "skinmatrices")
+                return kResKey_SkinMatrixBuffer;
             return FrameGraphResourceKey {.id = vbase::hashString(normalized)};
         }
 
@@ -675,6 +678,7 @@ namespace vultra
             importStorage(kResKey_InstanceBuffer, "ImportedInstanceBuffer", gpuSceneDatabase->instanceBuffer.get());
             importStorage(kResKey_MeshTableBuffer, "ImportedMeshTableBuffer", gpuSceneDatabase->meshTableBuffer.get());
             importStorage(kResKey_TransformBuffer, "ImportedTransformBuffer", gpuSceneDatabase->transformBuffer.get());
+            importStorage(kResKey_SkinMatrixBuffer, "ImportedSkinMatrixBuffer", gpuSceneDatabase->skinMatrixBuffer.get());
             importStorage(kResKey_MeshletsBuffer,
                           "ImportedMeshletsBuffer",
                           gpuSceneDatabase->resources->meshlets.meshletsBuffer.get());

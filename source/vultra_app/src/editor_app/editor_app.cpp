@@ -25,6 +25,7 @@
 #include <vultra/function/imgui/imgui_theme.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
+#include <vultra/function/services/animation_service.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/job_service.hpp>
 #include <vultra/function/services/physics_service.hpp>
@@ -1038,6 +1039,7 @@ namespace vultra_app
 
         auto* scriptService  = ctx.services->tryGet<vultra::IScriptService>();
         auto* physicsService = ctx.services->tryGet<vultra::IPhysicsService>();
+        auto* animationService = ctx.services->tryGet<vultra::IAnimationService>();
         const bool stepRequested = ctx.state.editorStepRequested;
 
         if (ctx.state.editorPlaying && !m_PlaybackWasPlaying)
@@ -1045,6 +1047,8 @@ namespace vultra_app
 
         if (!ctx.state.editorPlaying && m_PlaybackWasPlaying)
         {
+            if (animationService)
+                animationService->setPlaybackState(false, false);
             if (scriptService)
                 scriptService->setPlaybackState(false, false);
             if (physicsService)
@@ -1057,6 +1061,13 @@ namespace vultra_app
             physicsService->setPlaybackState(ctx.state.editorPlaying, ctx.state.editorPaused);
             if (stepRequested)
                 physicsService->requestSingleStep();
+        }
+
+        if (animationService)
+        {
+            animationService->setPlaybackState(ctx.state.editorPlaying, ctx.state.editorPaused);
+            if (stepRequested)
+                animationService->requestSingleStep();
         }
 
         if (scriptService)

@@ -52,6 +52,7 @@ namespace vultra
         auto instanceBuffer  = importStorageBuffer("ImportedInstanceBuffer", gpuSceneDatabase->instanceBuffer.get());
         auto meshTableBuffer = importStorageBuffer("ImportedMeshTableBuffer", gpuSceneDatabase->meshTableBuffer.get());
         auto transformBuffer = importStorageBuffer("ImportedTransformBuffer", gpuSceneDatabase->transformBuffer.get());
+        auto skinMatrixBuffer = importStorageBuffer("ImportedSkinMatrixBuffer", gpuSceneDatabase->skinMatrixBuffer.get());
         auto meshletsBuffer =
             importStorageBuffer("ImportedMeshletsBuffer", gpuSceneDatabase->resources->meshlets.meshletsBuffer.get());
         auto materialTableBuffer =
@@ -68,6 +69,7 @@ namespace vultra
         ctx.data.set(kResKey_MeshTableBuffer, meshTableBuffer);
         ctx.data.set(kResKey_MeshletsBuffer, meshletsBuffer);
         ctx.data.set(kResKey_TransformBuffer, transformBuffer);
+        ctx.data.set(kResKey_SkinMatrixBuffer, skinMatrixBuffer);
         ctx.data.set(kResKey_MaterialTableBuffer, materialTableBuffer);
         ctx.data.set(kResKey_MaterialParametersBuffer, materialParamsBuffer);
         ctx.data.set(kResKey_MeshletVertexBuffer, meshletVertexBuffer);

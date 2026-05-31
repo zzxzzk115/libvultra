@@ -24,6 +24,9 @@ namespace vultra
         ShadowPassResult addPass(FrameGraphBuildContext& ctx, const ShadowRenderSettings& settings);
 
     private:
-        rhi::GraphicsPipeline createPipeline(uint32_t positionOffset, uint32_t vertexStride) const;
+        rhi::GraphicsPipeline createPipeline(uint32_t positionOffset,
+                                             uint32_t jointIndicesOffset,
+                                             uint32_t jointWeightsOffset,
+                                             uint32_t vertexStride) const;
     };
 } // namespace vultra

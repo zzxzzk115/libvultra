@@ -7,6 +7,7 @@
 #include "vultra/core/services/window_service.hpp"
 #include "vultra/core/timing/timing_system.hpp"
 #include "vultra/function/asset/asset_system.hpp"
+#include "vultra/function/animation/animation_system.hpp"
 #include "vultra/function/camera/camera_system.hpp"
 #include "vultra/function/debugging/frame_debugger_system.hpp"
 #include "vultra/function/imgui/imgui_system.hpp"
@@ -433,12 +434,13 @@ namespace vultra
         {
             engine.emplaceSubsystem<GpuResourceSystem>();
             engine.emplaceSubsystem<AssetSystem>();
+            engine.emplaceSubsystem<SceneSystem>();
+            engine.emplaceSubsystem<ScriptSystem>();
+            engine.emplaceSubsystem<AnimationSystem>();
+
             auto& renderSystem = engine.emplaceSubsystem<RenderSystem>();
             renderSystem.registerRenderer(renderer);
             renderSystem.registerRenderer(createRef<UniversalRtRenderer>());
-
-            engine.emplaceSubsystem<SceneSystem>();
-            engine.emplaceSubsystem<ScriptSystem>();
         }
     }
 

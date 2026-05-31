@@ -19,6 +19,7 @@
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/prefab_instance_component.hpp"
+#include "vultra/function/world/components/animator_component.hpp"
 #include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/rigid_body_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
@@ -454,6 +455,8 @@ namespace vultra
                                                                      {"halfHeightOfCylinder", "radius"});
         m_ComponentRegistry.registerComponent<MeshComponent>(
             "MeshComponent", {"mesh", "builtinGeometry", "materialColor", "materialOverrides"});
+        m_ComponentRegistry.registerComponent<AnimatorComponent>(
+            "AnimatorComponent", {"skeleton", "animation", "playOnStart", "playing", "loop", "speed", "time"});
         m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});
         m_ComponentRegistry.registerComponent<CameraComponent>("CameraComponent",
                                                                {"primary",

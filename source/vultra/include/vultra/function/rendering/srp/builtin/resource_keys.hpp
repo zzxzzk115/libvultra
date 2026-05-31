@@ -109,6 +109,8 @@ namespace vultra
         .id = vbase::hashLiteral("MeshletCullDispatchArgsBuffer")};
     // set = 0, binding = 30
     constexpr FrameGraphResourceKey kResKey_DrawSetBuffer {.id = vbase::hashLiteral("DrawSetBuffer")};
+    // set = 0, binding = 46
+    constexpr FrameGraphResourceKey kResKey_SkinMatrixBuffer {.id = vbase::hashLiteral("SkinMatrixBuffer")};
 
     // -------- Internal resources --------
     constexpr FrameGraphResourceKey kResKey_FinalCompositionSource {.id = vbase::hashLiteral("FinalCompositionSource")};

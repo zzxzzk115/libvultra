@@ -33,6 +33,8 @@
 #include "vultra/function/world/components/id_component.hpp"
 #include "vultra/function/world/components/light_component.hpp"
 #include "vultra/function/world/components/mesh_component.hpp"
+#include "vultra/function/world/components/hierarchy_component.hpp"
+#include "vultra/function/world/components/skin_palette_component.hpp"
 #include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/world.hpp"
@@ -552,6 +554,27 @@ namespace vultra
             return materialIndex;
         }
 
+        [[nodiscard]] const SkinPaletteComponent* findSkinPaletteForMesh(entt::registry&          reg,
+                                                                          entt::entity            entity,
+                                                                          const resource::GpuMesh& mesh)
+        {
+            if (!mesh.hasSkin || !mesh.skeleton.valid())
+                return nullptr;
+
+            for (auto cursor = entity; cursor != entt::null && reg.valid(cursor);)
+            {
+                if (const auto* palette = reg.try_get<SkinPaletteComponent>(cursor))
+                {
+                    if (palette->skeleton == mesh.skeleton && palette->matrices.size() >= mesh.inverseBindPoses.size())
+                        return palette;
+                }
+
+                const auto* hierarchy = reg.try_get<HierarchyComponent>(cursor);
+                cursor = hierarchy ? hierarchy->parent : entt::null;
+            }
+            return nullptr;
+        }
+
         [[nodiscard]] bool isEntityRenderable(const World& world, const entt::registry& reg, entt::entity entity)
         {
             for (auto e = entity; e != entt::null; e = world.parent(e))
@@ -711,15 +734,18 @@ namespace vultra
             gpuSceneDatabase.transforms.reserve(renderWorld.instances.size());
             gpuSceneDatabase.rebuildMeshTableFromResources();
 
-            for (const auto& inst : renderWorld.instances)
+            for (auto& inst : renderWorld.instances)
             {
                 const uint32_t        transformIndex = gpuSceneDatabase.pushTransform(inst.worldMatrix);
+                inst.skinMatrixOffset = gpuSceneDatabase.pushSkinMatrices(inst.skinMatrices);
                 resource::GpuInstance gpuInst {};
                 gpuInst.meshIndex      = inst.meshIndex;
                 gpuInst.materialIndex  = inst.materialIndex;
                 gpuInst.transformIndex = transformIndex;
                 gpuInst.flags          = 0;
                 gpuInst.entityPickingId = makeEntityPickingId(inst.entity);
+                gpuInst.skinMatrixOffset = inst.skinMatrixOffset;
+                gpuInst.skinMatrixCount  = inst.skinMatrixCount;
                 gpuSceneDatabase.pushInstance(gpuInst);
             }
             gpuSceneDatabase.uploadSceneTables(rd, cb);
@@ -768,6 +794,10 @@ namespace vultra
                     dr.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
                     dr.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
                     dr.tangentOffsetBytes   = layout.tangentOffsetBytes;
+                    dr.jointIndicesOffsetBytes = layout.jointIndicesOffsetBytes;
+                    dr.jointWeightsOffsetBytes = layout.jointWeightsOffsetBytes;
+                    dr.skinMatrixOffset = gpuSceneDatabase.instances[instanceIndex].skinMatrixOffset;
+                    dr.skinMatrixCount  = gpuSceneDatabase.instances[instanceIndex].skinMatrixCount;
                     dr.entityPickingId      = makeEntityPickingId(inst.entity);
                     dr.model                = inst.worldMatrix;
                     gpuSceneView.pushMeshletDraw(std::move(dr));
@@ -787,6 +817,52 @@ namespace vultra
 
             renderWorld.gpuSceneDatabase = &gpuSceneDatabase;
             renderWorld.gpuSceneView     = &gpuSceneView;
+        }
+
+        [[nodiscard]] bool hasSkinMatrices(const RenderWorld& renderWorld)
+        {
+            return std::any_of(renderWorld.instances.begin(), renderWorld.instances.end(), [](const RenderInstance& inst) {
+                return !inst.skinMatrices.empty();
+            });
+        }
+
+        [[nodiscard]] bool refreshSkinMatricesForExistingGpuScene(RenderWorld&                renderWorld,
+                                                                  resource::GpuSceneDatabase& gpuSceneDatabase)
+        {
+            if (renderWorld.instances.size() != gpuSceneDatabase.instances.size())
+                return false;
+
+            for (uint32_t instanceIndex = 0; instanceIndex < static_cast<uint32_t>(renderWorld.instances.size());
+                 ++instanceIndex)
+            {
+                auto&       inst    = renderWorld.instances[instanceIndex];
+                const auto& gpuInst = gpuSceneDatabase.instances[instanceIndex];
+
+                if (inst.skinMatrices.empty())
+                {
+                    if (gpuInst.skinMatrixCount != 0u)
+                        return false;
+                    inst.skinMatrixOffset = std::numeric_limits<uint32_t>::max();
+                    inst.skinMatrixCount  = 0u;
+                    continue;
+                }
+
+                const uint32_t count = static_cast<uint32_t>(inst.skinMatrices.size());
+                if (gpuInst.skinMatrixOffset == std::numeric_limits<uint32_t>::max() ||
+                    gpuInst.skinMatrixCount != count ||
+                    gpuInst.skinMatrixOffset + count > gpuSceneDatabase.skinMatrices.size())
+                {
+                    return false;
+                }
+
+                std::copy(inst.skinMatrices.begin(),
+                          inst.skinMatrices.end(),
+                          gpuSceneDatabase.skinMatrices.begin() + gpuInst.skinMatrixOffset);
+                inst.skinMatrixOffset = gpuInst.skinMatrixOffset;
+                inst.skinMatrixCount  = gpuInst.skinMatrixCount;
+            }
+
+            return true;
         }
     } // namespace
 
@@ -1372,6 +1448,19 @@ namespace vultra
                 inst.entity      = id.uuid;
                 inst.meshIndex   = meshIndex;
                 inst.worldMatrix = tr.worldMatrix;
+                const auto& pool = gpuResources.pool();
+                if (meshIndex < pool.meshes.size())
+                {
+                    const auto& gpuMesh = pool.meshes[meshIndex];
+                    if (const auto* palette = findSkinPaletteForMesh(reg, e, gpuMesh))
+                    {
+                        const size_t count = std::min(palette->matrices.size(), gpuMesh.inverseBindPoses.size());
+                        inst.skinMatrices.resize(count);
+                        for (size_t i = 0; i < count; ++i)
+                            inst.skinMatrices[i] = palette->matrices[i] * gpuMesh.inverseBindPoses[i];
+                        inst.skinMatrixCount = static_cast<uint32_t>(inst.skinMatrices.size());
+                    }
+                }
                 inst.materialOverrides.reserve(mesh.materialOverrides.size());
                 if (!mesh.materialOverrides.empty())
                 {
@@ -1396,7 +1485,6 @@ namespace vultra
                 }
                 out.instances.push_back(inst);
 
-                const auto& pool = gpuResources.pool();
                 if (meshIndex < pool.meshes.size())
                 {
                     const auto& gpuMesh = pool.meshes[meshIndex];
@@ -2446,6 +2534,19 @@ namespace vultra
             gpuSceneTopologyDirty  = true;
             gpuSceneTransformDirty = false;
         }
+        bool gpuSceneSkinDirty = false;
+        if (!gpuSceneTopologyDirty && hasSkinMatrices(m_RenderWorldBack))
+        {
+            if (refreshSkinMatricesForExistingGpuScene(m_RenderWorldBack, m_GpuSceneDatabaseFront))
+            {
+                gpuSceneSkinDirty = true;
+            }
+            else
+            {
+                gpuSceneTopologyDirty  = true;
+                gpuSceneTransformDirty = false;
+            }
+        }
         if (!gpuSceneTopologyDirty && !gpuSceneTransformDirty && rayTracingAvailable &&
             !m_RenderWorldBack.instances.empty() &&
             (!m_GpuSceneDatabaseFront.rayTracingTlas || !m_GpuSceneDatabaseFront.rayTracingInstanceBuffer ||
@@ -2453,7 +2554,7 @@ namespace vultra
         {
             gpuSceneTopologyDirty = true;
         }
-        const bool gpuSceneDirty          = gpuSceneTopologyDirty || gpuSceneTransformDirty;
+        const bool gpuSceneDirty          = gpuSceneTopologyDirty || gpuSceneTransformDirty || gpuSceneSkinDirty;
         const bool gaussianSelectionDirty = gaussianOrderedClodMode && gaussianSelectionSettingsDirty;
 
         // Build GPU scene database + per-view draw state.
@@ -2540,6 +2641,11 @@ namespace vultra
             m_RenderWorldBack.gpuSceneDatabase = &m_GpuSceneDatabaseFront;
             m_RenderWorldBack.gpuSceneView     = &m_GpuSceneViewFront;
         }
+        if (gpuSceneSkinDirty && !gpuSceneTopologyDirty)
+        {
+            RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::update_skin_matrices"};
+            m_GpuSceneDatabaseFront.uploadSkinMatrices(rd, cb);
+        }
         else if (gpuSceneTopologyDirty)
         {
             RuntimeProfiler::Scope scope {m_RuntimeProfiler, "GpuScene::rebuild"};
@@ -2577,9 +2683,10 @@ namespace vultra
             // Keep CPU staging mirrors even though the current render path is still
             // CPU-driven. The upcoming GPU-driven cluster pipeline will consume the
             // same scene database buffers directly.
-            for (const auto& inst : m_RenderWorldBack.instances)
+            for (auto& inst : m_RenderWorldBack.instances)
             {
                 const uint32_t transformIndex = m_GpuSceneDatabaseBack.pushTransform(inst.worldMatrix);
+                inst.skinMatrixOffset = m_GpuSceneDatabaseBack.pushSkinMatrices(inst.skinMatrices);
 
                 resource::GpuInstance gpuInst {};
                 gpuInst.meshIndex      = inst.meshIndex;
@@ -2587,6 +2694,8 @@ namespace vultra
                 gpuInst.transformIndex = transformIndex;
                 gpuInst.flags          = 0;
                 gpuInst.entityPickingId = makeEntityPickingId(inst.entity);
+                gpuInst.skinMatrixOffset = inst.skinMatrixOffset;
+                gpuInst.skinMatrixCount  = inst.skinMatrixCount;
                 m_GpuSceneDatabaseBack.pushInstance(gpuInst);
             }
             m_GpuSceneDatabaseBack.uploadSceneTables(rd, cb);
@@ -2653,6 +2762,10 @@ namespace vultra
                         dr.texCoord0OffsetBytes = layout.texCoord0OffsetBytes;
                         dr.texCoord1OffsetBytes = layout.texCoord1OffsetBytes;
                         dr.tangentOffsetBytes   = layout.tangentOffsetBytes;
+                        dr.jointIndicesOffsetBytes = layout.jointIndicesOffsetBytes;
+                        dr.jointWeightsOffsetBytes = layout.jointWeightsOffsetBytes;
+                        dr.skinMatrixOffset = m_GpuSceneDatabaseBack.instances[instanceIndex].skinMatrixOffset;
+                        dr.skinMatrixCount  = m_GpuSceneDatabaseBack.instances[instanceIndex].skinMatrixCount;
                         dr.entityPickingId      = makeEntityPickingId(inst.entity);
                         dr.model                = inst.worldMatrix;
                         m_GpuSceneViewBack.pushMeshletDraw(std::move(dr));

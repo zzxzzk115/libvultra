@@ -27,7 +27,11 @@ namespace vultra::resource
         uint32_t texCoord0OffsetBytes {0xFFFFFFFFu};
         uint32_t texCoord1OffsetBytes {0xFFFFFFFFu};
         uint32_t tangentOffsetBytes {0xFFFFFFFFu};
+        uint32_t jointIndicesOffsetBytes {0xFFFFFFFFu};
+        uint32_t jointWeightsOffsetBytes {0xFFFFFFFFu};
         uint32_t padding0 {0};
+        uint32_t padding1 {0};
+        uint32_t padding2 {0};
 
         // Mesh-space bounds used by coarse culling in meshlet passes.
         glm::vec3 boundsCenter {0.0f};

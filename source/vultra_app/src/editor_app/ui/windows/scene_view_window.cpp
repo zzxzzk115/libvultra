@@ -922,6 +922,11 @@ namespace vultra_app
                                              editorSettings.rendererKey,
                                              editorSettings.clearMode,
                                              editorSettings.clearValue);
+        const auto applyEditorPlaybackTime = [&ctx](vultra::RenderCamera& camera) {
+            camera.overrideFrameTime  = true;
+            camera.frameTimeSeconds   = ctx.state.editorPlaying ? ctx.state.editorGameTimeSeconds : 0.0f;
+            camera.frameDeltaSeconds  = ctx.state.editorPlaying ? ctx.state.editorGameDeltaSeconds : 0.0f;
+        };
         ctx.state.sceneCamera.valid       = true;
         ctx.state.sceneCamera.position    = m_CameraPosition;
         ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
@@ -1055,6 +1060,7 @@ namespace vultra_app
             {
                 if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
                 {
+                    applyEditorPlaybackTime(editorCamera);
                     cameraService->addManualCamera(editorCamera);
                     if (ctx.state.scenePicking.requested && supportsScenePicking(ctx))
                     {
@@ -1074,6 +1080,7 @@ namespace vultra_app
                             pickingCamera.priority                = editorCamera.priority + 1;
                             pickingCamera.debugEntityIdOutput     = true;
                             pickingCamera.selectionOutlineEnabled = false;
+                            applyEditorPlaybackTime(pickingCamera);
                             cameraService->addManualCamera(pickingCamera);
                         }
                     }

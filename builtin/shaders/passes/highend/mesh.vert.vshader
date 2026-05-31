@@ -8,6 +8,7 @@ version = 460
 #define VULTRA_DECLARE_MESHLET_BUFFER
 #define VULTRA_DECLARE_MESHLET_VERTEX_BUFFER
 #define VULTRA_DECLARE_MESHLET_TRIANGLE_BUFFER
+#define VULTRA_DECLARE_SKIN_MATRIX_BUFFER
 #include "include/common/gpu_scene.glsl"
 #include "include/common/bda_vertex.glsl"
 
@@ -41,12 +42,15 @@ void main()
     v_TexCoord0 = v.texCoord0;
     v_TexCoord1 = v.texCoord1;
 
-    vec4 worldPos4 = d.model * vec4(v.position, 1.0);
+    mat4 skin = vtx_skin_matrix(d, v);
+    vec4 worldPos4 = d.model * skin * vec4(v.position, 1.0);
     v_FragPos = worldPos4.xyz;
 
     mat3 normalMatrix = transpose(inverse(mat3(d.model)));
-    vec3 N = normalize(normalMatrix * v.normal);
-    vec3 T = normalize(normalMatrix * v.tangent.xyz);
+    vec3 skinnedNormal = mat3(skin) * v.normal;
+    vec3 skinnedTangent = mat3(skin) * v.tangent.xyz;
+    vec3 N = normalize(normalMatrix * skinnedNormal);
+    vec3 T = normalize(normalMatrix * skinnedTangent);
     T = normalize(T - dot(T, N) * N);
     float modelHandedness = determinant(mat3(d.model)) < 0.0 ? -1.0 : 1.0;
     vec3 B = cross(N, T) * v.tangent.w * modelHandedness;

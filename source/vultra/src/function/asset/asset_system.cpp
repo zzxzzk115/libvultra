@@ -15,6 +15,7 @@
 #include <vasset/vasset_importers.hpp>
 #endif
 #include <vasset/vgaussiansplat.hpp>
+#include <vasset/vanimation.hpp>
 #include <vasset/vmaterial.hpp>
 
 #include <vfilesystem/backends/physical_filesystem.hpp>
@@ -523,6 +524,21 @@ namespace vultra
                    stringBytes(splat.sourceFileName);
         }
 
+        [[nodiscard]] uint64_t estimateVSkeletonBytes(const vasset::VSkeleton& skeleton)
+        {
+            uint64_t bytes = sizeof(skeleton) + vectorBytes(skeleton.jointParents) + vectorBytes(skeleton.ozzData) +
+                             stringBytes(skeleton.name) + stringBytes(skeleton.sourceFileName);
+            for (const auto& name : skeleton.jointNames)
+                bytes += stringBytes(name);
+            return bytes;
+        }
+
+        [[nodiscard]] uint64_t estimateVAnimationBytes(const vasset::VAnimation& animation)
+        {
+            return sizeof(animation) + vectorBytes(animation.ozzData) + stringBytes(animation.name) +
+                   stringBytes(animation.sourceFileName);
+        }
+
         float clampToF16(float x)
         {
             // IEEE half max finite value.
@@ -612,6 +628,8 @@ namespace vultra
         m_MeshCache.clear();
         m_TextureCache.clear();
         m_GaussianSplatCache.clear();
+        m_SkeletonCache.clear();
+        m_AnimationCache.clear();
         m_TexUUIDToBindlessIndex.clear();
         m_PendingMaterialRefreshes.clear();
         m_CpuLoadScheduler.reset();
@@ -652,6 +670,26 @@ namespace vultra
         };
 
         m_GaussianSplatCache.forEachRecord(addSplat);
+
+        auto addSkeleton = [&stats](const auto& record) {
+            if (record.cpu)
+            {
+                stats.cpuCacheBytes += sizeof(record);
+                stats.cpuCacheBytes += estimateVSkeletonBytes(*record.cpu);
+            }
+        };
+
+        m_SkeletonCache.forEachRecord(addSkeleton);
+
+        auto addAnimation = [&stats](const auto& record) {
+            if (record.cpu)
+            {
+                stats.cpuCacheBytes += sizeof(record);
+                stats.cpuCacheBytes += estimateVAnimationBytes(*record.cpu);
+            }
+        };
+
+        m_AnimationCache.forEachRecord(addAnimation);
 
         return stats;
     }
@@ -1216,8 +1254,9 @@ namespace vultra
         if (entry.type == vasset::VAssetType::eUnknown)
             return false;
 
-        const bool         cookedOnly = entry.type == vasset::VAssetType::eMesh ||
-                                entry.type == vasset::VAssetType::eTexture;
+        const bool cookedOnly = entry.type == vasset::VAssetType::eMesh || entry.type == vasset::VAssetType::eTexture ||
+                                entry.type == vasset::VAssetType::eSkeleton ||
+                                entry.type == vasset::VAssetType::eAnimation;
         const std::string& path       = cookedOnly && !entry.importedPath.empty() ? entry.importedPath :
                                         !entry.sourcePath.empty()                 ? entry.sourcePath :
                                                                                     entry.importedPath;
@@ -1661,6 +1700,9 @@ namespace vultra
                 .materialIndex = materialOffset,
             });
         }
+        pool.meshes[meshIndex].hasSkin = cpuMesh.hasSkin;
+        pool.meshes[meshIndex].skeleton = CoreUUID(cpuMesh.skeleton);
+        pool.meshes[meshIndex].inverseBindPoses = cpuMesh.inverseBindPoses;
 
         const bool rayTracingEnabled =
             HasFlagValues(m_RenderDevice->getFeatureFlag(), rhi::RenderDeviceFeatureFlagBits::eRayTracingPipeline);
@@ -1971,6 +2013,108 @@ namespace vultra
         return AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>(rec);
     }
 
+    AssetHandle<vasset::VSkeleton, resource::CpuAsset> AssetSystem::loadSkeletonAsync(const CoreUUID& uuid)
+    {
+        return loadSkeletonSync(uuid);
+    }
+
+    AssetHandle<vasset::VAnimation, resource::CpuAsset> AssetSystem::loadAnimationAsync(const CoreUUID& uuid)
+    {
+        return loadAnimationSync(uuid);
+    }
+
+    AssetHandle<vasset::VSkeleton, resource::CpuAsset> AssetSystem::loadSkeletonSync(const CoreUUID& uuid)
+    {
+        auto* rec = m_SkeletonCache.findOrCreate(uuid);
+        if (!rec)
+            return {};
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eReady)
+            return AssetHandle<vasset::VSkeleton, resource::CpuAsset>(rec);
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
+        {
+            rec->state.store(AssetState::eLoadingCPU, std::memory_order_release);
+
+            std::string uri;
+            if (!resolveUUIDToUri(uuid, uri))
+            {
+                VULTRA_CLIENT_ERROR("loadSkeletonSync: cannot resolve uuid {}", uuid.toString());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VSkeleton, resource::CpuAsset>(rec);
+            }
+
+            auto br = m_VFS.readAll(uri);
+            if (!br)
+            {
+                VULTRA_CLIENT_ERROR("loadSkeletonSync: failed to read {}", uri);
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VSkeleton, resource::CpuAsset>(rec);
+            }
+
+            auto cpu = std::make_unique<vasset::VSkeleton>();
+            auto r   = vasset::loadSkeletonFromMemory(br.value(), *cpu);
+            if (!r)
+            {
+                VULTRA_CLIENT_ERROR("loadSkeletonSync: vasset::loadSkeletonFromMemory failed: {}", uri);
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VSkeleton, resource::CpuAsset>(rec);
+            }
+
+            rec->cpu = std::move(cpu);
+            rec->gpuIndex.store(0u, std::memory_order_release);
+            rec->state.store(AssetState::eReady, std::memory_order_release);
+        }
+
+        return AssetHandle<vasset::VSkeleton, resource::CpuAsset>(rec);
+    }
+
+    AssetHandle<vasset::VAnimation, resource::CpuAsset> AssetSystem::loadAnimationSync(const CoreUUID& uuid)
+    {
+        auto* rec = m_AnimationCache.findOrCreate(uuid);
+        if (!rec)
+            return {};
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eReady)
+            return AssetHandle<vasset::VAnimation, resource::CpuAsset>(rec);
+
+        if (rec->state.load(std::memory_order_acquire) == AssetState::eUnloaded)
+        {
+            rec->state.store(AssetState::eLoadingCPU, std::memory_order_release);
+
+            std::string uri;
+            if (!resolveUUIDToUri(uuid, uri))
+            {
+                VULTRA_CLIENT_ERROR("loadAnimationSync: cannot resolve uuid {}", uuid.toString());
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VAnimation, resource::CpuAsset>(rec);
+            }
+
+            auto br = m_VFS.readAll(uri);
+            if (!br)
+            {
+                VULTRA_CLIENT_ERROR("loadAnimationSync: failed to read {}", uri);
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VAnimation, resource::CpuAsset>(rec);
+            }
+
+            auto cpu = std::make_unique<vasset::VAnimation>();
+            auto r   = vasset::loadAnimationFromMemory(br.value(), *cpu);
+            if (!r)
+            {
+                VULTRA_CLIENT_ERROR("loadAnimationSync: vasset::loadAnimationFromMemory failed: {}", uri);
+                rec->state.store(AssetState::eFailed, std::memory_order_release);
+                return AssetHandle<vasset::VAnimation, resource::CpuAsset>(rec);
+            }
+
+            rec->cpu = std::move(cpu);
+            rec->gpuIndex.store(0u, std::memory_order_release);
+            rec->state.store(AssetState::eReady, std::memory_order_release);
+        }
+
+        return AssetHandle<vasset::VAnimation, resource::CpuAsset>(rec);
+    }
+
     AssetHandle<vasset::VTexture, resource::GpuTexture> AssetSystem::loadTextureSync(const CoreUUID& uuid)
     {
         auto* rec = m_TextureCache.findOrCreate(uuid);
@@ -2052,6 +2196,38 @@ namespace vultra
         if (!resolveUriToUUID(uri, uuid))
             return {};
         return loadTextureAsync(uuid);
+    }
+
+    AssetHandle<vasset::VSkeleton, resource::CpuAsset> AssetSystem::loadSkeletonSync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadSkeletonSync(uuid);
+    }
+
+    AssetHandle<vasset::VSkeleton, resource::CpuAsset> AssetSystem::loadSkeletonAsync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadSkeletonAsync(uuid);
+    }
+
+    AssetHandle<vasset::VAnimation, resource::CpuAsset> AssetSystem::loadAnimationSync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadAnimationSync(uuid);
+    }
+
+    AssetHandle<vasset::VAnimation, resource::CpuAsset> AssetSystem::loadAnimationAsync(std::string_view uri)
+    {
+        CoreUUID uuid {};
+        if (!resolveUriToUUID(uri, uuid))
+            return {};
+        return loadAnimationAsync(uuid);
     }
 
     AssetHandle<vasset::VMesh, resource::GpuMesh> AssetSystem::loadMeshSync(const CoreUUID& uuid)

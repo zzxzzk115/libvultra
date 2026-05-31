@@ -8,12 +8,14 @@
 #include "vultra/function/resource/gpu_gaussian_splat.hpp"
 #include "vultra/function/resource/gpu_mesh.hpp"
 #include "vultra/function/resource/gpu_texture.hpp"
+#include "vultra/function/resource/cpu_asset.hpp"
 #include "vultra/function/services/asset_service.hpp"
 #include "vultra/function/services/gpu_resource_service.hpp"
 
 #include <vasset/uuid_resolver.hpp>
 #include <vasset/vasset_registry.hpp>
 #include <vasset/vgaussiansplat.hpp>
+#include <vasset/vanimation.hpp>
 #include <vasset/vmesh.hpp>
 #include <vasset/vtexture.hpp>
 
@@ -70,22 +72,30 @@ namespace vultra
         AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(const CoreUUID& uuid) override;
         AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(const CoreUUID& uuid) override;
+        AssetHandle<vasset::VSkeleton, resource::CpuAsset>  loadSkeletonSync(const CoreUUID& uuid) override;
+        AssetHandle<vasset::VAnimation, resource::CpuAsset> loadAnimationSync(const CoreUUID& uuid) override;
 
         AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshAsync(const CoreUUID& uuid) override;
         AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureAsync(const CoreUUID& uuid) override;
         AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatAsync(const CoreUUID& uuid) override;
+        AssetHandle<vasset::VSkeleton, resource::CpuAsset>  loadSkeletonAsync(const CoreUUID& uuid) override;
+        AssetHandle<vasset::VAnimation, resource::CpuAsset> loadAnimationAsync(const CoreUUID& uuid) override;
 
         // Convenience: load by uri/path (must be resolvable by registry/resolver)
         AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshSync(std::string_view uri) override;
         AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureSync(std::string_view uri) override;
         AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatSync(std::string_view uri) override;
+        AssetHandle<vasset::VSkeleton, resource::CpuAsset>  loadSkeletonSync(std::string_view uri) override;
+        AssetHandle<vasset::VAnimation, resource::CpuAsset> loadAnimationSync(std::string_view uri) override;
 
         AssetHandle<vasset::VMesh, resource::GpuMesh>       loadMeshAsync(std::string_view uri) override;
         AssetHandle<vasset::VTexture, resource::GpuTexture> loadTextureAsync(std::string_view uri) override;
         AssetHandle<vasset::VGaussianSplat, resource::GpuGaussianSplat>
         loadGaussianSplatAsync(std::string_view uri) override;
+        AssetHandle<vasset::VSkeleton, resource::CpuAsset>  loadSkeletonAsync(std::string_view uri) override;
+        AssetHandle<vasset::VAnimation, resource::CpuAsset> loadAnimationAsync(std::string_view uri) override;
 
         vbase::Result<std::string, std::string> loadTextAssetSync(std::string_view uri) override;
         void setTextAssetOverride(std::string_view uri, std::string text) override;
@@ -183,6 +193,8 @@ namespace vultra
         AssetCache<vasset::VMesh, resource::GpuMesh, 64>                   m_MeshCache;
         AssetCache<vasset::VTexture, resource::GpuTexture, 64>             m_TextureCache;
         AssetCache<vasset::VGaussianSplat, resource::GpuGaussianSplat, 32> m_GaussianSplatCache;
+        AssetCache<vasset::VSkeleton, resource::CpuAsset, 16>              m_SkeletonCache;
+        AssetCache<vasset::VAnimation, resource::CpuAsset, 32>             m_AnimationCache;
 
         // Texture UUID -> bindless index
         std::unordered_map<CoreUUID, uint32_t> m_TexUUIDToBindlessIndex;

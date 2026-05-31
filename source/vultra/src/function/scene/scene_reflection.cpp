@@ -1,6 +1,7 @@
 #include "vultra/function/scene/scene_reflection.hpp"
 
 #include "vultra/core/base/uuid.hpp"
+#include "vultra/function/world/components/animator_component.hpp"
 #include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
 #include "vultra/function/world/components/capsule_shape_component.hpp"
@@ -91,6 +92,15 @@ namespace vultra
             .data<&MeshComponent::builtinGeometry>("builtinGeometry"_hs)
             .data<&MeshComponent::materialColor>("materialColor"_hs)
             .data<&MeshComponent::materialOverrides>("materialOverrides"_hs);
+        entt::meta_factory<AnimatorComponent>()
+            .type("AnimatorComponent"_hs)
+            .data<&AnimatorComponent::skeleton>("skeleton"_hs)
+            .data<&AnimatorComponent::animation>("animation"_hs)
+            .data<&AnimatorComponent::playOnStart>("playOnStart"_hs)
+            .data<&AnimatorComponent::playing>("playing"_hs)
+            .data<&AnimatorComponent::loop>("loop"_hs)
+            .data<&AnimatorComponent::speed>("speed"_hs)
+            .data<&AnimatorComponent::time>("time"_hs);
         entt::meta_factory<GaussianSplatComponent>()
             .type("GaussianSplatComponent"_hs)
             .data<&GaussianSplatComponent::gaussianSplat>("gaussianSplat"_hs);

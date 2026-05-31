@@ -13,6 +13,7 @@ WRITE_ENTITY_ID : bool permute
 #define VULTRA_DECLARE_MATERIAL_PARAMS
 #define VULTRA_DECLARE_MESHLET_VERTEX_BUFFER
 #define VULTRA_DECLARE_MESHLET_TRIANGLE_BUFFER
+#define VULTRA_DECLARE_SKIN_MATRIX_BUFFER
 #define VULTRA_DECLARE_BINDLESS_TEXTURES
 #include "include/common/gpu_scene.glsl"
 #include "include/common/bda_vertex.glsl"
@@ -254,9 +255,12 @@ void main()
     Vertex v1 = load_vertex(d, vertex1);
     Vertex v2 = load_vertex(d, vertex2);
 
-    vec4 w0 = d.model * vec4(v0.position, 1.0);
-    vec4 w1 = d.model * vec4(v1.position, 1.0);
-    vec4 w2 = d.model * vec4(v2.position, 1.0);
+    mat4 skin0 = vtx_skin_matrix(d, v0);
+    mat4 skin1 = vtx_skin_matrix(d, v1);
+    mat4 skin2 = vtx_skin_matrix(d, v2);
+    vec4 w0 = d.model * skin0 * vec4(v0.position, 1.0);
+    vec4 w1 = d.model * skin1 * vec4(v1.position, 1.0);
+    vec4 w2 = d.model * skin2 * vec4(v2.position, 1.0);
 
     vec4 c0 = u_Camera.viewProjection * w0;
     vec4 c1 = u_Camera.viewProjection * w1;
@@ -271,9 +275,9 @@ void main()
     vec2 uv = vtx_uv0(v0) * bc.x + vtx_uv0(v1) * bc.y + vtx_uv0(v2) * bc.z;
 
     mat3 normalMatrix = transpose(inverse(mat3(d.model)));
-    vec3 n0 = normalize(normalMatrix * vtx_normal(v0));
-    vec3 n1 = normalize(normalMatrix * vtx_normal(v1));
-    vec3 n2 = normalize(normalMatrix * vtx_normal(v2));
+    vec3 n0 = normalize(normalMatrix * (mat3(skin0) * vtx_normal(v0)));
+    vec3 n1 = normalize(normalMatrix * (mat3(skin1) * vtx_normal(v1)));
+    vec3 n2 = normalize(normalMatrix * (mat3(skin2) * vtx_normal(v2)));
     vec3 normalWS = normalize(n0 * bc.x + n1 * bc.y + n2 * bc.z);
 
     bool hasUv0 = vertex_has_attribute(d.vertexAttributeMask, VULTRA_VERTEX_ATTR_UV0);

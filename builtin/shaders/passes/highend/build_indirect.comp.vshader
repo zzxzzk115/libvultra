@@ -66,8 +66,11 @@ void main()
     dr.texCoord0OffsetBytes = mesh.texCoord0OffsetBytes;
     dr.texCoord1OffsetBytes = mesh.texCoord1OffsetBytes;
     dr.tangentOffsetBytes = mesh.tangentOffsetBytes;
+    dr.jointIndicesOffsetBytes = mesh.jointIndicesOffsetBytes;
+    dr.jointWeightsOffsetBytes = mesh.jointWeightsOffsetBytes;
+    dr.skinMatrixOffset = inst.skinMatrixOffset;
+    dr.skinMatrixCount = inst.skinMatrixCount;
     dr.entityPickingId = inst.entityPickingId;
-    dr.padding1 = 0u;
     dr.model = s_Models.models[inst.transformIndex];
     s_Draws.draws[drawId] = dr;
 }

@@ -52,8 +52,11 @@ namespace vultra::resource
         uint32_t texCoord0OffsetBytes {0xFFFFFFFFu};
         uint32_t texCoord1OffsetBytes {0xFFFFFFFFu};
         uint32_t tangentOffsetBytes {0xFFFFFFFFu};
+        uint32_t jointIndicesOffsetBytes {0xFFFFFFFFu};
+        uint32_t jointWeightsOffsetBytes {0xFFFFFFFFu};
+        uint32_t skinMatrixOffset {0xFFFFFFFFu};
+        uint32_t skinMatrixCount {0};
         uint32_t entityPickingId {0};
-        uint32_t padding1 {0};
 
         glm::mat4 model {1.0f};
     };
