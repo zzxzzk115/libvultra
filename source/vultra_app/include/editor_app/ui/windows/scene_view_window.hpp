@@ -7,6 +7,7 @@
 #include <vultra/function/services/imgui_service.hpp>
 
 #include <glm/mat4x4.hpp>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 #include <optional>
@@ -100,5 +101,7 @@ namespace vultra_app
         uint64_t  m_ProjectGeneration {0};
         bool      m_CameraInitializedFromScene {false};
         bool      m_FocusActive {false};
+        bool      m_ViewManipulatorDragActive {false};
+        glm::vec3 m_ViewManipulatorArcballVector {0.0f, 0.0f, 1.0f};
     };
 } // namespace vultra_app

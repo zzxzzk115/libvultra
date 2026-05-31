@@ -493,6 +493,34 @@ namespace vultra_app
             return dx * dx + dy * dy <= radius * radius;
         }
 
+        glm::vec3 mapArcballPoint(const ImVec2& mouse, const ImVec2& center, const float radius)
+        {
+            if (radius <= 0.0f)
+                return {0.0f, 0.0f, 1.0f};
+
+            glm::vec2 p {(mouse.x - center.x) / radius, (center.y - mouse.y) / radius};
+            const float lenSq = glm::dot(p, p);
+            if (lenSq > 1.0f)
+                p *= 1.0f / std::sqrt(lenSq);
+
+            const float z = std::sqrt(std::max(0.0f, 1.0f - glm::dot(p, p)));
+            return glm::normalize(glm::vec3 {p.x, p.y, z});
+        }
+
+        glm::quat arcballDelta(const glm::vec3& from, const glm::vec3& to)
+        {
+            const float d = std::clamp(glm::dot(from, to), -1.0f, 1.0f);
+            if (d > 0.9999f)
+                return glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+
+            glm::vec3 axis = glm::cross(from, to);
+            if (glm::dot(axis, axis) < 1e-8f)
+                axis = std::abs(from.x) < 0.9f ? glm::cross(from, glm::vec3 {1.0f, 0.0f, 0.0f}) :
+                                                  glm::cross(from, glm::vec3 {0.0f, 1.0f, 0.0f});
+
+            return glm::normalize(glm::angleAxis(std::acos(d), glm::normalize(axis)));
+        }
+
         bool isMouseInRect(const ImVec2& min, const ImVec2& max)
         {
             const ImVec2 mouse = ImGui::GetIO().MousePos;
@@ -1006,12 +1034,55 @@ namespace vultra_app
         drawList->AddCircleFilled(center, radius, IM_COL32(16, 19, 24, 128), 48);
         drawList->AddCircle(center, radius, IM_COL32(255, 255, 255, 32), 48, 1.0f);
 
+        const glm::vec3 cameraPosition = m_CameraPosition;
+        glm::mat4       gizmoView      = view;
+        const glm::mat4 gizmoProjection {1.0f};
+
         ImOGuizmo::config.axisLengthScale = 0.30f;
         ImOGuizmo::SetRect(position.x, position.y, kViewManipulatorSize);
         ImOGuizmo::SetDrawList(drawList);
+        bool changed = ImOGuizmo::DrawGizmo(glm::value_ptr(gizmoView), glm::value_ptr(gizmoProjection), 1.0f);
 
-        const float pivotDistance = std::max(glm::length(m_CameraPosition), 0.001f);
-        return ImOGuizmo::DrawGizmo(glm::value_ptr(view), glm::value_ptr(projection), pivotDistance);
+        if (changed)
+        {
+            const glm::mat4 invView = glm::inverse(gizmoView);
+            const glm::quat rotation = glm::normalize(glm::quat_cast(invView));
+            const glm::vec3 forward = glm::normalize(rotation * glm::vec3 {0.0f, 0.0f, -1.0f});
+            const glm::vec3 up = glm::normalize(rotation * glm::vec3 {0.0f, 1.0f, 0.0f});
+            view = glm::lookAt(cameraPosition, cameraPosition + forward, up);
+            m_FocusActive = false;
+        }
+
+        const bool mouseInside = isMouseOverViewManipulator(viewportMin, viewportMax);
+        if (mouseInside && !changed && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            m_ViewManipulatorDragActive = true;
+            m_ViewManipulatorArcballVector = mapArcballPoint(ImGui::GetIO().MousePos, center, radius);
+            ImGui::SetNextFrameWantCaptureMouse(true);
+        }
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            m_ViewManipulatorDragActive = false;
+
+        if (m_ViewManipulatorDragActive && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
+        {
+            const glm::vec3 next = mapArcballPoint(ImGui::GetIO().MousePos, center, radius);
+            const glm::quat delta = arcballDelta(m_ViewManipulatorArcballVector, next);
+            m_ViewManipulatorArcballVector = next;
+
+            const glm::mat4 invView = glm::inverse(view);
+            const glm::quat cameraRotation = glm::normalize(glm::quat_cast(invView));
+            const glm::quat worldDelta = cameraRotation * delta * glm::inverse(cameraRotation);
+            const glm::quat nextRotation = glm::normalize(worldDelta * cameraRotation);
+            const glm::vec3 nextForward = glm::normalize(nextRotation * glm::vec3 {0.0f, 0.0f, -1.0f});
+            const glm::vec3 nextUp = glm::normalize(nextRotation * glm::vec3 {0.0f, 1.0f, 0.0f});
+
+            view = glm::lookAt(cameraPosition, cameraPosition + nextForward, nextUp);
+            m_FocusActive = false;
+            changed = true;
+            ImGui::SetNextFrameWantCaptureMouse(true);
+        }
+
+        return changed;
     }
 
     void SceneViewWindow::drawToolbar(const ImVec2& viewportMin)
