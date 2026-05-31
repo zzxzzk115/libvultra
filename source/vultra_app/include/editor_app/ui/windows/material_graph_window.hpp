@@ -91,6 +91,8 @@ namespace vultra_app
         bool                                    m_Dirty {false};
         bool                                    m_LiveApply {true};
         int                                     m_ContextNode {0};
+        uint64_t                                m_LoadedAssetGeneration {0};
+        uint64_t                                m_LoadedWriteStamp {0};
 
         RenderTargetSlot              m_PreviewTarget;
         std::vector<RenderTargetSlot> m_RetiredPreviewTargets;

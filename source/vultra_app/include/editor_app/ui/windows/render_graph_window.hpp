@@ -36,6 +36,7 @@ namespace vultra_app
         {
             std::optional<vultra::rhi::Texture> texture;
             vultra::rhi::Extent2D               extent {};
+            uint32_t                            layerCount {1};
             vultra::IImGuiService::TextureID    textureId {};
             uint64_t                            frameCreated {0};
             uint64_t                            releaseFrame {0};
@@ -58,7 +59,7 @@ namespace vultra_app
         void onDestroy(EditorContext& ctx) override;
         bool ensureRenderGraphPreviewCamera(EditorContext& ctx, uint32_t width, uint32_t height);
         void drawGameViewOverlay(EditorContext& ctx, ImVec2 childMin, ImVec2 childMax);
-        void ensureOverlayRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height);
+        void ensureOverlayRenderTarget(EditorContext& ctx, uint32_t width, uint32_t height, uint32_t layerCount = 1);
         void promotePendingOverlayRenderTarget(EditorContext& ctx);
         void retireOverlayRenderTarget(RenderTargetSlot& slot);
         void collectRetiredOverlayRenderTargets(EditorContext& ctx);
@@ -92,6 +93,7 @@ namespace vultra_app
         std::string m_RuntimeTexturePreviewTitle;
         std::string m_RuntimeTexturePreviewDefaultsKey;
         std::string m_RuntimeTexturePreviewOverrideKey;
+        std::unordered_set<std::string> m_RuntimeTexturePreviewOverrideKeys;
         std::string m_PendingRuntimeTexturePreviewAutoFitKey;
         const vultra::rhi::Texture* m_PendingRuntimeTexturePreviewAutoFitTexture {nullptr};
         uint64_t m_PendingRuntimeTexturePreviewAutoFitFrame {0};
@@ -106,10 +108,10 @@ namespace vultra_app
         std::vector<std::string> m_RenderGraphAssetUris;
         std::filesystem::path    m_RenderGraphAssetProject;
         std::string              m_RenderGraphAssetRoot;
-        uint64_t                 m_RenderGraphAssetProjectGeneration {0};
+        uint64_t                 m_RenderGraphAssetGeneration {0};
         std::filesystem::path    m_RenderGraphPassCatalogProject;
         std::string              m_RenderGraphPassCatalogAssetRoot;
-        uint64_t                 m_RenderGraphPassCatalogProjectGeneration {0};
+        uint64_t                 m_RenderGraphPassCatalogAssetGeneration {0};
         ui::FileDialogField      m_BuiltinRenderGraphExportDialog {
             "BuiltinRenderGraphExportPath",
             "Export Builtin Render Graph",

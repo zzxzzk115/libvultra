@@ -4,8 +4,11 @@
 
 #include <ImGuiColorTextEdit/TextEditor.h>
 
+#include <vultra/function/services/asset_service.hpp>
+
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace vultra_app
 {
@@ -22,6 +25,9 @@ namespace vultra_app
         void reload(EditorContext& ctx);
         void reimport(EditorContext& ctx);
         void applyLanguageForPath(const std::filesystem::path& path);
+        void refreshDiagnostics(EditorContext& ctx);
+        void applyDiagnosticsToEditor();
+        void drawDiagnosticsPanel();
 
         [[nodiscard]] bool hasOpenFile() const;
         [[nodiscard]] bool isDirty() const;
@@ -31,6 +37,7 @@ namespace vultra_app
         TextEditor                       m_Editor;
         std::string                      m_LastSavedText;
         std::string                      m_Error;
+        std::vector<vultra::AssetDiagnostic> m_Diagnostics;
         bool                             m_Loaded {false};
         bool                             m_RequestFocus {false};
     };

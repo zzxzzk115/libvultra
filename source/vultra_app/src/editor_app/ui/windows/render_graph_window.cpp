@@ -502,11 +502,16 @@ namespace vultra_app
                 const auto&                           def = registry.get(pass.type);
                 const std::unordered_set<std::string> validInputs(def.inputs.begin(), def.inputs.end());
                 const std::unordered_set<std::string> validOutputs(def.outputs.begin(), def.outputs.end());
+                const auto isOptionalInput = [&](const std::string& slot) {
+                    return pass.type == "DirectGBuffer" && slot == "depth";
+                };
                 for (const auto& slot : def.inputs)
                 {
                     auto it = pass.inputs.find(slot);
                     if (it == pass.inputs.end() || it->second.empty())
                     {
+                        if (isOptionalInput(slot))
+                            continue;
                         error = "Pass '" + pass.id + "' input '" + slot + "' is not connected.";
                         return false;
                     }
@@ -606,18 +611,38 @@ namespace vultra_app
             std::string                library {"project"};
             vultra::rhi::ShaderProfile profile {vultra::rhi::ShaderProfile::eGeneral};
             std::string                fragment;
+            std::string                compute;
+        };
+
+        struct EditorProjectGraphPassDesc
+        {
+            std::string              type;
+            std::vector<std::string> inputs;
+            std::vector<std::string> outputs;
+            EditorShaderRef          shader;
+            bool                     hasShader {false};
         };
 
         std::string projectCachePrefix(const EditorContext& ctx)
         {
             return ctx.state.currentProject.lexically_normal().generic_string() + "|" + ctx.state.currentAssetRoot +
-                   "|" + std::to_string(ctx.state.projectGeneration);
+                   "|" + std::to_string(ctx.state.assetFileGeneration);
         }
 
         std::string shaderRefCacheKey(const EditorShaderRef& shaderRef)
         {
             return shaderRef.library + "|" + std::to_string(static_cast<int>(shaderRef.profile)) + "|" +
-                   shaderRef.fragment;
+                   shaderRef.fragment + "|" + shaderRef.compute;
+        }
+
+        std::string primaryShaderId(const EditorShaderRef& shaderRef)
+        {
+            return !shaderRef.fragment.empty() ? shaderRef.fragment : shaderRef.compute;
+        }
+
+        vshadersystem::ShaderStage primaryShaderStage(const EditorShaderRef& shaderRef)
+        {
+            return !shaderRef.fragment.empty() ? vshadersystem::ShaderStage::eFrag : vshadersystem::ShaderStage::eComp;
         }
 
         std::vector<ParamEnumOption>
@@ -1216,7 +1241,8 @@ namespace vultra_app
 
         std::optional<std::filesystem::path> findBuiltinShaderSourceFile(const EditorShaderRef& shaderRef)
         {
-            if (shaderRef.fragment.empty())
+            const auto shaderId = primaryShaderId(shaderRef);
+            if (shaderId.empty())
                 return std::nullopt;
 
             const auto profileDir = [&]() -> std::string {
@@ -1239,14 +1265,14 @@ namespace vultra_app
             roots.push_back(cwd.parent_path().parent_path());
 
             std::vector<std::filesystem::path> candidates;
-            const auto                         fragment        = std::filesystem::path(shaderRef.fragment);
-            const auto                         fragmentVShader = shaderRef.fragment.ends_with(".vshader") ?
-                                                                     fragment :
-                                                                     std::filesystem::path(shaderRef.fragment + ".vshader");
+            const auto                         shaderPath        = std::filesystem::path(shaderId);
+            const auto                         shaderPathVShader = shaderId.ends_with(".vshader") ?
+                                                                       shaderPath :
+                                                                       std::filesystem::path(shaderId + ".vshader");
             for (const auto& root : roots)
             {
-                candidates.push_back(root / "builtin" / "shaders" / "passes" / profileDir / fragmentVShader);
-                candidates.push_back(root / "builtin" / "shaders" / "passes" / profileDir / fragment);
+                candidates.push_back(root / "builtin" / "shaders" / "passes" / profileDir / shaderPathVShader);
+                candidates.push_back(root / "builtin" / "shaders" / "passes" / profileDir / shaderPath);
             }
 
             std::error_code ec;
@@ -1264,7 +1290,7 @@ namespace vultra_app
         {
             if (shaderRef.library == "builtin")
                 return findBuiltinShaderSourceFile(shaderRef);
-            return findShaderSourceFile(ctx, shaderRef.fragment);
+            return findShaderSourceFile(ctx, primaryShaderId(shaderRef));
         }
 
         std::string assetUriForPath(const EditorContext& ctx, const std::filesystem::path& path)
@@ -1328,14 +1354,14 @@ namespace vultra_app
         bool drawProjectRenderGraphSelector(std::vector<std::string>&  cachedUris,
                                             std::filesystem::path&     cachedProject,
                                             std::string&               cachedAssetRoot,
-                                            uint64_t&                  cachedProjectGeneration,
+                                            uint64_t&                  cachedAssetGeneration,
                                             EditorContext&             ctx,
                                             std::string&               status)
         {
             const EditorCpuScope perf {ctx, "Editor::RenderGraph/AssetSelector"};
             const bool cacheDirty =
                 cachedProject != ctx.state.currentProject || cachedAssetRoot != ctx.state.currentAssetRoot ||
-                cachedProjectGeneration != ctx.state.projectGeneration;
+                cachedAssetGeneration != ctx.state.assetFileGeneration;
             if (cacheDirty)
             {
                 const EditorCpuScope refreshPerf {ctx, "Editor::RenderGraph/AssetSelectorRefresh"};
@@ -1346,7 +1372,7 @@ namespace vultra_app
                 cachedUris.erase(std::unique(cachedUris.begin(), cachedUris.end()), cachedUris.end());
                 cachedProject            = ctx.state.currentProject;
                 cachedAssetRoot          = ctx.state.currentAssetRoot;
-                cachedProjectGeneration  = ctx.state.projectGeneration;
+                cachedAssetGeneration    = ctx.state.assetFileGeneration;
             }
 
             auto uris = cachedUris;
@@ -1436,52 +1462,102 @@ namespace vultra_app
             return out;
         }
 
-        std::vector<std::string> listEditorProjectRenderGraphPassTypes(const EditorContext& ctx)
+        bool isImportedAssetPath(std::string_view logicalPath)
         {
-            std::vector<std::string> types;
-            const auto               dir = assetPathForUri(ctx, "res://render/passes");
-            if (dir.empty())
-                return types;
+            return logicalPath == "imported" || logicalPath.starts_with("imported/");
+        }
 
-            std::error_code ec;
-            if (!std::filesystem::is_directory(dir, ec))
-                return types;
-
+        std::vector<std::filesystem::path> collectProjectLuaSourceFiles(const EditorContext& ctx)
+        {
             std::vector<std::filesystem::path> files;
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec))
+            if (ctx.state.currentProject.empty() || ctx.state.currentAssetRoot.empty())
+                return files;
+
+            const auto root = (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+            std::error_code ec;
+            if (!std::filesystem::is_directory(root, ec))
+                return files;
+
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(root, ec))
             {
                 if (ec)
                     break;
                 if (!entry.is_regular_file(ec) || entry.path().extension() != ".lua")
                     continue;
+                std::error_code relEc;
+                const auto      rel = std::filesystem::relative(entry.path(), root, relEc);
+                if (relEc || rel.empty() || isImportedAssetPath(rel.generic_string()))
+                    continue;
                 files.push_back(entry.path().lexically_normal());
             }
             std::sort(files.begin(), files.end());
+            return files;
+        }
 
-            for (const auto& path : files)
+        std::optional<EditorProjectGraphPassDesc> loadRenderGraphPassLuaDesc(const std::filesystem::path& path)
+        {
+            std::ifstream file(path);
+            if (!file.is_open())
+                return std::nullopt;
+
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            const auto text = buffer.str();
+            if (text.find("RenderGraphPass") == std::string::npos)
+                return std::nullopt;
+
+            sol::state lua;
+            lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
+            lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
+            auto result = lua.safe_script(text, &sol::script_pass_on_error);
+            if (!result.valid())
+                return std::nullopt;
+
+            sol::object obj = result;
+            if (!obj.is<sol::table>())
+                return std::nullopt;
+
+            sol::table  passTable = obj.as<sol::table>();
+            EditorProjectGraphPassDesc desc;
+            desc.type = solString(passTable, "type", solString(passTable, "name"));
+            if (desc.type.empty())
+                return std::nullopt;
+
+            desc.inputs = solStringList(passTable, "inputs");
+            if (desc.inputs.empty())
+                desc.inputs.push_back(solString(passTable, "input", "source"));
+            desc.outputs = solStringList(passTable, "outputs");
+            if (desc.outputs.empty())
+                desc.outputs.push_back(solString(passTable, "output", "color"));
+
+            sol::object shaderObj = passTable["shader"];
+            if (shaderObj.is<sol::table>())
             {
-                std::ifstream file(path);
-                if (!file.is_open())
+                sol::table  shaderTable = shaderObj.as<sol::table>();
+                sol::object libraryObj  = shaderTable["library"];
+                sol::object fragmentObj = shaderTable["fragment"];
+                sol::object computeObj  = shaderTable["compute"];
+                if (libraryObj.is<std::string>())
+                    desc.shader.library = libraryObj.as<std::string>();
+                if (fragmentObj.is<std::string>())
+                    desc.shader.fragment = fragmentObj.as<std::string>();
+                if (computeObj.is<std::string>())
+                    desc.shader.compute = computeObj.as<std::string>();
+                desc.hasShader = !desc.shader.fragment.empty() || !desc.shader.compute.empty();
+            }
+
+            return desc;
+        }
+
+        std::vector<std::string> listEditorProjectRenderGraphPassTypes(const EditorContext& ctx)
+        {
+            std::vector<std::string> types;
+            for (const auto& path : collectProjectLuaSourceFiles(ctx))
+            {
+                const auto pass = loadRenderGraphPassLuaDesc(path);
+                if (!pass)
                     continue;
-
-                std::stringstream buffer;
-                buffer << file.rdbuf();
-
-                sol::state lua;
-                lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
-                lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
-                auto result = lua.safe_script(buffer.str(), &sol::script_pass_on_error);
-                if (!result.valid())
-                    continue;
-
-                sol::object obj = result;
-                if (!obj.is<sol::table>())
-                    continue;
-
-                sol::table  passTable = obj.as<sol::table>();
-                std::string type      = solString(passTable, "type", solString(passTable, "name"));
-                if (!type.empty())
-                    types.push_back(type);
+                types.push_back(pass->type);
             }
 
             std::sort(types.begin(), types.end());
@@ -1493,66 +1569,25 @@ namespace vultra_app
                                                     vrendergraph::RenderGraphRegistry& registry)
         {
             const EditorCpuScope perf {ctx, "Editor::RenderGraph/RegisterPassCatalog"};
-            const auto dir = assetPathForUri(ctx, "res://render/passes");
-            if (dir.empty())
-                return;
-
-            std::error_code ec;
-            if (!std::filesystem::is_directory(dir, ec))
-                return;
-
-            std::vector<std::filesystem::path> files;
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec))
-            {
-                if (ec)
-                    break;
-                if (!entry.is_regular_file(ec) || entry.path().extension() != ".lua")
-                    continue;
-                files.push_back(entry.path().lexically_normal());
-            }
-            std::sort(files.begin(), files.end());
-
             const auto noop = [](FrameGraph&,
                                  FrameGraphBlackboard&,
                                  const vrendergraph::ParamBlock&,
                                  vrendergraph::PassBuildContext&) {};
-            for (const auto& path : files)
+            for (const auto& path : collectProjectLuaSourceFiles(ctx))
             {
-                std::ifstream file(path);
-                if (!file.is_open())
+                const auto pass = loadRenderGraphPassLuaDesc(path);
+                if (!pass)
                     continue;
 
-                std::stringstream buffer;
-                buffer << file.rdbuf();
-
-                sol::state lua;
-                lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
-                lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
-                auto result = lua.safe_script(buffer.str(), &sol::script_pass_on_error);
-                if (!result.valid())
-                    continue;
-
-                sol::object obj = result;
-                if (!obj.is<sol::table>())
-                    continue;
-
-                sol::table  passTable = obj.as<sol::table>();
-                std::string type      = solString(passTable, "type", solString(passTable, "name"));
+                std::string type = pass->type;
                 if (type.empty() || registry.contains(type))
                     continue;
-
-                auto inputs = solStringList(passTable, "inputs");
-                if (inputs.empty())
-                    inputs.push_back(solString(passTable, "input", "source"));
-                auto outputs = solStringList(passTable, "outputs");
-                if (outputs.empty())
-                    outputs.push_back(solString(passTable, "output", "color"));
 
                 registry.registerPass(vrendergraph::PassDefinition {
                     .type    = type,
                     .setup   = noop,
-                    .inputs  = std::move(inputs),
-                    .outputs = std::move(outputs),
+                    .inputs  = pass->inputs,
+                    .outputs = pass->outputs,
                     .params =
                         {
                             {.name = "name", .type = vrendergraph::ParamType::eString, .defaultValue = type},
@@ -1609,75 +1644,17 @@ namespace vultra_app
                 return cached->second;
 
             const EditorCpuScope perf {ctx, "Editor::RenderGraph/ProjectPassShaderScan"};
-            const auto dir = assetPathForUri(ctx, "res://render/passes");
-            if (dir.empty())
+            for (const auto& path : collectProjectLuaSourceFiles(ctx))
             {
-                cachedRefs[typeKey] = std::nullopt;
-                return std::nullopt;
-            }
-
-            std::error_code ec;
-            if (!std::filesystem::is_directory(dir, ec))
-            {
-                cachedRefs[typeKey] = std::nullopt;
-                return std::nullopt;
-            }
-
-            std::vector<std::filesystem::path> files;
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec))
-            {
-                if (ec)
-                    break;
-                if (!entry.is_regular_file(ec) || entry.path().extension() != ".lua")
-                    continue;
-                files.push_back(entry.path().lexically_normal());
-            }
-            std::sort(files.begin(), files.end());
-
-            for (const auto& path : files)
-            {
-                std::ifstream file(path);
-                if (!file.is_open())
+                const auto pass = loadRenderGraphPassLuaDesc(path);
+                if (!pass || pass->type != type)
                     continue;
 
-                std::stringstream buffer;
-                buffer << file.rdbuf();
-
-                sol::state lua;
-                lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
-                lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
-                auto result = lua.safe_script(buffer.str(), &sol::script_pass_on_error);
-                if (!result.valid())
-                    continue;
-
-                sol::object obj = result;
-                if (!obj.is<sol::table>())
-                    continue;
-
-                sol::table  passTable = obj.as<sol::table>();
-                std::string passType;
-                sol::object typeObj = passTable["type"];
-                sol::object nameObj = passTable["name"];
-                if (typeObj.is<std::string>())
-                    passType = typeObj.as<std::string>();
-                else if (nameObj.is<std::string>())
-                    passType = nameObj.as<std::string>();
-                if (passType != type)
-                    continue;
-
-                sol::object shaderObj = passTable["shader"];
-                if (!shaderObj.is<sol::table>())
+                if (!pass->hasShader)
                     return std::nullopt;
 
-                sol::table      shaderTable = shaderObj.as<sol::table>();
-                EditorShaderRef ref;
-                sol::object     libraryObj  = shaderTable["library"];
-                sol::object     fragmentObj = shaderTable["fragment"];
-                if (libraryObj.is<std::string>())
-                    ref.library = libraryObj.as<std::string>();
-                if (fragmentObj.is<std::string>())
-                    ref.fragment = fragmentObj.as<std::string>();
-                if (!ref.fragment.empty())
+                EditorShaderRef ref = pass->shader;
+                if (!ref.fragment.empty() || !ref.compute.empty())
                 {
                     cachedRefs[typeKey] = ref;
                     return ref;
@@ -1995,7 +1972,7 @@ namespace vultra_app
             const auto shaderRef = resolvePassShaderRef(ctx, pass);
             const auto cacheKey =
                 projectCachePrefix(ctx) + "|" +
-                (shaderRef && !shaderRef->fragment.empty() ? shaderRefCacheKey(*shaderRef) : pass.type) + "|" +
+                (shaderRef && !primaryShaderId(*shaderRef).empty() ? shaderRefCacheKey(*shaderRef) : pass.type) + "|" +
                 std::string(paramName);
 
             static std::unordered_map<std::string, std::vector<ParamEnumOption>> cachedEnums;
@@ -2004,7 +1981,7 @@ namespace vultra_app
 
             const EditorCpuScope perf {ctx, "Editor::RenderGraph/ShaderParamEnum"};
             auto result = [&]() -> std::vector<ParamEnumOption> {
-                if (shaderRef && !shaderRef->fragment.empty())
+                if (shaderRef && !primaryShaderId(*shaderRef).empty())
                 {
                     if (auto sourceOptions = readShaderSourceEnumOptions(ctx, *shaderRef, paramName);
                         !sourceOptions.empty())
@@ -2028,18 +2005,23 @@ namespace vultra_app
                         if (!library)
                             return {};
 
-                        std::vector<std::string> shaderIds {shaderRef->fragment};
-                        if (shaderRef->fragment.find('/') == std::string::npos &&
-                            shaderRef->fragment.find('\\') == std::string::npos)
-                            shaderIds.push_back("fullscreen/" + shaderRef->fragment);
+                        const auto shaderId = primaryShaderId(*shaderRef);
+                        const auto stage    = primaryShaderStage(*shaderRef);
+                        std::vector<std::string> shaderIds {shaderId};
+                        if (stage == vshadersystem::ShaderStage::eFrag && shaderId.find('/') == std::string::npos &&
+                            shaderId.find('\\') == std::string::npos)
+                            shaderIds.push_back("fullscreen/" + shaderId);
+                        if (stage == vshadersystem::ShaderStage::eComp && shaderId.find('/') == std::string::npos &&
+                            shaderId.find('\\') == std::string::npos)
+                            shaderIds.push_back("compute/" + shaderId);
 
                         for (const auto& shaderId : shaderIds)
                         {
                             const auto variantHash = vultra::rhi::ShaderLibraryRuntime::computeVariantHash(
-                                shaderId, vshadersystem::ShaderStage::eFrag, {});
-                            if (!library->hasVariant(variantHash, vshadersystem::ShaderStage::eFrag))
+                                shaderId, stage, {});
+                            if (!library->hasVariant(variantHash, stage))
                                 continue;
-                            auto shader = library->load(variantHash, vshadersystem::ShaderStage::eFrag);
+                            auto shader = library->load(variantHash, stage);
                             if (!shader)
                                 continue;
 
@@ -2181,7 +2163,7 @@ namespace vultra_app
                                                                            const vrendergraph::PassDecl& pass)
         {
             const auto shaderRef = resolvePassShaderRef(ctx, pass);
-            if (!shaderRef || shaderRef->fragment.empty())
+            if (!shaderRef || primaryShaderId(*shaderRef).empty())
                 return {};
 
             if (auto sourceParams = readShaderSourceParamDescs(ctx, *shaderRef); !sourceParams.empty())
@@ -2203,20 +2185,25 @@ namespace vultra_app
             if (!library)
                 return {};
 
-            std::vector<std::string> shaderIds {shaderRef->fragment};
-            if (shaderRef->fragment.find('/') == std::string::npos &&
-                shaderRef->fragment.find('\\') == std::string::npos)
-                shaderIds.push_back("fullscreen/" + shaderRef->fragment);
+            const auto shaderId = primaryShaderId(*shaderRef);
+            const auto stage    = primaryShaderStage(*shaderRef);
+            std::vector<std::string> shaderIds {shaderId};
+            if (stage == vshadersystem::ShaderStage::eFrag && shaderId.find('/') == std::string::npos &&
+                shaderId.find('\\') == std::string::npos)
+                shaderIds.push_back("fullscreen/" + shaderId);
+            if (stage == vshadersystem::ShaderStage::eComp && shaderId.find('/') == std::string::npos &&
+                shaderId.find('\\') == std::string::npos)
+                shaderIds.push_back("compute/" + shaderId);
 
             auto loadReflectedShader = [&](vultra::rhi::ShaderLibraryRuntime& shaderLibrary)
                 -> std::optional<vultra::rhi::ShaderLibraryRuntime::LoadedShader> {
                 for (const auto& shaderId : shaderIds)
                 {
                     const auto variantHash = vultra::rhi::ShaderLibraryRuntime::computeVariantHash(
-                        shaderId, vshadersystem::ShaderStage::eFrag, {});
-                    if (!shaderLibrary.hasVariant(variantHash, vshadersystem::ShaderStage::eFrag))
+                        shaderId, stage, {});
+                    if (!shaderLibrary.hasVariant(variantHash, stage))
                         continue;
-                    auto shader = shaderLibrary.load(variantHash, vshadersystem::ShaderStage::eFrag);
+                    auto shader = shaderLibrary.load(variantHash, stage);
                     if (shader)
                         return shader;
                 }
@@ -2243,7 +2230,7 @@ namespace vultra_app
             const auto shaderRef = resolvePassShaderRef(ctx, pass);
             const auto cacheKey =
                 projectCachePrefix(ctx) + "|" +
-                (shaderRef && !shaderRef->fragment.empty() ? shaderRefCacheKey(*shaderRef) : pass.type);
+                (shaderRef && !primaryShaderId(*shaderRef).empty() ? shaderRefCacheKey(*shaderRef) : pass.type);
 
             static std::unordered_map<std::string, std::vector<vrendergraph::ParamDesc>> cachedParams;
             if (const auto cached = cachedParams.find(cacheKey); cached != cachedParams.end())
@@ -2348,7 +2335,19 @@ namespace vultra_app
                                                           vultra::rhi::Texture* target,
                                                           std::string           rendererKey)
         {
-            return makeRenderGraphCamera(world, entity, aspect, target, "Render Graph Preview", std::move(rendererKey));
+            auto out = makeRenderGraphCamera(world, entity, aspect, target, "Render Graph Preview", rendererKey);
+            std::transform(rendererKey.begin(), rendererKey.end(), rendererKey.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            if (rendererKey.find("xr") != std::string::npos || rendererKey.find("stereo") != std::string::npos)
+            {
+                out.isXRView        = true;
+                out.isXRPrimaryView = true;
+                out.viewCount       = 2u;
+                out.xrViewEnabled   = true;
+                out.xrFallbackMono  = false;
+            }
+            return out;
         }
 
         std::string normalizedTextureLookupKey(std::string_view key)
@@ -2384,6 +2383,11 @@ namespace vultra_app
             return lower(haystack).find(lower(needle)) != std::string::npos;
         }
 
+        bool isXrRenderGraphUri(std::string_view uri)
+        {
+            return containsIgnoreCase(uri, "xr") || containsIgnoreCase(uri, "stereo");
+        }
+
         void addTextureLookupKey(std::unordered_map<std::string, const vultra::FrameGraphDebugTexture*>& textureByName,
                                  std::string_view                                                        key,
                                  const vultra::FrameGraphDebugTexture&                                   texture,
@@ -2408,6 +2412,40 @@ namespace vultra_app
             addTextureLookupKey(textureByName, key, texture, replace);
             if (const auto layerPos = key.find("/layer:"); layerPos != std::string_view::npos)
                 addTextureLookupKey(textureByName, key.substr(0, layerPos), texture, replace);
+        }
+
+        std::string textureKeyWithoutLayer(std::string_view key)
+        {
+            if (const auto layerPos = key.find("/layer:"); layerPos != std::string_view::npos)
+                key = key.substr(0, layerPos);
+            return std::string {key};
+        }
+
+        struct RuntimeStereoTexturePair
+        {
+            const vultra::FrameGraphDebugTexture* left {nullptr};
+            const vultra::FrameGraphDebugTexture* right {nullptr};
+        };
+
+        RuntimeStereoTexturePair findRuntimeStereoTexturePair(
+            const std::vector<vultra::FrameGraphDebugTexture>& textures,
+            const vultra::FrameGraphDebugTexture&              selected)
+        {
+            RuntimeStereoTexturePair pair;
+            const auto               selectedBaseKey = textureKeyWithoutLayer(selected.resourceKey);
+            for (const auto& texture : textures)
+            {
+                if (texture.camera != selected.camera || texture.renderer != selected.renderer ||
+                    textureKeyWithoutLayer(texture.resourceKey) != selectedBaseKey)
+                {
+                    continue;
+                }
+                if (texture.layer == 0u)
+                    pair.left = &texture;
+                else if (texture.layer == 1u)
+                    pair.right = &texture;
+            }
+            return pair;
         }
 
         std::string runtimeGraphDisplayLabel(std::string_view label)
@@ -2556,6 +2594,21 @@ namespace vultra_app
         std::string              renderer;
         std::string              rawDot;
         size_t                   snapshotHash {0};
+
+        bool isXrRelated() const
+        {
+            if (containsIgnoreCase(renderer, "xr") || containsIgnoreCase(renderer, "stereo"))
+                return true;
+            for (const auto& node : nodes)
+            {
+                if (containsIgnoreCase(node.label, "xr") || containsIgnoreCase(node.label, "stereo") ||
+                    containsIgnoreCase(node.label, "left eye") || containsIgnoreCase(node.label, "right eye"))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
 
         void parse(std::string_view snapshot)
         {
@@ -3180,6 +3233,9 @@ namespace vultra_app
         std::string                       status;
         int                               contextNode {0};
         int                               contextLink {0};
+        std::string                       pendingPlacementNode;
+        ImVec2                            pendingPlacementScreenPos {0.0f, 0.0f};
+        ImVec2                            addMenuScreenPos {0.0f, 0.0f};
         bool                              loaded {false};
         bool                              dirty {false};
         bool                              pipelineDirty {false};
@@ -3190,6 +3246,8 @@ namespace vultra_app
         bool                              focusPipelineEditor {false};
         bool                              directGraphAsset {false};
         bool                              builtinGraphAsset {false};
+        bool                              hasPendingPlacement {false};
+        bool                              hasAddMenuScreenPos {false};
         std::string                       editingFeature;
         std::string                       loadedUri;
 
@@ -3482,8 +3540,9 @@ namespace vultra_app
         if (!m_RuntimeGraphCleanupPending && m_RuntimeGraphSuspended && !m_RuntimeGraphPopupOpen &&
             !m_RuntimeTexturePreviewOpen &&
             !m_RuntimeGraph && m_RuntimeTexturePreviewKey.empty() && m_RuntimeTexturePreviewOverrideKey.empty() &&
-            m_TextureThumbnailCache.empty() && m_RetiredTextureThumbnails.empty() &&
-            m_RuntimeGraphTextureAutoFitDone.empty() && m_RuntimeGraphTextureDefaultPreviewDone.empty() &&
+            m_RuntimeTexturePreviewOverrideKeys.empty() && m_TextureThumbnailCache.empty() &&
+            m_RetiredTextureThumbnails.empty() && m_RuntimeGraphTextureAutoFitDone.empty() &&
+            m_RuntimeGraphTextureDefaultPreviewDone.empty() &&
             m_RuntimeGraphTexturePreviewSettings.empty() && m_RuntimeGraphTextureAutoFitNextFrame.empty() &&
             m_RuntimeGraphTextureAutoFitDeadlineFrame.empty())
         {
@@ -3505,6 +3564,7 @@ namespace vultra_app
         m_RuntimeTexturePreviewTitle.clear();
         m_RuntimeTexturePreviewDefaultsKey.clear();
         m_RuntimeTexturePreviewOverrideKey.clear();
+        m_RuntimeTexturePreviewOverrideKeys.clear();
         m_RuntimeTexturePreviewScale        = 1.0f;
         m_RuntimeTexturePreviewAutoFit      = true;
         m_RuntimeTexturePreviewGammaCorrect = true;
@@ -4172,20 +4232,27 @@ namespace vultra_app
         auto* renderService  = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr;
         auto* imguiService   = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
         auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+        auto  restoreRuntimeTexturePreviewOverride = [&](const std::string& key) {
+            if (!renderService || key.empty())
+                return;
+            if (auto settingsIt = m_RuntimeGraphTexturePreviewSettings.find(key);
+                settingsIt != m_RuntimeGraphTexturePreviewSettings.end())
+                renderService->setFrameGraphTexturePreviewOverride(key, settingsIt->second);
+            else
+                renderService->clearFrameGraphTexturePreviewOverride(key);
+        };
+        auto restoreRuntimeTexturePreviewOverrides = [&]() {
+            for (const auto& key : m_RuntimeTexturePreviewOverrideKeys)
+                restoreRuntimeTexturePreviewOverride(key);
+            m_RuntimeTexturePreviewOverrideKeys.clear();
+            restoreRuntimeTexturePreviewOverride(m_RuntimeTexturePreviewOverrideKey);
+            m_RuntimeTexturePreviewOverrideKey.clear();
+        };
         const bool textureCaptureReady =
             static_cast<uint64_t>(ImGui::GetFrameCount()) >= m_RuntimeGraphTextureCaptureReadyFrame;
         if (!textureCaptureReady || !m_RuntimeTexturePreviewOpen || m_RuntimeTexturePreviewKey.empty())
         {
-            if (renderService && !m_RuntimeTexturePreviewOverrideKey.empty())
-            {
-                if (auto settingsIt = m_RuntimeGraphTexturePreviewSettings.find(m_RuntimeTexturePreviewOverrideKey);
-                    settingsIt != m_RuntimeGraphTexturePreviewSettings.end())
-                    renderService->setFrameGraphTexturePreviewOverride(m_RuntimeTexturePreviewOverrideKey,
-                                                                       settingsIt->second);
-                else
-                    renderService->clearFrameGraphTexturePreviewOverride(m_RuntimeTexturePreviewOverrideKey);
-                m_RuntimeTexturePreviewOverrideKey.clear();
-            }
+            restoreRuntimeTexturePreviewOverrides();
             m_PendingRuntimeTexturePreviewAutoFitKey.clear();
             m_PendingRuntimeTexturePreviewAutoFitTexture       = nullptr;
             m_PendingRuntimeTexturePreviewAutoFitFrame         = 0u;
@@ -4221,16 +4288,7 @@ namespace vultra_app
         }
         if (!debugTexture)
         {
-            if (!m_RuntimeTexturePreviewOverrideKey.empty())
-            {
-                if (auto settingsIt = m_RuntimeGraphTexturePreviewSettings.find(m_RuntimeTexturePreviewOverrideKey);
-                    settingsIt != m_RuntimeGraphTexturePreviewSettings.end())
-                    renderService->setFrameGraphTexturePreviewOverride(m_RuntimeTexturePreviewOverrideKey,
-                                                                       settingsIt->second);
-                else
-                    renderService->clearFrameGraphTexturePreviewOverride(m_RuntimeTexturePreviewOverrideKey);
-                m_RuntimeTexturePreviewOverrideKey.clear();
-            }
+            restoreRuntimeTexturePreviewOverrides();
             m_PendingRuntimeTexturePreviewAutoFitKey.clear();
             m_PendingRuntimeTexturePreviewAutoFitTexture       = nullptr;
             m_PendingRuntimeTexturePreviewAutoFitFrame         = 0u;
@@ -4239,6 +4297,12 @@ namespace vultra_app
             m_RuntimeTexturePreviewPopupPendingOpen = false;
             return;
         }
+        const bool xrRelatedGraph = m_RuntimeGraph && m_RuntimeGraph->isXrRelated();
+        const auto stereoPair =
+            xrRelatedGraph ? findRuntimeStereoTexturePair(renderService->frameGraphDebugTextures(), *debugTexture) :
+                             RuntimeStereoTexturePair {};
+        const bool showStereoPreview = stereoPair.left && stereoPair.right && stereoPair.left->texture &&
+                                       stereoPair.right->texture;
         if (!debugTexture->texture)
         {
             std::string title = m_RuntimeTexturePreviewTitle.empty() ? debugTexture->name : m_RuntimeTexturePreviewTitle;
@@ -4262,17 +4326,30 @@ namespace vultra_app
             return;
         }
 
-        auto& cached = m_TextureThumbnailCache[debugTexture->key];
-        if (cached.texture != debugTexture->texture)
-        {
-            if (cached.textureId)
+        auto ensureTexturePreviewId = [&](const vultra::FrameGraphDebugTexture& texture) {
+            auto& cached = m_TextureThumbnailCache[texture.key];
+            if (cached.texture != texture.texture)
             {
-                cached.retireFrame = static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
-                m_RetiredTextureThumbnails.push_back(cached);
+                if (cached.textureId)
+                {
+                    cached.retireFrame =
+                        static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
+                    m_RetiredTextureThumbnails.push_back(cached);
+                }
+                cached.texture     = texture.texture;
+                cached.textureId   = texture.texture ? imguiService->addTexture(*texture.texture, makeLinearClampSampler(ctx)) :
+                                                        vultra::IImGuiService::TextureID {};
+                cached.retireFrame = 0;
             }
-            cached.texture     = debugTexture->texture;
-            cached.textureId   = imguiService->addTexture(*debugTexture->texture, makeLinearClampSampler(ctx));
-            cached.retireFrame = 0;
+            return cached.textureId;
+        };
+        const auto primaryTextureId = ensureTexturePreviewId(*debugTexture);
+        vultra::IImGuiService::TextureID leftTextureId {};
+        vultra::IImGuiService::TextureID rightTextureId {};
+        if (showStereoPreview)
+        {
+            leftTextureId  = ensureTexturePreviewId(*stereoPair.left);
+            rightTextureId = ensureTexturePreviewId(*stereoPair.right);
         }
 
         std::string title = m_RuntimeTexturePreviewTitle.empty() ? debugTexture->name : m_RuntimeTexturePreviewTitle;
@@ -4425,11 +4502,24 @@ namespace vultra_app
             if (!m_RuntimeTexturePreviewOverrideKey.empty() &&
                 m_RuntimeTexturePreviewOverrideKey != debugTexture->resourceKey)
             {
-                renderService->clearFrameGraphTexturePreviewOverride(m_RuntimeTexturePreviewOverrideKey);
+                restoreRuntimeTexturePreviewOverride(m_RuntimeTexturePreviewOverrideKey);
             }
             m_RuntimeGraphTexturePreviewSettings[debugTexture->resourceKey] = thumbnailSettings;
             renderService->setFrameGraphTexturePreviewOverride(debugTexture->resourceKey, previewSettings);
             m_RuntimeTexturePreviewOverrideKey = debugTexture->resourceKey;
+            m_RuntimeTexturePreviewOverrideKeys.insert(debugTexture->resourceKey);
+            if (showStereoPreview)
+            {
+                const vultra::FrameGraphDebugTexture* stereoTextures[] {stereoPair.left, stereoPair.right};
+                for (const auto* stereoTexture : stereoTextures)
+                {
+                    if (!stereoTexture || stereoTexture->resourceKey == debugTexture->resourceKey)
+                        continue;
+                    m_RuntimeGraphTexturePreviewSettings[stereoTexture->resourceKey] = thumbnailSettings;
+                    renderService->setFrameGraphTexturePreviewOverride(stereoTexture->resourceKey, previewSettings);
+                    m_RuntimeTexturePreviewOverrideKeys.insert(stereoTexture->resourceKey);
+                }
+            }
 
             auto clearPendingAutoFit = [&]() {
                 m_PendingRuntimeTexturePreviewAutoFitKey.clear();
@@ -4520,29 +4610,44 @@ namespace vultra_app
                               true,
                               ImGuiWindowFlags_HorizontalScrollbar);
             const ImVec2 avail          = ImGui::GetContentRegionAvail();
-            const float  fitScale       = ui::computeTextureFitScale(avail, sourceW, sourceH);
+            const float  fitSourceW     = showStereoPreview ? sourceW * 2.0f + ImGui::GetStyle().ItemSpacing.x : sourceW;
+            const float  fitSourceH     = showStereoPreview ? sourceH + ImGui::GetTextLineHeightWithSpacing() : sourceH;
+            const float  fitScale       = ui::computeTextureFitScale(avail, fitSourceW, fitSourceH);
             const float  effectiveScale = m_RuntimeTexturePreviewAutoFit ? fitScale : m_RuntimeTexturePreviewScale;
             const ImVec2 imageSize {sourceW * effectiveScale, sourceH * effectiveScale};
             if (m_RuntimeTexturePreviewAutoFit)
             {
-                if (imageSize.x < avail.x)
-                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail.x - imageSize.x) * 0.5f);
-                if (imageSize.y < avail.y)
-                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (avail.y - imageSize.y) * 0.5f);
+                const float totalWidth =
+                    showStereoPreview ? imageSize.x * 2.0f + ImGui::GetStyle().ItemSpacing.x : imageSize.x;
+                const float totalHeight =
+                    showStereoPreview ? imageSize.y + ImGui::GetTextLineHeightWithSpacing() : imageSize.y;
+                if (totalWidth < avail.x)
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (avail.x - totalWidth) * 0.5f);
+                if (totalHeight < avail.y)
+                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (avail.y - totalHeight) * 0.5f);
             }
-            ImGui::Image(cached.textureId, imageSize);
+            if (showStereoPreview)
+            {
+                ImGui::BeginGroup();
+                ImGui::TextDisabled("Left Eye");
+                ImGui::Image(leftTextureId, imageSize);
+                ImGui::EndGroup();
+                ImGui::SameLine();
+                ImGui::BeginGroup();
+                ImGui::TextDisabled("Right Eye");
+                ImGui::Image(rightTextureId, imageSize);
+                ImGui::EndGroup();
+            }
+            else
+            {
+                ImGui::Image(primaryTextureId, imageSize);
+            }
             ImGui::EndChild();
             ImGui::EndPopup();
         }
         if (!m_RuntimeTexturePreviewOpen && !m_RuntimeTexturePreviewOverrideKey.empty())
         {
-            if (auto settingsIt = m_RuntimeGraphTexturePreviewSettings.find(m_RuntimeTexturePreviewOverrideKey);
-                settingsIt != m_RuntimeGraphTexturePreviewSettings.end())
-                renderService->setFrameGraphTexturePreviewOverride(m_RuntimeTexturePreviewOverrideKey,
-                                                                   settingsIt->second);
-            else
-                renderService->clearFrameGraphTexturePreviewOverride(m_RuntimeTexturePreviewOverrideKey);
-            m_RuntimeTexturePreviewOverrideKey.clear();
+            restoreRuntimeTexturePreviewOverrides();
         }
         if (!m_RuntimeTexturePreviewOpen)
             m_RuntimeTexturePreviewPopupPendingOpen = false;
@@ -4558,17 +4663,17 @@ namespace vultra_app
         const auto currentProject = ctx.state.currentProject.lexically_normal();
         if (m_RenderGraphPassCatalogProject != currentProject ||
             m_RenderGraphPassCatalogAssetRoot != ctx.state.currentAssetRoot ||
-            m_RenderGraphPassCatalogProjectGeneration != ctx.state.projectGeneration)
+            m_RenderGraphPassCatalogAssetGeneration != ctx.state.assetFileGeneration)
         {
             registerEditorProjectRenderGraphPasses(ctx, state.registry);
             m_RenderGraphPassCatalogProject           = currentProject;
             m_RenderGraphPassCatalogAssetRoot         = ctx.state.currentAssetRoot;
-            m_RenderGraphPassCatalogProjectGeneration = ctx.state.projectGeneration;
+            m_RenderGraphPassCatalogAssetGeneration   = ctx.state.assetFileGeneration;
         }
         const bool switchedGraph = drawProjectRenderGraphSelector(m_RenderGraphAssetUris,
                                                                   m_RenderGraphAssetProject,
                                                                   m_RenderGraphAssetRoot,
-                                                                  m_RenderGraphAssetProjectGeneration,
+                                                                  m_RenderGraphAssetGeneration,
                                                                   ctx,
                                                                   state.status);
         if (switchedGraph)
@@ -4588,6 +4693,7 @@ namespace vultra_app
             m_RuntimeTexturePreviewTitle.clear();
             m_RuntimeTexturePreviewDefaultsKey.clear();
             m_RuntimeTexturePreviewOverrideKey.clear();
+            m_RuntimeTexturePreviewOverrideKeys.clear();
             m_PendingRuntimeTexturePreviewAutoFitKey.clear();
             m_PendingRuntimeTexturePreviewAutoFitTexture       = nullptr;
             m_PendingRuntimeTexturePreviewAutoFitFrame         = 0u;
@@ -4656,7 +4762,8 @@ namespace vultra_app
             }
 
             assetService->setTextAssetOverride(uri, serializedGraph());
-            renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
+            if (!renderService->updateRenderGraph(uri, rendererKeyFromRenderGraphUri(uri)))
+                renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
             state.runtimeDirty      = false;
             state.status            = "Applied in memory";
             ctx.state.statusMessage = "Applied render graph in memory: " + uri;
@@ -4704,7 +4811,10 @@ namespace vultra_app
             {
                 const auto uri = graphUri();
                 if (!uri.empty())
-                    renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
+                {
+                    if (!renderService->updateRenderGraph(uri, rendererKeyFromRenderGraphUri(uri)))
+                        renderService->reloadRenderPipeline(uri, rendererKeyFromRenderGraphUri(uri));
+                }
             }
             return true;
         };
@@ -4741,7 +4851,13 @@ namespace vultra_app
         }
 
         if (ImGui::Button(ICON_MDI_PLUS " Add"))
+        {
+            const ImVec2 buttonMin = ImGui::GetItemRectMin();
+            const ImVec2 buttonMax = ImGui::GetItemRectMax();
+            state.addMenuScreenPos = ImVec2 {buttonMin.x, buttonMax.y + ImGui::GetStyle().ItemSpacing.y};
+            state.hasAddMenuScreenPos = true;
             ImGui::OpenPopup("RenderGraphAddMenu");
+        }
         drawGraphEditorAddPopup(ctx);
 
         ImGui::SameLine();
@@ -5014,7 +5130,15 @@ namespace vultra_app
             pass.id   = std::move(id);
             pass.type = type;
             ensureSlots(pass, def);
+            const std::string newPassId = pass.id;
             state.graph.passes.push_back(std::move(pass));
+            if (state.hasAddMenuScreenPos)
+            {
+                state.pendingPlacementNode      = newPassId;
+                state.pendingPlacementScreenPos = state.addMenuScreenPos;
+                state.hasPendingPlacement       = true;
+                state.hasAddMenuScreenPos       = false;
+            }
             repairMissingInputRefs(state.registry, state.graph);
             state.markDirty();
             state.applyPositions = true;
@@ -5038,7 +5162,7 @@ namespace vultra_app
             std::sort(types.begin(), types.end());
             for (const auto& type : types)
             {
-                if (projectTypeSet.contains(type))
+                if (projectTypeSet.contains(type) || type == "DepthPre")
                     continue;
                 addPassItem(type);
             }
@@ -5190,6 +5314,8 @@ namespace vultra_app
             }
             else
             {
+                state.addMenuScreenPos = ImGui::GetMousePos();
+                state.hasAddMenuScreenPos = true;
                 ImGui::OpenPopup("RenderGraphAddMenu");
             }
         }
@@ -5249,6 +5375,50 @@ namespace vultra_app
         ImNodes::BeginNodeEditor();
 
         size_t passIndex = 0;
+        std::unordered_set<std::string> inputResources;
+        for (const auto& pass : state.graph.passes)
+        {
+            for (const auto& [_, ref] : pass.inputs)
+            {
+                auto parsed = parseResRef(ref);
+                if (parsed && hasResource(state.graph, parsed->node))
+                    inputResources.insert(parsed->node);
+            }
+        }
+        {
+            const EditorCpuScope resourceNodesPerf {ctx, "Editor::RenderGraph/CanvasResourceNodes"};
+            size_t               resourceIndex = 0;
+            for (const auto& resource : state.graph.resources)
+            {
+                if (!inputResources.contains(resource.name))
+                    continue;
+
+                const int id = state.nodeId("resource_in", resource.name);
+                pushNodeTitlePalette(IM_COL32(57, 139, 183, 255));
+                ImNodes::BeginNode(id);
+                ImNodes::BeginNodeTitleBar();
+                drawNodeTitleText(resource.name.c_str());
+                ImNodes::EndNodeTitleBar();
+                ImGui::TextDisabled("imported resource");
+                const int pin = state.pinId(resource.name, "out", false);
+                ImNodes::BeginOutputAttribute(pin, ImNodesPinShape_CircleFilled);
+                ImGui::Indent(std::max(24.0f, 120.0f - textWidth("out") - 42.0f));
+                ImGui::TextUnformatted("out");
+                ImNodes::EndOutputAttribute();
+                ImNodes::EndNode();
+                popNodeTitlePalette();
+
+                if (state.applyPositions)
+                {
+                    if (auto pos = state.readNodePos(state.metaKeyForResource(resource.name)))
+                        ImNodes::SetNodeGridSpacePos(id, *pos);
+                    else
+                        ImNodes::SetNodeGridSpacePos(
+                            id, ImVec2 {80.0f, 80.0f + static_cast<float>(resourceIndex) * 110.0f});
+                }
+                ++resourceIndex;
+            }
+        }
         {
             const EditorCpuScope nodesPerf {ctx, "Editor::RenderGraph/CanvasPassNodes"};
             for (auto& pass : state.graph.passes)
@@ -5288,8 +5458,11 @@ namespace vultra_app
 
                 {
                     const EditorCpuScope shaderLabelPerf {ctx, "Editor::RenderGraph/CanvasShaderLabel"};
-                    if (const auto shaderRef = resolvePassShaderRef(ctx, pass); shaderRef && !shaderRef->fragment.empty())
-                        ImGui::TextDisabled("shader: %s", shaderRef->fragment.c_str());
+                    if (const auto shaderRef = resolvePassShaderRef(ctx, pass);
+                        shaderRef && !primaryShaderId(*shaderRef).empty())
+                    {
+                        ImGui::TextDisabled("shader: %s", primaryShaderId(*shaderRef).c_str());
+                    }
                 }
 
                 auto params = def.params;
@@ -5346,7 +5519,14 @@ namespace vultra_app
                 if (state.applyPositions)
                 {
                     const EditorCpuScope positionsPerf {ctx, "Editor::RenderGraph/CanvasApplyPositions"};
-                    if (auto pos = state.readNodePos(pass.id))
+                    if (state.hasPendingPlacement && state.pendingPlacementNode == pass.id)
+                    {
+                        ImNodes::SetNodeScreenSpacePos(id, state.pendingPlacementScreenPos);
+                        state.storeNodePos(pass.id, id);
+                        state.pendingPlacementNode.clear();
+                        state.hasPendingPlacement = false;
+                    }
+                    else if (auto pos = state.readNodePos(pass.id))
                         ImNodes::SetNodeGridSpacePos(id, *pos);
                     else
                         ImNodes::SetNodeGridSpacePos(
@@ -5447,6 +5627,8 @@ namespace vultra_app
                 }
                 else
                 {
+                    state.addMenuScreenPos = ImGui::GetMousePos();
+                    state.hasAddMenuScreenPos = true;
                     ImGui::OpenPopup("RenderGraphAddMenu");
                 }
             }
@@ -5502,7 +5684,8 @@ namespace vultra_app
         const uint32_t renderWidth  = std::max(width, 1u);
         const uint32_t renderHeight = std::max(height, 1u);
         const float    aspect       = static_cast<float>(renderWidth) / static_cast<float>(renderHeight);
-        ensureOverlayRenderTarget(ctx, renderWidth, renderHeight);
+        const bool     xrPreview    = isXrRenderGraphUri(ctx.state.currentEditingRenderGraph);
+        ensureOverlayRenderTarget(ctx, renderWidth, renderHeight, xrPreview ? 2u : 1u);
 
         vultra::rhi::Texture* renderTarget =
             m_OverlayPendingRenderTarget.texture ? &*m_OverlayPendingRenderTarget.texture :
@@ -5550,13 +5733,27 @@ namespace vultra_app
         if (childSize.x < 220.0f || childSize.y < 160.0f)
             return;
 
-        const float    aspect       = kRenderGraphPreviewAspect;
+        const bool     xrPreview    = isXrRenderGraphUri(ctx.state.currentEditingRenderGraph);
+        const float    aspect       = xrPreview ? kRenderGraphPreviewAspect * 2.0f : kRenderGraphPreviewAspect;
         m_OverlayZoom               = std::clamp(m_OverlayZoom, kOverlayZoomMin, kOverlayZoomMax);
         const float baseWidth       = std::min(320.0f, std::max(180.0f, childSize.x * 0.22f));
         const float width           = std::min(childSize.x - 32.0f, baseWidth * m_OverlayZoom);
         const float height          = width / aspect;
-        const auto   renderWidth     = static_cast<uint32_t>(std::max(1.0f, std::round(width)));
+        const auto   renderWidth     = static_cast<uint32_t>(std::max(1.0f, std::round(xrPreview ? width * 0.5f : width)));
         const auto   renderHeight    = static_cast<uint32_t>(std::max(1.0f, std::round(height)));
+        if (xrPreview)
+        {
+            if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
+            {
+                bool       defaultChannels[4] {true, true, true, true};
+                const auto selectedTextureKey =
+                    std::string(vultra::FrameGraphTexturePreviewSettings::kCaptureAllTextures);
+                const auto previewSettings = ui::makeFrameGraphTexturePreviewSettings(
+                    selectedTextureKey, true, defaultChannels, 0, 0.1f, 1000.0f, 0.0f, 1.0f, 0u);
+                renderService->setFrameGraphTextureCaptureEnabled(true);
+                renderService->setFrameGraphTexturePreviewSettings(previewSettings);
+            }
+        }
         const bool   hasPrimaryCamera = ensureRenderGraphPreviewCamera(ctx, renderWidth, renderHeight);
 
         const ImVec2    padding {14.0f, 14.0f};
@@ -5600,7 +5797,67 @@ namespace vultra_app
         drawList->AddText(
             ImVec2(panelMax.x - padding.x - zoomSize.x, panelMin.y + 8.0f), IM_COL32(126, 142, 158, 255), zoomLabel);
 
-        if (m_OverlayActiveRenderTarget.textureId && hasPrimaryCamera)
+        RuntimeStereoTexturePair previewStereoPair;
+        if (xrPreview)
+        {
+            if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
+            {
+                const auto rendererKey = rendererKeyFromRenderGraphUri(ctx.state.currentEditingRenderGraph);
+                for (const auto& left : renderService->frameGraphDebugTextures())
+                {
+                    if (!left.texture || left.camera != "Render Graph Preview" || left.renderer != rendererKey ||
+                        left.layer != 0u || left.sourceExtent.width != renderWidth ||
+                        left.sourceExtent.height != renderHeight)
+                    {
+                        continue;
+                    }
+                    for (const auto& right : renderService->frameGraphDebugTextures())
+                    {
+                        if (!right.texture || right.camera != left.camera || right.renderer != left.renderer ||
+                            right.layer != 1u ||
+                            textureKeyWithoutLayer(right.resourceKey) != textureKeyWithoutLayer(left.resourceKey))
+                        {
+                            continue;
+                        }
+                        previewStereoPair = {.left = &left, .right = &right};
+                    }
+                }
+            }
+        }
+
+        if (previewStereoPair.left && previewStereoPair.right && hasPrimaryCamera)
+        {
+            auto* imguiService = ctx.services ? ctx.services->tryGet<vultra::IImGuiService>() : nullptr;
+            const auto ensurePreviewId = [&](const vultra::FrameGraphDebugTexture& texture) {
+                auto& cached = m_TextureThumbnailCache[texture.key];
+                if (imguiService && cached.texture != texture.texture)
+                {
+                    if (cached.textureId)
+                    {
+                        cached.retireFrame =
+                            static_cast<uint64_t>(ImGui::GetFrameCount()) + kRenderTargetReleaseDelayFrames;
+                        m_RetiredTextureThumbnails.push_back(cached);
+                    }
+                    cached.texture     = texture.texture;
+                    cached.textureId   = imguiService->addTexture(*texture.texture, makeLinearClampSampler(ctx));
+                    cached.retireFrame = 0;
+                }
+                return cached.textureId;
+            };
+            const ImVec2 split {std::floor((imageMin.x + imageMax.x) * 0.5f), imageMax.y};
+            drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), 3.0f);
+            drawList->AddImage(ensurePreviewId(*previewStereoPair.left),
+                               imageMin,
+                               ImVec2 {split.x - 2.0f, split.y},
+                               ImVec2(0.0f, 0.0f),
+                               ImVec2(1.0f, 1.0f));
+            drawList->AddImage(ensurePreviewId(*previewStereoPair.right),
+                               ImVec2 {split.x + 2.0f, imageMin.y},
+                               imageMax,
+                               ImVec2(0.0f, 0.0f),
+                               ImVec2(1.0f, 1.0f));
+        }
+        else if (m_OverlayActiveRenderTarget.textureId && hasPrimaryCamera && !xrPreview)
         {
             drawList->AddRectFilled(imageMin, imageMax, IM_COL32(0, 0, 0, 255), 3.0f);
             drawList->AddImage(
@@ -5630,7 +5887,10 @@ namespace vultra_app
         drawList->PopClipRect();
     }
 
-    void RenderGraphWindow::ensureOverlayRenderTarget(EditorContext& ctx, const uint32_t width, const uint32_t height)
+    void RenderGraphWindow::ensureOverlayRenderTarget(EditorContext& ctx,
+                                                      const uint32_t width,
+                                                      const uint32_t height,
+                                                      const uint32_t layerCount)
     {
         if (!ctx.services || width == 0u || height == 0u)
             return;
@@ -5643,7 +5903,7 @@ namespace vultra_app
         const auto& currentTarget =
             m_OverlayPendingRenderTarget.texture ? m_OverlayPendingRenderTarget : m_OverlayActiveRenderTarget;
         if (currentTarget.texture && currentTarget.extent.width == width && currentTarget.extent.height == height &&
-            currentTarget.textureId)
+            currentTarget.layerCount == layerCount && (currentTarget.layerCount > 1u || currentTarget.textureId))
             return;
 
         if (m_OverlayPendingRenderTarget.texture)
@@ -5660,14 +5920,20 @@ namespace vultra_app
             format = vultra::rhi::PixelFormat::eRGBA8_UNorm;
 
         m_OverlayPendingRenderTarget.extent = {width, height};
+        m_OverlayPendingRenderTarget.layerCount = std::max(layerCount, 1u);
         m_OverlayPendingRenderTarget.texture =
             vultra::rhi::Texture::Builder {}
                 .setExtent(m_OverlayPendingRenderTarget.extent)
                 .setPixelFormat(format)
                 .setNumMipLevels(1)
+                .setNumLayers(m_OverlayPendingRenderTarget.layerCount > 1u ?
+                                  std::optional {m_OverlayPendingRenderTarget.layerCount} :
+                                  std::nullopt)
                 .setUsageFlags(vultra::rhi::ImageUsage::eRenderTarget | vultra::rhi::ImageUsage::eSampled)
                 .build(rd);
-        m_OverlayPendingRenderTarget.textureId    = imguiService->addTexture(*m_OverlayPendingRenderTarget.texture);
+        m_OverlayPendingRenderTarget.textureId = m_OverlayPendingRenderTarget.layerCount > 1u ?
+                                                     vultra::IImGuiService::TextureID {} :
+                                                     imguiService->addTexture(*m_OverlayPendingRenderTarget.texture);
         m_OverlayPendingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
         m_OverlayPendingRenderTarget.releaseFrame = 0;
     }
@@ -5803,6 +6069,7 @@ namespace vultra_app
             renderService->clearFrameGraphTexturePreviewOverrides();
         }
         m_RuntimeTexturePreviewOverrideKey.clear();
+        m_RuntimeTexturePreviewOverrideKeys.clear();
         m_RuntimeTexturePreviewPopupPendingOpen = false;
         m_RuntimeGraphTextureCaptureReadyFrame = 0u;
         m_RuntimeGraphTextureAutoFitDone.clear();

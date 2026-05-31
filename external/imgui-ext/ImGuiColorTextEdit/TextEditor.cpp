@@ -2405,6 +2405,30 @@ void TextEditor::Render(bool aParentIsFocused)
 
 				MoveCharIndexAndColumn(lineNo, charIndex, column);
 			}
+
+			if (auto markerIt = mErrorMarkers.find(lineNo + 1); markerIt != mErrorMarkers.end())
+			{
+				const float markerEnd =
+					textScreenPos.x + Max(TextDistanceToLineStart({ lineNo, GetLineMaxColumn(lineNo) }, false), mCharAdvance.x * 4.0f);
+				const float y = lineStartScreenPos.y + fontHeight + 1.0f;
+				const ImU32 markerColor = mPalette[(int)PaletteIndex::ErrorMarker];
+				for (float x = textScreenPos.x; x < markerEnd; x += 6.0f)
+				{
+					drawList->AddLine(ImVec2(x, y), ImVec2(Min(x + 3.0f, markerEnd), y + 2.0f), markerColor, 1.2f);
+					drawList->AddLine(ImVec2(Min(x + 3.0f, markerEnd), y + 2.0f),
+					                  ImVec2(Min(x + 6.0f, markerEnd), y), markerColor, 1.2f);
+				}
+
+				if (ImGui::IsMouseHoveringRect(ImVec2(lineStartScreenPos.x, lineStartScreenPos.y),
+				                               ImVec2(lineStartScreenPos.x + mContentWidth, lineStartScreenPos.y + mCharAdvance.y)))
+				{
+					ImGui::BeginTooltip();
+					ImGui::PushTextWrapPos(ImGui::GetFontSize() * 72.0f);
+					ImGui::TextUnformatted(markerIt->second.c_str());
+					ImGui::PopTextWrapPos();
+					ImGui::EndTooltip();
+				}
+			}
 		}
 	}
 	mCurrentSpaceHeight = (mLines.size() + Min(mVisibleLineCount - 1, (int)mLines.size())) * mCharAdvance.y;

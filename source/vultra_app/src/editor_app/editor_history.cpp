@@ -132,6 +132,7 @@ namespace vultra_app
         m_States.clear();
         m_Current = 0;
         m_PendingState.reset();
+        m_PendingObservation = false;
         m_PendingLabel.clear();
         m_NextLabel.clear();
         m_Applying = false;
@@ -169,9 +170,23 @@ namespace vultra_app
         if (ctx.state.editorPlaying)
         {
             m_PendingState.reset();
+            m_PendingObservation = false;
             m_PendingLabel.clear();
             return;
         }
+
+        const bool interactionActive = ImGui::IsAnyItemActive() || ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        if (interactionActive)
+        {
+            m_PendingObservation = true;
+            if (m_PendingLabel.empty())
+                m_PendingLabel = consumeNextLabel("Scene Edit");
+            return;
+        }
+
+        if (!m_PendingObservation && m_NextLabel.empty() && !m_States.empty() &&
+            ctx.state.sceneDirty == m_States[m_Current].dirty)
+            return;
 
         auto current = capture(ctx);
         if (!current)
@@ -187,19 +202,13 @@ namespace vultra_app
             return;
 
         auto label = consumeNextLabel("Scene Edit");
-        if (ImGui::IsAnyItemActive() || ImGui::IsMouseDown(ImGuiMouseButton_Left))
-        {
-            m_PendingState = std::move(*current);
-            if (m_PendingLabel.empty())
-                m_PendingLabel = std::move(label);
-            return;
-        }
 
-        if (m_PendingState)
+        if (m_PendingObservation)
         {
             m_PendingState = std::move(*current);
             pushState(m_PendingLabel.empty() ? std::move(label) : std::move(m_PendingLabel), std::move(*m_PendingState));
             m_PendingState.reset();
+            m_PendingObservation = false;
             m_PendingLabel.clear();
             return;
         }
@@ -227,6 +236,7 @@ namespace vultra_app
             return;
 
         m_PendingState.reset();
+        m_PendingObservation = false;
         m_PendingLabel.clear();
         m_NextLabel.clear();
 
@@ -261,6 +271,7 @@ namespace vultra_app
         if (!canUndo())
             return false;
         m_PendingState.reset();
+        m_PendingObservation = false;
         --m_Current;
         if (!apply(ctx, m_States[m_Current]))
             return false;
@@ -277,6 +288,7 @@ namespace vultra_app
         if (!canRedo())
             return false;
         m_PendingState.reset();
+        m_PendingObservation = false;
         ++m_Current;
         if (!apply(ctx, m_States[m_Current]))
             return false;
@@ -293,6 +305,7 @@ namespace vultra_app
         if (index >= m_States.size())
             return false;
         m_PendingState.reset();
+        m_PendingObservation = false;
         m_Current = index;
         if (!apply(ctx, m_States[m_Current]))
             return false;

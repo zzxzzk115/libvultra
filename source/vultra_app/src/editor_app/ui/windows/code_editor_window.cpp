@@ -64,6 +64,32 @@ namespace vultra_app
             return "res://" + relText;
         }
 
+        bool diagnosticPathMatches(std::string diagnosticPath, const std::filesystem::path& currentPath, const EditorContext& ctx)
+        {
+            std::ranges::replace(diagnosticPath, '\\', '/');
+            diagnosticPath = lowerString(std::move(diagnosticPath));
+            if (diagnosticPath.starts_with("res://"))
+                diagnosticPath = diagnosticPath.substr(6);
+
+            std::error_code ec;
+            auto rel = std::filesystem::relative(currentPath.lexically_normal(), assetRoot(ctx), ec).generic_string();
+            std::ranges::replace(rel, '\\', '/');
+            rel = lowerString(std::move(rel));
+
+            if (!ec && !rel.empty())
+            {
+                if (diagnosticPath == rel || diagnosticPath == "shaders/" + rel)
+                    return true;
+                if (rel.ends_with(diagnosticPath))
+                    return true;
+                if (rel.starts_with("shaders/") && rel.substr(8) == diagnosticPath)
+                    return true;
+            }
+
+            const auto filename = lowerString(currentPath.filename().generic_string());
+            return !diagnosticPath.empty() && diagnosticPath.ends_with(filename);
+        }
+
         std::vector<std::filesystem::path> shaderLibraryManifests(const EditorContext& ctx)
         {
             std::vector<std::filesystem::path> manifests;
@@ -115,6 +141,8 @@ namespace vultra_app
     void CodeEditorWindow::loadPath(EditorContext& ctx, const std::filesystem::path& path)
     {
         m_Error.clear();
+        m_Diagnostics.clear();
+        m_Editor.ClearErrorMarkers();
         m_CurrentPath = path.lexically_normal();
         applyLanguageForPath(m_CurrentPath);
 
@@ -176,11 +204,12 @@ namespace vultra_app
         if (!hasOpenFile() || !ctx.services)
             return;
 
-        bool anyImported = false;
+        bool anyImported    = false;
+        bool shaderReloaded = false;
         if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
         {
             const auto uri = pathToResUri(ctx, m_CurrentPath);
-            if (!uri.empty())
+            if (!uri.empty() && !isShaderSource(m_CurrentPath))
                 anyImported = assetService->reimportAsset(uri, true) || anyImported;
 
             if (isShaderSource(m_CurrentPath))
@@ -189,21 +218,102 @@ namespace vultra_app
                 {
                     const auto manifestUri = pathToResUri(ctx, manifest);
                     if (!manifestUri.empty())
-                        anyImported = assetService->reimportAsset(manifestUri, true) || anyImported;
+                    {
+                        const bool imported = assetService->reimportAsset(manifestUri, true);
+                        anyImported = imported || anyImported;
+                        if (imported)
+                        {
+                            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+                                shaderReloaded = renderService->reloadProjectShaderLibrary(manifestUri) || shaderReloaded;
+                        }
+                    }
                 }
             }
         }
 
         bool pipelineReloaded = false;
-        if (isRenderPipelineSource(m_CurrentPath))
+        if (isRenderPipelineSource(m_CurrentPath) && !isShaderSource(m_CurrentPath))
         {
             if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
                 pipelineReloaded = renderService->reloadRenderPipeline();
         }
 
         ctx.state.statusMessage = pipelineReloaded ? "Saved and reloaded render pipeline." :
+                                  shaderReloaded   ? "Saved and reloaded shader library." :
                                   anyImported      ? "Reimported source asset." :
                                                      "No import target was refreshed for this file.";
+        refreshDiagnostics(ctx);
+    }
+
+    void CodeEditorWindow::refreshDiagnostics(EditorContext& ctx)
+    {
+        m_Diagnostics.clear();
+        if (!hasOpenFile() || !ctx.services)
+        {
+            applyDiagnosticsToEditor();
+            return;
+        }
+
+        auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+        if (!assetService)
+        {
+            applyDiagnosticsToEditor();
+            return;
+        }
+
+        for (auto diagnostic : assetService->lastImportDiagnostics())
+        {
+            if (diagnosticPathMatches(diagnostic.path, m_CurrentPath, ctx))
+                m_Diagnostics.push_back(std::move(diagnostic));
+        }
+        applyDiagnosticsToEditor();
+    }
+
+    void CodeEditorWindow::applyDiagnosticsToEditor()
+    {
+        TextEditor::ErrorMarkers markers;
+        for (const auto& diagnostic : m_Diagnostics)
+        {
+            const auto line = static_cast<int>(diagnostic.line == 0 ? 1 : diagnostic.line);
+            auto&      text = markers[line];
+            if (!text.empty())
+                text += "\n";
+            text += diagnostic.message;
+        }
+        m_Editor.SetErrorMarkers(std::move(markers));
+    }
+
+    void CodeEditorWindow::drawDiagnosticsPanel()
+    {
+        const float panelHeight = std::min(160.0f, std::max(72.0f, ImGui::GetContentRegionAvail().y * 0.24f));
+        if (ImGui::BeginChild("##CodeDiagnostics", ImVec2 {0.0f, panelHeight}, true))
+        {
+            ImGui::TextDisabled("Diagnostics");
+            ImGui::Separator();
+            if (m_Diagnostics.empty())
+            {
+                ImGui::TextDisabled("No diagnostics.");
+            }
+            else
+            {
+                for (size_t i = 0; i < m_Diagnostics.size(); ++i)
+                {
+                    const auto& diagnostic = m_Diagnostics[i];
+                    const auto  line       = static_cast<int>(diagnostic.line == 0 ? 1 : diagnostic.line);
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4 {1.0f, 0.32f, 0.28f, 1.0f});
+                    const std::string label = "Line " + std::to_string(line) + ": " + diagnostic.message;
+                    if (ImGui::Selectable(label.c_str()))
+                    {
+                        m_Editor.SetCursorPosition(line - 1, static_cast<int>(diagnostic.column));
+                        m_Editor.SetViewAtLine(line - 1, TextEditor::SetViewAtLineMode::Centered);
+                    }
+                    ImGui::PopStyleColor();
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", diagnostic.message.c_str());
+                }
+            }
+        }
+        ImGui::EndChild();
     }
 
     void CodeEditorWindow::draw(EditorContext& ctx)
@@ -265,6 +375,8 @@ namespace vultra_app
 
         if (hasOpenFile())
         {
+            if (!m_Diagnostics.empty())
+                drawDiagnosticsPanel();
             const ImVec2 size     = ImGui::GetContentRegionAvail();
             ImFont*      codeFont = ImGui::GetIO().Fonts->Fonts.Size > 3 ? ImGui::GetIO().Fonts->Fonts[3] : nullptr;
             if (codeFont)

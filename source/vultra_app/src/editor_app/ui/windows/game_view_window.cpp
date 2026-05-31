@@ -170,6 +170,17 @@ namespace vultra_app
             return ImVec2(safeWidth, safeWidth / safeAspect);
         }
 
+        bool centeredButtonBelowEmptyState(const ImVec2& min,
+                                           const ImVec2& max,
+                                           const char*   label,
+                                           const ImVec2& size,
+                                           const float   offsetY)
+        {
+            const ImVec2 center {(min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f};
+            ImGui::SetCursorScreenPos(ImVec2(center.x - size.x * 0.5f, center.y + offsetY));
+            return ImGui::Button(label, size);
+        }
+
     } // namespace
 
     GameViewWindow::GameViewWindow() : EditorWindow("Game View", ICON_MDI_GAMEPAD_VARIANT) {}
@@ -394,6 +405,18 @@ namespace vultra_app
                            "XR Disabled",
                            "OpenXR could not initialize. Check that a runtime/headset is available, or launch with "
                            "--no-xr to disable XR.");
+            ImGui::BeginDisabled(!backendService);
+            if (centeredButtonBelowEmptyState(min,
+                                              max,
+                                              ICON_MDI_HEADSET "  Request XR Session",
+                                              ImVec2(196.0f, 0.0f),
+                                              64.0f) &&
+                backendService)
+            {
+                backendService->requestXRSession(false);
+                backendService->requestXRSession(true);
+            }
+            ImGui::EndDisabled();
         }
         else if (primaryCameraWantsXR && xrBackendEnabled && !xrMirrorReady)
         {

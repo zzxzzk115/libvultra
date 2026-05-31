@@ -887,6 +887,7 @@ namespace vultra_app
                                             editorSettings.rendererKey,
                                             editorSettings.clearMode,
                                             editorSettings.clearValue);
+            editorCamera.selectionOutlineEnabled = Selection::lastId().valid();
             ctx.state.sceneCamera.position    = m_CameraPosition;
             ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
             ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;
@@ -903,6 +904,7 @@ namespace vultra_app
                                                 editorSettings.rendererKey,
                                                 editorSettings.clearMode,
                                                 editorSettings.clearValue);
+                editorCamera.selectionOutlineEnabled = Selection::lastId().valid();
                 ctx.state.sceneCamera.position    = m_CameraPosition;
                 ctx.state.sceneCamera.rotation    = glm::normalize(glm::quat_cast(glm::inverse(editorCamera.view)));
                 ctx.state.sceneCamera.fovYDegrees = m_CameraFovY;

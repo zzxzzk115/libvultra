@@ -34,16 +34,29 @@ namespace vultra_app
             return uris;
 
         std::error_code ec;
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(assetRoot, ec))
+        for (auto it = std::filesystem::recursive_directory_iterator(
+                 assetRoot, std::filesystem::directory_options::skip_permission_denied, ec);
+             it != std::filesystem::recursive_directory_iterator {};
+             it.increment(ec))
         {
             if (ec)
-                break;
-            if (!entry.is_regular_file(ec) || entry.path().extension().generic_string() != extension)
+            {
+                ec.clear();
                 continue;
+            }
+            const auto& entry = *it;
+            if (!entry.is_regular_file(ec) || entry.path().extension().generic_string() != extension)
+            {
+                ec.clear();
+                continue;
+            }
 
             const auto rel = std::filesystem::relative(entry.path().lexically_normal(), assetRoot, ec);
             if (ec || isImportedAssetRelativePath(rel))
+            {
+                ec.clear();
                 continue;
+            }
 
             uris.push_back(projectAssetUriForRelativePath(rel));
         }
@@ -63,16 +76,29 @@ namespace vultra_app
             return uris;
 
         std::error_code ec;
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(assetRoot, ec))
+        for (auto it = std::filesystem::recursive_directory_iterator(
+                 assetRoot, std::filesystem::directory_options::skip_permission_denied, ec);
+             it != std::filesystem::recursive_directory_iterator {};
+             it.increment(ec))
         {
             if (ec)
-                break;
-            if (!entry.is_regular_file(ec))
+            {
+                ec.clear();
                 continue;
+            }
+            const auto& entry = *it;
+            if (!entry.is_regular_file(ec))
+            {
+                ec.clear();
+                continue;
+            }
 
             const auto rel = std::filesystem::relative(entry.path().lexically_normal(), assetRoot, ec);
             if (ec || isImportedAssetRelativePath(rel))
+            {
+                ec.clear();
                 continue;
+            }
 
             const auto name = entry.path().filename().generic_string();
             if (name.ends_with(suffix))
@@ -94,16 +120,29 @@ namespace vultra_app
             return files;
 
         std::error_code ec;
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(assetRoot, ec))
+        for (auto it = std::filesystem::recursive_directory_iterator(
+                 assetRoot, std::filesystem::directory_options::skip_permission_denied, ec);
+             it != std::filesystem::recursive_directory_iterator {};
+             it.increment(ec))
         {
             if (ec)
-                break;
-            if (!entry.is_regular_file(ec))
+            {
+                ec.clear();
                 continue;
+            }
+            const auto& entry = *it;
+            if (!entry.is_regular_file(ec))
+            {
+                ec.clear();
+                continue;
+            }
 
             const auto rel = std::filesystem::relative(entry.path().lexically_normal(), assetRoot, ec);
             if (ec || isImportedAssetRelativePath(rel))
+            {
+                ec.clear();
                 continue;
+            }
 
             const auto name = entry.path().filename().generic_string();
             if (name.ends_with(suffix))

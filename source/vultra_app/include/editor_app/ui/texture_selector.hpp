@@ -15,6 +15,14 @@
 
 namespace vultra_app::ui
 {
+    struct TextureSelection
+    {
+        std::string           uri;
+        std::string           label;
+        std::filesystem::path sourcePath;
+        vultra::CoreUUID      uuid;
+    };
+
     struct TextureSelectorState
     {
         std::array<char, 128> filter {};
@@ -22,13 +30,10 @@ namespace vultra_app::ui
         int                   remainingPreviewLoads {16};
         AssetPreviewCache     previewCache;
         uint64_t              observedProjectGeneration {0};
-    };
-
-    struct TextureSelection
-    {
-        std::string           uri;
-        std::filesystem::path sourcePath;
-        vultra::CoreUUID      uuid;
+        uint64_t              cachedProjectGeneration {0};
+        bool                  builtinCacheReady {false};
+        std::vector<TextureSelection> cachedBuiltinTextures;
+        std::vector<TextureSelection> cachedProjectTextures;
     };
 
     [[nodiscard]] std::vector<TextureSelection> collectProjectTextures(EditorContext& ctx);

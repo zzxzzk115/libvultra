@@ -7,6 +7,7 @@
 #include <vector>
 #include <array>
 #include <memory>
+#include <utility>
 #include <unordered_set>
 #include <unordered_map>
 #include <map>
@@ -44,6 +45,9 @@ public:
 	inline void SetShortTabsEnabled(bool aValue) { mShortTabs = aValue; }
 	inline bool IsShortTabsEnabled() const { return mShortTabs; }
 	inline int GetLineCount() const { return mLines.size(); }
+	using ErrorMarkers = std::map<int, std::string>;
+	inline void SetErrorMarkers(ErrorMarkers aMarkers) { mErrorMarkers = std::move(aMarkers); }
+	inline void ClearErrorMarkers() { mErrorMarkers.clear(); }
 	void SetPalette(PaletteId aValue);
 	PaletteId GetPalette() const { return mPaletteId; }
 	void SetLanguageDefinition(LanguageDefinitionId aValue);
@@ -404,6 +408,7 @@ private:
 	void ColorizeInternal();
 
 	std::vector<Line> mLines;
+	ErrorMarkers mErrorMarkers;
 	EditorState mState;
 	std::vector<UndoRecord> mUndoBuffer;
 	int mUndoIndex = 0;

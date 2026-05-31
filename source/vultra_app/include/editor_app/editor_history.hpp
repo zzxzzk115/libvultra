@@ -66,6 +66,7 @@ namespace vultra_app
         std::vector<SceneState> m_States;
         std::size_t             m_Current {0};
         std::optional<SceneState> m_PendingState;
+        bool                    m_PendingObservation {false};
         std::string             m_PendingLabel;
         std::string             m_NextLabel;
         bool                    m_Applying {false};

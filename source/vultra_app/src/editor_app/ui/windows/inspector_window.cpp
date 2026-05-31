@@ -39,6 +39,7 @@
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <imgui.h>
+#include <sol/sol.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -49,6 +50,7 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -517,6 +519,13 @@ namespace vultra_app
                 ImGui::SeparatorText("Runtime");
                 ImGui::Text("OpenXR: %s", backend->isXREnabled() ? "Enabled" : "Disabled");
                 ImGui::Text("Mirror: %s", backend->isXRMirrorEnabled() ? "Enabled" : "Disabled");
+                ImGui::BeginDisabled(!xrView.enabled);
+                if (ImGui::SmallButton(ICON_MDI_HEADSET "  Request XR Session"))
+                {
+                    backend->requestXRSession(false);
+                    backend->requestXRSession(true);
+                }
+                ImGui::EndDisabled();
                 if (!backend->isXREnabled())
                     ImGui::TextDisabled("Session starts when an enabled XR camera is active.");
             }
@@ -1043,6 +1052,661 @@ namespace vultra_app
             return "res://" + rel.generic_string();
         }
 
+        struct RenderGraphPassEditState
+        {
+            std::filesystem::path path;
+            std::array<char, 128> type {};
+            std::array<char, 256> inputs {};
+            std::array<char, 256> outputs {};
+            std::array<char, 128> library {};
+            std::array<char, 128> vertexLibrary {};
+            std::array<char, 128> fragmentLibrary {};
+            std::array<char, 128> vertex {};
+            std::array<char, 128> fragment {};
+            std::array<char, 128> compute {};
+            std::array<char, 128> raygen {};
+            std::array<char, 128> miss {};
+            std::array<char, 128> closestHit {};
+            std::array<char, 128> anyHit {};
+            int                   pipeline {0};
+            bool                  dispatchByOutputSize {false};
+            bool                  valid {false};
+        };
+
+        std::string solString(sol::table table, const char* key, std::string fallback = {})
+        {
+            sol::object value = table[key];
+            return value.is<std::string>() ? value.as<std::string>() : std::move(fallback);
+        }
+
+        std::string solStringListText(sol::table table, const char* key, const char* fallback)
+        {
+            sol::object value = table[key];
+            if (value.is<std::string>())
+                return value.as<std::string>();
+            if (!value.is<sol::table>())
+                return fallback;
+
+            std::string out;
+            sol::table  values = value.as<sol::table>();
+            for (const auto& [_, item] : values)
+            {
+                static_cast<void>(_);
+                if (!item.is<std::string>())
+                    continue;
+                if (!out.empty())
+                    out += ", ";
+                out += item.as<std::string>();
+            }
+            return out.empty() ? fallback : out;
+        }
+
+        bool fileLooksLikeRenderGraphPass(const std::filesystem::path& path)
+        {
+            if (path.extension() != ".lua")
+                return false;
+            std::ifstream file(path);
+            if (!file.is_open())
+                return false;
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            return buffer.str().find("RenderGraphPass") != std::string::npos;
+        }
+
+        std::optional<RenderGraphPassEditState> loadRenderGraphPassEditState(const std::filesystem::path& path)
+        {
+            std::ifstream file(path);
+            if (!file.is_open())
+                return std::nullopt;
+
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            const auto text = buffer.str();
+            if (text.find("RenderGraphPass") == std::string::npos)
+                return std::nullopt;
+
+            sol::state lua;
+            lua.open_libraries(sol::lib::base, sol::lib::table, sol::lib::string, sol::lib::math);
+            lua.set_function("RenderGraphPass", [](sol::table t) { return t; });
+            auto result = lua.safe_script(text, &sol::script_pass_on_error);
+            if (!result.valid())
+                return std::nullopt;
+
+            sol::object obj = result;
+            if (!obj.is<sol::table>())
+                return std::nullopt;
+
+            sol::table table = obj.as<sol::table>();
+            RenderGraphPassEditState state;
+            state.path = path.lexically_normal();
+            copyName(state.type, solString(table, "type", solString(table, "name", "CustomPass")));
+            copyName(state.inputs, solStringListText(table, "inputs", solString(table, "input", "source").c_str()));
+            copyName(state.outputs, solStringListText(table, "outputs", solString(table, "output", "color").c_str()));
+
+            const auto pipeline = solString(table, "pipeline", solString(table, "stage", "graphics"));
+            if (pipeline == "compute")
+                state.pipeline = 1;
+            else if (pipeline == "raytracing" || pipeline == "ray_tracing" || pipeline == "rt")
+                state.pipeline = 2;
+
+            if (sol::object shaderObj = table["shader"]; shaderObj.is<sol::table>())
+            {
+                sol::table shader = shaderObj.as<sol::table>();
+                copyName(state.library, solString(shader, "library", "project"));
+                copyName(state.vertex, solString(shader, "vertex", "fullscreen_triangle.vert"));
+                copyName(state.fragment, solString(shader, "fragment"));
+                const std::string defaultVertexLibrary =
+                    std::string(state.vertex.data()) == "fullscreen_triangle.vert" ? "builtin" : state.library.data();
+                copyName(state.vertexLibrary,
+                         solString(shader, "vertexLibrary", solString(shader, "vertex_library", defaultVertexLibrary.c_str())));
+                copyName(state.fragmentLibrary,
+                         solString(shader, "fragmentLibrary", solString(shader, "fragment_library", state.library.data())));
+                copyName(state.compute, solString(shader, "compute"));
+                copyName(state.raygen, solString(shader, "raygen"));
+                copyName(state.miss, solString(shader, "miss"));
+                copyName(state.closestHit, solString(shader, "closestHit"));
+                copyName(state.anyHit, solString(shader, "anyHit"));
+            }
+            else
+            {
+                copyName(state.library, "project");
+                copyName(state.vertexLibrary, "builtin");
+                copyName(state.fragmentLibrary, "project");
+                copyName(state.vertex, "fullscreen_triangle.vert");
+            }
+
+            if (sol::object dispatchObj = table["dispatch"]; dispatchObj.is<sol::table>())
+            {
+                sol::table dispatch = dispatchObj.as<sol::table>();
+                sol::object bySize  = dispatch["byOutputSize"];
+                state.dispatchByOutputSize = bySize.is<bool>() && bySize.as<bool>();
+            }
+
+            state.valid = true;
+            return state;
+        }
+
+        std::vector<std::string> commaList(std::string_view value, std::string_view fallback)
+        {
+            std::vector<std::string> out;
+            std::stringstream        ss {std::string(value)};
+            std::string              item;
+            while (std::getline(ss, item, ','))
+            {
+                item.erase(item.begin(),
+                           std::find_if(item.begin(), item.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+                item.erase(std::find_if(item.rbegin(),
+                                        item.rend(),
+                                        [](unsigned char ch) { return !std::isspace(ch); })
+                               .base(),
+                           item.end());
+                if (!item.empty())
+                    out.push_back(std::move(item));
+            }
+            if (out.empty() && !fallback.empty())
+                out.emplace_back(fallback);
+            return out;
+        }
+
+        std::string quoteLua(std::string_view value)
+        {
+            std::string out = "\"";
+            for (const char ch : value)
+            {
+                if (ch == '\\' || ch == '"')
+                    out.push_back('\\');
+                out.push_back(ch);
+            }
+            out.push_back('"');
+            return out;
+        }
+
+        std::string luaStringArray(const std::vector<std::string>& values)
+        {
+            std::string out = "{ ";
+            for (size_t i = 0; i < values.size(); ++i)
+            {
+                if (i > 0)
+                    out += ", ";
+                out += quoteLua(values[i]);
+            }
+            out += " }";
+            return out;
+        }
+
+        std::string serializeRenderGraphPass(const RenderGraphPassEditState& state)
+        {
+            std::string out;
+            out += "return RenderGraphPass {\n";
+            out += "    type = " + quoteLua(state.type.data()) + ",\n";
+            if (state.pipeline == 1)
+                out += "    pipeline = \"compute\",\n";
+            else if (state.pipeline == 2)
+                out += "    pipeline = \"raytracing\",\n";
+            out += "    inputs = " + luaStringArray(commaList(state.inputs.data(), "source")) + ",\n";
+            out += "    outputs = " + luaStringArray(commaList(state.outputs.data(), "color")) + ",\n";
+            out += "    shader = {\n";
+            if (state.pipeline == 1)
+            {
+                out += "        library = " + quoteLua(state.library.data()[0] ? state.library.data() : "project") + ",\n";
+                out += "        compute = " + quoteLua(state.compute.data()) + ",\n";
+            }
+            else if (state.pipeline == 2)
+            {
+                out += "        library = " + quoteLua(state.library.data()[0] ? state.library.data() : "project") + ",\n";
+                out += "        raygen = " + quoteLua(state.raygen.data()) + ",\n";
+                if (state.miss[0] != '\0')
+                    out += "        miss = " + quoteLua(state.miss.data()) + ",\n";
+                if (state.closestHit[0] != '\0')
+                    out += "        closestHit = " + quoteLua(state.closestHit.data()) + ",\n";
+                if (state.anyHit[0] != '\0')
+                    out += "        anyHit = " + quoteLua(state.anyHit.data()) + ",\n";
+            }
+            else
+            {
+                const std::string vertexLibrary = state.vertexLibrary.data()[0] ? state.vertexLibrary.data() :
+                                                                                  "builtin";
+                const std::string fragmentLibrary = state.fragmentLibrary.data()[0] ? state.fragmentLibrary.data() :
+                                                                                       "project";
+                const std::string vertexShader =
+                    vertexLibrary == "builtin" ? "fullscreen_triangle.vert" :
+                                                 (state.vertex.data()[0] ? state.vertex.data() :
+                                                                           "fullscreen_triangle.vert");
+                if (vertexLibrary != "project")
+                    out += "        vertexLibrary = " + quoteLua(vertexLibrary) + ",\n";
+                if (!fragmentLibrary.empty() && fragmentLibrary != "project")
+                    out += "        fragmentLibrary = " + quoteLua(fragmentLibrary) + ",\n";
+                out += "        vertex = " + quoteLua(vertexShader) + ",\n";
+                out += "        fragment = " + quoteLua(state.fragment.data()) + ",\n";
+            }
+            out += "    },\n";
+            if (state.pipeline == 1)
+            {
+                out += "    dispatch = {\n";
+                out += std::string("        byOutputSize = ") + (state.dispatchByOutputSize ? "true" : "false") + ",\n";
+                out += "    },\n";
+            }
+            out += "}\n";
+            return out;
+        }
+
+        bool shaderFileHasStage(const std::filesystem::path& path, const std::string& stage)
+        {
+            const auto suffix = "." + stage + ".vshader";
+            if (path.filename().generic_string().ends_with(suffix))
+                return true;
+
+            std::ifstream file(path);
+            if (!file.is_open())
+                return false;
+
+            std::string line;
+            while (std::getline(file, line))
+            {
+                line.erase(std::remove_if(line.begin(),
+                                          line.end(),
+                                          [](unsigned char ch) { return std::isspace(ch) != 0; }),
+                           line.end());
+                if (line == "[" + stage + "]")
+                    return true;
+            }
+            return false;
+        }
+
+        std::vector<std::string> collectProjectShaderIds(EditorContext& ctx,
+                                                         const std::string& stage,
+                                                         std::string_view current,
+                                                         const bool includeCurrent = true)
+        {
+            std::vector<std::pair<std::string, std::string>> shaders;
+            const auto               root = (editorAssetRoot(ctx) / "shaders").lexically_normal();
+            std::error_code          ec;
+            if (std::filesystem::is_directory(root, ec))
+            {
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(root, ec))
+                {
+                    if (ec)
+                        break;
+                    if (!entry.is_regular_file(ec) || entry.path().extension() != ".vshader")
+                        continue;
+                    if (!shaderFileHasStage(entry.path(), stage))
+                        continue;
+
+                    auto rel = std::filesystem::relative(entry.path(), root, ec).generic_string();
+                    if (ec)
+                        continue;
+                    if (rel == "generated" || rel.starts_with("generated/"))
+                        continue;
+                    if (rel.ends_with(".vshader"))
+                        rel.resize(rel.size() - std::string_view(".vshader").size());
+                    auto leaf = std::filesystem::path(rel).filename().generic_string();
+                    shaders.emplace_back(std::move(rel), std::move(leaf));
+                }
+            }
+
+            std::unordered_map<std::string, int> leafCounts;
+            for (const auto& [_, leaf] : shaders)
+            {
+                static_cast<void>(_);
+                ++leafCounts[leaf];
+            }
+
+            std::vector<std::string> out;
+            out.reserve(shaders.size() + 1);
+            for (const auto& [rel, leaf] : shaders)
+                out.push_back(leafCounts[leaf] > 1 ? rel : leaf);
+
+            if (includeCurrent && !current.empty() && std::find(out.begin(), out.end(), current) == out.end())
+                out.emplace_back(current);
+
+            std::sort(out.begin(), out.end());
+            out.erase(std::unique(out.begin(), out.end()), out.end());
+            return out;
+        }
+
+        std::vector<std::string> collectBuiltinShaderIds(const std::string& stage)
+        {
+            std::vector<std::pair<std::string, std::string>> shaders;
+            const auto suffix = "." + stage + ".vshader";
+            const auto root   = std::filesystem::current_path() / "builtin" / "shaders" / "passes";
+            std::error_code ec;
+            if (std::filesystem::is_directory(root, ec))
+            {
+                for (const auto& entry : std::filesystem::recursive_directory_iterator(root, ec))
+                {
+                    if (ec)
+                        break;
+                    if (!entry.is_regular_file(ec) || !entry.path().filename().generic_string().ends_with(suffix))
+                        continue;
+
+                    auto rel = std::filesystem::relative(entry.path(), root, ec).generic_string();
+                    if (ec)
+                        continue;
+                    if (rel.ends_with(".vshader"))
+                        rel.resize(rel.size() - std::string_view(".vshader").size());
+                    auto leaf = std::filesystem::path(rel).filename().generic_string();
+                    shaders.emplace_back(std::move(rel), std::move(leaf));
+                }
+            }
+
+            std::unordered_map<std::string, int> leafCounts;
+            for (const auto& [_, leaf] : shaders)
+            {
+                static_cast<void>(_);
+                ++leafCounts[leaf];
+            }
+
+            std::vector<std::string> out;
+            out.reserve(shaders.size());
+            for (const auto& [rel, leaf] : shaders)
+                out.push_back(leafCounts[leaf] > 1 ? rel : leaf);
+            std::sort(out.begin(), out.end());
+            out.erase(std::unique(out.begin(), out.end()), out.end());
+            return out;
+        }
+
+        std::vector<std::string>
+        collectShaderIdsForLibrary(EditorContext& ctx, std::string_view library, const std::string& stage)
+        {
+            return library == "builtin" ? collectBuiltinShaderIds(stage) : collectProjectShaderIds(ctx, stage, "", false);
+        }
+
+        bool drawShaderOptionSelector(const char*                  label,
+                                      std::array<char, 128>&       value,
+                                      const std::vector<std::string>& options,
+                                      const bool                   allowEmpty = false)
+        {
+            bool changed = false;
+            ImGui::PushID(label);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(label);
+            ImGui::SameLine(120.0f);
+            ImGui::SetNextItemWidth(280.0f);
+            const char* preview = value[0] == '\0' ? "<none>" : value.data();
+            if (ImGui::BeginCombo("##shader", preview))
+            {
+                if (allowEmpty && ImGui::Selectable("<none>", value[0] == '\0'))
+                {
+                    value.fill('\0');
+                    changed = true;
+                }
+                for (const auto& option : options)
+                {
+                    const bool selected = option == value.data();
+                    if (ImGui::Selectable(option.c_str(), selected))
+                    {
+                        copyName(value, option);
+                        changed = true;
+                    }
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::PopID();
+            return changed;
+        }
+
+        bool normalizeShaderForLibrary(EditorContext&          ctx,
+                                       std::array<char, 128>&  library,
+                                       const std::string&      stage,
+                                       std::array<char, 128>&  shader,
+                                       const bool              allowEmpty = false)
+        {
+            if (allowEmpty && shader[0] == '\0')
+                return false;
+
+            bool changed = false;
+            if (library[0] == '\0')
+            {
+                copyName(library, "project");
+                changed = true;
+            }
+
+            auto options = collectShaderIdsForLibrary(ctx, library.data(), stage);
+            if (std::find(options.begin(), options.end(), shader.data()) != options.end())
+                return changed;
+
+            const auto otherLibrary = std::string_view(library.data()) == "builtin" ? "project" : "builtin";
+            auto       otherOptions = collectShaderIdsForLibrary(ctx, otherLibrary, stage);
+            if (std::find(otherOptions.begin(), otherOptions.end(), shader.data()) != otherOptions.end())
+            {
+                copyName(library, otherLibrary);
+                return true;
+            }
+
+            if (!options.empty())
+            {
+                copyName(shader, options.front());
+                return true;
+            }
+
+            if (!otherOptions.empty())
+            {
+                copyName(library, otherLibrary);
+                copyName(shader, otherOptions.front());
+                return true;
+            }
+
+            if (allowEmpty)
+            {
+                shader.fill('\0');
+                return true;
+            }
+
+            return changed;
+        }
+
+        bool drawLibraryShaderSelector(EditorContext&          ctx,
+                                       const char*             label,
+                                       const std::string&      stage,
+                                       std::array<char, 128>&  library,
+                                       std::array<char, 128>&  shader,
+                                       const bool              allowEmpty = false)
+        {
+            normalizeShaderForLibrary(ctx, library, stage, shader, allowEmpty);
+            const auto options = collectShaderIdsForLibrary(ctx, library.data()[0] ? library.data() : "project", stage);
+            return drawShaderOptionSelector(label, shader, options, allowEmpty);
+        }
+
+        bool drawShaderSelector(EditorContext&          ctx,
+                                const char*             label,
+                                const std::string&      stage,
+                                std::array<char, 128>&  value,
+                                const bool              allowEmpty = false,
+                                const bool              includeCurrent = true)
+        {
+            bool changed = false;
+            auto options = collectProjectShaderIds(ctx, stage, value.data(), includeCurrent);
+
+            ImGui::PushID(label);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(label);
+            ImGui::SameLine(120.0f);
+            ImGui::SetNextItemWidth(280.0f);
+            const char* preview = value[0] == '\0' ? "<none>" : value.data();
+            if (ImGui::BeginCombo("##shader", preview))
+            {
+                if (allowEmpty && ImGui::Selectable("<none>", value[0] == '\0'))
+                {
+                    value.fill('\0');
+                    changed = true;
+                }
+                for (const auto& option : options)
+                {
+                    const bool selected = option == value.data();
+                    if (ImGui::Selectable(option.c_str(), selected))
+                    {
+                        copyName(value, option);
+                        changed = true;
+                    }
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(220.0f);
+            changed |= ImGui::InputText("##manual", value.data(), value.size());
+            ImGui::PopID();
+            return changed;
+        }
+
+        bool drawShaderLibrarySelector(const char* label, std::array<char, 128>& value)
+        {
+            bool changed = false;
+            std::array options {"project", "builtin"};
+
+            ImGui::PushID(label);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(label);
+            ImGui::SameLine(120.0f);
+            ImGui::SetNextItemWidth(160.0f);
+            const char* preview = value[0] == '\0' ? "project" : value.data();
+            if (ImGui::BeginCombo("##library", preview))
+            {
+                for (const char* option : options)
+                {
+                    const bool selected = std::string_view(preview) == option;
+                    if (ImGui::Selectable(option, selected))
+                    {
+                        copyName(value, option);
+                        changed = true;
+                    }
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(160.0f);
+            changed |= ImGui::InputText("##manual", value.data(), value.size());
+            ImGui::PopID();
+            return changed;
+        }
+
+        bool drawBuiltinFullscreenVertexField(std::array<char, 128>& vertex)
+        {
+            if (std::string_view(vertex.data()) != "fullscreen_triangle.vert")
+            {
+                copyName(vertex, "fullscreen_triangle.vert");
+                return true;
+            }
+
+            ImGui::PushID("BuiltinFullscreenVertex");
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Vertex");
+            ImGui::SameLine(120.0f);
+            ImGui::SetNextItemWidth(280.0f);
+            ImGui::BeginDisabled();
+            ImGui::InputText("##builtinVertex", vertex.data(), vertex.size());
+            ImGui::EndDisabled();
+            ImGui::PopID();
+            return false;
+        }
+
+        bool normalizeGraphicsShaderSelection(EditorContext& ctx, RenderGraphPassEditState& state)
+        {
+            bool changed = false;
+
+            if (state.vertexLibrary[0] == '\0')
+                copyName(state.vertexLibrary, "builtin");
+            if (state.fragmentLibrary[0] == '\0')
+                copyName(state.fragmentLibrary, "project");
+
+            if (std::string_view(state.vertexLibrary.data()) == "builtin")
+            {
+                if (std::string_view(state.vertex.data()) != "fullscreen_triangle.vert")
+                {
+                    copyName(state.vertex, "fullscreen_triangle.vert");
+                    changed = true;
+                }
+            }
+            else if (std::string_view(state.vertexLibrary.data()) == "project")
+            {
+                const auto projectVertices = collectProjectShaderIds(ctx, "vert", "", false);
+                if (projectVertices.empty())
+                {
+                    copyName(state.vertexLibrary, "builtin");
+                    copyName(state.vertex, "fullscreen_triangle.vert");
+                    changed = true;
+                }
+                else if (std::find(projectVertices.begin(), projectVertices.end(), state.vertex.data()) ==
+                         projectVertices.end())
+                {
+                    copyName(state.vertex, projectVertices.front());
+                    changed = true;
+                }
+            }
+
+            const auto projectFragments = collectProjectShaderIds(ctx, "frag", "", false);
+            const auto builtinFragments = collectBuiltinShaderIds("frag");
+            if (std::string_view(state.fragmentLibrary.data()) == "builtin")
+            {
+                if (std::find(builtinFragments.begin(), builtinFragments.end(), state.fragment.data()) ==
+                    builtinFragments.end())
+                {
+                    if (std::find(projectFragments.begin(), projectFragments.end(), state.fragment.data()) !=
+                        projectFragments.end())
+                    {
+                        copyName(state.fragmentLibrary, "project");
+                    }
+                    else if (!builtinFragments.empty())
+                    {
+                        copyName(state.fragment, builtinFragments.front());
+                    }
+                    else if (!projectFragments.empty())
+                    {
+                        copyName(state.fragmentLibrary, "project");
+                        copyName(state.fragment, projectFragments.front());
+                    }
+                    changed = true;
+                }
+            }
+            else if (std::string_view(state.fragmentLibrary.data()) == "project")
+            {
+                if (std::find(projectFragments.begin(), projectFragments.end(), state.fragment.data()) ==
+                    projectFragments.end())
+                {
+                    if (!projectFragments.empty())
+                    {
+                        copyName(state.fragment, projectFragments.front());
+                    }
+                    else if (!builtinFragments.empty())
+                    {
+                        copyName(state.fragmentLibrary, "builtin");
+                        copyName(state.fragment, builtinFragments.front());
+                    }
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        bool normalizePipelineShaderSelection(EditorContext& ctx, RenderGraphPassEditState& state)
+        {
+            bool changed = false;
+            if (state.pipeline == 1)
+            {
+                changed |= normalizeShaderForLibrary(ctx, state.library, "comp", state.compute);
+            }
+            else if (state.pipeline == 2)
+            {
+                changed |= normalizeShaderForLibrary(ctx, state.library, "rgen", state.raygen);
+                changed |= normalizeShaderForLibrary(ctx, state.library, "rmiss", state.miss, true);
+                changed |= normalizeShaderForLibrary(ctx, state.library, "rchit", state.closestHit, true);
+                changed |= normalizeShaderForLibrary(ctx, state.library, "rahit", state.anyHit, true);
+            }
+            else
+            {
+                changed |= normalizeGraphicsShaderSelection(ctx, state);
+            }
+            return changed;
+        }
+
         std::filesystem::path scriptDialogStartPath(EditorContext& ctx, const std::string& uri)
         {
             const auto assetRoot = editorAssetRoot(ctx);
@@ -1339,18 +2003,30 @@ namespace vultra_app
         {
             std::vector<std::string> out;
             const auto               root = editorAssetRoot(ctx);
-            if (root.empty() || !std::filesystem::exists(root))
+            std::error_code ec;
+            if (root.empty() || !std::filesystem::exists(root, ec))
                 return out;
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     root, std::filesystem::directory_options::skip_permission_denied, ec);
+                 it != std::filesystem::recursive_directory_iterator {};
+                 it.increment(ec))
             {
-                if (!entry.is_regular_file())
+                if (ec)
+                {
+                    ec.clear();
                     continue;
+                }
+                const auto& entry = *it;
+                if (!entry.is_regular_file(ec))
+                {
+                    ec.clear();
+                    continue;
+                }
                 const auto path = entry.path();
                 const auto name = path.filename().generic_string();
                 const auto ext  = path.extension().generic_string();
                 if (ext != ".vmatgraph" && name.find(".vmatgraph.json") == std::string::npos)
                     continue;
-                std::error_code ec;
                 const auto      rel = std::filesystem::relative(path, root, ec);
                 if (!ec && !rel.empty() && isImportedAssetPath(rel.generic_string()))
                     continue;
@@ -2470,11 +3146,20 @@ namespace vultra_app
         if (std::filesystem::is_regular_file(path, ec))
             ImGui::Text("Size: %s", formatFileSize(std::filesystem::file_size(path, ec)).c_str());
 
+        const bool renderGraphPassSource = std::filesystem::is_regular_file(path, ec) && fileLooksLikeRenderGraphPass(path);
+        if (renderGraphPassSource)
+        {
+            ImGui::Spacing();
+            drawRenderGraphPassSourceInspector(ctx, path);
+        }
+
         if (std::filesystem::is_regular_file(path, ec) && isEditableSourceText(path))
         {
             const bool sceneSource = sourceAssetHasExtension(path, {".vscn"});
-            if (ImGui::Button(sceneSource ? ICON_MDI_FILE_DOCUMENT_EDIT " Edit As Source" :
-                                            ICON_MDI_FILE_DOCUMENT_EDIT " Open in Code Editor"))
+            const char* buttonText = sceneSource ? ICON_MDI_FILE_DOCUMENT_EDIT " Edit As Source" :
+                                     renderGraphPassSource ? ICON_MDI_CODE_BRACES " Open Lua Source" :
+                                                             ICON_MDI_FILE_DOCUMENT_EDIT " Open in Code Editor";
+            if (ImGui::Button(buttonText))
             {
                 ctx.state.codeEditorPath          = path.lexically_normal();
                 ctx.state.codeEditorOpenRequested = true;
@@ -2510,6 +3195,110 @@ namespace vultra_app
                 }
             }
         }
+    }
+
+    bool InspectorWindow::drawRenderGraphPassSourceInspector(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        static RenderGraphPassEditState editState;
+        if (editState.path != path.lexically_normal())
+        {
+            if (auto loaded = loadRenderGraphPassEditState(path))
+                editState = std::move(*loaded);
+            else
+                editState = {};
+        }
+
+        if (!editState.valid)
+            return false;
+
+        ui::sectionTitle(ICON_MDI_VECTOR_POLYGON, "Render Graph Pass");
+
+        bool dirty = false;
+        dirty |= ImGui::InputText("Type", editState.type.data(), editState.type.size());
+
+        const char* pipelines[] = {"Graphics", "Compute", "Raytracing"};
+        dirty |= ImGui::Combo("Pipeline", &editState.pipeline, pipelines, IM_ARRAYSIZE(pipelines));
+
+        dirty |= ImGui::InputText("Inputs", editState.inputs.data(), editState.inputs.size());
+        dirty |= ImGui::InputText("Outputs", editState.outputs.data(), editState.outputs.size());
+
+        if (editState.pipeline == 1)
+        {
+            dirty |= drawShaderLibrarySelector("Library", editState.library);
+            dirty |= drawLibraryShaderSelector(ctx, "Compute", "comp", editState.library, editState.compute);
+            dirty |= ImGui::Checkbox("Dispatch By Output Size", &editState.dispatchByOutputSize);
+        }
+        else if (editState.pipeline == 2)
+        {
+            dirty |= drawShaderLibrarySelector("Library", editState.library);
+            dirty |= drawLibraryShaderSelector(ctx, "Raygen", "rgen", editState.library, editState.raygen);
+            dirty |= drawLibraryShaderSelector(ctx, "Miss", "rmiss", editState.library, editState.miss, true);
+            dirty |= drawLibraryShaderSelector(ctx, "Closest Hit", "rchit", editState.library, editState.closestHit, true);
+            dirty |= drawLibraryShaderSelector(ctx, "Any Hit", "rahit", editState.library, editState.anyHit, true);
+        }
+        else
+        {
+            dirty |= drawShaderLibrarySelector("Vertex Library", editState.vertexLibrary);
+            dirty |= drawShaderLibrarySelector("Fragment Library", editState.fragmentLibrary);
+            dirty |= normalizeGraphicsShaderSelection(ctx, editState);
+
+            const bool builtinVertex = std::string_view(editState.vertexLibrary.data()) == "builtin" ||
+                                       editState.vertexLibrary[0] == '\0';
+            if (builtinVertex)
+                dirty |= drawBuiltinFullscreenVertexField(editState.vertex);
+            else
+                dirty |= drawShaderSelector(ctx, "Vertex", "vert", editState.vertex, false, false);
+
+            if (std::string_view(editState.fragmentLibrary.data()) == "builtin")
+                dirty |= drawShaderOptionSelector("Fragment", editState.fragment, collectBuiltinShaderIds("frag"));
+            else
+                dirty |= drawShaderSelector(ctx, "Fragment", "frag", editState.fragment, false, false);
+            dirty |= normalizeGraphicsShaderSelection(ctx, editState);
+        }
+
+        static bool pendingUnsaved = false;
+        dirty |= normalizePipelineShaderSelection(ctx, editState);
+        if (dirty)
+            pendingUnsaved = true;
+
+        ImGui::BeginDisabled(!pendingUnsaved);
+        if (ImGui::Button(ICON_MDI_CONTENT_SAVE " Save Pass"))
+        {
+            std::ofstream file(path, std::ios::binary | std::ios::trunc);
+            if (!file.is_open())
+            {
+                ctx.state.statusMessage = "Save render pass failed: cannot open file.";
+            }
+            else
+            {
+                static_cast<void>(normalizePipelineShaderSelection(ctx, editState));
+                file << serializeRenderGraphPass(editState);
+                file.close();
+                if (!file)
+                {
+                    ctx.state.statusMessage = "Save render pass failed: cannot write file.";
+                }
+                else
+                {
+                    pendingUnsaved = false;
+                    ++ctx.state.assetFileGeneration;
+                    if (auto* assetService = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr)
+                    {
+                        if (auto uri = pathToResUri(ctx, path); !uri.empty())
+                            (void)assetService->reimportAsset(uri, true);
+                    }
+                    ctx.state.statusMessage = "Saved render graph pass.";
+                }
+            }
+        }
+        ImGui::EndDisabled();
+        if (pendingUnsaved)
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("Unsaved");
+        }
+
+        return true;
     }
 
     void InspectorWindow::drawSourceTexturePreview(EditorContext& ctx, const std::filesystem::path& path)
@@ -2672,10 +3461,12 @@ namespace vultra_app
         camera.target                  = &*m_ModelPreviewTarget.texture;
         camera.clearValue              = glm::vec4 {0.06f, 0.07f, 0.08f, 1.0f};
         camera.clearMode               = 0u;
+        camera.suppressSkybox          = true;
         camera.renderImGui             = false;
         camera.rendererKey             = "universal";
         camera.selectionOutlineEnabled = false;
         camera.worldOverride           = &m_ModelPreviewWorld;
+        cameraService->removeManualCamerasByName("Inspector Model Preview");
         cameraService->addManualCamera(camera);
         m_ModelPreviewDirty = false;
     }
@@ -2750,6 +3541,8 @@ namespace vultra_app
         }
         if (ctx.services)
         {
+            if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
+                cameraService->removeManualCamerasByName("Inspector Model Preview");
             if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
                 renderService->releaseOverrideRenderWorld(&m_ModelPreviewWorld);
             if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())

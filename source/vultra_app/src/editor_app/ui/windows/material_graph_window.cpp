@@ -167,6 +167,15 @@ namespace vultra_app
             return (assetRoot(ctx) / std::filesystem::path(std::string(uri.substr(prefix.size())))).lexically_normal();
         }
 
+        uint64_t fileWriteStamp(const std::filesystem::path& path)
+        {
+            std::error_code ec;
+            const auto      time = std::filesystem::last_write_time(path, ec);
+            if (ec)
+                return 0;
+            return static_cast<uint64_t>(time.time_since_epoch().count());
+        }
+
         std::string uriForPath(const EditorContext& ctx, const std::filesystem::path& path)
         {
             std::error_code ec;
@@ -180,13 +189,26 @@ namespace vultra_app
         {
             std::vector<std::string> out;
             const auto               root = assetRoot(ctx);
-            if (root.empty() || !std::filesystem::exists(root))
+            std::error_code ec;
+            if (root.empty() || !std::filesystem::exists(root, ec))
                 return out;
 
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(root))
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     root, std::filesystem::directory_options::skip_permission_denied, ec);
+                 it != std::filesystem::recursive_directory_iterator {};
+                 it.increment(ec))
             {
-                if (!entry.is_regular_file())
+                if (ec)
+                {
+                    ec.clear();
                     continue;
+                }
+                const auto& entry = *it;
+                if (!entry.is_regular_file(ec))
+                {
+                    ec.clear();
+                    continue;
+                }
                 const auto path = entry.path();
                 const auto name = path.filename().generic_string();
                 const auto ext  = path.extension().generic_string();
@@ -583,15 +605,27 @@ namespace vultra_app
         m_TextureSelector.previewCache.clear(ctx);
         m_MeshSelector.previewCache.clear(ctx);
         if (ctx.services)
+        {
+            if (auto* cameras = ctx.services->tryGet<vultra::ICameraService>())
+                cameras->removeManualCamerasByName("Material Graph Preview");
             if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
                 renderService->releaseOverrideRenderWorld(&m_PreviewWorld);
+        }
         releasePreviewRenderTarget(ctx);
     }
 
     void MaterialGraphWindow::ensureLoaded(EditorContext& ctx)
     {
         if (m_Loaded)
+        {
+            const auto currentStamp = fileWriteStamp(pathForUri(ctx, m_CurrentUri));
+            if (m_LoadedAssetGeneration != ctx.state.assetFileGeneration && currentStamp != m_LoadedWriteStamp)
+            {
+                if (loadGraph(ctx, m_CurrentUri))
+                    m_Status = "Reloaded";
+            }
             return;
+        }
         m_Loaded = true;
         if (!loadGraph(ctx, m_CurrentUri))
             newGraph(ctx);
@@ -662,6 +696,8 @@ namespace vultra_app
         m_CurrentUri = std::move(uri);
         m_Dirty      = false;
         m_Status     = "Loaded";
+        m_LoadedAssetGeneration = ctx.state.assetFileGeneration;
+        m_LoadedWriteStamp      = fileWriteStamp(pathForUri(ctx, m_CurrentUri));
         return true;
     }
 
@@ -686,6 +722,8 @@ namespace vultra_app
         }
         m_Dirty  = false;
         m_Status = "Saved";
+        m_LoadedAssetGeneration = ctx.state.assetFileGeneration;
+        m_LoadedWriteStamp      = fileWriteStamp(path);
         (void)saveThumbnail(ctx, path);
         if (m_LiveApply)
             compileGraph(ctx);
@@ -734,7 +772,7 @@ namespace vultra_app
         }
         m_Diagnostics = result->diagnostics;
 
-        const auto outDir = assetRoot(ctx) / "shaders" / "generated" / "material_graph";
+        const auto outDir = ctx.state.currentProject / ".vultra" / "generated" / "shaders" / "material_graph";
         std::filesystem::create_directories(outDir);
         const auto    outPath = outDir / (shaderId + ".frag.vshader");
         std::ofstream file(outPath, std::ios::binary | std::ios::trunc);
@@ -1100,6 +1138,7 @@ namespace vultra_app
         {
             if (auto* cameras = ctx.services->tryGet<vultra::ICameraService>())
             {
+                cameras->removeManualCamerasByName("Material Graph Preview");
                 auto cam          = makePreviewCamera(m_PreviewCameraPosition,
                                              m_PreviewBoundsCenter,
                                              m_PreviewCameraFovY,

@@ -42,6 +42,7 @@ namespace vultra_app
         void drawAddComponentButton(EditorContext& ctx, vultra::World& world, entt::entity entity);
         void drawAssetInspector(EditorContext& ctx);
         void drawSourceAssetInspector(EditorContext& ctx);
+        bool drawRenderGraphPassSourceInspector(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceTexturePreview(EditorContext& ctx, const std::filesystem::path& path);
         void drawSourceModelPreview(EditorContext& ctx, const std::filesystem::path& path);
         void drawMeshAssetPreview(EditorContext& ctx,
