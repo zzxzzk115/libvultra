@@ -44,20 +44,21 @@ namespace vultra_app::ui
         std::string            importedPath;
         std::filesystem::path  outputPath;
         AssetThumbnailStatus   status {AssetThumbnailStatus::Missing};
+        bool                   forceRender {false};
     };
 
     class AssetThumbnailService
     {
     public:
         void syncProject(EditorContext& ctx);
-        void clear();
+        void clear(EditorContext* ctx = nullptr);
 
         AssetThumbnailRequest requestModelRoot(EditorContext& ctx, const std::filesystem::path& sourcePath);
         AssetThumbnailRequest requestMesh(EditorContext&         ctx,
                                           std::string_view       uuid,
                                           std::string_view       importedPath);
         AssetThumbnailRequest requestTexture(EditorContext& ctx, const std::filesystem::path& sourcePath);
-        AssetThumbnailRequest requestScene(EditorContext& ctx, const std::filesystem::path& sourcePath);
+        AssetThumbnailRequest requestScene(EditorContext& ctx, const std::filesystem::path& sourcePath, bool force = false);
         AssetThumbnailRequest requestMaterialGraph(EditorContext& ctx, const std::filesystem::path& sourcePath);
         void                  markReady(const AssetThumbnailRequest& request);
 

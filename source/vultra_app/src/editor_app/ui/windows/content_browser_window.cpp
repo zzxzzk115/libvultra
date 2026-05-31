@@ -6,6 +6,7 @@
 #include "editor_app/editor_commands.hpp"
 #include "editor_app/scene_thumbnail.hpp"
 #include "editor_app/selection.hpp"
+#include "editor_app/vultra_package.hpp"
 
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -59,6 +61,16 @@ namespace vultra_app
             const auto      rel = std::filesystem::relative(path, assetRoot, ec);
             if (!ec && !rel.empty() && *rel.begin() == "imported")
                 return false;
+            if (!ec && !rel.empty())
+            {
+                auto it = rel.begin();
+                if (it != rel.end() && *it == "shaders")
+                {
+                    ++it;
+                    if (it != rel.end() && *it == "generated")
+                        return false;
+                }
+            }
 
             if (filename == "asset_registry.tsv")
                 return false;
@@ -231,6 +243,60 @@ namespace vultra_app
             std::memcpy(dst.data(), text.data(), count);
         }
 
+        bool isRenderGraphPassCreator(std::string_view id)
+        {
+            return id == "vultra.render_pass" || id == "vultra.post_processing_pass" || id == "vultra.compute_pass" ||
+                   id == "vultra.raytracing_pass";
+        }
+
+        std::string renderGraphPassStageForCreator(std::string_view id)
+        {
+            if (id == "vultra.compute_pass")
+                return "comp";
+            if (id == "vultra.raytracing_pass")
+                return "rgen";
+            return "frag";
+        }
+
+        std::string renderGraphPassTypeName(std::string fileName)
+        {
+            const auto dot = fileName.find('.');
+            if (dot != std::string::npos)
+                fileName.resize(dot);
+            if (fileName.empty())
+                return "CustomPass";
+
+            bool        upperNext = true;
+            std::string out;
+            out.reserve(fileName.size());
+            for (const char ch : fileName)
+            {
+                if (ch == '_' || ch == '-' || ch == ' ')
+                {
+                    upperNext = true;
+                    continue;
+                }
+                out.push_back(upperNext ? static_cast<char>(std::toupper(static_cast<unsigned char>(ch))) : ch);
+                upperNext = false;
+            }
+            return out.empty() ? "CustomPass" : out;
+        }
+
+        std::string luaQuote(std::string_view value)
+        {
+            std::string out;
+            out.reserve(value.size() + 2);
+            out.push_back('"');
+            for (const char ch : value)
+            {
+                if (ch == '\\' || ch == '"')
+                    out.push_back('\\');
+                out.push_back(ch);
+            }
+            out.push_back('"');
+            return out;
+        }
+
         std::string sourceAssetDisplayName(const std::filesystem::path& path, const bool isDirectory)
         {
             if (isDirectory)
@@ -401,6 +467,12 @@ namespace vultra_app
             {
                 if (entry.type != vasset::VAssetType::eMesh || !entry.importedPath.starts_with(meshPrefix))
                     continue;
+                vbase::UUID parsed {};
+                if (!vbase::try_parse_uuid(uuid.c_str(), parsed))
+                    continue;
+                std::error_code ec;
+                if (!std::filesystem::is_regular_file(assetRoot / std::filesystem::path(entry.importedPath), ec) || ec)
+                    continue;
 
                 auto nameIt = names.find(entry.sourcePath);
                 if (nameIt == names.end())
@@ -430,8 +502,25 @@ namespace vultra_app
             if (!assetService)
                 return;
             const auto uri = sourceAssetUriFor(ctx, path);
-            if (!uri.empty())
-                (void)assetService->reimportAsset(uri, false);
+            if (uri.empty())
+                return;
+
+            vultra::CoreUUID id;
+            if (assetService->resolver().reverseResolve(uri, id) &&
+                assetService->registry().lookup(id.native()).type == vasset::VAssetType::eSceneManifest)
+            {
+                return;
+            }
+
+            const auto normalized = path.lexically_normal();
+            if (std::find(ctx.state.pendingAssetImportPaths.begin(),
+                          ctx.state.pendingAssetImportPaths.end(),
+                          normalized) == ctx.state.pendingAssetImportPaths.end())
+            {
+                ctx.state.pendingAssetImportPaths.push_back(normalized);
+                ctx.state.pendingAssetImportRefresh = true;
+                ctx.state.statusMessage             = "Importing model before showing sub assets...";
+            }
         }
 
         void drawSubAssetDragSource(const std::string& uuid, const std::string& name, const std::string& importedPath)
@@ -571,20 +660,14 @@ namespace vultra_app
                 vultra::CoreUUID uuid;
                 if (!resolveDraggableAsset(ctx, path, uuid))
                 {
-                    if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
+                    const auto normalized = path.lexically_normal();
+                    if (std::find(ctx.state.pendingAssetImportPaths.begin(),
+                                  ctx.state.pendingAssetImportPaths.end(),
+                                  normalized) == ctx.state.pendingAssetImportPaths.end())
                     {
-                        const auto uri = sourceAssetUriFor(ctx, path);
-                        if (!uri.empty() && assetService->reimportAsset(uri, false))
-                            (void)resolveDraggableAsset(ctx, path, uuid);
-                    }
-                }
-                else if (isModelSourceAsset(path))
-                {
-                    if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
-                    {
-                        const auto uri = sourceAssetUriFor(ctx, path);
-                        if (!uri.empty() && assetService->reimportAsset(uri, false))
-                            (void)resolveDraggableAsset(ctx, path, uuid);
+                        ctx.state.pendingAssetImportPaths.push_back(normalized);
+                        ctx.state.pendingAssetImportRefresh = true;
+                        ctx.state.statusMessage             = "Importing asset before drag...";
                     }
                 }
 
@@ -716,6 +799,40 @@ namespace vultra_app
             if (sidecar != path && std::filesystem::exists(sidecar))
                 std::filesystem::remove(sidecar, ec);
             return !ec;
+        }
+
+        bool pathIsSameOrDescendant(const std::filesystem::path& path, const std::filesystem::path& parent)
+        {
+            const auto pathText   = path.lexically_normal().generic_string();
+            const auto parentText = parent.lexically_normal().generic_string();
+            return pathText == parentText || pathText.starts_with(parentText + "/");
+        }
+
+        std::vector<std::filesystem::path>
+        importRootsForWrittenPackageSources(const std::vector<std::filesystem::path>& sourcePaths)
+        {
+            std::vector<std::filesystem::path> roots;
+            roots.reserve(sourcePaths.size());
+            for (const auto& sourcePath : sourcePaths)
+            {
+                const auto dir = sourcePath.parent_path().lexically_normal();
+                if (!dir.empty())
+                    roots.push_back(dir);
+            }
+
+            std::sort(roots.begin(), roots.end());
+            roots.erase(std::unique(roots.begin(), roots.end()), roots.end());
+
+            std::vector<std::filesystem::path> compact;
+            for (const auto& root : roots)
+            {
+                if (std::any_of(compact.begin(), compact.end(), [&](const std::filesystem::path& existing) {
+                        return pathIsSameOrDescendant(root, existing);
+                    }))
+                    continue;
+                compact.push_back(root);
+            }
+            return compact;
         }
     } // namespace
 
@@ -903,6 +1020,8 @@ namespace vultra_app
                 openImportDialog(m_CurrentDir, false);
             if (ImGui::MenuItem(ICON_MDI_FOLDER_UPLOAD "  Import Folder"))
                 openImportDialog(m_CurrentDir, true);
+            if (ImGui::MenuItem(ICON_MDI_PACKAGE_DOWN "  Import Package"))
+                openPackageImportDialog();
             ImGui::Separator();
             drawCreateAssetMenu(ctx, m_CurrentDir);
             if (ImGui::MenuItem(ICON_MDI_FOLDER_PLUS "  Create Folder"))
@@ -1008,7 +1127,7 @@ namespace vultra_app
             ImGui::SameLine();
         }
         const auto label = std::string(ui::sourceAssetIcon(path, isDir)) + "  " + sourceAssetDisplayName(path, isDir);
-        ImGui::Selectable(label.c_str(), m_SelectedPath == path, ImGuiSelectableFlags_SpanAllColumns);
+        ImGui::Selectable(label.c_str(), isPathSelected(path), ImGuiSelectableFlags_SpanAllColumns);
         const bool hovered = ImGui::IsItemHovered();
         handleDeferredSelection(ctx, path, hovered);
         if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
@@ -1133,7 +1252,9 @@ namespace vultra_app
         }
         else if (isSceneSourceAsset(path))
         {
-            const auto thumbnailPath = sceneThumbnailPathForAsset(ctx, path);
+            const auto thumbnail = ctx.thumbnails ? ctx.thumbnails->requestScene(ctx, path) : ui::AssetThumbnailRequest {};
+            const auto thumbnailPath = thumbnail.outputPath.empty() ? sceneThumbnailPathForAsset(ctx, path) :
+                                                                      thumbnail.outputPath;
             std::error_code ec;
             if (!thumbnailPath.empty() && std::filesystem::exists(thumbnailPath, ec) && !ec)
             {
@@ -1176,7 +1297,17 @@ namespace vultra_app
             if (tileDoubleClicked)
                 openPath(ctx, path);
             else if (tileClicked)
-                selectPath(ctx, path);
+            {
+                const auto& io     = ImGui::GetIO();
+                const bool  range  = io.KeyShift;
+                const bool  toggle = io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl;
+                if (range)
+                    selectPathRange(ctx, path);
+                else if (toggle)
+                    togglePathSelection(ctx, path);
+                else
+                    selectPath(ctx, path);
+            }
         }
         if (tilePopupOpen)
         {
@@ -1372,7 +1503,17 @@ namespace vultra_app
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
         {
             if (hovered && !m_PendingSelectDragging)
-                selectPath(ctx, path);
+            {
+                const auto& io        = ImGui::GetIO();
+                const bool  range     = io.KeyShift;
+                const bool  toggle    = io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl;
+                if (range)
+                    selectPathRange(ctx, path);
+                else if (toggle)
+                    togglePathSelection(ctx, path);
+                else
+                    selectPath(ctx, path);
+            }
 
             m_PendingSelectPath.clear();
             m_PendingSelectDragging = false;
@@ -1385,9 +1526,62 @@ namespace vultra_app
             return;
 
         m_SelectedPath                = path;
+        m_LastClickedPath             = path;
         ctx.state.selectedSourceAsset = path.lexically_normal();
         m_SelectedPaths.clear();
         m_SelectedPaths.push_back(path);
+        Selection::clear(SelectionCategory::Entity);
+        Selection::clear(SelectionCategory::Asset);
+    }
+
+    void ContentBrowserWindow::togglePathSelection(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        if (!std::filesystem::exists(path))
+            return;
+
+        const auto it = std::find(m_SelectedPaths.begin(), m_SelectedPaths.end(), path);
+        if (it == m_SelectedPaths.end())
+            m_SelectedPaths.push_back(path);
+        else
+            m_SelectedPaths.erase(it);
+
+        if (m_SelectedPaths.empty())
+        {
+            m_SelectedPath.clear();
+            ctx.state.selectedSourceAsset.clear();
+            return;
+        }
+
+        m_SelectedPath                = m_SelectedPaths.back();
+        m_LastClickedPath             = path;
+        ctx.state.selectedSourceAsset = m_SelectedPath.lexically_normal();
+        Selection::clear(SelectionCategory::Entity);
+        Selection::clear(SelectionCategory::Asset);
+    }
+
+    void ContentBrowserWindow::selectPathRange(EditorContext& ctx, const std::filesystem::path& path)
+    {
+        if (!std::filesystem::exists(path))
+            return;
+
+        const auto& entries = filteredEntriesForCurrentDir();
+        const auto  anchor  = m_LastClickedPath.empty() ? m_SelectedPath : m_LastClickedPath;
+        const auto  a       = std::find(entries.begin(), entries.end(), anchor);
+        const auto  b       = std::find(entries.begin(), entries.end(), path);
+        if (a == entries.end() || b == entries.end())
+        {
+            selectPath(ctx, path);
+            return;
+        }
+
+        m_SelectedPaths.clear();
+        const auto first = std::min(a, b);
+        const auto last  = std::max(a, b);
+        for (auto it = first; it != std::next(last); ++it)
+            m_SelectedPaths.push_back(*it);
+
+        m_SelectedPath                = path;
+        ctx.state.selectedSourceAsset = path.lexically_normal();
         Selection::clear(SelectionCategory::Entity);
         Selection::clear(SelectionCategory::Asset);
     }
@@ -1525,23 +1719,21 @@ namespace vultra_app
         }
         if (ImGui::MenuItem(ICON_MDI_REFRESH "  Reimport"))
         {
-            bool refreshed = false;
-            if (ctx.services)
+            const auto normalized = path.lexically_normal();
+            if (std::find(ctx.state.pendingAssetImportPaths.begin(),
+                          ctx.state.pendingAssetImportPaths.end(),
+                          normalized) == ctx.state.pendingAssetImportPaths.end())
             {
-                if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
-                {
-                    const auto uri = pathToResUri(ctx, path);
-                    if (!uri.empty())
-                        refreshed = assetService->reimportAsset(uri, true);
-                }
-                if (!isDirectory && isRenderPipelineSource(path))
-                {
-                    if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
-                        refreshed = renderService->reloadRenderPipeline() || refreshed;
-                }
+                ctx.state.pendingAssetImportPaths.push_back(normalized);
+                ctx.state.pendingAssetImportRefresh = true;
             }
-            ctx.state.statusMessage = refreshed ? "Reimported source asset." : "Failed to reimport source asset.";
+            ctx.state.statusMessage = "Queued source asset reimport.";
         }
+        ImGui::Separator();
+        if (ImGui::MenuItem(ICON_MDI_PACKAGE_UP "  Export Package"))
+            openPackageExportDialog(path);
+        if (ImGui::MenuItem(ICON_MDI_PACKAGE_DOWN "  Import Package"))
+            openPackageImportDialog();
         ImGui::Separator();
         if (ImGui::MenuItem(ICON_MDI_FILE_IMPORT "  Import File"))
             openImportDialog(isDirectory ? path : path.parent_path(), false);
@@ -1625,7 +1817,78 @@ namespace vultra_app
         m_CreateAssetCreatorId = creatorId;
         m_CreateAssetTargetDir = targetDir.empty() ? m_CurrentDir : targetDir;
         copyText(m_CreateAssetNameBuffer, creator->defaultFileName);
+        refreshCreateAssetShaderOptions();
         m_OpenCreateAssetPopup = true;
+    }
+
+    void ContentBrowserWindow::refreshCreateAssetShaderOptions()
+    {
+        m_CreateAssetShaderOptions.clear();
+        m_CreateAssetShaderIndex = 0;
+        if (!isRenderGraphPassCreator(m_CreateAssetCreatorId))
+            return;
+
+        const auto stage = renderGraphPassStageForCreator(m_CreateAssetCreatorId);
+        const auto root  = (m_AssetRoot / "shaders").lexically_normal();
+        std::error_code ec;
+        if (std::filesystem::is_directory(root, ec))
+        {
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(root, ec))
+            {
+                if (ec)
+                    break;
+                if (!entry.is_regular_file(ec) || entry.path().extension() != ".vshader")
+                    continue;
+
+                auto rel = std::filesystem::relative(entry.path(), root, ec).generic_string();
+                if (ec)
+                    continue;
+
+                const auto name        = entry.path().filename().generic_string();
+                const bool suffixMatch = name.ends_with("." + stage + ".vshader");
+                bool       sectionMatch = false;
+                if (!suffixMatch)
+                {
+                    std::ifstream file(entry.path());
+                    std::string   line;
+                    while (std::getline(file, line))
+                    {
+                        line.erase(std::remove_if(line.begin(), line.end(), [](unsigned char ch) {
+                                       return std::isspace(ch) != 0;
+                                   }),
+                                   line.end());
+                        if (line == "[" + stage + "]")
+                        {
+                            sectionMatch = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!suffixMatch && !sectionMatch)
+                    continue;
+
+                if (rel.ends_with(".vshader"))
+                    rel.resize(rel.size() - std::string_view(".vshader").size());
+                m_CreateAssetShaderOptions.push_back(std::move(rel));
+            }
+        }
+
+        std::sort(m_CreateAssetShaderOptions.begin(), m_CreateAssetShaderOptions.end());
+        m_CreateAssetShaderOptions.erase(
+            std::unique(m_CreateAssetShaderOptions.begin(), m_CreateAssetShaderOptions.end()),
+            m_CreateAssetShaderOptions.end());
+
+        const auto fallback = stage == "comp" ? "invert.comp" : stage == "rgen" ? "default_rt_primary.rgen" :
+                                                                      "pixelate.frag";
+        if (m_CreateAssetShaderOptions.empty())
+            m_CreateAssetShaderOptions.push_back(fallback);
+        else if (const auto it =
+                     std::find(m_CreateAssetShaderOptions.begin(), m_CreateAssetShaderOptions.end(), fallback);
+                 it != m_CreateAssetShaderOptions.end())
+        {
+            m_CreateAssetShaderIndex = static_cast<int>(std::distance(m_CreateAssetShaderOptions.begin(), it));
+        }
     }
 
     bool ContentBrowserWindow::createRegisteredAsset(EditorContext& ctx)
@@ -1681,13 +1944,69 @@ namespace vultra_app
         }
 
         const auto assetName = target.stem().generic_string();
+        const auto selectedShader =
+            !m_CreateAssetShaderOptions.empty() &&
+                    m_CreateAssetShaderIndex >= 0 &&
+                    m_CreateAssetShaderIndex < static_cast<int>(m_CreateAssetShaderOptions.size()) ?
+                m_CreateAssetShaderOptions[static_cast<size_t>(m_CreateAssetShaderIndex)] :
+                std::string {};
         std::ofstream file(target, std::ios::trunc);
         if (!file)
         {
             ctx.state.statusMessage = "Create asset failed: cannot open file.";
             return false;
         }
-        file << creator->makeText(assetName);
+        if (isRenderGraphPassCreator(creator->id) && !selectedShader.empty())
+        {
+            const auto typeName = renderGraphPassTypeName(fileName);
+            if (creator->id == "vultra.compute_pass")
+            {
+                file << "return RenderGraphPass {\n"
+                     << "    type = " << luaQuote(typeName) << ",\n"
+                     << "    pipeline = \"compute\",\n"
+                     << "    inputs = { \"source\" },\n"
+                     << "    outputs = { \"color\" },\n"
+                     << "    shader = {\n"
+                     << "        library = \"project\",\n"
+                     << "        compute = " << luaQuote(selectedShader) << ",\n"
+                     << "    },\n"
+                     << "    dispatch = {\n"
+                     << "        byOutputSize = true,\n"
+                     << "    },\n"
+                     << "}\n";
+            }
+            else if (creator->id == "vultra.raytracing_pass")
+            {
+                file << "return RenderGraphPass {\n"
+                     << "    type = " << luaQuote(typeName) << ",\n"
+                     << "    pipeline = \"raytracing\",\n"
+                     << "    inputs = { \"source\" },\n"
+                     << "    outputs = { \"color\" },\n"
+                     << "    shader = {\n"
+                     << "        library = \"project\",\n"
+                     << "        raygen = " << luaQuote(selectedShader) << ",\n"
+                     << "    },\n"
+                     << "}\n";
+            }
+            else
+            {
+                file << "return RenderGraphPass {\n"
+                     << "    type = " << luaQuote(typeName) << ",\n"
+                     << "    inputs = { \"source\" },\n"
+                     << "    outputs = { \"color\" },\n"
+                     << "    shader = {\n"
+                     << "        library = \"project\",\n"
+                     << "        vertexLibrary = \"builtin\",\n"
+                     << "        vertex = \"fullscreen_triangle.vert\",\n"
+                     << "        fragment = " << luaQuote(selectedShader) << ",\n"
+                     << "    },\n"
+                     << "}\n";
+            }
+        }
+        else
+        {
+            file << creator->makeText(assetName);
+        }
         file.close();
         if (!file)
         {
@@ -1785,6 +2104,33 @@ namespace vultra_app
                 ImGui::SameLine();
                 ImGui::TextDisabled("%s", creator->extension.c_str());
             }
+            if (creator && isRenderGraphPassCreator(creator->id))
+            {
+                const auto stage = renderGraphPassStageForCreator(creator->id);
+                const auto label = stage == "comp" ? "Compute Shader" : stage == "rgen" ? "Raygen Shader" :
+                                                                             "Fragment Shader";
+                ImGui::SetNextItemWidth(360.0f);
+                const char* preview =
+                    m_CreateAssetShaderOptions.empty() ? "<none>" :
+                                                         m_CreateAssetShaderOptions[static_cast<size_t>(
+                                                             std::clamp(m_CreateAssetShaderIndex,
+                                                                        0,
+                                                                        static_cast<int>(m_CreateAssetShaderOptions.size()) -
+                                                                            1))]
+                                                             .c_str();
+                if (ImGui::BeginCombo(label, preview))
+                {
+                    for (int i = 0; i < static_cast<int>(m_CreateAssetShaderOptions.size()); ++i)
+                    {
+                        const bool selected = i == m_CreateAssetShaderIndex;
+                        if (ImGui::Selectable(m_CreateAssetShaderOptions[static_cast<size_t>(i)].c_str(), selected))
+                            m_CreateAssetShaderIndex = i;
+                        if (selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+            }
             if (ImGui::Button("Create"))
             {
                 if (createRegisteredAsset(ctx))
@@ -1846,6 +2192,32 @@ namespace vultra_app
                                                 config);
     }
 
+    void ContentBrowserWindow::openPackageImportDialog()
+    {
+        IGFD::FileDialogConfig config;
+        config.path  = m_CurrentDir.empty() ? "." : m_CurrentDir.generic_string();
+        config.flags = importDialogFlags();
+        ImGuiFileDialog::Instance()->OpenDialog(
+            "ContentBrowserImportPackage", "Import Vultra Package", ".vultrapackage", config);
+    }
+
+    void ContentBrowserWindow::openPackageExportDialog(const std::filesystem::path& contextPath)
+    {
+        m_PackageExportContextPath = contextPath;
+
+        IGFD::FileDialogConfig config;
+        std::error_code ec;
+        const auto      startDir =
+            std::filesystem::is_directory(contextPath, ec) ? contextPath : contextPath.parent_path();
+        config.path = (startDir.empty() ? m_CurrentDir : startDir).generic_string();
+        const auto selected = selectedPathsForContext(contextPath);
+        const auto baseName = selected.size() == 1 ? selected.front().stem().generic_string() : std::string {"assets"};
+        config.fileName    = sanitizeAssetFileName(baseName.empty() ? "assets" : baseName) + ".vultrapackage";
+        config.flags       = importDialogFlags();
+        ImGuiFileDialog::Instance()->OpenDialog(
+            "ContentBrowserExportPackage", "Export Vultra Package", ".vultrapackage", config);
+    }
+
     void ContentBrowserWindow::drawImportDialogs(EditorContext& ctx)
     {
         ui::ScopedPopupStyle style;
@@ -1875,12 +2247,41 @@ namespace vultra_app
             }
             ImGuiFileDialog::Instance()->Close();
         }
+
+        if (ImGuiFileDialog::Instance()->Display("ContentBrowserImportPackage",
+                                                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
+                                                 dialogSize))
+        {
+            if (ImGuiFileDialog::Instance()->IsOk())
+                (void)importPackage(
+                    ctx,
+                    std::filesystem::path(ImGuiFileDialog::Instance()->GetFilePathName(IGFD_ResultMode_KeepInputFile)));
+            ImGuiFileDialog::Instance()->Close();
+        }
+
+        if (ImGuiFileDialog::Instance()->Display("ContentBrowserExportPackage",
+                                                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings,
+                                                 dialogSize))
+        {
+            if (ImGuiFileDialog::Instance()->IsOk())
+                (void)exportSelectedPackage(
+                    ctx,
+                    std::filesystem::path(ImGuiFileDialog::Instance()->GetFilePathName(IGFD_ResultMode_KeepInputFile)),
+                    m_PackageExportContextPath);
+            ImGuiFileDialog::Instance()->Close();
+        }
     }
 
     void ContentBrowserWindow::importExternalPath(EditorContext& ctx, const std::filesystem::path& source)
     {
         if (source.empty())
             return;
+
+        if (lowerString(source.extension().generic_string()) == ".vultrapackage")
+        {
+            (void)importPackage(ctx, source);
+            return;
+        }
 
         std::filesystem::path copiedPath;
         std::string           error;
@@ -1898,6 +2299,62 @@ namespace vultra_app
         m_CurrentDir   = (m_ImportTargetDir.empty() ? m_CurrentDir : m_ImportTargetDir).lexically_normal();
         m_SelectedPath = copiedPath;
         ctx.state.selectedSourceAsset = copiedPath;
+    }
+
+    bool ContentBrowserWindow::importPackage(EditorContext& ctx, const std::filesystem::path& packagePath)
+    {
+        const auto result = importVultraPackage(m_AssetRoot, packagePath);
+        if (!result.ok)
+        {
+            ctx.state.statusMessage = "Package import failed: " + result.error;
+            return false;
+        }
+
+        const auto importRoots = importRootsForWrittenPackageSources(result.sourcePaths);
+        ctx.state.pendingAssetImportPaths.insert(
+            ctx.state.pendingAssetImportPaths.end(), importRoots.begin(), importRoots.end());
+        ctx.state.pendingAssetImportRefresh = !importRoots.empty();
+        ctx.state.statusMessage = "Imported package: " + std::to_string(result.filesWritten) + " file(s), skipped " +
+                                  std::to_string(result.filesSkipped) + " unchanged.";
+        invalidateEntryCache();
+        return true;
+    }
+
+    bool ContentBrowserWindow::exportSelectedPackage(EditorContext&              ctx,
+                                                     const std::filesystem::path& packagePath,
+                                                     const std::filesystem::path& contextPath)
+    {
+        const auto selected = selectedPathsForContext(contextPath);
+        const auto target   = ensureVultraPackageExtension(packagePath);
+        auto*      assets   = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
+        const auto result   = exportVultraPackage(m_AssetRoot, target, selected, assets ? &assets->registry() : nullptr);
+        if (!result.ok)
+        {
+            ctx.state.statusMessage = "Package export failed: " + result.error;
+            return false;
+        }
+
+        const auto validation = validateVultraPackage(target);
+        if (!validation.ok)
+        {
+            ctx.state.statusMessage =
+                validation.missingDependencies.empty() ? "Package validation failed: " + validation.error :
+                                                         "Package validation failed: " +
+                                                             validation.missingDependencies.front();
+            return false;
+        }
+
+        ctx.state.statusMessage =
+            "Exported package: " + target.generic_string() + " (" + std::to_string(result.filesWritten) + " file(s)).";
+        return true;
+    }
+
+    std::vector<std::filesystem::path>
+    ContentBrowserWindow::selectedPathsForContext(const std::filesystem::path& contextPath) const
+    {
+        if (std::find(m_SelectedPaths.begin(), m_SelectedPaths.end(), contextPath) == m_SelectedPaths.end())
+            return {contextPath};
+        return m_SelectedPaths;
     }
 
     const std::vector<std::filesystem::path>& ContentBrowserWindow::entriesForCurrentDir()
@@ -1985,10 +2442,10 @@ namespace vultra_app
     const std::vector<ModelSubAssetEntry>& ContentBrowserWindow::modelSubAssetsFor(EditorContext&               ctx,
                                                                                    const std::filesystem::path& path)
     {
-        if (m_ModelSubAssetCacheGeneration != ctx.state.projectGeneration)
+        if (m_ModelSubAssetCacheGeneration != ctx.state.assetFileGeneration)
         {
             m_ModelSubAssetCache.clear();
-            m_ModelSubAssetCacheGeneration = ctx.state.projectGeneration;
+            m_ModelSubAssetCacheGeneration = ctx.state.assetFileGeneration;
         }
 
         const auto key = path.lexically_normal().generic_string();

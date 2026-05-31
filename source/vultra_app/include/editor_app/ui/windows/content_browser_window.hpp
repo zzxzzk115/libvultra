@@ -49,6 +49,8 @@ namespace vultra_app
                               float                        iconSize);
         void handleDeferredSelection(EditorContext& ctx, const std::filesystem::path& path, bool hovered);
         void selectPath(EditorContext& ctx, const std::filesystem::path& path);
+        void togglePathSelection(EditorContext& ctx, const std::filesystem::path& path);
+        void selectPathRange(EditorContext& ctx, const std::filesystem::path& path);
         void openPath(EditorContext& ctx, const std::filesystem::path& path);
         void beginBoxSelection(const ImVec2& start);
         void updateBoxSelection(EditorContext& ctx);
@@ -58,10 +60,18 @@ namespace vultra_app
         void drawPendingPopups(EditorContext& ctx);
         void drawCreateAssetMenu(EditorContext& ctx, const std::filesystem::path& targetDir);
         void openCreateAssetPopup(const std::string& creatorId, const std::filesystem::path& targetDir);
+        void refreshCreateAssetShaderOptions();
         bool createRegisteredAsset(EditorContext& ctx);
         void openImportDialog(const std::filesystem::path& targetDir, bool directory);
+        void openPackageImportDialog();
+        void openPackageExportDialog(const std::filesystem::path& contextPath);
         void drawImportDialogs(EditorContext& ctx);
         void importExternalPath(EditorContext& ctx, const std::filesystem::path& source);
+        bool importPackage(EditorContext& ctx, const std::filesystem::path& packagePath);
+        bool exportSelectedPackage(EditorContext&              ctx,
+                                   const std::filesystem::path& packagePath,
+                                   const std::filesystem::path& contextPath);
+        std::vector<std::filesystem::path> selectedPathsForContext(const std::filesystem::path& contextPath) const;
         const std::vector<std::filesystem::path>& entriesForCurrentDir();
         const std::vector<std::filesystem::path>& filteredEntriesForCurrentDir();
         const std::vector<std::filesystem::path>& directoryChildrenFor(const std::filesystem::path& path);
@@ -73,6 +83,7 @@ namespace vultra_app
         std::filesystem::path m_RenamingPath;
         std::filesystem::path m_DeletePath;
         std::filesystem::path m_ImportTargetDir;
+        std::filesystem::path m_PackageExportContextPath;
         std::filesystem::path m_CreateAssetTargetDir;
         std::filesystem::path m_PendingSelectPath;
         std::filesystem::path m_LastClickedPath;
@@ -81,6 +92,8 @@ namespace vultra_app
         std::array<char, 128> m_NewFolderBuffer {"NewFolder"};
         std::array<char, 128> m_CreateAssetNameBuffer {};
         std::string           m_CreateAssetCreatorId;
+        std::vector<std::string> m_CreateAssetShaderOptions;
+        int                      m_CreateAssetShaderIndex {0};
         float                 m_LeftPanelRatio {0.28f};
         float                 m_IconSize {64.0f};
         float                 m_MinIconSize {24.0f};

@@ -57,6 +57,7 @@
 #include <filesystem>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
+#include <ranges>
 #include <sstream>
 #include <system_error>
 #include <vector>
@@ -106,6 +107,160 @@ namespace vultra_app
     namespace
     {
         ImGuiID dockSpaceId() { return ImHashStr("VultraDockSpace"); }
+
+        std::string lowerString(std::string value)
+        {
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            return value;
+        }
+
+        bool hasSuffix(std::string_view text, std::string_view suffix)
+        {
+            return text.size() >= suffix.size() && text.substr(text.size() - suffix.size()) == suffix;
+        }
+
+        bool isShaderSource(const std::filesystem::path& path)
+        {
+            const auto name = lowerString(path.filename().generic_string());
+            const auto ext  = lowerString(path.extension().generic_string());
+            return ext == ".vshader" || ext == ".glsl" || ext == ".vert" || ext == ".frag" || ext == ".comp" ||
+                   ext == ".hlsl" || hasSuffix(name, ".vert.vshader") || hasSuffix(name, ".frag.vshader") ||
+                   hasSuffix(name, ".comp.vshader");
+        }
+
+        bool isMaterialGraphSource(const std::filesystem::path& path)
+        {
+            const auto name = lowerString(path.filename().generic_string());
+            const auto ext  = lowerString(path.extension().generic_string());
+            return ext == ".vmatgraph" || hasSuffix(name, ".vmatgraph.json");
+        }
+
+        bool isRenderPipelineSource(const std::filesystem::path& path)
+        {
+            const auto name = lowerString(path.filename().generic_string());
+            const auto ext  = lowerString(path.extension().generic_string());
+            return isShaderSource(path) || ext == ".json" || hasSuffix(name, ".vfeature.lua") ||
+                   hasSuffix(name, ".vsrp.lua") || hasSuffix(name, ".vshaderlib.lua") || isMaterialGraphSource(path);
+        }
+
+        std::filesystem::path assetRootPath(const EditorContext& ctx)
+        {
+            return (ctx.state.currentProject / ctx.state.currentAssetRoot).lexically_normal();
+        }
+
+        std::string pathToResUri(const EditorContext& ctx, const std::filesystem::path& path)
+        {
+            const auto      root = assetRootPath(ctx);
+            std::error_code ec;
+            const auto      rel     = std::filesystem::relative(path.lexically_normal(), root, ec);
+            const auto      relText = rel.generic_string();
+            if (ec || rel.empty() || relText == ".." || relText.starts_with("../"))
+                return {};
+            return "res://" + relText;
+        }
+
+        std::vector<std::filesystem::path> shaderLibraryManifests(const EditorContext& ctx)
+        {
+            std::vector<std::filesystem::path> manifests;
+            const auto                         root = assetRootPath(ctx);
+            std::error_code                    ec;
+            for (auto it = std::filesystem::recursive_directory_iterator(
+                     root, std::filesystem::directory_options::skip_permission_denied, ec);
+                 it != std::filesystem::recursive_directory_iterator {};
+                 it.increment(ec))
+            {
+                if (ec)
+                {
+                    ec.clear();
+                    continue;
+                }
+                if (!it->is_regular_file(ec) || ec)
+                {
+                    ec.clear();
+                    continue;
+                }
+                if (hasSuffix(lowerString(it->path().filename().generic_string()), ".vshaderlib.lua"))
+                    manifests.push_back(it->path().lexically_normal());
+            }
+            return manifests;
+        }
+
+        std::vector<std::filesystem::path> collectImportSourceFiles(const std::vector<std::filesystem::path>& paths)
+        {
+            std::vector<std::filesystem::path> files;
+            for (const auto& path : paths)
+            {
+                std::error_code ec;
+                const auto      normalized = path.lexically_normal();
+                if (std::filesystem::is_regular_file(normalized, ec) && !ec)
+                {
+                    files.push_back(normalized);
+                    continue;
+                }
+                ec.clear();
+                if (!std::filesystem::is_directory(normalized, ec) || ec)
+                    continue;
+
+                for (auto it = std::filesystem::recursive_directory_iterator(
+                         normalized, std::filesystem::directory_options::skip_permission_denied, ec);
+                     it != std::filesystem::recursive_directory_iterator {};
+                     it.increment(ec))
+                {
+                    if (ec)
+                    {
+                        ec.clear();
+                        continue;
+                    }
+                    if (it->is_regular_file(ec) && !ec)
+                        files.push_back(it->path().lexically_normal());
+                    else
+                        ec.clear();
+                }
+            }
+            std::ranges::sort(files);
+            files.erase(std::ranges::unique(files).begin(), files.end());
+            return files;
+        }
+
+        void refreshImportedEditorSources(EditorContext& ctx, const std::vector<std::filesystem::path>& sourceFiles)
+        {
+            if (sourceFiles.empty() || !ctx.services)
+                return;
+
+            auto* assets = ctx.services->tryGet<vultra::IAssetService>();
+            auto* render = ctx.services->tryGet<vultra::IRenderService>();
+            if (!assets && !render)
+                return;
+
+            bool hasMaterialGraph = false;
+            bool hasShaderSource  = false;
+            bool reloadPipeline   = false;
+            for (const auto& path : sourceFiles)
+            {
+                const auto uri = assets ? pathToResUri(ctx, path) : std::string {};
+                if (assets && isMaterialGraphSource(path) && !uri.empty())
+                {
+                    assets->clearTextAssetOverride(uri);
+                    hasMaterialGraph = true;
+                }
+                hasShaderSource = hasShaderSource || isShaderSource(path);
+                reloadPipeline  = reloadPipeline || isRenderPipelineSource(path);
+            }
+
+            if (render && hasShaderSource)
+            {
+                for (const auto& manifest : shaderLibraryManifests(ctx))
+                {
+                    const auto uri = pathToResUri(ctx, manifest);
+                    if (!uri.empty())
+                        render->reloadProjectShaderLibrary(uri);
+                }
+            }
+            if (render && (reloadPipeline || hasMaterialGraph))
+                render->reloadRenderPipeline();
+        }
 
         glm::mat4 localTransformMatrix(const vultra::TransformComponent& transform)
         {
@@ -1402,7 +1557,7 @@ namespace vultra_app
         }
 
         m_WindowManager.destroy(ctx);
-        m_ThumbnailService.clear();
+        m_ThumbnailService.clear(&ctx);
         m_Initialized        = false;
         m_DefaultLayoutBuilt = false;
         Selection::clear();
@@ -1736,9 +1891,11 @@ namespace vultra_app
             std::scoped_lock lock(m_ImportedThumbnailMutex);
             importedThumbnailPaths.swap(m_PendingImportedThumbnailPaths);
         }
+        auto importedSourceFiles = collectImportSourceFiles(m_BackgroundAssetImportPaths);
+        refreshImportedEditorSources(ctx, importedSourceFiles);
         if (!importedThumbnailPaths.empty())
             m_ThumbnailService.prewarmSourceThumbnails(ctx, importedThumbnailPaths);
-        m_ThumbnailService.prewarmSourceThumbnails(ctx, m_BackgroundAssetImportPaths);
+        m_ThumbnailService.prewarmSourceThumbnails(ctx, importedSourceFiles);
         m_BackgroundAssetImportPaths.clear();
         ctx.state.statusMessage = "Imported project assets: " + importResult.assetRoot;
     }
@@ -2159,7 +2316,7 @@ namespace vultra_app
         }
 
         m_WindowManager.destroy(ctx);
-        m_ThumbnailService.clear();
+        m_ThumbnailService.clear(&ctx);
         m_FileWatcher.stop();
         m_Initialized        = false;
         m_DefaultLayoutBuilt = false;
