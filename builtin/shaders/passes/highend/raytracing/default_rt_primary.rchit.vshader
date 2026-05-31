@@ -361,9 +361,10 @@ void main()
     const vec3 p2WS = (gl_ObjectToWorldEXT * vec4(p2, 1.0)).xyz;
 
     const vec3 geometricNormal = normalize(cross(p1WS - p0WS, p2WS - p0WS));
-    const vec3 n0 = normalize(mat3(gl_ObjectToWorldEXT) * loadVec3(node.vertexBufferAddress, i0, node.vertexStrideBytes, node.normalOffsetBytes, geometricNormal));
-    const vec3 n1 = normalize(mat3(gl_ObjectToWorldEXT) * loadVec3(node.vertexBufferAddress, i1, node.vertexStrideBytes, node.normalOffsetBytes, geometricNormal));
-    const vec3 n2 = normalize(mat3(gl_ObjectToWorldEXT) * loadVec3(node.vertexBufferAddress, i2, node.vertexStrideBytes, node.normalOffsetBytes, geometricNormal));
+    const mat3 normalMatrix = transpose(mat3(gl_WorldToObjectEXT));
+    const vec3 n0 = normalize(normalMatrix * loadVec3(node.vertexBufferAddress, i0, node.vertexStrideBytes, node.normalOffsetBytes, geometricNormal));
+    const vec3 n1 = normalize(normalMatrix * loadVec3(node.vertexBufferAddress, i1, node.vertexStrideBytes, node.normalOffsetBytes, geometricNormal));
+    const vec3 n2 = normalize(normalMatrix * loadVec3(node.vertexBufferAddress, i2, node.vertexStrideBytes, node.normalOffsetBytes, geometricNormal));
     const vec2 uv0 = loadVec2(node.vertexBufferAddress, i0, node.vertexStrideBytes, node.texCoord0OffsetBytes, vec2(0.0));
     const vec2 uv1 = loadVec2(node.vertexBufferAddress, i1, node.vertexStrideBytes, node.texCoord0OffsetBytes, vec2(0.0));
     const vec2 uv2 = loadVec2(node.vertexBufferAddress, i2, node.vertexStrideBytes, node.texCoord0OffsetBytes, vec2(0.0));
@@ -373,8 +374,9 @@ void main()
 
     const float b0 = 1.0 - attribs.x - attribs.y;
     const vec3 normalWS = normalize(b0 * n0 + attribs.x * n1 + attribs.y * n2);
-    const vec4 tangentWS = vec4(normalize(mat3(gl_ObjectToWorldEXT) * (b0 * t0.xyz + attribs.x * t1.xyz + attribs.y * t2.xyz)),
-                                sign(b0 * t0.w + attribs.x * t1.w + attribs.y * t2.w));
+    const float modelHandedness = determinant(mat3(gl_ObjectToWorldEXT)) < 0.0 ? -1.0 : 1.0;
+    const vec4 tangentWS = vec4(normalize(normalMatrix * (b0 * t0.xyz + attribs.x * t1.xyz + attribs.y * t2.xyz)),
+                                sign(b0 * t0.w + attribs.x * t1.w + attribs.y * t2.w) * modelHandedness);
     UvGrad uvGrad = calcUvGrad(p0WS, p1WS, p2WS, uv0, uv1, uv2);
     RtMaterialSample material = sampleMaterial(materialIndex, uvGrad.uv, uvGrad.dx, uvGrad.dy, normalWS, tangentWS);
 

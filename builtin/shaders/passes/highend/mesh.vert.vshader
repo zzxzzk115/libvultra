@@ -48,7 +48,8 @@ void main()
     vec3 N = normalize(normalMatrix * v.normal);
     vec3 T = normalize(normalMatrix * v.tangent.xyz);
     T = normalize(T - dot(T, N) * N);
-    vec3 B = cross(N, T) * v.tangent.w;
+    float modelHandedness = determinant(mat3(d.model)) < 0.0 ? -1.0 : 1.0;
+    vec3 B = cross(N, T) * v.tangent.w * modelHandedness;
     v_TBN = mat3(T, B, N);
 
     v_MaterialIndex = d.materialIndex;

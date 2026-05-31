@@ -64,16 +64,23 @@ namespace vultra
         [[nodiscard]] const RenderView&                   view() const { return viewData.view; }
         [[nodiscard]] std::optional<rhi::FramebufferInfo> framebufferInfo() const { return viewData.framebufferInfo; }
 
+        void bindDescriptorSet(const rhi::BasePipeline& pipeline, const rhi::DescriptorSetIndex set)
+        {
+            const auto setIt = resourceSet.find(set);
+            if (setIt == resourceSet.end())
+                return;
+
+            auto descriptorSetBuilder = cb.createDescriptorSetBuilder();
+            for (const auto& [index, info] : setIt->second)
+                descriptorSetBuilder.bind(index, info);
+            const auto descriptors = descriptorSetBuilder.build(pipeline.getDescriptorSetLayout(set));
+            cb.bindDescriptorSet(set, descriptors);
+        }
+
         void bindDescriptorSets(const rhi::BasePipeline& pipeline)
         {
-            for (const auto& [set, bindings] : resourceSet)
-            {
-                auto descriptorSetBuilder = cb.createDescriptorSetBuilder();
-                for (const auto& [index, info] : bindings)
-                    descriptorSetBuilder.bind(index, info);
-                const auto descriptors = descriptorSetBuilder.build(pipeline.getDescriptorSetLayout(set));
-                cb.bindDescriptorSet(set, descriptors);
-            }
+            for (const auto& [set, _] : resourceSet)
+                bindDescriptorSet(pipeline, set);
         }
 
         void clear()

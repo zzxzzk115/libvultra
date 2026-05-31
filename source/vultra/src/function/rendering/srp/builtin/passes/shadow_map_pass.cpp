@@ -346,6 +346,7 @@ namespace vultra
 
                 uint64_t drawParamIndex = 0u;
                 const auto columns = atlasColumnsForCascadeCount(cascadeCount);
+                const rhi::GraphicsPipeline* boundPipeline = nullptr;
                 for (uint32_t cascade = 0u; cascade < cascadeCount; ++cascade)
                 {
                     const uint32_t col = cascade % columns;
@@ -383,9 +384,13 @@ namespace vultra
                                 .cascadeIndex = {cascade, 0u, 0u, 0u},
                             };
 
-                            rc.cb.bindPipeline(*pipeline);
+                            if (pipeline != boundPipeline)
+                            {
+                                rc.cb.bindPipeline(*pipeline);
+                                rc.bindDescriptorSets(*pipeline);
+                                boundPipeline = pipeline;
+                            }
                             rc.cb.pushConstants(rhi::ShaderStages::eVertex, 0, &params);
-                            rc.bindDescriptorSets(*pipeline);
                             rc.cb.draw(rhi::GeometryInfo {
                                 .topology     = rhi::PrimitiveTopology::eTriangleList,
                                 .vertexBuffer = &mesh.vertexBuffer,
@@ -449,7 +454,7 @@ namespace vultra
             })
             .setRasterizer({
                 .polygonMode = rhi::PolygonMode::eFill,
-                .cullMode    = rhi::CullMode::eFront,
+                .cullMode    = rhi::CullMode::eNone,
             })
             .build(getRenderDevice());
     }

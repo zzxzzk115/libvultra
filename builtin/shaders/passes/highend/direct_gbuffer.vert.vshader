@@ -85,7 +85,8 @@ void main()
     v_TexCoord0 = vec2(0.0);
 #endif
 #if VTX_HAS_TANGENT
-    v_TangentWS = vec4(normalize((u_Draw.model * vec4(a_Tangent.xyz, 0.0)).xyz), a_Tangent.w);
+    float modelHandedness = determinant(mat3(u_Draw.model)) < 0.0 ? -1.0 : 1.0;
+    v_TangentWS = vec4(normalize((u_Draw.normalMatrix * vec4(a_Tangent.xyz, 0.0)).xyz), a_Tangent.w * modelHandedness);
 #endif
 #if USE_MULTIVIEW && !PLATFORM_WEBGPU
     gl_Position = u_StereoCameraBlock.cameras[vultra_eye_index()].viewProjection * worldPos;

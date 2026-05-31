@@ -73,7 +73,7 @@ namespace vultra
             uint32_t  occlusionTex {0};
             uint32_t  emissiveTex {0};
             uint32_t  doubleSided {0};
-            uint32_t  pad0 {0};
+            uint32_t  mrTextureMode {0};
             uint32_t  pad1 {0};
             uint32_t  pad2 {0};
         };
@@ -199,6 +199,7 @@ namespace vultra
                     out.materialTextureInfo1.w = validTexture(p.roughnessTex);
                     out.entityInfo.y = p.alphaMode;
                     out.entityInfo.z = static_cast<uint32_t>(glm::clamp(p.alphaCutoff, 0.0f, 1.0f) * 255.0f);
+                    out.entityInfo.w = p.mrTextureMode;
                     break;
                 }
                 case resource::GpuMaterialModel::ePBRSpecularGlossiness:
@@ -500,6 +501,7 @@ namespace vultra
                      }},
                 };
                 rc.cb.beginRendering(framebufferInfo);
+                const rhi::GraphicsPipeline* boundPipeline = nullptr;
                 for (uint64_t drawParamIndex = 0u; drawParamIndex < prepared.records.size(); ++drawParamIndex)
                 {
                     const auto& record = prepared.records[drawParamIndex];
@@ -537,8 +539,14 @@ namespace vultra
                              .range  = sizeof(DirectDrawParams),
                          }},
                     };
-                    rc.cb.bindPipeline(*pipeline);
-                    rc.bindDescriptorSets(*pipeline);
+                    if (pipeline != boundPipeline)
+                    {
+                        rc.cb.bindPipeline(*pipeline);
+                        rc.bindDescriptorSet(*pipeline, 0);
+                        rc.bindDescriptorSet(*pipeline, 3);
+                        boundPipeline = pipeline;
+                    }
+                    rc.bindDescriptorSet(*pipeline, 1);
                     rc.cb.draw(rhi::GeometryInfo {
                         .topology     = rhi::PrimitiveTopology::eTriangleList,
                         .vertexBuffer = &mesh->vertexBuffer,
@@ -729,6 +737,7 @@ namespace vultra
                 RHI_GPU_ZONE(rc.cb, PASS_NAME);
                 rc.cb.beginRendering(framebufferInfo);
 
+                const rhi::GraphicsPipeline* boundPipeline = nullptr;
                 for (uint64_t drawParamIndex = 0u; drawParamIndex < prepared.records.size(); ++drawParamIndex)
                 {
                     const auto& record = prepared.records[drawParamIndex];
@@ -766,8 +775,14 @@ namespace vultra
                              .range  = sizeof(DirectDrawParams),
                          }},
                     };
-                    rc.cb.bindPipeline(*pipeline);
-                    rc.bindDescriptorSets(*pipeline);
+                    if (pipeline != boundPipeline)
+                    {
+                        rc.cb.bindPipeline(*pipeline);
+                        rc.bindDescriptorSet(*pipeline, 0);
+                        rc.bindDescriptorSet(*pipeline, 3);
+                        boundPipeline = pipeline;
+                    }
+                    rc.bindDescriptorSet(*pipeline, 1);
                     rc.cb.draw(rhi::GeometryInfo {
                         .topology     = rhi::PrimitiveTopology::eTriangleList,
                         .vertexBuffer = &mesh->vertexBuffer,

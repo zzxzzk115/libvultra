@@ -122,7 +122,7 @@ LightComponent/width = 1
 LightComponent/height = 1
 LightComponent/innerConeDegrees = 20
 LightComponent/outerConeDegrees = 30
-LightComponent/castsShadow = false
+LightComponent/castsShadow = true
 LightComponent/twoSided = false
 
 [node id=2 name="Camera" parent=0 uuid="d6348e9e870dff93209ad02615cfefbb"]

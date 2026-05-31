@@ -239,7 +239,7 @@ namespace vultra
             uint32_t  occlusionTex {0};
             uint32_t  emissiveTex {0};
             uint32_t  doubleSided {0};
-            uint32_t  pad0 {0};
+            uint32_t  mrTextureMode {0};
             uint32_t  pad1 {0};
             uint32_t  pad2 {0};
         };
@@ -363,6 +363,29 @@ namespace vultra
                 return false;
 
             return material.core.pbrMR.alphaMode == vasset::VMaterialAlphaMode::eMask;
+        }
+
+        enum class PbrMrTextureMode : uint32_t
+        {
+            eGltfMetallicRoughness = 0,
+            eOcclusionRoughnessMetallic = 1,
+        };
+
+        [[nodiscard]] CoreUUID pbrMrCombinedTextureUuid(const vasset::VMaterialPBRMetallicRoughness& pbr)
+        {
+            const CoreUUID gltfMrUuid(pbr.metallicRoughnessTexture.uuid);
+            if (gltfMrUuid.valid())
+                return gltfMrUuid;
+            return CoreUUID(pbr.specularTexture.uuid);
+        }
+
+        [[nodiscard]] PbrMrTextureMode pbrMrTextureMode(const vasset::VMaterialPBRMetallicRoughness& pbr)
+        {
+            if (CoreUUID(pbr.metallicRoughnessTexture.uuid).valid())
+                return PbrMrTextureMode::eGltfMetallicRoughness;
+            if (CoreUUID(pbr.specularTexture.uuid).valid())
+                return PbrMrTextureMode::eOcclusionRoughnessMetallic;
+            return PbrMrTextureMode::eGltfMetallicRoughness;
         }
 
         struct PackedVertexLayout
@@ -1312,7 +1335,7 @@ namespace vultra
             case vasset::VMaterialModel::ePBRMetallicRoughness:
                 return ready(CoreUUID(material.core.pbrMR.baseColorTexture.uuid)) &&
                        ready(CoreUUID(material.core.pbrMR.normalTexture.uuid)) &&
-                       ready(CoreUUID(material.core.pbrMR.metallicRoughnessTexture.uuid)) &&
+                       ready(pbrMrCombinedTextureUuid(material.core.pbrMR)) &&
                        ready(CoreUUID(material.core.pbrMR.metallicTexture.uuid)) &&
                        ready(CoreUUID(material.core.pbrMR.roughnessTexture.uuid)) &&
                        ready(CoreUUID(material.core.pbrMR.ambientOcclusionTexture.uuid)) &&
@@ -1366,13 +1389,14 @@ namespace vultra
                 p.alphaMode       = static_cast<uint32_t>(material.core.pbrMR.alphaMode);
                 p.baseColorTex    = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.baseColorTexture.uuid));
                 p.normalTex       = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.normalTexture.uuid));
-                p.mrTex = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.metallicRoughnessTexture.uuid));
+                p.mrTex           = resolveBindlessTextureIndexAsync(pbrMrCombinedTextureUuid(material.core.pbrMR));
                 p.metallicTex     = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.metallicTexture.uuid));
                 p.roughnessTex    = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.roughnessTexture.uuid));
                 p.occlusionTex =
                     resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.ambientOcclusionTexture.uuid));
-                p.emissiveTex = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.emissiveTexture.uuid));
-                p.doubleSided = material.core.pbrMR.doubleSided ? 1u : 0u;
+                p.emissiveTex    = resolveBindlessTextureIndexAsync(CoreUUID(material.core.pbrMR.emissiveTexture.uuid));
+                p.doubleSided    = material.core.pbrMR.doubleSided ? 1u : 0u;
+                p.mrTextureMode  = static_cast<uint32_t>(pbrMrTextureMode(material.core.pbrMR));
                 uploadBlock(gpuMaterial, &p, sizeof(p));
                 break;
             }
@@ -1484,12 +1508,13 @@ namespace vultra
                 p.alphaMode       = static_cast<uint32_t>(m.core.pbrMR.alphaMode);
                 p.baseColorTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.baseColorTexture.uuid));
                 p.normalTex       = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.normalTexture.uuid));
-                p.mrTex           = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.metallicRoughnessTexture.uuid));
+                p.mrTex           = resolveBindlessTextureIndexAsync(pbrMrCombinedTextureUuid(m.core.pbrMR));
                 p.metallicTex     = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.metallicTexture.uuid));
                 p.roughnessTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.roughnessTexture.uuid));
                 p.occlusionTex    = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.ambientOcclusionTexture.uuid));
                 p.emissiveTex     = resolveBindlessTextureIndexAsync(CoreUUID(m.core.pbrMR.emissiveTexture.uuid));
                 p.doubleSided     = m.core.pbrMR.doubleSided ? 1u : 0u;
+                p.mrTextureMode   = static_cast<uint32_t>(pbrMrTextureMode(m.core.pbrMR));
                 blockOffset       = allocBlock(&p, sizeof(p));
                 break;
             }
