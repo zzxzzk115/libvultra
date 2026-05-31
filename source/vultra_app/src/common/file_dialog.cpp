@@ -50,15 +50,42 @@ namespace vultra_app::ui
             configured = true;
         }
 
-        std::filesystem::path pathForDialogStart(const char* value)
+        std::filesystem::path currentDirectory()
+        {
+            std::error_code ec;
+            auto            path = std::filesystem::current_path(ec);
+            return ec ? std::filesystem::path {"."} : path.lexically_normal();
+        }
+
+        std::filesystem::path existingDialogDirectory(std::filesystem::path path)
+        {
+            std::error_code ec;
+            if (path.empty())
+                return currentDirectory();
+
+            if (path.is_relative())
+            {
+                auto absolutePath = std::filesystem::absolute(path, ec);
+                path              = ec ? path : absolutePath;
+            }
+
+            path = path.lexically_normal();
+            if (std::filesystem::is_regular_file(path, ec) || path.extension() == ".vproject")
+                path = path.parent_path();
+
+            while (!path.empty() && !std::filesystem::is_directory(path, ec))
+                path = path.parent_path();
+
+            return path.empty() ? currentDirectory() : path.lexically_normal();
+        }
+
+        std::filesystem::path pathForDialogStart(const char* value, const std::filesystem::path& defaultPath)
         {
             if (value == nullptr || value[0] == '\0')
-                return ".";
+                return existingDialogDirectory(defaultPath);
 
             std::filesystem::path path {value};
-            if (path.extension() == ".vproject")
-                path = path.parent_path();
-            return path.empty() ? std::filesystem::path {"."} : path;
+            return existingDialogDirectory(path.empty() ? defaultPath : path);
         }
 
         void copyToBuffer(char* buffer, std::size_t bufferSize, const std::string& value)
@@ -76,6 +103,11 @@ namespace vultra_app::ui
         m_Key(std::move(key)), m_Title(std::move(title)), m_Mode(mode)
     {
         configureFileDialogStyles();
+    }
+
+    void FileDialogField::setDefaultPath(std::filesystem::path path)
+    {
+        m_DefaultPath = std::move(path);
     }
 
     bool FileDialogField::draw(const char* label, char* buffer, std::size_t bufferSize)
@@ -118,7 +150,7 @@ namespace vultra_app::ui
     void FileDialogField::open(const char* currentValue)
     {
         IGFD::FileDialogConfig config;
-        config.path  = pathForDialogStart(currentValue).generic_string();
+        config.path  = pathForDialogStart(currentValue, m_DefaultPath).generic_string();
         config.flags = dialogFlags();
         ImGuiFileDialog::Instance()->OpenDialog(m_Key, m_Title, filtersFor(m_Mode), config);
     }

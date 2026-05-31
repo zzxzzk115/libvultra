@@ -539,9 +539,6 @@ namespace vultra_app
     {
         if (ctx.state.buildSettingsOpen)
         {
-            if (ctx.state.buildSettings.outputDirectory.empty())
-                ctx.state.buildSettings.outputDirectory =
-                    (ctx.state.currentProject / "build").lexically_normal().generic_string();
             if (ctx.state.buildSettings.projectName.empty())
                 ctx.state.buildSettings.projectName = ctx.state.currentProjectName;
             setBuffer(m_BuildOutputFolderBuffer, ctx.state.buildSettings.outputDirectory);
@@ -600,6 +597,7 @@ namespace vultra_app
                                       "Cross-platform export requires a target runtime executable.");
         ImGui::Unindent(150.0f);
         ui::beginSettingsRow("Output Directory");
+        m_BuildSettingsOutputDialog.setDefaultPath(ctx.state.currentProject);
         m_BuildSettingsOutputDialog.drawBrowseOnly(
             "", m_BuildOutputFolderBuffer.data(), m_BuildOutputFolderBuffer.size());
         ui::endSettingsRow();

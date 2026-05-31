@@ -1322,6 +1322,7 @@ namespace vultra_app
 
         ImGui::TextUnformatted("Export & Run");
         ImGui::Spacing();
+        m_BuildRunOutputDialog.setDefaultPath(ctx.state.currentProject);
         m_BuildRunOutputDialog.draw("Output Folder", m_BuildRunOutputFolder.data(), m_BuildRunOutputFolder.size());
         ImGui::Spacing();
 
@@ -1394,12 +1395,9 @@ namespace vultra_app
             return;
         }
 
-        const auto defaultOutput = (ctx.state.currentProject / "build").lexically_normal().generic_string();
-        if (ctx.state.buildSettings.outputDirectory.empty())
-            ctx.state.buildSettings.outputDirectory = defaultOutput;
         if (ctx.state.buildSettings.projectName.empty())
             ctx.state.buildSettings.projectName = ctx.state.currentProjectName;
-        if (m_BuildRunOutputFolder[0] == '\0')
+        if (m_BuildRunOutputFolder[0] == '\0' && !ctx.state.buildSettings.outputDirectory.empty())
         {
             std::snprintf(m_BuildRunOutputFolder.data(),
                           m_BuildRunOutputFolder.size(),
