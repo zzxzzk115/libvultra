@@ -14,6 +14,7 @@
 #if defined(VULTRA_ENABLE_XR) && VULTRA_ENABLE_XR
 #include "vultra/function/openxr/xr_runtime_system.hpp"
 #endif
+#include "vultra/function/physics/physics_system.hpp"
 #include "vultra/function/rendering/backend/render_backend_system.hpp"
 #include "vultra/function/rendering/render_system.hpp"
 #include "vultra/function/rendering/shader_system.hpp"
@@ -409,6 +410,7 @@ namespace vultra
         cameraSystem.setFPSCameraController(fpsController);
 
         engine.emplaceSubsystem<WorldSystem>();
+        engine.emplaceSubsystem<PhysicsSystem>();
 
 #if !defined(__EMSCRIPTEN__)
         engine.emplaceSubsystem<FrameDebuggerSystem>();

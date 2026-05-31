@@ -26,6 +26,7 @@
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/job_service.hpp>
+#include <vultra/function/services/physics_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
@@ -1029,7 +1030,9 @@ namespace vultra_app
         if (!ctx.services)
             return;
 
-        auto* scriptService = ctx.services->tryGet<vultra::IScriptService>();
+        auto* scriptService  = ctx.services->tryGet<vultra::IScriptService>();
+        auto* physicsService = ctx.services->tryGet<vultra::IPhysicsService>();
+        const bool stepRequested = ctx.state.editorStepRequested;
 
         if (ctx.state.editorPlaying && !m_PlaybackWasPlaying)
             capturePlayModeSnapshot(ctx);
@@ -1038,18 +1041,28 @@ namespace vultra_app
         {
             if (scriptService)
                 scriptService->setPlaybackState(false, false);
+            if (physicsService)
+                physicsService->setPlaybackState(false, false);
             restorePlayModeSnapshot(ctx);
+        }
+
+        if (physicsService)
+        {
+            physicsService->setPlaybackState(ctx.state.editorPlaying, ctx.state.editorPaused);
+            if (stepRequested)
+                physicsService->requestSingleStep();
         }
 
         if (scriptService)
         {
             scriptService->setPlaybackState(ctx.state.editorPlaying, ctx.state.editorPaused);
-            if (ctx.state.editorStepRequested)
+            if (stepRequested)
             {
                 scriptService->requestSingleStep();
-                ctx.state.editorStepRequested = false;
             }
         }
+        if (stepRequested)
+            ctx.state.editorStepRequested = false;
 
         m_PlaybackWasPlaying = ctx.state.editorPlaying;
     }

@@ -1,7 +1,9 @@
 #include "vultra/function/scene/scene_reflection.hpp"
 
 #include "vultra/core/base/uuid.hpp"
+#include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
+#include "vultra/function/world/components/capsule_shape_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
@@ -10,7 +12,9 @@
 #include "vultra/function/world/components/mesh_component.hpp"
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/reflection_probe_component.hpp"
+#include "vultra/function/world/components/rigid_body_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
+#include "vultra/function/world/components/sphere_shape_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/components/xr_view_component.hpp"
 
@@ -52,6 +56,34 @@ namespace vultra
             .data<&TransformComponent::position>("position"_hs)
             .data<&TransformComponent::rotation>("rotation"_hs)
             .data<&TransformComponent::scale>("scale"_hs);
+
+        entt::meta_factory<RigidBodyComponent>()
+            .type("RigidBodyComponent"_hs)
+            .data<&RigidBodyComponent::motionType>("motionType"_hs)
+            .data<&RigidBodyComponent::objectLayer>("objectLayer"_hs)
+            .data<&RigidBodyComponent::isSensor>("isSensor"_hs)
+            .data<&RigidBodyComponent::motionQuality>("motionQuality"_hs)
+            .data<&RigidBodyComponent::allowSleeping>("allowSleeping"_hs)
+            .data<&RigidBodyComponent::friction>("friction"_hs)
+            .data<&RigidBodyComponent::restitution>("restitution"_hs)
+            .data<&RigidBodyComponent::linearDamping>("linearDamping"_hs)
+            .data<&RigidBodyComponent::angularDamping>("angularDamping"_hs)
+            .data<&RigidBodyComponent::gravityFactor>("gravityFactor"_hs)
+            .data<&RigidBodyComponent::linearVelocity>("linearVelocity"_hs)
+            .data<&RigidBodyComponent::angularVelocity>("angularVelocity"_hs)
+            .data<&RigidBodyComponent::mass>("mass"_hs)
+            .data<&RigidBodyComponent::overrideMass>("overrideMass"_hs)
+            .data<&RigidBodyComponent::maxLinearVelocity>("maxLinearVelocity"_hs)
+            .data<&RigidBodyComponent::maxAngularVelocity>("maxAngularVelocity"_hs);
+
+        entt::meta_factory<BoxShapeComponent>().type("BoxShapeComponent"_hs).data<&BoxShapeComponent::halfExtents>(
+            "halfExtents"_hs);
+        entt::meta_factory<SphereShapeComponent>().type("SphereShapeComponent"_hs).data<&SphereShapeComponent::radius>(
+            "radius"_hs);
+        entt::meta_factory<CapsuleShapeComponent>()
+            .type("CapsuleShapeComponent"_hs)
+            .data<&CapsuleShapeComponent::halfHeightOfCylinder>("halfHeightOfCylinder"_hs)
+            .data<&CapsuleShapeComponent::radius>("radius"_hs);
 
         entt::meta_factory<MeshComponent>()
             .type("MeshComponent"_hs)

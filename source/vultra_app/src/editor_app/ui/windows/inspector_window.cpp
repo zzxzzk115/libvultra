@@ -15,7 +15,9 @@
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/box_shape_component.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
+#include <vultra/function/world/components/capsule_shape_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
@@ -26,7 +28,9 @@
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/prefab_instance_component.hpp>
 #include <vultra/function/world/components/reflection_probe_component.hpp>
+#include <vultra/function/world/components/rigid_body_component.hpp>
 #include <vultra/function/world/components/script_component.hpp>
+#include <vultra/function/world/components/sphere_shape_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/components/xr_view_component.hpp>
 #include <vultra/function/world/world.hpp>
@@ -190,6 +194,14 @@ namespace vultra_app
                 return "Reflection Probe";
             if (std::strcmp(metaName, "LightComponent") == 0)
                 return "Light";
+            if (std::strcmp(metaName, "RigidBodyComponent") == 0)
+                return "Rigid Body";
+            if (std::strcmp(metaName, "BoxShapeComponent") == 0)
+                return "Box Shape";
+            if (std::strcmp(metaName, "SphereShapeComponent") == 0)
+                return "Sphere Shape";
+            if (std::strcmp(metaName, "CapsuleShapeComponent") == 0)
+                return "Capsule Shape";
             if (std::strcmp(metaName, "ScriptComponent") == 0)
                 return "Script";
             return metaName;
@@ -253,6 +265,30 @@ namespace vultra_app
         const char* componentDisplayName<vultra::LightComponent>()
         {
             return "Light";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::RigidBodyComponent>()
+        {
+            return "Rigid Body";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::BoxShapeComponent>()
+        {
+            return "Box Shape";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::SphereShapeComponent>()
+        {
+            return "Sphere Shape";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::CapsuleShapeComponent>()
+        {
+            return "Capsule Shape";
         }
 
         template<>
@@ -566,6 +602,83 @@ namespace vultra_app
                 valid = true;
             }
         };
+
+        Bounds computeLocalMeshBounds(EditorContext& ctx, entt::registry& reg, entt::entity entity)
+        {
+            Bounds bounds;
+            const auto* meshComponent = reg.try_get<vultra::MeshComponent>(entity);
+            if (!meshComponent)
+                return bounds;
+
+            if (meshComponent->builtinGeometry != UINT32_MAX)
+            {
+                switch (meshComponent->builtinGeometry)
+                {
+                    case 0u: // Quad
+                        bounds.include({-0.5f, 0.0f, -0.5f});
+                        bounds.include({0.5f, 0.0f, 0.5f});
+                        return bounds;
+                    case 1u: // Cube
+                    case 2u: // Sphere
+                        bounds.include({-0.5f, -0.5f, -0.5f});
+                        bounds.include({0.5f, 0.5f, 0.5f});
+                        return bounds;
+                    case 3u: // Capsule
+                        bounds.include({-0.5f, -1.0f, -0.5f});
+                        bounds.include({0.5f, 1.0f, 0.5f});
+                        return bounds;
+                    default:
+                        break;
+                }
+            }
+
+            if (!meshComponent->mesh.valid())
+                return bounds;
+
+            auto* assets = ctx.services ? ctx.services->tryGet<vultra::IAssetService>() : nullptr;
+            if (!assets)
+                return bounds;
+
+            auto mesh = assets->loadMeshAsync(meshComponent->mesh);
+            if (!mesh.cpu())
+                return bounds;
+
+            for (const auto& p : mesh.cpu()->positions)
+                bounds.include(glm::vec3 {p.x, p.y, p.z});
+            return bounds;
+        }
+
+        void fitBoxShapeToMeshBounds(EditorContext& ctx, entt::registry& reg, entt::entity entity)
+        {
+            auto& shape = reg.get_or_emplace<vultra::BoxShapeComponent>(entity);
+            const auto bounds = computeLocalMeshBounds(ctx, reg, entity);
+            if (!bounds.valid)
+                return;
+
+            shape.halfExtents = glm::max((bounds.max - bounds.min) * 0.5f, glm::vec3 {0.001f});
+        }
+
+        void fitSphereShapeToMeshBounds(EditorContext& ctx, entt::registry& reg, entt::entity entity)
+        {
+            auto& shape = reg.get_or_emplace<vultra::SphereShapeComponent>(entity);
+            const auto bounds = computeLocalMeshBounds(ctx, reg, entity);
+            if (!bounds.valid)
+                return;
+
+            shape.radius = std::max(glm::length(bounds.max - bounds.min) * 0.5f, 0.001f);
+        }
+
+        void fitCapsuleShapeToMeshBounds(EditorContext& ctx, entt::registry& reg, entt::entity entity)
+        {
+            auto& shape = reg.get_or_emplace<vultra::CapsuleShapeComponent>(entity);
+            const auto bounds = computeLocalMeshBounds(ctx, reg, entity);
+            if (!bounds.valid)
+                return;
+
+            const glm::vec3 size = glm::max(bounds.max - bounds.min, glm::vec3 {0.001f});
+            shape.radius = std::max(std::max(size.x, size.z) * 0.5f, 0.001f);
+            shape.halfHeightOfCylinder = std::max((size.y * 0.5f) - shape.radius, 0.001f);
+        }
 
         entt::entity findNamedEntity(vultra::World& world, const std::string& name)
         {
@@ -920,6 +1033,42 @@ namespace vultra_app
                 return "rotation";
             if (is("scale"))
                 return "scale";
+            if (is("motionType"))
+                return "motionType";
+            if (is("objectLayer"))
+                return "objectLayer";
+            if (is("isSensor"))
+                return "isSensor";
+            if (is("motionQuality"))
+                return "motionQuality";
+            if (is("allowSleeping"))
+                return "allowSleeping";
+            if (is("friction"))
+                return "friction";
+            if (is("restitution"))
+                return "restitution";
+            if (is("linearDamping"))
+                return "linearDamping";
+            if (is("angularDamping"))
+                return "angularDamping";
+            if (is("gravityFactor"))
+                return "gravityFactor";
+            if (is("linearVelocity"))
+                return "linearVelocity";
+            if (is("angularVelocity"))
+                return "angularVelocity";
+            if (is("mass"))
+                return "mass";
+            if (is("overrideMass"))
+                return "overrideMass";
+            if (is("maxLinearVelocity"))
+                return "maxLinearVelocity";
+            if (is("maxAngularVelocity"))
+                return "maxAngularVelocity";
+            if (is("halfExtents"))
+                return "halfExtents";
+            if (is("halfHeightOfCylinder"))
+                return "halfHeightOfCylinder";
             if (is("mesh"))
                 return "mesh";
             if (is("gaussianSplat"))
@@ -2183,6 +2332,42 @@ namespace vultra_app
                     return changed;
                 }
 
+                if (std::strcmp(fieldName, "motionType") == 0)
+                {
+                    const char* labels[] = {"Static", "Kinematic", "Dynamic"};
+                    int         index    = static_cast<int>(std::min(*v, 2u));
+                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    {
+                        *v      = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                        changed = true;
+                    }
+                    return changed;
+                }
+
+                if (std::strcmp(fieldName, "objectLayer") == 0)
+                {
+                    const char* labels[] = {"Non Moving", "Moving"};
+                    int         index    = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    {
+                        *v      = static_cast<uint32_t>(index);
+                        changed = true;
+                    }
+                    return changed;
+                }
+
+                if (std::strcmp(fieldName, "motionQuality") == 0)
+                {
+                    const char* labels[] = {"Discrete", "Linear Cast"};
+                    int         index    = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    {
+                        *v      = static_cast<uint32_t>(index);
+                        changed = true;
+                    }
+                    return changed;
+                }
+
                 if (std::strcmp(fieldName, "builtinGeometry") == 0)
                 {
                     const char* geometryLabels[] = {"External Mesh", "Quad", "Cube", "Sphere", "Capsule"};
@@ -2304,6 +2489,18 @@ namespace vultra_app
                 return probe.shape == 0u;
             if (std::strcmp(fieldName, "radius") == 0)
                 return probe.shape == 1u;
+            return true;
+        }
+
+        template<>
+        bool shouldDrawMetaField(const vultra::RigidBodyComponent& body, const char* fieldName)
+        {
+            if (std::strcmp(fieldName, "linearVelocity") == 0 || std::strcmp(fieldName, "angularVelocity") == 0)
+                return body.motionType != 0u;
+            if (std::strcmp(fieldName, "mass") == 0)
+                return body.overrideMass;
+            if (std::strcmp(fieldName, "maxLinearVelocity") == 0 || std::strcmp(fieldName, "maxAngularVelocity") == 0)
+                return body.motionType == 2u;
             return true;
         }
 
@@ -2530,20 +2727,41 @@ namespace vultra_app
         {
             const char* key {};
             const char* label {};
+            const char* category {};
             bool (*has)(entt::registry&, entt::entity) {};
-            void (*add)(entt::registry&, entt::entity) {};
+            std::function<void(EditorContext&, entt::registry&, entt::entity)> add;
         };
 
         template<typename Component>
-        AddComponentDescriptor addComponentDescriptor(const char* key, const char* label)
+        AddComponentDescriptor addComponentDescriptor(const char* key, const char* label, const char* category)
         {
             return AddComponentDescriptor {
                 key,
                 label,
+                category,
                 [](entt::registry& reg, entt::entity entity) { return reg.all_of<Component>(entity); },
-                [](entt::registry& reg, entt::entity entity) {
+                [](EditorContext&, entt::registry& reg, entt::entity entity) {
                     if (!reg.all_of<Component>(entity))
                         reg.emplace<Component>(entity);
+                },
+            };
+        }
+
+        template<typename Component>
+        AddComponentDescriptor addPhysicsShapeComponentDescriptor(const char* key,
+                                                                 const char* label,
+                                                                 void (*fit)(EditorContext&, entt::registry&, entt::entity))
+        {
+            return AddComponentDescriptor {
+                key,
+                label,
+                "Physics",
+                [](entt::registry& reg, entt::entity entity) { return reg.all_of<Component>(entity); },
+                [fit](EditorContext& ctx, entt::registry& reg, entt::entity entity) {
+                    if (!reg.all_of<Component>(entity))
+                        reg.emplace<Component>(entity);
+                    if (fit)
+                        fit(ctx, reg, entity);
                 },
             };
         }
@@ -2551,15 +2769,24 @@ namespace vultra_app
         const std::vector<AddComponentDescriptor>& addableComponents()
         {
             static const std::vector<AddComponentDescriptor> descriptors {
-                addComponentDescriptor<vultra::TransformComponent>("Transform", "Transform"),
-                addComponentDescriptor<vultra::CameraComponent>("Camera", "Camera"),
-                addComponentDescriptor<vultra::XRViewComponent>("XRView", "XR View"),
-                addComponentDescriptor<vultra::EnvironmentComponent>("Environment", "Environment"),
-                addComponentDescriptor<vultra::ReflectionProbeComponent>("ReflectionProbe", "Reflection Probe"),
-                addComponentDescriptor<vultra::LightComponent>("Light", "Light"),
-                addComponentDescriptor<vultra::MeshComponent>("Mesh", "Mesh"),
-                addComponentDescriptor<vultra::GaussianSplatComponent>("GaussianSplat", "Gaussian Splat"),
-                addComponentDescriptor<vultra::ScriptComponent>("Script", "Script"),
+                addComponentDescriptor<vultra::TransformComponent>("Transform", "Transform", "Core"),
+                addComponentDescriptor<vultra::MeshComponent>("Mesh", "Mesh", "Rendering"),
+                addComponentDescriptor<vultra::GaussianSplatComponent>(
+                    "GaussianSplat", "Gaussian Splat", "Rendering"),
+                addComponentDescriptor<vultra::EnvironmentComponent>("Environment", "Environment", "Lighting"),
+                addComponentDescriptor<vultra::ReflectionProbeComponent>(
+                    "ReflectionProbe", "Reflection Probe", "Lighting"),
+                addComponentDescriptor<vultra::LightComponent>("Light", "Light", "Lighting"),
+                addComponentDescriptor<vultra::RigidBodyComponent>("RigidBody", "Rigid Body", "Physics"),
+                addPhysicsShapeComponentDescriptor<vultra::BoxShapeComponent>(
+                    "BoxShape", "Box Shape", fitBoxShapeToMeshBounds),
+                addPhysicsShapeComponentDescriptor<vultra::SphereShapeComponent>(
+                    "SphereShape", "Sphere Shape", fitSphereShapeToMeshBounds),
+                addPhysicsShapeComponentDescriptor<vultra::CapsuleShapeComponent>(
+                    "CapsuleShape", "Capsule Shape", fitCapsuleShapeToMeshBounds),
+                addComponentDescriptor<vultra::CameraComponent>("Camera", "Camera", "Camera"),
+                addComponentDescriptor<vultra::XRViewComponent>("XRView", "XR View", "Camera"),
+                addComponentDescriptor<vultra::ScriptComponent>("Script", "Script", "Scripting"),
             };
             return descriptors;
         }
@@ -2573,6 +2800,10 @@ namespace vultra_app
                 "Environment",
                 "ReflectionProbe",
                 "Light",
+                "RigidBody",
+                "BoxShape",
+                "SphereShape",
+                "CapsuleShape",
                 "Camera",
                 "XRView",
                 "Script",
@@ -2595,6 +2826,14 @@ namespace vultra_app
                 return reg.all_of<vultra::ReflectionProbeComponent>(entity);
             if (key == "Light")
                 return reg.all_of<vultra::LightComponent>(entity);
+            if (key == "RigidBody")
+                return reg.all_of<vultra::RigidBodyComponent>(entity);
+            if (key == "BoxShape")
+                return reg.all_of<vultra::BoxShapeComponent>(entity);
+            if (key == "SphereShape")
+                return reg.all_of<vultra::SphereShapeComponent>(entity);
+            if (key == "CapsuleShape")
+                return reg.all_of<vultra::CapsuleShapeComponent>(entity);
             if (key == "Camera")
                 return reg.all_of<vultra::CameraComponent>(entity);
             if (key == "XRView")
@@ -2637,6 +2876,14 @@ namespace vultra_app
                 return "Reflection Probe";
             if (key == "Light")
                 return "Light";
+            if (key == "RigidBody")
+                return "Rigid Body";
+            if (key == "BoxShape")
+                return "Box Shape";
+            if (key == "SphereShape")
+                return "Sphere Shape";
+            if (key == "CapsuleShape")
+                return "Capsule Shape";
             if (key == "Camera")
                 return "Camera";
             if (key == "XRView")
@@ -2662,6 +2909,14 @@ namespace vultra_app
                 reg.remove<vultra::ReflectionProbeComponent>(entity);
             else if (key == "Light")
                 reg.remove<vultra::LightComponent>(entity);
+            else if (key == "RigidBody")
+                reg.remove<vultra::RigidBodyComponent>(entity);
+            else if (key == "BoxShape")
+                reg.remove<vultra::BoxShapeComponent>(entity);
+            else if (key == "SphereShape")
+                reg.remove<vultra::SphereShapeComponent>(entity);
+            else if (key == "CapsuleShape")
+                reg.remove<vultra::CapsuleShapeComponent>(entity);
             else if (key == "Camera")
             {
                 reg.remove<vultra::CameraComponent>(entity);
@@ -2972,6 +3227,46 @@ namespace vultra_app
                             ctx.history->setNextLabel("Edit Light");
                     }
             }
+            else if (key == "RigidBody")
+            {
+                if (auto* body = reg.try_get<vultra::RigidBodyComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *body))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Rigid Body");
+                    }
+            }
+            else if (key == "BoxShape")
+            {
+                if (auto* shape = reg.try_get<vultra::BoxShapeComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *shape))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Box Shape");
+                    }
+            }
+            else if (key == "SphereShape")
+            {
+                if (auto* shape = reg.try_get<vultra::SphereShapeComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *shape))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Sphere Shape");
+                    }
+            }
+            else if (key == "CapsuleShape")
+            {
+                if (auto* shape = reg.try_get<vultra::CapsuleShapeComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *shape))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Capsule Shape");
+                    }
+            }
             else if (key == "Camera")
             {
                 if (auto* camera = reg.try_get<vultra::CameraComponent>(e))
@@ -3062,33 +3357,60 @@ namespace vultra_app
         if (ImGui::BeginPopup("AddComponentPopup"))
         {
             bool any = false;
-            for (const auto& desc : addableComponents())
+            constexpr const char* categories[] = {"Core", "Rendering", "Lighting", "Physics", "Camera", "Scripting"};
+            for (const char* category : categories)
             {
-                if (!desc.has || !desc.add || desc.has(reg, entity))
+                const auto categoryHasItems = std::any_of(addableComponents().begin(),
+                                                          addableComponents().end(),
+                                                          [&](const AddComponentDescriptor& desc) {
+                                                              return desc.category && std::strcmp(desc.category, category) == 0 &&
+                                                                     desc.has && desc.add && !desc.has(reg, entity);
+                                                          });
+                if (!categoryHasItems)
                     continue;
 
                 any = true;
-                const bool xrViewRequiresCamera =
-                    desc.key && std::strcmp(desc.key, "XRView") == 0 && !reg.all_of<vultra::CameraComponent>(entity);
-                if (xrViewRequiresCamera)
-                    ImGui::BeginDisabled();
-                if (ImGui::MenuItem(desc.label))
+                if (ImGui::BeginMenu(category))
                 {
-                    desc.add(reg, entity);
-                    auto& order = m_ComponentOrder[Selection::lastId()];
-                    if (desc.key && std::find(order.begin(), order.end(), desc.key) == order.end())
-                        order.emplace_back(desc.key);
-                    ctx.state.sceneDirty    = true;
-                    ctx.state.statusMessage = std::string("Added component: ") + desc.label;
-                    if (ctx.history)
-                        ctx.history->setNextLabel(ctx.state.statusMessage);
-                    ImGui::CloseCurrentPopup();
-                }
-                if (xrViewRequiresCamera)
-                {
-                    ImGui::EndDisabled();
-                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                        ImGui::SetTooltip("XR View can only be added to an entity with a Camera component.");
+                    for (const auto& desc : addableComponents())
+                    {
+                        if (!desc.category || std::strcmp(desc.category, category) != 0)
+                            continue;
+                        if (!desc.has || !desc.add || desc.has(reg, entity))
+                            continue;
+
+                        const bool xrViewRequiresCamera = desc.key && std::strcmp(desc.key, "XRView") == 0 &&
+                                                          !reg.all_of<vultra::CameraComponent>(entity);
+                        if (xrViewRequiresCamera)
+                            ImGui::BeginDisabled();
+                        if (ImGui::MenuItem(desc.label))
+                        {
+                            desc.add(ctx, reg, entity);
+                            auto& order = m_ComponentOrder[Selection::lastId()];
+                            if (desc.key && std::find(order.begin(), order.end(), desc.key) == order.end())
+                                order.emplace_back(desc.key);
+                            ctx.state.sceneDirty    = true;
+                            ctx.state.statusMessage = std::string("Added component: ") + desc.label;
+                            if (desc.key &&
+                                (std::strcmp(desc.key, "BoxShape") == 0 ||
+                                 std::strcmp(desc.key, "SphereShape") == 0 ||
+                                 std::strcmp(desc.key, "CapsuleShape") == 0) &&
+                                reg.all_of<vultra::MeshComponent>(entity))
+                            {
+                                ctx.state.statusMessage += " (fit to mesh bounds if available)";
+                            }
+                            if (ctx.history)
+                                ctx.history->setNextLabel(ctx.state.statusMessage);
+                            ImGui::CloseCurrentPopup();
+                        }
+                        if (xrViewRequiresCamera)
+                        {
+                            ImGui::EndDisabled();
+                            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                                ImGui::SetTooltip("XR View can only be added to an entity with a Camera component.");
+                        }
+                    }
+                    ImGui::EndMenu();
                 }
             }
 

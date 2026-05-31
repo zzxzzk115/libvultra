@@ -178,6 +178,8 @@ namespace vultra
         collectFinished();
     }
 
+    uint32_t JobSystem::concurrency() const { return m_Scheduler.concurrency(); }
+
     void JobSystem::collectFinished()
     {
         std::scoped_lock lock(m_Mutex);

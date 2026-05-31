@@ -78,6 +78,7 @@ option_end()
 -- add requirements
 add_requires("fmt", { system = false })
 add_requires("spdlog", "magic_enum", "entt", "cereal", "sol2", "argparse")
+add_requires("joltphysics v5.5.0", {configs = {debug = is_mode("debug"), shared = false, object_layer_bits = "16"}})
 add_requires("vulkan-headers 1.4.335+0")
 if not is_plat("wasm") then
     add_requires("vulkan-memory-allocator-hpp")
@@ -167,7 +168,7 @@ target("vultra")
     end
 
     -- add packages
-    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vrendergraph", "sol2", { public = true })
+    add_packages("fmt", "spdlog", "cereal", "magic_enum", "entt", "vrendergraph", "sol2", "joltphysics", { public = true })
     if not is_plat("wasm") then
         add_packages("vulkan-headers", "vulkan-memory-allocator-hpp", { public = true })
     else

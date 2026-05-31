@@ -7,7 +7,9 @@
 #include "vultra/function/scene/vscn_reader.hpp"
 #include "vultra/function/scene/vscn_writer.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
+#include "vultra/function/world/components/capsule_shape_component.hpp"
 #include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/environment_component.hpp"
 #include "vultra/function/world/components/gaussian_splat_component.hpp"
@@ -18,7 +20,9 @@
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/prefab_instance_component.hpp"
 #include "vultra/function/world/components/reflection_probe_component.hpp"
+#include "vultra/function/world/components/rigid_body_component.hpp"
 #include "vultra/function/world/components/script_component.hpp"
+#include "vultra/function/world/components/sphere_shape_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
 #include "vultra/function/world/components/xr_view_component.hpp"
 
@@ -427,6 +431,27 @@ namespace vultra
                                                                      {"active", "visible", "locked", "selectable"});
         m_ComponentRegistry.registerComponent<TransformComponent>("TransformComponent",
                                                                   {"position", "rotation", "scale"});
+        m_ComponentRegistry.registerComponent<RigidBodyComponent>("RigidBodyComponent",
+                                                                  {"motionType",
+                                                                   "objectLayer",
+                                                                   "isSensor",
+                                                                   "motionQuality",
+                                                                   "allowSleeping",
+                                                                   "friction",
+                                                                   "restitution",
+                                                                   "linearDamping",
+                                                                   "angularDamping",
+                                                                   "gravityFactor",
+                                                                   "linearVelocity",
+                                                                   "angularVelocity",
+                                                                   "mass",
+                                                                   "overrideMass",
+                                                                   "maxLinearVelocity",
+                                                                   "maxAngularVelocity"});
+        m_ComponentRegistry.registerComponent<BoxShapeComponent>("BoxShapeComponent", {"halfExtents"});
+        m_ComponentRegistry.registerComponent<SphereShapeComponent>("SphereShapeComponent", {"radius"});
+        m_ComponentRegistry.registerComponent<CapsuleShapeComponent>("CapsuleShapeComponent",
+                                                                     {"halfHeightOfCylinder", "radius"});
         m_ComponentRegistry.registerComponent<MeshComponent>(
             "MeshComponent", {"mesh", "builtinGeometry", "materialColor", "materialOverrides"});
         m_ComponentRegistry.registerComponent<GaussianSplatComponent>("GaussianSplatComponent", {"gaussianSplat"});

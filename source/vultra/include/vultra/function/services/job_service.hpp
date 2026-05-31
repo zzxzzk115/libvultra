@@ -10,6 +10,11 @@
 #include <string>
 #include <vector>
 
+namespace vtask
+{
+    class Scheduler;
+}
+
 namespace vultra
 {
     enum class JobState : uint8_t
@@ -82,5 +87,7 @@ namespace vultra
         virtual std::vector<JobSnapshot> snapshots() = 0;
         virtual void wait(JobHandle handle) = 0;
         virtual void waitAll() = 0;
+        virtual vtask::Scheduler& scheduler() = 0;
+        virtual uint32_t concurrency() const = 0;
     };
 } // namespace vultra

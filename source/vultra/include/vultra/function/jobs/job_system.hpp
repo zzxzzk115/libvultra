@@ -26,6 +26,8 @@ namespace vultra
         std::vector<JobSnapshot> snapshots() override;
         void wait(JobHandle handle) override;
         void waitAll() override;
+        vtask::Scheduler& scheduler() override { return m_Scheduler; }
+        uint32_t concurrency() const override;
 
     private:
         struct JobRecord

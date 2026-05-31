@@ -8,7 +8,9 @@
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/world/components/box_shape_component.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
+#include <vultra/function/world/components/capsule_shape_component.hpp>
 #include <vultra/function/world/components/entity_status_component.hpp>
 #include <vultra/function/world/components/environment_component.hpp>
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
@@ -17,6 +19,8 @@
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/reflection_probe_component.hpp>
+#include <vultra/function/world/components/rigid_body_component.hpp>
+#include <vultra/function/world/components/sphere_shape_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
 #include <vultra/function/world/components/xr_view_component.hpp>
 #include <vultra/function/world/world.hpp>
@@ -58,6 +62,8 @@ namespace vultra_app
                 return ICON_MDI_CUBE_SCAN;
             if (reg.all_of<vultra::LightComponent>(entity))
                 return ICON_MDI_LIGHTBULB_ON_OUTLINE;
+            if (reg.all_of<vultra::RigidBodyComponent>(entity))
+                return ICON_MDI_ATOM;
             if (reg.all_of<vultra::MeshComponent>(entity))
                 return ICON_MDI_CUBE;
             if (reg.all_of<vultra::GaussianSplatComponent>(entity))
@@ -94,6 +100,9 @@ namespace vultra_app
             Camera,
             XRCamera,
             Environment,
+            StaticBox,
+            DynamicSphere,
+            CapsuleRigidBody,
         };
 
         EntityDropMode dropModeForItem(const ImVec2& itemMin, const ImVec2& itemMax)
@@ -343,6 +352,13 @@ namespace vultra_app
                 if (xr)
                     reg.emplace_or_replace<vultra::XRViewComponent>(entity);
             };
+            const auto addRigidBody = [&](const char* name, uint32_t motionType) -> vultra::RigidBodyComponent& {
+                setName(name);
+                auto& body       = reg.emplace_or_replace<vultra::RigidBodyComponent>(entity);
+                body.motionType  = motionType;
+                body.objectLayer = motionType == 0u ? 0u : 1u;
+                return body;
+            };
 
             switch (kind)
             {
@@ -382,6 +398,25 @@ namespace vultra_app
                 case SceneCreateKind::Environment:
                     setName("Environment");
                     reg.emplace_or_replace<vultra::EnvironmentComponent>(entity);
+                    break;
+                case SceneCreateKind::StaticBox:
+                    addRigidBody("Static Box", 0u);
+                    reg.emplace_or_replace<vultra::BoxShapeComponent>(entity);
+                    reg.emplace_or_replace<vultra::MeshComponent>(entity, vultra::MeshComponent {.builtinGeometry = 1u});
+                    break;
+                case SceneCreateKind::DynamicSphere:
+                    addRigidBody("Dynamic Sphere", 2u);
+                    reg.emplace_or_replace<vultra::SphereShapeComponent>(entity);
+                    reg.emplace_or_replace<vultra::MeshComponent>(entity, vultra::MeshComponent {.builtinGeometry = 2u});
+                    transform.position = glm::vec3 {0.0f, 2.0f, 0.0f};
+                    transform.dirty    = true;
+                    break;
+                case SceneCreateKind::CapsuleRigidBody:
+                    addRigidBody("Capsule Rigid Body", 2u);
+                    reg.emplace_or_replace<vultra::CapsuleShapeComponent>(entity);
+                    reg.emplace_or_replace<vultra::MeshComponent>(entity, vultra::MeshComponent {.builtinGeometry = 3u});
+                    transform.position = glm::vec3 {0.0f, 2.0f, 0.0f};
+                    transform.dirty    = true;
                     break;
             }
 
@@ -430,6 +465,17 @@ namespace vultra_app
                 static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::XRCamera));
             if (ImGui::MenuItem(ICON_MDI_WEATHER_SUNNY " Environment"))
                 static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::Environment));
+
+            if (ImGui::BeginMenu(ICON_MDI_ATOM " Physics"))
+            {
+                if (ImGui::MenuItem(ICON_MDI_CUBE " Static Box"))
+                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::StaticBox));
+                if (ImGui::MenuItem(ICON_MDI_SPHERE " Dynamic Sphere"))
+                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::DynamicSphere));
+                if (ImGui::MenuItem(ICON_MDI_CYLINDER " Capsule Rigid Body"))
+                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::CapsuleRigidBody));
+                ImGui::EndMenu();
+            }
         }
     } // namespace
 
