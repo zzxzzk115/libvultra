@@ -117,6 +117,16 @@ namespace vultra_app::ui
             std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
                 return static_cast<char>(std::tolower(ch));
             });
+            return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga" || ext == ".hdr" ||
+                   ext == ".dds" || ext == ".ktx" || ext == ".ktx2";
+        }
+
+        bool isCookableTextureSourcePath(const std::filesystem::path& path)
+        {
+            auto ext = path.extension().generic_string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
             return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga" || ext == ".hdr";
         }
 
@@ -212,8 +222,24 @@ namespace vultra_app::ui
 
         void includeMeshBounds(Bounds& bounds, const vasset::VMesh& mesh, const glm::mat4& matrix)
         {
+            if (mesh.hasLocalBounds)
+            {
+                const glm::vec3 min = mesh.localBoundsMin;
+                const glm::vec3 max = mesh.localBoundsMax;
+                for (uint32_t corner = 0; corner < 8u; ++corner)
+                {
+                    const glm::vec3 p {
+                        (corner & 1u) ? max.x : min.x,
+                        (corner & 2u) ? max.y : min.y,
+                        (corner & 4u) ? max.z : min.z,
+                    };
+                    bounds.includeTransformed(p, matrix);
+                }
+                return;
+            }
+
             for (const auto& p : mesh.positions)
-                bounds.includeTransformed(glm::vec3 {p.x, p.y, p.z}, matrix);
+                bounds.includeTransformed(p, matrix);
         }
 
         void includeGaussianSplatBounds(Bounds& bounds, const vasset::VGaussianSplat& splat, const glm::mat4& matrix)
@@ -403,6 +429,9 @@ namespace vultra_app::ui
             camera.suppressSkybox = true;
             camera.renderImGui    = false;
             camera.rendererKey = "universal";
+            camera.overrideFrameTime = true;
+            camera.frameTimeSeconds  = 0.0f;
+            camera.frameDeltaSeconds = 0.0f;
             return camera;
         }
 
@@ -479,6 +508,9 @@ namespace vultra_app::ui
             out.debugEntityIdOutput     = false;
             out.selectionOutlineEnabled = false;
             out.rendererKey             = camera.rendererKey.empty() ? "universal" : camera.rendererKey;
+            out.overrideFrameTime       = true;
+            out.frameTimeSeconds        = 0.0f;
+            out.frameDeltaSeconds       = 0.0f;
             return out;
         }
 
@@ -690,6 +722,13 @@ namespace vultra_app::ui
         request.key    = "texture:" + std::string(kTextureThumbnailCacheVersion) + ":" + rel + ":" +
                       std::to_string(fileWriteStamp(request.sourcePath));
         request.outputPath = thumbnailPathFor(request.key);
+        if (!isCookableTextureSourcePath(request.sourcePath))
+        {
+            request.status                 = AssetThumbnailStatus::Missing;
+            m_TextureRequestCache[cacheKey] = request;
+            return request;
+        }
+
         request.status     = statusFor(request.outputPath);
         if (request.status == AssetThumbnailStatus::Missing)
             queueMissing(request);
@@ -978,7 +1017,8 @@ namespace vultra_app::ui
             {
                 requestMesh(ctx, uuid, entry.importedPath);
             }
-            else if (entry.type == vasset::VAssetType::eTexture && isTextureSourcePath(entry.sourcePath))
+            else if (entry.type == vasset::VAssetType::eTexture &&
+                     isCookableTextureSourcePath(assetRoot / std::filesystem::path(entry.sourcePath)))
             {
                 requestTexture(ctx, assetRoot / std::filesystem::path(entry.sourcePath));
             }

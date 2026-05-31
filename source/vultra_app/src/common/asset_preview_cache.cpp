@@ -111,7 +111,7 @@ namespace vultra_app::ui
 
     bool isTextureSourceAsset(const std::filesystem::path& path)
     {
-        return hasExtension(path, {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".ktx2"});
+        return hasExtension(path, {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".dds", ".ktx", ".ktx2"});
     }
 
     std::string AssetPreviewCache::textureUriFor(EditorContext& ctx, const std::filesystem::path& path) const

@@ -78,6 +78,7 @@ namespace vultra_app
         }
 
         ctx.state.sceneDirty = state.dirty;
+        ++ctx.state.sceneContentGeneration;
         if (state.hasSelection && findEntityByUUID(worldService->world(), state.selectedEntity) != entt::null)
             Selection::select(SelectionCategory::Entity, state.selectedEntity);
         else
@@ -195,6 +196,7 @@ namespace vultra_app
         if (m_States.empty())
         {
             pushState("Scene Loaded", std::move(*current));
+            ++ctx.state.sceneContentGeneration;
             return;
         }
 
@@ -207,6 +209,7 @@ namespace vultra_app
         {
             m_PendingState = std::move(*current);
             pushState(m_PendingLabel.empty() ? std::move(label) : std::move(m_PendingLabel), std::move(*m_PendingState));
+            ++ctx.state.sceneContentGeneration;
             m_PendingState.reset();
             m_PendingObservation = false;
             m_PendingLabel.clear();
@@ -214,6 +217,7 @@ namespace vultra_app
         }
 
         pushState(std::move(label), std::move(*current));
+        ++ctx.state.sceneContentGeneration;
     }
 
     void EditorHistory::execute(EditorContext& ctx, EditorCommand& command)
@@ -243,11 +247,13 @@ namespace vultra_app
         if (m_States.empty())
         {
             pushState("Scene Loaded", std::move(*state));
+            ++ctx.state.sceneContentGeneration;
             return;
         }
 
         m_States[m_Current]        = std::move(*state);
         m_Entries[m_Current].dirty = m_States[m_Current].dirty;
+        ++ctx.state.sceneContentGeneration;
     }
 
     void EditorHistory::markCurrentClean(EditorContext& ctx)
@@ -260,6 +266,7 @@ namespace vultra_app
         ctx.state.sceneDirty = false;
         m_States[m_Current] = std::move(*state);
         m_Entries[m_Current].dirty = false;
+        ++ctx.state.sceneContentGeneration;
     }
 
     bool EditorHistory::undo(EditorContext& ctx)

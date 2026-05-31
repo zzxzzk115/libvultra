@@ -24,9 +24,12 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
+#include <functional>
 #include <limits>
 
 namespace vultra_app
@@ -160,6 +163,78 @@ namespace vultra_app
             return buffer;
         }
 
+        void hashCombine(uint64_t& seed, const uint64_t value)
+        {
+            seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6u) + (seed >> 2u);
+        }
+
+        void hashFloat(uint64_t& seed, const float value)
+        {
+            uint32_t bits = 0;
+            std::memcpy(&bits, &value, sizeof(bits));
+            hashCombine(seed, bits);
+        }
+
+        void hashVec3(uint64_t& seed, const glm::vec3& value)
+        {
+            hashFloat(seed, value.x);
+            hashFloat(seed, value.y);
+            hashFloat(seed, value.z);
+        }
+
+        void hashQuat(uint64_t& seed, const glm::quat& value)
+        {
+            hashFloat(seed, value.w);
+            hashFloat(seed, value.x);
+            hashFloat(seed, value.y);
+            hashFloat(seed, value.z);
+        }
+
+        uint64_t gameCameraSignature(EditorContext&           ctx,
+                                     vultra::World&           world,
+                                     const entt::entity       entity,
+                                     const uint32_t           renderWidth,
+                                     const uint32_t           renderHeight)
+        {
+            uint64_t seed = 1469598103934665603ull;
+            hashCombine(seed, ctx.state.projectGeneration);
+            hashCombine(seed, ctx.state.assetFileGeneration);
+            hashCombine(seed, ctx.state.sceneContentGeneration);
+            hashCombine(seed, renderWidth);
+            hashCombine(seed, renderHeight);
+            hashCombine(seed, ctx.state.sceneDirty ? 1u : 0u);
+
+            if (entity == entt::null)
+                return seed;
+
+            auto& reg = world.registry();
+            if (const auto* id = reg.try_get<vultra::IDComponent>(entity))
+                hashCombine(seed, static_cast<uint64_t>(std::hash<vultra::CoreUUID> {}(id->uuid)));
+            if (const auto* transform = reg.try_get<vultra::TransformComponent>(entity))
+            {
+                hashVec3(seed, transform->position);
+                hashQuat(seed, transform->rotation);
+                hashVec3(seed, transform->scale);
+            }
+            if (const auto* camera = reg.try_get<vultra::CameraComponent>(entity))
+            {
+                hashCombine(seed, camera->primary ? 1u : 0u);
+                hashCombine(seed, static_cast<uint64_t>(camera->priority));
+                hashCombine(seed, camera->projection);
+                hashFloat(seed, camera->fovYDegrees);
+                hashFloat(seed, camera->orthographicHeight);
+                hashFloat(seed, camera->zNear);
+                hashFloat(seed, camera->zFar);
+                hashCombine(seed, camera->clearMode);
+                hashFloat(seed, camera->clearColor.r);
+                hashFloat(seed, camera->clearColor.g);
+                hashFloat(seed, camera->clearColor.b);
+                hashFloat(seed, camera->clearColor.a);
+                hashCombine(seed, static_cast<uint64_t>(std::hash<std::string> {}(camera->rendererKey)));
+            }
+            return seed;
+        }
+
         ImVec2 fitAspectInside(const ImVec2 bounds, const float aspect)
         {
             const float safeWidth  = std::max(bounds.x, 1.0f);
@@ -182,6 +257,12 @@ namespace vultra_app
             return ImGui::Button(label, size);
         }
 
+        bool currentWindowDockTabVisible()
+        {
+            const ImGuiWindow* window = ImGui::GetCurrentWindowRead();
+            return window && (!window->DockIsActive || window->DockTabIsVisible);
+        }
+
     } // namespace
 
     GameViewWindow::GameViewWindow() : EditorWindow("Game View", ICON_MDI_GAMEPAD_VARIANT) {}
@@ -197,10 +278,18 @@ namespace vultra_app
         const bool visible =
             ImGui::Begin(title().c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         const bool collapsed      = visible && ImGui::IsWindowCollapsed();
-        ctx.state.gameViewVisible = visible && !collapsed;
+        const bool dockTabVisible = visible && currentWindowDockTabVisible();
+        ctx.state.gameViewVisible = visible && !collapsed && dockTabVisible;
         if (!visible || collapsed)
         {
             releaseRenderTarget(ctx);
+            ImGui::End();
+            return;
+        }
+        if (!dockTabVisible)
+        {
+            collectRetiredRenderTargets(ctx);
+            clearXRMirrorPreview(ctx);
             ImGui::End();
             return;
         }
@@ -299,10 +388,22 @@ namespace vultra_app
                 auto* renderTarget = m_PendingRenderTarget.texture ?
                                          &*m_PendingRenderTarget.texture :
                                          (m_ActiveRenderTarget.texture ? &*m_ActiveRenderTarget.texture : nullptr);
-                if (hasPrimaryCamera && renderTarget != nullptr && !useXrMirrorPreview)
+                const bool shouldRenderGameView =
+                    hasPrimaryCamera && renderTarget != nullptr && !useXrMirrorPreview &&
+                    shouldRenderGameCamera(ctx,
+                                           primaryCamera,
+                                           static_cast<uint32_t>(std::max(outputSize.x, 1.0f)),
+                                           static_cast<uint32_t>(std::max(outputSize.y, 1.0f)));
+                if (shouldRenderGameView)
                 {
                     const float aspect       = outputSize.x / std::max(outputSize.y, 1.0f);
                     auto        renderCamera = makeGameCamera(world, primaryCamera, aspect, renderTarget);
+                    renderCamera.overrideFrameTime = true;
+                    renderCamera.frameTimeSeconds =
+                        ctx.state.editorPlaying ? ctx.state.editorGameTimeSeconds : 0.0f;
+                    renderCamera.frameDeltaSeconds =
+                        ctx.state.editorPlaying ? ctx.state.editorGameDeltaSeconds : 0.0f;
+                    renderCamera.worldOverride = &world;
                     if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
                         cameraService->addManualCamera(renderCamera);
                 }
@@ -431,6 +532,41 @@ namespace vultra_app
 
         ImGui::EndChild();
         ImGui::End();
+    }
+
+    bool GameViewWindow::shouldRenderGameCamera(EditorContext&      ctx,
+                                                const entt::entity  primaryCamera,
+                                                const uint32_t      renderWidth,
+                                                const uint32_t      renderHeight)
+    {
+        const bool simulationAdvancing =
+            ctx.state.editorPlaying && (!ctx.state.editorPaused || ctx.state.editorSteppingThisFrame);
+        const bool interactiveEdit = ImGui::IsAnyItemActive() || ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        if (simulationAdvancing || interactiveEdit)
+        {
+            m_StaticFrameValid             = true;
+            m_LastStaticRenderSignature    = 0;
+            m_LastSceneDirty               = ctx.state.sceneDirty;
+            return true;
+        }
+
+        auto* worldService = ctx.services ? ctx.services->tryGet<vultra::IWorldService>() : nullptr;
+        if (!worldService)
+            return false;
+
+        const uint64_t signature =
+            gameCameraSignature(ctx, worldService->world(), primaryCamera, renderWidth, renderHeight);
+        const bool sceneDirtyEdge = ctx.state.sceneDirty != m_LastSceneDirty;
+        m_LastSceneDirty          = ctx.state.sceneDirty;
+
+        if (!m_StaticFrameValid || m_LastStaticRenderSignature != signature || sceneDirtyEdge)
+        {
+            m_StaticFrameValid          = true;
+            m_LastStaticRenderSignature = signature;
+            return true;
+        }
+
+        return false;
     }
 
     void GameViewWindow::drawMetricsOverlay(EditorContext& ctx, const ImVec2& imageMin, const ImVec2& imageMax)
@@ -613,6 +749,7 @@ namespace vultra_app
             {
                 m_RenderTargetResizeRequest.extent         = {width, height};
                 m_RenderTargetResizeRequest.firstSeenFrame = frame;
+                m_StaticFrameValid                         = false;
                 return;
             }
 
@@ -645,6 +782,8 @@ namespace vultra_app
         m_PendingRenderTarget.frameCreated = static_cast<uint64_t>(ImGui::GetFrameCount());
         m_PendingRenderTarget.releaseFrame = 0;
         m_RenderTargetResizeRequest        = {};
+        m_StaticFrameValid                 = false;
+        m_LastStaticRenderSignature        = 0;
     }
 
     void GameViewWindow::promotePendingRenderTarget(EditorContext& ctx)
@@ -656,6 +795,8 @@ namespace vultra_app
         retireRenderTarget(m_ActiveRenderTarget);
         m_ActiveRenderTarget  = std::move(m_PendingRenderTarget);
         m_PendingRenderTarget = {};
+        m_StaticFrameValid    = false;
+        m_LastStaticRenderSignature = 0;
     }
 
     void GameViewWindow::retireRenderTarget(RenderTargetSlot& slot)
@@ -702,6 +843,11 @@ namespace vultra_app
         }
         if (ctx.services)
         {
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+            {
+                if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                    renderService->releaseOverrideRenderWorld(&worldService->world());
+            }
             if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
             {
                 if (m_ActiveRenderTarget.textureId)
@@ -719,6 +865,8 @@ namespace vultra_app
         m_PendingRenderTarget = {};
         m_RetiredRenderTargets.clear();
         m_RenderTargetResizeRequest = {};
+        m_StaticFrameValid          = false;
+        m_LastStaticRenderSignature = 0;
     }
 
     void GameViewWindow::clearXRMirrorPreview(EditorContext& ctx)
@@ -752,7 +900,17 @@ namespace vultra_app
 
         retireRenderTarget(m_ActiveRenderTarget);
         retireRenderTarget(m_PendingRenderTarget);
+        if (ctx.services)
+        {
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+            {
+                if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                    renderService->releaseOverrideRenderWorld(&worldService->world());
+            }
+        }
         m_RenderTargetResizeRequest = {};
+        m_StaticFrameValid          = false;
+        m_LastStaticRenderSignature = 0;
         m_ProjectGeneration = ctx.state.projectGeneration;
     }
 } // namespace vultra_app

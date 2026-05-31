@@ -160,15 +160,18 @@ namespace vultra_app
             gpu.resize(visibleCount);
 
             bool hasGpu = false;
+            double maxMs = 16.67;
             for (size_t i = 0; i < visibleCount; ++i)
             {
                 const auto& sample = history[firstSample + i];
                 x[i]               = static_cast<double>(sample.frameIndex);
                 cpu[i]             = sample.cpuFrameMs;
+                maxMs              = std::max(maxMs, cpu[i]);
                 if (sample.gpuFrameMs >= 0.0)
                 {
                     gpu[i] = sample.gpuFrameMs;
                     hasGpu = true;
+                    maxMs  = std::max(maxMs, gpu[i]);
                 }
                 else
                 {
@@ -176,11 +179,17 @@ namespace vultra_app
                 }
             }
 
+            const double paddedMaxMs = std::ceil(maxMs * 1.15 / 5.0) * 5.0;
+            const double yMax        = std::max(25.0, paddedMaxMs);
+
             if (ImPlot::BeginPlot("Frame Times", ImVec2(-1, 260)))
             {
                 ImPlot::SetupAxes("Frame", "ms", ImPlotAxisFlags_NoTickLabels, ImPlotAxisFlags_AutoFit);
                 ImPlot::SetupAxisLimits(ImAxis_X1, x.front(), x.back(), ImGuiCond_Always);
-                ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 25.0, ImGuiCond_Always);
+                ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, yMax, ImGuiCond_Always);
+                ImPlot::TagY(1000.0 / 144.0, ImVec4(0.45f, 0.70f, 1.0f, 1.0f), "144 FPS");
+                ImPlot::TagY(16.67, ImVec4(0.35f, 0.80f, 0.45f, 1.0f), "60 FPS");
+                ImPlot::TagY(33.33, ImVec4(1.0f, 0.75f, 0.25f, 1.0f), "30 FPS");
                 ImPlot::PlotLine("CPU", x.data(), cpu.data(), static_cast<int>(cpu.size()));
                 if (hasGpu)
                     ImPlot::PlotLine("GPU", x.data(), gpu.data(), static_cast<int>(gpu.size()));

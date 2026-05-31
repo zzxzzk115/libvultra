@@ -6,6 +6,8 @@
 #include <vultra/core/rhi/texture.hpp>
 #include <vultra/function/services/imgui_service.hpp>
 
+#include <entt/entity/fwd.hpp>
+
 #include <optional>
 #include <array>
 #include <vector>
@@ -48,6 +50,10 @@ namespace vultra_app
         void releaseRenderTarget(EditorContext& ctx);
         void resetRenderTargetsForProject(EditorContext& ctx);
         void clearXRMirrorPreview(EditorContext& ctx);
+        bool shouldRenderGameCamera(EditorContext& ctx,
+                                    entt::entity primaryCamera,
+                                    uint32_t renderWidth,
+                                    uint32_t renderHeight);
 
         float m_UserZoom {1.0f};
         float m_MinZoom {1.0f};
@@ -61,5 +67,8 @@ namespace vultra_app
         std::array<const vultra::rhi::Texture*, 2>   m_XRMirrorTextures {nullptr, nullptr};
         std::array<vultra::IImGuiService::TextureID, 2> m_XRMirrorTextureIds {};
         uint64_t                      m_ProjectGeneration {0};
+        uint64_t                      m_LastStaticRenderSignature {0};
+        bool                          m_StaticFrameValid {false};
+        bool                          m_LastSceneDirty {false};
     };
 } // namespace vultra_app

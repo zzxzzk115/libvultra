@@ -2944,7 +2944,7 @@ namespace vultra
         std::size_t        overrideOut                            = 0;
         for (auto& slot : m_OverrideRenderWorlds)
         {
-            if (m_FrameCounter > slot.lastTouchedFrame + kOverrideRenderWorldReleaseDelayFrames)
+            if (!slot.world || m_FrameCounter > slot.lastTouchedFrame + kOverrideRenderWorldReleaseDelayFrames)
             {
                 slot = {};
             }
@@ -2972,13 +2972,14 @@ namespace vultra
             slot.lastTouchedFrame = m_FrameCounter;
             {
                 RuntimeProfiler::Scope scope {m_RuntimeProfiler, "RenderWorldCooker::cook_override"};
+                const float cookTimeSeconds = cam.overrideFrameTime ? cam.frameTimeSeconds : renderTimeSeconds;
                 cooker.cook(*slot.world,
                             assetService,
                             gpuResourceService,
                             rd,
                             m_GeometryFactory,
                             slot.renderWorld,
-                            renderTimeSeconds);
+                            cookTimeSeconds);
             }
             slot.renderWorld.frameIndex = m_FrameCounter;
             buildCpuDrivenGpuSceneForRenderWorld(
@@ -3200,10 +3201,23 @@ namespace vultra
                 prepareCameraData(immediateUploader, viewData, renderArea.extent, viewCamera, rd.getBackendApi());
             }
 
+            FrameRenderData  overrideFrameData {};
+            FrameRenderData* activeFrameData = &m_PreparedFrameData;
+            if (viewCamera.overrideFrameTime)
+            {
+                ImmediateResourceUploader frameUploader {m_FrameResources, rd};
+                prepareFrameData(frameUploader,
+                                 overrideFrameData,
+                                 m_FrameCounter,
+                                 viewCamera.frameTimeSeconds,
+                                 viewCamera.frameDeltaSeconds);
+                activeFrameData = &overrideFrameData;
+            }
+
             ImmediateRenderContext immediateCtx {
                 .cb          = cb,
                 .rd          = rd,
-                .frame       = m_PreparedFrameData,
+                .frame       = *activeFrameData,
                 .viewData    = viewData,
                 .resourceSet = {},
             };
@@ -3212,68 +3226,75 @@ namespace vultra
             renderer->render(immediateCtx);
             if (useFrameGraph)
             {
-                importPreparedFrameGraphUniforms(fg, m_PreparedFrameData, viewData);
-                bb.add<FrameData>(m_PreparedFrameData.frameData);
+                importPreparedFrameGraphUniforms(fg, *activeFrameData, viewData);
+                bb.add<FrameData>(activeFrameData->frameData);
                 bb.add<CameraData>(viewData.cameraData);
                 bb.add<StereoViewData>(viewData.stereoViewData);
             }
 
             if (useFrameGraph)
             {
-                RuntimeProfiler::Scope scopeFrameGraphBuild {m_RuntimeProfiler, "FrameGraph::build"};
                 FrameGraphBuildContext buildCtx {
                     .fg       = fg,
                     .bb       = bb,
                     .rd       = rd,
                     .data     = dataRegistry,
                     .frameResources = &m_FrameResources,
-                    .frame    = m_PreparedFrameData,
+                    .frame    = *activeFrameData,
                     .viewData = viewData,
                 };
-
-                // This sets up the frame graph using a feature renderer or a custom graph-aware renderer.
-                rhi::prepareForAttachment(cb, *target, false);
-                renderer->buildFrameGraph(buildCtx);
-
-                std::ostringstream runtimeDot;
-                fg.debugOutput(runtimeDot, graphviz::Writer {});
-
-                addFrameGraphTextureCapturePasses(buildCtx, viewCamera);
-                fg.compile();
+                const bool captureFrameGraphDebug =
+                    m_FrameGraphSnapshotCaptureEnabled || m_FrameGraphTextureCaptureEnabled;
 
                 {
-                    std::ostringstream       snapshot;
-                    FrameGraphSnapshotWriter snapshotWriter {cam.name, cam.rendererKey, runtimeDot.str()};
-                    fg.debugOutput(snapshot, snapshotWriter);
-                    m_LastFrameGraphSnapshot += snapshot.str();
-                    m_LastFrameGraphSnapshot += "\n";
-                }
+                    RuntimeProfiler::Scope scopeFrameGraphBuild {m_RuntimeProfiler, "FrameGraph::build"};
+
+                    // This sets up the frame graph using a feature renderer or a custom graph-aware renderer.
+                    rhi::prepareForAttachment(cb, *target, false);
+                    renderer->buildFrameGraph(buildCtx);
+
+                    addFrameGraphTextureCapturePasses(buildCtx, viewCamera);
+                    fg.compile();
+
+                    if (captureFrameGraphDebug)
+                    {
+                        std::ostringstream runtimeDot;
+                        fg.debugOutput(runtimeDot, graphviz::Writer {});
+
+                        std::ostringstream       snapshot;
+                        FrameGraphSnapshotWriter snapshotWriter {cam.name, cam.rendererKey, runtimeDot.str()};
+                        fg.debugOutput(snapshot, snapshotWriter);
+                        m_LastFrameGraphSnapshot += snapshot.str();
+                        m_LastFrameGraphSnapshot += "\n";
+                    }
 
 #ifndef NDEBUG
-                {
-                    const std::filesystem::path debugRoot = !ctx().config.writableRoot.empty() ?
-                                                                std::filesystem::path(ctx().config.writableRoot) :
-                                                                vbase::executable_dir();
-                    const std::filesystem::path debugPath = debugRoot / "framegraph.jsonl";
-                    std::ofstream               ofs(debugPath);
-                    if (ofs.is_open())
+                    if (captureFrameGraphDebug)
                     {
-                        ofs << m_LastFrameGraphSnapshot;
+                        const std::filesystem::path debugRoot = !ctx().config.writableRoot.empty() ?
+                                                                    std::filesystem::path(ctx().config.writableRoot) :
+                                                                    vbase::executable_dir();
+                        const std::filesystem::path debugPath = debugRoot / "framegraph.jsonl";
+                        std::ofstream               ofs(debugPath);
+                        if (ofs.is_open())
+                        {
+                            ofs << m_LastFrameGraphSnapshot;
+                        }
+                        else
+                        {
+                            VULTRA_CORE_WARN("[RenderSystem] Failed to write framegraph snapshot file: {}",
+                                             debugPath.generic_string());
+                        }
                     }
-                    else
-                    {
-                        VULTRA_CORE_WARN("[RenderSystem] Failed to write framegraph snapshot file: {}",
-                                         debugPath.generic_string());
-                    }
-                }
 #endif
+                }
 
                 viewData.framebufferInfo = std::nullopt; // Clear framebuffer info for execution phase, will be set by
                                                          // FrameGraphTexture preRead callback if needed.
                 FrameGraphExecContext frameGraphExecCtx {
                     .cb          = cb,
                     .rd          = rd,
-                    .frame       = m_PreparedFrameData,
+                    .frame       = *activeFrameData,
                     .viewData    = viewData,
                     .resourceSet = {},
                     .ext         = {.builtinShaderLib        = &shaderService.builtinLibrary(),

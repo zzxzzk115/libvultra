@@ -520,8 +520,15 @@ namespace vultra_app
             if (!mesh.cpu())
                 return bounds;
 
+            if (mesh.cpu()->hasLocalBounds)
+            {
+                bounds.include(mesh.cpu()->localBoundsMin);
+                bounds.include(mesh.cpu()->localBoundsMax);
+                return bounds;
+            }
+
             for (const auto& p : mesh.cpu()->positions)
-                bounds.include(glm::vec3 {p.x, p.y, p.z});
+                bounds.include(p);
             return bounds;
         }
 
@@ -1134,6 +1141,10 @@ namespace vultra_app
 
         ensurePreviewRenderTarget(
             ctx, static_cast<uint32_t>(std::max(size, 32.0f)), static_cast<uint32_t>(std::max(size, 32.0f)));
+        const float previewDeltaTime =
+            m_PreviewTimePlaying ? std::max(ImGui::GetIO().DeltaTime, 0.0f) : 0.0f;
+        if (m_PreviewTimePlaying)
+            m_PreviewTimeSeconds = std::max(0.0f, m_PreviewTimeSeconds + previewDeltaTime);
         if (ctx.services && m_PreviewTarget.texture)
         {
             if (auto* cameras = ctx.services->tryGet<vultra::ICameraService>())
@@ -1146,6 +1157,9 @@ namespace vultra_app
                                              &*m_PreviewTarget.texture,
                                              m_PreviewSkybox.valid());
                 cam.worldOverride = &m_PreviewWorld;
+                cam.overrideFrameTime = true;
+                cam.frameTimeSeconds  = m_PreviewTimeSeconds;
+                cam.frameDeltaSeconds = previewDeltaTime;
                 cameras->addManualCamera(cam);
             }
         }
@@ -1196,6 +1210,24 @@ namespace vultra_app
         }
         if (ui::drawTextureUuidField(ctx, "Skybox", m_PreviewSkybox, m_TextureSelector))
             m_Status = m_PreviewSkybox.valid() ? "Preview skybox changed" : "Preview skybox cleared";
+
+        ImGui::SeparatorText("Time");
+        if (ImGui::SmallButton(m_PreviewTimePlaying ? ICON_MDI_PAUSE : ICON_MDI_PLAY))
+            m_PreviewTimePlaying = !m_PreviewTimePlaying;
+        ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_MDI_RESTART))
+        {
+            m_PreviewTimeSeconds = 0.0f;
+            m_PreviewTimePlaying = false;
+        }
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(std::max(120.0f, size - 82.0f));
+        if (ImGui::SliderFloat("##MaterialGraphPreviewTime", &m_PreviewTimeSeconds, 0.0f, 60.0f, "%.2f s"))
+        {
+            m_PreviewTimeSeconds = std::max(0.0f, m_PreviewTimeSeconds);
+            m_PreviewTimePlaying = false;
+        }
+
         ImGui::TextDisabled(m_PreviewMesh.valid() ? "Preview: selected mesh using slot 0 override" :
                                                     "Preview: sphere using slot 0 override");
         ImGui::TextDisabled("Left drag: rotate preview  Wheel: zoom  F: frame");

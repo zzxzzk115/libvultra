@@ -87,6 +87,8 @@ namespace vultra
 
         // JSONL debug snapshots emitted for the most recently compiled frame graphs.
         virtual std::string_view lastFrameGraphSnapshot() const = 0;
+        virtual void             setFrameGraphSnapshotCaptureEnabled(bool enabled) = 0;
+        virtual bool             frameGraphSnapshotCaptureEnabled() const = 0;
         virtual void             setFrameGraphTextureCaptureEnabled(bool enabled) = 0;
         virtual bool             frameGraphTextureCaptureEnabled() const = 0;
         virtual void             setFrameGraphTexturePreviewSettings(const FrameGraphTexturePreviewSettings& settings) = 0;

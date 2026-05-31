@@ -125,6 +125,7 @@ namespace vultra_app
         void drawBuildSettingsPopup(EditorContext& ctx);
         void saveCurrentScene(EditorContext& ctx);
         void saveCurrentSceneThumbnail(EditorContext& ctx);
+        void updateEditorGameClock(EditorContext& ctx);
         void syncPlaybackState(EditorContext& ctx);
         void capturePlayModeSnapshot(EditorContext& ctx);
         void restorePlayModeSnapshot(EditorContext& ctx);

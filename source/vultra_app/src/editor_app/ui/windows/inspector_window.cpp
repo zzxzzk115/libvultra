@@ -603,6 +603,41 @@ namespace vultra_app
             }
         };
 
+        void includeMeshLocalBounds(Bounds& bounds, const vasset::VMesh& mesh)
+        {
+            if (mesh.hasLocalBounds)
+            {
+                bounds.include(mesh.localBoundsMin);
+                bounds.include(mesh.localBoundsMax);
+                return;
+            }
+
+            for (const auto& p : mesh.positions)
+                bounds.include(p);
+        }
+
+        void includeMeshWorldBounds(Bounds& bounds, const vasset::VMesh& mesh, const glm::mat4& worldMatrix)
+        {
+            if (mesh.hasLocalBounds)
+            {
+                const glm::vec3 min = mesh.localBoundsMin;
+                const glm::vec3 max = mesh.localBoundsMax;
+                for (uint32_t corner = 0; corner < 8u; ++corner)
+                {
+                    const glm::vec3 p {
+                        (corner & 1u) ? max.x : min.x,
+                        (corner & 2u) ? max.y : min.y,
+                        (corner & 4u) ? max.z : min.z,
+                    };
+                    bounds.include(glm::vec3(worldMatrix * glm::vec4(p, 1.0f)));
+                }
+                return;
+            }
+
+            for (const auto& p : mesh.positions)
+                bounds.include(glm::vec3(worldMatrix * glm::vec4(p, 1.0f)));
+        }
+
         Bounds computeLocalMeshBounds(EditorContext& ctx, entt::registry& reg, entt::entity entity)
         {
             Bounds bounds;
@@ -643,8 +678,7 @@ namespace vultra_app
             if (!mesh.cpu())
                 return bounds;
 
-            for (const auto& p : mesh.cpu()->positions)
-                bounds.include(glm::vec3 {p.x, p.y, p.z});
+            includeMeshLocalBounds(bounds, *mesh.cpu());
             return bounds;
         }
 
@@ -724,8 +758,7 @@ namespace vultra_app
                     continue;
 
                 const auto worldMatrix = makeWorldTransformMatrix(reg, e);
-                for (const auto& p : mesh.cpu()->positions)
-                    bounds.include(glm::vec3(worldMatrix * glm::vec4(glm::vec3 {p.x, p.y, p.z}, 1.0f)));
+                includeMeshWorldBounds(bounds, *mesh.cpu(), worldMatrix);
             }
             return bounds;
         }
@@ -744,8 +777,7 @@ namespace vultra_app
                 if (!mesh.cpu())
                     continue;
                 const auto worldMatrix = makeWorldTransformMatrix(reg, e);
-                for (const auto& p : mesh.cpu()->positions)
-                    bounds.include(glm::vec3(worldMatrix * glm::vec4(glm::vec3 {p.x, p.y, p.z}, 1.0f)));
+                includeMeshWorldBounds(bounds, *mesh.cpu(), worldMatrix);
             }
             return bounds;
         }
@@ -3737,7 +3769,21 @@ namespace vultra_app
 
         if (!previewWorldAssetsReady(m_ModelPreviewWorld, *assetService))
         {
+            if (m_ModelPreviewCameraSubmitted)
+            {
+                cameraService->removeManualCamerasByName("Inspector Model Preview");
+                m_ModelPreviewCameraSubmitted = false;
+            }
             m_ModelPreviewDirty = true;
+            return;
+        }
+        if (!m_ModelPreviewDirty)
+        {
+            if (m_ModelPreviewCameraSubmitted)
+            {
+                cameraService->removeManualCamerasByName("Inspector Model Preview");
+                m_ModelPreviewCameraSubmitted = false;
+            }
             return;
         }
 
@@ -3788,9 +3834,13 @@ namespace vultra_app
         camera.rendererKey             = "universal";
         camera.selectionOutlineEnabled = false;
         camera.worldOverride           = &m_ModelPreviewWorld;
+        camera.overrideFrameTime       = true;
+        camera.frameTimeSeconds        = 0.0f;
+        camera.frameDeltaSeconds       = 0.0f;
         cameraService->removeManualCamerasByName("Inspector Model Preview");
         cameraService->addManualCamera(camera);
-        m_ModelPreviewDirty = false;
+        m_ModelPreviewDirty           = false;
+        m_ModelPreviewCameraSubmitted = true;
     }
 
     void
@@ -3880,9 +3930,10 @@ namespace vultra_app
         }
         m_ModelPreviewTarget = {};
         m_RetiredModelPreviewTargets.clear();
-        m_ModelPreviewDirty      = true;
-        m_ModelPreviewLastWidth  = 0;
-        m_ModelPreviewLastHeight = 0;
+        m_ModelPreviewDirty           = true;
+        m_ModelPreviewCameraSubmitted = false;
+        m_ModelPreviewLastWidth       = 0;
+        m_ModelPreviewLastHeight      = 0;
     }
 
     void InspectorWindow::rebuildModelPreviewWorldForSource(EditorContext& ctx, const std::filesystem::path& path)
@@ -3897,11 +3948,12 @@ namespace vultra_app
         m_ModelPreviewContentRoot   = entt::null;
         m_ModelPreviewKey           = "source:" + path.lexically_normal().generic_string();
         m_ModelPreviewPath          = path.lexically_normal();
-        m_ModelPreviewRotation      = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
-        m_ModelPreviewArcballVector = glm::vec3 {0.0f, 0.0f, 1.0f};
-        m_ModelPreviewArcballActive = false;
-        m_ModelPreviewDirty         = true;
-        m_ModelPreviewDistanceScale = 1.0f;
+        m_ModelPreviewRotation        = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+        m_ModelPreviewArcballVector   = glm::vec3 {0.0f, 0.0f, 1.0f};
+        m_ModelPreviewArcballActive   = false;
+        m_ModelPreviewCameraSubmitted = false;
+        m_ModelPreviewDirty           = true;
+        m_ModelPreviewDistanceScale   = 1.0f;
 
         addPreviewLighting(m_ModelPreviewWorld);
         m_ModelPreviewRoot = m_ModelPreviewWorld.createEntity();
@@ -3959,11 +4011,12 @@ namespace vultra_app
         m_ModelPreviewContentRoot = entt::null;
         m_ModelPreviewKey         = "mesh:" + uuid.toString() + ":" + importedPath;
         m_ModelPreviewPath.clear();
-        m_ModelPreviewRotation      = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
-        m_ModelPreviewArcballVector = glm::vec3 {0.0f, 0.0f, 1.0f};
-        m_ModelPreviewArcballActive = false;
-        m_ModelPreviewDirty         = true;
-        m_ModelPreviewDistanceScale = 1.0f;
+        m_ModelPreviewRotation        = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+        m_ModelPreviewArcballVector   = glm::vec3 {0.0f, 0.0f, 1.0f};
+        m_ModelPreviewArcballActive   = false;
+        m_ModelPreviewCameraSubmitted = false;
+        m_ModelPreviewDirty           = true;
+        m_ModelPreviewDistanceScale   = 1.0f;
 
         addPreviewLighting(m_ModelPreviewWorld);
         m_ModelPreviewRoot = m_ModelPreviewWorld.createEntity();

@@ -454,6 +454,9 @@ namespace vultra_app
         const bool renderDocAvailable = renderDocEnabled && frameDebugger->isAvailable();
         const bool capturing          = frameDebugger && frameDebugger->isFrameCapturing();
 
+        if (renderService)
+            renderService->setFrameGraphSnapshotCaptureEnabled(true);
+
         if (!renderDocAvailable || capturing)
             ImGui::BeginDisabled();
         if (ImGui::Button(ICON_MDI_CAMERA " Capture Frame") && frameDebugger)

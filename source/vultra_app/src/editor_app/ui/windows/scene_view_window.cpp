@@ -10,6 +10,7 @@
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
+#include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/components/gaussian_splat_component.hpp>
@@ -26,6 +27,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imoguizmo/imoguizmo.hpp>
 #include <stb_image_resize2.h>
 #include <stb_image_write.h>
@@ -34,7 +36,9 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
 
 namespace vultra_app
@@ -68,6 +72,78 @@ namespace vultra_app
             [[nodiscard]] glm::vec3 center() const { return (min + max) * 0.5f; }
             [[nodiscard]] float     radius() const { return valid ? glm::length((max - min) * 0.5f) : 0.0f; }
         };
+
+        void hashCombine(uint64_t& seed, const uint64_t value)
+        {
+            seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6u) + (seed >> 2u);
+        }
+
+        void hashFloat(uint64_t& seed, const float value)
+        {
+            uint32_t bits = 0;
+            std::memcpy(&bits, &value, sizeof(bits));
+            hashCombine(seed, bits);
+        }
+
+        void hashVec3(uint64_t& seed, const glm::vec3& value)
+        {
+            hashFloat(seed, value.x);
+            hashFloat(seed, value.y);
+            hashFloat(seed, value.z);
+        }
+
+        void hashQuat(uint64_t& seed, const glm::quat& value)
+        {
+            hashFloat(seed, value.w);
+            hashFloat(seed, value.x);
+            hashFloat(seed, value.y);
+            hashFloat(seed, value.z);
+        }
+
+        uint64_t gamePreviewSignature(EditorContext&           ctx,
+                                      vultra::World&           world,
+                                      const entt::entity       entity,
+                                      const uint32_t           renderWidth,
+                                      const uint32_t           renderHeight)
+        {
+            uint64_t seed = 1469598103934665603ull;
+            hashCombine(seed, ctx.state.projectGeneration);
+            hashCombine(seed, ctx.state.assetFileGeneration);
+            hashCombine(seed, ctx.state.sceneContentGeneration);
+            hashCombine(seed, renderWidth);
+            hashCombine(seed, renderHeight);
+            hashCombine(seed, ctx.state.sceneDirty ? 1u : 0u);
+
+            if (entity == entt::null)
+                return seed;
+
+            auto& reg = world.registry();
+            if (const auto* id = reg.try_get<vultra::IDComponent>(entity))
+                hashCombine(seed, static_cast<uint64_t>(std::hash<vultra::CoreUUID> {}(id->uuid)));
+            if (const auto* transform = reg.try_get<vultra::TransformComponent>(entity))
+            {
+                hashVec3(seed, transform->position);
+                hashQuat(seed, transform->rotation);
+                hashVec3(seed, transform->scale);
+            }
+            if (const auto* camera = reg.try_get<vultra::CameraComponent>(entity))
+            {
+                hashCombine(seed, camera->primary ? 1u : 0u);
+                hashCombine(seed, static_cast<uint64_t>(camera->priority));
+                hashCombine(seed, camera->projection);
+                hashFloat(seed, camera->fovYDegrees);
+                hashFloat(seed, camera->orthographicHeight);
+                hashFloat(seed, camera->zNear);
+                hashFloat(seed, camera->zFar);
+                hashCombine(seed, camera->clearMode);
+                hashFloat(seed, camera->clearColor.r);
+                hashFloat(seed, camera->clearColor.g);
+                hashFloat(seed, camera->clearColor.b);
+                hashFloat(seed, camera->clearColor.a);
+                hashCombine(seed, static_cast<uint64_t>(std::hash<std::string> {}(camera->rendererKey)));
+            }
+            return seed;
+        }
 
         glm::vec3 makeForward(const float yawDegrees, const float pitchDegrees)
         {
@@ -155,6 +231,12 @@ namespace vultra_app
             if (ctx.history)
                 ctx.history->setNextLabel("Drop Asset");
             return true;
+        }
+
+        bool currentWindowDockTabVisible()
+        {
+            const ImGuiWindow* window = ImGui::GetCurrentWindowRead();
+            return window && (!window->DockIsActive || window->DockTabIsVisible);
         }
 
         entt::entity findPrimaryCamera(vultra::World& world)
@@ -336,6 +418,28 @@ namespace vultra_app
             return false;
         }
 
+        void includeMeshWorldBounds(Bounds& bounds, const vasset::VMesh& mesh, const glm::mat4& worldMatrix)
+        {
+            if (mesh.hasLocalBounds)
+            {
+                const glm::vec3 min = mesh.localBoundsMin;
+                const glm::vec3 max = mesh.localBoundsMax;
+                for (uint32_t corner = 0; corner < 8u; ++corner)
+                {
+                    const glm::vec3 p {
+                        (corner & 1u) ? max.x : min.x,
+                        (corner & 2u) ? max.y : min.y,
+                        (corner & 4u) ? max.z : min.z,
+                    };
+                    bounds.include(glm::vec3(worldMatrix * glm::vec4(p, 1.0f)));
+                }
+                return;
+            }
+
+            for (const auto& p : mesh.positions)
+                bounds.include(glm::vec3(worldMatrix * glm::vec4(p, 1.0f)));
+        }
+
         Bounds computeEntityFocusBounds(vultra::World& world, vultra::IAssetService& assets, entt::entity root)
         {
             Bounds bounds;
@@ -358,8 +462,7 @@ namespace vultra_app
                     continue;
 
                 const auto worldMatrix = makeWorldTransformMatrix(reg, e);
-                for (const auto& p : mesh.cpu()->positions)
-                    bounds.include(glm::vec3(worldMatrix * glm::vec4(glm::vec3 {p.x, p.y, p.z}, 1.0f)));
+                includeMeshWorldBounds(bounds, *mesh.cpu(), worldMatrix);
             }
 
             if (!bounds.valid)
@@ -709,11 +812,21 @@ namespace vultra_app
         const bool visible =
             ImGui::Begin(title().c_str(), &m_Open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
         const bool collapsed            = visible && ImGui::IsWindowCollapsed();
-        ctx.state.sceneViewVisible      = visible && !collapsed;
+        const bool dockTabVisible       = visible && currentWindowDockTabVisible();
+        ctx.state.sceneViewVisible      = visible && !collapsed && dockTabVisible;
         if (!visible || collapsed)
         {
             releaseRenderTarget(ctx);
             releasePickingRenderTarget(ctx);
+            ctx.state.sceneCamera.valid = false;
+            ImGui::End();
+            return;
+        }
+        if (!dockTabVisible)
+        {
+            collectRetiredRenderTargets(ctx);
+            collectRetiredPickingRenderTargets();
+            collectRetiredGameOverlayRenderTargets(ctx);
             ctx.state.sceneCamera.valid = false;
             ImGui::End();
             return;
@@ -1176,8 +1289,39 @@ namespace vultra_app
                 hasPrimaryCamera = camera != entt::null;
                 if (hasPrimaryCamera)
                 {
-                    if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
-                        cameraService->addManualCamera(makeGameOverlayCamera(world, camera, aspect, renderTarget));
+                    const bool simulationAdvancing =
+                        ctx.state.editorPlaying && (!ctx.state.editorPaused || ctx.state.editorSteppingThisFrame);
+                    const bool interactiveEdit = ImGui::IsAnyItemActive() || ImGui::IsMouseDown(ImGuiMouseButton_Left);
+                    const auto signature =
+                        gamePreviewSignature(ctx,
+                                             world,
+                                             camera,
+                                             static_cast<uint32_t>(std::max(1.0f, width)),
+                                             static_cast<uint32_t>(std::max(1.0f, height)));
+                    const bool sceneDirtyEdge = ctx.state.sceneDirty != m_GameOverlayLastSceneDirty;
+                    m_GameOverlayLastSceneDirty = ctx.state.sceneDirty;
+                    const bool shouldRender = simulationAdvancing || interactiveEdit || !m_GameOverlayStaticFrameValid ||
+                                              m_GameOverlayLastRenderSignature != signature || sceneDirtyEdge;
+                    if (shouldRender)
+                    {
+                        m_GameOverlayStaticFrameValid    = true;
+                        m_GameOverlayLastRenderSignature = simulationAdvancing || interactiveEdit ? 0 : signature;
+                    }
+
+                    if (shouldRender)
+                    {
+                        if (auto* cameraService = ctx.services->tryGet<vultra::ICameraService>())
+                        {
+                            auto previewCamera = makeGameOverlayCamera(world, camera, aspect, renderTarget);
+                            previewCamera.overrideFrameTime = true;
+                            previewCamera.frameTimeSeconds =
+                                ctx.state.editorPlaying ? ctx.state.editorGameTimeSeconds : 0.0f;
+                            previewCamera.frameDeltaSeconds =
+                                ctx.state.editorPlaying ? ctx.state.editorGameDeltaSeconds : 0.0f;
+                            previewCamera.worldOverride = &world;
+                            cameraService->addManualCamera(previewCamera);
+                        }
+                    }
                 }
             }
         }
@@ -1560,6 +1704,11 @@ namespace vultra_app
         }
         if (ctx.services)
         {
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+            {
+                if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                    renderService->releaseOverrideRenderWorld(&worldService->world());
+            }
             if (auto* imguiService = ctx.services->tryGet<vultra::IImGuiService>())
             {
                 if (m_GameOverlayActiveRenderTarget.textureId)
@@ -1576,6 +1725,8 @@ namespace vultra_app
         m_GameOverlayActiveRenderTarget  = {};
         m_GameOverlayPendingRenderTarget = {};
         m_GameOverlayRetiredRenderTargets.clear();
+        m_GameOverlayStaticFrameValid    = false;
+        m_GameOverlayLastRenderSignature = 0;
     }
 
     void SceneViewWindow::resetRenderTargetsForProject(EditorContext& ctx)
@@ -1588,9 +1739,19 @@ namespace vultra_app
         retirePickingRenderTarget(m_PickingRenderTarget);
         retireGameOverlayRenderTarget(m_GameOverlayActiveRenderTarget);
         retireGameOverlayRenderTarget(m_GameOverlayPendingRenderTarget);
-        m_RenderTargetResizeRequest = {};
-        m_ProjectGeneration          = ctx.state.projectGeneration;
-        m_CameraInitializedFromScene = false;
+        if (ctx.services)
+        {
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+            {
+                if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
+                    renderService->releaseOverrideRenderWorld(&worldService->world());
+            }
+        }
+        m_GameOverlayStaticFrameValid    = false;
+        m_GameOverlayLastRenderSignature = 0;
+        m_RenderTargetResizeRequest      = {};
+        m_ProjectGeneration              = ctx.state.projectGeneration;
+        m_CameraInitializedFromScene     = false;
     }
 
     void SceneViewWindow::initializeCameraFromPrimaryCamera(EditorContext& ctx)

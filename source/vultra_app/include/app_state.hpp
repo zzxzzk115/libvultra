@@ -118,6 +118,9 @@ namespace vultra_app
         bool                  editorPlaying {false};
         bool                  editorPaused {false};
         bool                  editorStepRequested {false};
+        bool                  editorSteppingThisFrame {false};
+        float                 editorGameTimeSeconds {0.0f};
+        float                 editorGameDeltaSeconds {0.0f};
         bool                  codeEditorOpenRequested {false};
         bool                  editorShutdownRequested {false};
         bool                  sceneViewVisible {false};
@@ -141,6 +144,7 @@ namespace vultra_app
         bool                  materialGraphOpenRequested {false};
         uint64_t              projectGeneration {0};
         uint64_t              assetFileGeneration {0};
+        uint64_t              sceneContentGeneration {0};
         bool                  pendingAssetImportRefresh {false};
         std::vector<std::filesystem::path> pendingAssetImportPaths;
         std::vector<std::filesystem::path> pendingExternalAssetDrops;

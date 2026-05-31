@@ -84,6 +84,7 @@ namespace vultra_app
         glm::vec3             m_ModelPreviewArcballVector {0.0f, 0.0f, 1.0f};
         bool                  m_ModelPreviewArcballActive {false};
         bool                  m_ModelPreviewDirty {true};
+        bool                  m_ModelPreviewCameraSubmitted {false};
         float                 m_ModelPreviewDistanceScale {1.0f};
         uint32_t              m_ModelPreviewLastWidth {0};
         uint32_t              m_ModelPreviewLastHeight {0};

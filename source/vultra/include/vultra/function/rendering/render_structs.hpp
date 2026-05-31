@@ -87,6 +87,12 @@ namespace vultra
         bool          debugEntityIdOutput {false};
         bool          selectionOutlineEnabled {false};
 
+        // Optional per-camera frame time override. Editor static previews use this to render deterministic
+        // shader-time output without affecting other cameras submitted in the same frame.
+        bool  overrideFrameTime {false};
+        float frameTimeSeconds {0.0f};
+        float frameDeltaSeconds {0.0f};
+
         // SRP binding (string key, resolved to a Renderer instance by RenderSystem)
         // Example: "universal", "hd"
         std::string rendererKey {"universal"};

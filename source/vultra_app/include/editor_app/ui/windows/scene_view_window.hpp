@@ -88,6 +88,9 @@ namespace vultra_app
         RenderTargetSlot              m_GameOverlayActiveRenderTarget;
         RenderTargetSlot              m_GameOverlayPendingRenderTarget;
         std::vector<RenderTargetSlot> m_GameOverlayRetiredRenderTargets;
+        uint64_t                      m_GameOverlayLastRenderSignature {0};
+        bool                          m_GameOverlayStaticFrameValid {false};
+        bool                          m_GameOverlayLastSceneDirty {false};
 
         glm::vec3 m_CameraPosition {0.0f, 1.6f, 4.0f};
         float     m_CameraYaw {-90.0f};

@@ -116,6 +116,8 @@ namespace vultra_app
         float                         m_PreviewDistanceScale {1.0f};
         float                         m_PreviewFocusElapsed {0.0f};
         float                         m_PreviewFocusDuration {0.28f};
+        float                         m_PreviewTimeSeconds {0.0f};
+        bool                          m_PreviewTimePlaying {false};
         bool                          m_PreviewFocusActive {false};
         bool                          m_PreviewArcballActive {false};
     };

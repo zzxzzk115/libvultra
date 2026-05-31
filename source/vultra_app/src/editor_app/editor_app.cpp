@@ -964,12 +964,16 @@ namespace vultra_app
             startBuildAndRun(ctx);
 
         if (auto* renderService = ctx.services ? ctx.services->tryGet<vultra::IRenderService>() : nullptr)
+        {
+            renderService->setFrameGraphSnapshotCaptureEnabled(false);
             renderService->setFrameGraphTextureCaptureEnabled(false);
+        }
 
         {
             vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::taskBar"};
             drawEditorTaskBar(ctx);
         }
+        updateEditorGameClock(ctx);
         {
             vultra::RuntimeProfiler::ExternalScope scope {"EditorApp::dockSpace"};
             beginDockSpace();
@@ -1028,6 +1032,7 @@ namespace vultra_app
 
     void EditorApp::syncPlaybackState(EditorContext& ctx)
     {
+        ctx.state.editorSteppingThisFrame = ctx.state.editorStepRequested;
         if (!ctx.services)
             return;
 
@@ -1066,6 +1071,30 @@ namespace vultra_app
             ctx.state.editorStepRequested = false;
 
         m_PlaybackWasPlaying = ctx.state.editorPlaying;
+    }
+
+    void EditorApp::updateEditorGameClock(EditorContext& ctx)
+    {
+        ctx.state.editorGameDeltaSeconds = 0.0f;
+        if (!ctx.state.editorPlaying)
+        {
+            ctx.state.editorGameTimeSeconds = 0.0f;
+            return;
+        }
+
+        if (!m_PlaybackWasPlaying)
+        {
+            ctx.state.editorGameTimeSeconds = 0.0f;
+            return;
+        }
+
+        const bool stepRequested = ctx.state.editorStepRequested;
+        if (ctx.state.editorPaused && !stepRequested)
+            return;
+
+        const float delta = stepRequested ? (1.0f / 60.0f) : std::max(ImGui::GetIO().DeltaTime, 0.0f);
+        ctx.state.editorGameDeltaSeconds = delta;
+        ctx.state.editorGameTimeSeconds  = std::max(0.0f, ctx.state.editorGameTimeSeconds + delta);
     }
 
     void EditorApp::processEditorCommands(EditorContext& ctx)
@@ -1545,6 +1574,8 @@ namespace vultra_app
         m_History.syncCurrent(ctx);
         ctx.state.statusMessage       = "Exited Play Mode. Scene state restored.";
         ctx.state.editorStepRequested = false;
+        ctx.state.editorGameTimeSeconds  = 0.0f;
+        ctx.state.editorGameDeltaSeconds = 0.0f;
     }
 
     void EditorApp::releaseEditorStateForProjectLoad(EditorContext& ctx)
@@ -1580,6 +1611,8 @@ namespace vultra_app
         ctx.state.editorPlaying       = false;
         ctx.state.editorPaused        = false;
         ctx.state.editorStepRequested = false;
+        ctx.state.editorGameTimeSeconds  = 0.0f;
+        ctx.state.editorGameDeltaSeconds = 0.0f;
         ctx.state.pendingEditorCommands.clear();
         ctx.state.renderGraphOpenRequested   = false;
         ctx.state.runtimeFrameGraphViewerOpenRequested = false;
@@ -2323,6 +2356,8 @@ namespace vultra_app
         {
             if (auto* backendService = ctx.services->tryGet<vultra::IRenderBackendService>())
                 backendService->renderDevice().waitIdle();
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+                renderService->resetSceneState();
             if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
                 worldService->world().clear();
         }
@@ -2354,6 +2389,8 @@ namespace vultra_app
         ctx.state.editorPaused              = false;
         ctx.state.editorShutdownRequested   = false;
         ctx.state.editorStepRequested       = false;
+        ctx.state.editorGameTimeSeconds     = 0.0f;
+        ctx.state.editorGameDeltaSeconds    = 0.0f;
     }
 
     void EditorApp::drawEditorTaskBar(EditorContext& ctx)

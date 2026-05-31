@@ -69,6 +69,8 @@ namespace vultra
         const RenderWorld& renderWorld() const { return m_RenderWorldFront; }
         RuntimeProfiler*   runtimeProfiler() override { return &m_RuntimeProfiler; }
         std::string_view lastFrameGraphSnapshot() const override { return m_LastFrameGraphSnapshot; }
+        void setFrameGraphSnapshotCaptureEnabled(bool enabled) override { m_FrameGraphSnapshotCaptureEnabled = enabled; }
+        bool frameGraphSnapshotCaptureEnabled() const override { return m_FrameGraphSnapshotCaptureEnabled; }
         void setFrameGraphTextureCaptureEnabled(bool enabled) override { m_FrameGraphTextureCaptureEnabled = enabled; }
         bool frameGraphTextureCaptureEnabled() const override { return m_FrameGraphTextureCaptureEnabled; }
         void setFrameGraphTexturePreviewSettings(const FrameGraphTexturePreviewSettings& settings) override
@@ -162,6 +164,7 @@ namespace vultra
             uint64_t                    lastTouchedFrame {0};
         };
         std::vector<FrameGraphDebugTextureSlot> m_RetiredFrameGraphDebugTextureSlots;
+        bool                                              m_FrameGraphSnapshotCaptureEnabled {false};
         bool                                              m_FrameGraphTextureCaptureEnabled {false};
         FrameGraphTexturePreviewSettings                  m_FrameGraphTexturePreviewSettings;
         std::unordered_map<std::string, FrameGraphTexturePreviewSettings> m_FrameGraphTexturePreviewOverrides;
