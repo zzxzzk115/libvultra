@@ -184,7 +184,7 @@
       },
       "params": {
         "binaryRefinement": 2,
-        "enabled": false,
+        "enabled": true,
         "maxSteps": 8,
         "reflectionFactor": 0.20000000298023224,
         "stride": 0.35,
@@ -200,7 +200,7 @@
         "source": "GeneralGaussianSplatComposite.color"
       },
       "params": {
-        "enabled": false
+        "enabled": true
       },
       "type": "SsrComposite"
     },
