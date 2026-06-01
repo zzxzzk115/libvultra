@@ -52,12 +52,13 @@ namespace vultra
                                                        framegraph::Attachment {
                                                             .imageAspect = rhi::ImageAspect::eDepth,
                                                        });
+                    data.depth = depthPreData.depth;
 
                     data.albedo = builder.create<framegraph::FrameGraphTexture>(
                         "GBuffer - Albedo",
                         {
                              .extent     = resolution,
-                             .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                             .format     = rhi::PixelFormat::eRGBA16F,
                              .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                         });
                     data.albedo = builder.write(data.albedo,
@@ -85,7 +86,7 @@ namespace vultra
                         "GBuffer - Emissive",
                         {
                              .extent     = resolution,
-                             .format     = rhi::PixelFormat::eRGBA8_UNorm,
+                             .format     = rhi::PixelFormat::eRGBA16F,
                              .usageFlags = rhi::ImageUsage::eRenderTarget | rhi::ImageUsage::eSampled,
                         });
                     data.emissive = builder.write(data.emissive,

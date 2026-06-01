@@ -80,11 +80,12 @@ void main() {
 	if (material.albedoIndex > 0)
 	{
 		vec4 baseColor = textureGrad(textures[nonuniformEXT(material.albedoIndex)], v_TexCoord, duvdx, duvdy);
-		albedo = vec4(baseColor.rgb * v_Color, baseColor.a * material.opacity);
+		albedo = vec4(baseColor.rgb * material.baseColor.rgb,
+		              baseColor.a * material.baseColor.a * material.opacity);
 	}
 	else
 	{
-		albedo = vec4(material.baseColor.rgb * v_Color, material.baseColor.a);
+		albedo = vec4(material.baseColor.rgb, material.baseColor.a);
 	}
 #ifdef ENABLE_ALPHA_MASKING
 	if (albedo.a < material.alphaCutoff)
@@ -92,7 +93,7 @@ void main() {
 		discard;
 	}
 #endif
-	g_Albedo = sRGBToLinear(albedo.rgb); // Manually convert to linear, since we load textures as UNorm
+	g_Albedo = albedo.rgb;
 
 	// Normal
 	vec3 normal = normalize(v_TBN[2]);
@@ -110,7 +111,11 @@ void main() {
 	{
 		emissive = textureGrad(textures[nonuniformEXT(material.emissiveIndex)], v_TexCoord, duvdx, duvdy);
 	}
-	g_Emissive = sRGBToLinear(emissive.rgb); // Manually convert to linear, since we load textures as UNorm
+	else
+	{
+		emissive = vec4(material.emissiveColorIntensity.rgb * material.emissiveColorIntensity.a, 1.0);
+	}
+	g_Emissive = emissive.rgb;
 
 	// Metallic + Roughness + AO
 	float metallic = 0.0; // Default metallic

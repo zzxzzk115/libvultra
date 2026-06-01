@@ -23,6 +23,13 @@ task("shader_task")
             table.join2(files, os.files(pattern))
         end
 
+        local shader_source_mtime = 0
+        for _, f in ipairs(os.files(path.join(shader_root, "**"))) do
+            if os.isfile(f) then
+                shader_source_mtime = math.max(shader_source_mtime, os.mtime(f))
+            end
+        end
+
         for _, f in ipairs(files) do
 			print(f)
             local rel = path.relative(f, shader_root)
@@ -30,7 +37,7 @@ task("shader_task")
             os.mkdir(path.directory(out_spv))
 
             -- incremental build: skip if up-to-date
-            if os.exists(out_spv) and os.mtime(out_spv) >= os.mtime(f) then
+            if os.exists(out_spv) and os.mtime(out_spv) >= os.mtime(f) and os.mtime(out_spv) >= shader_source_mtime then
                 cprint("${cyan}[OK]${clear}   %s", rel)
             else
                 cprint("${green}[BUILD]${clear} %s", rel)

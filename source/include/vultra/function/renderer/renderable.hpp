@@ -15,6 +15,7 @@ namespace vultra
         {
             Ref<gfx::DefaultMesh> mesh {nullptr};
             glm::mat4             modelMatrix {1.0f};
+            bool                  excludeFromRaytracing {false};
         };
 
         struct RenderableGroup
@@ -49,7 +50,7 @@ namespace vultra
                 for (uint32_t i = 0; i < renderables.size(); ++i)
                 {
                     const auto& renderable = renderables[i];
-                    if (renderable.mesh && renderable.mesh->renderMesh.blas)
+                    if (!renderable.excludeFromRaytracing && renderable.mesh && renderable.mesh->renderMesh.blas)
                     {
                         rhi::RayTracingInstance instance {};
                         instance.blas            = &renderable.mesh->renderMesh.blas;
@@ -75,6 +76,11 @@ namespace vultra
 
                 for (const auto& renderable : renderables)
                 {
+                    if (renderable.excludeFromRaytracing)
+                    {
+                        continue;
+                    }
+
                     GPUInstanceData instanceData {};
                     instanceData.geometryOffset = static_cast<uint32_t>(geometryNodes.size());
                     instanceData.geometryCount  = static_cast<uint32_t>(renderable.mesh->renderMesh.subMeshes.size());
