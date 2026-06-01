@@ -13,6 +13,7 @@ namespace vultra_app
         bool        showHelp {false};
         bool        editorMode {false};
         bool        mcpMode {false};
+        std::string renderMode {"visible"};
         bool        cliOnly {false};
         std::string cliCommand;
         std::string projectPath;

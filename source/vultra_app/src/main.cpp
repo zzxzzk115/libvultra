@@ -255,6 +255,7 @@ namespace
                 if (m_Options.mcpPort.has_value())
                     m_State.editorSettings.mcpPort = *m_Options.mcpPort;
             }
+            m_State.renderMode = m_Options.renderMode;
 
             m_VpkPath = vultra_app::findDefaultVpk(m_Options);
             if (m_Options.editorMode)
@@ -375,6 +376,8 @@ namespace
                     !m_Options.editorMode &&
                     engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eWebGPU;
             }
+            if (m_Options.renderMode == "offscreen" || m_Options.renderMode == "none")
+                engine.ctx().config.window.visible = false;
 
             if (m_Options.editorMode)
             {
@@ -471,8 +474,10 @@ namespace
 
         void onBeforeEngineTick(vultra::fsec /*dt*/) override
         {
+            vultra_app::EditorContext mcpCtx {.state = m_State, .services = &engineCtx().services, .editor = &m_Editor};
             if (m_State.mode == vultra_app::AppMode::Runtime)
             {
+                m_Editor.updateRuntimeMcp(mcpCtx);
                 updateRuntimeSceneLoad();
                 return;
             }

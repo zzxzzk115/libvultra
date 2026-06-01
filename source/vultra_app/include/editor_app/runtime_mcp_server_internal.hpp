@@ -22,6 +22,9 @@ namespace vultra_app
         bool done {false};
         bool defer {false};
         bool frameCaptureRequested {false};
+        bool simStepRequested {false};
+        bool simActionsApplied {false};
+        uint32_t simFramesRemaining {0};
         uint64_t frameCaptureStartFrame {0};
         uint32_t frameCapturePolls {0};
         std::chrono::steady_clock::time_point frameCaptureStartedAt {};

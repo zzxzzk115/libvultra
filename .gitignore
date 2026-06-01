@@ -23,6 +23,15 @@ out/
 __pycache__/
 *.py[cod]
 
+# Python local environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+pip-wheel-metadata/
+*.egg-info/
+
 # CMake
 CMakeLists.txt
 

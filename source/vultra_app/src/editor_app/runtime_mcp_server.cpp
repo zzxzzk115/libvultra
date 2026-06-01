@@ -322,8 +322,7 @@ namespace vultra_app
     void RuntimeMcpServer::syncDesiredState(EditorContext& ctx)
     {
         const auto& settings = ctx.state.editorSettings;
-        const bool  shellMode = ctx.state.mode == AppMode::Editor || ctx.state.mode == AppMode::Launcher;
-        const bool  desired   = settings.enableAgent && settings.autoStartMcp && shellMode;
+        const bool  desired   = settings.enableAgent && settings.autoStartMcp;
         if (!desired)
         {
             stop();

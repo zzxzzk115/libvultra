@@ -114,6 +114,7 @@ namespace vultra_app
         std::string           currentDefaultScene;
         std::string           currentEditingRenderGraph {"res://render/default.vrg.json"};
         std::string           currentEditingMaterialGraph {"res://materials/default.vmatgraph.json"};
+        std::string           renderMode {"visible"};
         std::string           statusMessage;
         bool                  editorPlaying {false};
         bool                  editorPaused {false};

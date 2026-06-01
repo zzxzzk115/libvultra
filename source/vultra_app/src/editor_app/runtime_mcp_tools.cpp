@@ -95,6 +95,9 @@ namespace vultra_app
         if (auto result = handleRuntimeTool(name, args, ctx, call); !result.is_null())
             return result;
 
+        if (auto result = handleSimTool(name, args, ctx, call); !result.is_null())
+            return result;
+
         if (name == "vultra.editor.command")
         {
             if (!ctx.editor)

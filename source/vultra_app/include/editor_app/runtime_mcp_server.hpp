@@ -61,6 +61,10 @@ namespace vultra_app
                                                        const nlohmann::json& args,
                                                        EditorContext& ctx,
                                                        PendingCall* call);
+        [[nodiscard]] nlohmann::json handleSimTool(std::string_view name,
+                                                   const nlohmann::json& args,
+                                                   EditorContext& ctx,
+                                                   PendingCall* call);
         void captureRecordingFrame(EditorContext& ctx);
         void startRecordingWriter();
         int  stopRecordingWriter();

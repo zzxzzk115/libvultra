@@ -419,6 +419,7 @@ namespace vultra_app
                 {"projectName", ctx.state.currentProjectName},
                 {"defaultScene", ctx.state.currentDefaultScene},
                 {"editingRenderGraph", ctx.state.currentEditingRenderGraph},
+                {"renderMode", ctx.state.renderMode},
                 {"playing", ctx.state.editorPlaying},
                 {"paused", ctx.state.editorPaused},
                 {"stepRequested", ctx.state.editorStepRequested},

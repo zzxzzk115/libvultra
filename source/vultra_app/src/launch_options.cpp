@@ -2,6 +2,7 @@
 
 #include <argparse/argparse.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <vector>
@@ -37,6 +38,17 @@ namespace vultra_app
         bool isCliCommand(const std::string& arg)
         {
             return arg == "help" || arg == "version" || arg == "pack" || arg == "import" || arg == "validate-vpk";
+        }
+
+        std::string normalizedRenderMode(std::string value)
+        {
+            std::transform(value.begin(), value.end(), value.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            if (value == "visible" || value == "offscreen" || value == "none")
+                return value;
+            std::cerr << "Argument warning: unknown --render-mode '" << value << "', using visible.\n";
+            return "visible";
         }
 
         std::filesystem::path currentExecutablePath()
@@ -90,8 +102,10 @@ namespace vultra_app
         program.add_argument("-h", "--help").flag();
         program.add_argument("--editor").flag();
         program.add_argument("--mcp").flag();
+        program.add_argument("--rpc").flag();
         program.add_argument("--mcp-host").default_value(std::string {});
         program.add_argument("--mcp-port").scan<'i', int>().default_value(0);
+        program.add_argument("--render-mode").default_value(std::string {"visible"});
         program.add_argument("--project").default_value(std::string {});
         program.add_argument("--vpk").default_value(std::string {});
         program.add_argument("--scene").default_value(std::string {});
@@ -117,7 +131,8 @@ namespace vultra_app
             program.parse_args(argv);
             options.showHelp    = program.get<bool>("--help");
             options.editorMode  = program.get<bool>("--editor");
-            options.mcpMode     = program.get<bool>("--mcp");
+            options.mcpMode     = program.get<bool>("--mcp") || program.get<bool>("--rpc");
+            options.renderMode  = normalizedRenderMode(program.get<std::string>("--render-mode"));
             options.projectPath = program.get<std::string>("--project");
             options.vpkPath     = program.get<std::string>("--vpk");
             options.sceneUri    = program.get<std::string>("--scene");
@@ -229,7 +244,7 @@ namespace vultra_app
         std::cout << "VultraEngine runtime\n\n"
                   << "Usage:\n"
                   << "  vultra [--vpk resources.vpk] [--scene res://scenes/main.vscn]\n"
-                  << "  vultra --editor [--mcp] [--mcp-port 8848] --project <project-dir>\n"
+                  << "  vultra --editor [--mcp|--rpc] [--mcp-port 8848] [--render-mode visible|offscreen|none] --project <project-dir>\n"
                   << "  vultra [--no-xr] [--xr-mirror|--no-xr-mirror] --editor --project <project-dir>\n"
                   << "  vultra [--validation|--no-validation] [--debug-markers|--no-debug-markers] "
                      "[--renderdoc|--no-renderdoc]\n"
@@ -239,6 +254,7 @@ namespace vultra_app
                   << "  Without --vpk, Vultra first tries <executable-name>.vpk next to the executable.\n"
                   << "  Without a VPK, Vultra opens the Project Launcher.\n"
                   << "  --editor requires --project; no-project editor sessions are invalid.\n"
+                  << "  --rpc is an alias for --mcp; --render-mode=none disables visual capture tools.\n"
                   << "  CLI subcommands are reserved for the integrated tool workflow.\n";
     }
 
