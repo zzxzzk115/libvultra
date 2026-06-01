@@ -7,7 +7,7 @@ Appearance`.
 
 ## Verification
 
-- `vultra.bootstrap_context` MCP smoke test succeeded through stdio.
+- Repository AI Harness context was read from tracked `ai/` files.
 - `xmake build -y vultra-app` succeeded.
 
 ## Notes

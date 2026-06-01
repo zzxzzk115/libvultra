@@ -9,6 +9,10 @@ description: Use when generating, updating, replacing, or reviewing concrete lib
 
 Inspect before generating. Read the target subsystem header/source, nearby service or component interfaces, existing binding modules in `source/vultra/include/vultra/function/scripting/bindings/` and `source/vultra/src/function/scripting/bindings/`, `script_binding.cpp`, `ScriptContext`, and `script_types.hpp`.
 
+Before adding a binding, decide whether the desired feature has a real runtime service/data boundary. If the C++ behavior is missing or only exists inside UI code, add the service/component implementation first and bind the service-facing operation after that.
+
+Audit nearby same-subsystem features for missing player-facing bindings while you are in the area. Keep the implementation focused, but do not leave an obvious adjacent API gap undocumented.
+
 Create one focused module per subsystem. Use `script_<subsystem>_binding.hpp` for the declaration and `script_<subsystem>_binding.cpp` for implementation. Name the entry point `registerScript<Subsystem>Bindings(sol::state& lua, ScriptContext& ctx)` when context is needed, or omit `ctx` only for pure value/math bindings.
 
 Wire the module by including its header in `source/vultra/src/function/scripting/script_binding.cpp` and calling its register function from `registerScriptBindings` after its dependencies. Register math/value types before APIs that consume them.
@@ -44,5 +48,7 @@ Include only the headers needed by the binding. Prefer subsystem public headers 
 Register usertypes, enums, and functions in a stable order. Keep overloads explicit and avoid ambiguous lambdas that make Lua errors hard to read.
 
 Add or update minimal runtime/editor examples only when the repo already has a place for script examples. Do not invent a new examples structure unless requested.
+
+Update `doc/lua_scripting.md`, `ai/knowledge/lua-scripting.md`, and any affected project-local AI documents when a binding changes gameplay-author behavior.
 
 Build the affected target after C++ changes. For documentation-only changes, validate the skill shape and sanity-check references with `rg`.

@@ -21,7 +21,7 @@ There were also stale defaults in editor/project helper code that could reintrod
 
 ## Verification
 
-- `rg -n "res://scenes/test\\.vscn|test\\.vscn" resources source/vultra_app tools/vultra_mcp`
+- `rg -n "res://scenes/test\\.vscn|test\\.vscn" resources source/vultra_app tools`
   - No matches.
 - `git diff --check`
   - Passed.

@@ -25,16 +25,27 @@ content records.
 Project agents may edit project content through controlled tools. They must not
 directly edit engine C++ source.
 
-## MCP Layer
+Project agents may rely on gameplay scripting APIs only after the repository
+Lua documentation and project-local AI notes describe those APIs. If a game
+workflow needs an engine feature that has no Lua binding, the engine task must
+first add the missing service/data behavior and then expose a thin Lua binding.
 
-`tools/vultra_mcp/` exposes engine and project context through MCP resources,
-prompts, and tools. Edits default to dry-run and require explicit write mode,
-hash checks, and path allowlists.
+## Automation Layer
+
+Repository and project Harness context lives in tracked `ai/` folders and is
+read directly by agents before planning or editing. Live editor/runtime
+automation is handled by the C++ Runtime MCP embedded in `vultra-app`; it is for
+running-engine diagnostics and editor commands, not for bypassing Harness safety
+rules around source or project-content edits.
 
 ## Acceptance Criteria
 
 - New projects receive a project-level AI workspace skeleton.
-- MCP can inspect engine and project workspaces.
-- MCP dry-run tools produce proposed patches without mutating files.
-- MCP write mode rejects missing hashes, stale hashes, and paths outside the
-  allowlist.
+- Agents can inspect engine and project workspaces from the tracked `ai/`
+  files.
+- Runtime MCP can drive live editor automation without directly mutating engine
+  source.
+- Project-content writes still follow explicit approval, dry-run, and handoff
+  notes when requested by the project workflow.
+- Gameplay-facing engine changes include a scripting parity decision, Lua docs,
+  and project AI doc updates when relevant.
