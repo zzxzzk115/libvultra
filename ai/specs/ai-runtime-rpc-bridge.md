@@ -10,6 +10,13 @@ pybind11 by default.
 
 - `--rpc` is an alias for `--mcp`.
 - `--render-mode` accepts `visible`, `offscreen`, or `none`.
+- Render modes have distinct training roles:
+  - `visible`: windowed rendering for human observation and debugging.
+  - `offscreen`: no visible window, GPU/render services stay active, cameras
+    render into textures, and `capture_rgb`/`capture_depth` provide visual
+    observations for Python/PyTorch.
+  - `none`: no visible window and no GPU/render path; only world, physics,
+    script, state, action, and RPC services run.
 - Python/PyTorch tools run outside `vultra.exe` and call localhost RPC.
 - Simulation tools are batch-oriented:
   - `vultra.sim.reset`
@@ -27,9 +34,24 @@ pybind11 by default.
   runtime for this bridge.
 - Keep the RPC layer thin over engine services/components.
 - Prefer large batched calls over per-entity/per-field round trips.
-- `render-mode=none` must return explicit errors for render capture.
+- `render-mode=offscreen` is the primary path for visual embodied AI training.
+- `render-mode=none` must return explicit errors for render capture and should
+  not be described as a visual observation mode.
 - Lua parity is not required for v1 because this is an external automation
   surface, not a player-facing gameplay scripting API.
+
+## Headless Implementation Flow
+
+Headless does not mean "no rendering"; it means "no visible window". Implement
+the next runtime work in two phases:
+
+1. Extract a shared no-window runtime/MCP lifecycle so project runtime mode can
+   start without EditorApp, ProjectLauncher, or visible window ownership.
+2. Split the services by render mode:
+   - `offscreen`: keep GPU/render/camera services, render to textures, and make
+     RGB/depth capture usable without a visible window.
+   - `none`: use a lighter simulation-only service set for physics/script/RPC,
+     with render capture unavailable by design.
 
 ## Data Plane Roadmap
 
