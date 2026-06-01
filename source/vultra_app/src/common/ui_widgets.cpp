@@ -4,6 +4,7 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <cctype>
@@ -142,6 +143,29 @@ namespace vultra_app::ui
         ImGui::SameLine();
         ImGui::TextUnformatted(label);
         ImGui::Separator();
+    }
+
+    void capturePreviewInput(const bool hoveredOrActive)
+    {
+        if (!hoveredOrActive)
+            return;
+
+        const auto id = ImGui::GetCurrentWindow() ? ImGui::GetCurrentWindow()->ID : ImGui::GetID("PreviewInput");
+        ImGui::SetKeyOwner(ImGuiKey_MouseWheelX, id);
+        ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, id);
+        ImGui::SetNextFrameWantCaptureMouse(true);
+    }
+
+    bool capturePreviewItemInput()
+    {
+        const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+        if (hovered)
+        {
+            ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelX);
+            ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
+        }
+        capturePreviewInput(hovered);
+        return hovered;
     }
 
     ScopedPopupStyle::ScopedPopupStyle()

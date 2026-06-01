@@ -179,7 +179,12 @@ namespace vultra
         if (m_PlaybackPaused && m_SingleStepRequests > 0u)
             --m_SingleStepRequests;
 
-        auto& reg  = m_Worlds->world().registry();
+        updateWorld(m_Worlds->world(), dt);
+    }
+
+    void AnimationSystem::updateWorld(World& world, fsec dt)
+    {
+        auto& reg  = world.registry();
         auto  view = reg.view<AnimatorComponent>();
         for (auto entity : view)
         {

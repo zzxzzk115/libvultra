@@ -62,6 +62,9 @@ namespace vultra_app
                                              const vultra::CoreUUID& uuid,
                                              const std::string& name,
                                              const std::string& importedPath);
+        void rebuildModelPreviewWorldForAnimation(EditorContext& ctx,
+                                                  const vultra::CoreUUID& uuid,
+                                                  const vasset::VAssetRegistry::AssetEntry& entry);
 
         vultra::CoreUUID      m_NameEditEntity {};
         std::array<char, 128> m_NameBuffer {};
@@ -90,7 +93,11 @@ namespace vultra_app
         bool                  m_ModelPreviewArcballActive {false};
         bool                  m_ModelPreviewDirty {true};
         bool                  m_ModelPreviewCameraSubmitted {false};
+        bool                  m_ModelPreviewAnimated {false};
+        bool                  m_ModelPreviewAnimationPlaying {true};
+        bool                  m_ModelPreviewAnimationLoop {true};
         float                 m_ModelPreviewDistanceScale {1.0f};
+        float                 m_ModelPreviewAnimationSpeed {1.0f};
         uint32_t              m_ModelPreviewLastWidth {0};
         uint32_t              m_ModelPreviewLastHeight {0};
     };

@@ -8,6 +8,7 @@
 #include <IconsMaterialDesignIcons.h>
 #include <ImGuiFileDialog/ImGuiFileDialog.h>
 #include <vultra/function/rendering/render_structs.hpp>
+#include <vultra/function/services/animation_service.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/imgui_service.hpp>
@@ -104,6 +105,40 @@ namespace vultra_app
         bool isModelSourceAsset(const std::filesystem::path& path)
         {
             return sourceAssetHasExtension(path, {".gltf", ".glb", ".obj", ".fbx", ".dae"});
+        }
+
+        std::string sourcePrefixBeforeSubAsset(const std::string& sourcePath)
+        {
+            const auto hash = sourcePath.find('#');
+            return hash == std::string::npos ? sourcePath : sourcePath.substr(0, hash);
+        }
+
+        vultra::CoreUUID coreUuidFromRegistryKey(const std::string& uuid)
+        {
+            vbase::UUID parsed {};
+            return vbase::try_parse_uuid(uuid.c_str(), parsed) ? vultra::CoreUUID(parsed) : vultra::CoreUUID {};
+        }
+
+        void applyPreviewAnimatorControls(vultra::World& world, bool playing, bool loop, float speed)
+        {
+            auto& reg  = world.registry();
+            auto  view = reg.view<vultra::AnimatorComponent>();
+            for (auto entity : view)
+            {
+                auto& animator = view.get<vultra::AnimatorComponent>(entity);
+                animator.playOnStart = false;
+                animator.playing     = playing;
+                animator.loop        = loop;
+                animator.speed       = speed;
+            }
+        }
+
+        void resetPreviewAnimators(vultra::World& world)
+        {
+            auto& reg  = world.registry();
+            auto  view = reg.view<vultra::AnimatorComponent>();
+            for (auto entity : view)
+                view.get<vultra::AnimatorComponent>(entity).time = 0.0f;
         }
 
         bool isEditableSourceText(const std::filesystem::path& path)
@@ -3182,7 +3217,8 @@ namespace vultra_app
             if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
             {
                 const auto entry = assetService->registry().lookup(Selection::lastId().native());
-                keepModelPreview = entry.type == vasset::VAssetType::eMesh;
+                keepModelPreview =
+                    entry.type == vasset::VAssetType::eMesh || entry.type == vasset::VAssetType::eAnimation;
             }
         }
         else if (Selection::lastCategory() != SelectionCategory::Entity && !ctx.state.selectedSourceAsset.empty())
@@ -3670,6 +3706,7 @@ namespace vultra_app
         ImGui::TextUnformatted("Preview");
         const float size = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
         ImGui::Image(previewId, ImVec2(size, size));
+        (void)ui::capturePreviewItemInput();
     }
 
     void InspectorWindow::drawSkeletonAssetInspector(EditorContext& ctx, const vasset::VAssetRegistry::AssetEntry& entry)
@@ -3706,7 +3743,36 @@ namespace vultra_app
         ImGui::TextWrapped("Name: %s", animation.name.c_str());
         ImGui::Text("Duration: %.3f s", animation.duration);
         ImGui::Text("Payload: %s", formatFileSize(animation.ozzData.size()).c_str());
-        ImGui::TextDisabled("Playback preview requires the runtime animation system.");
+
+        const auto uuid = Selection::lastId();
+        const auto key  = "animation:" + uuid.toString() + ":" + entry.importedPath;
+        if (m_ModelPreviewKey != key)
+            rebuildModelPreviewWorldForAnimation(ctx, uuid, entry);
+
+        ImGui::Spacing();
+        ui::sectionTitle(ICON_MDI_PLAY, "Preview");
+        if (ImGui::SmallButton(m_ModelPreviewAnimationPlaying ? ICON_MDI_PAUSE : ICON_MDI_PLAY))
+        {
+            m_ModelPreviewAnimationPlaying = !m_ModelPreviewAnimationPlaying;
+            m_ModelPreviewDirty            = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_MDI_RESTORE "##ResetAnimationPreview"))
+        {
+            resetPreviewAnimators(m_ModelPreviewWorld);
+            m_ModelPreviewDirty = true;
+        }
+        bool controlsChanged = false;
+        controlsChanged |= ImGui::Checkbox("Loop", &m_ModelPreviewAnimationLoop);
+        controlsChanged |= ImGui::DragFloat("Speed", &m_ModelPreviewAnimationSpeed, 0.02f, 0.05f, 4.0f, "%.2f");
+        m_ModelPreviewAnimationSpeed = std::clamp(m_ModelPreviewAnimationSpeed, 0.05f, 4.0f);
+        if (controlsChanged)
+            m_ModelPreviewDirty = true;
+        applyPreviewAnimatorControls(m_ModelPreviewWorld,
+                                     m_ModelPreviewAnimationPlaying,
+                                     m_ModelPreviewAnimationLoop,
+                                     m_ModelPreviewAnimationSpeed);
+        drawModelPreviewViewport(ctx, key);
     }
 
     void InspectorWindow::drawSourceAssetInspector(EditorContext& ctx)
@@ -3890,6 +3956,7 @@ namespace vultra_app
         ImGui::TextUnformatted("Preview");
         const float size = std::min(ImGui::GetContentRegionAvail().x, 260.0f);
         ImGui::Image(previewId, ImVec2(size, size));
+        (void)ui::capturePreviewItemInput();
     }
 
     void InspectorWindow::drawSourceModelPreview(EditorContext& ctx, const std::filesystem::path& path)
@@ -3958,9 +4025,10 @@ namespace vultra_app
         (void)worldService;
 
         ImGui::Image(m_ModelPreviewTarget.textureId, ImVec2(width, height));
-        const bool   hovered  = ImGui::IsItemHovered();
+        const bool   hovered  = ui::capturePreviewItemInput();
         const ImVec2 imageMin = ImGui::GetItemRectMin();
         const ImVec2 imageMax = ImGui::GetItemRectMax();
+        ui::capturePreviewInput(m_ModelPreviewArcballActive);
 
         if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
         {
@@ -4000,6 +4068,15 @@ namespace vultra_app
             }
             m_ModelPreviewDirty = true;
             return;
+        }
+        if (m_ModelPreviewAnimated)
+        {
+            if (auto* animationService = ctx.services->tryGet<vultra::IAnimationService>())
+            {
+                const float dt = m_ModelPreviewAnimationPlaying ? std::max(ImGui::GetIO().DeltaTime, 0.0f) : 0.0f;
+                animationService->updateWorld(m_ModelPreviewWorld, fsec {dt});
+                m_ModelPreviewDirty = true;
+            }
         }
         if (!m_ModelPreviewDirty)
         {
@@ -4156,6 +4233,7 @@ namespace vultra_app
         m_RetiredModelPreviewTargets.clear();
         m_ModelPreviewDirty           = true;
         m_ModelPreviewCameraSubmitted = false;
+        m_ModelPreviewAnimated        = false;
         m_ModelPreviewLastWidth       = 0;
         m_ModelPreviewLastHeight      = 0;
     }
@@ -4177,6 +4255,7 @@ namespace vultra_app
         m_ModelPreviewArcballActive   = false;
         m_ModelPreviewCameraSubmitted = false;
         m_ModelPreviewDirty           = true;
+        m_ModelPreviewAnimated        = false;
         m_ModelPreviewDistanceScale   = 1.0f;
 
         addPreviewLighting(m_ModelPreviewWorld);
@@ -4240,6 +4319,7 @@ namespace vultra_app
         m_ModelPreviewArcballActive   = false;
         m_ModelPreviewCameraSubmitted = false;
         m_ModelPreviewDirty           = true;
+        m_ModelPreviewAnimated        = false;
         m_ModelPreviewDistanceScale   = 1.0f;
 
         addPreviewLighting(m_ModelPreviewWorld);
@@ -4258,5 +4338,130 @@ namespace vultra_app
             if (auto* assetService = ctx.services->tryGet<vultra::IAssetService>())
                 centerPreviewContent(m_ModelPreviewWorld, *assetService, m_ModelPreviewContentRoot);
         }
+    }
+
+    void InspectorWindow::rebuildModelPreviewWorldForAnimation(
+        EditorContext& ctx, const vultra::CoreUUID& uuid, const vasset::VAssetRegistry::AssetEntry& entry)
+    {
+        if (ctx.services)
+        {
+            if (auto* renderService = ctx.services->tryGet<vultra::IRenderService>())
+                renderService->releaseOverrideRenderWorld(&m_ModelPreviewWorld);
+        }
+
+        m_ModelPreviewWorld.clear();
+        m_ModelPreviewRoot        = entt::null;
+        m_ModelPreviewContentRoot = entt::null;
+        m_ModelPreviewKey         = "animation:" + uuid.toString() + ":" + entry.importedPath;
+        m_ModelPreviewPath.clear();
+        m_ModelPreviewRotation        = glm::quat {1.0f, 0.0f, 0.0f, 0.0f};
+        m_ModelPreviewArcballVector   = glm::vec3 {0.0f, 0.0f, 1.0f};
+        m_ModelPreviewArcballActive   = false;
+        m_ModelPreviewCameraSubmitted = false;
+        m_ModelPreviewDirty           = true;
+        m_ModelPreviewAnimated        = true;
+        m_ModelPreviewAnimationPlaying = true;
+        m_ModelPreviewAnimationLoop    = true;
+        m_ModelPreviewAnimationSpeed   = 1.0f;
+        m_ModelPreviewDistanceScale    = 1.0f;
+
+        addPreviewLighting(m_ModelPreviewWorld);
+        m_ModelPreviewRoot = m_ModelPreviewWorld.createEntity();
+        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(m_ModelPreviewRoot,
+                                                                      vultra::NameComponent {"Preview Animation Pivot"});
+        m_ModelPreviewContentRoot = m_ModelPreviewWorld.createChild(m_ModelPreviewRoot);
+        m_ModelPreviewWorld.registry().emplace<vultra::NameComponent>(
+            m_ModelPreviewContentRoot, vultra::NameComponent {"Preview Animation Content"});
+        if (!ctx.services)
+            return;
+
+        auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
+        auto* sceneService = ctx.services->tryGet<vultra::ISceneService>();
+        if (!assetService || !sceneService)
+            return;
+
+        const std::string sourcePrefix = sourcePrefixBeforeSubAsset(entry.sourcePath);
+        vultra::CoreUUID  skeletonUuid {};
+        vultra::CoreUUID  meshUuid {};
+        std::string       manifestUri;
+        for (const auto& [entryUuid, candidate] : assetService->registry().getRegistry())
+        {
+            if (candidate.sourcePath.empty())
+                continue;
+
+            if (candidate.type == vasset::VAssetType::eSceneManifest && candidate.sourcePath == sourcePrefix &&
+                !candidate.importedPath.empty())
+            {
+                manifestUri = "res://" + candidate.importedPath;
+                continue;
+            }
+
+            if (candidate.type == vasset::VAssetType::eSkeleton && candidate.sourcePath == sourcePrefix + "#skeleton")
+            {
+                skeletonUuid = coreUuidFromRegistryKey(entryUuid);
+                continue;
+            }
+
+            if (candidate.type != vasset::VAssetType::eMesh ||
+                !candidate.sourcePath.starts_with(sourcePrefix + "#mesh/"))
+            {
+                continue;
+            }
+
+            const auto candidateMeshUuid = coreUuidFromRegistryKey(entryUuid);
+            if (!candidateMeshUuid.valid())
+                continue;
+
+            auto meshHandle = assetService->loadMeshSync(candidateMeshUuid);
+            if (!meshHandle.ready() || !meshHandle.cpu() || !meshHandle.cpu()->hasSkin)
+                continue;
+
+            meshUuid = candidateMeshUuid;
+            if (!skeletonUuid.valid())
+                skeletonUuid = vultra::CoreUUID(meshHandle.cpu()->skeleton);
+        }
+
+        if (!manifestUri.empty())
+        {
+            (void)sceneService->instantiateScene(m_ModelPreviewWorld, manifestUri, m_ModelPreviewContentRoot, false);
+        }
+        else if (meshUuid.valid())
+        {
+            auto entity = m_ModelPreviewWorld.createChild(m_ModelPreviewContentRoot);
+            auto& reg   = m_ModelPreviewWorld.registry();
+            reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {"Animation Preview Mesh"});
+            reg.emplace<vultra::MeshComponent>(entity, vultra::MeshComponent {.mesh = meshUuid});
+        }
+
+        auto& reg = m_ModelPreviewWorld.registry();
+        bool  configuredAnimator = false;
+        auto  animatorView       = reg.view<vultra::AnimatorComponent>();
+        for (auto entity : animatorView)
+        {
+            auto& animator     = animatorView.get<vultra::AnimatorComponent>(entity);
+            animator.skeleton  = skeletonUuid;
+            animator.animation = uuid;
+            animator.playing   = m_ModelPreviewAnimationPlaying;
+            animator.playOnStart = false;
+            animator.loop      = m_ModelPreviewAnimationLoop;
+            animator.speed     = m_ModelPreviewAnimationSpeed;
+            animator.time      = 0.0f;
+            configuredAnimator = true;
+        }
+        if (!configuredAnimator && skeletonUuid.valid())
+        {
+            reg.emplace<vultra::AnimatorComponent>(m_ModelPreviewContentRoot,
+                                                   vultra::AnimatorComponent {
+                                                       .skeleton = skeletonUuid,
+                                                       .animation = uuid,
+                                                       .playOnStart = false,
+                                                       .playing = m_ModelPreviewAnimationPlaying,
+                                                       .loop = m_ModelPreviewAnimationLoop,
+                                                       .speed = m_ModelPreviewAnimationSpeed,
+                                                       .time = 0.0f,
+                                                   });
+        }
+
+        centerPreviewContent(m_ModelPreviewWorld, *assetService, m_ModelPreviewContentRoot);
     }
 } // namespace vultra_app

@@ -1,6 +1,7 @@
 #include "editor_app/ui/windows/frame_debugger_window.hpp"
 
 #include "editor_app/ui/texture_preview_utils.hpp"
+#include "common/ui_widgets.hpp"
 
 #include <vultra/core/rhi/structs/pixel_format.hpp>
 #include <vultra/function/services/frame_debugger_service.hpp>
@@ -958,8 +959,10 @@ namespace vultra_app
                         const ImVec2 imageMin = ImGui::GetCursorScreenPos();
                         const ImVec2 imageMax {imageMin.x + imageSize.x, imageMin.y + imageSize.y};
                         ImGui::InvisibleButton("##FrameDebuggerTextureImage", imageSize);
+                        (void)ui::capturePreviewItemInput();
                         ImGui::GetWindowDrawList()->AddImage(
                             cached.textureId, imageMin, imageMax, ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
+                        ui::capturePreviewInput(ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem));
                         ImGui::EndChild();
                     }
                 }

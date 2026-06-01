@@ -3,6 +3,7 @@
 #include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/graph_layout.hpp"
 #include "editor_app/ui/texture_preview_utils.hpp"
+#include "common/ui_widgets.hpp"
 
 #include <vultra/core/rhi/sampler.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
@@ -4631,17 +4632,21 @@ namespace vultra_app
                 ImGui::BeginGroup();
                 ImGui::TextDisabled("Left Eye");
                 ImGui::Image(leftTextureId, imageSize);
+                (void)ui::capturePreviewItemInput();
                 ImGui::EndGroup();
                 ImGui::SameLine();
                 ImGui::BeginGroup();
                 ImGui::TextDisabled("Right Eye");
                 ImGui::Image(rightTextureId, imageSize);
+                (void)ui::capturePreviewItemInput();
                 ImGui::EndGroup();
             }
             else
             {
                 ImGui::Image(primaryTextureId, imageSize);
+                (void)ui::capturePreviewItemInput();
             }
+            ui::capturePreviewInput(ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem));
             ImGui::EndChild();
             ImGui::EndPopup();
         }

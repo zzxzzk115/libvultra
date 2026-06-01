@@ -2,6 +2,7 @@
 
 #include "editor_app/asset_thumbnail_service.hpp"
 #include "editor_app/ui/graph_layout.hpp"
+#include "common/ui_widgets.hpp"
 
 #include <vultra/core/rhi/structs/render_device_structs.hpp>
 #include <vultra/function/services/asset_service.hpp>
@@ -1172,7 +1173,8 @@ namespace vultra_app
         const ImVec2 imageMax = ImGui::GetItemRectMax();
         ImGui::SetCursorScreenPos(imageMin);
         ImGui::InvisibleButton("##MaterialGraphPreviewInput", ImVec2(size, size), ImGuiButtonFlags_MouseButtonLeft);
-        const bool previewHovered = ImGui::IsItemHovered();
+        const bool previewHovered = ui::capturePreviewItemInput();
+        ui::capturePreviewInput(m_PreviewArcballActive);
         if ((previewHovered || m_PreviewArcballActive) && !ImGui::GetIO().WantTextInput)
         {
             if (ImGui::IsKeyPressed(ImGuiKey_F))

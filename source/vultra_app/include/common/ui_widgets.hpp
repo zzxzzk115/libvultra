@@ -11,6 +11,8 @@ namespace vultra_app::ui
     void helpMarker(const char* text);
     void emptyState(const char* icon, const char* title, const char* message);
     void sectionTitle(const char* icon, const char* label);
+    void capturePreviewInput(bool hoveredOrActive);
+    [[nodiscard]] bool capturePreviewItemInput();
 
     class ScopedPopupStyle
     {

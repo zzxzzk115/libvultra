@@ -32,6 +32,7 @@ namespace vultra
         bool playing() const override { return m_PlaybackPlaying; }
         bool paused() const override { return m_PlaybackPaused; }
         void requestSingleStep() override;
+        void updateWorld(World& world, fsec dt) override;
 
     private:
         struct SkeletonRuntime
