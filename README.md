@@ -55,7 +55,7 @@ The desktop runtime path is designed around a self-contained executable plus a `
 - Custom virtual file system integration through `vfilesystem`, including `res://` URIs and mounted `VPK` packages.
 - Integrated `vultra asset ...` and `vultra shader ...` command-line tools through `vultra-app`.
 - `VPK` package import, compression, validation, loading, editor export, and export-and-run workflow.
-- Lua scripting with engine service bindings for scene, entity, transform, input, timing, asset, render, and script access.
+- Lua scripting with engine service bindings for scene, entity, transform, input, timing, asset, render, and script access. See `doc/lua_scripting.md` for gameplay scripting examples and API notes.
 - Built-in renderer features including deferred lighting, shadow maps, SSAO, SSR, FXAA, tone mapping, selection outlines, meshlet/visibility-buffer paths, ray tracing examples, and Gaussian Splatting.
 - Project launcher that creates `.vproject` workspaces with scenes, render graphs, shader libraries, scripts, assets, and AI workspace scaffolding.
 

@@ -1,7 +1,9 @@
 #include "editor_app/ui/windows/scene_hierarchy_window.hpp"
 
 #include "common/ui_widgets.hpp"
+#include "editor_app/editor_app.hpp"
 #include "editor_app/editor_history.hpp"
+#include "editor_app/scene_asset_instantiation.hpp"
 #include "editor_app/selection.hpp"
 
 #include <IconsMaterialDesignIcons.h>
@@ -26,6 +28,7 @@
 #include <vultra/function/world/world.hpp>
 
 #include <imgui.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cstring>
@@ -105,6 +108,64 @@ namespace vultra_app
             CapsuleRigidBody,
         };
 
+        const char* commandKindName(const SceneCreateKind kind)
+        {
+            switch (kind)
+            {
+                case SceneCreateKind::Empty:
+                    return "empty";
+                case SceneCreateKind::Quad:
+                    return "quad";
+                case SceneCreateKind::Cube:
+                    return "cube";
+                case SceneCreateKind::Sphere:
+                    return "sphere";
+                case SceneCreateKind::Capsule:
+                    return "capsule";
+                case SceneCreateKind::DirectionalLight:
+                    return "directional_light";
+                case SceneCreateKind::PointLight:
+                    return "point_light";
+                case SceneCreateKind::SpotLight:
+                    return "spot_light";
+                case SceneCreateKind::AreaLight:
+                    return "area_light";
+                case SceneCreateKind::Camera:
+                    return "camera";
+                case SceneCreateKind::XRCamera:
+                    return "xr_camera";
+                case SceneCreateKind::Environment:
+                    return "environment";
+                case SceneCreateKind::StaticBox:
+                    return "static_box";
+                case SceneCreateKind::DynamicSphere:
+                    return "dynamic_sphere";
+                case SceneCreateKind::CapsuleRigidBody:
+                    return "capsule_rigidbody";
+            }
+            return "empty";
+        }
+
+        nlohmann::json executeSceneHierarchyCommand(EditorContext& ctx,
+                                                    const std::string_view name,
+                                                    nlohmann::json         args = nlohmann::json::object())
+        {
+            if (!ctx.editor)
+                return {{"ok", false}, {"error", "editor command executor is unavailable"}};
+            auto result = ctx.editor->executeCommand(ctx, name, args);
+            if (!result.value("ok", false))
+                ctx.state.statusMessage = result.value("error", "editor command failed");
+            return result;
+        }
+
+        void createSceneEntityCommand(EditorContext& ctx, const entt::entity parent, const SceneCreateKind kind)
+        {
+            nlohmann::json args {{"entity_kind", commandKindName(kind)}};
+            if (parent != entt::null)
+                args["parent"] = static_cast<uint32_t>(parent);
+            (void)executeSceneHierarchyCommand(ctx, "scene.add_entity", std::move(args));
+        }
+
         EntityDropMode dropModeForItem(const ImVec2& itemMin, const ImVec2& itemMax)
         {
             const float height = itemMax.y - itemMin.y;
@@ -145,155 +206,6 @@ namespace vultra_app
             return payload && payload->IsDataType(type);
         }
 
-        std::string assetNameFromEntry(const vasset::VAssetRegistry::AssetEntry& entry)
-        {
-            const auto sourceName = std::filesystem::path(entry.sourcePath).stem().generic_string();
-            if (!sourceName.empty())
-                return sourceName;
-            const auto importedName = std::filesystem::path(entry.importedPath).stem().generic_string();
-            return importedName.empty() ? "Asset" : importedName;
-        }
-
-        struct MeshSubAssetPlacement
-        {
-            std::string                name;
-            vultra::TransformComponent transform;
-        };
-
-        struct MeshSubAssetTransformOptions
-        {
-            bool keepPosition {true};
-            bool keepRotation {true};
-            bool keepScale {true};
-        };
-
-        std::optional<MeshSubAssetPlacement> findMeshSubAssetPlacement(EditorContext&          ctx,
-                                                                       const vultra::CoreUUID& meshUuid)
-        {
-            if (!ctx.services || !meshUuid.valid())
-                return std::nullopt;
-
-            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
-            if (!assetService)
-                return std::nullopt;
-
-            auto handle = assetService->loadMeshAsync(meshUuid);
-            if (!handle.cpu() || !handle.cpu()->hasDefaultTransform)
-                return std::nullopt;
-
-            MeshSubAssetPlacement placement {};
-            placement.name               = handle.cpu()->name;
-            placement.transform.position = handle.cpu()->defaultPosition;
-            placement.transform.rotation = handle.cpu()->defaultRotation;
-            placement.transform.scale    = handle.cpu()->defaultScale;
-            placement.transform.dirty    = true;
-            return placement;
-        }
-
-        entt::entity instantiateDroppedAsset(EditorContext&                      ctx,
-                                             vultra::World&                      world,
-                                             const vultra::CoreUUID&             uuid,
-                                             entt::entity                        parent,
-                                             const MeshSubAssetTransformOptions* transformOptions = nullptr)
-        {
-            if (!uuid.valid() || !ctx.services)
-                return entt::null;
-
-            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
-            if (!assetService)
-                return entt::null;
-
-            const auto entry = assetService->registry().lookup(uuid.native());
-            if (entry.type == vasset::VAssetType::eUnknown)
-            {
-                ctx.state.statusMessage = "Dropped asset is not registered.";
-                return entt::null;
-            }
-
-            if (entry.type == vasset::VAssetType::eScene || entry.type == vasset::VAssetType::eSceneManifest)
-            {
-                auto* sceneService = ctx.services->tryGet<vultra::ISceneService>();
-                if (!sceneService)
-                    return entt::null;
-
-                std::string uri;
-                if (!assetService->resolver().resolve(uuid.native(), uri))
-                {
-                    ctx.state.statusMessage = "Could not resolve scene asset URI.";
-                    return entt::null;
-                }
-
-                const auto root = sceneService->instantiateScene(world, uri, parent, false);
-                if (root != entt::null)
-                    ctx.state.statusMessage = "Instantiated prefab: " + assetNameFromEntry(entry);
-                return root;
-            }
-
-            if (entry.type == vasset::VAssetType::eMesh || entry.type == vasset::VAssetType::eGaussianSplat)
-            {
-                auto&      reg       = world.registry();
-                auto       entity    = parent == entt::null ? world.createEntity() : world.createChild(parent);
-                const auto placement = entry.type == vasset::VAssetType::eMesh ?
-                                           findMeshSubAssetPlacement(ctx, uuid) :
-                                           std::optional<MeshSubAssetPlacement> {};
-                const auto name = placement && !placement->name.empty() ? placement->name : assetNameFromEntry(entry);
-                reg.emplace<vultra::NameComponent>(entity, vultra::NameComponent {name});
-                auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
-                if (placement)
-                {
-                    const auto defaultTransform = transform;
-                    transform                   = placement->transform;
-                    if (transformOptions)
-                    {
-                        if (!transformOptions->keepPosition)
-                            transform.position = defaultTransform.position;
-                        if (!transformOptions->keepRotation)
-                            transform.rotation = defaultTransform.rotation;
-                        if (!transformOptions->keepScale)
-                            transform.scale = defaultTransform.scale;
-                        transform.dirty = true;
-                    }
-                }
-
-                if (entry.type == vasset::VAssetType::eMesh)
-                {
-                    reg.emplace<vultra::MeshComponent>(entity, vultra::MeshComponent {.mesh = uuid});
-                    ctx.state.statusMessage = "Created mesh entity: " + name;
-                }
-                else
-                {
-                    reg.emplace<vultra::GaussianSplatComponent>(entity,
-                                                                vultra::GaussianSplatComponent {.gaussianSplat = uuid});
-                    ctx.state.statusMessage = "Created gaussian splat entity: " + name;
-                }
-                return entity;
-            }
-
-            ctx.state.statusMessage = "Dropped asset type cannot be instantiated in the scene.";
-            return entt::null;
-        }
-
-        void selectEntityIfPossible(vultra::World& world, entt::entity entity)
-        {
-            if (entity == entt::null)
-                return;
-            if (auto* id = world.registry().try_get<vultra::IDComponent>(entity))
-                Selection::select(SelectionCategory::Entity, id->uuid);
-        }
-
-        bool shouldPromptMeshSubAssetPlacement(EditorContext& ctx, const vultra::CoreUUID& uuid)
-        {
-            if (!uuid.valid() || !ctx.services)
-                return false;
-
-            auto* assetService = ctx.services->tryGet<vultra::IAssetService>();
-            if (!assetService)
-                return false;
-
-            const auto entry = assetService->registry().lookup(uuid.native());
-            return entry.type == vasset::VAssetType::eMesh && findMeshSubAssetPlacement(ctx, uuid).has_value();
-        }
-
         bool hasPrimaryCamera(vultra::World& world)
         {
             auto& reg  = world.registry();
@@ -306,174 +218,52 @@ namespace vultra_app
             return false;
         }
 
-        entt::entity createSceneEntity(EditorContext& ctx,
-                                       vultra::World& world,
-                                       entt::entity   parent,
-                                       SceneCreateKind kind)
-        {
-            auto& reg    = world.registry();
-            auto  entity = parent == entt::null ? world.createEntity() : world.createChild(parent);
-            auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
-
-            const auto setName = [&](const char* name) {
-                reg.emplace_or_replace<vultra::NameComponent>(entity, vultra::NameComponent {name});
-            };
-            const auto addBuiltinMesh = [&](const char* name, uint32_t geometry) {
-                setName(name);
-                reg.emplace_or_replace<vultra::MeshComponent>(
-                    entity, vultra::MeshComponent {.builtinGeometry = geometry});
-            };
-            const auto addLight = [&](const char* name, uint32_t lightKind) {
-                setName(name);
-                auto& light     = reg.emplace_or_replace<vultra::LightComponent>(entity);
-                light.kind      = lightKind;
-                light.intensity = lightKind == 0u ? 8.0f : 4.0f;
-                if (lightKind == 3u)
-                {
-                    light.twoSided = true;
-                    light.width    = 2.0f;
-                    light.height   = 2.0f;
-                }
-                if (lightKind == 0u)
-                    transform.rotation =
-                        glm::quatLookAtRH(glm::normalize(glm::vec3 {-0.35f, -0.8f, -0.25f}),
-                                          glm::vec3 {0.0f, 1.0f, 0.0f});
-                else
-                    transform.position = glm::vec3 {0.0f, 2.0f, 0.0f};
-                transform.dirty = true;
-            };
-            const auto addCamera = [&](const char* name, bool xr) {
-                setName(name);
-                auto& camera    = reg.emplace_or_replace<vultra::CameraComponent>(entity);
-                camera.primary  = !hasPrimaryCamera(world);
-                transform.position = glm::vec3 {0.0f, 1.6f, 5.0f};
-                transform.rotation = glm::quat(glm::radians(glm::vec3 {-12.0f, 180.0f, 0.0f}));
-                transform.dirty    = true;
-                if (xr)
-                    reg.emplace_or_replace<vultra::XRViewComponent>(entity);
-            };
-            const auto addRigidBody = [&](const char* name, uint32_t motionType) -> vultra::RigidBodyComponent& {
-                setName(name);
-                auto& body       = reg.emplace_or_replace<vultra::RigidBodyComponent>(entity);
-                body.motionType  = motionType;
-                body.objectLayer = motionType == 0u ? 0u : 1u;
-                return body;
-            };
-
-            switch (kind)
-            {
-                case SceneCreateKind::Empty:
-                    setName(parent == entt::null ? "Empty Entity" : "Child Entity");
-                    break;
-                case SceneCreateKind::Quad:
-                    addBuiltinMesh("Quad", 0u);
-                    break;
-                case SceneCreateKind::Cube:
-                    addBuiltinMesh("Cube", 1u);
-                    break;
-                case SceneCreateKind::Sphere:
-                    addBuiltinMesh("Sphere", 2u);
-                    break;
-                case SceneCreateKind::Capsule:
-                    addBuiltinMesh("Capsule", 3u);
-                    break;
-                case SceneCreateKind::DirectionalLight:
-                    addLight("Directional Light", 0u);
-                    break;
-                case SceneCreateKind::PointLight:
-                    addLight("Point Light", 1u);
-                    break;
-                case SceneCreateKind::SpotLight:
-                    addLight("Spot Light", 2u);
-                    break;
-                case SceneCreateKind::AreaLight:
-                    addLight("Area Light", 3u);
-                    break;
-                case SceneCreateKind::Camera:
-                    addCamera("Camera", false);
-                    break;
-                case SceneCreateKind::XRCamera:
-                    addCamera("XR Camera", true);
-                    break;
-                case SceneCreateKind::Environment:
-                    setName("Environment");
-                    reg.emplace_or_replace<vultra::EnvironmentComponent>(entity);
-                    break;
-                case SceneCreateKind::StaticBox:
-                    addRigidBody("Static Box", 0u);
-                    reg.emplace_or_replace<vultra::BoxShapeComponent>(entity);
-                    reg.emplace_or_replace<vultra::MeshComponent>(entity, vultra::MeshComponent {.builtinGeometry = 1u});
-                    break;
-                case SceneCreateKind::DynamicSphere:
-                    addRigidBody("Dynamic Sphere", 2u);
-                    reg.emplace_or_replace<vultra::SphereShapeComponent>(entity);
-                    reg.emplace_or_replace<vultra::MeshComponent>(entity, vultra::MeshComponent {.builtinGeometry = 2u});
-                    transform.position = glm::vec3 {0.0f, 2.0f, 0.0f};
-                    transform.dirty    = true;
-                    break;
-                case SceneCreateKind::CapsuleRigidBody:
-                    addRigidBody("Capsule Rigid Body", 2u);
-                    reg.emplace_or_replace<vultra::CapsuleShapeComponent>(entity);
-                    reg.emplace_or_replace<vultra::MeshComponent>(entity, vultra::MeshComponent {.builtinGeometry = 3u});
-                    transform.position = glm::vec3 {0.0f, 2.0f, 0.0f};
-                    transform.dirty    = true;
-                    break;
-            }
-
-            selectEntityIfPossible(world, entity);
-            ctx.state.sceneDirty    = true;
-            ctx.state.statusMessage = "Created " + reg.get<vultra::NameComponent>(entity).name + ".";
-            if (ctx.history)
-                ctx.history->setNextLabel(ctx.state.statusMessage);
-            return entity;
-        }
-
         void drawCreateEntityMenu(EditorContext& ctx, vultra::World& world, entt::entity parent)
         {
             if (ImGui::MenuItem(ICON_MDI_CUBE_OUTLINE " Empty Entity"))
-                static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::Empty));
+                createSceneEntityCommand(ctx, parent, SceneCreateKind::Empty);
 
             if (ImGui::BeginMenu(ICON_MDI_SHAPE " Basic Geometry"))
             {
                 if (ImGui::MenuItem(ICON_MDI_VECTOR_SQUARE " Quad"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::Quad));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::Quad);
                 if (ImGui::MenuItem(ICON_MDI_CUBE " Cube"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::Cube));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::Cube);
                 if (ImGui::MenuItem(ICON_MDI_SPHERE " Sphere"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::Sphere));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::Sphere);
                 if (ImGui::MenuItem(ICON_MDI_CYLINDER " Capsule"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::Capsule));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::Capsule);
                 ImGui::EndMenu();
             }
 
             if (ImGui::BeginMenu(ICON_MDI_LIGHTBULB_ON_OUTLINE " Light"))
             {
                 if (ImGui::MenuItem("Directional Light"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::DirectionalLight));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::DirectionalLight);
                 if (ImGui::MenuItem("Point Light"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::PointLight));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::PointLight);
                 if (ImGui::MenuItem("Spot Light"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::SpotLight));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::SpotLight);
                 if (ImGui::MenuItem("Area Light"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::AreaLight));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::AreaLight);
                 ImGui::EndMenu();
             }
 
             if (ImGui::MenuItem(ICON_MDI_CAMERA " Camera"))
-                static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::Camera));
+                createSceneEntityCommand(ctx, parent, SceneCreateKind::Camera);
             if (ImGui::MenuItem(ICON_MDI_VIRTUAL_REALITY " XR Camera"))
-                static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::XRCamera));
+                createSceneEntityCommand(ctx, parent, SceneCreateKind::XRCamera);
             if (ImGui::MenuItem(ICON_MDI_WEATHER_SUNNY " Environment"))
-                static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::Environment));
+                createSceneEntityCommand(ctx, parent, SceneCreateKind::Environment);
 
             if (ImGui::BeginMenu(ICON_MDI_ATOM " Physics"))
             {
                 if (ImGui::MenuItem(ICON_MDI_CUBE " Static Box"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::StaticBox));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::StaticBox);
                 if (ImGui::MenuItem(ICON_MDI_SPHERE " Dynamic Sphere"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::DynamicSphere));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::DynamicSphere);
                 if (ImGui::MenuItem(ICON_MDI_CYLINDER " Capsule Rigid Body"))
-                    static_cast<void>(createSceneEntity(ctx, world, parent, SceneCreateKind::CapsuleRigidBody));
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::CapsuleRigidBody);
                 ImGui::EndMenu();
             }
         }
@@ -521,24 +311,17 @@ namespace vultra_app
                                                           vultra::World&                   world,
                                                           const PendingAssetInstantiation& request)
     {
-        MeshSubAssetTransformOptions transformOptions {
+        AssetInstantiationOptions options {
+            .parent = request.parent,
+            .beforeSibling = request.beforeSibling,
+            .afterSibling = request.afterSibling,
             .keepPosition = request.keepPosition,
             .keepRotation = request.keepRotation,
             .keepScale    = request.keepScale,
         };
-        const auto entity = instantiateDroppedAsset(ctx, world, request.uuid, request.parent, &transformOptions);
+        const auto entity = instantiateAssetInScene(ctx, world, request.uuid, options);
         if (entity == entt::null)
             return false;
-
-        if (request.beforeSibling != entt::null)
-            world.insertBefore(entity, request.beforeSibling);
-        else if (request.afterSibling != entt::null)
-            world.insertAfter(entity, request.afterSibling);
-
-        selectEntityIfPossible(world, entity);
-        ctx.state.sceneDirty = true;
-        if (ctx.history)
-            ctx.history->setNextLabel(ctx.state.statusMessage.empty() ? "Instantiate Asset" : ctx.state.statusMessage);
         return true;
     }
 
@@ -678,11 +461,10 @@ namespace vultra_app
                                 ctx.state.statusMessage = "Entity is locked.";
                             else
                             {
-                                world.removeParent(dropped);
-                                ctx.state.sceneDirty    = true;
-                                ctx.state.statusMessage = "Moved entity to scene root.";
-                                if (ctx.history)
-                                    ctx.history->setNextLabel(ctx.state.statusMessage);
+                                (void)executeSceneHierarchyCommand(ctx,
+                                                                   "scene.move_entity",
+                                                                   {{"entity", static_cast<uint32_t>(dropped)},
+                                                                    {"mode", "root"}});
                             }
                         }
                     }
@@ -759,8 +541,8 @@ namespace vultra_app
         const ImVec2 itemMax = ImGui::GetItemRectMax();
         if (ImGui::IsItemClicked() && status.selectable)
         {
-            ctx.state.selectedSourceAsset.clear();
-            Selection::select(SelectionCategory::Entity, id->uuid);
+            (void)executeSceneHierarchyCommand(
+                ctx, "scene.select_entity", {{"entity", static_cast<uint32_t>(entity)}});
         }
         if (ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_F2))
         {
@@ -807,22 +589,28 @@ namespace vultra_app
                         {
                             if (dropMode == EntityDropMode::Before)
                             {
-                                world.insertBefore(dropped, entity);
-                                ctx.state.statusMessage = "Moved entity above sibling.";
+                                (void)executeSceneHierarchyCommand(ctx,
+                                                                   "scene.move_entity",
+                                                                   {{"entity", static_cast<uint32_t>(dropped)},
+                                                                    {"mode", "before"},
+                                                                    {"sibling", static_cast<uint32_t>(entity)}});
                             }
                             else if (dropMode == EntityDropMode::After)
                             {
-                                world.insertAfter(dropped, entity);
-                                ctx.state.statusMessage = "Moved entity below sibling.";
+                                (void)executeSceneHierarchyCommand(ctx,
+                                                                   "scene.move_entity",
+                                                                   {{"entity", static_cast<uint32_t>(dropped)},
+                                                                    {"mode", "after"},
+                                                                    {"sibling", static_cast<uint32_t>(entity)}});
                             }
                             else
                             {
-                                world.setParent(dropped, entity);
-                                ctx.state.statusMessage = "Reparented entity.";
+                                (void)executeSceneHierarchyCommand(ctx,
+                                                                   "scene.move_entity",
+                                                                   {{"entity", static_cast<uint32_t>(dropped)},
+                                                                    {"mode", "parent"},
+                                                                    {"parent", static_cast<uint32_t>(entity)}});
                             }
-                            ctx.state.sceneDirty = true;
-                            if (ctx.history)
-                                ctx.history->setNextLabel(ctx.state.statusMessage);
                         }
                     }
                 }
@@ -856,12 +644,8 @@ namespace vultra_app
             }
             if (ImGui::MenuItem("Delete"))
             {
-                world.destroyRecursive(entity);
-                Selection::clear(SelectionCategory::Entity);
-                ctx.state.sceneDirty    = true;
-                ctx.state.statusMessage = "Deleted entity.";
-                if (ctx.history)
-                    ctx.history->setNextLabel(ctx.state.statusMessage);
+                (void)executeSceneHierarchyCommand(
+                    ctx, "scene.remove_entity", {{"entity", static_cast<uint32_t>(entity)}});
                 ImGui::EndPopup();
                 ImGui::PopID();
                 return;
@@ -873,18 +657,20 @@ namespace vultra_app
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 6.0f);
         if (ui::iconButton(status.visible ? ICON_MDI_EYE : ICON_MDI_EYE_OFF, "Toggle visibility", status.visible))
         {
-            status.visible       = !status.visible;
-            ctx.state.sceneDirty = true;
-            if (ctx.history)
-                ctx.history->setNextLabel(status.visible ? "Show Entity" : "Hide Entity");
+            (void)executeSceneHierarchyCommand(ctx,
+                                               "scene.update_component",
+                                               {{"entity", static_cast<uint32_t>(entity)},
+                                                {"component_kind", "entity_status"},
+                                                {"visible", !status.visible}});
         }
         ImGui::SameLine();
         if (ui::iconButton(status.locked ? ICON_MDI_LOCK : ICON_MDI_LOCK_OPEN_VARIANT, "Toggle lock", status.locked))
         {
-            status.locked        = !status.locked;
-            ctx.state.sceneDirty = true;
-            if (ctx.history)
-                ctx.history->setNextLabel(status.locked ? "Lock Entity" : "Unlock Entity");
+            (void)executeSceneHierarchyCommand(ctx,
+                                               "scene.update_component",
+                                               {{"entity", static_cast<uint32_t>(entity)},
+                                                {"component_kind", "entity_status"},
+                                                {"locked", !status.locked}});
         }
 
         if (m_RenameEntity == entity &&
@@ -893,11 +679,12 @@ namespace vultra_app
             ImGui::InputText("Name", m_RenameBuffer.data(), m_RenameBuffer.size());
             if (ImGui::Button("OK"))
             {
-                reg.get_or_emplace<vultra::NameComponent>(entity).name = m_RenameBuffer.data();
-                m_RenameEntity                                         = entt::null;
-                ctx.state.sceneDirty                                   = true;
-                if (ctx.history)
-                    ctx.history->setNextLabel("Rename Entity");
+                (void)executeSceneHierarchyCommand(ctx,
+                                                   "scene.update_component",
+                                                   {{"entity", static_cast<uint32_t>(entity)},
+                                                    {"component_kind", "name"},
+                                                    {"name", m_RenameBuffer.data()}});
+                m_RenameEntity = entt::null;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();

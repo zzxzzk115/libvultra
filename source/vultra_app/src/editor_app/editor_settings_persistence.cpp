@@ -76,6 +76,9 @@ namespace vultra_app
             settings.textScale         = std::clamp(settings.textScale, 0.75f, 2.0f);
             settings.interfaceFontSize = std::clamp(settings.interfaceFontSize, 10, 24);
             settings.monospaceFontSize = std::clamp(settings.monospaceFontSize, 10, 24);
+            if (settings.mcpHost.empty())
+                settings.mcpHost = "127.0.0.1";
+            settings.mcpPort = std::clamp(settings.mcpPort, 1, 65535);
         }
     } // namespace
 
@@ -127,8 +130,8 @@ namespace vultra_app
             loaded.enableAgent              = jsonBool(json, "enableAgent", loaded.enableAgent);
             loaded.autoStartMcp             = jsonBool(json, "autoStartMcp", loaded.autoStartMcp);
             loaded.mcpServerName            = jsonString(json, "mcpServerName", loaded.mcpServerName);
-            loaded.mcpCommand               = jsonString(json, "mcpCommand", loaded.mcpCommand);
-            loaded.mcpArguments             = jsonString(json, "mcpArguments", loaded.mcpArguments);
+            loaded.mcpHost                  = jsonString(json, "mcpHost", loaded.mcpHost);
+            loaded.mcpPort                  = jsonInt(json, "mcpPort", loaded.mcpPort);
             loaded.agentEndpoint            = jsonString(json, "agentEndpoint", loaded.agentEndpoint);
             loaded.agentModel               = jsonString(json, "agentModel", loaded.agentModel);
             loaded.allowAgentEngineOperations =
@@ -186,8 +189,8 @@ namespace vultra_app
             {"enableAgent", normalized.enableAgent},
             {"autoStartMcp", normalized.autoStartMcp},
             {"mcpServerName", normalized.mcpServerName},
-            {"mcpCommand", normalized.mcpCommand},
-            {"mcpArguments", normalized.mcpArguments},
+            {"mcpHost", normalized.mcpHost},
+            {"mcpPort", normalized.mcpPort},
             {"agentEndpoint", normalized.agentEndpoint},
             {"agentModel", normalized.agentModel},
             {"allowAgentEngineOperations", normalized.allowAgentEngineOperations},

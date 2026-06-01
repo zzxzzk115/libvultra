@@ -87,6 +87,13 @@ namespace vultra_app
                 window->open() = true;
                 focusRequested = true;
             }
+            if (!ctx.state.editorWindowFocusRequested.empty() &&
+                window->name() == ctx.state.editorWindowFocusRequested)
+            {
+                window->open() = true;
+                focusRequested = true;
+                ctx.state.editorWindowFocusRequested.clear();
+            }
             if (window->open())
             {
                 if (focusRequested)

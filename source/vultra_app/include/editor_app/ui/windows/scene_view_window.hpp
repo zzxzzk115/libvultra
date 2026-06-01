@@ -92,9 +92,9 @@ namespace vultra_app
         bool                          m_GameOverlayStaticFrameValid {false};
         bool                          m_GameOverlayLastSceneDirty {false};
 
-        glm::vec3 m_CameraPosition {0.0f, 1.6f, 4.0f};
+        glm::vec3 m_CameraPosition {0.0f, 6.5f, 6.5f};
         float     m_CameraYaw {-90.0f};
-        float     m_CameraPitch {-15.0f};
+        float     m_CameraPitch {-45.0f};
         float     m_CameraFovY {60.0f};
         glm::vec3 m_FocusStartPosition {0.0f};
         glm::vec3 m_FocusTargetPosition {0.0f};

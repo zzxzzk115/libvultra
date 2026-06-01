@@ -174,7 +174,7 @@ namespace
 
                 if (m_State.mode == vultra_app::AppMode::Editor)
                 {
-                    vultra_app::EditorContext ctx {.state = m_State, .services = services};
+                    vultra_app::EditorContext ctx {.state = m_State, .services = services, .editor = &m_Editor};
                     vultra::RuntimeProfiler::ExternalScope scope {"EditorShell::editorDraw"};
                     m_Editor.draw(ctx);
                 }
@@ -246,13 +246,22 @@ namespace
             std::string settingsError;
             if (!vultra_app::loadEditorSettings(m_State.editorSettingsFile, m_State.editorSettings, &settingsError))
                 m_State.statusMessage = "Editor settings load failed: " + settingsError;
+            if (m_Options.mcpMode)
+            {
+                m_State.editorSettings.enableAgent  = true;
+                m_State.editorSettings.autoStartMcp = true;
+                if (m_Options.mcpHost.has_value())
+                    m_State.editorSettings.mcpHost = *m_Options.mcpHost;
+                if (m_Options.mcpPort.has_value())
+                    m_State.editorSettings.mcpPort = *m_Options.mcpPort;
+            }
 
             m_VpkPath = vultra_app::findDefaultVpk(m_Options);
             if (m_Options.editorMode)
             {
-                m_State.mode = vultra_app::AppMode::Editor;
                 if (!m_Options.projectPath.empty())
                 {
+                    m_State.mode           = vultra_app::AppMode::Editor;
                     m_State.currentProject = m_Options.projectPath;
                     if (auto project = vultra_app::loadVProject(m_Options.projectPath); project.has_value())
                     {
@@ -262,6 +271,11 @@ namespace
                         m_State.currentDefaultScene       = project->defaultScene;
                         m_State.currentEditingRenderGraph = project->editingRenderGraph;
                     }
+                }
+                else
+                {
+                    m_State.mode          = vultra_app::AppMode::Launcher;
+                    m_State.statusMessage = "--editor requires --project to enter editor mode.";
                 }
             }
             else if (m_VpkPath.has_value())
@@ -353,10 +367,10 @@ namespace
             {
                 engine.ctx().config.imgui.enableDocking                 = true;
                 engine.ctx().config.imgui.imguiIniFile                  = "vultra_editor_layout_v2.ini";
-                engine.ctx().config.window.width                        = m_Options.editorMode ? 640 : 1280;
-                engine.ctx().config.window.height                       = m_Options.editorMode ? 360 : 720;
-                engine.ctx().config.window.resizable                    = !m_Options.editorMode;
-                engine.ctx().config.window.visible                      = !m_Options.editorMode;
+                engine.ctx().config.window.width                        = 1280;
+                engine.ctx().config.window.height                       = 720;
+                engine.ctx().config.window.resizable                    = true;
+                engine.ctx().config.window.visible                      = true;
                 engine.ctx().config.window.decorated =
                     !m_Options.editorMode &&
                     engine.ctx().config.render.backendApi == vultra::rhi::RenderBackendApi::eWebGPU;
@@ -463,7 +477,8 @@ namespace
                 return;
             }
 
-            vultra_app::EditorContext ctx {.state = m_State, .services = &engineCtx().services};
+            vultra_app::EditorContext ctx {.state = m_State, .services = &engineCtx().services, .editor = &m_Editor};
+            m_Editor.updateRuntimeMcp(ctx);
             if (auto* cameraService = engineCtx().services.tryGet<vultra::ICameraService>())
             {
                 cameraService->setWorldCamerasEnabled(false);
@@ -548,7 +563,7 @@ namespace
                     sceneService->releaseSceneLoad(m_RuntimeSceneLoad);
                 m_RuntimeSceneLoad = {};
             }
-            vultra_app::EditorContext ctx {.state = m_State, .services = &engine.ctx().services};
+            vultra_app::EditorContext ctx {.state = m_State, .services = &engine.ctx().services, .editor = &m_Editor};
             m_Editor.shutdown(ctx);
         }
 

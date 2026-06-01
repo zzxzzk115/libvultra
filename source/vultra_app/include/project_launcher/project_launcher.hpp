@@ -44,6 +44,7 @@ namespace vultra_app
 
         bool                               m_HasScannedProjects {false};
         int                                m_SelectedProject {-1};
+        int                                m_NewProjectTemplate {1};
         std::array<char, 128>              m_SearchQuery {};
         std::array<char, 260>              m_NewProjectRoot {"."};
         std::array<char, 260>              m_ExistingProjectRoot {};

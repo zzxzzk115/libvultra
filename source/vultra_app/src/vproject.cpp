@@ -180,6 +180,7 @@ namespace vultra_app
         project.projectDir = fs::absolute(normalizedPath).lexically_normal().parent_path();
         project.name       = project.projectDir.filename().generic_string();
 
+        bool        hasEditingRenderGraph = false;
         std::string line;
         while (std::getline(file, line))
         {
@@ -191,6 +192,8 @@ namespace vultra_app
             if (equalsPos == std::string::npos)
                 continue;
 
+            if (trim(line.substr(0, equalsPos)) == "editing_rendergraph")
+                hasEditingRenderGraph = true;
             applyKeyValue(project, line.substr(0, equalsPos), line.substr(equalsPos + 1));
         }
 
@@ -200,7 +203,7 @@ namespace vultra_app
             project.assetRoot = "resources";
         if (project.defaultScene.empty() || !projectAssetUriExists(project, project.defaultScene))
             project.defaultScene = findFallbackSceneUri(project);
-        if (project.editingRenderGraph.empty())
+        if (!hasEditingRenderGraph && project.editingRenderGraph.empty())
             project.editingRenderGraph = "res://render/default.vrg.json";
 
         return project;

@@ -6,8 +6,11 @@
 #include "editor_app/editor_context.hpp"
 #include "editor_app/editor_history.hpp"
 #include "editor_app/project_file_watcher.hpp"
+#include "editor_app/runtime_mcp_server.hpp"
 #include "editor_app/ui/editor_window_manager.hpp"
 #include "launch_options.hpp"
+
+#include <nlohmann/json_fwd.hpp>
 
 #include <array>
 #include <vultra/core/engine/engine.hpp>
@@ -23,6 +26,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <cstdint>
 #include <limits>
 
@@ -52,6 +56,8 @@ namespace vultra_app
 
         void tick(EditorContext& ctx);
         void draw(EditorContext& ctx);
+        void updateRuntimeMcp(EditorContext& ctx);
+        nlohmann::json executeCommand(EditorContext& ctx, std::string_view name, const nlohmann::json& args);
         void shutdown(EditorContext& ctx);
 
     private:
@@ -193,10 +199,10 @@ namespace vultra_app
         std::array<char, 512>               m_BuildExtraArgsBuffer {};
         std::array<char, 512>               m_ExternalEditorBuffer {};
         std::array<char, 128>               m_AgentMcpServerNameBuffer {};
-        std::array<char, 512>               m_AgentMcpCommandBuffer {};
-        std::array<char, 1024>              m_AgentMcpArgumentsBuffer {};
+        std::array<char, 128>               m_AgentMcpHostBuffer {};
         std::array<char, 512>               m_AgentEndpointBuffer {};
         std::array<char, 128>               m_AgentModelBuffer {};
+        RuntimeMcpServer                    m_RuntimeMcpServer;
         std::optional<vultra::SceneDocument> m_PlayModeSnapshot;
         bool                m_PlayModeSceneDirtySnapshot {false};
         bool                m_Initialized {false};

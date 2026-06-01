@@ -91,6 +91,11 @@ namespace vultra
         virtual bool             frameGraphSnapshotCaptureEnabled() const = 0;
         virtual void             setFrameGraphTextureCaptureEnabled(bool enabled) = 0;
         virtual bool             frameGraphTextureCaptureEnabled() const = 0;
+        virtual void             requestFrameGraphTextureDumpCapture(uint32_t         frames = 2,
+                                                                     uint32_t         maxPreviewExtent = 0,
+                                                                     std::string_view filter = {},
+                                                                     std::string_view camera = {},
+                                                                     std::string_view renderer = {}) = 0;
         virtual void             setFrameGraphTexturePreviewSettings(const FrameGraphTexturePreviewSettings& settings) = 0;
         virtual FrameGraphTexturePreviewSettings frameGraphTexturePreviewSettings() const = 0;
         virtual void setFrameGraphTexturePreviewOverride(std::string_view textureKey,

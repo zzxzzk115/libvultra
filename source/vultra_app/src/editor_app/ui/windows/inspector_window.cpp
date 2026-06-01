@@ -3250,7 +3250,7 @@ namespace vultra_app
             ImGui::TextUnformatted("Project");
             ImGui::Separator();
             ImGui::TextWrapped("Name: %s",
-                               state.currentProjectName.empty() ? "(blank session)" : state.currentProjectName.c_str());
+                               state.currentProjectName.empty() ? "(no project)" : state.currentProjectName.c_str());
             ImGui::TextWrapped("Root: %s",
                                state.currentProject.empty() ? "(none)" : state.currentProject.generic_string().c_str());
             ImGui::TextWrapped("Asset root: %s", state.currentAssetRoot.c_str());

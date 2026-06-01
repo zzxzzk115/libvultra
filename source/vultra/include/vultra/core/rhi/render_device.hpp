@@ -129,6 +129,7 @@ namespace vultra
             [[nodiscard]] SemaphoreHandle createSemaphore();
 
             [[nodiscard]] Buffer createStagingBuffer(uint64_t size, const void* data = nullptr) const;
+            [[nodiscard]] Buffer createReadbackBuffer(uint64_t size) const;
 
             [[nodiscard]] VertexBuffer
             createVertexBuffer(Buffer::Stride, uint64_t vertexCount, AllocationHints = AllocationHints::eNone) const;
@@ -225,6 +226,7 @@ namespace vultra
             bool saveTextureToFile(const Texture&         texture,
                                    const std::string&     filePath,
                                    const rhi::ImageAspect imageAspect = rhi::ImageAspect::eColor);
+            [[nodiscard]] std::optional<std::vector<uint8_t>> readTextureBytes(const Texture& texture);
             [[nodiscard]] std::optional<std::vector<uint8_t>> readTextureRGBA8(const Texture& texture);
             [[nodiscard]] std::optional<std::array<uint8_t, 4>>
             readTexturePixelRGBA8(const Texture& texture, uint32_t x, uint32_t y);

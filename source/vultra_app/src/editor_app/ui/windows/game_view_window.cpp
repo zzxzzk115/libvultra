@@ -136,8 +136,8 @@ namespace vultra_app
             auto  e   = world.createEntity();
             reg.emplace<vultra::NameComponent>(e, vultra::NameComponent {"Camera"});
             auto& transform    = reg.get_or_emplace<vultra::TransformComponent>(e);
-            transform.position = {0.0f, 1.6f, 4.0f};
-            transform.rotation = glm::quat(glm::radians(glm::vec3 {-12.0f, 180.0f, 0.0f}));
+            transform.position = {0.0f, 6.5f, 6.5f};
+            transform.rotation = glm::angleAxis(glm::radians(-45.0f), glm::vec3 {1.0f, 0.0f, 0.0f});
             transform.dirty    = true;
             reg.emplace<vultra::CameraComponent>(e, vultra::CameraComponent {.primary = true});
             if (auto* id = reg.try_get<vultra::IDComponent>(e))

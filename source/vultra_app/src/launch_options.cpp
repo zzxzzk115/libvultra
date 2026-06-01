@@ -89,6 +89,9 @@ namespace vultra_app
         argparse::ArgumentParser program("vultra", "0.1.0", argparse::default_arguments::none);
         program.add_argument("-h", "--help").flag();
         program.add_argument("--editor").flag();
+        program.add_argument("--mcp").flag();
+        program.add_argument("--mcp-host").default_value(std::string {});
+        program.add_argument("--mcp-port").scan<'i', int>().default_value(0);
         program.add_argument("--project").default_value(std::string {});
         program.add_argument("--vpk").default_value(std::string {});
         program.add_argument("--scene").default_value(std::string {});
@@ -114,9 +117,14 @@ namespace vultra_app
             program.parse_args(argv);
             options.showHelp    = program.get<bool>("--help");
             options.editorMode  = program.get<bool>("--editor");
+            options.mcpMode     = program.get<bool>("--mcp");
             options.projectPath = program.get<std::string>("--project");
             options.vpkPath     = program.get<std::string>("--vpk");
             options.sceneUri    = program.get<std::string>("--scene");
+            if (const auto mcpHost = program.get<std::string>("--mcp-host"); !mcpHost.empty())
+                options.mcpHost = mcpHost;
+            if (const auto mcpPort = program.get<int>("--mcp-port"); mcpPort > 0)
+                options.mcpPort = mcpPort;
 
             for (const auto& arg : args)
             {
@@ -140,6 +148,33 @@ namespace vultra_app
                     options.xrMirror = true;
                 else if (arg == "--no-xr-mirror")
                     options.xrMirror = false;
+            }
+
+            for (size_t i = 0; i < args.size(); ++i)
+            {
+                constexpr std::string_view kMcpPortEqPrefix {"--mcp-port="};
+                const std::string_view arg = args[i];
+                if (arg == "--mcp-port" && i + 1 < args.size())
+                {
+                    try
+                    {
+                        options.mcpPort = std::stoi(args[i + 1]);
+                    }
+                    catch (...)
+                    {
+                    }
+                    ++i;
+                }
+                else if (arg.starts_with(kMcpPortEqPrefix))
+                {
+                    try
+                    {
+                        options.mcpPort = std::stoi(std::string(arg.substr(kMcpPortEqPrefix.size())));
+                    }
+                    catch (...)
+                    {
+                    }
+                }
             }
         }
         catch (const std::exception& e)
@@ -194,7 +229,7 @@ namespace vultra_app
         std::cout << "VultraEngine runtime\n\n"
                   << "Usage:\n"
                   << "  vultra [--vpk resources.vpk] [--scene res://scenes/main.vscn]\n"
-                  << "  vultra --editor --project <project-dir>\n"
+                  << "  vultra --editor [--mcp] [--mcp-port 8848] --project <project-dir>\n"
                   << "  vultra [--no-xr] [--xr-mirror|--no-xr-mirror] --editor --project <project-dir>\n"
                   << "  vultra [--validation|--no-validation] [--debug-markers|--no-debug-markers] "
                      "[--renderdoc|--no-renderdoc]\n"
@@ -203,6 +238,7 @@ namespace vultra_app
                   << "Notes:\n"
                   << "  Without --vpk, Vultra first tries <executable-name>.vpk next to the executable.\n"
                   << "  Without a VPK, Vultra opens the Project Launcher.\n"
+                  << "  --editor requires --project; no-project editor sessions are invalid.\n"
                   << "  CLI subcommands are reserved for the integrated tool workflow.\n";
     }
 

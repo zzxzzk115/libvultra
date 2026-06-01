@@ -738,6 +738,26 @@ namespace vultra
 #endif
         }
 
+        Buffer RenderDevice::createReadbackBuffer(const uint64_t size) const
+        {
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                auto& backend = const_cast<WebGPURenderDevice&>(webgpuBackend(m_Backend));
+                return makeWebGPUBuffer(backend, size, BufferUsage::eTransferDst);
+            }
+#if !defined(VULTRA_ENABLE_VULKAN) || !VULTRA_ENABLE_VULKAN
+            return {};
+#else
+            assert(vkBackend(m_Backend).m_MemoryAllocator);
+            return makeVulkanBuffer(vkBackend(m_Backend).m_MemoryAllocator,
+                                    m_Backend.get(),
+                                    size,
+                                    BufferUsage::eTransferSrc | BufferUsage::eTransferDst,
+                                    makeAllocationFlags(AllocationHints::eSequentialWrite),
+                                    vma::MemoryUsage::eAutoPreferHost);
+#endif
+        }
+
         VertexBuffer RenderDevice::createVertexBuffer(const Buffer::Stride  stride,
                                                       const uint64_t        vertexCount,
                                                       const AllocationHints allocationHint) const
@@ -1624,7 +1644,7 @@ namespace vultra
             if (x >= extent.width || y >= extent.height)
                 return std::nullopt;
 
-            auto stagingBuffer = createStagingBuffer(texture.getSize());
+            auto stagingBuffer = createReadbackBuffer(texture.getSize());
             execute(
                 [&](CommandBuffer& cb) {
                     cb.getBarrierBuilder().imageBarrier(
@@ -1664,6 +1684,57 @@ namespace vultra
             return out;
         }
 
+        std::optional<std::vector<uint8_t>> RenderDevice::readTextureBytes(const Texture& texture)
+        {
+            if (!texture)
+                return std::nullopt;
+
+            if (m_Backend->getBackendApi() == RenderBackendApi::eWebGPU)
+            {
+                static bool warned = false;
+                if (!warned)
+                {
+                    VULTRA_CORE_WARN("[RenderDevice] texture byte readback is not implemented for WebGPU");
+                    warned = true;
+                }
+                return std::nullopt;
+            }
+
+            auto stagingBuffer = createReadbackBuffer(texture.getSize());
+            execute(
+                [&](CommandBuffer& cb) {
+                    cb.getBarrierBuilder().imageBarrier(
+                        {
+                            .image     = const_cast<Texture&>(texture),
+                            .newLayout = ImageLayout::eGeneral,
+                        },
+                        {
+                            .dstStage  = PipelineStages::eTransfer,
+                            .dstAccess = Access::eTransferRead,
+                        });
+                    cb.copyImage(texture, stagingBuffer, ImageAspect::eColor);
+                    cb.getBarrierBuilder().bufferBarrier({.buffer = stagingBuffer},
+                                                         {
+                                                             .dstStage  = PipelineStages::eTransfer,
+                                                             .dstAccess = Access::eTransferRead,
+                                                         });
+                },
+                true);
+            waitIdle();
+
+            const auto* mappedPtr = static_cast<const uint8_t*>(stagingBuffer.map());
+            if (!mappedPtr)
+            {
+                VULTRA_CORE_ERROR("[RenderDevice] Failed to map staging buffer for texture byte readback");
+                return std::nullopt;
+            }
+
+            std::vector<uint8_t> out(texture.getSize());
+            std::memcpy(out.data(), mappedPtr, out.size());
+            stagingBuffer.unmap();
+            return out;
+        }
+
         std::optional<std::vector<uint8_t>> RenderDevice::readTextureRGBA8(const Texture& texture)
         {
             if (!texture || texture.getPixelFormat() != PixelFormat::eRGBA8_UNorm)
@@ -1680,7 +1751,7 @@ namespace vultra
                 return std::nullopt;
             }
 
-            auto stagingBuffer = createStagingBuffer(texture.getSize());
+            auto stagingBuffer = createReadbackBuffer(texture.getSize());
             execute(
                 [&](CommandBuffer& cb) {
                     cb.getBarrierBuilder().imageBarrier(

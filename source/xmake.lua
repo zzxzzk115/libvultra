@@ -271,6 +271,9 @@ if not is_plat("android") and not is_plat("wasm") then
         end
         add_deps("vultra", "vasset-import")
         add_packages("argparse")
+        if is_plat("windows") then
+            add_syslinks("ws2_32")
+        end
         if has_config("vultra_app_validation") then
             add_defines("VULTRA_APP_DEFAULT_VALIDATION=1")
         else
@@ -287,7 +290,7 @@ if not is_plat("android") and not is_plat("wasm") then
             add_defines("VULTRA_APP_DEFAULT_RENDERDOC=0")
         end
         set_rundir("$(projectdir)")
-        set_runargs("--editor", "--project", "$(projectdir)/example.vproject")
+        set_runargs("--editor", "--mcp", "--project", "$(projectdir)/example.vproject")
         set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vultra-app")
         after_build(function (target)
             local stale_imgui_ini = path.join(target:targetdir(), "imgui.ini")

@@ -348,8 +348,7 @@ namespace vultra_app
         {
             setBuffer(m_ExternalEditorBuffer, ctx.state.editorSettings.externalEditor);
             setBuffer(m_AgentMcpServerNameBuffer, ctx.state.editorSettings.mcpServerName);
-            setBuffer(m_AgentMcpCommandBuffer, ctx.state.editorSettings.mcpCommand);
-            setBuffer(m_AgentMcpArgumentsBuffer, ctx.state.editorSettings.mcpArguments);
+            setBuffer(m_AgentMcpHostBuffer, ctx.state.editorSettings.mcpHost);
             setBuffer(m_AgentEndpointBuffer, ctx.state.editorSettings.agentEndpoint);
             setBuffer(m_AgentModelBuffer, ctx.state.editorSettings.agentModel);
             ImGui::OpenPopup("Editor Settings");
@@ -475,13 +474,13 @@ namespace vultra_app
                     "##McpServerName", m_AgentMcpServerNameBuffer.data(), m_AgentMcpServerNameBuffer.size()))
                 settings.mcpServerName = bufferString(m_AgentMcpServerNameBuffer);
             ui::endSettingsRow();
-            ui::beginSettingsRow("MCP Command");
-            if (ImGui::InputText("##McpCommand", m_AgentMcpCommandBuffer.data(), m_AgentMcpCommandBuffer.size()))
-                settings.mcpCommand = bufferString(m_AgentMcpCommandBuffer);
+            ui::beginSettingsRow("MCP Host");
+            if (ImGui::InputText("##McpHost", m_AgentMcpHostBuffer.data(), m_AgentMcpHostBuffer.size()))
+                settings.mcpHost = bufferString(m_AgentMcpHostBuffer);
             ui::endSettingsRow();
-            ui::beginSettingsRow("MCP Arguments");
-            if (ImGui::InputText("##McpArguments", m_AgentMcpArgumentsBuffer.data(), m_AgentMcpArgumentsBuffer.size()))
-                settings.mcpArguments = bufferString(m_AgentMcpArgumentsBuffer);
+            ui::beginSettingsRow("MCP Port");
+            ImGui::InputInt("##McpPort", &settings.mcpPort);
+            settings.mcpPort = std::clamp(settings.mcpPort, 1, 65535);
             ui::endSettingsRow();
             ImGui::Spacing();
             ui::drawSettingsSectionHeader("Agent Client");
@@ -508,8 +507,7 @@ namespace vultra_app
             ctx.state.editorSettings = AppState::EditorSettings {};
             setBuffer(m_ExternalEditorBuffer, {});
             setBuffer(m_AgentMcpServerNameBuffer, ctx.state.editorSettings.mcpServerName);
-            setBuffer(m_AgentMcpCommandBuffer, ctx.state.editorSettings.mcpCommand);
-            setBuffer(m_AgentMcpArgumentsBuffer, ctx.state.editorSettings.mcpArguments);
+            setBuffer(m_AgentMcpHostBuffer, ctx.state.editorSettings.mcpHost);
             setBuffer(m_AgentEndpointBuffer, {});
             setBuffer(m_AgentModelBuffer, {});
             ctx.state.statusMessage = "Editor settings reset.";
@@ -519,8 +517,7 @@ namespace vultra_app
         {
             ctx.state.editorSettings.externalEditor = bufferString(m_ExternalEditorBuffer);
             ctx.state.editorSettings.mcpServerName  = bufferString(m_AgentMcpServerNameBuffer);
-            ctx.state.editorSettings.mcpCommand     = bufferString(m_AgentMcpCommandBuffer);
-            ctx.state.editorSettings.mcpArguments   = bufferString(m_AgentMcpArgumentsBuffer);
+            ctx.state.editorSettings.mcpHost        = bufferString(m_AgentMcpHostBuffer);
             ctx.state.editorSettings.agentEndpoint  = bufferString(m_AgentEndpointBuffer);
             ctx.state.editorSettings.agentModel     = bufferString(m_AgentModelBuffer);
             std::string error;

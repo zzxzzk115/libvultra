@@ -1,6 +1,7 @@
 #include "project_launcher/project_launcher.hpp"
 
 #include "common/ui_widgets.hpp"
+#include "project_templates.hpp"
 #include "vproject.hpp"
 
 #include <vultra/core/base/common_context.hpp>
@@ -975,24 +976,6 @@ This directory is an index, not the runtime asset root.
         if (drawSidebarButton(
                 "##launcher_nav_open", ICON_MDI_FOLDER_OPEN_OUTLINE, "Open Existing", false, ImVec2(220.0f, 48.0f)))
             ImGui::OpenPopup("Add Existing Vultra Project");
-        ImGui::SetCursorScreenPos(ImVec2(origin.x + 28.0f, origin.y + 330.0f));
-        if (drawSidebarButton(
-                "##launcher_nav_blank", ICON_MDI_WINDOW_OPEN, "Blank Editor", false, ImVec2(220.0f, 48.0f)))
-        {
-            state.currentProject.clear();
-            state.currentProjectName.clear();
-            state.selectedSourceAsset.clear();
-            state.pendingEditorCommands.clear();
-            state.currentAssetRoot          = "resources";
-            state.currentDefaultScene.clear();
-            state.currentEditingRenderGraph = "res://render/default.vrg.json";
-            state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
-            ++state.projectGeneration;
-            state.renderGraphOpenRequested = false;
-            state.materialGraphOpenRequested = false;
-            state.mode          = AppMode::Editor;
-            state.statusMessage = "Opened a blank editor session.";
-        }
         const float contentX = origin.x + sidebarW + 40.0f;
         const float contentW = std::max(420.0f, size.x - sidebarW - 80.0f);
 
@@ -1181,6 +1164,8 @@ This directory is an index, not the runtime asset root.
         ImGui::Separator();
         ImGui::Spacing();
         m_ProjectRootDialog.draw("Project Folder", m_NewProjectRoot.data(), m_NewProjectRoot.size());
+        const char* templates[] = {"Empty", "Minimal"};
+        ImGui::Combo("Template", &m_NewProjectTemplate, templates, IM_ARRAYSIZE(templates));
 
         ImGui::Spacing();
         ImGui::Separator();
@@ -1344,19 +1329,23 @@ This directory is an index, not the runtime asset root.
         }
 
         std::string errorMessage;
+        const auto  templateKind =
+            m_NewProjectTemplate == 0 ? ProjectTemplateKind::Empty : ProjectTemplateKind::Minimal;
         VProject    project {
                .projectDir         = projectDir,
                .name               = projectName,
                .assetRoot          = "resources",
                .defaultScene       = "res://scenes/main.vscn",
-               .editingRenderGraph = "res://render/default.vrg.json",
+               .editingRenderGraph = templateKind == ProjectTemplateKind::Empty ?
+                                         std::string {} :
+                                         std::string {"res://render/default.vrg.json"},
         };
         if (!saveVProject(project, &errorMessage))
         {
             state.statusMessage = "Failed to write .vproject: " + errorMessage;
             return false;
         }
-        if (!writeDefaultProjectAssets(projectDir, errorMessage))
+        if (!writeProjectTemplateAssets(projectDir, templateKind, errorMessage))
         {
             state.statusMessage = "Failed to write default project assets: " + errorMessage;
             return false;

@@ -2055,9 +2055,23 @@ namespace vultra
 
     void RenderSystem::addFrameGraphTextureCapturePasses(FrameGraphBuildContext& ctx, const RenderCamera& camera)
     {
-        if (!m_FrameGraphTextureCaptureEnabled)
+        const bool dumpCaptureActive = m_FrameGraphTextureDumpCaptureFrames > 0;
+        if (!m_FrameGraphTextureCaptureEnabled && !dumpCaptureActive)
             return;
         if (ctx.rd.getBackendApi() == rhi::RenderBackendApi::eWebGPU)
+            return;
+        auto lowerAscii = [](std::string text) {
+            std::transform(text.begin(), text.end(), text.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return text;
+        };
+        const auto dumpFilter   = lowerAscii(m_FrameGraphTextureDumpFilter);
+        const bool dumpCameraOk = !dumpCaptureActive || m_FrameGraphTextureDumpCamera.empty() ||
+                                  camera.name == m_FrameGraphTextureDumpCamera;
+        const bool dumpRendererOk = !dumpCaptureActive || m_FrameGraphTextureDumpRenderer.empty() ||
+                                    camera.rendererKey == m_FrameGraphTextureDumpRenderer;
+        if (dumpCaptureActive && (!dumpCameraOk || !dumpRendererOk))
             return;
 
         struct CaptureCandidate
@@ -2192,18 +2206,33 @@ namespace vultra
 
             std::string cameraName {camera.name.empty() ? std::string {"Camera"} : camera.name};
             std::string slotKey = cameraName + "/" + candidate.name + "/layer:" + std::to_string(candidate.layer);
+            if (dumpCaptureActive && !dumpFilter.empty())
+            {
+                const auto haystack = lowerAscii(cameraName + " " + camera.rendererKey + " " + candidate.name + " " +
+                                                 slotKey + " R" + std::to_string(candidate.resourceNodeId) + "_" +
+                                                 std::to_string(candidate.resourceVersion));
+                if (haystack.find(dumpFilter) == std::string::npos)
+                    continue;
+            }
             std::string transientResourceKey = "R" + std::to_string(candidate.resourceNodeId) + "_" +
                                                std::to_string(candidate.resourceVersion) + "/layer:" +
                                                std::to_string(candidate.layer);
             const auto overrideIt          = m_FrameGraphTexturePreviewOverrides.find(slotKey);
-            const auto previewSettings     = overrideIt != m_FrameGraphTexturePreviewOverrides.end() ?
-                                                 overrideIt->second :
-                                                 m_FrameGraphTexturePreviewSettings;
+            FrameGraphTexturePreviewSettings dumpPreviewSettings {};
+            dumpPreviewSettings.selectedTextureKey = std::string(FrameGraphTexturePreviewSettings::kCaptureAllTextures);
+            dumpPreviewSettings.maxPreviewExtent   = m_FrameGraphTextureDumpMaxPreviewExtent;
+            const auto previewSettings = dumpCaptureActive ?
+                                             dumpPreviewSettings :
+                                         overrideIt != m_FrameGraphTexturePreviewOverrides.end() ?
+                                             overrideIt->second :
+                                             m_FrameGraphTexturePreviewSettings;
             const bool captureAllRequested = m_FrameGraphTexturePreviewSettings.selectedTextureKey ==
                                              FrameGraphTexturePreviewSettings::kCaptureAllTextures;
             const bool captureNoneRequested = m_FrameGraphTexturePreviewSettings.selectedTextureKey ==
                                               FrameGraphTexturePreviewSettings::kCaptureNoTextures;
-            const bool shouldPreview = captureAllRequested ?
+            const bool shouldPreview = dumpCaptureActive ?
+                                           true :
+                                       captureAllRequested ?
                                            true :
                                        captureNoneRequested ?
                                            false :
@@ -2267,13 +2296,12 @@ namespace vultra
                     slot = {};
                 }
 
-                slot.texture = rhi::Texture::Builder {}
-                                   .setExtent(previewExtent)
-                                   .setPixelFormat(rhi::PixelFormat::eRGBA8_UNorm)
-                                   .setNumMipLevels(1)
-                                   .setUsageFlags(rhi::ImageUsage::eSampled | rhi::ImageUsage::eRenderTarget |
-                                                  rhi::ImageUsage::eTransferSrc)
-                                   .build(ctx.rd);
+                slot.texture = ctx.rd.createTexture2D(previewExtent,
+                                                       rhi::PixelFormat::eRGBA8_UNorm,
+                                                       1,
+                                                       0,
+                                                       rhi::ImageUsage::eSampled | rhi::ImageUsage::eRenderTarget |
+                                                           rhi::ImageUsage::eTransferSrc);
             }
 
             slot.camera           = cameraName;
@@ -2412,7 +2440,7 @@ namespace vultra
 
         m_RuntimeProfiler.beginFrame(m_FrameCounter);
         m_LastFrameGraphSnapshot.clear();
-        if (m_FrameGraphTextureCaptureEnabled)
+        if (m_FrameGraphTextureCaptureEnabled || m_FrameGraphTextureDumpCaptureFrames > 0)
             m_FrameGraphDebugTextures.clear();
         {
             constexpr uint64_t kDebugTextureReleaseDelayFrames = 8u;
@@ -3443,8 +3471,22 @@ namespace vultra
         }
 
         {
+            std::unordered_set<std::string> exposedDebugTextureKeys;
+            exposedDebugTextureKeys.reserve(m_FrameGraphDebugTextures.size());
+            for (const auto& texture : m_FrameGraphDebugTextures)
+            {
+                if (texture.texture)
+                    exposedDebugTextureKeys.insert(texture.key);
+            }
+
             for (auto it = m_FrameGraphDebugTextureSlots.begin(); it != m_FrameGraphDebugTextureSlots.end();)
             {
+                if (exposedDebugTextureKeys.contains(it->first))
+                {
+                    ++it;
+                    continue;
+                }
+
                 if (it->second.lastTouchedFrame != m_FrameCounter)
                 {
                     it->second.lastTouchedFrame = m_FrameCounter;
@@ -3609,6 +3651,8 @@ namespace vultra
         m_RuntimeProfiler.setCpuRenderMs(
             std::chrono::duration<double, std::milli>(renderFrameCpuEnd - renderFrameCpuStart).count());
         m_RuntimeProfiler.endFrame();
+        if (m_FrameGraphTextureDumpCaptureFrames > 0)
+            --m_FrameGraphTextureDumpCaptureFrames;
         updateGaussianSplatFoveatedBudgetController(m_GaussianSplatSettings, gpuFrameMs);
         rhi::setBuiltinProfilerGpuScopeCallbacks({}, {});
         m_RuntimeProfiler.setGpuScopeCallbacks({}, {}, {});

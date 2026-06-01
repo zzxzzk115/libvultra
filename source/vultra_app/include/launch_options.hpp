@@ -12,6 +12,7 @@ namespace vultra_app
     {
         bool        showHelp {false};
         bool        editorMode {false};
+        bool        mcpMode {false};
         bool        cliOnly {false};
         std::string cliCommand;
         std::string projectPath;
@@ -20,6 +21,8 @@ namespace vultra_app
         std::optional<bool> validation;
         std::optional<bool> debugMarkers;
         std::optional<bool> renderDoc;
+        std::optional<std::string> mcpHost;
+        std::optional<int> mcpPort;
         std::optional<bool> xr;
         std::optional<bool> xrMirror;
     };

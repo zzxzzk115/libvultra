@@ -73,6 +73,19 @@ namespace vultra
         bool frameGraphSnapshotCaptureEnabled() const override { return m_FrameGraphSnapshotCaptureEnabled; }
         void setFrameGraphTextureCaptureEnabled(bool enabled) override { m_FrameGraphTextureCaptureEnabled = enabled; }
         bool frameGraphTextureCaptureEnabled() const override { return m_FrameGraphTextureCaptureEnabled; }
+        void requestFrameGraphTextureDumpCapture(uint32_t         frames = 2,
+                                                 uint32_t         maxPreviewExtent = 0,
+                                                 std::string_view filter = {},
+                                                 std::string_view camera = {},
+                                                 std::string_view renderer = {}) override
+        {
+            m_FrameGraphTextureDumpCaptureFrames =
+                std::max(m_FrameGraphTextureDumpCaptureFrames, static_cast<uint32_t>(std::clamp<int>(static_cast<int>(frames), 1, 120)));
+            m_FrameGraphTextureDumpMaxPreviewExtent = maxPreviewExtent;
+            m_FrameGraphTextureDumpFilter           = filter;
+            m_FrameGraphTextureDumpCamera           = camera;
+            m_FrameGraphTextureDumpRenderer         = renderer;
+        }
         void setFrameGraphTexturePreviewSettings(const FrameGraphTexturePreviewSettings& settings) override
         {
             m_FrameGraphTexturePreviewSettings = settings;
@@ -166,6 +179,11 @@ namespace vultra
         std::vector<FrameGraphDebugTextureSlot> m_RetiredFrameGraphDebugTextureSlots;
         bool                                              m_FrameGraphSnapshotCaptureEnabled {false};
         bool                                              m_FrameGraphTextureCaptureEnabled {false};
+        uint32_t                                          m_FrameGraphTextureDumpCaptureFrames {0};
+        uint32_t                                          m_FrameGraphTextureDumpMaxPreviewExtent {0};
+        std::string                                       m_FrameGraphTextureDumpFilter;
+        std::string                                       m_FrameGraphTextureDumpCamera;
+        std::string                                       m_FrameGraphTextureDumpRenderer;
         FrameGraphTexturePreviewSettings                  m_FrameGraphTexturePreviewSettings;
         std::unordered_map<std::string, FrameGraphTexturePreviewSettings> m_FrameGraphTexturePreviewOverrides;
         std::optional<rhi::GraphicsPipeline>              m_FrameGraphTexturePreviewPipeline;

@@ -1607,7 +1607,7 @@ namespace vultra
                     .dstAccess = rhi::Access::eTransferRead,
                 });
 
-            auto stagingBuffer = createStagingBuffer(texture.getSize());
+            auto stagingBuffer = createReadbackBuffer(texture.getSize());
 
             cb.copyImage(texture, stagingBuffer, imageAspect);
 

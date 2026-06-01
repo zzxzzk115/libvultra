@@ -23,7 +23,7 @@ namespace vultra_app
         struct SceneCameraState
         {
             bool      valid {false};
-            glm::vec3 position {0.0f, 1.6f, 4.0f};
+            glm::vec3 position {0.0f, 6.5f, 6.5f};
             glm::quat rotation {1.0f, 0.0f, 0.0f, 0.0f};
             float     fovYDegrees {60.0f};
         };
@@ -31,7 +31,7 @@ namespace vultra_app
         struct SceneCameraAlignRequest
         {
             bool      pending {false};
-            glm::vec3 position {0.0f, 1.6f, 4.0f};
+            glm::vec3 position {0.0f, 6.5f, 6.5f};
             glm::quat rotation {1.0f, 0.0f, 0.0f, 0.0f};
             float     fovYDegrees {60.0f};
         };
@@ -77,8 +77,8 @@ namespace vultra_app
             bool        enableAgent {false};
             bool        autoStartMcp {false};
             std::string mcpServerName {"vultra"};
-            std::string mcpCommand {"python"};
-            std::string mcpArguments {"tools/vultra_mcp/vultra_mcp.py --engine-root ."};
+            std::string mcpHost {"127.0.0.1"};
+            int         mcpPort {8848};
             std::string agentEndpoint;
             std::string agentModel;
             bool        allowAgentEngineOperations {false};
@@ -142,6 +142,7 @@ namespace vultra_app
         bool                  renderGraphOpenRequested {false};
         bool                  runtimeFrameGraphViewerOpenRequested {false};
         bool                  materialGraphOpenRequested {false};
+        std::string           editorWindowFocusRequested;
         uint64_t              projectGeneration {0};
         uint64_t              assetFileGeneration {0};
         uint64_t              sceneContentGeneration {0};
