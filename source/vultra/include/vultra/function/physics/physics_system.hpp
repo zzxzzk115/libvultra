@@ -8,6 +8,8 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <vector>
 
 namespace JPH
 {
@@ -48,6 +50,29 @@ namespace vultra
         float fixedTimeStep() const override { return m_FixedTimeStep; }
 
         uint32_t bodyCount() const override;
+        bool     hasBody(entt::entity entity) const override;
+        bool     activate(entt::entity entity) override;
+
+        glm::vec3 linearVelocity(entt::entity entity) const override;
+        bool      setLinearVelocity(entt::entity entity, const glm::vec3& velocity) override;
+        glm::vec3 angularVelocity(entt::entity entity) const override;
+        bool      setAngularVelocity(entt::entity entity, const glm::vec3& velocity) override;
+
+        bool addForce(entt::entity entity, const glm::vec3& force) override;
+        bool addImpulse(entt::entity entity, const glm::vec3& impulse) override;
+        bool setPosition(entt::entity entity, const glm::vec3& position, bool activate = true) override;
+
+        std::optional<PhysicsRaycastHit> raycast(const glm::vec3& origin,
+                                                 const glm::vec3& direction,
+                                                 float            maxDistance,
+                                                 bool             activeOnly = true) const override;
+        std::vector<entt::entity> overlapSphere(const glm::vec3& center,
+                                                float            radius,
+                                                bool             activeOnly = true) const override;
+        std::vector<entt::entity> overlapBox(const glm::vec3& center,
+                                             const glm::vec3& halfExtents,
+                                             bool             activeOnly = true) const override;
+        std::vector<PhysicsContactPair> contactPairs(bool activeOnly = true) const override;
 
     private:
         struct Impl;

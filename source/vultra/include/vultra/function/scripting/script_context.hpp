@@ -15,6 +15,8 @@ namespace vultra
     class IRenderService;
     class IRenderBackendService;
     class IFrameDebuggerService;
+    class IPhysicsService;
+    class IAnimationService;
 
     struct ScriptContext
     {
@@ -28,6 +30,8 @@ namespace vultra
         IRenderService* renderService {nullptr};
         IRenderBackendService* renderBackendService {nullptr};
         IFrameDebuggerService* frameDebuggerService {nullptr};
+        IPhysicsService* physicsService {nullptr};
+        IAnimationService* animationService {nullptr};
 
         World* world() const;
         bool   isValid(entt::entity e) const;

@@ -128,6 +128,138 @@ namespace vultra
         ++m_SingleStepRequests;
     }
 
+    bool AnimationSystem::play(entt::entity entity, bool restart)
+    {
+        if (!m_Worlds)
+            return false;
+        auto& reg = m_Worlds->world().registry();
+        auto* animator = reg.try_get<AnimatorComponent>(entity);
+        if (!animator)
+            return false;
+        if (restart)
+            animator->time = 0.0f;
+        animator->playing = true;
+        animator->playOnStart = false;
+        return true;
+    }
+
+    bool AnimationSystem::pause(entt::entity entity)
+    {
+        if (!m_Worlds)
+            return false;
+        auto* animator = m_Worlds->world().registry().try_get<AnimatorComponent>(entity);
+        if (!animator)
+            return false;
+        animator->playing = false;
+        animator->playOnStart = false;
+        return true;
+    }
+
+    bool AnimationSystem::stop(entt::entity entity)
+    {
+        if (!m_Worlds)
+            return false;
+        auto* animator = m_Worlds->world().registry().try_get<AnimatorComponent>(entity);
+        if (!animator)
+            return false;
+        animator->playing = false;
+        animator->playOnStart = false;
+        animator->time = 0.0f;
+        return true;
+    }
+
+    bool AnimationSystem::setAnimation(entt::entity entity, const CoreUUID& animation, bool restart)
+    {
+        if (!m_Worlds)
+            return false;
+        auto* animator = m_Worlds->world().registry().try_get<AnimatorComponent>(entity);
+        if (!animator)
+            return false;
+        animator->animation = animation;
+        if (restart)
+            animator->time = 0.0f;
+        return true;
+    }
+
+    bool AnimationSystem::setTime(entt::entity entity, float seconds)
+    {
+        if (!m_Worlds)
+            return false;
+        auto* animator = m_Worlds->world().registry().try_get<AnimatorComponent>(entity);
+        if (!animator)
+            return false;
+        const float duration = animationDuration(animator->animation);
+        animator->time = duration > 0.0f ? std::clamp(seconds, 0.0f, duration) : std::max(seconds, 0.0f);
+        return true;
+    }
+
+    bool AnimationSystem::setNormalizedTime(entt::entity entity, float normalizedTime)
+    {
+        if (!m_Worlds)
+            return false;
+        auto* animator = m_Worlds->world().registry().try_get<AnimatorComponent>(entity);
+        if (!animator)
+            return false;
+        const float duration = animationDuration(animator->animation);
+        animator->time = duration * std::clamp(normalizedTime, 0.0f, 1.0f);
+        return duration > 0.0f;
+    }
+
+    bool AnimationSystem::setSpeed(entt::entity entity, float speed)
+    {
+        if (!m_Worlds)
+            return false;
+        auto* animator = m_Worlds->world().registry().try_get<AnimatorComponent>(entity);
+        if (!animator)
+            return false;
+        animator->speed = speed;
+        return true;
+    }
+
+    bool AnimationSystem::setLoop(entt::entity entity, bool loop)
+    {
+        if (!m_Worlds)
+            return false;
+        auto* animator = m_Worlds->world().registry().try_get<AnimatorComponent>(entity);
+        if (!animator)
+            return false;
+        animator->loop = loop;
+        return true;
+    }
+
+    AnimatorPlaybackState AnimationSystem::playbackState(entt::entity entity)
+    {
+        AnimatorPlaybackState out;
+        if (!m_Worlds)
+            return out;
+        auto* animator = m_Worlds->world().registry().try_get<AnimatorComponent>(entity);
+        if (!animator)
+            return out;
+
+        out.valid = true;
+        out.playing = animator->playing;
+        out.loop = animator->loop;
+        out.speed = animator->speed;
+        out.time = animator->time;
+        out.duration = animationDuration(animator->animation);
+        out.normalizedTime = out.duration > 0.0f ? std::clamp(animator->time / out.duration, 0.0f, 1.0f) : 0.0f;
+        out.skeleton = animator->skeleton;
+        out.animation = animator->animation;
+        return out;
+    }
+
+    uint32_t AnimationSystem::jointCount(const CoreUUID& skeleton)
+    {
+        const auto* runtime = runtimeSkeleton(skeleton);
+        return runtime ? static_cast<uint32_t>(runtime->num_joints()) : 0u;
+    }
+
+    float AnimationSystem::animationDuration(const CoreUUID& animation)
+    {
+        const auto* runtime = runtimeAnimation(animation);
+        return runtime ? runtime->duration() : 0.0f;
+    }
+
     const ozz::animation::Skeleton* AnimationSystem::runtimeSkeleton(const CoreUUID& uuid)
     {
         if (!uuid.valid() || !m_Assets)

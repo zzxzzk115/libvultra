@@ -17,6 +17,41 @@ namespace vultra
         entt::entity entity {entt::null};
     };
 
+    struct ScriptRigidBodyRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptCameraRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptLightRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptMeshRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptBoxShapeRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptSphereShapeRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptAnimatorRef
+    {
+        entt::entity entity {entt::null};
+    };
+
     struct ScriptVec2
     {
         float x {0.0f};
@@ -28,6 +63,14 @@ namespace vultra
         float x {0.0f};
         float y {0.0f};
         float z {0.0f};
+    };
+
+    struct ScriptVec4
+    {
+        float x {0.0f};
+        float y {0.0f};
+        float z {0.0f};
+        float w {0.0f};
     };
 
     struct ScriptAssetHandle
@@ -49,6 +92,35 @@ namespace vultra
     struct ScriptAssetMemoryStats
     {
         uint64_t cpuCacheBytes {0};
+    };
+
+    struct ScriptPhysicsRaycastHit
+    {
+        bool         hit {false};
+        ScriptEntity entity;
+        ScriptVec3   point;
+        ScriptVec3   normal {0.0f, 1.0f, 0.0f};
+        float        fraction {0.0f};
+        float        distance {0.0f};
+    };
+
+    struct ScriptPhysicsContactPair
+    {
+        ScriptEntity a;
+        ScriptEntity b;
+    };
+
+    struct ScriptAnimatorPlaybackState
+    {
+        bool        valid {false};
+        bool        playing {false};
+        bool        loop {true};
+        float       speed {1.0f};
+        float       time {0.0f};
+        float       duration {0.0f};
+        float       normalizedTime {0.0f};
+        std::string skeleton;
+        std::string animation;
     };
 
     struct ScriptCameraOverlayInfo

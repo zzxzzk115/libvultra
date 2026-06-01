@@ -6,6 +6,7 @@
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/capsule_shape_component.hpp"
+#include "vultra/function/world/components/entity_status_component.hpp"
 #include "vultra/function/world/components/rigid_body_component.hpp"
 #include "vultra/function/world/components/sphere_shape_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
@@ -27,6 +28,8 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
 
+#include <glm/common.hpp>
+#include <glm/geometric.hpp>
 #include <vtask/scheduler.hpp>
 #include <vtask/task_set.hpp>
 
@@ -35,6 +38,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -61,6 +65,154 @@ namespace vultra
 
         glm::vec3 fromJolt(const JPH::Vec3& v) { return {v.GetX(), v.GetY(), v.GetZ()}; }
         glm::quat fromJolt(const JPH::Quat& q) { return {q.GetW(), q.GetX(), q.GetY(), q.GetZ()}; }
+
+        bool entityActive(World& world, entt::entity entity)
+        {
+            const auto* status = world.registry().try_get<EntityStatusComponent>(entity);
+            return !status || status->active;
+        }
+
+        float maxComponent(const glm::vec3& v) { return std::max({v.x, v.y, v.z}); }
+
+        bool sphereIntersectsAabb(const glm::vec3& center,
+                                  float radius,
+                                  const glm::vec3& boxCenter,
+                                  const glm::vec3& halfExtents)
+        {
+            const glm::vec3 closest = glm::clamp(center, boxCenter - halfExtents, boxCenter + halfExtents);
+            const glm::vec3 delta   = center - closest;
+            return glm::dot(delta, delta) <= radius * radius;
+        }
+
+        bool aabbIntersectsAabb(const glm::vec3& aCenter,
+                                const glm::vec3& aHalfExtents,
+                                const glm::vec3& bCenter,
+                                const glm::vec3& bHalfExtents)
+        {
+            const glm::vec3 d = glm::abs(aCenter - bCenter);
+            return d.x <= aHalfExtents.x + bHalfExtents.x && d.y <= aHalfExtents.y + bHalfExtents.y &&
+                   d.z <= aHalfExtents.z + bHalfExtents.z;
+        }
+
+        glm::vec3 entityHalfExtents(World& world, entt::entity entity)
+        {
+            auto& reg = world.registry();
+            const auto* transform = reg.try_get<TransformComponent>(entity);
+            if (!transform)
+                return {};
+
+            const glm::vec3 scale = glm::abs(transform->scale);
+            if (const auto* box = reg.try_get<BoxShapeComponent>(entity))
+                return box->halfExtents * scale;
+            if (const auto* sphere = reg.try_get<SphereShapeComponent>(entity))
+            {
+                const float r = sphere->radius * maxComponent(scale);
+                return {r, r, r};
+            }
+            if (const auto* capsule = reg.try_get<CapsuleShapeComponent>(entity))
+            {
+                const float r = (capsule->halfHeightOfCylinder + capsule->radius) * maxComponent(scale);
+                return {r, r, r};
+            }
+            return {};
+        }
+
+        bool overlapsSphere(World& world, entt::entity entity, const glm::vec3& center, float radius)
+        {
+            auto& reg = world.registry();
+            const auto* transform = reg.try_get<TransformComponent>(entity);
+            if (!transform)
+                return false;
+
+            const glm::vec3 scale = glm::abs(transform->scale);
+            if (const auto* sphere = reg.try_get<SphereShapeComponent>(entity))
+            {
+                const float scaledRadius = sphere->radius * maxComponent(scale);
+                const glm::vec3 delta    = transform->position - center;
+                const float combined     = scaledRadius + radius;
+                return glm::dot(delta, delta) <= combined * combined;
+            }
+
+            if (const auto* box = reg.try_get<BoxShapeComponent>(entity))
+                return sphereIntersectsAabb(center, radius, transform->position, box->halfExtents * scale);
+
+            if (const auto* capsule = reg.try_get<CapsuleShapeComponent>(entity))
+            {
+                const float scaledRadius = (capsule->halfHeightOfCylinder + capsule->radius) * maxComponent(scale);
+                const glm::vec3 delta    = transform->position - center;
+                const float combined     = scaledRadius + radius;
+                return glm::dot(delta, delta) <= combined * combined;
+            }
+
+            return false;
+        }
+
+        bool overlapsBox(World& world, entt::entity entity, const glm::vec3& center, const glm::vec3& halfExtents)
+        {
+            auto& reg = world.registry();
+            const auto* transform = reg.try_get<TransformComponent>(entity);
+            if (!transform)
+                return false;
+
+            return aabbIntersectsAabb(center, halfExtents, transform->position, entityHalfExtents(world, entity));
+        }
+
+        std::optional<PhysicsRaycastHit> raycastAabb(entt::entity entity,
+                                                     const glm::vec3& origin,
+                                                     const glm::vec3& direction,
+                                                     float maxDistance,
+                                                     const glm::vec3& center,
+                                                     const glm::vec3& halfExtents)
+        {
+            float tMin = 0.0f;
+            float tMax = maxDistance;
+            glm::vec3 hitNormal {0.0f, 1.0f, 0.0f};
+
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                const float o = origin[axis];
+                const float d = direction[axis];
+                const float minB = center[axis] - halfExtents[axis];
+                const float maxB = center[axis] + halfExtents[axis];
+
+                if (std::abs(d) < 0.000001f)
+                {
+                    if (o < minB || o > maxB)
+                        return std::nullopt;
+                    continue;
+                }
+
+                float t1 = (minB - o) / d;
+                float t2 = (maxB - o) / d;
+                float normalSign = -1.0f;
+                if (t1 > t2)
+                {
+                    std::swap(t1, t2);
+                    normalSign = 1.0f;
+                }
+
+                if (t1 > tMin)
+                {
+                    tMin = t1;
+                    hitNormal = {};
+                    hitNormal[axis] = normalSign;
+                }
+                tMax = std::min(tMax, t2);
+                if (tMin > tMax)
+                    return std::nullopt;
+            }
+
+            if (tMin < 0.0f || tMin > maxDistance)
+                return std::nullopt;
+
+            return PhysicsRaycastHit {
+                .entity = entity,
+                .point = origin + direction * tMin,
+                .normal = hitNormal,
+                .fraction = maxDistance > 0.0f ? tMin / maxDistance : 0.0f,
+                .distance = tMin,
+            };
+        }
 
         JPH::EMotionType toMotionType(uint32_t value)
         {
@@ -419,6 +571,282 @@ namespace vultra
     uint32_t PhysicsSystem::bodyCount() const
     {
         return m_Impl ? static_cast<uint32_t>(m_Impl->bodies.size()) : 0u;
+    }
+
+    bool PhysicsSystem::hasBody(entt::entity entity) const
+    {
+        return m_Impl && m_Impl->bodies.contains(entity);
+    }
+
+    bool PhysicsSystem::activate(entt::entity entity)
+    {
+        if (!m_Impl || !m_Impl->physics || !ensureBody(entity))
+            return false;
+
+        const auto it = m_Impl->bodies.find(entity);
+        if (it == m_Impl->bodies.end())
+            return false;
+
+        m_Impl->physics->GetBodyInterface().ActivateBody(it->second.id);
+        return true;
+    }
+
+    glm::vec3 PhysicsSystem::linearVelocity(entt::entity entity) const
+    {
+        if (m_Impl && m_Impl->physics)
+        {
+            const auto it = m_Impl->bodies.find(entity);
+            if (it != m_Impl->bodies.end())
+                return fromJolt(m_Impl->physics->GetBodyInterface().GetLinearVelocity(it->second.id));
+        }
+
+        if (m_WorldService)
+        {
+            auto& reg = m_WorldService->world().registry();
+            if (auto* rb = reg.try_get<RigidBodyComponent>(entity))
+                return rb->linearVelocity;
+        }
+        return {};
+    }
+
+    bool PhysicsSystem::setLinearVelocity(entt::entity entity, const glm::vec3& velocity)
+    {
+        if (!m_WorldService)
+            return false;
+
+        auto& reg = m_WorldService->world().registry();
+        auto* rb  = reg.try_get<RigidBodyComponent>(entity);
+        if (!rb)
+            return false;
+
+        rb->linearVelocity = velocity;
+        if (m_Impl && m_Impl->physics && ensureBody(entity))
+        {
+            const auto it = m_Impl->bodies.find(entity);
+            if (it != m_Impl->bodies.end())
+            {
+                auto& bodyInterface = m_Impl->physics->GetBodyInterface();
+                bodyInterface.SetLinearVelocity(it->second.id, toJolt(velocity));
+                bodyInterface.ActivateBody(it->second.id);
+            }
+        }
+        return true;
+    }
+
+    glm::vec3 PhysicsSystem::angularVelocity(entt::entity entity) const
+    {
+        if (m_Impl && m_Impl->physics)
+        {
+            const auto it = m_Impl->bodies.find(entity);
+            if (it != m_Impl->bodies.end())
+                return fromJolt(m_Impl->physics->GetBodyInterface().GetAngularVelocity(it->second.id));
+        }
+
+        if (m_WorldService)
+        {
+            auto& reg = m_WorldService->world().registry();
+            if (auto* rb = reg.try_get<RigidBodyComponent>(entity))
+                return rb->angularVelocity;
+        }
+        return {};
+    }
+
+    bool PhysicsSystem::setAngularVelocity(entt::entity entity, const glm::vec3& velocity)
+    {
+        if (!m_WorldService)
+            return false;
+
+        auto& reg = m_WorldService->world().registry();
+        auto* rb  = reg.try_get<RigidBodyComponent>(entity);
+        if (!rb)
+            return false;
+
+        rb->angularVelocity = velocity;
+        if (m_Impl && m_Impl->physics && ensureBody(entity))
+        {
+            const auto it = m_Impl->bodies.find(entity);
+            if (it != m_Impl->bodies.end())
+            {
+                auto& bodyInterface = m_Impl->physics->GetBodyInterface();
+                bodyInterface.SetAngularVelocity(it->second.id, toJolt(velocity));
+                bodyInterface.ActivateBody(it->second.id);
+            }
+        }
+        return true;
+    }
+
+    bool PhysicsSystem::addForce(entt::entity entity, const glm::vec3& force)
+    {
+        if (!m_Impl || !m_Impl->physics || !ensureBody(entity))
+            return false;
+
+        const auto it = m_Impl->bodies.find(entity);
+        if (it == m_Impl->bodies.end())
+            return false;
+
+        auto& bodyInterface = m_Impl->physics->GetBodyInterface();
+        bodyInterface.AddForce(it->second.id, toJolt(force));
+        bodyInterface.ActivateBody(it->second.id);
+        return true;
+    }
+
+    bool PhysicsSystem::addImpulse(entt::entity entity, const glm::vec3& impulse)
+    {
+        if (!m_Impl || !m_Impl->physics || !ensureBody(entity))
+            return false;
+
+        const auto it = m_Impl->bodies.find(entity);
+        if (it == m_Impl->bodies.end())
+            return false;
+
+        auto& bodyInterface = m_Impl->physics->GetBodyInterface();
+        bodyInterface.AddImpulse(it->second.id, toJolt(impulse));
+        bodyInterface.ActivateBody(it->second.id);
+        return true;
+    }
+
+    bool PhysicsSystem::setPosition(entt::entity entity, const glm::vec3& position, bool activate)
+    {
+        if (!m_WorldService)
+            return false;
+
+        auto& reg = m_WorldService->world().registry();
+        auto* transform = reg.try_get<TransformComponent>(entity);
+        if (!transform)
+            return false;
+
+        transform->position = position;
+        transform->dirty = true;
+
+        if (m_Impl && m_Impl->physics && ensureBody(entity))
+        {
+            const auto it = m_Impl->bodies.find(entity);
+            if (it != m_Impl->bodies.end())
+            {
+                const auto activation = activate ? JPH::EActivation::Activate : JPH::EActivation::DontActivate;
+                m_Impl->physics->GetBodyInterface().SetPosition(it->second.id, toJoltR(position), activation);
+            }
+        }
+        return true;
+    }
+
+    std::optional<PhysicsRaycastHit> PhysicsSystem::raycast(const glm::vec3& origin,
+                                                            const glm::vec3& direction,
+                                                            float            maxDistance,
+                                                            bool             activeOnly) const
+    {
+        if (!m_WorldService || maxDistance <= 0.0f)
+            return std::nullopt;
+
+        const float dirLenSq = glm::dot(direction, direction);
+        if (dirLenSq <= 0.000001f)
+            return std::nullopt;
+
+        const glm::vec3 dir = direction / std::sqrt(dirLenSq);
+        auto&           world = m_WorldService->world();
+        auto&           reg = world.registry();
+        auto            view = reg.view<TransformComponent, RigidBodyComponent>();
+
+        std::optional<PhysicsRaycastHit> best;
+        for (auto entity : view)
+        {
+            if (activeOnly && !entityActive(world, entity))
+                continue;
+
+            const auto* transform = reg.try_get<TransformComponent>(entity);
+            if (!transform)
+                continue;
+
+            const auto hit = raycastAabb(entity, origin, dir, maxDistance, transform->position, entityHalfExtents(world, entity));
+            if (!hit)
+                continue;
+            if (!best || hit->distance < best->distance)
+                best = hit;
+        }
+
+        return best;
+    }
+
+    std::vector<entt::entity> PhysicsSystem::overlapSphere(const glm::vec3& center,
+                                                           float            radius,
+                                                           bool             activeOnly) const
+    {
+        std::vector<entt::entity> result;
+        if (!m_WorldService || radius < 0.0f)
+            return result;
+
+        auto& world = m_WorldService->world();
+        auto& reg   = world.registry();
+        auto  view  = reg.view<TransformComponent, RigidBodyComponent>();
+
+        const float queryRadius = std::max(0.0f, radius);
+        for (auto entity : view)
+        {
+            if (activeOnly && !entityActive(world, entity))
+                continue;
+            if (overlapsSphere(world, entity, center, queryRadius))
+                result.push_back(entity);
+        }
+        return result;
+    }
+
+    std::vector<entt::entity> PhysicsSystem::overlapBox(const glm::vec3& center,
+                                                        const glm::vec3& halfExtents,
+                                                        bool             activeOnly) const
+    {
+        std::vector<entt::entity> result;
+        if (!m_WorldService)
+            return result;
+
+        const glm::vec3 queryHalfExtents = glm::max(glm::abs(halfExtents), glm::vec3 {0.0f});
+        auto& world = m_WorldService->world();
+        auto& reg = world.registry();
+        auto view = reg.view<TransformComponent, RigidBodyComponent>();
+
+        for (auto entity : view)
+        {
+            if (activeOnly && !entityActive(world, entity))
+                continue;
+            if (overlapsBox(world, entity, center, queryHalfExtents))
+                result.push_back(entity);
+        }
+        return result;
+    }
+
+    std::vector<PhysicsContactPair> PhysicsSystem::contactPairs(bool activeOnly) const
+    {
+        std::vector<PhysicsContactPair> result;
+        if (!m_WorldService)
+            return result;
+
+        auto& world = m_WorldService->world();
+        auto& reg = world.registry();
+        auto view = reg.view<TransformComponent, RigidBodyComponent>();
+        std::vector<entt::entity> entities;
+        for (auto entity : view)
+        {
+            if (!activeOnly || entityActive(world, entity))
+                entities.push_back(entity);
+        }
+
+        for (size_t i = 0; i < entities.size(); ++i)
+        {
+            const auto a = entities[i];
+            const auto* aTransform = reg.try_get<TransformComponent>(a);
+            if (!aTransform)
+                continue;
+            const auto aHalfExtents = entityHalfExtents(world, a);
+            for (size_t j = i + 1; j < entities.size(); ++j)
+            {
+                const auto b = entities[j];
+                const auto* bTransform = reg.try_get<TransformComponent>(b);
+                if (!bTransform)
+                    continue;
+                if (aabbIntersectsAabb(aTransform->position, aHalfExtents, bTransform->position, entityHalfExtents(world, b)))
+                    result.push_back(PhysicsContactPair {.a = a, .b = b});
+            }
+        }
+        return result;
     }
 
     void PhysicsSystem::onPhysics(fsec dt)

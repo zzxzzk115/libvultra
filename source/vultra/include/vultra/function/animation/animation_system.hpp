@@ -34,6 +34,18 @@ namespace vultra
         void requestSingleStep() override;
         void updateWorld(World& world, fsec dt) override;
 
+        bool play(entt::entity entity, bool restart = false) override;
+        bool pause(entt::entity entity) override;
+        bool stop(entt::entity entity) override;
+        bool setAnimation(entt::entity entity, const CoreUUID& animation, bool restart = true) override;
+        bool setTime(entt::entity entity, float seconds) override;
+        bool setNormalizedTime(entt::entity entity, float normalizedTime) override;
+        bool setSpeed(entt::entity entity, float speed) override;
+        bool setLoop(entt::entity entity, bool loop) override;
+        AnimatorPlaybackState playbackState(entt::entity entity) override;
+        uint32_t jointCount(const CoreUUID& skeleton) override;
+        float animationDuration(const CoreUUID& animation) override;
+
     private:
         struct SkeletonRuntime
         {
