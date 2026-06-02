@@ -60,6 +60,33 @@ namespace vultra
     {
         constexpr uint32_t kAssetLoadMaxAttempts = 3;
 
+        template<class Record>
+        void markAssetUsed(Record& record, const uint64_t frameIndex)
+        {
+            record.lastUsedFrame.store(frameIndex, std::memory_order_release);
+        }
+
+        template<class Cache>
+        void releaseZeroRefCpuAssetCache(Cache& cache, const uint64_t frameIndex, const uint64_t idleFrames)
+        {
+            cache.forEachRecord([&](auto& record) {
+                if (!record.cpu)
+                    return;
+                if (record.state.load(std::memory_order_acquire) != AssetState::eReady)
+                    return;
+                if (record.refCount.load(std::memory_order_acquire) != 0)
+                    return;
+
+                const uint64_t lastUsed = record.lastUsedFrame.load(std::memory_order_acquire);
+                if (frameIndex < lastUsed || frameIndex - lastUsed < idleFrames)
+                    return;
+
+                record.cpu.reset();
+                record.gpuIndex.store(std::numeric_limits<uint32_t>::max(), std::memory_order_release);
+                record.state.store(AssetState::eUnloaded, std::memory_order_release);
+            });
+        }
+
         bool isBuiltinCitrusOrchardSkyTextureUri(std::string_view uri)
         {
             return uri == kBuiltinCitrusOrchardSkyTextureUri;
@@ -902,6 +929,8 @@ namespace vultra
 
     void AssetSystem::update(uint64_t frameIndex)
     {
+        m_LastUpdateFrame = std::max(m_LastUpdateFrame, frameIndex);
+
         // NOTE:
         // GPU upload must happen on the main/render thread. Even in sync bring-up, we keep a queue + update() shape so
         // the system can migrate to async loading later without breaking APIs.
@@ -1036,13 +1065,23 @@ namespace vultra
         }
 
         auto& pool = m_GpuResourceService->pool();
+        pool.processDeferredFrees(frameIndex);
         if (pool.materialTableDirty)
         {
             pool.uploadMaterialTable(*m_RenderDevice);
         }
 
-        // GC hook (TODO): Use frameIndex + refCount/lastUsedFrame to evict CPU/GPU if desired.
-        (void)frameIndex;
+        releaseZeroRefCpuAssets(frameIndex);
+    }
+
+    void AssetSystem::releaseZeroRefCpuAssets(const uint64_t frameIndex)
+    {
+        if (!m_Desc.releaseZeroRefCpuAssets)
+            return;
+
+        const uint64_t idleFrames = std::max<uint64_t>(1, m_Desc.zeroRefCpuAssetIdleFrames);
+        releaseZeroRefCpuAssetCache(m_SkeletonCache, frameIndex, idleFrames);
+        releaseZeroRefCpuAssetCache(m_AnimationCache, frameIndex, idleFrames);
     }
 
     void AssetSystem::enqueueUploadOnce(UploadCmd::Kind kind, const CoreUUID& uuid, std::atomic_bool& queuedFlag)
@@ -1954,6 +1993,7 @@ namespace vultra
         auto* rec = m_TextureCache.findOrCreate(uuid);
         if (!rec)
             return {};
+        markAssetUsed(*rec, m_LastUpdateFrame);
 
         auto st = rec->state.load(std::memory_order_acquire);
         if (st == AssetState::eUnloaded)
@@ -1982,6 +2022,7 @@ namespace vultra
         auto* rec = m_MeshCache.findOrCreate(uuid);
         if (!rec)
             return {};
+        markAssetUsed(*rec, m_LastUpdateFrame);
 
         auto st = rec->state.load(std::memory_order_acquire);
         if (st == AssetState::eUnloaded)
@@ -2011,6 +2052,7 @@ namespace vultra
         auto* rec = m_GaussianSplatCache.findOrCreate(uuid);
         if (!rec)
             return {};
+        markAssetUsed(*rec, m_LastUpdateFrame);
 
         auto st = rec->state.load(std::memory_order_acquire);
         if (st == AssetState::eUnloaded)
@@ -2046,6 +2088,7 @@ namespace vultra
         auto* rec = m_SkeletonCache.findOrCreate(uuid);
         if (!rec)
             return {};
+        markAssetUsed(*rec, m_LastUpdateFrame);
 
         if (rec->state.load(std::memory_order_acquire) == AssetState::eReady)
             return AssetHandle<vasset::VSkeleton, resource::CpuAsset>(rec);
@@ -2092,6 +2135,7 @@ namespace vultra
         auto* rec = m_AnimationCache.findOrCreate(uuid);
         if (!rec)
             return {};
+        markAssetUsed(*rec, m_LastUpdateFrame);
 
         if (rec->state.load(std::memory_order_acquire) == AssetState::eReady)
             return AssetHandle<vasset::VAnimation, resource::CpuAsset>(rec);
@@ -2138,6 +2182,7 @@ namespace vultra
         auto* rec = m_TextureCache.findOrCreate(uuid);
         if (!rec)
             return {};
+        markAssetUsed(*rec, m_LastUpdateFrame);
 
         if (rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
             rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())
@@ -2253,6 +2298,7 @@ namespace vultra
         auto* rec = m_MeshCache.findOrCreate(uuid);
         if (!rec)
             return {};
+        markAssetUsed(*rec, m_LastUpdateFrame);
 
         // Already resident on GPU
         if (rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
@@ -2341,6 +2387,7 @@ namespace vultra
         auto* rec = m_GaussianSplatCache.findOrCreate(uuid);
         if (!rec)
             return {};
+        markAssetUsed(*rec, m_LastUpdateFrame);
 
         if (rec->state.load(std::memory_order_acquire) == AssetState::eReady &&
             rec->gpuIndex.load(std::memory_order_acquire) != std::numeric_limits<uint32_t>::max())

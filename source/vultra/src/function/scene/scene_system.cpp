@@ -7,6 +7,8 @@
 #include "vultra/function/scene/vscn_reader.hpp"
 #include "vultra/function/scene/vscn_writer.hpp"
 #include "vultra/function/services/asset_service.hpp"
+#include "vultra/function/services/render_service.hpp"
+#include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/box_shape_component.hpp"
 #include "vultra/function/world/components/camera_component.hpp"
 #include "vultra/function/world/components/capsule_shape_component.hpp"
@@ -266,6 +268,27 @@ namespace vultra
             auto handle = assets.loadGaussianSplatAsync(splat.gaussianSplat);
             if (handle.ready())
                 ++out.ready;
+        }
+
+        auto animatorView = reg.view<AnimatorComponent>();
+        for (auto entity : animatorView)
+        {
+            (void)entity;
+            const auto& animator = animatorView.get<AnimatorComponent>(entity);
+            if (animator.skeleton.valid())
+            {
+                ++out.total;
+                auto handle = assets.loadSkeletonAsync(animator.skeleton);
+                if (handle.ready())
+                    ++out.ready;
+            }
+            if (animator.animation.valid())
+            {
+                ++out.total;
+                auto handle = assets.loadAnimationAsync(animator.animation);
+                if (handle.ready())
+                    ++out.ready;
+            }
         }
 
         if (assets.materialRefreshPending())
@@ -862,7 +885,7 @@ namespace vultra
             return entt::null;
 
         if (clearWorld)
-            world.clear();
+            clearWorldForSceneReplacement(world);
 
         const auto baseDir = uri_base_dir(uri);
 
@@ -900,7 +923,7 @@ namespace vultra
             return entt::null;
 
         if (clearWorld)
-            world.clear();
+            clearWorldForSceneReplacement(world);
 
         entt::entity firstRoot = entt::null;
         if (doc.syntheticRoot)
@@ -927,6 +950,18 @@ namespace vultra
             return entt::null;
         }
         return std::move(rootResult).value();
+    }
+
+    void SceneSystem::clearWorldForSceneReplacement(World& world)
+    {
+        world.clear();
+
+        auto* worldService = ctx().services.tryGet<IWorldService>();
+        if (!worldService || &worldService->world() != &world)
+            return;
+
+        if (auto* renderService = ctx().services.tryGet<IRenderService>())
+            renderService->resetSceneState();
     }
 
     SceneSystem::BuildNodeResult SceneSystem::buildNodeFromWorldR(World& world, entt::entity e)

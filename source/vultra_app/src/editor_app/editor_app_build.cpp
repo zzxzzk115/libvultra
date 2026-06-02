@@ -1,5 +1,6 @@
 #include "editor_app/editor_app.hpp"
 
+#include "editor_app/project_asset_utils.hpp"
 #include "editor_app/ui/settings_widgets.hpp"
 #include "vproject.hpp"
 
@@ -219,6 +220,15 @@ namespace vultra_app
         }
 #endif
 
+        void appendPackRoot(std::vector<std::string>& packArgs, std::vector<std::string>& seenRoots, std::string root)
+        {
+            if (root.empty() || std::find(seenRoots.begin(), seenRoots.end(), root) != seenRoots.end())
+                return;
+            seenRoots.push_back(root);
+            packArgs.push_back("--root");
+            packArgs.push_back(std::move(root));
+        }
+
         void
         setBuildRunProgress(const std::shared_ptr<BuildRunTaskProgress>& progress, float value, std::string message)
         {
@@ -339,11 +349,17 @@ namespace vultra_app
                         .message = "Export failed: cannot create output folder " + outputDir.generic_string()};
 
             setBuildRunProgress(progress, 0.15f, "Writing package manifest...");
+            auto buildScenes = normalizedBuildScenes(sceneUri, {});
+            if (auto project = loadVProject(projectRoot); project.has_value())
+                buildScenes = normalizedBuildScenes(project->defaultScene.empty() ? sceneUri : project->defaultScene,
+                                                    project->buildScenes);
+
             std::string manifestError;
             if (!saveVPackageManifest(assetRootPath,
                                       VPackageManifest {
                                           .name       = projectName,
                                           .entryScene = sceneUri,
+                                          .buildScenes = buildScenes,
                                       },
                                       &manifestError))
             {
@@ -360,8 +376,34 @@ namespace vultra_app
                         .message = "Export failed: asset import step returned " + std::to_string(importResult) + ".",
                     };
 
-                const int packResult = runAssetTool(
-                    {"vultra asset", "pack", assetRootPath.generic_string(), vpkPath.generic_string(), "--zstd", "6"});
+                std::vector<std::string> packArgs {
+                    "vultra asset", "pack", assetRootPath.generic_string(), vpkPath.generic_string(), "--zstd", "6",
+                };
+                std::vector<std::string> packRoots;
+                appendPackRoot(packArgs, packRoots, kVPackageManifestPath);
+                for (const auto& scene : buildScenes)
+                {
+                    if (scene.enabled)
+                        appendPackRoot(packArgs, packRoots, scene.uri);
+                }
+                for (const auto& renderGraph : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vrg.json"))
+                    appendPackRoot(packArgs, packRoots, renderGraph);
+                for (const auto& shaderLibrary :
+                     collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vshaderlib.lua"))
+                    appendPackRoot(packArgs, packRoots, shaderLibrary);
+                for (const auto& feature : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vfeature.lua"))
+                    appendPackRoot(packArgs, packRoots, feature);
+                for (const auto& srp : collectProjectAssetUrisWithSuffix(projectRoot, assetRoot, ".vsrp.lua"))
+                    appendPackRoot(packArgs, packRoots, srp);
+                for (const auto& renderLua :
+                     collectProjectAssetUrisWithExtension(projectRoot, assetRoot, ".lua"))
+                {
+                    if (!renderLua.starts_with("res://render/"))
+                        continue;
+                    appendPackRoot(packArgs, packRoots, renderLua);
+                }
+
+                const int packResult = runAssetTool(packArgs);
                 if (packResult != 0)
                     return BuildRunResult {
                         .ok      = false,

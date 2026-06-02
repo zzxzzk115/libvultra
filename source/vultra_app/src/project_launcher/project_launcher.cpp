@@ -1336,6 +1336,7 @@ This directory is an index, not the runtime asset root.
                .name               = projectName,
                .assetRoot          = "resources",
                .defaultScene       = "res://scenes/main.vscn",
+               .buildScenes        = {VBuildScene {.index = 0, .uri = "res://scenes/main.vscn", .name = "Main", .enabled = true}},
                .editingRenderGraph = templateKind == ProjectTemplateKind::Empty ?
                                          std::string {} :
                                          std::string {"res://render/default.vrg.json"},
@@ -1359,6 +1360,7 @@ This directory is an index, not the runtime asset root.
         state.currentProjectName        = project.name;
         state.currentAssetRoot          = project.assetRoot;
         state.currentDefaultScene       = project.defaultScene;
+        state.currentBuildScenes        = project.buildScenes;
         state.currentEditingRenderGraph = project.editingRenderGraph;
         state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
         ++state.projectGeneration;
@@ -1418,6 +1420,7 @@ This directory is an index, not the runtime asset root.
         state.currentProjectName        = project->name;
         state.currentAssetRoot          = project->assetRoot;
         state.currentDefaultScene       = project->defaultScene;
+        state.currentBuildScenes        = project->buildScenes;
         state.currentEditingRenderGraph = project->editingRenderGraph;
         state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
         ++state.projectGeneration;

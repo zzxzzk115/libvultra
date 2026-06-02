@@ -3,11 +3,20 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace vultra_app
 {
     inline constexpr const char* kVPackageManifestPath = "vultra.package.vmanifest";
     inline constexpr const char* kVPackageManifestUri  = "res://vultra.package.vmanifest";
+
+    struct VBuildScene
+    {
+        uint32_t    index {0};
+        std::string uri;
+        std::string name;
+        bool        enabled {true};
+    };
 
     struct VProject
     {
@@ -15,6 +24,7 @@ namespace vultra_app
         std::string           name;
         std::string           assetRoot {"resources"};
         std::string           defaultScene;
+        std::vector<VBuildScene> buildScenes;
         std::string           editingRenderGraph {"res://render/default.vrg.json"};
     };
 
@@ -22,7 +32,11 @@ namespace vultra_app
     {
         std::string name;
         std::string entryScene;
+        std::vector<VBuildScene> buildScenes;
     };
+
+    [[nodiscard]] std::vector<VBuildScene> normalizedBuildScenes(const std::string&              defaultScene,
+                                                                 const std::vector<VBuildScene>& scenes);
 
     [[nodiscard]] std::filesystem::path vprojectFileFor(const std::filesystem::path& projectDir,
                                                         const std::string&           projectName);

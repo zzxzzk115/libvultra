@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vproject.hpp"
+
 #include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -112,6 +114,7 @@ namespace vultra_app
         std::string           currentProjectName;
         std::string           currentAssetRoot {"resources"};
         std::string           currentDefaultScene;
+        std::vector<VBuildScene> currentBuildScenes;
         std::string           currentEditingRenderGraph {"res://render/default.vrg.json"};
         std::string           currentEditingMaterialGraph {"res://materials/default.vmatgraph.json"};
         std::string           renderMode {"visible"};

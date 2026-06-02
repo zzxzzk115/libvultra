@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,48 @@ namespace vultra_app
             return value;
         }
 
+        bool parseBool(std::string value, const bool fallback = true)
+        {
+            value = trim(std::move(value));
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            if (value == "1" || value == "true" || value == "yes" || value == "on")
+                return true;
+            if (value == "0" || value == "false" || value == "no" || value == "off")
+                return false;
+            return fallback;
+        }
+
+        std::optional<uint32_t> parseIndexedKey(std::string_view key, std::string_view prefix)
+        {
+            if (!key.starts_with(prefix))
+                return std::nullopt;
+            const auto suffix = key.substr(prefix.size());
+            if (suffix.empty())
+                return std::nullopt;
+            uint32_t index = 0;
+            for (const char ch : suffix)
+            {
+                if (!std::isdigit(static_cast<unsigned char>(ch)))
+                    return std::nullopt;
+                index = index * 10u + static_cast<uint32_t>(ch - '0');
+            }
+            return index;
+        }
+
+        VBuildScene& ensureBuildScene(std::vector<VBuildScene>& scenes, const uint32_t index)
+        {
+            auto it = std::find_if(scenes.begin(), scenes.end(), [&](const VBuildScene& scene) {
+                return scene.index == index;
+            });
+            if (it != scenes.end())
+                return *it;
+
+            scenes.push_back(VBuildScene {.index = index});
+            return scenes.back();
+        }
+
         void applyKeyValue(VProject& project, std::string key, std::string value)
         {
             key   = trim(std::move(key));
@@ -44,6 +87,12 @@ namespace vultra_app
                 project.defaultScene = value;
             else if (key == "editing_rendergraph")
                 project.editingRenderGraph = value;
+            else if (auto index = parseIndexedKey(key, "build_scene."))
+                ensureBuildScene(project.buildScenes, *index).uri = value;
+            else if (auto index = parseIndexedKey(key, "build_scene_name."))
+                ensureBuildScene(project.buildScenes, *index).name = value;
+            else if (auto index = parseIndexedKey(key, "build_scene_enabled."))
+                ensureBuildScene(project.buildScenes, *index).enabled = parseBool(value);
         }
 
         void applyKeyValue(VPackageManifest& manifest, std::string key, std::string value)
@@ -55,6 +104,12 @@ namespace vultra_app
                 manifest.name = value;
             else if (key == "entry_scene")
                 manifest.entryScene = value;
+            else if (auto index = parseIndexedKey(key, "build_scene."))
+                ensureBuildScene(manifest.buildScenes, *index).uri = value;
+            else if (auto index = parseIndexedKey(key, "build_scene_name."))
+                ensureBuildScene(manifest.buildScenes, *index).name = value;
+            else if (auto index = parseIndexedKey(key, "build_scene_enabled."))
+                ensureBuildScene(manifest.buildScenes, *index).enabled = parseBool(value);
         }
 
         std::string quote(std::string_view value)
@@ -147,6 +202,37 @@ namespace vultra_app
         }
     } // namespace
 
+    std::vector<VBuildScene> normalizedBuildScenes(const std::string&              defaultScene,
+                                                   const std::vector<VBuildScene>& scenes)
+    {
+        std::vector<VBuildScene> out;
+        for (const auto& scene : scenes)
+        {
+            if (scene.uri.empty())
+                continue;
+            out.push_back(scene);
+        }
+
+        if (!defaultScene.empty())
+        {
+            const auto hasDefault = std::any_of(out.begin(), out.end(), [&](const VBuildScene& scene) {
+                return scene.uri == defaultScene;
+            });
+            if (!hasDefault)
+                out.push_back(VBuildScene {.index = 0, .uri = defaultScene, .enabled = true});
+        }
+
+        std::sort(out.begin(), out.end(), [](const VBuildScene& a, const VBuildScene& b) {
+            if (a.index != b.index)
+                return a.index < b.index;
+            return a.uri < b.uri;
+        });
+
+        for (uint32_t i = 0; i < static_cast<uint32_t>(out.size()); ++i)
+            out[i].index = i;
+        return out;
+    }
+
     std::filesystem::path vprojectFileFor(const std::filesystem::path& projectDir, const std::string& projectName)
     {
         const std::string filename = projectName.empty() ? projectDir.filename().generic_string() : projectName;
@@ -203,6 +289,7 @@ namespace vultra_app
             project.assetRoot = "resources";
         if (project.defaultScene.empty() || !projectAssetUriExists(project, project.defaultScene))
             project.defaultScene = findFallbackSceneUri(project);
+        project.buildScenes = normalizedBuildScenes(project.defaultScene, project.buildScenes);
         if (!hasEditingRenderGraph && project.editingRenderGraph.empty())
             project.editingRenderGraph = "res://render/default.vrg.json";
 
@@ -236,6 +323,14 @@ namespace vultra_app
         file << "asset_root = \"" << project.assetRoot << "\"\n";
         file << "default_scene = \"" << project.defaultScene << "\"\n";
         file << "editing_rendergraph = \"" << project.editingRenderGraph << "\"\n";
+        const auto buildScenes = normalizedBuildScenes(project.defaultScene, project.buildScenes);
+        for (const auto& scene : buildScenes)
+        {
+            file << "build_scene." << scene.index << " = " << quote(scene.uri) << "\n";
+            if (!scene.name.empty())
+                file << "build_scene_name." << scene.index << " = " << quote(scene.name) << "\n";
+            file << "build_scene_enabled." << scene.index << " = " << (scene.enabled ? "true" : "false") << "\n";
+        }
         return true;
     }
 
@@ -267,6 +362,14 @@ namespace vultra_app
         file << "version = 1\n";
         file << "name = " << quote(manifest.name) << "\n";
         file << "entry_scene = " << quote(manifest.entryScene) << "\n";
+        const auto buildScenes = normalizedBuildScenes(manifest.entryScene, manifest.buildScenes);
+        for (const auto& scene : buildScenes)
+        {
+            file << "build_scene." << scene.index << " = " << quote(scene.uri) << "\n";
+            if (!scene.name.empty())
+                file << "build_scene_name." << scene.index << " = " << quote(scene.name) << "\n";
+            file << "build_scene_enabled." << scene.index << " = " << (scene.enabled ? "true" : "false") << "\n";
+        }
         return true;
     }
 

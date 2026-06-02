@@ -838,6 +838,7 @@ namespace vultra_app
                 .name = projectName,
                 .assetRoot = "resources",
                 .defaultScene = "res://scenes/main.vscn",
+                .buildScenes = {VBuildScene {.index = 0, .uri = "res://scenes/main.vscn", .name = "Main", .enabled = true}},
                 .editingRenderGraph = templateKind == ProjectTemplateKind::Empty ? std::string {} :
                                                                              std::string {"res://render/default.vrg.json"},
             };
@@ -847,7 +848,11 @@ namespace vultra_app
             if (!writeProjectTemplateAssets(projectDir, templateKind, message))
                 return error("failed to write project template assets: " + message);
             if (!saveVPackageManifest(projectDir / project.assetRoot,
-                                      VPackageManifest {.name = project.name, .entryScene = project.defaultScene},
+                                      VPackageManifest {
+                                          .name        = project.name,
+                                          .entryScene  = project.defaultScene,
+                                          .buildScenes = project.buildScenes,
+                                      },
                                       &message))
                 return error("failed to write package manifest: " + message);
 
@@ -855,6 +860,7 @@ namespace vultra_app
             ctx.state.currentProjectName          = project.name;
             ctx.state.currentAssetRoot            = project.assetRoot;
             ctx.state.currentDefaultScene         = project.defaultScene;
+            ctx.state.currentBuildScenes          = project.buildScenes;
             ctx.state.currentEditingRenderGraph   = project.editingRenderGraph;
             ctx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
             ctx.state.selectedSourceAsset.clear();
@@ -1213,6 +1219,7 @@ namespace vultra_app
             ctx.state.pendingEditorCommands.clear();
             ctx.state.currentAssetRoot          = "resources";
             ctx.state.currentDefaultScene.clear();
+            ctx.state.currentBuildScenes.clear();
             ctx.state.currentEditingRenderGraph = "res://render/default.vrg.json";
             ctx.state.currentEditingMaterialGraph = "res://materials/default.vmatgraph.json";
             ++ctx.state.projectGeneration;

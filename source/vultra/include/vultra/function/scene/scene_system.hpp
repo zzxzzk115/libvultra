@@ -17,6 +17,8 @@ namespace vultra
     struct SceneNode;
 
     class IAssetService;
+    class IRenderService;
+    class IWorldService;
 
     class SceneSystem final : public EngineSubsystem, public ISceneService
     {
@@ -70,6 +72,8 @@ namespace vultra
         IAssetService* m_AssetService {nullptr};
 
         std::filesystem::path toPath(std::string_view uri);
+
+        void clearWorldForSceneReplacement(World& world);
 
         entt::entity
         instantiateNode(World& world, const SceneNode& node, entt::entity parent, const std::filesystem::path& baseDir);

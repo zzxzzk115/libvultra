@@ -142,6 +142,28 @@ namespace vultra_app
             const auto rel = std::filesystem::relative(path.lexically_normal(), projectRoot.lexically_normal(), ec);
             return ec || rel.empty() ? path.generic_string() : rel.generic_string();
         }
+
+        void reindexBuildScenes(std::vector<VBuildScene>& scenes)
+        {
+            for (uint32_t i = 0; i < static_cast<uint32_t>(scenes.size()); ++i)
+                scenes[i].index = i;
+        }
+
+        bool buildSceneContainsUri(const std::vector<VBuildScene>& scenes, const std::string& uri)
+        {
+            return std::any_of(scenes.begin(), scenes.end(), [&](const VBuildScene& scene) {
+                return scene.uri == uri;
+            });
+        }
+
+        std::string buildSceneDisplayName(const VBuildScene& scene)
+        {
+            if (!scene.name.empty())
+                return scene.name;
+            if (!scene.uri.empty())
+                return std::filesystem::path(scene.uri).stem().generic_string();
+            return "Scene";
+        }
     } // namespace
 
     void EditorApp::drawProjectSettingsPopup(EditorContext& ctx)
@@ -180,8 +202,10 @@ namespace vultra_app
             selectedPage = 0;
         if (ui::settingsNavItem("Render Settings", selectedPage == 1))
             selectedPage = 1;
-        if (ui::settingsNavItem("Packaging", selectedPage == 2))
+        if (ui::settingsNavItem("Build Scenes", selectedPage == 2))
             selectedPage = 2;
+        if (ui::settingsNavItem("Packaging", selectedPage == 3))
+            selectedPage = 3;
         ImGui::Spacing();
         ImGui::TextUnformatted("Engine");
         ImGui::BeginDisabled();
@@ -285,6 +309,158 @@ namespace vultra_app
                 ImGui::SliderFloat("Edge Opacity", &outline.edgeOpacity, 0.0f, 1.0f, "%.2f");
             }
         }
+        else if (selectedPage == 2)
+        {
+            ui::drawSettingsSectionHeader("Build Scenes");
+            auto sceneUris = collectAssetUrisWithExtension(
+                ctx.state.currentProject, bufferString(m_ProjectAssetRootBuffer), ".vscn");
+            const auto defaultScene = bufferString(m_ProjectDefaultSceneBuffer);
+            if (!defaultScene.empty() && std::find(sceneUris.begin(), sceneUris.end(), defaultScene) == sceneUris.end())
+                sceneUris.push_back(defaultScene);
+            std::sort(sceneUris.begin(), sceneUris.end());
+
+            if (ctx.state.currentBuildScenes.empty() && !defaultScene.empty())
+                ctx.state.currentBuildScenes =
+                    normalizedBuildScenes(defaultScene, ctx.state.currentBuildScenes);
+
+            if (ImGui::Button(ICON_MDI_PLUS "  Add Default", ImVec2 {128.0f, 0.0f}))
+            {
+                if (!defaultScene.empty() && !buildSceneContainsUri(ctx.state.currentBuildScenes, defaultScene))
+                {
+                    ctx.state.currentBuildScenes.push_back(VBuildScene {
+                        .index   = static_cast<uint32_t>(ctx.state.currentBuildScenes.size()),
+                        .uri     = defaultScene,
+                        .name    = buildSceneDisplayName(VBuildScene {.uri = defaultScene}),
+                        .enabled = true,
+                    });
+                    projectSettingsChanged = true;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_MDI_PLUS "  Add All", ImVec2 {112.0f, 0.0f}))
+            {
+                for (const auto& uri : sceneUris)
+                {
+                    if (buildSceneContainsUri(ctx.state.currentBuildScenes, uri))
+                        continue;
+                    ctx.state.currentBuildScenes.push_back(VBuildScene {
+                        .index   = static_cast<uint32_t>(ctx.state.currentBuildScenes.size()),
+                        .uri     = uri,
+                        .name    = buildSceneDisplayName(VBuildScene {.uri = uri}),
+                        .enabled = true,
+                    });
+                    projectSettingsChanged = true;
+                }
+            }
+
+            ImGui::Spacing();
+            if (ctx.state.currentBuildScenes.empty())
+            {
+                ui::drawInfoRegion("No build scenes configured. Add scenes to control package roots and runtime scene indices.");
+            }
+            else if (ImGui::BeginTable("BuildScenesTable",
+                                       6,
+                                       ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
+                                           ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_Resizable))
+            {
+                ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 34.0f);
+                ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 0.32f);
+                ImGui::TableSetupColumn("Scene", ImGuiTableColumnFlags_WidthStretch, 0.68f);
+                ImGui::TableSetupColumn("Order", ImGuiTableColumnFlags_WidthFixed, 62.0f);
+                ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 34.0f);
+                ImGui::TableHeadersRow();
+
+                int removeIndex = -1;
+                int moveFrom    = -1;
+                int moveTo      = -1;
+                for (int i = 0; i < static_cast<int>(ctx.state.currentBuildScenes.size()); ++i)
+                {
+                    auto& scene = ctx.state.currentBuildScenes[static_cast<size_t>(i)];
+                    ImGui::PushID(i);
+                    ImGui::TableNextRow();
+
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::Text("%u", scene.index);
+
+                    ImGui::TableSetColumnIndex(1);
+                    if (ImGui::Checkbox("##BuildSceneEnabled", &scene.enabled))
+                        projectSettingsChanged = true;
+
+                    ImGui::TableSetColumnIndex(2);
+                    std::array<char, 128> nameBuffer {};
+                    setBuffer(nameBuffer, scene.name);
+                    ImGui::SetNextItemWidth(-1.0f);
+                    if (ImGui::InputText("##BuildSceneName", nameBuffer.data(), nameBuffer.size()))
+                    {
+                        scene.name             = bufferString(nameBuffer);
+                        projectSettingsChanged = true;
+                    }
+
+                    ImGui::TableSetColumnIndex(3);
+                    if (ImGui::BeginCombo("##BuildSceneUri", scene.uri.empty() ? "(none)" : scene.uri.c_str()))
+                    {
+                        for (const auto& uri : sceneUris)
+                        {
+                            const bool selected = uri == scene.uri;
+                            if (ImGui::Selectable(uri.c_str(), selected))
+                            {
+                                scene.uri = uri;
+                                if (scene.name.empty())
+                                    scene.name = buildSceneDisplayName(scene);
+                                projectSettingsChanged = true;
+                            }
+                            if (selected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    ImGui::TableSetColumnIndex(4);
+                    if (i == 0)
+                        ImGui::BeginDisabled();
+                    if (ImGui::SmallButton(ICON_MDI_ARROW_UP))
+                    {
+                        moveFrom = i;
+                        moveTo   = i - 1;
+                    }
+                    if (i == 0)
+                        ImGui::EndDisabled();
+                    ImGui::SameLine(0.0f, 4.0f);
+                    if (i + 1 == static_cast<int>(ctx.state.currentBuildScenes.size()))
+                        ImGui::BeginDisabled();
+                    if (ImGui::SmallButton(ICON_MDI_ARROW_DOWN))
+                    {
+                        moveFrom = i;
+                        moveTo   = i + 1;
+                    }
+                    if (i + 1 == static_cast<int>(ctx.state.currentBuildScenes.size()))
+                        ImGui::EndDisabled();
+
+                    ImGui::TableSetColumnIndex(5);
+                    if (ImGui::SmallButton(ICON_MDI_DELETE_OUTLINE))
+                        removeIndex = i;
+                    ImGui::PopID();
+                }
+
+                ImGui::EndTable();
+
+                if (removeIndex >= 0)
+                {
+                    ctx.state.currentBuildScenes.erase(ctx.state.currentBuildScenes.begin() + removeIndex);
+                    reindexBuildScenes(ctx.state.currentBuildScenes);
+                    projectSettingsChanged = true;
+                }
+                if (moveFrom >= 0 && moveTo >= 0)
+                {
+                    std::swap(ctx.state.currentBuildScenes[static_cast<size_t>(moveFrom)],
+                              ctx.state.currentBuildScenes[static_cast<size_t>(moveTo)]);
+                    reindexBuildScenes(ctx.state.currentBuildScenes);
+                    projectSettingsChanged = true;
+                }
+            }
+            ui::drawInfoRegion("Enabled build scenes are exported as dependency roots in scene-index order.");
+        }
         else
         {
             ui::drawSettingsSectionHeader("Packaging");
@@ -312,6 +488,7 @@ namespace vultra_app
             setBuffer(m_ProjectAssetRootBuffer, "resources");
             setBuffer(m_ProjectDefaultSceneBuffer, "");
             setBuffer(m_ProjectEditingRenderGraphBuffer, "res://render/default.vrg.json");
+            ctx.state.currentBuildScenes.clear();
             applyProjectSettingsFromBuffers(ctx,
                                             m_ProjectNameBuffer,
                                             m_ProjectAssetRootBuffer,
@@ -327,6 +504,7 @@ namespace vultra_app
                 .name               = ctx.state.currentProjectName,
                 .assetRoot          = ctx.state.currentAssetRoot,
                 .defaultScene       = ctx.state.currentDefaultScene,
+                .buildScenes        = normalizedBuildScenes(ctx.state.currentDefaultScene, ctx.state.currentBuildScenes),
                 .editingRenderGraph = ctx.state.currentEditingRenderGraph,
             };
             std::string error;

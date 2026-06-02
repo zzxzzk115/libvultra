@@ -275,6 +275,7 @@ namespace
             state.currentProjectName        = project->name;
             state.currentAssetRoot          = project->assetRoot;
             state.currentDefaultScene       = project->defaultScene;
+            state.currentBuildScenes        = project->buildScenes;
             state.currentEditingRenderGraph = project->editingRenderGraph;
         }
     }

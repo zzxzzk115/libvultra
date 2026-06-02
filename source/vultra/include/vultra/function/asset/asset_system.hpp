@@ -49,6 +49,11 @@ namespace vultra
         // When disabled, the Async service methods become blocking loads. This keeps small demos/examples fully
         // resident after scene instantiation while preserving async streaming for editor/project runtime paths.
         bool asyncLoading {true};
+
+        // Conservative runtime release for CPU-only cached assets. GPU resources need generation-safe pool reclaim
+        // before they can be released automatically without stale material/scene indices.
+        bool     releaseZeroRefCpuAssets {true};
+        uint64_t zeroRefCpuAssetIdleFrames {600};
     };
 
     // Sync-only baseline. Async IO + main-thread upload will be added later without breaking APIs.
@@ -154,6 +159,7 @@ namespace vultra
         bool     materialTextureDependenciesReady(const vasset::VMaterial& material);
         bool     refreshGpuMaterialParams(uint32_t materialIndex, const vasset::VMaterial& material);
         void     refreshPendingMaterialParams();
+        void     releaseZeroRefCpuAssets(uint64_t frameIndex);
 
     private:
         // Thread-safe upload command queue (sync bring-up).
@@ -188,6 +194,7 @@ namespace vultra
         vfilesystem::VirtualFileSystem m_VFS;
 
         IGpuResourceService* m_GpuResourceService {nullptr};
+        uint64_t             m_LastUpdateFrame {0};
 
         // Caches (uuid -> record)
         AssetCache<vasset::VMesh, resource::GpuMesh, 64>                   m_MeshCache;
