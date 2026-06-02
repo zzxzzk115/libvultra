@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import itertools
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Iterator
 from urllib import request
 from urllib.error import URLError
 
@@ -139,6 +139,68 @@ class Simulation:
         if camera is not None:
             args["camera"] = camera
         return self.client.call("vultra.render.capture_depth", args)
+
+    def start_stream(
+        self,
+        fps: int = 0,
+        jpeg_quality: int = 80,
+        max_width: int | None = None,
+        max_height: int | None = None,
+    ) -> dict[str, Any]:
+        args: dict[str, Any] = {"action": "start", "fps": fps, "jpegQuality": jpeg_quality}
+        if max_width is not None:
+            args["maxWidth"] = max_width
+        if max_height is not None:
+            args["maxHeight"] = max_height
+        return self.client.call(
+            "vultra.render.stream",
+            args,
+        )
+
+    def stream_status(self) -> dict[str, Any]:
+        return self.client.call("vultra.render.stream", {"action": "status"})
+
+    def stop_stream(self) -> dict[str, Any]:
+        return self.client.call("vultra.render.stream", {"action": "stop"})
+
+    def iter_mjpeg_frames(
+        self,
+        url: str | None = None,
+        max_frames: int | None = None,
+        timeout: float | None = None,
+    ) -> Iterator[bytes]:
+        if url is None:
+            status = self.stream_status()
+            url = status.get("stream", {}).get("url", "")
+        if not url:
+            raise VultraRpcError("video stream URL is unavailable")
+
+        frame_count = 0
+        buffer = b""
+        try:
+            with request.urlopen(url, timeout=self.client.timeout if timeout is None else timeout) as resp:
+                while max_frames is None or frame_count < max_frames:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    while True:
+                        start = buffer.find(b"\xff\xd8")
+                        if start < 0:
+                            buffer = buffer[-2:]
+                            break
+                        end = buffer.find(b"\xff\xd9", start + 2)
+                        if end < 0:
+                            buffer = buffer[start:]
+                            break
+                        frame = buffer[start:end + 2]
+                        buffer = buffer[end + 2:]
+                        frame_count += 1
+                        yield frame
+                        if max_frames is not None and frame_count >= max_frames:
+                            return
+        except URLError as exc:
+            raise VultraRpcError(f"failed to read Vultra video stream: {exc}") from exc
 
 
 def _first_text(result: dict[str, Any]) -> str:

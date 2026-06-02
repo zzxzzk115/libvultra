@@ -32,6 +32,7 @@ namespace vultra
             WebGPUCommandBuffer& end() override;
             WebGPUCommandBuffer& reset() override;
             WebGPUCommandBuffer& submit(const JobInfo&, bool oneTime) override;
+            [[nodiscard]] bool isComplete() const override { return true; }
 
             WebGPUCommandBuffer& bindPipeline(const BasePipeline&) override;
 

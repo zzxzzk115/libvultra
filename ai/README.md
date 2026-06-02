@@ -53,7 +53,11 @@ capture requests.
 Start the editor with Runtime MCP forced on:
 
 ```powershell
-xmake run vultra-app -- --editor --mcp --project example.vproject --no-xr
+xmake run vultra-app `
+  --editor `
+  --mcp `
+  --project example.vproject `
+  --no-xr
 ```
 
 By default it listens on:
@@ -67,6 +71,24 @@ requests to `POST /mcp`. Minimum smoke calls are `initialize`, `tools/list`,
 and `tools/call` with `vultra.runtime.status`.
 
 Example tool call body:
+
+```bash
+curl -s http://127.0.0.1:8848/mcp \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<'JSON'
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "vultra.runtime.status",
+    "arguments": {}
+  }
+}
+JSON
+```
+
+The JSON body is:
 
 ```json
 {

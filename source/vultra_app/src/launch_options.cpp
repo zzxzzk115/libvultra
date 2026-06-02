@@ -245,6 +245,8 @@ namespace vultra_app
                   << "Usage:\n"
                   << "  vultra [--vpk resources.vpk] [--scene res://scenes/main.vscn]\n"
                   << "  vultra --editor [--mcp|--rpc] [--mcp-port 8848] [--render-mode visible|offscreen|none] --project <project-dir>\n"
+                  << "  vultra [--mcp|--rpc] --render-mode none --project <project-dir> [--scene res://scenes/main.vscn]\n"
+                  << "  vultra [--mcp|--rpc] --render-mode offscreen --project <project-dir> [--scene res://scenes/main.vscn]\n"
                   << "  vultra [--no-xr] [--xr-mirror|--no-xr-mirror] --editor --project <project-dir>\n"
                   << "  vultra [--validation|--no-validation] [--debug-markers|--no-debug-markers] "
                      "[--renderdoc|--no-renderdoc]\n"
@@ -254,7 +256,8 @@ namespace vultra_app
                   << "  Without --vpk, Vultra first tries <executable-name>.vpk next to the executable.\n"
                   << "  Without a VPK, Vultra opens the Project Launcher.\n"
                   << "  --editor requires --project; no-project editor sessions are invalid.\n"
-                  << "  --rpc is an alias for --mcp; --render-mode=none disables visual capture tools.\n"
+                  << "  --rpc is an alias for --mcp; --render-mode=none runs no-window simulation services and disables visual capture tools.\n"
+                  << "  --render-mode=offscreen hides the window but keeps render services active for visual capture.\n"
                   << "  CLI subcommands are reserved for the integrated tool workflow.\n";
     }
 

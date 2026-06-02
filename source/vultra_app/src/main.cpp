@@ -12,14 +12,23 @@
 #include <vasset/vasset_importers.hpp>
 #include <vshadersystem/tool_cli.hpp>
 
+#include <vultra/core/app/app_host.hpp>
 #include <vultra/core/app/demo_app_host.hpp>
 #include <vultra/core/base/common_context.hpp>
+#include <vultra/core/input/input_system.hpp>
+#include <vultra/core/timing/timing_system.hpp>
+#include <vultra/function/asset/asset_system.hpp>
+#include <vultra/function/animation/animation_system.hpp>
+#include <vultra/function/jobs/job_system.hpp>
+#include <vultra/function/physics/physics_system.hpp>
 #include <vultra/core/services/window_service.hpp>
 #include <vultra/function/rendering/runtime_profiler.hpp>
 #include <vultra/function/rendering/render_structs.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_renderer.hpp>
 #include <vultra/function/rendering/srp/builtin/universal_rt_renderer.hpp>
 #include <vultra/function/rendering/srp/renderer.hpp>
+#include <vultra/function/scene/scene_system.hpp>
+#include <vultra/function/scripting/script_system.hpp>
 #include <vultra/function/services/asset_service.hpp>
 #include <vultra/function/services/camera_service.hpp>
 #include <vultra/function/services/render_backend_service.hpp>
@@ -27,6 +36,7 @@
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
+#include <vultra/function/world/world_system.hpp>
 
 #include <vbase/core/scoped_enum_flags.hpp>
 
@@ -34,9 +44,11 @@
 #include <glm/ext/matrix_transform.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <optional>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -238,6 +250,191 @@ namespace
         renderService->registerRenderer(vultra::createRef<vultra::UniversalRtRenderer>());
     }
 
+    void applyMcpLaunchOptions(vultra_app::AppState& state, const vultra_app::LaunchOptions& options)
+    {
+        if (!options.mcpMode)
+            return;
+
+        state.editorSettings.enableAgent  = true;
+        state.editorSettings.autoStartMcp = true;
+        if (options.mcpHost.has_value())
+            state.editorSettings.mcpHost = *options.mcpHost;
+        if (options.mcpPort.has_value())
+            state.editorSettings.mcpPort = *options.mcpPort;
+    }
+
+    void applyProjectState(vultra_app::AppState& state, const vultra_app::LaunchOptions& options)
+    {
+        if (options.projectPath.empty())
+            return;
+
+        state.currentProject = options.projectPath;
+        if (auto project = vultra_app::loadVProject(options.projectPath); project.has_value())
+        {
+            state.currentProject            = project->projectDir;
+            state.currentProjectName        = project->name;
+            state.currentAssetRoot          = project->assetRoot;
+            state.currentDefaultScene       = project->defaultScene;
+            state.currentEditingRenderGraph = project->editingRenderGraph;
+        }
+    }
+
+    std::string defaultRuntimeSceneUri(const vultra_app::LaunchOptions& options, const vultra_app::AppState& state)
+    {
+        if (!options.sceneUri.empty())
+            return options.sceneUri;
+        if (!state.currentDefaultScene.empty())
+            return state.currentDefaultScene;
+        return "res://scenes/main.vscn";
+    }
+
+    bool shouldRunOffscreenProjectRuntime(const vultra_app::LaunchOptions& options)
+    {
+        return !options.editorMode && options.mcpMode && options.renderMode == "offscreen" && !options.projectPath.empty();
+    }
+
+    class RuntimeHeadlessApp final : public vultra::AppHost
+    {
+    public:
+        explicit RuntimeHeadlessApp(vultra_app::LaunchOptions options) : m_Options(std::move(options))
+        {
+            std::string settingsError;
+            if (!vultra_app::loadEditorSettings(m_State.editorSettingsFile, m_State.editorSettings, &settingsError))
+                m_State.statusMessage = "Editor settings load failed: " + settingsError;
+
+            m_State.mode       = vultra_app::AppMode::Runtime;
+            m_State.renderMode = "none";
+            applyMcpLaunchOptions(m_State, m_Options);
+            applyProjectState(m_State, m_Options);
+
+            m_VpkPath = vultra_app::findDefaultVpk(m_Options);
+            if (!m_Options.projectPath.empty() && m_Options.vpkPath.empty())
+                m_VpkPath.reset();
+        }
+
+    private:
+        void onConfigure(vultra::Engine& engine) override
+        {
+            engine.ctx().config.asset.asyncLoading = false;
+            if (m_VpkPath.has_value())
+            {
+                engine.ctx().config.asset.loadFromVPK = true;
+                engine.ctx().config.asset.assetRoot   = "/";
+                engine.ctx().config.asset.vpkFile     = m_VpkPath->generic_string();
+
+                std::string manifestError;
+                if (auto manifest = vultra_app::loadVPackageManifestFromVpk(*m_VpkPath, &manifestError);
+                    manifest.has_value())
+                {
+                    if (m_State.currentProjectName.empty())
+                        m_State.currentProjectName = manifest->name;
+                    if (m_Options.sceneUri.empty() && !manifest->entryScene.empty())
+                        m_RuntimeSceneUri = manifest->entryScene;
+                }
+                else
+                {
+                    VULTRA_CLIENT_WARN("[VultraHeadless] VPK package manifest unavailable: {}", manifestError);
+                }
+            }
+            else
+            {
+                vultra_app::ProjectLauncher::configureAssets(engine, m_Options);
+            }
+
+            engine.emplaceSubsystem<vultra::InputSystem>();
+            engine.emplaceSubsystem<vultra::TimingSystem>();
+            engine.emplaceSubsystem<vultra::JobSystem>();
+            engine.emplaceSubsystem<vultra::WorldSystem>();
+            engine.emplaceSubsystem<vultra::PhysicsSystem>();
+            engine.emplaceSubsystem<vultra::AssetSystem>();
+            engine.emplaceSubsystem<vultra::SceneSystem>();
+            engine.emplaceSubsystem<vultra::ScriptSystem>();
+            engine.emplaceSubsystem<vultra::AnimationSystem>();
+        }
+
+        void onPostConfigure(vultra::Engine& engine) override
+        {
+            m_RuntimeSceneUri = m_RuntimeSceneUri.empty() ? defaultRuntimeSceneUri(m_Options, m_State) : m_RuntimeSceneUri;
+            if (!m_RuntimeSceneUri.empty())
+            {
+                auto* sceneService = engine.ctx().services.tryGet<vultra::ISceneService>();
+                if (sceneService)
+                {
+                    m_RuntimeSceneLoad = sceneService->loadSceneAsync(m_RuntimeSceneUri);
+                    VULTRA_CLIENT_INFO("[VultraHeadless] Loading scene '{}'", m_RuntimeSceneUri);
+                }
+            }
+            VULTRA_CLIENT_INFO("[VultraHeadless] Runtime MCP/simulation active with render-mode=none");
+        }
+
+        void onPollEvents() override { std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
+
+        bool onShouldClose() const override { return m_State.editorShutdownRequested; }
+
+        void onBeforeEngineTick(vultra::fsec /*dt*/) override
+        {
+            vultra_app::EditorContext ctx {.state = m_State, .services = &engineCtx().services, .editor = &m_Editor};
+            m_Editor.updateRuntimeMcp(ctx);
+            updateRuntimeSceneLoad();
+        }
+
+        void updateRuntimeSceneLoad()
+        {
+            if (!m_RuntimeSceneLoad || m_RuntimeSceneLoaded)
+                return;
+
+            auto* sceneService = engineCtx().services.tryGet<vultra::ISceneService>();
+            auto* worldService = engineCtx().services.tryGet<vultra::IWorldService>();
+            if (!sceneService || !worldService)
+                return;
+
+            const auto status = sceneService->sceneLoadStatus(m_RuntimeSceneLoad);
+            if (status.state == vultra::SceneLoadState::eLoading)
+                return;
+
+            if (status.state == vultra::SceneLoadState::eFailed || status.state == vultra::SceneLoadState::eInvalid)
+            {
+                VULTRA_CLIENT_ERROR("[VultraHeadless] Failed to load scene '{}': {}", m_RuntimeSceneUri, status.message);
+                sceneService->releaseSceneLoad(m_RuntimeSceneLoad);
+                m_RuntimeSceneLoad = {};
+                return;
+            }
+
+            const auto root =
+                sceneService->instantiateLoadedScene(m_RuntimeSceneLoad, worldService->world(), entt::null, false);
+            sceneService->releaseSceneLoad(m_RuntimeSceneLoad);
+            m_RuntimeSceneLoad = {};
+            if (root == entt::null)
+            {
+                VULTRA_CLIENT_ERROR("[VultraHeadless] Failed to instantiate scene '{}'", m_RuntimeSceneUri);
+                return;
+            }
+
+            m_RuntimeSceneLoaded = true;
+            VULTRA_CLIENT_INFO("[VultraHeadless] Loaded scene '{}'", m_RuntimeSceneUri);
+        }
+
+        void onBeforeShutdown(vultra::Engine& engine) override
+        {
+            if (m_RuntimeSceneLoad)
+            {
+                if (auto* sceneService = engine.ctx().services.tryGet<vultra::ISceneService>())
+                    sceneService->releaseSceneLoad(m_RuntimeSceneLoad);
+                m_RuntimeSceneLoad = {};
+            }
+            vultra_app::EditorContext ctx {.state = m_State, .services = &engine.ctx().services, .editor = &m_Editor};
+            m_Editor.shutdown(ctx);
+        }
+
+        vultra_app::LaunchOptions            m_Options;
+        std::optional<std::filesystem::path> m_VpkPath;
+        vultra::SceneLoadHandle              m_RuntimeSceneLoad;
+        std::string                          m_RuntimeSceneUri;
+        bool                                 m_RuntimeSceneLoaded {false};
+        mutable vultra_app::AppState         m_State;
+        mutable vultra_app::EditorApp        m_Editor;
+    };
+
     class VultraStandaloneApp final : public vultra::DemoAppHost
     {
     public:
@@ -246,32 +443,20 @@ namespace
             std::string settingsError;
             if (!vultra_app::loadEditorSettings(m_State.editorSettingsFile, m_State.editorSettings, &settingsError))
                 m_State.statusMessage = "Editor settings load failed: " + settingsError;
-            if (m_Options.mcpMode)
-            {
-                m_State.editorSettings.enableAgent  = true;
-                m_State.editorSettings.autoStartMcp = true;
-                if (m_Options.mcpHost.has_value())
-                    m_State.editorSettings.mcpHost = *m_Options.mcpHost;
-                if (m_Options.mcpPort.has_value())
-                    m_State.editorSettings.mcpPort = *m_Options.mcpPort;
-            }
+            applyMcpLaunchOptions(m_State, m_Options);
             m_State.renderMode = m_Options.renderMode;
 
             m_VpkPath = vultra_app::findDefaultVpk(m_Options);
+            const bool offscreenProjectRuntime =
+                shouldRunOffscreenProjectRuntime(m_Options) && m_Options.vpkPath.empty();
+            if (offscreenProjectRuntime)
+                m_VpkPath.reset();
             if (m_Options.editorMode)
             {
                 if (!m_Options.projectPath.empty())
                 {
                     m_State.mode           = vultra_app::AppMode::Editor;
-                    m_State.currentProject = m_Options.projectPath;
-                    if (auto project = vultra_app::loadVProject(m_Options.projectPath); project.has_value())
-                    {
-                        m_State.currentProject            = project->projectDir;
-                        m_State.currentProjectName        = project->name;
-                        m_State.currentAssetRoot          = project->assetRoot;
-                        m_State.currentDefaultScene       = project->defaultScene;
-                        m_State.currentEditingRenderGraph = project->editingRenderGraph;
-                    }
+                    applyProjectState(m_State, m_Options);
                 }
                 else
                 {
@@ -282,6 +467,11 @@ namespace
             else if (m_VpkPath.has_value())
             {
                 m_State.mode = vultra_app::AppMode::Runtime;
+            }
+            else if (offscreenProjectRuntime)
+            {
+                m_State.mode = vultra_app::AppMode::Runtime;
+                applyProjectState(m_State, m_Options);
             }
             else
             {
@@ -294,8 +484,10 @@ namespace
         {
             if (m_Options.editorMode)
                 return vultra_app::EditorApp::kWindowTitle;
-            if (!m_VpkPath.has_value())
+            if (m_State.mode != vultra_app::AppMode::Runtime)
                 return vultra_app::ProjectLauncher::kWindowTitle;
+            if (!m_State.currentProjectName.empty())
+                return m_State.currentProjectName;
             return "VultraEngine";
         }
 
@@ -407,6 +599,8 @@ namespace
             }
 
             vultra_app::ProjectLauncher::configureAssets(engine, m_Options);
+            if (m_State.mode == vultra_app::AppMode::Runtime && !m_State.currentProjectName.empty())
+                engine.ctx().config.window.title = m_State.currentProjectName;
         }
 
         void onPostConfigureDemo(vultra::Engine& engine) override
@@ -418,7 +612,7 @@ namespace
                 return;
             }
 
-            if (!m_VpkPath.has_value())
+            if (m_State.mode != vultra_app::AppMode::Runtime)
             {
                 registerEditorSceneRenderer(engine.ctx().services);
                 vultra_app::ProjectLauncher::logStartup();
@@ -430,8 +624,14 @@ namespace
             if (renderService)
             {
                 VULTRA_CLIENT_INFO("[Vultra] Runtime post-configure: loading render graphs from asset registry");
-                const auto renderGraphUris =
+                auto renderGraphUris =
                     assetService ? renderGraphUrisFromRegistry(assetService->registry()) : std::vector<std::string> {};
+                if (!m_State.currentEditingRenderGraph.empty() &&
+                    std::find(renderGraphUris.begin(), renderGraphUris.end(), m_State.currentEditingRenderGraph) ==
+                        renderGraphUris.end())
+                {
+                    renderGraphUris.push_back(m_State.currentEditingRenderGraph);
+                }
                 for (const auto& uri : renderGraphUris)
                 {
                     const auto rendererKey = rendererKeyFromRenderGraphUri(uri);
@@ -450,9 +650,20 @@ namespace
                 cameraService->setWorldXRCamerasEnabled(true);
             }
 
-            m_RuntimeSceneUri  = m_Options.sceneUri.empty() ? "res://scenes/main.vscn" : m_Options.sceneUri;
+            m_RuntimeSceneUri  = defaultRuntimeSceneUri(m_Options, m_State);
             m_RuntimeSceneLoad = engine.ctx().services.require<vultra::ISceneService>().loadSceneAsync(m_RuntimeSceneUri);
-            VULTRA_CLIENT_INFO("[Vultra] Loading scene '{}' from VPK '{}'", m_RuntimeSceneUri, m_VpkPath->generic_string());
+            if (m_VpkPath.has_value())
+            {
+                VULTRA_CLIENT_INFO("[Vultra] Loading scene '{}' from VPK '{}'",
+                                   m_RuntimeSceneUri,
+                                   m_VpkPath->generic_string());
+            }
+            else
+            {
+                VULTRA_CLIENT_INFO("[Vultra] Loading scene '{}' from project '{}'",
+                                   m_RuntimeSceneUri,
+                                   m_State.currentProject.generic_string());
+            }
         }
 
         void onWindowEvent(const vultra::os::GeneralWindowEvent& e) override
@@ -609,6 +820,12 @@ int main(int argc, char** argv)
     }
     if (options.cliOnly)
         return vultra_app::runCliOnly(options);
+
+    if (!options.editorMode && options.renderMode == "none")
+    {
+        RuntimeHeadlessApp app {std::move(options)};
+        return app.run(argc, argv);
+    }
 
     VultraStandaloneApp app {std::move(options)};
     return app.run(argc, argv);

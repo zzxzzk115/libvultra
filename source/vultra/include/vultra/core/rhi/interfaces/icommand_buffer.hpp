@@ -45,6 +45,7 @@ namespace vultra
             virtual ICommandBuffer& end() = 0;
             virtual ICommandBuffer& reset() = 0;
             virtual ICommandBuffer& submit(const JobInfo&, bool oneTime) = 0;
+            [[nodiscard]] virtual bool isComplete() const = 0;
 
             virtual ICommandBuffer& bindPipeline(const BasePipeline&) = 0;
 

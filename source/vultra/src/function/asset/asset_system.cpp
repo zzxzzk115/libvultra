@@ -589,12 +589,14 @@ namespace vultra
         VULTRA_CORE_INFO("[AssetSystem] Initializing...");
 
         VULTRA_CORE_TRACE("[AssetSystem] Getting render backend");
-        auto& backend  = ctx().services.require<IRenderBackendService>();
-        m_RenderDevice = &backend.renderDevice();
+        if (auto* backend = ctx().services.tryGet<IRenderBackendService>())
+            m_RenderDevice = &backend->renderDevice();
 
         VULTRA_CORE_TRACE("[AssetSystem] Getting GPU resource service");
-        m_GpuResourceService = &ctx().services.require<IGpuResourceService>();
-        m_CpuLoadScheduler   = std::make_unique<vtask::Scheduler>();
+        m_GpuResourceService = ctx().services.tryGet<IGpuResourceService>();
+        if (!m_RenderDevice || !m_GpuResourceService)
+            VULTRA_CORE_INFO("[AssetSystem] GPU services unavailable; running CPU/text asset mode.");
+        m_CpuLoadScheduler = std::make_unique<vtask::Scheduler>();
 
         // Default config (can be overridden at runtime/editor).
         configure(AssetSystemDesc {
@@ -879,6 +881,13 @@ namespace vultra
 
         m_Resolver.setScheme(m_Desc.scheme);
 
+        if (!m_RenderDevice || !m_GpuResourceService)
+        {
+            VULTRA_CORE_INFO("[AssetSystem] Asset registry configured. Registry entries: {}",
+                             m_Registry.getRegistry().size());
+            return;
+        }
+
         auto& pool = m_GpuResourceService->pool();
 
         // Global bindless texture table: reserve slot 0 as fallback.
@@ -897,6 +906,15 @@ namespace vultra
         // GPU upload must happen on the main/render thread. Even in sync bring-up, we keep a queue + update() shape so
         // the system can migrate to async loading later without breaking APIs.
         collectFinishedCpuLoadTasks();
+        if (!m_RenderDevice || !m_GpuResourceService)
+        {
+            std::scoped_lock lock(m_UploadQueueMutex);
+            m_UploadQueue.clear();
+            m_PendingMaterialRefreshes.clear();
+            (void)frameIndex;
+            return;
+        }
+
         refreshPendingMaterialParams();
 
         // Drain upload commands

@@ -288,6 +288,23 @@ namespace vultra
             return *this;
         }
 
+        bool VulkanCommandBuffer::isComplete() const
+        {
+            if (!m_Handle || !m_Fence)
+                return true;
+            if (m_State != State::ePending)
+                return true;
+
+            const auto status = m_Device.getFenceStatus(m_Fence);
+            if (status == vk::Result::eSuccess)
+                return true;
+            if (status == vk::Result::eNotReady)
+                return false;
+
+            VK_CHECK(status, "VulkanCommandBuffer", "Failed to query fence status");
+            return false;
+        }
+
         VulkanCommandBuffer& VulkanCommandBuffer::bindPipeline(const BasePipeline& pipeline)
         {
             assert(pipeline);

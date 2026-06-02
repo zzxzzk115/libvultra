@@ -5,6 +5,7 @@
 
 #include <vultra/function/services/animation_service.hpp>
 #include <vultra/function/services/physics_service.hpp>
+#include <vultra/function/services/render_backend_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/script_service.hpp>
 #include <vultra/function/services/world_service.hpp>
@@ -20,6 +21,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -310,6 +312,14 @@ namespace vultra_app
             return {{"ok", allOk}, {"results", std::move(results)}};
         }
 
+        std::string makeStreamId()
+        {
+            const auto stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::system_clock::now().time_since_epoch())
+                                   .count();
+            return "mjpeg_" + std::to_string(stamp);
+        }
+
     } // namespace
 
     nlohmann::json RuntimeMcpServer::handleSimTool(std::string_view name,
@@ -473,6 +483,87 @@ namespace vultra_app
             if (!captureArgs.contains("outputDirectory"))
                 captureArgs["outputDirectory"] = ".vultra/mcp/depth_textures";
             return handleRuntimeTool("vultra.runtime.dump_frame_textures", captureArgs, ctx, call);
+        }
+
+        if (name == "vultra.render.stream")
+        {
+            const auto action = args.value("action", std::string {"status"});
+            auto streamJson = [&]() {
+                std::lock_guard lock {m_VideoStreamMutex};
+                const double elapsedSeconds =
+                    m_VideoStream.startedAt == std::chrono::steady_clock::time_point {} ?
+                        0.0 :
+                        std::chrono::duration<double>(std::chrono::steady_clock::now() - m_VideoStream.startedAt)
+                            .count();
+                return nlohmann::json {
+                    {"active", m_VideoStream.active},
+                    {"id", m_VideoStream.id},
+                    {"url", m_VideoStream.id.empty() ? std::string {} :
+                                                       "http://" + endpoint() + "/stream/" + m_VideoStream.id},
+                    {"contentType", "multipart/x-mixed-replace; boundary=vultra-frame"},
+                    {"encoding", "mjpeg"},
+                    {"fps", m_VideoStream.fps},
+                    {"jpegQuality", m_VideoStream.jpegQuality},
+                    {"frameCount", m_VideoStream.frameCount},
+                    {"capturedFrameCount", m_VideoStream.capturedFrameCount},
+                    {"readbackSubmittedCount", m_VideoStream.readbackSubmittedCount},
+                    {"readbackCompletedCount", m_VideoStream.readbackCompletedCount},
+                    {"readbackSkippedCount", m_VideoStream.readbackSkippedCount},
+                    {"droppedFrames", m_VideoStream.droppedFrames},
+                    {"queuedFrames", m_VideoStream.queuedFrames},
+                    {"width", m_VideoStream.width},
+                    {"height", m_VideoStream.height},
+                    {"sourceWidth", m_VideoStream.sourceWidth},
+                    {"sourceHeight", m_VideoStream.sourceHeight},
+                    {"maxWidth", m_VideoStream.maxWidth},
+                    {"maxHeight", m_VideoStream.maxHeight},
+                    {"sequence", m_VideoStream.sequence},
+                    {"lastError", m_VideoStream.lastError},
+                    {"elapsedSeconds", elapsedSeconds},
+                };
+            };
+
+            if (action == "status")
+                return toolJson({{"ok", true}, {"stream", streamJson()}});
+
+            if (action == "stop")
+            {
+                stopVideoStreamClients();
+                {
+                    std::lock_guard lock {m_VideoStreamMutex};
+                    m_VideoStream = {};
+                }
+                return toolJson({{"ok", true}, {"stream", streamJson()}});
+            }
+
+            if (action != "start")
+                return toolError("render.stream action must be start, stop, or status");
+            if (ctx.state.renderMode == "none")
+                return toolError("render.stream is unavailable when renderMode is none");
+            auto* backendService = ctx.services ? ctx.services->tryGet<vultra::IRenderBackendService>() : nullptr;
+            if (!backendService)
+                return toolError("render backend service is unavailable");
+
+            stopVideoStreamClients();
+            {
+                std::lock_guard lock {m_VideoStreamMutex};
+                const int requestedFps = args.value("fps", 0);
+                m_VideoStream              = {};
+                m_VideoStream.active       = true;
+                m_VideoStream.id           = makeStreamId();
+                m_VideoStream.fps          = requestedFps <= 0 ? 0 : std::clamp(requestedFps, 1, 240);
+                m_VideoStream.jpegQuality  = std::clamp(args.value("jpegQuality", 80), 1, 100);
+                m_VideoStream.maxWidth     = static_cast<uint32_t>(std::clamp(args.value("maxWidth", 0), 0, 8192));
+                m_VideoStream.maxHeight    = static_cast<uint32_t>(std::clamp(args.value("maxHeight", 0), 0, 8192));
+                m_VideoStream.startedAt    = std::chrono::steady_clock::now();
+                const auto extent          = backendService->backbuffer().getExtent();
+                m_VideoStream.width        = extent.width;
+                m_VideoStream.height       = extent.height;
+                m_VideoStream.sourceWidth  = extent.width;
+                m_VideoStream.sourceHeight = extent.height;
+            }
+            startVideoStreamEncoder();
+            return toolJson({{"ok", true}, {"stream", streamJson()}});
         }
 
         return nullptr;

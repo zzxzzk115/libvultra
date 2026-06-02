@@ -27,6 +27,12 @@ pybind11 by default.
 - Render capture tools are available when render mode is not `none`:
   - `vultra.render.capture_rgb`
   - `vultra.render.capture_depth`
+- Browser/debug preview video is exposed as `vultra.render.stream`, with MJPEG
+  served from `/stream/<id>`. `fps=0` means uncapped capture, positive `fps`
+  caps the stream, and `maxWidth`/`maxHeight` cap preview resolution while
+  preserving aspect ratio. Preview readback should avoid per-frame device idle:
+  use in-flight readback slots and perform GPU downscale before CPU readback
+  when preview caps are active.
 
 ## Constraints
 
@@ -65,6 +71,9 @@ training workloads expose bottlenecks:
 4. CUDA/GPU interop for visual observations and tensor-heavy training, keeping
    RGB/depth/segmentation buffers on GPU where possible instead of round-tripping
    through PNG files or CPU JSON arrays.
+5. Hardware video encoding for human preview or teleoperation streams when
+   browser-friendly video transport needs higher frame rates than CPU MJPEG can
+   provide.
 
 ## Ideal Training Loop
 

@@ -236,6 +236,38 @@ namespace vultra_app
             }
             return true;
         }
+
+        std::string requestTarget(std::string_view requestText)
+        {
+            const auto firstLineEnd = requestText.find("\r\n");
+            const auto firstLine = requestText.substr(0, firstLineEnd);
+            const auto firstSpace = firstLine.find(' ');
+            if (firstSpace == std::string_view::npos)
+                return {};
+            const auto secondSpace = firstLine.find(' ', firstSpace + 1);
+            if (secondSpace == std::string_view::npos || secondSpace <= firstSpace + 1)
+                return {};
+            return std::string(firstLine.substr(firstSpace + 1, secondSpace - firstSpace - 1));
+        }
+
+        bool isGetRequest(std::string_view requestText)
+        {
+            return requestText.starts_with("GET ");
+        }
+
+        std::string httpTextResponse(const int status,
+                                     std::string_view reason,
+                                     std::string_view contentType,
+                                     const std::string& body)
+        {
+            std::ostringstream out;
+            out << "HTTP/1.1 " << status << ' ' << reason << "\r\n";
+            out << "Content-Type: " << contentType << "\r\n";
+            out << "Content-Length: " << body.size() << "\r\n";
+            out << "Connection: close\r\n\r\n";
+            out << body;
+            return out.str();
+        }
     } // namespace
 
     RuntimeMcpServer::~RuntimeMcpServer()
@@ -280,6 +312,7 @@ namespace vultra_app
         if (m_RecordingWriterThread.joinable() || m_RecordingPipe)
             (void)stopRecordingWriter();
         m_Recording.active = false;
+        stopVideoStreamClients();
         {
             std::lock_guard lock {m_Mutex};
             if (!m_Running && !m_ServerThread.joinable())
@@ -398,6 +431,7 @@ namespace vultra_app
         }
 
         captureRecordingFrame(ctx);
+        captureVideoStreamFrame(ctx);
     }
 
     void RuntimeMcpServer::enqueueCall(std::shared_ptr<PendingCall> call)
@@ -558,6 +592,17 @@ namespace vultra_app
             size_t headerEnd = std::string::npos;
             while (request.size() < 1024u * 1024u)
             {
+                fd_set clientReadSet;
+                FD_ZERO(&clientReadSet);
+                FD_SET(client, &clientReadSet);
+                timeval clientTimeout {};
+                clientTimeout.tv_sec  = 2;
+                clientTimeout.tv_usec = 0;
+                const int clientReady =
+                    select(static_cast<int>(client + 1), &clientReadSet, nullptr, nullptr, &clientTimeout);
+                if (clientReady <= 0 || !FD_ISSET(client, &clientReadSet))
+                    break;
+
 #if defined(_WIN32)
                 const int received = recv(client, buffer.data(), static_cast<int>(buffer.size()), 0);
 #else
@@ -569,10 +614,88 @@ namespace vultra_app
                 headerEnd = request.find("\r\n\r\n");
                 if (headerEnd != std::string::npos)
                 {
+                    if (isGetRequest(request))
+                        break;
                     expectedBody = contentLength(std::string_view {request}.substr(0, headerEnd));
                     if (expectedBody.has_value() && request.size() >= headerEnd + 4 + *expectedBody)
                         break;
                 }
+            }
+
+            if (isGetRequest(request))
+            {
+                const auto target = requestTarget(request);
+                constexpr std::string_view kStreamPrefix {"/stream/"};
+                if (!target.starts_with(kStreamPrefix))
+                {
+                    (void)sendAll(client, httpTextResponse(404, "Not Found", "text/plain", "not found"));
+                    closeSocket(client);
+                    continue;
+                }
+
+                const auto streamId = target.substr(kStreamPrefix.size());
+                std::thread streamThread {[this, client, streamId] {
+                    auto closeClient = [&]() { closeSocket(client); };
+                    {
+                        std::lock_guard lock {m_VideoStreamMutex};
+                        if (!m_VideoStream.active || m_VideoStream.id != streamId)
+                        {
+                            (void)sendAll(client, httpTextResponse(404, "Not Found", "text/plain", "stream not active"));
+                            closeClient();
+                            return;
+                        }
+                    }
+
+                    std::ostringstream headers;
+                    headers << "HTTP/1.1 200 OK\r\n"
+                            << "Content-Type: multipart/x-mixed-replace; boundary=vultra-frame\r\n"
+                            << "Cache-Control: no-cache\r\n"
+                            << "Connection: close\r\n\r\n";
+                    if (!sendAll(client, headers.str()))
+                    {
+                        closeClient();
+                        return;
+                    }
+
+                    uint64_t lastSequence = 0;
+                    while (true)
+                    {
+                        std::vector<uint8_t> jpeg;
+                        uint64_t sequence = 0;
+                        {
+                            std::unique_lock lock {m_VideoStreamMutex};
+                            m_VideoStreamCv.wait_for(lock, std::chrono::seconds(2), [&] {
+                                return !m_VideoStream.active || m_VideoStream.id != streamId ||
+                                       m_VideoStream.sequence != lastSequence;
+                            });
+                            if (!m_VideoStream.active || m_VideoStream.id != streamId)
+                                break;
+                            if (m_VideoStream.sequence == lastSequence || m_VideoStream.latestJpeg.empty())
+                                continue;
+                            jpeg = m_VideoStream.latestJpeg;
+                            sequence = m_VideoStream.sequence;
+                        }
+
+                        std::ostringstream part;
+                        part << "--vultra-frame\r\n"
+                             << "Content-Type: image/jpeg\r\n"
+                             << "Content-Length: " << jpeg.size() << "\r\n"
+                             << "X-Vultra-Frame: " << sequence << "\r\n\r\n";
+                        if (!sendAll(client, part.str()) ||
+                            !sendAll(client, std::string_view(reinterpret_cast<const char*>(jpeg.data()), jpeg.size())) ||
+                            !sendAll(client, "\r\n"))
+                        {
+                            break;
+                        }
+                        lastSequence = sequence;
+                    }
+                    closeClient();
+                }};
+                {
+                    std::lock_guard lock {m_VideoStreamClientMutex};
+                    m_VideoStreamClientThreads.push_back(std::move(streamThread));
+                }
+                continue;
             }
 
             const auto response = handleHttpRequest(request);

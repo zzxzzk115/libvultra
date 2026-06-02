@@ -200,6 +200,8 @@ namespace vultra
                 m_Impl->submit(jobInfo, oneTime);
                 return *this;
             }
+            [[nodiscard]] bool isComplete() const { return !m_Impl || m_Impl->isComplete(); }
+            [[nodiscard]] explicit operator bool() const { return static_cast<bool>(m_Impl); }
 
             // ---
 

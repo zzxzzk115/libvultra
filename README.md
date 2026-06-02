@@ -167,6 +167,221 @@ Run a packaged project:
 vultra --vpk resources.vpk --scene res://scenes/main.vscn
 ```
 
+## Runtime MCP, Headless, and Offscreen
+
+`vultra-app` can expose a localhost Runtime MCP/RPC endpoint for editor
+automation, simulation control, visual capture, and browser/Python preview
+streams. `--rpc` is an alias for `--mcp`.
+
+Run the editor with Runtime MCP enabled:
+
+```bash
+xmake run vultra-app \
+  --editor \
+  --rpc \
+  --project example.vproject \
+  --no-xr
+```
+
+Run an offscreen project runtime for visual embodied AI workflows:
+
+```bash
+xmake run vultra-app \
+  --rpc \
+  --mcp-port 8848 \
+  --project example.vproject \
+  --render-mode offscreen \
+  --no-xr
+```
+
+Run a simulation-only headless project runtime with no GPU/render path:
+
+```bash
+xmake run vultra-app \
+  --rpc \
+  --mcp-port 8848 \
+  --project example.vproject \
+  --render-mode none \
+  --no-xr
+```
+
+`--render-mode` accepts:
+
+- `visible`: normal visible rendering.
+- `offscreen`: no visible window, render services stay active, RGB/depth
+  capture and video stream tools are available.
+- `none`: no visible window and no render backend; simulation/RPC tools remain
+  available, visual capture tools return explicit errors.
+
+Runtime MCP uses HTTP JSON-RPC on `POST /mcp`, so any HTTP client can drive it.
+Check runtime status:
+
+```bash
+curl -s http://127.0.0.1:8848/mcp \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<'JSON'
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "vultra.runtime.status",
+    "arguments": {}
+  }
+}
+JSON
+```
+
+Start a browser-friendly MJPEG preview stream:
+
+```bash
+curl -s http://127.0.0.1:8848/mcp \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<'JSON'
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "vultra.render.stream",
+    "arguments": {
+      "action": "start",
+      "fps": 0,
+      "jpegQuality": 65,
+      "maxHeight": 540
+    }
+  }
+}
+JSON
+```
+
+The returned JSON contains a URL like:
+
+```text
+http://127.0.0.1:8848/stream/mjpeg_...
+```
+
+Open that URL in a browser to preview the offscreen scene. `maxHeight=540` is
+only a high-FPS preview recommendation, not a limit. Omit `maxWidth` and
+`maxHeight` to stream at native backbuffer resolution:
+
+```bash
+curl -s http://127.0.0.1:8848/mcp \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<'JSON'
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "vultra.render.stream",
+    "arguments": {
+      "action": "start",
+      "fps": 0,
+      "jpegQuality": 80
+    }
+  }
+}
+JSON
+```
+
+Native resolution is useful when fidelity matters, but it can be much heavier:
+the runtime still uses async GPU readback, but MJPEG encoding, RGB conversion,
+browser decode, and network bandwidth scale with pixel count. For responsive
+browser preview or teleoperation, prefer `maxHeight=540` or `maxHeight=720`.
+
+Open the returned stream URL from a shell:
+
+```bash
+# Linux
+xdg-open "http://127.0.0.1:8848/stream/mjpeg_..."
+
+# macOS
+open "http://127.0.0.1:8848/stream/mjpeg_..."
+```
+
+```bat
+start "" "http://127.0.0.1:8848/stream/mjpeg_..."
+```
+
+```powershell
+Start-Process "http://127.0.0.1:8848/stream/mjpeg_..."
+```
+
+Stop the stream with `curl`:
+
+```bash
+curl -s http://127.0.0.1:8848/mcp \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<'JSON'
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "vultra.render.stream",
+    "arguments": {
+      "action": "stop"
+    }
+  }
+}
+JSON
+```
+
+Windows `cmd.exe` can use the same endpoint with a readable JSON request file:
+
+```bat
+> stream-start.json (
+  echo {
+  echo   "jsonrpc": "2.0",
+  echo   "id": 2,
+  echo   "method": "tools/call",
+  echo   "params": {
+  echo     "name": "vultra.render.stream",
+  echo     "arguments": {
+  echo       "action": "start",
+  echo       "fps": 0,
+  echo       "jpegQuality": 65,
+  echo       "maxHeight": 540
+  echo     }
+  echo   }
+  echo }
+)
+
+curl -s http://127.0.0.1:8848/mcp ^
+  -H "Content-Type: application/json" ^
+  --data-binary @stream-start.json
+```
+
+PowerShell can use `Invoke-RestMethod`; for the standard-library Python client,
+see [`tools/python/vultra_client`](./tools/python/vultra_client/).
+
+```powershell
+$body = @{
+  jsonrpc = "2.0"
+  id = 2
+  method = "tools/call"
+  params = @{
+    name = "vultra.render.stream"
+    arguments = @{
+      action = "start"
+      fps = 0
+      jpegQuality = 65
+      maxHeight = 540
+    }
+  }
+} | ConvertTo-Json -Depth 10
+
+$result = Invoke-RestMethod `
+  -Uri "http://127.0.0.1:8848/mcp" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $body
+
+$stream = $result.result.content[0].text | ConvertFrom-Json
+Start-Process $stream.stream.url
+```
+
 ### WebAssembly
 
 Build a host `vultra-app` first. The WASM asset packing rule runs before the

@@ -342,9 +342,9 @@ namespace vultra_app
         if (name == "vultra.editor.quit")
         {
             auto* windowService = ctx.services ? ctx.services->tryGet<IWindowService>() : nullptr;
-            if (!windowService)
-                return toolError("window service is unavailable");
-            windowService->window().close();
+            if (windowService)
+                windowService->window().close();
+            ctx.state.editorShutdownRequested = true;
             return toolJson({{"ok", true}, {"closing", true}});
         }
 

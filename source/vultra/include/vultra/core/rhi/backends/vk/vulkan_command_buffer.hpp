@@ -48,6 +48,7 @@ namespace vultra
             VulkanCommandBuffer& end() override;
             VulkanCommandBuffer& reset() override;
             VulkanCommandBuffer& submit(const JobInfo&, bool oneTime) override;
+            [[nodiscard]] bool isComplete() const override;
 
             VulkanCommandBuffer& bindPipeline(const BasePipeline&) override;
 
