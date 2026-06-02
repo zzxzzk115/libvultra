@@ -17,6 +17,11 @@ MCP built into `vultra-app`:
 - First smoke calls: `initialize`, `tools/list`,
   `tools/call` -> `vultra.runtime.status`
 
+When documenting multi-line commands, use shell-appropriate continuations:
+PowerShell uses a trailing backtick (`` ` ``), `cmd.exe` uses `^`, and
+bash/zsh uses `\`. Prefer a single-line command when the command should be
+copy-pasteable across shells.
+
 Use Runtime MCP for playback, profiler, scene/main-camera, render graph, frame resource, full-resolution texture dump, pipeline reload, and RenderDoc capture diagnostics. For repository AI context, read the `ai/` files listed above directly before planning or editing.
 
 For game project work, also read the project-local:

@@ -52,12 +52,8 @@ capture requests.
 
 Start the editor with Runtime MCP forced on:
 
-```powershell
-xmake run vultra-app `
-  --editor `
-  --mcp `
-  --project example.vproject `
-  --no-xr
+```text
+xmake run vultra-app --editor --mcp --project example.vproject --no-xr
 ```
 
 By default it listens on:
@@ -68,27 +64,7 @@ http://127.0.0.1:8848/mcp
 
 Use `--mcp-port <port>` to override the port. Send MCP-over-HTTP JSON-RPC
 requests to `POST /mcp`. Minimum smoke calls are `initialize`, `tools/list`,
-and `tools/call` with `vultra.runtime.status`.
-
-Example tool call body:
-
-```bash
-curl -s http://127.0.0.1:8848/mcp \
-  -H "Content-Type: application/json" \
-  --data-binary @- <<'JSON'
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "vultra.runtime.status",
-    "arguments": {}
-  }
-}
-JSON
-```
-
-The JSON body is:
+and `tools/call` with `vultra.runtime.status`. Example tool call body:
 
 ```json
 {
@@ -100,6 +76,16 @@ The JSON body is:
     "arguments": {}
   }
 }
+```
+
+Put the body in `request.json` and send it with either command:
+
+```text
+curl -s http://127.0.0.1:8848/mcp -H "Content-Type: application/json" --data-binary @request.json
+```
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8848/mcp" -Method Post -ContentType "application/json" -Body (Get-Content request.json -Raw)
 ```
 
 Runtime MCP tools must be treated as live engine operations. Do not use them for

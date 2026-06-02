@@ -175,34 +175,20 @@ streams. `--rpc` is an alias for `--mcp`.
 
 Run the editor with Runtime MCP enabled:
 
-```bash
-xmake run vultra-app \
-  --editor \
-  --rpc \
-  --project example.vproject \
-  --no-xr
+```text
+xmake run vultra-app --editor --rpc --project example.vproject --no-xr
 ```
 
 Run an offscreen project runtime for visual embodied AI workflows:
 
-```bash
-xmake run vultra-app \
-  --rpc \
-  --mcp-port 8848 \
-  --project example.vproject \
-  --render-mode offscreen \
-  --no-xr
+```text
+xmake run vultra-app --rpc --mcp-port 8848 --project example.vproject --render-mode offscreen --no-xr
 ```
 
 Run a simulation-only headless project runtime with no GPU/render path:
 
-```bash
-xmake run vultra-app \
-  --rpc \
-  --mcp-port 8848 \
-  --project example.vproject \
-  --render-mode none \
-  --no-xr
+```text
+xmake run vultra-app --rpc --mcp-port 8848 --project example.vproject --render-mode none --no-xr
 ```
 
 `--render-mode` accepts:
@@ -214,12 +200,20 @@ xmake run vultra-app \
   available, visual capture tools return explicit errors.
 
 Runtime MCP uses HTTP JSON-RPC on `POST /mcp`, so any HTTP client can drive it.
-Check runtime status:
+For any of the JSON bodies below, put the body in `request.json` and send it
+with either command:
 
-```bash
-curl -s http://127.0.0.1:8848/mcp \
-  -H "Content-Type: application/json" \
-  --data-binary @- <<'JSON'
+```text
+curl -s http://127.0.0.1:8848/mcp -H "Content-Type: application/json" --data-binary @request.json
+```
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8848/mcp" -Method Post -ContentType "application/json" -Body (Get-Content request.json -Raw)
+```
+
+Check runtime status with this JSON body:
+
+```json
 {
   "jsonrpc": "2.0",
   "id": 1,
@@ -229,15 +223,11 @@ curl -s http://127.0.0.1:8848/mcp \
     "arguments": {}
   }
 }
-JSON
 ```
 
-Start a browser-friendly MJPEG preview stream:
+Start a browser-friendly MJPEG preview stream with this JSON body:
 
-```bash
-curl -s http://127.0.0.1:8848/mcp \
-  -H "Content-Type: application/json" \
-  --data-binary @- <<'JSON'
+```json
 {
   "jsonrpc": "2.0",
   "id": 2,
@@ -252,7 +242,6 @@ curl -s http://127.0.0.1:8848/mcp \
     }
   }
 }
-JSON
 ```
 
 The returned JSON contains a URL like:
@@ -265,10 +254,7 @@ Open that URL in a browser to preview the offscreen scene. `maxHeight=540` is
 only a high-FPS preview recommendation, not a limit. Omit `maxWidth` and
 `maxHeight` to stream at native backbuffer resolution:
 
-```bash
-curl -s http://127.0.0.1:8848/mcp \
-  -H "Content-Type: application/json" \
-  --data-binary @- <<'JSON'
+```json
 {
   "jsonrpc": "2.0",
   "id": 2,
@@ -282,7 +268,6 @@ curl -s http://127.0.0.1:8848/mcp \
     }
   }
 }
-JSON
 ```
 
 Native resolution is useful when fidelity matters, but it can be much heavier:
@@ -308,12 +293,9 @@ start "" "http://127.0.0.1:8848/stream/mjpeg_..."
 Start-Process "http://127.0.0.1:8848/stream/mjpeg_..."
 ```
 
-Stop the stream with `curl`:
+Stop the stream:
 
-```bash
-curl -s http://127.0.0.1:8848/mcp \
-  -H "Content-Type: application/json" \
-  --data-binary @- <<'JSON'
+```json
 {
   "jsonrpc": "2.0",
   "id": 3,
@@ -325,7 +307,6 @@ curl -s http://127.0.0.1:8848/mcp \
     }
   }
 }
-JSON
 ```
 
 Windows `cmd.exe` can use the same endpoint with a readable JSON request file:
@@ -353,8 +334,7 @@ curl -s http://127.0.0.1:8848/mcp ^
   --data-binary @stream-start.json
 ```
 
-PowerShell can use `Invoke-RestMethod`; for the standard-library Python client,
-see [`tools/python/vultra_client`](./tools/python/vultra_client/).
+To start a stream and immediately open the returned URL in PowerShell:
 
 ```powershell
 $body = @{
