@@ -39,6 +39,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/thin_gbuffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ui_overlay_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/visibility_buffer_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/xr_view_synthesis_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
@@ -785,6 +786,10 @@ namespace vultra
              {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
         pass("SelectionOutline",
              {"source", "entityId", "depth"},
+             {"color"},
+             {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
+        pass("UiOverlay",
+             {"source"},
              {"color"},
              {{.name = "enabled", .type = vrendergraph::ParamType::eBoolean, .defaultValue = true}});
         pass("XrGeometryWarp",
@@ -2145,6 +2150,33 @@ namespace vultra
                                 }
                             });
 
+            registerBuiltin("UiOverlay",
+                            {"source"},
+                            {"color"},
+                            [this](FrameGraph&,
+                                   FrameGraphBlackboard&,
+                                   const vrendergraph::ParamBlock& params,
+                                   vrendergraph::PassBuildContext& passCtx) {
+                                auto* ctx = m_Owner.m_CurrentBuildContext;
+                                if (!ctx)
+                                    return;
+                                if (!params.get<bool>("enabled", true))
+                                {
+                                    passCtx.setOutput("color", passCtx.getInput("source"));
+                                    return;
+                                }
+                                auto color = m_UiOverlayPass.addPass(*ctx, passCtx.getInput("source"));
+                                if (color)
+                                {
+                                    ctx->data.set(kResKey_FinalCompositionSource, color);
+                                    passCtx.setOutput("color", color);
+                                }
+                                else
+                                {
+                                    passCtx.setOutput("color", passCtx.getInput("source"));
+                                }
+                            });
+
             registerBuiltin("XrGeometryWarp",
                             {"source", "depth"},
                             {"color"},
@@ -2578,6 +2610,7 @@ namespace vultra
         FxaaPass                                                                m_FxaaPass;
         ToneMappingPass                                                         m_ToneMappingPass;
         SelectionOutlinePass                                                    m_SelectionOutlinePass;
+        UiOverlayPass                                                           m_UiOverlayPass;
         FinalCompositionPass                                                    m_FinalCompositionPass;
         RayTracingPrimaryPass                                                   m_RayTracingPrimaryPass;
         VisibilityBufferPass                                                    m_VisibilityBufferPass;

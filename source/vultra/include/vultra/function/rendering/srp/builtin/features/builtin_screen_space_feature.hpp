@@ -10,6 +10,7 @@ namespace vultra
     class SsrCompositePass;
     class SsrPass;
     class ToneMappingPass;
+    class UiOverlayPass;
 
     class BuiltinScreenSpaceFeature final : public RenderFeature
     {
@@ -28,5 +29,6 @@ namespace vultra
         ToneMappingPass*  m_ToneMappingPass {nullptr};
         SelectionOutlinePass* m_SelectionOutlinePass {nullptr};
         FxaaPass*       m_FxaaPass {nullptr};
+        UiOverlayPass*  m_UiOverlayPass {nullptr};
     };
 } // namespace vultra

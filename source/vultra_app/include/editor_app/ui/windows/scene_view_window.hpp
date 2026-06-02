@@ -35,6 +35,12 @@ namespace vultra_app
             Scale,
         };
 
+        enum class ViewMode
+        {
+            View3D,
+            Ui2D,
+        };
+
     private:
         struct RenderTargetSlot
         {
@@ -77,6 +83,7 @@ namespace vultra_app
         bool focusSelection(EditorContext& ctx, float aspect);
 
         Tool m_Tool {Tool::Select};
+        ViewMode m_ViewMode {ViewMode::View3D};
         bool m_ShowGrid {false};
 
         RenderTargetSlot              m_ActiveRenderTarget;

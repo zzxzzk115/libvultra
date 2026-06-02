@@ -15,6 +15,12 @@
             80.0
           ]
         },
+        "UiOverlay": {
+          "pos": [
+            800.0,
+            80.0
+          ]
+        },
         "FinalComposition": {
           "pos": [
             980.0,
@@ -47,9 +53,21 @@
     },
     {
       "enabled": true,
-      "id": "FinalComposition",
+      "id": "UiOverlay",
       "inputs": {
         "source": "ToneMapping.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "UiOverlay",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "UiOverlay.color"
       },
       "type": "FinalComposition",
       "viewMode": "inherit"

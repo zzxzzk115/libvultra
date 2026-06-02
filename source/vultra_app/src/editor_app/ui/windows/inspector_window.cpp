@@ -34,6 +34,7 @@
 #include <vultra/function/world/components/script_component.hpp>
 #include <vultra/function/world/components/sphere_shape_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/components/ui_components.hpp>
 #include <vultra/function/world/components/xr_view_component.hpp>
 #include <vultra/function/world/world.hpp>
 
@@ -216,6 +217,20 @@ namespace vultra_app
         {
             if (std::strcmp(metaName, "TransformComponent") == 0)
                 return "Transform";
+            if (std::strcmp(metaName, "RectTransformComponent") == 0)
+                return "Rect Transform";
+            if (std::strcmp(metaName, "CanvasComponent") == 0)
+                return "Canvas";
+            if (std::strcmp(metaName, "UiPanelComponent") == 0)
+                return "UI Panel";
+            if (std::strcmp(metaName, "UiImageComponent") == 0)
+                return "UI Image";
+            if (std::strcmp(metaName, "UiTextComponent") == 0)
+                return "UI Text";
+            if (std::strcmp(metaName, "UiButtonComponent") == 0)
+                return "UI Button";
+            if (std::strcmp(metaName, "UiLayoutComponent") == 0)
+                return "UI Layout";
             if (std::strcmp(metaName, "EntityStatusComponent") == 0)
                 return "Status";
             if (std::strcmp(metaName, "MeshComponent") == 0)
@@ -257,6 +272,48 @@ namespace vultra_app
         const char* componentDisplayName<vultra::TransformComponent>()
         {
             return "Transform";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::RectTransformComponent>()
+        {
+            return "Rect Transform";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::CanvasComponent>()
+        {
+            return "Canvas";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::UiPanelComponent>()
+        {
+            return "UI Panel";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::UiImageComponent>()
+        {
+            return "UI Image";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::UiTextComponent>()
+        {
+            return "UI Text";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::UiButtonComponent>()
+        {
+            return "UI Button";
+        }
+
+        template<>
+        const char* componentDisplayName<vultra::UiLayoutComponent>()
+        {
+            return "UI Layout";
         }
 
         template<>
@@ -1219,6 +1276,56 @@ namespace vultra_app
                 return "scriptUri";
             if (is("enabled"))
                 return "enabled";
+            if (is("sortOrder"))
+                return "sortOrder";
+            if (is("referenceResolutionPx"))
+                return "referenceResolutionPx";
+            if (is("scaleMode"))
+                return "scaleMode";
+            if (is("anchorMin"))
+                return "anchorMin";
+            if (is("anchorMax"))
+                return "anchorMax";
+            if (is("pivot"))
+                return "pivot";
+            if (is("anchoredPositionPx"))
+                return "anchoredPositionPx";
+            if (is("sizeDeltaPx"))
+                return "sizeDeltaPx";
+            if (is("rotationDegrees"))
+                return "rotationDegrees";
+            if (is("borderRadiusPx"))
+                return "borderRadiusPx";
+            if (is("texture"))
+                return "texture";
+            if (is("tint"))
+                return "tint";
+            if (is("fitMode"))
+                return "fitMode";
+            if (is("text"))
+                return "text";
+            if (is("fontSizePx"))
+                return "fontSizePx";
+            if (is("horizontalAlign"))
+                return "horizontalAlign";
+            if (is("verticalAlign"))
+                return "verticalAlign";
+            if (is("interactable"))
+                return "interactable";
+            if (is("normalColor"))
+                return "normalColor";
+            if (is("hoveredColor"))
+                return "hoveredColor";
+            if (is("pressedColor"))
+                return "pressedColor";
+            if (is("paddingPx"))
+                return "paddingPx";
+            if (is("marginPx"))
+                return "marginPx";
+            if (is("spacingPx"))
+                return "spacingPx";
+            if (is("cellSizePx"))
+                return "cellSizePx";
 
             return nullptr;
         }
@@ -1236,6 +1343,8 @@ namespace vultra_app
             if (std::strcmp(fieldName, "skybox") == 0)
                 return vasset::VAssetType::eTexture;
             if (std::strcmp(fieldName, "environmentMap") == 0)
+                return vasset::VAssetType::eTexture;
+            if (std::strcmp(fieldName, "texture") == 0)
                 return vasset::VAssetType::eTexture;
             return vasset::VAssetType::eUnknown;
         }
@@ -2494,6 +2603,54 @@ namespace vultra_app
                     return changed;
                 }
 
+                if (std::strcmp(fieldName, "scaleMode") == 0)
+                {
+                    const char* labels[] = {"Constant Pixels", "Scale With Screen"};
+                    int         index    = static_cast<int>(std::min(*v, 1u));
+                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    {
+                        *v      = static_cast<uint32_t>(index);
+                        changed = true;
+                    }
+                    return changed;
+                }
+
+                if (std::strcmp(fieldName, "fitMode") == 0)
+                {
+                    const char* labels[] = {"Stretch", "Contain", "Cover"};
+                    int         index    = static_cast<int>(std::min(*v, 2u));
+                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    {
+                        *v      = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                        changed = true;
+                    }
+                    return changed;
+                }
+
+                if (std::strcmp(fieldName, "horizontalAlign") == 0)
+                {
+                    const char* labels[] = {"Left", "Center", "Right"};
+                    int         index    = static_cast<int>(std::min(*v, 2u));
+                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    {
+                        *v      = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                        changed = true;
+                    }
+                    return changed;
+                }
+
+                if (std::strcmp(fieldName, "verticalAlign") == 0)
+                {
+                    const char* labels[] = {"Top", "Middle", "Bottom"};
+                    int         index    = static_cast<int>(std::min(*v, 2u));
+                    if (ImGui::Combo(label, &index, labels, IM_ARRAYSIZE(labels)))
+                    {
+                        *v      = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                        changed = true;
+                    }
+                    return changed;
+                }
+
                 if (std::strcmp(fieldName, "shape") == 0)
                 {
                     const char* shapeLabels[] = {"Box", "Sphere"};
@@ -2531,6 +2688,9 @@ namespace vultra_app
                 }
                 return changed;
             }
+
+            if (auto* v = value.try_cast<glm::vec2>())
+                return ImGui::DragFloat2(label, &v->x, 0.05f);
 
             if (auto* v = value.try_cast<glm::vec3>())
                 return ImGui::DragFloat3(label, &v->x, 0.05f);
@@ -2801,6 +2961,26 @@ namespace vultra_app
             return changed;
         }
 
+        bool drawUiLayoutComponentFields(vultra::UiLayoutComponent& layout)
+        {
+            bool changed = false;
+            changed |= ImGui::Checkbox("Enabled", &layout.enabled);
+
+            const char* labels[] = {"None", "Horizontal", "Vertical", "Grid"};
+            int         index    = static_cast<int>(std::min(layout.kind, 3u));
+            if (ImGui::Combo("Layout", &index, labels, IM_ARRAYSIZE(labels)))
+            {
+                layout.kind = static_cast<uint32_t>(std::clamp(index, 0, IM_ARRAYSIZE(labels) - 1));
+                changed     = true;
+            }
+
+            changed |= ImGui::DragFloat4("Padding Px", &layout.paddingPx.x, 0.5f);
+            changed |= ImGui::DragFloat4("Margin Px", &layout.marginPx.x, 0.5f);
+            changed |= ImGui::DragFloat("Spacing Px", &layout.spacingPx, 0.5f);
+            changed |= ImGui::DragFloat2("Cell Size Px", &layout.cellSizePx.x, 0.5f);
+            return changed;
+        }
+
         template<typename Component>
         const char* componentLabel()
         {
@@ -2855,6 +3035,23 @@ namespace vultra_app
                 category,
                 [](entt::registry& reg, entt::entity entity) { return reg.all_of<Component>(entity); },
                 [](EditorContext&, entt::registry& reg, entt::entity entity) {
+                    if (!reg.all_of<Component>(entity))
+                        reg.emplace<Component>(entity);
+                },
+            };
+        }
+
+        template<typename Component>
+        AddComponentDescriptor addUiComponentDescriptor(const char* key, const char* label)
+        {
+            return AddComponentDescriptor {
+                key,
+                label,
+                "UI",
+                [](entt::registry& reg, entt::entity entity) { return reg.all_of<Component>(entity); },
+                [](EditorContext&, entt::registry& reg, entt::entity entity) {
+                    if (!reg.all_of<vultra::RectTransformComponent>(entity))
+                        reg.emplace<vultra::RectTransformComponent>(entity);
                     if (!reg.all_of<Component>(entity))
                         reg.emplace<Component>(entity);
                 },
@@ -2966,6 +3163,13 @@ namespace vultra_app
         {
             static const std::vector<AddComponentDescriptor> descriptors {
                 addComponentDescriptor<vultra::TransformComponent>("Transform", "Transform", "Core"),
+                addComponentDescriptor<vultra::RectTransformComponent>("RectTransform", "Rect Transform", "UI"),
+                addUiComponentDescriptor<vultra::CanvasComponent>("Canvas", "Canvas"),
+                addUiComponentDescriptor<vultra::UiPanelComponent>("UiPanel", "UI Panel"),
+                addUiComponentDescriptor<vultra::UiImageComponent>("UiImage", "UI Image"),
+                addUiComponentDescriptor<vultra::UiTextComponent>("UiText", "UI Text"),
+                addUiComponentDescriptor<vultra::UiButtonComponent>("UiButton", "UI Button"),
+                addUiComponentDescriptor<vultra::UiLayoutComponent>("UiLayout", "UI Layout"),
                 addComponentDescriptor<vultra::MeshComponent>("Mesh", "Mesh", "Rendering"),
                 addAnimatorComponentDescriptor(),
                 addComponentDescriptor<vultra::GaussianSplatComponent>(
@@ -2991,7 +3195,14 @@ namespace vultra_app
         const std::vector<const char*>& componentDefaultOrder()
         {
             static const std::vector<const char*> order {
+                "RectTransform",
                 "Transform",
+                "Canvas",
+                "UiPanel",
+                "UiImage",
+                "UiText",
+                "UiButton",
+                "UiLayout",
                 "Mesh",
                 "Animator",
                 "GaussianSplat",
@@ -3012,8 +3223,23 @@ namespace vultra_app
 
         bool entityHasOrderedComponent(entt::registry& reg, entt::entity entity, const std::string& key)
         {
+            if (key == "RectTransform")
+                return reg.all_of<vultra::RectTransformComponent>(entity);
             if (key == "Transform")
-                return reg.all_of<vultra::TransformComponent>(entity);
+                return reg.all_of<vultra::TransformComponent>(entity) &&
+                       !reg.all_of<vultra::RectTransformComponent>(entity);
+            if (key == "Canvas")
+                return reg.all_of<vultra::CanvasComponent>(entity);
+            if (key == "UiPanel")
+                return reg.all_of<vultra::UiPanelComponent>(entity);
+            if (key == "UiImage")
+                return reg.all_of<vultra::UiImageComponent>(entity);
+            if (key == "UiText")
+                return reg.all_of<vultra::UiTextComponent>(entity);
+            if (key == "UiButton")
+                return reg.all_of<vultra::UiButtonComponent>(entity);
+            if (key == "UiLayout")
+                return reg.all_of<vultra::UiLayoutComponent>(entity);
             if (key == "Mesh")
                 return reg.all_of<vultra::MeshComponent>(entity);
             if (key == "Animator")
@@ -3064,8 +3290,22 @@ namespace vultra_app
 
         const char* orderedComponentLabel(const std::string& key)
         {
+            if (key == "RectTransform")
+                return "Rect Transform";
             if (key == "Transform")
                 return "Transform";
+            if (key == "Canvas")
+                return "Canvas";
+            if (key == "UiPanel")
+                return "UI Panel";
+            if (key == "UiImage")
+                return "UI Image";
+            if (key == "UiText")
+                return "UI Text";
+            if (key == "UiButton")
+                return "UI Button";
+            if (key == "UiLayout")
+                return "UI Layout";
             if (key == "Mesh")
                 return "Mesh";
             if (key == "Animator")
@@ -3099,8 +3339,22 @@ namespace vultra_app
 
         void removeOrderedComponent(entt::registry& reg, entt::entity entity, const std::string& key)
         {
-            if (key == "Transform")
+            if (key == "RectTransform")
+                reg.remove<vultra::RectTransformComponent>(entity);
+            else if (key == "Transform")
                 reg.remove<vultra::TransformComponent>(entity);
+            else if (key == "Canvas")
+                reg.remove<vultra::CanvasComponent>(entity);
+            else if (key == "UiPanel")
+                reg.remove<vultra::UiPanelComponent>(entity);
+            else if (key == "UiImage")
+                reg.remove<vultra::UiImageComponent>(entity);
+            else if (key == "UiText")
+                reg.remove<vultra::UiTextComponent>(entity);
+            else if (key == "UiButton")
+                reg.remove<vultra::UiButtonComponent>(entity);
+            else if (key == "UiLayout")
+                reg.remove<vultra::UiLayoutComponent>(entity);
             else if (key == "Mesh")
                 reg.remove<vultra::MeshComponent>(entity);
             else if (key == "Animator")
@@ -3367,7 +3621,17 @@ namespace vultra_app
             if (!open)
                 continue;
 
-            if (key == "Transform")
+            if (key == "RectTransform")
+            {
+                if (auto* rect = reg.try_get<vultra::RectTransformComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *rect))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Rect Transform");
+                    }
+            }
+            else if (key == "Transform")
             {
                 if (auto* transform = reg.try_get<vultra::TransformComponent>(e))
                 {
@@ -3379,8 +3643,68 @@ namespace vultra_app
                         ctx.state.sceneDirty = true;
                         if (ctx.history)
                             ctx.history->setNextLabel("Edit Transform");
-                    }
+                        }
                 }
+            }
+            else if (key == "Canvas")
+            {
+                if (auto* canvas = reg.try_get<vultra::CanvasComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *canvas))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit Canvas");
+                    }
+            }
+            else if (key == "UiPanel")
+            {
+                if (auto* panel = reg.try_get<vultra::UiPanelComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *panel))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Panel");
+                    }
+            }
+            else if (key == "UiImage")
+            {
+                if (auto* image = reg.try_get<vultra::UiImageComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *image))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Image");
+                    }
+            }
+            else if (key == "UiText")
+            {
+                if (auto* text = reg.try_get<vultra::UiTextComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *text))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Text");
+                    }
+            }
+            else if (key == "UiButton")
+            {
+                if (auto* button = reg.try_get<vultra::UiButtonComponent>(e))
+                    if (drawMetaFields(&ctx, &m_TextureSelector, *button))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Button");
+                    }
+            }
+            else if (key == "UiLayout")
+            {
+                if (auto* layout = reg.try_get<vultra::UiLayoutComponent>(e))
+                    if (drawUiLayoutComponentFields(*layout))
+                    {
+                        ctx.state.sceneDirty = true;
+                        if (ctx.history)
+                            ctx.history->setNextLabel("Edit UI Layout");
+                    }
             }
             else if (key == "Mesh")
             {
@@ -3574,6 +3898,7 @@ namespace vultra_app
             bool any = false;
             constexpr const char* categories[] = {
                 "Core",
+                "UI",
                 "Rendering",
                 "Animation",
                 "Lighting",

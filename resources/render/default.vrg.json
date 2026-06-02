@@ -56,6 +56,12 @@
             176.0
           ]
         },
+        "UiOverlay": {
+          "pos": [
+            4140.0,
+            176.0
+          ]
+        },
         "ShadowMap": {
           "pos": [
             559.0,
@@ -275,9 +281,20 @@
     },
     {
       "enabled": true,
-      "id": "FinalComposition",
+      "id": "UiOverlay",
       "inputs": {
         "source": "SelectionOutline.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "UiOverlay"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "UiOverlay.color"
       },
       "type": "FinalComposition"
     }

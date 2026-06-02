@@ -5,6 +5,7 @@
 #include "vultra/function/rendering/srp/builtin/passes/ssr_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/ssr_composite_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/passes/tone_mapping_pass.hpp"
+#include "vultra/function/rendering/srp/builtin/passes/ui_overlay_pass.hpp"
 #include "vultra/function/rendering/srp/builtin/resource_keys.hpp"
 #include "vultra/function/services/render_service.hpp"
 
@@ -19,6 +20,7 @@ namespace vultra
         m_ToneMappingPass = new ToneMappingPass();
         m_SelectionOutlinePass = new SelectionOutlinePass();
         m_FxaaPass = new FxaaPass();
+        m_UiOverlayPass = new UiOverlayPass();
     }
 
     BuiltinScreenSpaceFeature::~BuiltinScreenSpaceFeature()
@@ -28,6 +30,7 @@ namespace vultra
         delete m_ToneMappingPass;
         delete m_SelectionOutlinePass;
         delete m_FxaaPass;
+        delete m_UiOverlayPass;
     }
 
     void BuiltinScreenSpaceFeature::addPasses(FrameGraphBuildContext& ctx)
@@ -89,6 +92,13 @@ namespace vultra
                                                             settings.selectionOutline);
             ctx.data.set(kResKey_SelectionOutlineOutput, outlined);
             ctx.data.set(kResKey_FinalCompositionSource, outlined);
+        }
+
+        if (ctx.data.contains(kResKey_FinalCompositionSource))
+        {
+            auto uiComposited = m_UiOverlayPass->addPass(ctx, ctx.data.get(kResKey_FinalCompositionSource));
+            if (uiComposited)
+                ctx.data.set(kResKey_FinalCompositionSource, uiComposited);
         }
     }
 } // namespace vultra

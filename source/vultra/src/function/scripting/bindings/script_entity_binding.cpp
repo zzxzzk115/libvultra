@@ -11,6 +11,7 @@
 #include "vultra/function/world/components/name_component.hpp"
 #include "vultra/function/world/components/rigid_body_component.hpp"
 #include "vultra/function/world/components/sphere_shape_component.hpp"
+#include "vultra/function/world/components/ui_components.hpp"
 #include "vultra/function/world/world.hpp"
 
 namespace vultra
@@ -86,6 +87,10 @@ namespace vultra
                 }),
             "transform",
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptTransformRef {self.value}; }),
+            "rectTransform",
+            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptRectTransformRef {self.value}; }),
+            "uiButton",
+            VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptUiButtonRef {self.value}; }),
             "rigidBody",
             VULTRA_LUA_READONLY_PROPERTY([](const ScriptEntity& self) { return ScriptRigidBodyRef {self.value}; }),
             "camera",
@@ -141,6 +146,10 @@ namespace vultra
             "hasSphereShape",
             [&ctx](const ScriptEntity& self) { return hasComponent<SphereShapeComponent>(ctx, self.value); },
             "hasAnimator",
-            [&ctx](const ScriptEntity& self) { return hasComponent<AnimatorComponent>(ctx, self.value); });
+            [&ctx](const ScriptEntity& self) { return hasComponent<AnimatorComponent>(ctx, self.value); },
+            "hasRectTransform",
+            [&ctx](const ScriptEntity& self) { return hasComponent<RectTransformComponent>(ctx, self.value); },
+            "hasUiButton",
+            [&ctx](const ScriptEntity& self) { return hasComponent<UiButtonComponent>(ctx, self.value); });
     }
 } // namespace vultra

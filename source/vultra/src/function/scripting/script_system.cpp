@@ -13,6 +13,7 @@
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/render_service.hpp"
 #include "vultra/function/services/scene_service.hpp"
+#include "vultra/function/services/ui_service.hpp"
 #include "vultra/function/services/world_service.hpp"
 #include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/world.hpp"
@@ -46,6 +47,7 @@ namespace vultra
         m_ScriptContext.frameDebuggerService = ctx().services.tryGet<IFrameDebuggerService>();
         m_ScriptContext.physicsService       = ctx().services.tryGet<IPhysicsService>();
         m_ScriptContext.animationService     = ctx().services.tryGet<IAnimationService>();
+        m_ScriptContext.uiService            = ctx().services.tryGet<IUiService>();
 
         VULTRA_CORE_TRACE("[ScriptSystem] Registering script bindings...");
         registerScriptBindings(m_Engine.lua(), m_ScriptContext);

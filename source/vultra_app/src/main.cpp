@@ -35,6 +35,7 @@
 #include <vultra/function/services/render_service.hpp>
 #include <vultra/function/services/scene_service.hpp>
 #include <vultra/function/services/world_service.hpp>
+#include <vultra/function/ui/ui_system.hpp>
 #include <vultra/function/world/components/camera_component.hpp>
 #include <vultra/function/world/world_system.hpp>
 
@@ -346,6 +347,7 @@ namespace
             engine.emplaceSubsystem<vultra::TimingSystem>();
             engine.emplaceSubsystem<vultra::JobSystem>();
             engine.emplaceSubsystem<vultra::WorldSystem>();
+            engine.emplaceSubsystem<vultra::UiSystem>();
             engine.emplaceSubsystem<vultra::PhysicsSystem>();
             engine.emplaceSubsystem<vultra::AssetSystem>();
             engine.emplaceSubsystem<vultra::SceneSystem>();

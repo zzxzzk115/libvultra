@@ -19,6 +19,7 @@
 #include <vultra/function/world/components/mesh_component.hpp>
 #include <vultra/function/world/components/name_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/components/ui_components.hpp>
 #include <vultra/function/world/world.hpp>
 
 #include <ImGuizmo/ImGuizmo.h>
@@ -40,6 +41,7 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <string>
 
 namespace vultra_app
 {
@@ -546,6 +548,113 @@ namespace vultra_app
         {
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                 ImGui::SetTooltip("%s", text);
+        }
+
+        ImVec2 uiPoint(const ImVec2& canvasMin, const float scale, const glm::vec2 p)
+        {
+            return {canvasMin.x + p.x * scale, canvasMin.y + p.y * scale};
+        }
+
+        bool screenRectContains(const ImVec2& min, const ImVec2& max, const ImVec2& p)
+        {
+            return p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y;
+        }
+
+        void drawUiEntityOverlay(EditorContext&               ctx,
+                                 vultra::World&               world,
+                                 const entt::entity           entity,
+                                 const ImVec2&                canvasMin,
+                                 const glm::vec2              parentMinPx,
+                                 const glm::vec2              parentSizePx,
+                                 const float                  scale,
+                                 const entt::entity           selectedEntity,
+                                 const SceneViewWindow::Tool  tool,
+                                 const bool                   allowEdit)
+        {
+            auto& reg = world.registry();
+            auto* rect = reg.try_get<vultra::RectTransformComponent>(entity);
+            if (!rect)
+                return;
+
+            const glm::vec2 anchorMin = parentMinPx + parentSizePx * rect->anchorMin;
+            const glm::vec2 anchorMax = parentMinPx + parentSizePx * rect->anchorMax;
+            const glm::vec2 sizePx    = glm::max((anchorMax - anchorMin) + rect->sizeDeltaPx * rect->scale,
+                                              glm::vec2 {1.0f});
+            const glm::vec2 minPx     = anchorMin + rect->anchoredPositionPx - sizePx * rect->pivot;
+            const glm::vec2 maxPx     = minPx + sizePx;
+            const ImVec2    min       = uiPoint(canvasMin, scale, minPx);
+            const ImVec2    max       = uiPoint(canvasMin, scale, maxPx);
+
+            const bool selected = entity == selectedEntity;
+            if (selected)
+            {
+                auto* drawList = ImGui::GetWindowDrawList();
+                drawList->AddRect(min, max, IM_COL32(255, 210, 80, 255), 0.0f, 0, 2.0f);
+                const ImVec2 center {(min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f};
+                drawList->AddCircleFilled(center, 4.0f, IM_COL32(255, 210, 80, 255));
+                drawList->AddLine(center, ImVec2(center.x + 42.0f, center.y), IM_COL32(255, 80, 80, 255), 2.0f);
+                drawList->AddLine(center, ImVec2(center.x, center.y + 42.0f), IM_COL32(80, 220, 120, 255), 2.0f);
+                drawList->AddCircle(ImVec2(max.x, max.y), 7.0f, IM_COL32(255, 210, 80, 255), 16, 2.0f);
+
+                const auto mouse = ImGui::GetIO().MousePos;
+                if (allowEdit && screenRectContains(min, max, mouse) && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+                {
+                    const auto delta = ImGui::GetIO().MouseDelta;
+                    if (tool == SceneViewWindow::Tool::Move)
+                        rect->anchoredPositionPx += glm::vec2(delta.x, delta.y) / scale;
+                    else if (tool == SceneViewWindow::Tool::Scale)
+                        rect->sizeDeltaPx = glm::max(rect->sizeDeltaPx + glm::vec2(delta.x, delta.y) / scale,
+                                                     glm::vec2 {1.0f});
+                    else if (tool == SceneViewWindow::Tool::Rotate)
+                        rect->rotationDegrees += delta.x;
+
+                    ctx.state.sceneDirty = true;
+                    if (ctx.history)
+                        ctx.history->setNextLabel("Edit Rect Transform");
+                }
+            }
+
+            for (auto child = world.firstChild(entity); child != entt::null; child = world.nextSibling(child))
+                drawUiEntityOverlay(ctx, world, child, canvasMin, minPx, maxPx - minPx, scale, selectedEntity, tool, allowEdit);
+        }
+
+        void drawUiCanvasOverlay(EditorContext&              ctx,
+                                 vultra::World&              world,
+                                 const ImVec2&               viewportMin,
+                                 const ImVec2&               viewportSize,
+                                 const entt::entity          selectedEntity,
+                                 const SceneViewWindow::Tool tool,
+                                 const bool                  allowEdit)
+        {
+            auto& reg = world.registry();
+            auto* drawList = ImGui::GetWindowDrawList();
+            for (auto canvasEntity : reg.view<vultra::CanvasComponent>())
+            {
+                const auto& canvas = reg.get<vultra::CanvasComponent>(canvasEntity);
+                if (!canvas.enabled)
+                    continue;
+                const glm::vec2 reference = glm::max(canvas.referenceResolutionPx, glm::vec2 {1.0f});
+                const float fit = std::max(0.001f, std::min(viewportSize.x / reference.x, viewportSize.y / reference.y));
+                const ImVec2 canvasSize {reference.x * fit, reference.y * fit};
+                const ImVec2 canvasMin {viewportMin.x + (viewportSize.x - canvasSize.x) * 0.5f,
+                                        viewportMin.y + (viewportSize.y - canvasSize.y) * 0.5f};
+                const ImVec2 canvasMax {canvasMin.x + canvasSize.x, canvasMin.y + canvasSize.y};
+                drawList->AddRect(canvasMin, canvasMax, IM_COL32(80, 180, 255, 150), 0.0f, 0, 1.5f);
+                drawList->AddText(ImVec2(canvasMin.x + 8.0f, canvasMin.y + 8.0f),
+                                  IM_COL32(130, 210, 255, 220),
+                                  "Canvas");
+                for (auto child = world.firstChild(canvasEntity); child != entt::null; child = world.nextSibling(child))
+                    drawUiEntityOverlay(ctx,
+                                        world,
+                                        child,
+                                        canvasMin,
+                                        glm::vec2 {0.0f, 0.0f},
+                                        reference,
+                                        fit,
+                                        selectedEntity,
+                                        tool,
+                                        allowEdit);
+            }
         }
 
         void applyCameraAlignRequest(AppState&  state,
@@ -1087,7 +1196,19 @@ namespace vultra_app
                 }
             }
 
-            if (m_Tool != Tool::Select)
+            if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>(); m_ViewMode == ViewMode::Ui2D && worldService)
+            {
+                auto& world = worldService->world();
+                const auto selectedEntity = findEntityByUUID(world, Selection::lastId());
+                drawUiCanvasOverlay(ctx,
+                                    world,
+                                    imagePos,
+                                    avail,
+                                    selectedEntity,
+                                    m_Tool,
+                                    m_Tool != Tool::Select);
+            }
+            else if (m_Tool != Tool::Select)
             {
                 if (auto* worldService = ctx.services->tryGet<vultra::IWorldService>())
                 {
@@ -1211,7 +1332,7 @@ namespace vultra_app
         constexpr float buttonSize = 28.0f;
         constexpr float padding    = 6.0f;
         constexpr float gap        = 4.0f;
-        constexpr int   itemCount  = 5;
+        constexpr int   itemCount  = 6;
         const ImVec2    panelSize {padding * 2.0f + buttonSize * itemCount + gap * (itemCount - 1), 40.0f};
 
         auto* drawList = ImGui::GetWindowDrawList();
@@ -1259,6 +1380,17 @@ namespace vultra_app
             m_ShowGrid = !m_ShowGrid;
         tooltip("Grid");
         if (m_ShowGrid)
+            ImGui::PopStyleColor(2);
+        ImGui::SameLine();
+        if (m_ViewMode == ViewMode::Ui2D)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4 {0.42f, 0.30f, 0.12f, 0.95f});
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4 {0.54f, 0.38f, 0.16f, 1.0f});
+        }
+        if (ImGui::Button(m_ViewMode == ViewMode::Ui2D ? "2D" : "3D", ImVec2 {buttonSize, buttonSize}))
+            m_ViewMode = m_ViewMode == ViewMode::Ui2D ? ViewMode::View3D : ViewMode::Ui2D;
+        tooltip("3D / 2D UI");
+        if (m_ViewMode == ViewMode::Ui2D)
             ImGui::PopStyleColor(2);
 
         ImGui::PopStyleVar(3);

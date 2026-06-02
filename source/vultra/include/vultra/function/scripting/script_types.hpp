@@ -52,6 +52,16 @@ namespace vultra
         entt::entity entity {entt::null};
     };
 
+    struct ScriptRectTransformRef
+    {
+        entt::entity entity {entt::null};
+    };
+
+    struct ScriptUiButtonRef
+    {
+        entt::entity entity {entt::null};
+    };
+
     struct ScriptVec2
     {
         float x {0.0f};

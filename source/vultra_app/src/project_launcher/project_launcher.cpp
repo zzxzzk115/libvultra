@@ -182,6 +182,7 @@ EnvironmentComponent/iblIntensity = 1.000000
         "ToneMapping": { "pos": [3413.0, -42.0] },
         "Fxaa": { "pos": [3796.0, 3.0] },
         "SelectionOutline": { "pos": [4081.0, 176.0] },
+        "UiOverlay": { "pos": [4300.0, 176.0] },
         "FinalComposition": { "pos": [4470.0, 208.0] }
       }
     }
@@ -371,9 +372,20 @@ EnvironmentComponent/iblIntensity = 1.000000
     },
     {
       "enabled": true,
-      "id": "FinalComposition",
+      "id": "UiOverlay",
       "inputs": {
         "source": "SelectionOutline.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "UiOverlay"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "UiOverlay.color"
       },
       "type": "FinalComposition"
     }
@@ -393,6 +405,7 @@ EnvironmentComponent/iblIntensity = 1.000000
         "DeferredLighting": { "pos": [980.0, 160.0] },
         "ToneMapping": { "pos": [1340.0, 160.0] },
         "Fxaa": { "pos": [1700.0, 160.0] },
+        "UiOverlay": { "pos": [1880.0, 160.0] },
         "FinalComposition": { "pos": [2060.0, 160.0] }
       }
     }
@@ -475,9 +488,21 @@ EnvironmentComponent/iblIntensity = 1.000000
     },
     {
       "enabled": true,
-      "id": "FinalComposition",
+      "id": "UiOverlay",
       "inputs": {
         "source": "Fxaa.color"
+      },
+      "params": {
+        "enabled": true
+      },
+      "type": "UiOverlay",
+      "viewMode": "inherit"
+    },
+    {
+      "enabled": true,
+      "id": "FinalComposition",
+      "inputs": {
+        "source": "UiOverlay.color"
       },
       "type": "FinalComposition",
       "viewMode": "inherit"

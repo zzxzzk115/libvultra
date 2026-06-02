@@ -21,6 +21,7 @@
 #include <vultra/function/world/components/script_component.hpp>
 #include <vultra/function/world/components/sphere_shape_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/components/ui_components.hpp>
 #include <vultra/function/world/components/xr_view_component.hpp>
 #include <vbase/core/uuid.hpp>
 
@@ -91,6 +92,29 @@ namespace vultra_app
             if (value.is_object())
                 return {value.value("x", fallback.x), value.value("y", fallback.y), value.value("z", fallback.z)};
             return fallback;
+        }
+
+        glm::vec2 vec2Arg(const nlohmann::json& args, const char* key, const glm::vec2 fallback)
+        {
+            if (!args.contains(key))
+                return fallback;
+            const auto& value = args[key];
+            if (value.is_array() && value.size() >= 2)
+                return {value[0].get<float>(), value[1].get<float>()};
+            if (value.is_object())
+                return {value.value("x", fallback.x), value.value("y", fallback.y)};
+            return fallback;
+        }
+
+        bool uuidArg(const nlohmann::json& args, const char* key, vultra::CoreUUID& out)
+        {
+            if (!args.contains(key) || !args[key].is_string())
+                return false;
+            vbase::UUID parsed {};
+            if (!vbase::try_parse_uuid(args[key].get<std::string>().c_str(), parsed))
+                return false;
+            out = vultra::CoreUUID(parsed);
+            return true;
         }
 
         glm::vec4 vec4Arg(const nlohmann::json& args, const char* key, const glm::vec4 fallback)
@@ -334,6 +358,20 @@ namespace vultra_app
                 return "xr_view";
             if (kind == "lua_script" || kind == "luascript")
                 return "script";
+            if (kind == "canvascomponent")
+                return "canvas";
+            if (kind == "recttransform" || kind == "recttransformcomponent")
+                return "rect_transform";
+            if (kind == "uipanel" || kind == "uipanelcomponent")
+                return "ui_panel";
+            if (kind == "uiimage" || kind == "uiimagecomponent")
+                return "ui_image";
+            if (kind == "uitext" || kind == "uitextcomponent")
+                return "ui_text";
+            if (kind == "uibutton" || kind == "uibuttoncomponent")
+                return "ui_button";
+            if (kind == "uilayout" || kind == "uilayoutcomponent")
+                return "ui_layout";
             return kind;
         }
 
@@ -376,6 +414,32 @@ namespace vultra_app
             transform.dirty    = true;
         }
 
+        void applyRectTransformArgs(vultra::RectTransformComponent& rect, const nlohmann::json& args)
+        {
+            rect.anchorMin          = vec2Arg(args, "anchorMin", vec2Arg(args, "anchor_min", rect.anchorMin));
+            rect.anchorMax          = vec2Arg(args, "anchorMax", vec2Arg(args, "anchor_max", rect.anchorMax));
+            rect.pivot              = vec2Arg(args, "pivot", rect.pivot);
+            rect.anchoredPositionPx = vec2Arg(args,
+                                              "anchoredPositionPx",
+                                              vec2Arg(args,
+                                                      "anchored_position_px",
+                                                      vec2Arg(args,
+                                                              "anchoredPosition",
+                                                              vec2Arg(args, "position", rect.anchoredPositionPx))));
+            rect.sizeDeltaPx        = vec2Arg(args,
+                                              "sizeDeltaPx",
+                                              vec2Arg(args,
+                                                      "size_delta_px",
+                                                      vec2Arg(args, "sizeDelta", vec2Arg(args, "size", rect.sizeDeltaPx))));
+            rect.scale              = vec2Arg(args, "scale", rect.scale);
+            if (args.contains("rotationDegrees"))
+                rect.rotationDegrees = args.value("rotationDegrees", rect.rotationDegrees);
+            if (args.contains("rotation_degrees"))
+                rect.rotationDegrees = args.value("rotation_degrees", rect.rotationDegrees);
+            if (args.contains("rotation") && args["rotation"].is_number())
+                rect.rotationDegrees = args["rotation"].get<float>();
+        }
+
         bool addOrUpdateComponent(vultra::World& world,
                                   const entt::entity entity,
                                   const std::string& kind,
@@ -386,12 +450,125 @@ namespace vultra_app
             auto& reg = world.registry();
             if (kind == "transform")
             {
+                if (reg.all_of<vultra::RectTransformComponent>(entity))
+                {
+                    applyRectTransformArgs(reg.get<vultra::RectTransformComponent>(entity), args);
+                    return true;
+                }
                 if (requireExisting && !reg.all_of<vultra::TransformComponent>(entity))
                 {
                     errorMessage = "entity does not have TransformComponent";
                     return false;
                 }
                 applyTransformArgs(reg.get_or_emplace<vultra::TransformComponent>(entity), args);
+                return true;
+            }
+            if (kind == "canvas")
+            {
+                if (requireExisting && !reg.all_of<vultra::CanvasComponent>(entity))
+                {
+                    errorMessage = "entity does not have CanvasComponent";
+                    return false;
+                }
+                auto& canvas                 = reg.get_or_emplace<vultra::CanvasComponent>(entity);
+                canvas.enabled               = args.value("enabled", canvas.enabled);
+                canvas.sortOrder             = args.value("sortOrder", args.value("sort_order", canvas.sortOrder));
+                canvas.referenceResolutionPx = vec2Arg(args,
+                                                        "referenceResolutionPx",
+                                                        vec2Arg(args,
+                                                                "reference_resolution_px",
+                                                                canvas.referenceResolutionPx));
+                canvas.scaleMode             = args.value("scaleMode", args.value("scale_mode", canvas.scaleMode));
+                (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
+                return true;
+            }
+            if (kind == "rect_transform")
+            {
+                if (requireExisting && !reg.all_of<vultra::RectTransformComponent>(entity))
+                {
+                    errorMessage = "entity does not have RectTransformComponent";
+                    return false;
+                }
+                applyRectTransformArgs(reg.get_or_emplace<vultra::RectTransformComponent>(entity), args);
+                return true;
+            }
+            if (kind == "ui_panel")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiPanelComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiPanelComponent";
+                    return false;
+                }
+                auto& panel          = reg.get_or_emplace<vultra::UiPanelComponent>(entity);
+                panel.enabled        = args.value("enabled", panel.enabled);
+                panel.color          = vec4Arg(args, "color", panel.color);
+                panel.borderRadiusPx = args.value("borderRadiusPx", args.value("border_radius_px", panel.borderRadiusPx));
+                (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
+                return true;
+            }
+            if (kind == "ui_image")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiImageComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiImageComponent";
+                    return false;
+                }
+                auto& image   = reg.get_or_emplace<vultra::UiImageComponent>(entity);
+                image.enabled = args.value("enabled", image.enabled);
+                uuidArg(args, "texture", image.texture);
+                uuidArg(args, "textureUuid", image.texture);
+                image.tint    = vec4Arg(args, "tint", image.tint);
+                image.fitMode = args.value("fitMode", args.value("fit_mode", image.fitMode));
+                (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
+                return true;
+            }
+            if (kind == "ui_text")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiTextComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiTextComponent";
+                    return false;
+                }
+                auto& text           = reg.get_or_emplace<vultra::UiTextComponent>(entity);
+                text.enabled         = args.value("enabled", text.enabled);
+                text.text            = args.value("text", text.text);
+                text.color           = vec4Arg(args, "color", text.color);
+                text.fontSizePx      = args.value("fontSizePx", args.value("font_size_px", text.fontSizePx));
+                text.horizontalAlign = args.value("horizontalAlign", args.value("horizontal_align", text.horizontalAlign));
+                text.verticalAlign   = args.value("verticalAlign", args.value("vertical_align", text.verticalAlign));
+                (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
+                return true;
+            }
+            if (kind == "ui_button")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiButtonComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiButtonComponent";
+                    return false;
+                }
+                auto& button        = reg.get_or_emplace<vultra::UiButtonComponent>(entity);
+                button.enabled      = args.value("enabled", button.enabled);
+                button.interactable = args.value("interactable", button.interactable);
+                button.normalColor  = vec4Arg(args, "normalColor", button.normalColor);
+                button.hoveredColor = vec4Arg(args, "hoveredColor", button.hoveredColor);
+                button.pressedColor = vec4Arg(args, "pressedColor", button.pressedColor);
+                (void)reg.get_or_emplace<vultra::RectTransformComponent>(entity);
+                return true;
+            }
+            if (kind == "ui_layout")
+            {
+                if (requireExisting && !reg.all_of<vultra::UiLayoutComponent>(entity))
+                {
+                    errorMessage = "entity does not have UiLayoutComponent";
+                    return false;
+                }
+                auto& layout     = reg.get_or_emplace<vultra::UiLayoutComponent>(entity);
+                layout.enabled   = args.value("enabled", layout.enabled);
+                layout.kind      = args.value("kind", layout.kind);
+                layout.paddingPx = vec4Arg(args, "paddingPx", vec4Arg(args, "padding_px", layout.paddingPx));
+                layout.marginPx  = vec4Arg(args, "marginPx", vec4Arg(args, "margin_px", layout.marginPx));
+                layout.spacingPx = args.value("spacingPx", args.value("spacing_px", layout.spacingPx));
+                layout.cellSizePx = vec2Arg(args, "cellSizePx", vec2Arg(args, "cell_size_px", layout.cellSizePx));
                 return true;
             }
             if (kind == "name")
@@ -608,6 +785,20 @@ namespace vultra_app
                 return reg.remove<vultra::XRViewComponent>(entity) > 0u;
             if (kind == "script")
                 return reg.remove<vultra::ScriptComponent>(entity) > 0u;
+            if (kind == "canvas")
+                return reg.remove<vultra::CanvasComponent>(entity) > 0u;
+            if (kind == "rect_transform")
+                return reg.remove<vultra::RectTransformComponent>(entity) > 0u;
+            if (kind == "ui_panel")
+                return reg.remove<vultra::UiPanelComponent>(entity) > 0u;
+            if (kind == "ui_image")
+                return reg.remove<vultra::UiImageComponent>(entity) > 0u;
+            if (kind == "ui_text")
+                return reg.remove<vultra::UiTextComponent>(entity) > 0u;
+            if (kind == "ui_button")
+                return reg.remove<vultra::UiButtonComponent>(entity) > 0u;
+            if (kind == "ui_layout")
+                return reg.remove<vultra::UiLayoutComponent>(entity) > 0u;
             errorMessage = "unsupported component kind: " + kind;
             return false;
         }
@@ -615,10 +806,22 @@ namespace vultra_app
         entt::entity createSceneEntityFromKind(vultra::World& world, const std::string& kind, entt::entity parent)
         {
             auto& reg    = world.registry();
+            const auto normalized = lowerString(kind);
+            const auto isUiElement = normalized == "ui_panel" || normalized == "uipanel" || normalized == "ui_text" ||
+                                     normalized == "uitext" || normalized == "ui_image" || normalized == "uiimage" ||
+                                     normalized == "ui_button" || normalized == "uibutton";
+            if (isUiElement && parent == entt::null)
+            {
+                auto canvasView = reg.view<vultra::CanvasComponent>();
+                for (auto canvasEntity : canvasView)
+                {
+                    parent = canvasEntity;
+                    break;
+                }
+            }
             auto  entity = parent == entt::null ? world.createEntity() : world.createChild(parent);
             auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
 
-            const auto normalized = lowerString(kind);
             const auto setName = [&](const char* name) {
                 addCommonEntityComponents(world, entity, name);
             };
@@ -662,9 +865,46 @@ namespace vultra_app
                 body.motionType  = motionType;
                 body.objectLayer = motionType == 0u ? 0u : 1u;
             };
+            const auto addUiBase = [&](const char* name, const glm::vec2 size) -> vultra::RectTransformComponent& {
+                setName(name);
+                auto& rect        = reg.emplace_or_replace<vultra::RectTransformComponent>(entity);
+                rect.sizeDeltaPx  = size;
+                rect.scale        = glm::vec2 {1.0f, 1.0f};
+                return rect;
+            };
 
             if (normalized == "empty")
                 setName(parent == entt::null ? "Empty Entity" : "Child Entity");
+            else if (normalized == "ui_canvas" || normalized == "uicanvas")
+            {
+                auto& rect       = addUiBase("Canvas", {1920.0f, 1080.0f});
+                rect.anchorMin   = {0.0f, 0.0f};
+                rect.anchorMax   = {1.0f, 1.0f};
+                rect.pivot       = {0.5f, 0.5f};
+                rect.sizeDeltaPx = {0.0f, 0.0f};
+                reg.emplace_or_replace<vultra::CanvasComponent>(entity);
+            }
+            else if (normalized == "ui_panel" || normalized == "uipanel")
+            {
+                addUiBase("Panel", {320.0f, 180.0f});
+                reg.emplace_or_replace<vultra::UiPanelComponent>(entity);
+            }
+            else if (normalized == "ui_text" || normalized == "uitext")
+            {
+                addUiBase("Text", {240.0f, 48.0f});
+                reg.emplace_or_replace<vultra::UiTextComponent>(entity);
+            }
+            else if (normalized == "ui_image" || normalized == "uiimage")
+            {
+                addUiBase("Image", {256.0f, 256.0f});
+                reg.emplace_or_replace<vultra::UiImageComponent>(entity);
+            }
+            else if (normalized == "ui_button" || normalized == "uibutton")
+            {
+                addUiBase("Button", {180.0f, 48.0f});
+                reg.emplace_or_replace<vultra::UiPanelComponent>(entity);
+                reg.emplace_or_replace<vultra::UiButtonComponent>(entity);
+            }
             else if (normalized == "quad")
                 addBuiltinMesh("Quad", 0u);
             else if (normalized == "cube" || normalized == "box")
@@ -926,6 +1166,11 @@ namespace vultra_app
                              {"description", "Light entity template."},
                              {"lightKinds", {"directional", "point", "spot", "area"}}},
                             {{"kind", "environment"}, {"description", "Environment entity template."}},
+                            {{"kind", "ui_canvas"}, {"description", "Screen-space UI canvas in reference pixels."}},
+                            {{"kind", "ui_panel"}, {"description", "UI panel with RectTransform pixel layout."}},
+                            {{"kind", "ui_text"}, {"description", "UI text with RectTransform pixel layout."}},
+                            {{"kind", "ui_image"}, {"description", "UI image with texture picker support."}},
+                            {{"kind", "ui_button"}, {"description", "UI button with panel and input state."}},
                         })}});
         }
 
@@ -946,6 +1191,13 @@ namespace vultra_app
                             "environment",
                             "xr_view",
                             "script",
+                            "canvas",
+                            "rect_transform",
+                            "ui_panel",
+                            "ui_image",
+                            "ui_text",
+                            "ui_button",
+                            "ui_layout",
                         })}});
         }
 
@@ -993,8 +1245,13 @@ namespace vultra_app
 
             if (args.contains("name"))
                 reg.get_or_emplace<vultra::NameComponent>(entity).name = args.value("name", std::string {});
-            auto& transform    = reg.get_or_emplace<vultra::TransformComponent>(entity);
-            applyTransformArgs(transform, args);
+            if (auto* rect = reg.try_get<vultra::RectTransformComponent>(entity))
+                applyRectTransformArgs(*rect, args);
+            else
+            {
+                auto& transform = reg.get_or_emplace<vultra::TransformComponent>(entity);
+                applyTransformArgs(transform, args);
+            }
 
             const auto& id = reg.get<vultra::IDComponent>(entity);
             Selection::select(SelectionCategory::Entity, id.uuid);

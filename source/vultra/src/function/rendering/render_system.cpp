@@ -37,6 +37,7 @@
 #include "vultra/function/world/components/skin_palette_component.hpp"
 #include "vultra/function/world/components/reflection_probe_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
+#include "vultra/function/world/components/ui_components.hpp"
 #include "vultra/function/world/world.hpp"
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -934,6 +935,139 @@ namespace vultra
             expandBounds(out, worldCenter + r);
         }
 
+        [[nodiscard]] bool uiVisible(const entt::registry& reg, entt::entity entity)
+        {
+            if (const auto* status = reg.try_get<EntityStatusComponent>(entity))
+                return status->active && status->visible;
+            return true;
+        }
+
+        [[nodiscard]] uint32_t uiTextureIndex(IAssetService& assets, const CoreUUID& texture)
+        {
+            if (!texture.valid())
+                return 0u;
+            auto handle = assets.loadTextureAsync(texture);
+            return handle.ready() ? handle.gpuIndex() : 0u;
+        }
+
+        void cookUiChildren(World&                 world,
+                            IAssetService&         assets,
+                            RenderWorld&           out,
+                            entt::entity           entity,
+                            const glm::vec2&       parentMin,
+                            const glm::vec2&       parentSize,
+                            const CanvasComponent& canvas,
+                            const int              sortOrder,
+                            const uint32_t         depth)
+        {
+            auto& reg = world.registry();
+            auto* rect = reg.try_get<RectTransformComponent>(entity);
+            if (!rect || !uiVisible(reg, entity))
+                return;
+
+            const glm::vec2 anchorMin = parentMin + parentSize * rect->anchorMin;
+            const glm::vec2 anchorMax = parentMin + parentSize * rect->anchorMax;
+            const glm::vec2 sizePx    = (anchorMax - anchorMin) + rect->sizeDeltaPx;
+            const glm::vec2 minPx     = anchorMin + rect->anchoredPositionPx - sizePx * rect->pivot;
+            const glm::vec2 maxPx     = minPx + sizePx * rect->scale;
+
+            const auto pushItem = [&](const glm::vec4& color, const uint32_t textureIndex, const uint32_t flags, const uint32_t fitMode) {
+                RenderUiDrawItem item {};
+                if (const auto* id = reg.try_get<IDComponent>(entity))
+                    item.entity = id->uuid;
+                item.rectMinPx         = minPx;
+                item.rectMaxPx         = maxPx;
+                item.canvasReferencePx = glm::max(canvas.referenceResolutionPx, glm::vec2 {1.0f});
+                item.color             = color;
+                item.textureIndex      = textureIndex;
+                item.flags             = flags;
+                item.scaleMode         = canvas.scaleMode;
+                item.fitMode           = fitMode;
+                item.sortOrder         = sortOrder;
+                item.depth             = depth;
+                out.uiDrawItems.push_back(item);
+            };
+
+            if (const auto* button = reg.try_get<UiButtonComponent>(entity); button && button->enabled)
+            {
+                glm::vec4 color = button->normalColor;
+                if (button->pressed)
+                    color = button->pressedColor;
+                else if (button->hovered)
+                    color = button->hoveredColor;
+                pushItem(color, 0u, 0u, 0u);
+            }
+            else if (const auto* panel = reg.try_get<UiPanelComponent>(entity); panel && panel->enabled)
+            {
+                pushItem(panel->color, 0u, 0u, 0u);
+            }
+
+            if (const auto* image = reg.try_get<UiImageComponent>(entity); image && image->enabled)
+                pushItem(image->tint, uiTextureIndex(assets, image->texture), 1u, image->fitMode);
+
+            const auto* layout = reg.try_get<UiLayoutComponent>(entity);
+            uint32_t childIndex = 0u;
+            for (auto child = world.firstChild(entity); child != entt::null; child = world.nextSibling(child))
+            {
+                if (layout && layout->enabled && layout->kind != 0u)
+                {
+                    auto* childRect = reg.try_get<RectTransformComponent>(child);
+                    if (childRect)
+                    {
+                        const glm::vec2 innerMin = minPx + glm::vec2 {layout->paddingPx.x, layout->paddingPx.y};
+                        const glm::vec2 innerMax = maxPx - glm::vec2 {layout->paddingPx.z, layout->paddingPx.w};
+                        const glm::vec2 cell     = glm::max(layout->cellSizePx, glm::vec2 {1.0f});
+                        if (layout->kind == 1u)
+                            childRect->anchoredPositionPx = glm::vec2 {
+                                layout->paddingPx.x + childIndex * (layout->cellSizePx.x + layout->spacingPx),
+                                layout->paddingPx.y};
+                        else if (layout->kind == 2u)
+                            childRect->anchoredPositionPx = glm::vec2 {
+                                layout->paddingPx.x,
+                                layout->paddingPx.y + childIndex * (layout->cellSizePx.y + layout->spacingPx)};
+                        else if (layout->kind == 3u)
+                        {
+                            const uint32_t columns =
+                                std::max(1u, static_cast<uint32_t>(std::floor((innerMax.x - innerMin.x) /
+                                                                               std::max(cell.x + layout->spacingPx, 1.0f))));
+                            childRect->anchoredPositionPx = glm::vec2 {
+                                layout->paddingPx.x + (childIndex % columns) * (layout->cellSizePx.x + layout->spacingPx),
+                                layout->paddingPx.y + (childIndex / columns) * (layout->cellSizePx.y + layout->spacingPx)};
+                        }
+                        childRect->anchorMin   = {0.0f, 0.0f};
+                        childRect->anchorMax   = {0.0f, 0.0f};
+                        childRect->pivot       = {0.0f, 0.0f};
+                        childRect->sizeDeltaPx = layout->cellSizePx;
+                    }
+                }
+
+                cookUiChildren(world, assets, out, child, minPx, maxPx - minPx, canvas, sortOrder, depth + 1u);
+                ++childIndex;
+            }
+        }
+
+        void cookUi(World& world, IAssetService& assets, RenderWorld& out)
+        {
+            auto& reg = world.registry();
+            auto  canvasView = reg.view<CanvasComponent>();
+            for (auto canvasEntity : canvasView)
+            {
+                const auto& canvas = canvasView.get<CanvasComponent>(canvasEntity);
+                if (!canvas.enabled || !uiVisible(reg, canvasEntity))
+                    continue;
+
+                const glm::vec2 canvasSize = glm::max(canvas.referenceResolutionPx, glm::vec2 {1.0f});
+                for (auto child = world.firstChild(canvasEntity); child != entt::null; child = world.nextSibling(child))
+                    cookUiChildren(world, assets, out, child, {0.0f, 0.0f}, canvasSize, canvas, canvas.sortOrder, 1u);
+            }
+
+            std::sort(out.uiDrawItems.begin(), out.uiDrawItems.end(), [](const RenderUiDrawItem& a, const RenderUiDrawItem& b) {
+                if (a.sortOrder != b.sortOrder)
+                    return a.sortOrder < b.sortOrder;
+                return a.depth < b.depth;
+            });
+        }
+
         struct FrameGraphSnapshotWriter
         {
             nlohmann::json                          snapshot;
@@ -1659,6 +1793,11 @@ namespace vultra
                 outProbe.environmentMap = environmentMap;
                 out.reflectionProbes.push_back(outProbe);
             }
+        }
+
+        {
+            RuntimeProfiler::ExternalScope uiScope {"RenderWorldCooker::cook/ui"};
+            cookUi(world, assets, out);
         }
     }
 

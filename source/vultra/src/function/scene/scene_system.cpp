@@ -27,6 +27,7 @@
 #include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/components/sphere_shape_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
+#include "vultra/function/world/components/ui_components.hpp"
 #include "vultra/function/world/components/xr_view_component.hpp"
 
 #include <entt/entt.hpp>
@@ -327,6 +328,13 @@ namespace vultra
                 return entt::meta_any {b};
         }
 
+        if (expected == entt::resolve<glm::vec2>())
+        {
+            std::vector<float> v;
+            if (parse_vec(t, v) && v.size() == 2)
+                return entt::meta_any {glm::vec2 {v[0], v[1]}};
+        }
+
         if (expected == entt::resolve<glm::vec3>())
         {
             std::vector<float> v;
@@ -400,6 +408,14 @@ namespace vultra
             return std::to_string(v.cast<double>());
         if (t == entt::resolve<bool>())
             return v.cast<bool>() ? "true" : "false";
+
+        if (t == entt::resolve<glm::vec2>())
+        {
+            auto               vv = v.cast<glm::vec2>();
+            std::ostringstream oss;
+            oss << "(" << vv.x << ", " << vv.y << ")";
+            return oss.str();
+        }
 
         if (t == entt::resolve<glm::vec3>())
         {
@@ -521,6 +537,26 @@ namespace vultra
                                                                "castsShadow",
                                                                "twoSided"});
         m_ComponentRegistry.registerComponent<ScriptComponent>("ScriptComponent", {"scriptUri", "enabled"});
+        m_ComponentRegistry.registerComponent<CanvasComponent>(
+            "CanvasComponent", {"enabled", "sortOrder", "referenceResolutionPx", "scaleMode"});
+        m_ComponentRegistry.registerComponent<RectTransformComponent>("RectTransformComponent",
+                                                                      {"anchorMin",
+                                                                       "anchorMax",
+                                                                       "pivot",
+                                                                       "anchoredPositionPx",
+                                                                       "sizeDeltaPx",
+                                                                       "rotationDegrees",
+                                                                       "scale"});
+        m_ComponentRegistry.registerComponent<UiPanelComponent>(
+            "UiPanelComponent", {"enabled", "color", "borderRadiusPx"});
+        m_ComponentRegistry.registerComponent<UiImageComponent>(
+            "UiImageComponent", {"enabled", "texture", "tint", "fitMode"});
+        m_ComponentRegistry.registerComponent<UiTextComponent>(
+            "UiTextComponent", {"enabled", "text", "color", "fontSizePx", "horizontalAlign", "verticalAlign"});
+        m_ComponentRegistry.registerComponent<UiButtonComponent>(
+            "UiButtonComponent", {"enabled", "interactable", "normalColor", "hoveredColor", "pressedColor"});
+        m_ComponentRegistry.registerComponent<UiLayoutComponent>(
+            "UiLayoutComponent", {"enabled", "kind", "paddingPx", "marginPx", "spacingPx", "cellSizePx"});
 
         m_AssetService = &ctx().services.require<IAssetService>();
 

@@ -17,6 +17,7 @@
 #include "vultra/function/world/components/script_component.hpp"
 #include "vultra/function/world/components/sphere_shape_component.hpp"
 #include "vultra/function/world/components/transform_component.hpp"
+#include "vultra/function/world/components/ui_components.hpp"
 #include "vultra/function/world/components/xr_view_component.hpp"
 
 #include <entt/entt.hpp>
@@ -32,6 +33,7 @@ namespace vultra
 
         entt::meta_factory<CoreUUID>().type("CoreUUID"_hs);
 
+        entt::meta_factory<glm::vec2>().type("glm::vec2"_hs);
         entt::meta_factory<glm::vec3>().type("glm::vec3"_hs);
         entt::meta_factory<glm::vec4>().type("glm::vec4"_hs);
         entt::meta_factory<glm::quat>().type("glm::quat"_hs);
@@ -166,5 +168,61 @@ namespace vultra
             .type("ScriptComponent"_hs)
             .data<&ScriptComponent::scriptUri>("scriptUri"_hs)
             .data<&ScriptComponent::enabled>("enabled"_hs);
+
+        entt::meta_factory<CanvasComponent>()
+            .type("CanvasComponent"_hs)
+            .data<&CanvasComponent::enabled>("enabled"_hs)
+            .data<&CanvasComponent::sortOrder>("sortOrder"_hs)
+            .data<&CanvasComponent::referenceResolutionPx>("referenceResolutionPx"_hs)
+            .data<&CanvasComponent::scaleMode>("scaleMode"_hs);
+
+        entt::meta_factory<RectTransformComponent>()
+            .type("RectTransformComponent"_hs)
+            .data<&RectTransformComponent::anchorMin>("anchorMin"_hs)
+            .data<&RectTransformComponent::anchorMax>("anchorMax"_hs)
+            .data<&RectTransformComponent::pivot>("pivot"_hs)
+            .data<&RectTransformComponent::anchoredPositionPx>("anchoredPositionPx"_hs)
+            .data<&RectTransformComponent::sizeDeltaPx>("sizeDeltaPx"_hs)
+            .data<&RectTransformComponent::rotationDegrees>("rotationDegrees"_hs)
+            .data<&RectTransformComponent::scale>("scale"_hs);
+
+        entt::meta_factory<UiPanelComponent>()
+            .type("UiPanelComponent"_hs)
+            .data<&UiPanelComponent::enabled>("enabled"_hs)
+            .data<&UiPanelComponent::color>("color"_hs)
+            .data<&UiPanelComponent::borderRadiusPx>("borderRadiusPx"_hs);
+
+        entt::meta_factory<UiImageComponent>()
+            .type("UiImageComponent"_hs)
+            .data<&UiImageComponent::enabled>("enabled"_hs)
+            .data<&UiImageComponent::texture>("texture"_hs)
+            .data<&UiImageComponent::tint>("tint"_hs)
+            .data<&UiImageComponent::fitMode>("fitMode"_hs);
+
+        entt::meta_factory<UiTextComponent>()
+            .type("UiTextComponent"_hs)
+            .data<&UiTextComponent::enabled>("enabled"_hs)
+            .data<&UiTextComponent::text>("text"_hs)
+            .data<&UiTextComponent::color>("color"_hs)
+            .data<&UiTextComponent::fontSizePx>("fontSizePx"_hs)
+            .data<&UiTextComponent::horizontalAlign>("horizontalAlign"_hs)
+            .data<&UiTextComponent::verticalAlign>("verticalAlign"_hs);
+
+        entt::meta_factory<UiButtonComponent>()
+            .type("UiButtonComponent"_hs)
+            .data<&UiButtonComponent::enabled>("enabled"_hs)
+            .data<&UiButtonComponent::interactable>("interactable"_hs)
+            .data<&UiButtonComponent::normalColor>("normalColor"_hs)
+            .data<&UiButtonComponent::hoveredColor>("hoveredColor"_hs)
+            .data<&UiButtonComponent::pressedColor>("pressedColor"_hs);
+
+        entt::meta_factory<UiLayoutComponent>()
+            .type("UiLayoutComponent"_hs)
+            .data<&UiLayoutComponent::enabled>("enabled"_hs)
+            .data<&UiLayoutComponent::kind>("kind"_hs)
+            .data<&UiLayoutComponent::paddingPx>("paddingPx"_hs)
+            .data<&UiLayoutComponent::marginPx>("marginPx"_hs)
+            .data<&UiLayoutComponent::spacingPx>("spacingPx"_hs)
+            .data<&UiLayoutComponent::cellSizePx>("cellSizePx"_hs);
     }
 } // namespace vultra

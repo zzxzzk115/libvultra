@@ -125,6 +125,8 @@ Entity properties:
 - `entity.mesh`
 - `entity.boxShape`
 - `entity.sphereShape`
+- `entity.rectTransform`
+- `entity.uiButton`
 
 Entity methods use `:` syntax:
 
@@ -145,6 +147,8 @@ Component checks:
 - `entity:hasMesh()`
 - `entity:hasBoxShape()`
 - `entity:hasSphereShape()`
+- `entity:hasRectTransform()`
+- `entity:hasUiButton()`
 
 ## Transforms And Cameras
 
@@ -159,6 +163,51 @@ self.transform:translate(vec3(0, 0, 1))
 self.transform:setEulerDegrees(vec3(0, 90, 0))
 self.transform:lookAt(vec3(0, 0, 0))
 ```
+
+If an entity has `RectTransformComponent`, it is treated as a UI entity.
+`entity.transform.position`, `scale`, `rotationEuler`, `translate`, and
+`setEulerDegrees` forward to RectTransform pixel fields instead of the hidden
+3D `TransformComponent`.
+
+## UI
+
+Runtime UI V1 is screen-space and uses pixels authored relative to the owning
+Canvas reference resolution. RectTransform, layout spacing, padding, margins,
+text size, and button hit rects are pixel values before Canvas scaling.
+
+RectTransform access:
+
+```lua
+local rect = self.rectTransform
+rect.anchoredPositionPx = vec2(320, 180)
+rect.sizeDeltaPx = vec2(240, 64)
+rect.rotationDegrees = 0
+rect.scale = vec2(1, 1)
+```
+
+Button and pointer state:
+
+```lua
+if UI.isPointerOverUI() then
+  local hovered = UI.hoveredEntity()
+end
+
+if self.uiButton.clicked then
+  print("Clicked")
+end
+```
+
+UI functions:
+
+- `UI.isPointerOverUI()`
+- `UI.hoveredEntity()`
+- `UI.pressedEntity()`
+
+UI component references:
+
+- `RectTransform`: `anchorMin`, `anchorMax`, `pivot`, `anchoredPositionPx`,
+  `sizeDeltaPx`, `scale`, `rotationDegrees`
+- `UiButton`: `interactable`, `hovered`, `pressed`, `clicked`
 
 Primary camera lookup:
 

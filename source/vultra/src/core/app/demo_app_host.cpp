@@ -26,6 +26,7 @@
 #include "vultra/function/scripting/script_system.hpp"
 #include "vultra/function/services/render_backend_service.hpp"
 #include "vultra/function/services/render_service.hpp"
+#include "vultra/function/ui/ui_system.hpp"
 #include "vultra/function/world/world_system.hpp"
 
 #include <glm/ext/matrix_clip_space.hpp>
@@ -411,6 +412,7 @@ namespace vultra
         cameraSystem.setFPSCameraController(fpsController);
 
         engine.emplaceSubsystem<WorldSystem>();
+        engine.emplaceSubsystem<UiSystem>();
         engine.emplaceSubsystem<PhysicsSystem>();
 
 #if !defined(__EMSCRIPTEN__)

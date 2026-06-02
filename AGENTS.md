@@ -11,7 +11,7 @@ Before planning or editing in this repository, read:
 If the client supports MCP for live editor/runtime testing, use the C++ Runtime
 MCP built into `vultra-app`:
 
-- Start: `xmake run vultra-app -- --editor --mcp --project example.vproject --no-xr`
+- Start: `xmake run vultra-app --editor --mcp --project example.vproject --no-xr`
 - Endpoint: `http://127.0.0.1:8848/mcp`
 - Protocol: MCP-over-HTTP JSON-RPC request/response, `POST /mcp`
 - First smoke calls: `initialize`, `tools/list`,

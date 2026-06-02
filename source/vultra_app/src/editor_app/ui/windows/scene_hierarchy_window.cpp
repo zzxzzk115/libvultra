@@ -24,6 +24,7 @@
 #include <vultra/function/world/components/rigid_body_component.hpp>
 #include <vultra/function/world/components/sphere_shape_component.hpp>
 #include <vultra/function/world/components/transform_component.hpp>
+#include <vultra/function/world/components/ui_components.hpp>
 #include <vultra/function/world/components/xr_view_component.hpp>
 #include <vultra/function/world/world.hpp>
 
@@ -71,6 +72,10 @@ namespace vultra_app
                 return ICON_MDI_CUBE;
             if (reg.all_of<vultra::GaussianSplatComponent>(entity))
                 return ICON_MDI_VECTOR_POINT;
+            if (reg.all_of<vultra::CanvasComponent>(entity))
+                return ICON_MDI_MONITOR;
+            if (reg.all_of<vultra::RectTransformComponent>(entity))
+                return ICON_MDI_APPLICATION;
             return ICON_MDI_CUBE_OUTLINE;
         }
 
@@ -103,6 +108,11 @@ namespace vultra_app
             Camera,
             XRCamera,
             Environment,
+            UiCanvas,
+            UiPanel,
+            UiText,
+            UiImage,
+            UiButton,
             StaticBox,
             DynamicSphere,
             CapsuleRigidBody,
@@ -136,6 +146,16 @@ namespace vultra_app
                     return "xr_camera";
                 case SceneCreateKind::Environment:
                     return "environment";
+                case SceneCreateKind::UiCanvas:
+                    return "ui_canvas";
+                case SceneCreateKind::UiPanel:
+                    return "ui_panel";
+                case SceneCreateKind::UiText:
+                    return "ui_text";
+                case SceneCreateKind::UiImage:
+                    return "ui_image";
+                case SceneCreateKind::UiButton:
+                    return "ui_button";
                 case SceneCreateKind::StaticBox:
                     return "static_box";
                 case SceneCreateKind::DynamicSphere:
@@ -255,6 +275,21 @@ namespace vultra_app
                 createSceneEntityCommand(ctx, parent, SceneCreateKind::XRCamera);
             if (ImGui::MenuItem(ICON_MDI_WEATHER_SUNNY " Environment"))
                 createSceneEntityCommand(ctx, parent, SceneCreateKind::Environment);
+
+            if (ImGui::BeginMenu(ICON_MDI_APPLICATION " UI"))
+            {
+                if (ImGui::MenuItem(ICON_MDI_MONITOR " Canvas"))
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::UiCanvas);
+                if (ImGui::MenuItem(ICON_MDI_RECTANGLE_OUTLINE " Panel"))
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::UiPanel);
+                if (ImGui::MenuItem(ICON_MDI_FORMAT_TEXT " Text"))
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::UiText);
+                if (ImGui::MenuItem(ICON_MDI_IMAGE_OUTLINE " Image"))
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::UiImage);
+                if (ImGui::MenuItem(ICON_MDI_GESTURE_TAP_BUTTON " Button"))
+                    createSceneEntityCommand(ctx, parent, SceneCreateKind::UiButton);
+                ImGui::EndMenu();
+            }
 
             if (ImGui::BeginMenu(ICON_MDI_ATOM " Physics"))
             {

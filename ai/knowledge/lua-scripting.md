@@ -23,7 +23,16 @@ Stable facts for agents:
   `self.transform:lookAt(target)`.
 - Check component presence before component property access:
   `entity:hasRigidBody()`, `entity:hasCamera()`, `entity:hasMesh()`,
-  `entity:hasBoxShape()`, `entity:hasSphereShape()`.
+  `entity:hasBoxShape()`, `entity:hasSphereShape()`,
+  `entity:hasRectTransform()`, `entity:hasUiButton()`.
+- UI APIs are screen-space and pixel-authored. `RectTransform` fields,
+  layout spacing/padding/margins, text sizes, and button hit rects use Canvas
+  reference-resolution pixels before Canvas scaling.
+- If an entity has `RectTransformComponent`, `entity.transform` operations
+  forward to RectTransform pixel fields; use `entity.rectTransform` for direct
+  access to anchors, pivot, `anchoredPositionPx`, `sizeDeltaPx`, `scale`, and
+  `rotationDegrees`. `entity.uiButton.clicked` and `UI.isPointerOverUI()` are
+  available through the runtime UI service.
 - Physics-driven movement should use `OnFixedUpdate` and rigid-body
   `addForce`/`addImpulse`. Avoid writing `Transform.position` every rendered
   frame for dynamic rigid bodies.

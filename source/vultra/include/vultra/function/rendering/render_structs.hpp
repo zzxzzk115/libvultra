@@ -121,6 +121,21 @@ namespace vultra
         std::vector<MaterialOverride> materialOverrides;
     };
 
+    struct RenderUiDrawItem
+    {
+        CoreUUID  entity;
+        glm::vec2 rectMinPx {0.0f};
+        glm::vec2 rectMaxPx {0.0f};
+        glm::vec2 canvasReferencePx {1920.0f, 1080.0f};
+        glm::vec4 color {1.0f};
+        uint32_t  textureIndex {0u};
+        uint32_t  flags {0u};
+        uint32_t  scaleMode {0u};
+        uint32_t  fitMode {0u};
+        int       sortOrder {0};
+        uint32_t  depth {0u};
+    };
+
     struct RenderGaussianSplatInstance
     {
         CoreUUID  entity;
@@ -426,6 +441,7 @@ namespace vultra
         uint64_t                    frameIndex {0};
         std::vector<RenderCamera>   cameras;
         std::vector<RenderInstance> instances;
+        std::vector<RenderUiDrawItem> uiDrawItems;
         std::vector<RenderGaussianSplatInstance> gaussianSplats;
         std::vector<RenderLight>    lights;
         RenderEnvironment           environment;
@@ -441,6 +457,7 @@ namespace vultra
         {
             cameras.clear();
             instances.clear();
+            uiDrawItems.clear();
             gaussianSplats.clear();
             lights.clear();
             environment = {};
